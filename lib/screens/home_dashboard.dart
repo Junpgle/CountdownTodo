@@ -149,7 +149,12 @@ class HomeDashboard extends StatefulWidget {
   final String username;
   final PlanReviewRepository? planReviewRepository;
   final HomeAgendaRepository? agendaRepository;
-  const HomeDashboard({super.key, required this.username, this.planReviewRepository, this.agendaRepository});
+  const HomeDashboard({
+    super.key,
+    required this.username,
+    this.planReviewRepository,
+    this.agendaRepository,
+  });
 
   @override
   State<HomeDashboard> createState() => _HomeDashboardState();
@@ -194,8 +199,12 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   int? _currentSemesterWeek;
   Map<String, dynamic> _homeTextConfig = {};
 
-  List<String> _leftSections = HomeLayoutService.defaultOrder(HomeLayoutTarget.wideLeft);
-  List<String> _rightSections = HomeLayoutService.defaultOrder(HomeLayoutTarget.wideRight);
+  List<String> _leftSections = HomeLayoutService.defaultOrder(
+    HomeLayoutTarget.wideLeft,
+  );
+  List<String> _rightSections = HomeLayoutService.defaultOrder(
+    HomeLayoutTarget.wideRight,
+  );
   List<String> _mobileHomeSections = HomeLayoutService.defaultOrder(
     HomeLayoutTarget.mobileHome,
   );

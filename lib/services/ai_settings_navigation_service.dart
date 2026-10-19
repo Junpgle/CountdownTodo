@@ -203,10 +203,6 @@ abstract final class AiSettingsNavigationService {
     return validateTargets(targets);
   }
 
-  static String cleanContent(String content) => content
-      .replaceAll(
-        _settingsBlockCleanupPattern,
-        '',
-      )
-      .trim();
+  static String cleanContent(String content) =>
+      content.replaceAll(_settingsBlockCleanupPattern, '').trim();
 }

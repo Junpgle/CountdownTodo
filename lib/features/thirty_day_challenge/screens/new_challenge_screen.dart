@@ -77,16 +77,12 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
       final sharedText = ChallengeShareCodec.encode(
         ChallengeDraft(title: title, taskTitles: tasks),
       );
-      await Clipboard.setData(
-        ClipboardData(text: sharedText),
-      );
+      await Clipboard.setData(ClipboardData(text: sharedText));
       await ClipboardSharePayload.markLocallyGenerated(sharedText);
       if (!mounted) return;
       AppSnackBars.showSnackBar(
         context,
-        const SnackBar(
-          content: Text('已复制分享内容，朋友可在新建挑战页点击“识别剪贴板”导入'),
-        ),
+        const SnackBar(content: Text('已复制分享内容，朋友可在新建挑战页点击“识别剪贴板”导入')),
       );
     } catch (_) {
       if (!mounted) return;
@@ -188,10 +184,7 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
       return;
     }
     Navigator.of(context).pop(
-      ChallengeDraft(
-        title: _titleController.text.trim(),
-        taskTitles: titles,
-      ),
+      ChallengeDraft(title: _titleController.text.trim(), taskTitles: titles),
     );
   }
 
@@ -218,9 +211,7 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
       focusedBorder: border.copyWith(
         borderSide: BorderSide(color: scheme.primary, width: 1.5),
       ),
-      errorBorder: border.copyWith(
-        borderSide: BorderSide(color: scheme.error),
-      ),
+      errorBorder: border.copyWith(borderSide: BorderSide(color: scheme.error)),
       focusedErrorBorder: border.copyWith(
         borderSide: BorderSide(color: scheme.error, width: 1.5),
       ),
@@ -232,14 +223,12 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
     required List<String> taskTitles,
     required bool isWide,
   }) {
-    final labelStyle = Theme.of(context).textTheme.titleSmall?.copyWith(
-          color: scheme.onSurface,
-          fontWeight: FontWeight.w900,
-        );
+    final labelStyle = Theme.of(context).textTheme.titleSmall
+        ?.copyWith(color: scheme.onSurface, fontWeight: FontWeight.w900);
     final hintStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: scheme.onSurfaceVariant.withValues(alpha: 0.72),
-          height: 1.45,
-        );
+      color: scheme.onSurfaceVariant.withValues(alpha: 0.72),
+      height: 1.45,
+    );
     final fillColor = scheme.surfaceContainerHighest.withValues(alpha: 0.46);
 
     return Container(
@@ -352,10 +341,10 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
                 child: Text(
                   'CUSTOM CHALLENGE',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: heroText,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.1,
-                      ),
+                    color: heroText,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.1,
+                  ),
                 ),
               ),
             ],
@@ -364,19 +353,19 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
           Text(
             '把想做的事，\n变成一场挑战',
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  color: heroText,
-                  fontWeight: FontWeight.w900,
-                  height: 1.08,
-                  letterSpacing: -0.8,
-                ),
+              color: heroText,
+              fontWeight: FontWeight.w900,
+              height: 1.08,
+              letterSpacing: -0.8,
+            ),
           ),
           const SizedBox(height: 10),
           Text(
             '从一件小事开始，任务数量、顺序和节奏都由你决定。',
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: heroText.withValues(alpha: 0.8),
-                  height: 1.45,
-                ),
+              color: heroText.withValues(alpha: 0.8),
+              height: 1.45,
+            ),
           ),
           const SizedBox(height: 18),
           Wrap(
@@ -403,9 +392,9 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
       child: Text(
         label,
         style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: scheme.onPrimaryContainer,
-              fontWeight: FontWeight.w700,
-            ),
+          color: scheme.onPrimaryContainer,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
@@ -416,9 +405,7 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
       color: scheme.secondaryContainer.withValues(alpha: 0.72),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(24),
-        side: BorderSide(
-          color: scheme.outlineVariant.withValues(alpha: 0.42),
-        ),
+        side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.42)),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
@@ -448,20 +435,21 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
                     children: [
                       Text(
                         '已有一个想法？',
-                        style:
-                            Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  color: scheme.onSecondaryContainer,
-                                  fontWeight: FontWeight.w900,
-                                ),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
+                              color: scheme.onSecondaryContainer,
+                              fontWeight: FontWeight.w900,
+                            ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         '从云端挑战库挑一份模板，再按你的节奏修改。',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: scheme.onSecondaryContainer
-                                  .withValues(alpha: 0.78),
-                              height: 1.4,
-                            ),
+                          color: scheme.onSecondaryContainer.withValues(
+                            alpha: 0.78,
+                          ),
+                          height: 1.4,
+                        ),
                       ),
                     ],
                   ),
@@ -514,17 +502,16 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
               Text(
                 eyebrow.toUpperCase(),
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: scheme.primary,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.1,
-                    ),
+                  color: scheme.primary,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.1,
+                ),
               ),
               const SizedBox(height: 2),
               Text(
                 title,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
+                style: Theme.of(context).textTheme.titleLarge
+                    ?.copyWith(fontWeight: FontWeight.w900),
               ),
             ],
           ),
@@ -533,18 +520,15 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
           Text(
             trailing,
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w700,
-                ),
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
           ),
       ],
     );
   }
 
-  Widget _buildTaskPreview(
-    List<String> taskTitles,
-    ColorScheme scheme,
-  ) {
+  Widget _buildTaskPreview(List<String> taskTitles, ColorScheme scheme) {
     return OptionalLiquidGlassCard(
       borderRadius: 26,
       highContrast: true,
@@ -552,9 +536,7 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
       fallbackDecoration: BoxDecoration(
         color: scheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(26),
-        border: Border.all(
-          color: scheme.outlineVariant.withValues(alpha: 0.5),
-        ),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -580,17 +562,16 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
                 Expanded(
                   child: Text(
                     '任务预览',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w900,
-                        ),
+                    style: Theme.of(context).textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w900),
                   ),
                 ),
                 Text(
                   '${taskTitles.length} 项',
                   style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        color: scheme.primary,
-                        fontWeight: FontWeight.w800,
-                      ),
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ],
             ),
@@ -627,9 +608,8 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
                     '还有 ${taskTitles.length - 6} 项任务，创建后可以继续查看。',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
+                    style: Theme.of(context).textTheme.bodySmall
+                        ?.copyWith(color: scheme.onSurfaceVariant),
                   ),
                 ),
             ],
@@ -639,11 +619,7 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
     );
   }
 
-  Widget _buildPreviewTask(
-    int index,
-    String title,
-    ColorScheme scheme,
-  ) {
+  Widget _buildPreviewTask(int index, String title, ColorScheme scheme) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
@@ -669,11 +645,7 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
+              child: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis),
             ),
           ),
         ],
@@ -761,8 +733,8 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
                               ),
                               validator: (value) =>
                                   value?.trim().isEmpty == true
-                                      ? '请给这场挑战起个名字'
-                                      : null,
+                                  ? '请给这场挑战起个名字'
+                                  : null,
                             ),
                             const SizedBox(height: 14),
                             _buildTaskEditor(
@@ -790,8 +762,9 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
                                   ),
                                 ),
                                 OutlinedButton.icon(
-                                  onPressed:
-                                      _isImporting ? null : _importTextFile,
+                                  onPressed: _isImporting
+                                      ? null
+                                      : _importTextFile,
                                   icon: _isImporting
                                       ? const SizedBox(
                                           width: 18,
@@ -801,9 +774,7 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
                                           ),
                                         )
                                       : const Icon(Icons.upload_file_rounded),
-                                  label: Text(
-                                    _isImporting ? '导入中…' : '导入挑战文件',
-                                  ),
+                                  label: Text(_isImporting ? '导入中…' : '导入挑战文件'),
                                   style: OutlinedButton.styleFrom(
                                     minimumSize: const Size(0, 44),
                                     padding: const EdgeInsets.symmetric(
@@ -815,8 +786,9 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
                                   ),
                                 ),
                                 OutlinedButton.icon(
-                                  onPressed:
-                                      _isImporting ? null : _shareChallenge,
+                                  onPressed: _isImporting
+                                      ? null
+                                      : _shareChallenge,
                                   icon: const Icon(Icons.ios_share_rounded),
                                   label: const Text('分享挑战'),
                                   style: OutlinedButton.styleFrom(
@@ -848,10 +820,8 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
                               label: const Text('创建并开始挑战'),
                               style: FilledButton.styleFrom(
                                 minimumSize: const Size.fromHeight(58),
-                                textStyle:
-                                    theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w900,
-                                ),
+                                textStyle: theme.textTheme.titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w900),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(20),
                                 ),

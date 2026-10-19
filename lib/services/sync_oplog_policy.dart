@@ -44,7 +44,8 @@ class SyncOplogPolicy {
     Map<String, dynamic> incoming,
   ) {
     final current = payloads[uuid];
-    if (current != null && current['_recurrence_maintenance'] is! Map &&
+    if (current != null &&
+        current['_recurrence_maintenance'] is! Map &&
         incoming['_recurrence_maintenance'] is Map) {
       return;
     }
@@ -98,7 +99,8 @@ class SyncOplogPolicy {
     final requestIds = requestSnapshot.map((entry) => entry.id).toSet();
     return currentPending
         .where(
-            (entry) => entry.table == 'todos' && !requestIds.contains(entry.id))
+          (entry) => entry.table == 'todos' && !requestIds.contains(entry.id),
+        )
         .map((entry) => entry.uuid)
         .toSet();
   }
@@ -107,6 +109,5 @@ class SyncOplogPolicy {
     String uuid, {
     required Set<String> forceFlushUuids,
     required Set<String> inFlightMutationUuids,
-  }) =>
-      forceFlushUuids.contains(uuid) || inFlightMutationUuids.contains(uuid);
+  }) => forceFlushUuids.contains(uuid) || inFlightMutationUuids.contains(uuid);
 }

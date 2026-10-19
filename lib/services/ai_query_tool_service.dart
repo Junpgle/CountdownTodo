@@ -872,9 +872,10 @@ query_*自动执行只读查询；propose_*只生成待确认操作草案，不�
             domain == 'pomodoro_records' ||
             domain == 'screen_time')
           'duration_basis': switch (domain) {
-            'time_logs' => range != null
-                ? 'overlap_with_query_range'
-                : 'full_matching_records',
+            'time_logs' =>
+              range != null
+                  ? 'overlap_with_query_range'
+                  : 'full_matching_records',
             'screen_time' => 'sum_of_saved_device_app_records',
             _ => 'full_matching_records',
           },
@@ -962,7 +963,11 @@ query_*自动执行只读查询；propose_*只生成待确认操作草案，不�
       final duration = rawDuration.toInt();
       final date = row['date']?.toString() ?? '';
       if (date.isNotEmpty) {
-        byDay.update(date, (value) => value + duration, ifAbsent: () => duration);
+        byDay.update(
+          date,
+          (value) => value + duration,
+          ifAbsent: () => duration,
+        );
       }
       final appName = row['app_name']?.toString() ?? '未知应用';
       final packageName = row['package_name']?.toString() ?? '';
@@ -1006,8 +1011,9 @@ query_*自动执行只读查询；propose_*只生成待确认操作草案，不�
             ? 'no_saved_records_returned_does_not_mean_zero_device_use'
             : 'no_records_match_the_query_filters',
       'daily_duration_seconds': [
-        for (final entry in byDay.entries.toList()
-          ..sort((left, right) => left.key.compareTo(right.key)))
+        for (final entry
+            in byDay.entries.toList()
+              ..sort((left, right) => left.key.compareTo(right.key)))
           {'date': entry.key, 'duration_seconds': entry.value},
       ],
       'daily_recorded_days': byDay.length,

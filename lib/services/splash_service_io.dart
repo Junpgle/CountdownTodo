@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'github_resource_service.dart';
 
 class SplashService {
@@ -65,11 +67,15 @@ class SplashService {
       }
       if (dayConfig['bg_color_bottom'] != null) {
         await prefs.setString(
-            _prefetchedBgColorBottom, dayConfig['bg_color_bottom']);
+          _prefetchedBgColorBottom,
+          dayConfig['bg_color_bottom'],
+        );
       }
       if (dayConfig['duration_ms'] != null) {
         await prefs.setInt(
-            _prefetchedDurationMs, dayConfig['duration_ms'] as int);
+          _prefetchedDurationMs,
+          dayConfig['duration_ms'] as int,
+        );
       }
     } catch (e) {
       // debugPrint('[Splash] 预取失败: $e');
@@ -113,7 +119,9 @@ class SplashService {
       }
       if (dayConfig['bg_color_bottom'] != null) {
         await prefs.setString(
-            _cachedBgColorBottom, dayConfig['bg_color_bottom']);
+          _cachedBgColorBottom,
+          dayConfig['bg_color_bottom'],
+        );
       }
       if (dayConfig['duration_ms'] != null) {
         await prefs.setInt(_cachedDurationMs, dayConfig['duration_ms'] as int);
@@ -156,7 +164,9 @@ class SplashService {
       // 把“昨天预取、今天生效”的内容提升为当前缓存，确保下次启动稳定命中。
       await prefs.setString(_cachedContentDateKey, todayStr);
       await prefs.setString(
-          _cachedImagePath, prefetched['imagePath'] as String);
+        _cachedImagePath,
+        prefetched['imagePath'] as String,
+      );
       await prefs.setString(_cachedTitle, prefetched['title'] as String);
       await prefs.setString(_cachedSubtitle, prefetched['subtitle'] as String);
       final bgTop = prefetched['bgColorTop'] as String?;

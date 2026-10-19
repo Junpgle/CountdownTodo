@@ -33,16 +33,10 @@ void main() {
     });
 
     test('supports a fixed date whose clock time is still unknown', () {
-      final item = FixedScheduleItem(
-        title: '下周一会议',
-        date: '2026-07-27',
-      );
+      final item = FixedScheduleItem(title: '下周一会议', date: '2026-07-27');
 
       expect(item.isTimeTbd, isTrue);
-      expect(
-        item.phaseAt(DateTime(2026, 7, 20)),
-        FixedSchedulePhase.timeTbd,
-      );
+      expect(item.phaseAt(DateTime(2026, 7, 20)), FixedSchedulePhase.timeTbd);
     });
 
     test('accepts the server payload shape without inventing a time range', () {
@@ -101,10 +95,7 @@ void main() {
         item.phaseAt(DateTime(2026, 7, 22, 10, 30)),
         FixedSchedulePhase.ongoing,
       );
-      expect(
-        item.phaseAt(DateTime(2026, 7, 22, 12)),
-        FixedSchedulePhase.ended,
-      );
+      expect(item.phaseAt(DateTime(2026, 7, 22, 12)), FixedSchedulePhase.ended);
     });
 
     test('end-time-TBD is ongoing only until the schedule day ends', () {
@@ -118,10 +109,7 @@ void main() {
         item.phaseAt(DateTime(2026, 7, 22, 21)),
         FixedSchedulePhase.ongoing,
       );
-      expect(
-        item.phaseAt(DateTime(2026, 7, 23)),
-        FixedSchedulePhase.ended,
-      );
+      expect(item.phaseAt(DateTime(2026, 7, 23)), FixedSchedulePhase.ended);
       expect(
         DateTime.fromMillisecondsSinceEpoch(item.effectiveActivityEndTime!),
         DateTime(2026, 7, 23),

@@ -3,8 +3,9 @@ import 'package:countdown_todo/services/database_schema_history.dart';
 
 void main() {
   test('database schema history covers every version newest first', () {
-    final versions =
-        DatabaseSchemaHistory.changes.map((change) => change.version).toList();
+    final versions = DatabaseSchemaHistory.changes
+        .map((change) => change.version)
+        .toList();
 
     expect(versions.first, DatabaseSchemaHistory.currentVersion);
     expect(

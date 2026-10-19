@@ -19,8 +19,9 @@ import 'widget_service_io.dart';
 
 class AppDeepLinkService {
   static const String scheme = 'countdowntodo';
-  static const MethodChannel _channel =
-      MethodChannel('com.math_quiz_app/deep_links');
+  static const MethodChannel _channel = MethodChannel(
+    'com.math_quiz_app/deep_links',
+  );
   static Uri? _pendingUri;
   static bool _initialized = false;
   // Deep links can arrive while MyApp is still replacing its splash/checking
@@ -131,14 +132,12 @@ class AppDeepLinkService {
 
     // 记账小组件：主体打开记账首页，快捷按钮直接打开「记一笔」。
     if (uri.host == 'finance') {
-      final openQuickEntry = uri.pathSegments.contains('entry') ||
+      final openQuickEntry =
+          uri.pathSegments.contains('entry') ||
           uri.queryParameters['action'] == 'entry';
       navigator.push(
         PageTransitions.slideHorizontal(
-          FinanceHomeScreen(
-            username: username,
-            openQuickEntry: openQuickEntry,
-          ),
+          FinanceHomeScreen(username: username, openQuickEntry: openQuickEntry),
           settings: const RouteSettings(name: '/finance'),
         ),
       );
@@ -148,9 +147,7 @@ class AppDeepLinkService {
     // 习惯中心（macOS 习惯小组件点击进入）。
     if (uri.host == 'habit') {
       navigator.push(
-        PageTransitions.slideHorizontal(
-          HabitCenterScreen(username: username),
-        ),
+        PageTransitions.slideHorizontal(HabitCenterScreen(username: username)),
       );
       return;
     }
@@ -178,9 +175,7 @@ class AppDeepLinkService {
       }
       // 打卡后回到习惯中心给出视觉反馈（进入习惯中心即可见状态刷新）。
       navigator.push(
-        PageTransitions.slideHorizontal(
-          HabitCenterScreen(username: username),
-        ),
+        PageTransitions.slideHorizontal(HabitCenterScreen(username: username)),
       );
       return;
     }
@@ -189,8 +184,11 @@ class AppDeepLinkService {
     if (recurrenceSeriesId != null) {
       final todos = await StorageService.getTodos(username);
       final seriesOccurrences = todos
-          .where((todo) =>
-              !todo.isDeleted && todo.recurrenceSeriesId == recurrenceSeriesId)
+          .where(
+            (todo) =>
+                !todo.isDeleted &&
+                todo.recurrenceSeriesId == recurrenceSeriesId,
+          )
           .toList();
       if (seriesOccurrences.isEmpty) return;
       final selected = collapseRecurrenceSeriesForTodoPicker(
@@ -199,9 +197,7 @@ class AppDeepLinkService {
       );
       if (selected.isEmpty) return;
       navigator.push(
-        PageTransitions.slideHorizontal(
-          TodoDetailScreen(todo: selected.first),
-        ),
+        PageTransitions.slideHorizontal(TodoDetailScreen(todo: selected.first)),
       );
       return;
     }
@@ -225,7 +221,8 @@ class AppDeepLinkService {
   }
 
   static String? _recurrenceSeriesId(Uri uri) {
-    final isRecurrenceTodo = uri.host == 'todo' &&
+    final isRecurrenceTodo =
+        uri.host == 'todo' &&
         uri.pathSegments.isNotEmpty &&
         uri.pathSegments.first == 'recurrence';
     if (!isRecurrenceTodo) return null;
@@ -243,7 +240,7 @@ class AppDeepLinkService {
           '/ve',
           '/d',
           'URL:CountDownTodo',
-          '/f'
+          '/f',
         ],
         [
           'add',
@@ -252,7 +249,7 @@ class AppDeepLinkService {
           'URL Protocol',
           '/d',
           '',
-          '/f'
+          '/f',
         ],
         [
           'add',
@@ -260,7 +257,7 @@ class AppDeepLinkService {
           '/ve',
           '/d',
           exePath,
-          '/f'
+          '/f',
         ],
         [
           'add',
@@ -268,7 +265,7 @@ class AppDeepLinkService {
           '/ve',
           '/d',
           '"$exePath" "%1"',
-          '/f'
+          '/f',
         ],
       ];
       for (final args in commands) {
@@ -288,16 +285,14 @@ class _AppDeepLinkLifecycleObserver extends WidgetsBindingObserver {
 }
 
 class _TimelineReportTarget {
-  const _TimelineReportTarget({
-    required this.dimension,
-    required this.date,
-  });
+  const _TimelineReportTarget({required this.dimension, required this.date});
 
   final TimelineDimension dimension;
   final DateTime date;
 
   static _TimelineReportTarget? fromUri(Uri uri) {
-    final isTimelineReport = uri.host == 'timeline' &&
+    final isTimelineReport =
+        uri.host == 'timeline' &&
         uri.pathSegments.isNotEmpty &&
         uri.pathSegments.first == 'report';
     if (!isTimelineReport) return null;

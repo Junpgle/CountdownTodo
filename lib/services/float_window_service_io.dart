@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../utils/navigator_utils.dart';
 import '../storage_service.dart';
 import 'pomodoro_service.dart';
@@ -44,8 +46,9 @@ class FloatWindowService {
   static bool _initialized = false;
 
   // Development helper for in-layout island testing
-  static ValueNotifier<Map<String, dynamic>?> debugPayload =
-      ValueNotifier(null);
+  static ValueNotifier<Map<String, dynamic>?> debugPayload = ValueNotifier(
+    null,
+  );
   static bool isWorkbenchMounted = false;
 
   // Action processing state
@@ -123,10 +126,7 @@ class FloatWindowService {
 
       final payload = {
         'state': 'copied_link',
-        'copiedLinkData': {
-          'url': url,
-          'displayUrl': displayUrl,
-        },
+        'copiedLinkData': {'url': url, 'displayUrl': displayUrl},
       };
 
       if (_isDebugOverlayEnabled && !_isRealIslandEnabled) {
@@ -227,7 +227,8 @@ class FloatWindowService {
         case 'reminder_ok':
           final reminderData =
               payload?['reminderPopupData'] as Map<String, dynamic>?;
-          final itemId = reminderData?['itemId']?.toString() ??
+          final itemId =
+              reminderData?['itemId']?.toString() ??
               event['itemId']?.toString();
           if (itemId != null) {
             _saveAcknowledgedReminder(itemId);
@@ -363,8 +364,7 @@ class FloatWindowService {
       if (saved == null) {
         if (action == 'abandon') {
           await PomodoroService.clearRunState();
-          await NotificationService
-              .reconcileScheduledRemindersForDoNotDisturb();
+          await NotificationService.reconcileScheduledRemindersForDoNotDisturb();
           clearFocus();
           await update(endMs: 0, isLocal: true);
         }
@@ -391,8 +391,10 @@ class FloatWindowService {
         final actualSecs = isCountUp
             ? secs
             : PomodoroRunState.computeActualSeconds(
-                saved.sessionStartMs, saved.accumulatedMs,
-                endMs: now);
+                saved.sessionStartMs,
+                saved.accumulatedMs,
+                endMs: now,
+              );
 
         final record = PomodoroRecord.fromRunState(
           state: saved,
@@ -419,14 +421,18 @@ class FloatWindowService {
         }
       } else if (action == 'abandon') {
         final actualSecs = PomodoroRunState.computeActualSeconds(
-            saved.sessionStartMs, saved.accumulatedMs,
-            endMs: now);
+          saved.sessionStartMs,
+          saved.accumulatedMs,
+          endMs: now,
+        );
         if (actualSecs > 5) {
-          await PomodoroService.addRecord(PomodoroRecord.fromRunState(
-            state: saved,
-            status: PomodoroRecordStatus.interrupted,
-            endMs: now,
-          ));
+          await PomodoroService.addRecord(
+            PomodoroRecord.fromRunState(
+              state: saved,
+              status: PomodoroRecordStatus.interrupted,
+              endMs: now,
+            ),
+          );
         }
         PomodoroSyncService().sendStopSignal(
           todoUuid: saved.todoUuid,
@@ -522,8 +528,9 @@ class FloatWindowService {
     }
 
     // Get transparent support
-    final bool transparentSupported =
-        IslandManager().getTransparentSupport('island-1');
+    final bool transparentSupported = IslandManager().getTransparentSupport(
+      'island-1',
+    );
 
     // Build payload using data provider
     final shouldForceReset =
@@ -569,7 +576,8 @@ class FloatWindowService {
   static Map<String, dynamic>? _pendingStructuredPayload;
 
   static Future<void> _scheduleIslandDelivery(
-      Map<String, dynamic> structured) async {
+    Map<String, dynamic> structured,
+  ) async {
     final state = structured['state']?.toString() ?? 'idle';
 
     if (state == 'idle') {
@@ -633,8 +641,10 @@ class FloatWindowService {
       }
 
       if (winId != null) {
-        final sent =
-            await IslandManager().sendStructuredPayload(islandId, structured);
+        final sent = await IslandManager().sendStructuredPayload(
+          islandId,
+          structured,
+        );
         // debugPrint('[FloatWindow] sendStructuredPayload result: $sent');
         if (sent) {
           // debugPrint(
@@ -664,7 +674,8 @@ class FloatWindowService {
             final b = await windowManager.getBounds();
             final newTop = (b.top - 120).toInt();
             await windowManager.setBounds(
-                Rect.fromLTWH(b.left, newTop.toDouble(), b.width, b.height));
+              Rect.fromLTWH(b.left, newTop.toDouble(), b.width, b.height),
+            );
           } catch (_) {}
           await windowManager.focus();
         } catch (_) {}
@@ -721,11 +732,13 @@ class FloatWindowService {
       final winId = IslandManager().getCachedWindowId(islandId);
       if (winId != null) {
         final file = await getIslandIpcFile(IslandConfig.actionFileName);
-        await file.writeAsString(jsonEncode({
-          'action': 'check_reminder',
-          'windowId': winId,
-          'timestamp': DateTime.now().millisecondsSinceEpoch,
-        }));
+        await file.writeAsString(
+          jsonEncode({
+            'action': 'check_reminder',
+            'windowId': winId,
+            'timestamp': DateTime.now().millisecondsSinceEpoch,
+          }),
+        );
         // debugPrint('[FloatWindow] Triggered island reminder check');
       } else {
         // debugPrint('[FloatWindow] Island window not found');

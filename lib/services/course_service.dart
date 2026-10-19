@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 
 import 'package:countdown_todo/services/database_helper.dart';
+
 import '../services/api_service.dart';
 import '../services/course_legacy_recovery.dart';
 import '../services/course_calendar_adjustment_service.dart';
@@ -43,9 +45,7 @@ class CourseService {
   /// Semester merge/replace first reads the complete table and then writes a
   /// complete snapshot. Without one shared queue, two imports can both read
   /// the same old snapshot and the later write silently discard the first one.
-  static Future<T> _withCourseWriteLock<T>(
-    Future<T> Function() operation,
-  ) {
+  static Future<T> _withCourseWriteLock<T>(Future<T> Function() operation) {
     final previous = _courseWriteTail;
     final release = Completer<void>();
     _courseWriteTail = release.future;
@@ -62,8 +62,10 @@ class CourseService {
 
   static Future<void> _ensureCoursesColumnsForWrite(dynamic db) async {
     final info = await db.rawQuery("PRAGMA table_info(courses)");
-    final columns =
-        info.map((row) => row['name']?.toString()).whereType<String>().toSet();
+    final columns = info
+        .map((row) => row['name']?.toString())
+        .whereType<String>()
+        .toSet();
     // debugPrint("🔎 [Course] 写入前字段: ${columns.join(', ')}");
 
     final requiredColumns = {
@@ -76,15 +78,19 @@ class CourseService {
     for (final entry in requiredColumns.entries) {
       if (!columns.contains(entry.key)) {
         await db.execute(
-            "ALTER TABLE courses ADD COLUMN ${entry.key} ${entry.value}");
+          "ALTER TABLE courses ADD COLUMN ${entry.key} ${entry.value}",
+        );
         columns.add(entry.key);
         // debugPrint("✅ [Course] 已补齐字段 courses.${entry.key}");
       }
     }
   }
 
-  static Future<void> _writeCoursesToSql(DatabaseHelper dbHelper,
-      String username, List<CourseItem> courses) async {
+  static Future<void> _writeCoursesToSql(
+    DatabaseHelper dbHelper,
+    String username,
+    List<CourseItem> courses,
+  ) async {
     final db = await dbHelper.databaseForUser(username);
     await DatabaseHelper.ensureCourseTableSchema(db);
     await _ensureCoursesColumnsForWrite(db);
@@ -120,14 +126,16 @@ class CourseService {
 
   // --- 内部辅助：统一将解析后的实体类集合保存到本地 ---
   static Future<void> saveCourses(
-      String username, List<CourseItem> courses) async {
-    await _withCourseWriteLock(
-      () => _saveCoursesUnlocked(username, courses),
-    );
+    String username,
+    List<CourseItem> courses,
+  ) async {
+    await _withCourseWriteLock(() => _saveCoursesUnlocked(username, courses));
   }
 
   static Future<void> _saveCoursesUnlocked(
-      String username, List<CourseItem> courses) async {
+    String username,
+    List<CourseItem> courses,
+  ) async {
     // This method is the explicit full-table replacement primitive used by
     // backups and migrations.  Semester-aware imports use the methods below.
     try {
@@ -160,7 +168,9 @@ class CourseService {
   /// 返回与新课程存在时间冲突的旧课程列表
   /// 冲突定义：同一天（date 相同）且时间段有重叠
   static Future<List<CourseItem>> detectTimeConflicts(
-      String username, List<CourseItem> newCourses) async {
+    String username,
+    List<CourseItem> newCourses,
+  ) async {
     final existingCourses = await getAllCourses(
       username,
       applyCalendarAdjustments: false,
@@ -181,19 +191,19 @@ class CourseService {
   /// 合并新旧课程写入数据库
   /// 策略：同一学期同一时间段的新课程替换旧课程，其余课程保留。
   static Future<void> mergeCoursesToSql(
-      String username, List<CourseItem> newCourses) async {
-    await _withCourseWriteLock(
-      () async {
-        final existingCourses = await getAllCourses(
-          username,
-          applyCalendarAdjustments: false,
-        );
-        await _saveCoursesUnlocked(
-          username,
-          CourseScheduleSemantics.mergeBySlot(existingCourses, newCourses),
-        );
-      },
-    );
+    String username,
+    List<CourseItem> newCourses,
+  ) async {
+    await _withCourseWriteLock(() async {
+      final existingCourses = await getAllCourses(
+        username,
+        applyCalendarAdjustments: false,
+      );
+      await _saveCoursesUnlocked(
+        username,
+        CourseScheduleSemantics.mergeBySlot(existingCourses, newCourses),
+      );
+    });
   }
 
   /// Replaces only [semesterId], preserving courses belonging to every other
@@ -203,33 +213,34 @@ class CourseService {
     String semesterId,
     List<CourseItem> courses,
   ) async {
-    final targetSemesterId =
-        CourseScheduleSemantics.canonicalSemesterId(semesterId);
-    if (courses.any((course) =>
-        CourseScheduleSemantics.canonicalSemesterId(course.semesterId) !=
-        targetSemesterId)) {
+    final targetSemesterId = CourseScheduleSemantics.canonicalSemesterId(
+      semesterId,
+    );
+    if (courses.any(
+      (course) =>
+          CourseScheduleSemantics.canonicalSemesterId(course.semesterId) !=
+          targetSemesterId,
+    )) {
       throw ArgumentError('课程学期与导入目标不一致');
     }
     final normalizedCourses = CourseScheduleSemantics.assignIdOnly(
       courses,
       semesterId: targetSemesterId,
     );
-    await _withCourseWriteLock(
-      () async {
-        final existingCourses = await getAllCourses(
-          username,
-          applyCalendarAdjustments: false,
-        );
-        await _saveCoursesUnlocked(
-          username,
-          CourseScheduleSemantics.replaceSemester(
-            existingCourses,
-            normalizedCourses,
-            semesterId: targetSemesterId,
-          ),
-        );
-      },
-    );
+    await _withCourseWriteLock(() async {
+      final existingCourses = await getAllCourses(
+        username,
+        applyCalendarAdjustments: false,
+      );
+      await _saveCoursesUnlocked(
+        username,
+        CourseScheduleSemantics.replaceSemester(
+          existingCourses,
+          normalizedCourses,
+          semesterId: targetSemesterId,
+        ),
+      );
+    });
   }
 
   /// Replaces only the semesters represented by [courses].
@@ -242,37 +253,35 @@ class CourseService {
   ) async {
     final incomingBySemester = <String, List<CourseItem>>{};
     for (final course in courses) {
-      final semesterId =
-          CourseScheduleSemantics.canonicalSemesterId(course.semesterId);
+      final semesterId = CourseScheduleSemantics.canonicalSemesterId(
+        course.semesterId,
+      );
       final normalizedCourse = course.semesterId.trim() == semesterId
           ? course
-          : CourseScheduleSemantics.assignIdOnly(
-              [course],
-              semesterId: semesterId,
-            ).single;
+          : CourseScheduleSemantics.assignIdOnly([
+              course,
+            ], semesterId: semesterId).single;
       incomingBySemester
           .putIfAbsent(semesterId, () => [])
           .add(normalizedCourse);
     }
     if (incomingBySemester.isEmpty) return;
 
-    await _withCourseWriteLock(
-      () async {
-        final existingCourses = await getAllCourses(
-          username,
-          applyCalendarAdjustments: false,
+    await _withCourseWriteLock(() async {
+      final existingCourses = await getAllCourses(
+        username,
+        applyCalendarAdjustments: false,
+      );
+      var replaced = existingCourses;
+      for (final entry in incomingBySemester.entries) {
+        replaced = CourseScheduleSemantics.replaceSemester(
+          replaced,
+          entry.value,
+          semesterId: entry.key,
         );
-        var replaced = existingCourses;
-        for (final entry in incomingBySemester.entries) {
-          replaced = CourseScheduleSemantics.replaceSemester(
-            replaced,
-            entry.value,
-            semesterId: entry.key,
-          );
-        }
-        await _saveCoursesUnlocked(username, replaced);
-      },
-    );
+      }
+      await _saveCoursesUnlocked(username, replaced);
+    });
   }
 
   /// Merges imported courses by semester and time slot.
@@ -281,11 +290,14 @@ class CourseService {
     String semesterId,
     List<CourseItem> courses,
   ) async {
-    final targetSemesterId =
-        CourseScheduleSemantics.canonicalSemesterId(semesterId);
-    if (courses.any((course) =>
-        CourseScheduleSemantics.canonicalSemesterId(course.semesterId) !=
-        targetSemesterId)) {
+    final targetSemesterId = CourseScheduleSemantics.canonicalSemesterId(
+      semesterId,
+    );
+    if (courses.any(
+      (course) =>
+          CourseScheduleSemantics.canonicalSemesterId(course.semesterId) !=
+          targetSemesterId,
+    )) {
       throw ArgumentError('课程学期与导入目标不一致');
     }
     await mergeCoursesToSql(
@@ -304,40 +316,43 @@ class CourseService {
     String username,
     String semesterId,
   ) async {
-    return _withCourseWriteLock(
-      () async {
-        final targetSemesterId =
-            CourseScheduleSemantics.canonicalSemesterId(semesterId);
-        final db = await DatabaseHelper.instance.databaseForUser(username);
-        final where = targetSemesterId == 'default'
-            ? 'semester_id = ? OR semester_id IS NULL OR semester_id = ?'
-            : 'semester_id = ?';
-        final whereArgs = targetSemesterId == 'default'
-            ? [targetSemesterId, '']
-            : [targetSemesterId];
-        final deleted = await db.delete(
-          'courses',
-          where: where,
-          whereArgs: whereArgs,
-        );
-        if (deleted > 0) {
-          StorageService.triggerRefresh(const {DataRefreshDomain.courses});
-        }
-        return deleted;
-      },
-    );
+    return _withCourseWriteLock(() async {
+      final targetSemesterId = CourseScheduleSemantics.canonicalSemesterId(
+        semesterId,
+      );
+      final db = await DatabaseHelper.instance.databaseForUser(username);
+      final where = targetSemesterId == 'default'
+          ? 'semester_id = ? OR semester_id IS NULL OR semester_id = ?'
+          : 'semester_id = ?';
+      final whereArgs = targetSemesterId == 'default'
+          ? [targetSemesterId, '']
+          : [targetSemesterId];
+      final deleted = await db.delete(
+        'courses',
+        where: where,
+        whereArgs: whereArgs,
+      );
+      if (deleted > 0) {
+        StorageService.triggerRefresh(const {DataRefreshDomain.courses});
+      }
+      return deleted;
+    });
   }
 
   // ================= 导入与解析逻辑 =================
 
   static Future<DateTime?> _resolveSemesterStartForImport(
-      String semesterId, DateTime? explicitStart) async {
+    String semesterId,
+    DateTime? explicitStart,
+  ) async {
     if (explicitStart != null) return explicitStart;
 
-    final normalizedSemesterId =
-        CourseScheduleSemantics.canonicalSemesterId(semesterId);
-    final configuredStart =
-        await StorageService.getSemesterStartById(normalizedSemesterId);
+    final normalizedSemesterId = CourseScheduleSemantics.canonicalSemesterId(
+      semesterId,
+    );
+    final configuredStart = await StorageService.getSemesterStartById(
+      normalizedSemesterId,
+    );
     if (configuredStart != null) return configuredStart;
     return normalizedSemesterId == 'default'
         ? await StorageService.getSemesterStart()
@@ -352,10 +367,13 @@ class CourseService {
     required String semesterId,
     DateTime? semesterStart,
   }) async {
-    final canonicalSemesterId =
-        CourseScheduleSemantics.canonicalSemesterId(semesterId);
+    final canonicalSemesterId = CourseScheduleSemantics.canonicalSemesterId(
+      semesterId,
+    );
     final effectiveStart = await _resolveSemesterStartForImport(
-        canonicalSemesterId, semesterStart);
+      canonicalSemesterId,
+      semesterStart,
+    );
     if (effectiveStart == null) {
       throw StateError('缺少学期开始日期，无法导入课表');
     }
@@ -383,8 +401,9 @@ class CourseService {
 
     final repaired = await repairMissingTimes(courses);
     if (repaired == null ||
-        repaired
-            .any((course) => !CourseScheduleSemantics.hasUsableTime(course))) {
+        repaired.any(
+          (course) => !CourseScheduleSemantics.hasUsableTime(course),
+        )) {
       return null;
     }
     return repaired;
@@ -417,23 +436,30 @@ class CourseService {
   }
 
   // 1. 从字符串导入课表 (合工大)
-  static Future<bool> importScheduleFromJson(String username, String jsonString,
-      {DateTime? semesterStart,
-      bool merge = false,
-      String semesterId = 'default',
-      CourseTimeRepairCallback? repairMissingTimes,
-      CourseImportModeSelector? selectImportMode}) async {
+  static Future<bool> importScheduleFromJson(
+    String username,
+    String jsonString, {
+    DateTime? semesterStart,
+    bool merge = false,
+    String semesterId = 'default',
+    CourseTimeRepairCallback? repairMissingTimes,
+    CourseImportModeSelector? selectImportMode,
+  }) async {
     try {
       // 在解析前确认目标学期，避免无配置时先做无效解析。
-      final effectiveSemesterStart =
-          await _resolveSemesterStartForImport(semesterId, semesterStart);
+      final effectiveSemesterStart = await _resolveSemesterStartForImport(
+        semesterId,
+        semesterStart,
+      );
       if (effectiveSemesterStart == null ||
           !HfutScheduleParser.isValid(jsonString)) {
         return false;
       }
 
-      List<CourseItem> parsedCourses = HfutScheduleParser.parse(jsonString,
-          semesterStart: effectiveSemesterStart);
+      List<CourseItem> parsedCourses = HfutScheduleParser.parse(
+        jsonString,
+        semesterStart: effectiveSemesterStart,
+      );
       if (parsedCourses.isEmpty) return false;
 
       parsedCourses = await prepareImportedCourses(
@@ -463,14 +489,19 @@ class CourseService {
 
   // 2. 导入厦大（本部）课表
   static Future<bool> importXmuScheduleFromHtml(
-      String username, String htmlString, DateTime semesterStart,
-      {bool merge = false,
-      String semesterId = 'default',
-      CourseTimeRepairCallback? repairMissingTimes,
-      CourseImportModeSelector? selectImportMode}) async {
+    String username,
+    String htmlString,
+    DateTime semesterStart, {
+    bool merge = false,
+    String semesterId = 'default',
+    CourseTimeRepairCallback? repairMissingTimes,
+    CourseImportModeSelector? selectImportMode,
+  }) async {
     try {
-      List<CourseItem> parsedCourses =
-          XmuScheduleParser.parseHtml(htmlString, semesterStart);
+      List<CourseItem> parsedCourses = XmuScheduleParser.parseHtml(
+        htmlString,
+        semesterStart,
+      );
       if (parsedCourses.isEmpty) return false;
 
       parsedCourses = await prepareImportedCourses(
@@ -500,14 +531,19 @@ class CourseService {
 
   // 🚀 2.1 导入厦大嘉庚学院课表
   static Future<bool> importXujcScheduleFromHtml(
-      String username, String htmlString, DateTime semesterStart,
-      {bool merge = false,
-      String semesterId = 'default',
-      CourseTimeRepairCallback? repairMissingTimes,
-      CourseImportModeSelector? selectImportMode}) async {
+    String username,
+    String htmlString,
+    DateTime semesterStart, {
+    bool merge = false,
+    String semesterId = 'default',
+    CourseTimeRepairCallback? repairMissingTimes,
+    CourseImportModeSelector? selectImportMode,
+  }) async {
     try {
-      List<CourseItem> parsedCourses =
-          XujcScheduleParser.parseHtml(htmlString, semesterStart);
+      List<CourseItem> parsedCourses = XujcScheduleParser.parseHtml(
+        htmlString,
+        semesterStart,
+      );
       if (parsedCourses.isEmpty) return false;
 
       parsedCourses = await prepareImportedCourses(
@@ -537,14 +573,19 @@ class CourseService {
 
   // 🚀 3. 新增：导入西电 ics 课表
   static Future<bool> importXidianScheduleFromIcs(
-      String username, String icsString, DateTime semesterStart,
-      {bool merge = false,
-      String semesterId = 'default',
-      CourseTimeRepairCallback? repairMissingTimes,
-      CourseImportModeSelector? selectImportMode}) async {
+    String username,
+    String icsString,
+    DateTime semesterStart, {
+    bool merge = false,
+    String semesterId = 'default',
+    CourseTimeRepairCallback? repairMissingTimes,
+    CourseImportModeSelector? selectImportMode,
+  }) async {
     try {
-      List<CourseItem> parsedCourses =
-          XidianScheduleParser.parseIcs(icsString, semesterStart);
+      List<CourseItem> parsedCourses = XidianScheduleParser.parseIcs(
+        icsString,
+        semesterStart,
+      );
       if (parsedCourses.isEmpty) return false;
 
       parsedCourses = await prepareImportedCourses(
@@ -573,16 +614,21 @@ class CourseService {
   }
 
   // 4. 从文件路径导入课表 (供外部 App 唤起时调用)
-  static Future<bool> importScheduleFromFile(String username, String filePath,
-      {DateTime? semesterStart,
-      bool merge = false,
-      String semesterId = 'default',
-      CourseTimeRepairCallback? repairMissingTimes,
-      CourseImportModeSelector? selectImportMode}) async {
+  static Future<bool> importScheduleFromFile(
+    String username,
+    String filePath, {
+    DateTime? semesterStart,
+    bool merge = false,
+    String semesterId = 'default',
+    CourseTimeRepairCallback? repairMissingTimes,
+    CourseImportModeSelector? selectImportMode,
+  }) async {
     try {
       // 文件读取前先确认学期，避免外部唤起后才发现导入条件不完整。
-      final effectiveSemesterStart =
-          await _resolveSemesterStartForImport(semesterId, semesterStart);
+      final effectiveSemesterStart = await _resolveSemesterStartForImport(
+        semesterId,
+        semesterStart,
+      );
       if (effectiveSemesterStart == null) return false;
 
       String content = await readTextFile(filePath);
@@ -602,12 +648,15 @@ class CourseService {
 
   // 🚀 5. 新增：导入正方教务系统课表
   static Future<bool> importZfSoftScheduleFromHtml(
-      String username, String htmlString, DateTime semesterStart,
-      {Map<int, Map<String, int>>? customTimes,
-      bool merge = false,
-      String semesterId = 'default',
-      CourseTimeRepairCallback? repairMissingTimes,
-      CourseImportModeSelector? selectImportMode}) async {
+    String username,
+    String htmlString,
+    DateTime semesterStart, {
+    Map<int, Map<String, int>>? customTimes,
+    bool merge = false,
+    String semesterId = 'default',
+    CourseTimeRepairCallback? repairMissingTimes,
+    CourseImportModeSelector? selectImportMode,
+  }) async {
     try {
       // 调用解析器，并传入可能的自定义时间配置
       List<CourseItem> parsedCourses = ZfSoftScheduleParser.parseHtml(
@@ -650,7 +699,8 @@ class CourseService {
     bool applyCalendarAdjustments = true,
   }) async {
     Future<List<CourseItem>> applyAdjustmentsIfNeeded(
-        List<CourseItem> courses) async {
+      List<CourseItem> courses,
+    ) async {
       if (!applyCalendarAdjustments) return courses;
       return CourseCalendarAdjustmentService.applyToCourses(courses);
     }
@@ -665,7 +715,8 @@ class CourseService {
       );
       if (maps.isNotEmpty) {
         return await applyAdjustmentsIfNeeded(
-            maps.map((m) => CourseItem.fromJson(m)).toList());
+          maps.map((m) => CourseItem.fromJson(m)).toList(),
+        );
       }
     } catch (e) {
       // debugPrint("⚠️ Course SQL 读取异常: $e");
@@ -680,7 +731,8 @@ class CourseService {
           );
           if (maps.isNotEmpty) {
             return await applyAdjustmentsIfNeeded(
-                maps.map((m) => CourseItem.fromJson(m)).toList());
+              maps.map((m) => CourseItem.fromJson(m)).toList(),
+            );
           }
         } catch (retryError) {
           // debugPrint("⚠️ Course SQL locked 重试失败: $retryError");
@@ -696,8 +748,9 @@ class CourseService {
       return applyAdjustmentsIfNeeded(legacyPrefsCourses);
     }
 
-    final recoveredSqlCourses =
-        await _recoverCoursesFromLegacySqlIfNeeded(username);
+    final recoveredSqlCourses = await _recoverCoursesFromLegacySqlIfNeeded(
+      username,
+    );
     if (recoveredSqlCourses.isNotEmpty) {
       return applyAdjustmentsIfNeeded(recoveredSqlCourses);
     }
@@ -723,9 +776,8 @@ class CourseService {
     final adjustment = applyCalendarAdjustments
         ? await CourseCalendarAdjustmentService.load()
         : null;
-    final transferSourceDates = adjustment?.transfers
-            .map((transfer) => transfer.fromDate)
-            .toSet() ??
+    final transferSourceDates =
+        adjustment?.transfers.map((transfer) => transfer.fromDate).toSet() ??
         const <String>{};
     final whereArgs = <Object?>[fromKey, toKey];
     final dateConditions = <String>['(date >= ? AND date < ?)'];
@@ -740,8 +792,7 @@ class CourseService {
       final db = await DatabaseHelper.instance.databaseForUser(username);
       return db.query(
         'courses',
-        where:
-            'IFNULL(is_deleted, 0) = 0 AND (${dateConditions.join(' OR ')})',
+        where: 'IFNULL(is_deleted, 0) = 0 AND (${dateConditions.join(' OR ')})',
         whereArgs: whereArgs,
         orderBy: 'date ASC, start_time ASC',
       );
@@ -833,10 +884,10 @@ class CourseService {
 
     final adjustedCourses =
         await CourseCalendarAdjustmentService.applyToCourses(
-      rawCourses,
-      adjustment: adjustment,
-      fallbackCourses: fallbackCourses,
-    );
+          rawCourses,
+          adjustment: adjustment,
+          fallbackCourses: fallbackCourses,
+        );
     return _filterCoursesForDateRange(
       adjustedCourses,
       startDate,
@@ -862,12 +913,11 @@ class CourseService {
   }
 
   static Future<List<CourseItem>> _recoverCoursesFromPrefs(
-      String username, SharedPreferences prefs) async {
+    String username,
+    SharedPreferences prefs,
+  ) async {
     final scopedKey = "${_keyCourseData}_$username";
-    final keys = <String>[
-      scopedKey,
-      _keyCourseData,
-    ];
+    final keys = <String>[scopedKey, _keyCourseData];
 
     for (final key in keys.toSet()) {
       if (!prefs.containsKey(key)) continue;
@@ -906,7 +956,8 @@ class CourseService {
       if (decoded is List) {
         return decoded
             .map<CourseItem>(
-                (item) => CourseItem.fromJson(Map<String, dynamic>.from(item)))
+              (item) => CourseItem.fromJson(Map<String, dynamic>.from(item)),
+            )
             .toList();
       }
       return HfutScheduleParser.parse(raw);
@@ -918,8 +969,11 @@ class CourseService {
         if (item.trim().isEmpty) continue;
         final decoded = jsonDecode(item);
         if (decoded is List) {
-          courses.addAll(decoded.map<CourseItem>((entry) =>
-              CourseItem.fromJson(Map<String, dynamic>.from(entry))));
+          courses.addAll(
+            decoded.map<CourseItem>(
+              (entry) => CourseItem.fromJson(Map<String, dynamic>.from(entry)),
+            ),
+          );
         } else if (decoded is Map) {
           courses.add(CourseItem.fromJson(Map<String, dynamic>.from(decoded)));
         }
@@ -931,7 +985,8 @@ class CourseService {
   }
 
   static Future<List<CourseItem>> _recoverCoursesFromLegacySqlIfNeeded(
-      String username) async {
+    String username,
+  ) async {
     final courses = await recoverLegacyCoursesFromSql(username);
     if (courses.isNotEmpty) {
       // See the migration note in _recoverCoursesFromPrefs: this path can be
@@ -943,7 +998,8 @@ class CourseService {
 
   // 5. 获取主页今日/明日需要显示的课程
   static Future<Map<String, dynamic>> getDashboardCourses(
-      String username) async {
+    String username,
+  ) async {
     try {
       final now = DateTime.now();
       final todayNormalized = CalendarDateMath.dateOnly(now);
@@ -1076,8 +1132,11 @@ class CourseService {
         }
         if (courseDay == null) continue;
 
-        final normalizedDay =
-            DateTime(courseDay.year, courseDay.month, courseDay.day);
+        final normalizedDay = DateTime(
+          courseDay.year,
+          courseDay.month,
+          courseDay.day,
+        );
         if (normalizedDay.isAfter(tomorrowNormalized)) {
           if (nextDay == null || normalizedDay.isBefore(nextDay)) {
             nextDay = normalizedDay;
@@ -1105,7 +1164,9 @@ class CourseService {
 
   // 6. 按周获取课程
   static Future<List<CourseItem>> getCoursesByWeek(
-      String username, int weekIndex) async {
+    String username,
+    int weekIndex,
+  ) async {
     final courses = await getAllCourses(username);
     return courses.where((c) => c.weekIndex == weekIndex).toList();
   }
@@ -1122,34 +1183,38 @@ class CourseService {
 
   // 8. 上传本地课表到云端
   static Future<Map<String, dynamic>> syncCoursesToCloud(
-      String username, int userId) async {
-    final courses =
-        await getAllCourses(username, applyCalendarAdjustments: false);
+    String username,
+    int userId,
+  ) async {
+    final courses = await getAllCourses(
+      username,
+      applyCalendarAdjustments: false,
+    );
 
     // Multi-semester replacement must be one server-side transaction.  Do not
     // fall back to the old loop: it can delete the old table and then leave a
     // half-written remote schedule when a later request fails.
     if (!await ApiService.supportsAtomicCourseUpload()) {
-      return {
-        'success': false,
-        'message': '当前服务端不支持安全的多学期课表同步，请先更新服务端',
-      };
+      return {'success': false, 'message': '当前服务端不支持安全的多学期课表同步，请先更新服务端'};
     }
 
     final courseMaps = courses
-        .map((c) => {
-              'semester':
-                  CourseScheduleSemantics.canonicalSemesterId(c.semesterId),
-              'course_name': c.courseName,
-              'room_name': c.roomName,
-              'teacher_name': c.teacherName,
-              'start_time': c.startTime,
-              'end_time': c.endTime,
-              'weekday': c.weekday,
-              'week_index': c.weekIndex,
-              'lesson_type': c.lessonType ?? '',
-              'date': c.date,
-            })
+        .map(
+          (c) => {
+            'semester': CourseScheduleSemantics.canonicalSemesterId(
+              c.semesterId,
+            ),
+            'course_name': c.courseName,
+            'room_name': c.roomName,
+            'teacher_name': c.teacherName,
+            'start_time': c.startTime,
+            'end_time': c.endTime,
+            'weekday': c.weekday,
+            'week_index': c.weekIndex,
+            'lesson_type': c.lessonType ?? '',
+            'date': c.date,
+          },
+        )
         .toList();
 
     return ApiService.uploadCourses(

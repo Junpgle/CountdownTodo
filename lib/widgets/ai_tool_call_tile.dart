@@ -18,8 +18,7 @@ class _AiToolCallTileState extends State<AiToolCallTile> {
   ChatNativeToolCall get call => widget.call;
 
   String? _parsedArgumentsSource;
-  ({Map<String, dynamic> arguments, String prettyText})?
-  _parsedArgumentsCache;
+  ({Map<String, dynamic> arguments, String prettyText})? _parsedArgumentsCache;
   ChatNativeToolCall? _prettyResultSource;
   String? _prettyResultCache;
 
@@ -51,9 +50,8 @@ class _AiToolCallTileState extends State<AiToolCallTile> {
       return _prettyResultCache!;
     }
     _prettyResultSource = call;
-    return _prettyResultCache = const JsonEncoder.withIndent('  ').convert(
-      call.result,
-    );
+    return _prettyResultCache = const JsonEncoder.withIndent('  ')
+        .convert(call.result);
   }
 
   static final RegExp _dateOnlyPattern = RegExp(r'^\d{4}-\d{2}-\d{2}$');
@@ -279,10 +277,7 @@ class _AiToolCallTileState extends State<AiToolCallTile> {
             child: Text('App 返回的数据'),
           ),
           const SizedBox(height: 4),
-          dataBlock(
-            _prettyResultFor(),
-            260,
-          ),
+          dataBlock(_prettyResultFor(), 260),
         ] else if (call.resultSummary.isNotEmpty) ...[
           const SizedBox(height: 8),
           Align(

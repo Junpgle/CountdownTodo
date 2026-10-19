@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../../services/permission_request_coordinator.dart';
 
 class PermissionHandler {
@@ -68,12 +69,14 @@ class PermissionHandler {
     onUpdateChecking(true);
     try {
       final results = <String, PermissionStatus>{
-        'notification':
-            await _coordinator.status(AppPermissionKind.notification),
+        'notification': await _coordinator.status(
+          AppPermissionKind.notification,
+        ),
         'storage': await _coordinator.status(AppPermissionKind.storage),
         'usage_stats': await _coordinator.status(AppPermissionKind.usageStats),
-        'request_install':
-            await _coordinator.status(AppPermissionKind.requestInstall),
+        'request_install': await _coordinator.status(
+          AppPermissionKind.requestInstall,
+        ),
         'exact_alarm': await _coordinator.status(AppPermissionKind.exactAlarm),
       };
       onUpdateStatuses(results);
@@ -91,10 +94,7 @@ class PermissionHandler {
 
     onUpdateChecking(true);
     try {
-      final result = await _coordinator.request(
-        permission,
-        onResult: onResult,
-      );
+      final result = await _coordinator.request(permission, onResult: onResult);
       await checkAllPermissions();
       return result;
     } finally {
@@ -103,13 +103,13 @@ class PermissionHandler {
   }
 
   AppPermissionKind? _permissionForKey(String key) => switch (key) {
-        'notification' => AppPermissionKind.notification,
-        'storage' => AppPermissionKind.storage,
-        'usage_stats' => AppPermissionKind.usageStats,
-        'request_install' => AppPermissionKind.requestInstall,
-        'exact_alarm' => AppPermissionKind.exactAlarm,
-        _ => null,
-      };
+    'notification' => AppPermissionKind.notification,
+    'storage' => AppPermissionKind.storage,
+    'usage_stats' => AppPermissionKind.usageStats,
+    'request_install' => AppPermissionKind.requestInstall,
+    'exact_alarm' => AppPermissionKind.exactAlarm,
+    _ => null,
+  };
 
   void dispose() => _coordinator.dispose();
 

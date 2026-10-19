@@ -5,19 +5,13 @@ import 'package:flutter/material.dart';
 import '../storage_service.dart';
 import 'storage/storage_key_scope.dart';
 
-enum SidebarMenuTarget {
-  features,
-  utilities,
-}
+enum SidebarMenuTarget { features, utilities }
 
 class SidebarMenuPair {
   final List<String> features;
   final List<String> utilities;
 
-  const SidebarMenuPair({
-    required this.features,
-    required this.utilities,
-  });
+  const SidebarMenuPair({required this.features, required this.utilities});
 }
 
 class SidebarMenuItemDefinition {
@@ -135,10 +129,7 @@ class SidebarMenuService {
     'challengeCenter',
   ];
 
-  static const List<String> _defaultUtilities = [
-    'changelog',
-    'update',
-  ];
+  static const List<String> _defaultUtilities = ['changelog', 'update'];
 
   static List<String> defaultOrder(SidebarMenuTarget target) {
     return List<String>.from(
@@ -148,10 +139,7 @@ class SidebarMenuService {
     );
   }
 
-  static List<String> allKeys() => [
-        ..._defaultFeatures,
-        ..._defaultUtilities,
-      ];
+  static List<String> allKeys() => [..._defaultFeatures, ..._defaultUtilities];
 
   static SidebarMenuItemDefinition definition(String key) {
     return definitions[key]!;
@@ -215,12 +203,12 @@ class SidebarMenuService {
   static Future<SidebarMenuPair> loadPair() async {
     final prefs = await StorageService.prefs;
     return normalizePair(
-      features: _decodeList(prefs.getString(await _orderKey(
-        SidebarMenuTarget.features,
-      ))),
-      utilities: _decodeList(prefs.getString(await _orderKey(
-        SidebarMenuTarget.utilities,
-      ))),
+      features: _decodeList(
+        prefs.getString(await _orderKey(SidebarMenuTarget.features)),
+      ),
+      utilities: _decodeList(
+        prefs.getString(await _orderKey(SidebarMenuTarget.utilities)),
+      ),
     );
   }
 
@@ -268,10 +256,7 @@ class SidebarMenuService {
   }
 
   static Future<void> reset() async {
-    await savePair(
-      features: _defaultFeatures,
-      utilities: _defaultUtilities,
-    );
+    await savePair(features: _defaultFeatures, utilities: _defaultUtilities);
     await saveVisibility(defaultVisibility());
   }
 
@@ -286,8 +271,9 @@ class SidebarMenuService {
   }
 
   static Future<String> _orderKey(SidebarMenuTarget target) async {
-    final suffix =
-        target == SidebarMenuTarget.features ? 'features' : 'utilities';
+    final suffix = target == SidebarMenuTarget.features
+        ? 'features'
+        : 'utilities';
     return _scopedKey('sidebar_menu_order_$suffix');
   }
 

@@ -32,11 +32,12 @@ class BackgroundNotificationService {
   }
 
   static Future<List<Map<String, dynamic>>>
-      getUnreadBackgroundNotifications() async {
+  getUnreadBackgroundNotifications() async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       return const [];
     }
-    final raw = await _channel.invokeMethod<String>(
+    final raw =
+        await _channel.invokeMethod<String>(
           'getUnreadBackgroundNotifications',
         ) ??
         '[]';

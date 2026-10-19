@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../models.dart';
 import '../utils/android_energy_policy.dart';
 import '../utils/app_platform.dart';
@@ -33,9 +34,10 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner>
       vsync: this,
       duration: const Duration(milliseconds: 2000),
     );
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.1).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _pulseAnimation = Tween<double>(
+      begin: 1.0,
+      end: 1.1,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
     PowerSaveModeService.enabledListenable.addListener(_startPulse);
     _startPulse();
   }
@@ -81,11 +83,11 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner>
         : Theme.of(context).colorScheme.primary;
     final bgColor = widget.announcement.isPriority
         ? (isDark
-            ? Colors.orange.withValues(alpha: 0.15)
-            : Colors.orange.withValues(alpha: 0.7))
+              ? Colors.orange.withValues(alpha: 0.15)
+              : Colors.orange.withValues(alpha: 0.7))
         : (isDark
-            ? Colors.blueGrey.withValues(alpha: 0.15)
-            : Theme.of(context).colorScheme.primary.withValues(alpha: 0.7));
+              ? Colors.blueGrey.withValues(alpha: 0.15)
+              : Theme.of(context).colorScheme.primary.withValues(alpha: 0.7));
 
     final bannerContent = Container(
       decoration: BoxDecoration(
@@ -138,7 +140,7 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner>
                               color: accentColor.withValues(alpha: 0.4),
                               blurRadius: 8,
                               offset: const Offset(0, 2),
-                            )
+                            ),
                           ],
                         ),
                         child: Icon(
@@ -183,11 +185,14 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner>
                 ),
                 const SizedBox(height: 12),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
-                    color: (isDark ? Colors.black : Colors.white)
-                        .withValues(alpha: 0.3),
+                    color: (isDark ? Colors.black : Colors.white).withValues(
+                      alpha: 0.3,
+                    ),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Row(
@@ -217,8 +222,11 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner>
                         CircleAvatar(
                           radius: 8,
                           backgroundColor: accentColor.withValues(alpha: 0.2),
-                          child:
-                              Icon(Icons.person, size: 10, color: accentColor),
+                          child: Icon(
+                            Icons.person,
+                            size: 10,
+                            color: accentColor,
+                          ),
                         ),
                         const SizedBox(width: 6),
                         Text(
@@ -233,7 +241,8 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner>
                     Text(
                       AppTimeFormats.format(
                         DateTime.fromMillisecondsSinceEpoch(
-                            widget.announcement.createdAt),
+                          widget.announcement.createdAt,
+                        ),
                         'MM-dd HH:mm',
                       ),
                       style: TextStyle(
@@ -278,7 +287,7 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner>
               color: color.withValues(alpha: 0.3),
               blurRadius: 8,
               offset: const Offset(0, 4),
-            )
+            ),
           ],
         ),
         child: const Text(

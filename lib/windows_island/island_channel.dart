@@ -1,16 +1,20 @@
 import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
+
 import 'dart:convert';
+
 import 'island_config.dart';
 import 'island_ipc_file_watcher.dart';
 import 'island_ipc_paths.dart';
 
 class IslandChannel {
   // Use the desktop_multi_window plugin channel name to create/post/close windows
-  static const MethodChannel _dmw =
-      MethodChannel('mixin.one/desktop_multi_window');
+  static const MethodChannel _dmw = MethodChannel(
+    'mixin.one/desktop_multi_window',
+  );
   static const Duration _nativeCallTimeout = Duration(seconds: 2);
 
   static bool _handlerSet = false;
@@ -64,11 +68,13 @@ class IslandChannel {
         controller.setWindowMethodHandler((call) async {
           try {
             debugPrint(
-                '[IslandChannel] incoming controller method: ${call.method} args=${call.arguments}');
+              '[IslandChannel] incoming controller method: ${call.method} args=${call.arguments}',
+            );
             if (call.method == 'onAction') {
               final args = call.arguments;
               debugPrint(
-                  '[IslandChannel] onAction received (legacy/window): $args');
+                '[IslandChannel] onAction received (legacy/window): $args',
+              );
               if (args is Map) {
                 try {
                   final map = Map<String, dynamic>.from(args);
@@ -82,7 +88,8 @@ class IslandChannel {
             } else if (call.method == 'postWindowMessage') {
               // Forward host-received postWindowMessage if relevant
               debugPrint(
-                  '[IslandChannel] host received postWindowMessage: ${call.arguments}');
+                '[IslandChannel] host received postWindowMessage: ${call.arguments}',
+              );
             }
           } catch (e) {
             debugPrint('[IslandChannel] incoming controller handler error: $e');
@@ -91,7 +98,8 @@ class IslandChannel {
         });
       } catch (e) {
         debugPrint(
-            '[IslandChannel] failed to attach WindowController handler: $e');
+          '[IslandChannel] failed to attach WindowController handler: $e',
+        );
       }
     });
   }
@@ -121,11 +129,13 @@ class IslandChannel {
               if (!completer.isCompleted) completer.complete();
             }
             debugPrint(
-                '[IslandChannel] completed ${list.length} ready waiters for windowId=$winId');
+              '[IslandChannel] completed ${list.length} ready waiters for windowId=$winId',
+            );
           } else {
             _readySet.add(winId);
             debugPrint(
-                '[IslandChannel] recorded sticky ready for windowId=$winId');
+              '[IslandChannel] recorded sticky ready for windowId=$winId',
+            );
           }
         } else if (_anonReadyQueue.isNotEmpty) {
           _anonReadyQueue.removeAt(0).complete();
@@ -141,8 +151,10 @@ class IslandChannel {
   }
 
   /// Wait for a child window to signal ready.
-  static Future<bool> waitForReady(String? windowId,
-      {Duration timeout = const Duration(milliseconds: 2000)}) async {
+  static Future<bool> waitForReady(
+    String? windowId, {
+    Duration timeout = const Duration(milliseconds: 2000),
+  }) async {
     ensureInitialized();
     if (windowId != null && _readySet.contains(windowId)) {
       return true;
@@ -198,10 +210,16 @@ class IslandChannel {
   }
 
   static Future<bool> setWindowBounds(
-      String windowId, Map<String, dynamic> bounds) async {
+    String windowId,
+    Map<String, dynamic> bounds,
+  ) async {
     try {
-      final res = await _dmw.invokeMethod('setWindowBounds',
-          {'windowId': windowId, 'bounds': bounds}).timeout(_nativeCallTimeout);
+      final res = await _dmw
+          .invokeMethod('setWindowBounds', {
+            'windowId': windowId,
+            'bounds': bounds,
+          })
+          .timeout(_nativeCallTimeout);
       return res == true;
     } catch (e) {
       debugPrint('[IslandChannel] setWindowBounds failed: $e');
@@ -211,8 +229,9 @@ class IslandChannel {
 
   static Future<bool> showWindow(String windowId) async {
     try {
-      await _dmw.invokeMethod(
-          'window_show', {'windowId': windowId}).timeout(_nativeCallTimeout);
+      await _dmw
+          .invokeMethod('window_show', {'windowId': windowId})
+          .timeout(_nativeCallTimeout);
       return true;
     } catch (e) {
       debugPrint('[IslandChannel] showWindow failed: $e');
@@ -222,8 +241,9 @@ class IslandChannel {
 
   static Future<bool> hideWindow(String windowId) async {
     try {
-      await _dmw.invokeMethod(
-          'window_hide', {'windowId': windowId}).timeout(_nativeCallTimeout);
+      await _dmw
+          .invokeMethod('window_hide', {'windowId': windowId})
+          .timeout(_nativeCallTimeout);
       return true;
     } catch (e) {
       debugPrint('[IslandChannel] hideWindow failed: $e');
@@ -232,12 +252,16 @@ class IslandChannel {
   }
 
   static Future<bool> setWindowTransparent(
-      String windowId, bool transparent) async {
+    String windowId,
+    bool transparent,
+  ) async {
     try {
-      final res = await _dmw.invokeMethod('setWindowTransparent', {
-        'windowId': windowId,
-        'transparent': transparent
-      }).timeout(_nativeCallTimeout);
+      final res = await _dmw
+          .invokeMethod('setWindowTransparent', {
+            'windowId': windowId,
+            'transparent': transparent,
+          })
+          .timeout(_nativeCallTimeout);
       return res == true;
     } catch (e) {
       debugPrint('[IslandChannel] setWindowTransparent failed: $e');
@@ -246,12 +270,16 @@ class IslandChannel {
   }
 
   static Future<bool> postMessage(
-      String windowId, Map<String, dynamic> payload) async {
+    String windowId,
+    Map<String, dynamic> payload,
+  ) async {
     try {
-      final res = await _dmw.invokeMethod('postWindowMessage', {
-        'windowId': windowId,
-        'payload': payload
-      }).timeout(_nativeCallTimeout);
+      final res = await _dmw
+          .invokeMethod('postWindowMessage', {
+            'windowId': windowId,
+            'payload': payload,
+          })
+          .timeout(_nativeCallTimeout);
       return res == true;
     } catch (e) {
       debugPrint('[IslandChannel] postMessage failed: $e');
@@ -261,8 +289,9 @@ class IslandChannel {
 
   static Future<List<String>> getAllWindowIds() async {
     try {
-      final res =
-          await _dmw.invokeMethod('getAllWindows').timeout(_nativeCallTimeout);
+      final res = await _dmw
+          .invokeMethod('getAllWindows')
+          .timeout(_nativeCallTimeout);
       if (res is List) {
         return res
             .map((e) {
@@ -284,13 +313,15 @@ class IslandChannel {
   static Future<bool> destroyWindow(String windowId) async {
     // First hide the window for immediate visual feedback
     try {
-      await _dmw.invokeMethod(
-          'window_hide', {'windowId': windowId}).timeout(_nativeCallTimeout);
+      await _dmw
+          .invokeMethod('window_hide', {'windowId': windowId})
+          .timeout(_nativeCallTimeout);
     } catch (_) {}
     // Then close/remove from the manager for actual cleanup
     try {
-      final res = await _dmw.invokeMethod(
-          'closeWindow', {'windowId': windowId}).timeout(_nativeCallTimeout);
+      final res = await _dmw
+          .invokeMethod('closeWindow', {'windowId': windowId})
+          .timeout(_nativeCallTimeout);
       return res == true;
     } catch (e) {
       debugPrint('[IslandChannel] destroyWindow failed: $e');

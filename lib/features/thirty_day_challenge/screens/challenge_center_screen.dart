@@ -25,20 +25,27 @@ class ChallengeCenterScreen extends StatefulWidget {
 }
 
 class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
-  final GlobalKey _heroLibraryButtonKey =
-      GlobalKey(debugLabel: 'challenge-center-hero-library');
-  final GlobalKey _heroCustomButtonKey =
-      GlobalKey(debugLabel: 'challenge-center-hero-custom');
-  final GlobalKey _activeChallengeCardKey =
-      GlobalKey(debugLabel: 'challenge-center-active-card');
-  final GlobalKey _activeChallengeActionKey =
-      GlobalKey(debugLabel: 'challenge-center-active-action');
-  final GlobalKey _classicChallengeCardKey =
-      GlobalKey(debugLabel: 'challenge-center-classic-card');
-  final GlobalKey _libraryOptionKey =
-      GlobalKey(debugLabel: 'challenge-center-library-option');
-  final GlobalKey _customOptionKey =
-      GlobalKey(debugLabel: 'challenge-center-custom-option');
+  final GlobalKey _heroLibraryButtonKey = GlobalKey(
+    debugLabel: 'challenge-center-hero-library',
+  );
+  final GlobalKey _heroCustomButtonKey = GlobalKey(
+    debugLabel: 'challenge-center-hero-custom',
+  );
+  final GlobalKey _activeChallengeCardKey = GlobalKey(
+    debugLabel: 'challenge-center-active-card',
+  );
+  final GlobalKey _activeChallengeActionKey = GlobalKey(
+    debugLabel: 'challenge-center-active-action',
+  );
+  final GlobalKey _classicChallengeCardKey = GlobalKey(
+    debugLabel: 'challenge-center-classic-card',
+  );
+  final GlobalKey _libraryOptionKey = GlobalKey(
+    debugLabel: 'challenge-center-library-option',
+  );
+  final GlobalKey _customOptionKey = GlobalKey(
+    debugLabel: 'challenge-center-custom-option',
+  );
 
   ThirtyDayChallengeState? _currentChallenge;
   bool _hasStarted = false;
@@ -49,15 +56,17 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
   @override
   void initState() {
     super.initState();
-    ThirtyDayChallengeRepository.activityRevision
-        .addListener(_onChallengeActivityChanged);
+    ThirtyDayChallengeRepository.activityRevision.addListener(
+      _onChallengeActivityChanged,
+    );
     _load();
   }
 
   @override
   void dispose() {
-    ThirtyDayChallengeRepository.activityRevision
-        .removeListener(_onChallengeActivityChanged);
+    ThirtyDayChallengeRepository.activityRevision.removeListener(
+      _onChallengeActivityChanged,
+    );
     super.dispose();
   }
 
@@ -73,8 +82,9 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
 
     try {
       final hasStarted = await ThirtyDayChallengeRepository.hasStarted();
-      final state =
-          hasStarted ? await ThirtyDayChallengeRepository.load() : null;
+      final state = hasStarted
+          ? await ThirtyDayChallengeRepository.load()
+          : null;
       if (!mounted || generation != _loadGeneration) return;
 
       setState(() {
@@ -94,8 +104,9 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
 
   Future<void> _openCurrentChallenge({
     required GlobalKey sourceKey,
-    BorderRadius sourceBorderRadius =
-        const BorderRadius.all(Radius.circular(18)),
+    BorderRadius sourceBorderRadius = const BorderRadius.all(
+      Radius.circular(18),
+    ),
   }) async {
     await PageTransitions.pushFromRect<void>(
       context: context,
@@ -118,16 +129,17 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
 
   Future<void> _openChallengeLibrary({
     required GlobalKey sourceKey,
-    BorderRadius sourceBorderRadius =
-        const BorderRadius.all(Radius.circular(18)),
+    BorderRadius sourceBorderRadius = const BorderRadius.all(
+      Radius.circular(18),
+    ),
   }) async {
     final result =
         await PageTransitions.pushFromRect<CloudChallengePickerResult>(
-      context: context,
-      page: const CloudChallengePickerScreen(),
-      sourceKey: sourceKey,
-      sourceBorderRadius: sourceBorderRadius,
-    );
+          context: context,
+          page: const CloudChallengePickerScreen(),
+          sourceKey: sourceKey,
+          sourceBorderRadius: sourceBorderRadius,
+        );
     if (result == null || !mounted) return;
 
     if (result.action == CloudChallengePickerAction.start) {
@@ -144,9 +156,7 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
 
     final draft = await PageTransitions.pushFromRect<ChallengeDraft>(
       context: context,
-      page: NewChallengeScreen(
-        initialDraft: result.challenge?.toDraft(),
-      ),
+      page: NewChallengeScreen(initialDraft: result.challenge?.toDraft()),
       sourceKey: sourceKey,
       sourceBorderRadius: sourceBorderRadius,
     );
@@ -161,8 +171,9 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
 
   Future<void> _openCustomChallenge({
     required GlobalKey sourceKey,
-    BorderRadius sourceBorderRadius =
-        const BorderRadius.all(Radius.circular(18)),
+    BorderRadius sourceBorderRadius = const BorderRadius.all(
+      Radius.circular(18),
+    ),
   }) async {
     final draft = await PageTransitions.pushFromRect<ChallengeDraft>(
       context: context,
@@ -339,30 +350,26 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
 
   Widget _buildHero(ColorScheme scheme, {required bool isWide}) {
     final titleStyle = Theme.of(context).textTheme.headlineLarge?.copyWith(
-          color: scheme.onPrimaryContainer,
-          fontWeight: FontWeight.w900,
-          height: 1.08,
-          letterSpacing: -1.0,
-        );
+      color: scheme.onPrimaryContainer,
+      fontWeight: FontWeight.w900,
+      height: 1.08,
+      letterSpacing: -1.0,
+    );
     final copy = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.auto_awesome_rounded,
-              size: 16,
-              color: scheme.primary,
-            ),
+            Icon(Icons.auto_awesome_rounded, size: 16, color: scheme.primary),
             const SizedBox(width: 7),
             Text(
               'CHALLENGE CENTER',
               style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: scheme.primary,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.4,
-                  ),
+                color: scheme.primary,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.4,
+              ),
             ),
           ],
         ),
@@ -372,9 +379,9 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
         Text(
           '把想做的事变成一场可完成的挑战。选择一个主题，或从零写下你的清单。',
           style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: scheme.onPrimaryContainer.withValues(alpha: 0.78),
-                height: 1.5,
-              ),
+            color: scheme.onPrimaryContainer.withValues(alpha: 0.78),
+            height: 1.5,
+          ),
         ),
         const SizedBox(height: 20),
         Wrap(
@@ -385,22 +392,17 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
               key: _heroLibraryButtonKey,
               onPressed: _isStarting
                   ? null
-                  : () => _openChallengeLibrary(
-                        sourceKey: _heroLibraryButtonKey,
-                      ),
+                  : () =>
+                        _openChallengeLibrary(sourceKey: _heroLibraryButtonKey),
               icon: const Icon(Icons.explore_rounded),
               label: const Text('探索挑战库'),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(0, 48),
-              ),
+              style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
             ),
             OutlinedButton.icon(
               key: _heroCustomButtonKey,
               onPressed: _isStarting
                   ? null
-                  : () => _openCustomChallenge(
-                        sourceKey: _heroCustomButtonKey,
-                      ),
+                  : () => _openCustomChallenge(sourceKey: _heroCustomButtonKey),
               icon: const Icon(Icons.edit_note_rounded),
               label: const Text('创建自定义'),
               style: OutlinedButton.styleFrom(
@@ -559,10 +561,7 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
           Positioned(
             right: 12,
             bottom: 4,
-            child: _HeroDot(
-              color: scheme.secondary,
-              icon: Icons.check_rounded,
-            ),
+            child: _HeroDot(color: scheme.secondary, icon: Icons.check_rounded),
           ),
         ],
       ),
@@ -590,10 +589,7 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
               color: scheme.tertiaryContainer,
               borderRadius: BorderRadius.circular(16),
             ),
-            child: Icon(
-              Icons.flag_outlined,
-              color: scheme.onTertiaryContainer,
-            ),
+            child: Icon(Icons.flag_outlined, color: scheme.onTertiaryContainer),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -602,17 +598,14 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
               children: [
                 Text(
                   '还没有进行中的挑战',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
+                  style: Theme.of(context).textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w900),
                 ),
                 const SizedBox(height: 5),
                 Text(
                   '从一个轻松的主题开始，今天完成第一项就算出发。',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                        height: 1.4,
-                      ),
+                  style: Theme.of(context).textTheme.bodyMedium
+                      ?.copyWith(color: scheme.onSurfaceVariant, height: 1.4),
                 ),
               ],
             ),
@@ -644,8 +637,9 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
     ThirtyDayChallengeState challenge,
   ) {
     final isCompleted = challenge.isCompleted;
-    final foreground =
-        isCompleted ? scheme.onTertiaryContainer : scheme.onPrimaryContainer;
+    final foreground = isCompleted
+        ? scheme.onTertiaryContainer
+        : scheme.onPrimaryContainer;
     final backgroundColors = isCompleted
         ? [scheme.tertiaryContainer, scheme.secondaryContainer]
         : [scheme.primaryContainer, scheme.secondaryContainer];
@@ -672,9 +666,9 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
           onTap: _isStarting
               ? null
               : () => _openCurrentChallenge(
-                    sourceKey: _activeChallengeCardKey,
-                    sourceBorderRadius: BorderRadius.circular(28),
-                  ),
+                  sourceKey: _activeChallengeCardKey,
+                  sourceBorderRadius: BorderRadius.circular(28),
+                ),
           borderRadius: BorderRadius.circular(28),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
@@ -707,9 +701,7 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
                         children: [
                           Text(
                             isCompleted ? '挑战完成' : '继续你的挑战',
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelLarge
+                            style: Theme.of(context).textTheme.labelLarge
                                 ?.copyWith(
                                   color: foreground.withValues(alpha: 0.76),
                                   fontWeight: FontWeight.w800,
@@ -720,9 +712,7 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
                             challenge.challengeTitle,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleLarge
+                            style: Theme.of(context).textTheme.titleLarge
                                 ?.copyWith(
                                   color: foreground,
                                   fontWeight: FontWeight.w900,
@@ -749,20 +739,20 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
                       children: [
                         Text(
                           '完成进度',
-                          style:
-                              Theme.of(context).textTheme.labelMedium?.copyWith(
-                                    color: foreground.withValues(alpha: 0.78),
-                                    fontWeight: FontWeight.w800,
-                                  ),
+                          style: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(
+                                color: foreground.withValues(alpha: 0.78),
+                                fontWeight: FontWeight.w800,
+                              ),
                         ),
                         const Spacer(),
                         Text(
                           '$taskCount 项任务 · ${challenge.completedCount} 项已完成',
-                          style:
-                              Theme.of(context).textTheme.labelMedium?.copyWith(
-                                    color: foreground.withValues(alpha: 0.78),
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                          style: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(
+                                color: foreground.withValues(alpha: 0.78),
+                                fontWeight: FontWeight.w700,
+                              ),
                         ),
                       ],
                     ),
@@ -784,8 +774,8 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
                         onPressed: _isStarting
                             ? null
                             : () => _openCurrentChallenge(
-                                  sourceKey: _activeChallengeActionKey,
-                                ),
+                                sourceKey: _activeChallengeActionKey,
+                              ),
                         icon: Icon(
                           isCompleted
                               ? Icons.auto_stories_rounded
@@ -835,10 +825,8 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
       ),
       child: Text(
         value,
-        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: foreground,
-              fontWeight: FontWeight.w900,
-            ),
+        style: Theme.of(context).textTheme.labelLarge
+            ?.copyWith(color: foreground, fontWeight: FontWeight.w900),
       ),
     );
   }
@@ -854,9 +842,9 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
       onTap: _isStarting
           ? null
           : () => _openChallengeLibrary(
-                sourceKey: _libraryOptionKey,
-                sourceBorderRadius: BorderRadius.circular(24),
-              ),
+              sourceKey: _libraryOptionKey,
+              sourceBorderRadius: BorderRadius.circular(24),
+            ),
     );
     final customCard = _buildStartOption(
       scheme: scheme,
@@ -868,9 +856,9 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
       onTap: _isStarting
           ? null
           : () => _openCustomChallenge(
-                sourceKey: _customOptionKey,
-                sourceBorderRadius: BorderRadius.circular(24),
-              ),
+              sourceKey: _customOptionKey,
+              sourceBorderRadius: BorderRadius.circular(24),
+            ),
     );
 
     return Column(
@@ -891,11 +879,7 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
           )
         else
           Column(
-            children: [
-              libraryCard,
-              const SizedBox(height: 12),
-              customCard,
-            ],
+            children: [libraryCard, const SizedBox(height: 12), customCard],
           ),
       ],
     );
@@ -909,9 +893,7 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
         key: _classicChallengeCardKey,
         onTap: _isStarting
             ? null
-            : () => _openClassicChallenge(
-                  sourceKey: _classicChallengeCardKey,
-                ),
+            : () => _openClassicChallenge(sourceKey: _classicChallengeCardKey),
         borderRadius: BorderRadius.circular(26),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
@@ -957,9 +939,7 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
                             children: [
                               Text(
                                 '经典挑战',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .labelMedium
+                                style: Theme.of(context).textTheme.labelMedium
                                     ?.copyWith(
                                       color: scheme.onTertiaryContainer
                                           .withValues(alpha: 0.72),
@@ -969,9 +949,7 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
                               const SizedBox(height: 3),
                               Text(
                                 ThirtyDayChallengeState.defaultTitle,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleLarge
+                                style: Theme.of(context).textTheme.titleLarge
                                     ?.copyWith(
                                       color: scheme.onTertiaryContainer,
                                       fontWeight: FontWeight.w900,
@@ -991,29 +969,29 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
                     Text(
                       '30 项生活小任务 · 顺序自由安排',
                       style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                            color: scheme.onTertiaryContainer.withValues(
-                              alpha: 0.78,
-                            ),
-                            fontWeight: FontWeight.w700,
-                          ),
+                        color: scheme.onTertiaryContainer.withValues(
+                          alpha: 0.78,
+                        ),
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 5),
                     Text(
                       '给平淡生活加一点新鲜感，重新找回对日常的感受力。',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: scheme.onTertiaryContainer.withValues(
-                              alpha: 0.82,
-                            ),
-                            height: 1.4,
-                          ),
+                        color: scheme.onTertiaryContainer.withValues(
+                          alpha: 0.82,
+                        ),
+                        height: 1.4,
+                      ),
                     ),
                     const SizedBox(height: 7),
                     Text(
                       '点击查看挑战介绍',
                       style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            color: scheme.onTertiaryContainer,
-                            fontWeight: FontWeight.w900,
-                          ),
+                        color: scheme.onTertiaryContainer,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                   ],
                 ),
@@ -1066,9 +1044,7 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
                         Expanded(
                           child: Text(
                             title,
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
+                            style: Theme.of(context).textTheme.titleMedium
                                 ?.copyWith(fontWeight: FontWeight.w900),
                           ),
                         ),
@@ -1079,9 +1055,9 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
                     Text(
                       description,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: scheme.onSurfaceVariant,
-                            height: 1.4,
-                          ),
+                        color: scheme.onSurfaceVariant,
+                        height: 1.4,
+                      ),
                     ),
                   ],
                 ),
@@ -1126,17 +1102,14 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
         children: [
           Text(
             '挑战可以很自由',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w900,
-                ),
+            style: Theme.of(context).textTheme.titleLarge
+                ?.copyWith(fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 5),
           Text(
             '这里没有标准答案，重要的是给自己一个愿意开始的小目标。',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                  height: 1.4,
-                ),
+            style: Theme.of(context).textTheme.bodyMedium
+                ?.copyWith(color: scheme.onSurfaceVariant, height: 1.4),
           ),
           const SizedBox(height: 18),
           if (isWide)
@@ -1187,17 +1160,14 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
             children: [
               Text(
                 step.title,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
+                style: Theme.of(context).textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 3),
               Text(
                 step.description,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                      height: 1.35,
-                    ),
+                style: Theme.of(context).textTheme.bodySmall
+                    ?.copyWith(color: scheme.onSurfaceVariant, height: 1.35),
               ),
             ],
           ),
@@ -1212,16 +1182,14 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
       children: [
         Text(
           title,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w900,
-              ),
+          style: Theme.of(context).textTheme.titleLarge
+              ?.copyWith(fontWeight: FontWeight.w900),
         ),
         const SizedBox(height: 4),
         Text(
           subtitle,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       ],
     );

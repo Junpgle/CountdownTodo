@@ -170,9 +170,8 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
         ..sort((a, b) => a.weekIndex.compareTo(b.weekIndex));
       final firstCourse = sortedCourses.first;
       if (firstCourse.date.isNotEmpty) {
-        DateTime firstCourseDate = _cachedDateFormat('yyyy-MM-dd').parse(
-          firstCourse.date,
-        );
+        DateTime firstCourseDate = _cachedDateFormat('yyyy-MM-dd')
+            .parse(firstCourse.date);
         _semesterMonday = CalendarDateMath.addDays(
           firstCourseDate,
           -(firstCourse.weekday - 1) -
@@ -990,8 +989,10 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
       final day = CalendarDateMath.addDays(currentWeekMonday, index);
       final dayStart = DateTime(day.year, day.month, day.day);
       dayStartEpochs[index] = dayStart.millisecondsSinceEpoch;
-      dayEndEpochs[index] =
-          CalendarDateMath.addDays(dayStart, 1).millisecondsSinceEpoch;
+      dayEndEpochs[index] = CalendarDateMath.addDays(
+        dayStart,
+        1,
+      ).millisecondsSinceEpoch;
     }
 
     void addToOverlappingDays<T>(
@@ -1010,9 +1011,11 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
           high = middle;
         }
       }
-      for (var index = low;
-          index < dayStartEpochs.length && dayStartEpochs[index] < itemEnd;
-          index++) {
+      for (
+        var index = low;
+        index < dayStartEpochs.length && dayStartEpochs[index] < itemEnd;
+        index++
+      ) {
         if (itemEnd > dayStartEpochs[index] &&
             itemStart < dayEndEpochs[index]) {
           days[index + 1]!.add(item);
@@ -1021,15 +1024,11 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     }
 
     for (final log in _allTimeLogs) {
-      addToOverlappingDays(
-        log.startTime,
-        log.endTime,
-        log,
-        _timeLogsPerDay,
-      );
+      addToOverlappingDays(log.startTime, log.endTime, log, _timeLogsPerDay);
     }
 
-    final associationLookup = _allPlanBlocks.length > 1 &&
+    final associationLookup =
+        _allPlanBlocks.length > 1 &&
             _allPlanBlocks.length * _allPomodoroRecords.length > 128
         ? _PomodoroPlanAssociationLookup(_allPlanBlocks)
         : null;
@@ -1040,7 +1039,8 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
           record.startTime >= dayEndEpochs.last) {
         continue;
       }
-      final associated = associationLookup?.isAssociated(record, recordEnd) ??
+      final associated =
+          associationLookup?.isAssociated(record, recordEnd) ??
           _isPomodoroAssociatedWithPlan(record);
       if (associated) continue;
 

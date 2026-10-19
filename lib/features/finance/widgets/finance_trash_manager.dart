@@ -70,8 +70,10 @@ class _FinanceTrashManagerState extends State<FinanceTrashManager> {
       await entry.onRestore();
     } catch (error) {
       if (mounted) {
-        AppSnackBars.showSnackBar(context,
-            SnackBar(content: Text('恢复${entry.kind.label}失败：$error')));
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(content: Text('恢复${entry.kind.label}失败：$error')),
+        );
       }
     } finally {
       _restoring.remove(entry.key);
@@ -99,95 +101,112 @@ class _FinanceTrashManagerState extends State<FinanceTrashManager> {
       (visibleByKind[entry.kind] ??= <FinanceTrashEntry>[]).add(entry);
       visibleCount++;
     }
-    return FinancePageList(topPadding: widget.topPadding, children: [
-      const FinancePageIntro(
-        icon: Icons.restore_from_trash_outlined,
-        title: '找回需要的记录',
-        description: '按类型或关键词查找，随时找回误删记录。',
-      ),
-      const SizedBox(height: 24),
-      if (widget.entries.isEmpty)
-        const FinanceEmptyState(
-          icon: Icons.inventory_2_outlined,
-          title: '回收站是空的',
-          description: '删除的账单、预算、贷款、周期账单和快捷模板会保留在这里。',
-        )
-      else ...[
-        TextField(
-          key: const ValueKey('finance-trash-search'),
-          controller: _search,
-          onChanged: (_) => setState(() {}),
-          decoration: financeFieldDecoration(context,
-                  label: '搜索名称、日期或备注', icon: Icons.search)
-              .copyWith(
-            suffixIcon: _search.text.isEmpty
-                ? null
-                : IconButton(
-                    tooltip: '清空搜索',
-                    onPressed: () => setState(_search.clear),
-                    icon: const Icon(Icons.close),
-                  ),
-          ),
+    return FinancePageList(
+      topPadding: widget.topPadding,
+      children: [
+        const FinancePageIntro(
+          icon: Icons.restore_from_trash_outlined,
+          title: '找回需要的记录',
+          description: '按类型或关键词查找，随时找回误删记录。',
         ),
-        const SizedBox(height: 14),
-        Wrap(spacing: 8, runSpacing: 6, children: [
-          ChoiceChip(
-            key: const ValueKey('finance-trash-filter-all'),
-            label: Text('全部 ${widget.entries.length}'),
-            selected: _kind == null,
-            showCheckmark: false,
-            onSelected: (_) => setState(() => _kind = null),
+        const SizedBox(height: 24),
+        if (widget.entries.isEmpty)
+          const FinanceEmptyState(
+            icon: Icons.inventory_2_outlined,
+            title: '回收站是空的',
+            description: '删除的账单、预算、贷款、周期账单和快捷模板会保留在这里。',
+          )
+        else ...[
+          TextField(
+            key: const ValueKey('finance-trash-search'),
+            controller: _search,
+            onChanged: (_) => setState(() {}),
+            decoration:
+                financeFieldDecoration(
+                  context,
+                  label: '搜索名称、日期或备注',
+                  icon: Icons.search,
+                ).copyWith(
+                  suffixIcon: _search.text.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: '清空搜索',
+                          onPressed: () => setState(_search.clear),
+                          icon: const Icon(Icons.close),
+                        ),
+                ),
           ),
-          for (final kind in FinanceTrashKind.values)
-            if (_kind == kind ||
-                (entryCountByKind[kind] ?? 0) > 0)
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
               ChoiceChip(
-                key: ValueKey('finance-trash-filter-${kind.name}'),
-                label: Text(
-                    '${kind.label} ${entryCountByKind[kind] ?? 0}'),
-                selected: _kind == kind,
+                key: const ValueKey('finance-trash-filter-all'),
+                label: Text('全部 ${widget.entries.length}'),
+                selected: _kind == null,
                 showCheckmark: false,
-                onSelected: (_) => setState(() => _kind = kind),
+                onSelected: (_) => setState(() => _kind = null),
               ),
-        ]),
-        const SizedBox(height: 20),
-        if (visibleCount == 0)
-          FinanceEmptyState(
-            icon: Icons.search_off_outlined,
-            title: '没有找到匹配记录',
-            description: '试试其他关键词，或查看全部类型。',
-            actionLabel: '清除筛选',
-            onAction: () => setState(() {
-              _search.clear();
-              _kind = null;
-            }),
+              for (final kind in FinanceTrashKind.values)
+                if (_kind == kind || (entryCountByKind[kind] ?? 0) > 0)
+                  ChoiceChip(
+                    key: ValueKey('finance-trash-filter-${kind.name}'),
+                    label: Text('${kind.label} ${entryCountByKind[kind] ?? 0}'),
+                    selected: _kind == kind,
+                    showCheckmark: false,
+                    onSelected: (_) => setState(() => _kind = kind),
+                  ),
+            ],
           ),
-        for (final kind in FinanceTrashKind.values)
-          if (visibleByKind[kind]?.isNotEmpty == true) ...[
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Row(children: [
-                Icon(kind.icon, size: 20, color: colors.primary),
-                const SizedBox(width: 10),
-                Expanded(
-                    child: Text(kind.label,
-                        style: theme.textTheme.titleSmall
-                            ?.copyWith(fontWeight: FontWeight.w700))),
-                Text('${visibleByKind[kind]!.length} 项',
-                    style: theme.textTheme.labelMedium
-                        ?.copyWith(color: colors.onSurfaceVariant)),
-              ]),
+          const SizedBox(height: 20),
+          if (visibleCount == 0)
+            FinanceEmptyState(
+              icon: Icons.search_off_outlined,
+              title: '没有找到匹配记录',
+              description: '试试其他关键词，或查看全部类型。',
+              actionLabel: '清除筛选',
+              onAction: () => setState(() {
+                _search.clear();
+                _kind = null;
+              }),
             ),
-            FinanceAdaptiveFields(
-              minChildWidth: 330,
-              children: [
-                for (final entry in visibleByKind[kind]!) _entryCard(entry)
-              ],
-            ),
-            const SizedBox(height: 24),
-          ],
+          for (final kind in FinanceTrashKind.values)
+            if (visibleByKind[kind]?.isNotEmpty == true) ...[
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  children: [
+                    Icon(kind.icon, size: 20, color: colors.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        kind.label,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '${visibleByKind[kind]!.length} 项',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              FinanceAdaptiveFields(
+                minChildWidth: 330,
+                children: [
+                  for (final entry in visibleByKind[kind]!) _entryCard(entry),
+                ],
+              ),
+              const SizedBox(height: 24),
+            ],
+        ],
       ],
-    ]);
+    );
   }
 
   Widget _entryCard(FinanceTrashEntry entry) {
@@ -196,43 +215,63 @@ class _FinanceTrashManagerState extends State<FinanceTrashManager> {
     final restoring = _restoring.contains(entry.key);
     return FinanceSectionCard(
       key: ValueKey('finance-trash-item-${entry.key}'),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(entry.title,
-            style: theme.textTheme.titleMedium
-                ?.copyWith(fontWeight: FontWeight.w700)),
-        const SizedBox(height: 6),
-        Text(entry.details,
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: colors.onSurfaceVariant, height: 1.5)),
-        const SizedBox(height: 16),
-        FinanceAdaptiveFields(
-          minChildWidth: 150,
-          children: [
-            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(entry.amountLabel,
-                  style: theme.textTheme.labelSmall
-                      ?.copyWith(color: colors.onSurfaceVariant)),
-              const SizedBox(height: 3),
-              Text(formatFinanceAmount(entry.amountMinor),
-                  style: theme.textTheme.titleLarge
-                      ?.copyWith(fontWeight: FontWeight.w700)),
-            ]),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton.tonalIcon(
-                key: ValueKey('finance-trash-restore-${entry.key}'),
-                onPressed: restoring ? null : () => _restore(entry),
-                icon: restoring
-                    ? const SizedBox.square(
-                        dimension: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.restore_rounded, size: 18),
-                label: Text(restoring ? '恢复中…' : '恢复'),
-              ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            entry.title,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
             ),
-          ],
-        ),
-      ]),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            entry.details,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.onSurfaceVariant,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 16),
+          FinanceAdaptiveFields(
+            minChildWidth: 150,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    entry.amountLabel,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    formatFinanceAmount(entry.amountMinor),
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.tonalIcon(
+                  key: ValueKey('finance-trash-restore-${entry.key}'),
+                  onPressed: restoring ? null : () => _restore(entry),
+                  icon: restoring
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.restore_rounded, size: 18),
+                  label: Text(restoring ? '恢复中…' : '恢复'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

@@ -34,7 +34,8 @@ class MediaInfo {
   int get hashCode => Object.hash(title, artist, album, albumArtist, status);
 
   @override
-  String toString() => 'MediaInfo(title: "$title", artist: "$artist", '
+  String toString() =>
+      'MediaInfo(title: "$title", artist: "$artist", '
       'album: "$album", albumArtist: "$albumArtist", status: $status)';
 }
 

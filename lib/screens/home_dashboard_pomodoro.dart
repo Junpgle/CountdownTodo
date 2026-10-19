@@ -1,4 +1,5 @@
 part of 'home_dashboard.dart';
+
 // ignore_for_file: annotate_overrides
 
 mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
@@ -11,9 +12,12 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
     _remotePomodoroSub?.cancel();
     _remotePomodoroSub = _syncService.onStateChanged
         .asyncMap(_handleRemotePomodoroSignal)
-        .listen((_) {}, onError: (Object error) {
-      debugPrint('[HomePomodoro] 处理跨端消息失败: $error');
-    });
+        .listen(
+          (_) {},
+          onError: (Object error) {
+            debugPrint('[HomePomodoro] 处理跨端消息失败: $error');
+          },
+        );
 
     // 🍅 发起端重连后，服务端回推了历史专注状态
     // 若本地已无对应状态（说明已被用户关闭/完成），则通知云端清除残留
@@ -75,7 +79,8 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
               totalCycles: saved.totalCycles,
               plannedFocusSeconds: saved.plannedFocusSeconds,
               note: saved.note,
-              doNotDisturb: saved.phase == PomodoroPhase.focusing &&
+              doNotDisturb:
+                  saved.phase == PomodoroPhase.focusing &&
                   saved.doNotDisturbDuringFocus &&
                   !saved.strictWaitingForFlip,
               customTimestamp: saved.sessionStartMs, // 🚀 关键：使用真实的起点时间
@@ -96,15 +101,19 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
     final authToken = await StorageService.getAuthToken();
 
     await _syncService.ensureConnected(
-        userIdInt.toString(), 'flutter_$_deviceId',
-        authToken: authToken, appVersion: appVersion);
+      userIdInt.toString(),
+      'flutter_$_deviceId',
+      authToken: authToken,
+      appVersion: appVersion,
+    );
   }
 
   // FloatWindow channel is now handled by FloatWindowService
 
   // 🚀 修改：处理云端发来的 UPDATE_AVAILABLE 信号
   Future<void> _handleRemotePomodoroSignal(
-      CrossDevicePomodoroState signal) async {
+    CrossDevicePomodoroState signal,
+  ) async {
     if (!mounted || _deviceId.isEmpty) return;
     if (signal.sourceDevice == _deviceId ||
         signal.sourceDevice == 'flutter_$_deviceId') {
@@ -122,8 +131,12 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
           if (!mounted) return;
 
           // 复用强大的 UpdateService 弹窗
-          UpdateService.showUpdateDialog(context, manifest, packageInfo.version,
-              hasUpdate: true);
+          UpdateService.showUpdateDialog(
+            context,
+            manifest,
+            packageInfo.version,
+            hasUpdate: true,
+          );
         }
         break;
       case 'TEAM_REMOVED':
@@ -152,18 +165,18 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
             : null;
         if (eventId != null && eventId > 0) {
           unawaited(
-            BackgroundNotificationService.markNotificationEventShown(
-              eventId,
-            ),
+            BackgroundNotificationService.markNotificationEventShown(eventId),
           );
           if (!_handledForegroundNotificationIds.add(eventId)) {
             break;
           }
         }
-        final title =
-            signal.delta is Map ? signal.delta['title']?.toString() : null;
-        final body =
-            signal.delta is Map ? signal.delta['body']?.toString() : null;
+        final title = signal.delta is Map
+            ? signal.delta['title']?.toString()
+            : null;
+        final body = signal.delta is Map
+            ? signal.delta['body']?.toString()
+            : null;
         if (title != null && title.isNotEmpty) {
           NotificationService.showGenericNotification(
             title: title,
@@ -237,10 +250,7 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
         }
         final remoteSessionUuid =
             signal.sessionUuid ?? _remotePomodoro?.sessionUuid;
-        await _setFocusDoNotDisturb(
-          false,
-          sessionUuid: remoteSessionUuid,
-        );
+        await _setFocusDoNotDisturb(false, sessionUuid: remoteSessionUuid);
         _stopRemotePomodoroTicker();
         setState(() => _remotePomodoro = null);
 
@@ -286,7 +296,7 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
           await FloatWindowService.update(
             endMs: isCountUp
                 ? (_remotePomodoro!.timestamp ??
-                    DateTime.now().millisecondsSinceEpoch)
+                      DateTime.now().millisecondsSinceEpoch)
                 : (_remotePomodoro!.targetEndMs ?? 0),
             title: _remotePomodoro!.todoTitle ?? '',
             tags: _remotePomodoro!.tags,
@@ -324,7 +334,7 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
           await FloatWindowService.update(
             endMs: isCountUp
                 ? (_remotePomodoro!.timestamp ??
-                    DateTime.now().millisecondsSinceEpoch)
+                      DateTime.now().millisecondsSinceEpoch)
                 : (_remotePomodoro!.targetEndMs ?? 0),
             title: _remotePomodoro!.todoTitle ?? '',
             tags: _remotePomodoro!.tags,
@@ -377,10 +387,12 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
       } else {
         final rem = ((targetEndMs - nowMs) / 1000).ceil();
         if (rem <= 0) {
-          unawaited(_setFocusDoNotDisturb(
-            false,
-            sessionUuid: _remotePomodoro?.sessionUuid,
-          ));
+          unawaited(
+            _setFocusDoNotDisturb(
+              false,
+              sessionUuid: _remotePomodoro?.sessionUuid,
+            ),
+          );
           _stopRemotePomodoroTicker();
           shouldContinue = false;
           if (mounted) setState(() => _remotePomodoro = null);
@@ -400,10 +412,7 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
           _remotePomodoroRemaining,
           countUp: isCountUp,
         );
-        _remotePomodoroTicker = Timer(
-          Duration(seconds: delaySeconds),
-          tick,
-        );
+        _remotePomodoroTicker = Timer(Duration(seconds: delaySeconds), tick);
       }
     }
 
@@ -484,7 +493,8 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
   }
 
   Future<void> _syncLocalFocusDoNotDisturb(PomodoroRunState? saved) {
-    final active = saved != null &&
+    final active =
+        saved != null &&
         saved.phase == PomodoroPhase.focusing &&
         saved.doNotDisturbDuringFocus &&
         !saved.strictWaitingForFlip;
@@ -493,8 +503,8 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
       sessionUuid: saved?.sessionUuid,
       untilMs:
           saved == null || saved.isPaused || saved.mode == TimerMode.countUp
-              ? null
-              : saved.targetEndMs,
+          ? null
+          : saved.targetEndMs,
       force: saved == null,
     );
   }
@@ -547,10 +557,7 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
           countUp: isActuallyCountUp,
           includeStopControlBoundary: !isActuallyCountUp,
         );
-        _localPomodoroTicker = Timer(
-          Duration(seconds: delaySeconds),
-          tick,
-        );
+        _localPomodoroTicker = Timer(Duration(seconds: delaySeconds), tick);
       }
     }
 
@@ -664,10 +671,7 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
       }
     } catch (e) {
       if (!mounted) return;
-      AppSnackBars.showSnackBar(
-        context,
-        SnackBar(content: Text('停止专注失败: $e')),
-      );
+      AppSnackBars.showSnackBar(context, SnackBar(content: Text('停止专注失败: $e')));
     }
   }
 }

@@ -61,8 +61,7 @@ class ReminderScheduleService {
   static Future<void> scheduleAll({
     required List<TodoItem> todos,
     required List<CourseItem> courses,
-    Future<List<CourseItem>> Function(DateTime from, DateTime to)?
-    loadCourses,
+    Future<List<CourseItem>> Function(DateTime from, DateTime to)? loadCourses,
     String? expectedUsername,
     bool force = false,
   }) async {
@@ -198,9 +197,7 @@ class ReminderScheduleService {
           });
         } else {
           // 普通待办
-          final description = t.remark?.isNotEmpty == true
-              ? t.remark!
-              : '即将开始';
+          final description = t.remark?.isNotEmpty == true ? t.remark! : '即将开始';
 
           reminders.add({
             'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
@@ -219,7 +216,8 @@ class ReminderScheduleService {
     }
 
     // ── 课程提醒 ──────────────────────────────────────────────────
-    final courseAdvanceMinutes = loadedCourseReminderMinutes ??
+    final courseAdvanceMinutes =
+        loadedCourseReminderMinutes ??
         await StorageService.getCourseReminderMinutes();
     for (int i = 0; i < scheduledCourses.length && i < 999; i++) {
       final c = scheduledCourses[i];
@@ -327,8 +325,7 @@ class ReminderScheduleService {
           'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
           'startAtMs': startTime.toUtc().millisecondsSinceEpoch,
           'title': '📅 计划: ${pb.titleSnapshot ?? "未命名任务"}',
-          'text':
-              '$timeRange${pb.remark != null ? " · ${pb.remark}" : ""}',
+          'text': '$timeRange${pb.remark != null ? " · ${pb.remark}" : ""}',
           'notifId': _planBlockBaseId + i,
           'type': 'plan_block',
           'timeStr': timeRange,

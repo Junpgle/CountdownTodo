@@ -37,10 +37,10 @@ final Map<(String?, String), DateFormat> _planTodayDateFormats = {};
 
 DateFormat _planTodayDateFormat(String pattern) {
   final locale = Intl.defaultLocale;
-  return _planTodayDateFormats.putIfAbsent(
-    (locale, pattern),
-    () => DateFormat(pattern, locale),
-  );
+  return _planTodayDateFormats.putIfAbsent((
+    locale,
+    pattern,
+  ), () => DateFormat(pattern, locale));
 }
 
 /// Display reloads never trigger the legacy missed-state maintenance.
@@ -477,9 +477,8 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
       failed = true;
       if (mounted) {
         if (preserveOnError) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('$error')),
-          );
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('$error')));
         } else {
           setState(() {
             _data = null;
@@ -576,77 +575,78 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
     );
   }
 
-  Future<void> _edit(
-    PlanTodayRow item, {
-    required GlobalKey sourceKey,
-  }) => _navigate((data) async {
-    final raw = await _repository.detail(
-      data.overview.identity,
-      'plan',
-      item.entry.id,
-    );
-    if (raw['review_valid'] != true ||
-        raw['status'] is! int ||
-        (raw['status'] as int) < 0 ||
-        (raw['status'] as int) >= TodoPlanStatus.values.length ||
-        ![0, 5, 10, 15, 30].contains(raw['reminder_minutes']) ||
-        ![15, 20, 25, 30, 45, 60].contains(raw['pomodoro_minutes']) ||
-        raw['pomodoro_rounds'] is! int ||
-        (raw['pomodoro_rounds'] as int) < 0 ||
-        (raw['pomodoro_rounds'] as int) > 6) {
-      throw StateError('规划已变化或需核对，请刷新后查看');
-    }
-    final block = TodoPlanBlock.fromJson(raw);
-    final db = await DatabaseHelper.instance.databaseForUser(widget.username);
-    final rows = await PlanTodoGuard.projectedRows(
-      db,
-      data.overview.identity,
-      block.todoId,
-    );
-    if (rows.isEmpty) throw StateError('关联待办已不存在，请在投入明细查看历史');
-    final todo = TodoItem.fromSql({
-      ...rows.single,
-      'is_completed': rows.single['member_completed'],
-    })..id = block.todoId;
-    final todos = await StorageService.getTodos(widget.username);
-    final groups = await StorageService.getTodoGroups(widget.username);
-    await data.overview.identity.check();
-    if (!mounted || !_active || _today != data.overview.start) return;
-    await showPlanBlockEditorSheet<void>(
-      context: context,
-      builder: (_) => PlanBlockEditorSheet(
-        block: block,
-        username: widget.username,
-        todos: [
-          for (final t in todos)
-            if (t.id != todo.id) t,
-          todo,
-        ],
-        todoGroups: groups,
-        startTime: DateTime.fromMillisecondsSinceEpoch(block.startTime),
-        endTime: DateTime.fromMillisecondsSinceEpoch(block.endTime),
-        clock: widget.clock,
-        onSaved: () => _maintenancePending = true,
-        openPomodoro: (planBlock, boundTodo) => PageTransitions.pushFromRect<void>(
+  Future<void> _edit(PlanTodayRow item, {required GlobalKey sourceKey}) =>
+      _navigate((data) async {
+        final raw = await _repository.detail(
+          data.overview.identity,
+          'plan',
+          item.entry.id,
+        );
+        if (raw['review_valid'] != true ||
+            raw['status'] is! int ||
+            (raw['status'] as int) < 0 ||
+            (raw['status'] as int) >= TodoPlanStatus.values.length ||
+            ![0, 5, 10, 15, 30].contains(raw['reminder_minutes']) ||
+            ![15, 20, 25, 30, 45, 60].contains(raw['pomodoro_minutes']) ||
+            raw['pomodoro_rounds'] is! int ||
+            (raw['pomodoro_rounds'] as int) < 0 ||
+            (raw['pomodoro_rounds'] as int) > 6) {
+          throw StateError('规划已变化或需核对，请刷新后查看');
+        }
+        final block = TodoPlanBlock.fromJson(raw);
+        final db = await DatabaseHelper.instance.databaseForUser(
+          widget.username,
+        );
+        final rows = await PlanTodoGuard.projectedRows(
+          db,
+          data.overview.identity,
+          block.todoId,
+        );
+        if (rows.isEmpty) throw StateError('关联待办已不存在，请在投入明细查看历史');
+        final todo = TodoItem.fromSql({
+          ...rows.single,
+          'is_completed': rows.single['member_completed'],
+        })..id = block.todoId;
+        final todos = await StorageService.getTodos(widget.username);
+        final groups = await StorageService.getTodoGroups(widget.username);
+        await data.overview.identity.check();
+        if (!mounted || !_active || _today != data.overview.start) return;
+        await showPlanBlockEditorSheet<void>(
           context: context,
-          sourceKey: sourceKey,
-          placeholderIcon: Icons.timer_outlined,
-          page: PomodoroScreen(
+          builder: (_) => PlanBlockEditorSheet(
+            block: block,
             username: widget.username,
-            initialEntry: PomodoroEntryIntent.forPlanBlock(
-              boundTodo: boundTodo,
-              planBlock: planBlock,
+            todos: [
+              for (final t in todos)
+                if (t.id != todo.id) t,
+              todo,
+            ],
+            todoGroups: groups,
+            startTime: DateTime.fromMillisecondsSinceEpoch(block.startTime),
+            endTime: DateTime.fromMillisecondsSinceEpoch(block.endTime),
+            clock: widget.clock,
+            onSaved: () => _maintenancePending = true,
+            openPomodoro: (planBlock, boundTodo) =>
+                PageTransitions.pushFromRect<void>(
+                  context: context,
+                  sourceKey: sourceKey,
+                  placeholderIcon: Icons.timer_outlined,
+                  page: PomodoroScreen(
+                    username: widget.username,
+                    initialEntry: PomodoroEntryIntent.forPlanBlock(
+                      boundTodo: boundTodo,
+                      planBlock: planBlock,
+                    ),
+                  ),
+                ),
+            manualCompletionService: PlanManualCompletionService(
+              clock: widget.clock,
             ),
+            onManualCompleted: (receipt) =>
+                _manualHostKey.currentState?.present(receipt),
           ),
-        ),
-        manualCompletionService: PlanManualCompletionService(
-          clock: widget.clock,
-        ),
-        onManualCompleted: (receipt) =>
-            _manualHostKey.currentState?.present(receipt),
-      ),
-    );
-  });
+        );
+      });
   Future<void> _recover(PlanTodayRow row) => _navigate(
     (_) => showMissedPlanRecovery(
       context: context,
@@ -881,9 +881,7 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
                   '${format.format(DateTime.fromMillisecondsSinceEpoch(block.startTime))} — ${format.format(DateTime.fromMillisecondsSinceEpoch(block.endTime))}',
                 ),
                 const SizedBox(height: 16),
-                const Text(
-                  '仅将这次规划标为已完成。不会改变待办完成状态、停止专注计时或新增专注记录。',
-                ),
+                const Text('仅将这次规划标为已完成。不会改变待办完成状态、停止专注计时或新增专注记录。'),
                 if (saveError != null) ...[
                   const SizedBox(height: 12),
                   Text(
@@ -981,9 +979,7 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
           if (_canMarkAgendaPlanCompleted(row))
             FilledButton.tonalIcon(
               key: ValueKey('plan-today-complete-${row.entry.id}'),
-              onPressed: _active
-                  ? () => _openAgendaPlanCompletion(row)
-                  : null,
+              onPressed: _active ? () => _openAgendaPlanCompletion(row) : null,
               icon: const Icon(Icons.check_circle_outline),
               label: const Text('标记为已完成'),
             ),
@@ -1009,9 +1005,8 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
           : _error != null
           ? '今日规划读取失败：$_error'
           : '今日规划尚未就绪，正在重新读取';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
       if (!_loading && !_opening) unawaited(_load());
       return;
     }
@@ -1295,7 +1290,8 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
                         TextButton(
                           key: _editSourceKey(e.id),
                           onPressed: _canOpen
-                              ? () => _edit(row, sourceKey: _editSourceKey(e.id))
+                              ? () =>
+                                    _edit(row, sourceKey: _editSourceKey(e.id))
                               : null,
                           child: const Text('查看规划'),
                         ),

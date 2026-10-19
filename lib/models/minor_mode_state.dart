@@ -22,26 +22,26 @@ enum MinorAgeBand {
 
 extension MinorModeSourceLabel on MinorModeSource {
   String get label => switch (this) {
-        MinorModeSource.androidSystem => '手机系统',
-        MinorModeSource.googleAgeSignals => 'Google 年龄信号',
-        MinorModeSource.appleDeclaredAgeRange => 'Apple 年龄范围',
-        MinorModeSource.manual => 'App 设置',
-        MinorModeSource.unsupported => '暂不支持系统联动',
-      };
+    MinorModeSource.androidSystem => '手机系统',
+    MinorModeSource.googleAgeSignals => 'Google 年龄信号',
+    MinorModeSource.appleDeclaredAgeRange => 'Apple 年龄范围',
+    MinorModeSource.manual => 'App 设置',
+    MinorModeSource.unsupported => '暂不支持系统联动',
+  };
 }
 
 extension MinorAgeBandLabel on MinorAgeBand {
   String get label => switch (this) {
-        MinorAgeBand.unknown => '未知',
-        MinorAgeBand.under13 => '13 岁以下',
-        MinorAgeBand.under3 => '3 岁以下',
-        MinorAgeBand.age3to7 => '3～7 岁',
-        MinorAgeBand.age8to11 => '8～11 岁',
-        MinorAgeBand.age13to15 => '13～15 岁',
-        MinorAgeBand.age12to15 => '12～15 岁',
-        MinorAgeBand.age16to17 => '16～17 岁',
-        MinorAgeBand.adult => '成人',
-      };
+    MinorAgeBand.unknown => '未知',
+    MinorAgeBand.under13 => '13 岁以下',
+    MinorAgeBand.under3 => '3 岁以下',
+    MinorAgeBand.age3to7 => '3～7 岁',
+    MinorAgeBand.age8to11 => '8～11 岁',
+    MinorAgeBand.age13to15 => '13～15 岁',
+    MinorAgeBand.age12to15 => '12～15 岁',
+    MinorAgeBand.age16to17 => '16～17 岁',
+    MinorAgeBand.adult => '成人',
+  };
 }
 
 extension MinorAgeBandSystemMapping on MinorAgeBand {
@@ -62,10 +62,7 @@ extension MinorAgeBandSystemMapping on MinorAgeBand {
     };
   }
 
-  static MinorAgeBand fromBirthDate(
-    DateTime birthDate, {
-    DateTime? today,
-  }) {
+  static MinorAgeBand fromBirthDate(DateTime birthDate, {DateTime? today}) {
     final currentDate = today ?? DateTime.now();
     final current = DateTime(
       currentDate.year,
@@ -118,12 +115,12 @@ class MinorModeState {
     this.parentAuthenticationSupported = false,
     this.systemStateReadFailed = false,
     this.lastError,
-  })  : systemSupported = false,
-        systemEnabled = false,
-        source = manualEnabled
-            ? MinorModeSource.manual
-            : MinorModeSource.unsupported,
-        ageBand = MinorAgeBand.unknown;
+  }) : systemSupported = false,
+       systemEnabled = false,
+       source = manualEnabled
+           ? MinorModeSource.manual
+           : MinorModeSource.unsupported,
+       ageBand = MinorAgeBand.unknown;
 
   bool get effectiveMinorMode => systemEnabled || manualEnabled;
 
@@ -147,8 +144,9 @@ class MinorModeState {
         nativeSource: nativeSource,
       ),
       ageBand: ageBand,
-      parentAuthenticationSupported:
-          _asBool(map['parentAuthenticationSupported']),
+      parentAuthenticationSupported: _asBool(
+        map['parentAuthenticationSupported'],
+      ),
       systemStateReadFailed: _asBool(map['systemStateReadFailed']),
       lastError: map['lastError']?.toString(),
     );
@@ -179,14 +177,14 @@ class MinorModeState {
   }
 
   Map<String, Object?> toMap() => {
-        'systemSupported': systemSupported,
-        'systemEnabled': systemEnabled,
-        'manualEnabled': manualEnabled,
-        'source': source.name,
-        'ageBand': ageBand.name,
-        'parentAuthenticationSupported': parentAuthenticationSupported,
-        'systemStateReadFailed': systemStateReadFailed,
-      };
+    'systemSupported': systemSupported,
+    'systemEnabled': systemEnabled,
+    'manualEnabled': manualEnabled,
+    'source': source.name,
+    'ageBand': ageBand.name,
+    'parentAuthenticationSupported': parentAuthenticationSupported,
+    'systemStateReadFailed': systemStateReadFailed,
+  };
 
   @override
   bool operator ==(Object other) {
@@ -203,15 +201,15 @@ class MinorModeState {
 
   @override
   int get hashCode => Object.hash(
-        systemSupported,
-        systemEnabled,
-        manualEnabled,
-        source,
-        ageBand,
-        parentAuthenticationSupported,
-        systemStateReadFailed,
-        lastError,
-      );
+    systemSupported,
+    systemEnabled,
+    manualEnabled,
+    source,
+    ageBand,
+    parentAuthenticationSupported,
+    systemStateReadFailed,
+    lastError,
+  );
 
   static MinorAgeBand _parseAgeBand(Object? value) {
     if (value is String) {

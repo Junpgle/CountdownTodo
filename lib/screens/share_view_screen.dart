@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+
 import '../models.dart';
 import '../services/api_service.dart';
 import '../widgets/floating_glass_control.dart';
@@ -81,49 +82,56 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
     // 解析待办
     final rawTodos = (result['todos'] as List?) ?? [];
     _todos = rawTodos
-        .map((t) => TodoItem(
-              id: t['uuid']?.toString(),
-              title: t['content']?.toString() ?? '',
-              isDone: t['is_completed'] == 1,
-              dueDate: t['due_date'] != null
-                  ? DateTime.fromMillisecondsSinceEpoch(t['due_date'] as int)
-                  : null,
-              createdDate: t['created_date'] as int?,
-              createdAt: t['created_at'] as int?,
-              collabType: t['collab_type'] ?? 0,
-              groupId: t['group_id']?.toString(),
-              isAllDay: t['is_all_day'] == 1 || t['isAllDay'] == true,
-              teamUuid: teamUuid,
-              teamName: teamName,
-            ))
+        .map(
+          (t) => TodoItem(
+            id: t['uuid']?.toString(),
+            title: t['content']?.toString() ?? '',
+            isDone: t['is_completed'] == 1,
+            dueDate: t['due_date'] != null
+                ? DateTime.fromMillisecondsSinceEpoch(t['due_date'] as int)
+                : null,
+            createdDate: t['created_date'] as int?,
+            createdAt: t['created_at'] as int?,
+            collabType: t['collab_type'] ?? 0,
+            groupId: t['group_id']?.toString(),
+            isAllDay: t['is_all_day'] == 1 || t['isAllDay'] == true,
+            teamUuid: teamUuid,
+            teamName: teamName,
+          ),
+        )
         .toList();
 
     // 解析分组
     final rawGroups = (result['groups'] as List?) ?? [];
     _todoGroups = rawGroups
-        .map((g) => TodoGroup(
-              id: g['uuid']?.toString(),
-              name: g['name']?.toString() ?? '未命名分组',
-              isExpanded: g['is_expanded'] == 1 || g['is_expanded'] == true,
-              teamUuid: teamUuid,
-              teamName: teamName,
-            ))
+        .map(
+          (g) => TodoGroup(
+            id: g['uuid']?.toString(),
+            name: g['name']?.toString() ?? '未命名分组',
+            isExpanded: g['is_expanded'] == 1 || g['is_expanded'] == true,
+            teamUuid: teamUuid,
+            teamName: teamName,
+          ),
+        )
         .toList();
 
     // 解析倒计时
     final rawCountdowns = (result['countdowns'] as List?) ?? [];
     _countdowns = rawCountdowns
-        .map((c) => CountdownItem(
-              id: c['uuid']?.toString(),
-              title: c['title']?.toString() ?? '',
-              targetDate: DateTime.fromMillisecondsSinceEpoch(
-                  (c['target_time'] as int?) ??
-                      DateTime.now().millisecondsSinceEpoch),
-              isCompleted: c['is_completed'] == 1,
-              createdAt: c['created_at'] as int?,
-              teamUuid: teamUuid,
-              teamName: teamName,
-            ))
+        .map(
+          (c) => CountdownItem(
+            id: c['uuid']?.toString(),
+            title: c['title']?.toString() ?? '',
+            targetDate: DateTime.fromMillisecondsSinceEpoch(
+              (c['target_time'] as int?) ??
+                  DateTime.now().millisecondsSinceEpoch,
+            ),
+            isCompleted: c['is_completed'] == 1,
+            createdAt: c['created_at'] as int?,
+            teamUuid: teamUuid,
+            teamName: teamName,
+          ),
+        )
         .toList();
 
     // 日程在新版数据结构中独立于待办返回。兼容后端可能使用的两种命名，
@@ -150,7 +158,9 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
   }
 
   List<dynamic> _readFirstList(
-      Map<String, dynamic> data, List<String> candidateKeys) {
+    Map<String, dynamic> data,
+    List<String> candidateKeys,
+  ) {
     for (final key in candidateKeys) {
       final value = data[key];
       if (value is List) return value;
@@ -184,22 +194,28 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDState) => AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Row(children: [
-            Icon(Icons.person_add_rounded,
-                color: Theme.of(context).colorScheme.secondary),
-            const SizedBox(width: 12),
-            const Text('申请加入团队'),
-          ]),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                Icons.person_add_rounded,
+                color: Theme.of(context).colorScheme.secondary,
+              ),
+              const SizedBox(width: 12),
+              const Text('申请加入团队'),
+            ],
+          ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('填写你的邮箱，管理员审批后你将收到通知。',
-                    style:
-                        TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+                Text(
+                  '填写你的邮箱，管理员审批后你将收到通知。',
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                ),
                 const SizedBox(height: 16),
                 TextField(
                   controller: emailCtrl,
@@ -208,7 +224,8 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                     hintText: '请输入你的注册邮箱',
                     prefixIcon: const Icon(Icons.email_outlined),
                     border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                   keyboardType: TextInputType.emailAddress,
                   autofocus: true,
@@ -221,7 +238,8 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                     hintText: '简单介绍一下自己',
                     prefixIcon: const Icon(Icons.message_outlined),
                     border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                   maxLines: 2,
                 ),
@@ -230,15 +248,19 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
             ElevatedButton(
               onPressed: submitting
                   ? null
                   : () async {
                       final email = emailCtrl.text.trim();
                       if (email.isEmpty) {
-                        AppSnackBars.showSnackBar(context,
-                            const SnackBar(content: Text('请输入邮箱')));
+                        AppSnackBars.showSnackBar(
+                          context,
+                          const SnackBar(content: Text('请输入邮箱')),
+                        );
                         return;
                       }
                       setDState(() => submitting = true);
@@ -250,27 +272,35 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                       if (!ctx.mounted) return;
                       Navigator.pop(ctx);
                       AppSnackBars.showSnackBar(
-                          ctx,
-                          SnackBar(
-                            content: Text(res['success'] == true
+                        ctx,
+                        SnackBar(
+                          content: Text(
+                            res['success'] == true
                                 ? '申请已提交，请等待管理员审批'
-                                : res['error'] ?? '提交失败'),
-                            backgroundColor:
-                                res['success'] == true ? Colors.green : null,
-                          ));
+                                : res['error'] ?? '提交失败',
+                          ),
+                          backgroundColor: res['success'] == true
+                              ? Colors.green
+                              : null,
+                        ),
+                      );
                     },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Theme.of(context).colorScheme.secondary,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
               child: submitting
                   ? const SizedBox(
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                   : const Text('提交申请'),
             ),
           ],
@@ -302,11 +332,14 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            Text('加载中...',
-                style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey.shade500,
-                    fontWeight: FontWeight.w500)),
+            Text(
+              '加载中...',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey.shade500,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ],
         ),
       ),
@@ -327,13 +360,18 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                   color: Colors.red.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.error_outline,
-                    size: 48, color: Colors.red.shade300),
+                child: Icon(
+                  Icons.error_outline,
+                  size: 48,
+                  color: Colors.red.shade300,
+                ),
               ),
               const SizedBox(height: 20),
-              Text(_errorMessage,
-                  style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
-                  textAlign: TextAlign.center),
+              Text(
+                _errorMessage,
+                style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+                textAlign: TextAlign.center,
+              ),
               const SizedBox(height: 24),
               FilledButton.icon(
                 onPressed: () => Navigator.of(context).pop(),
@@ -359,21 +397,26 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .primary
+                  color: Theme.of(context).colorScheme.primary
                       .withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.lock_outline,
-                    size: 48, color: Theme.of(context).colorScheme.primary),
+                child: Icon(
+                  Icons.lock_outline,
+                  size: 48,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
               ),
               const SizedBox(height: 20),
-              const Text('需要密码验证',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+              const Text(
+                '需要密码验证',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 8),
-              Text('此分享链接设置了访问密码',
-                  style: TextStyle(color: Colors.grey.shade600)),
+              Text(
+                '此分享链接设置了访问密码',
+                style: TextStyle(color: Colors.grey.shade600),
+              ),
               const SizedBox(height: 28),
               TextField(
                 controller: _passwordController,
@@ -381,7 +424,8 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                   labelText: '请输入密码',
                   prefixIcon: const Icon(Icons.lock_outline),
                   border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 obscureText: true,
                 autofocus: true,
@@ -395,17 +439,25 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                   onPressed: _verifying ? null : _verifyPassword,
                   style: FilledButton.styleFrom(
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                   child: _verifying
                       ? const SizedBox(
                           width: 20,
                           height: 20,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
-                      : const Text('验证',
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          '验证',
                           style: TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w600)),
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                 ),
               ),
             ],
@@ -428,11 +480,9 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
     final shareTitle = _displayValue(share['title'], teamName);
     final announcements = (_data!['announcements'] as List?) ?? [];
     final isLight = Theme.of(context).brightness == Brightness.light;
-    final contentWidth = math.min(
-      size.width - (isDesktop ? 48 : 32),
-      1240.0,
-    );
-    final hasContent = _todos.isNotEmpty ||
+    final contentWidth = math.min(size.width - (isDesktop ? 48 : 32), 1240.0);
+    final hasContent =
+        _todos.isNotEmpty ||
         _schedules.isNotEmpty ||
         _countdowns.isNotEmpty ||
         announcements.isNotEmpty;
@@ -445,7 +495,8 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
         onRefresh: _loadData,
         child: CustomScrollView(
           physics: const BouncingScrollPhysics(
-              parent: AlwaysScrollableScrollPhysics()),
+            parent: AlwaysScrollableScrollPhysics(),
+          ),
           slivers: [
             FloatingGlassSliverAppBar(
               expandedHeight: isDesktop ? 236 : 204,
@@ -457,8 +508,11 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
               actionsIconTheme: IconThemeData(color: colorScheme.onPrimary),
               flexibleSpace: FlexibleSpaceBar(
                 collapseMode: CollapseMode.parallax,
-                titlePadding:
-                    const EdgeInsets.only(left: 20, right: 64, bottom: 16),
+                titlePadding: const EdgeInsets.only(
+                  left: 20,
+                  right: 64,
+                  bottom: 16,
+                ),
                 title: Text(
                   shareTitle,
                   maxLines: 1,
@@ -547,8 +601,10 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
         backgroundColor: colorScheme.secondaryContainer,
         foregroundColor: colorScheme.onSecondaryContainer,
         icon: const Icon(Icons.person_add_rounded),
-        label:
-            const Text('申请加入团队', style: TextStyle(fontWeight: FontWeight.bold)),
+        label: const Text(
+          '申请加入团队',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
       ),
     );
   }
@@ -614,8 +670,11 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                               color: heroForeground.withValues(alpha: 0.22),
                             ),
                           ),
-                          child: Icon(Icons.groups_rounded,
-                              size: 34, color: heroForeground),
+                          child: Icon(
+                            Icons.groups_rounded,
+                            size: 34,
+                            color: heroForeground,
+                          ),
                         ),
                         const SizedBox(width: 16),
                         Expanded(
@@ -636,10 +695,13 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                               const SizedBox(height: 6),
                               Row(
                                 children: [
-                                  Icon(Icons.public_rounded,
-                                      size: 14,
-                                      color: heroForeground.withValues(
-                                          alpha: 0.72)),
+                                  Icon(
+                                    Icons.public_rounded,
+                                    size: 14,
+                                    color: heroForeground.withValues(
+                                      alpha: 0.72,
+                                    ),
+                                  ),
                                   const SizedBox(width: 5),
                                   Flexible(
                                     child: Text(
@@ -648,7 +710,8 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
                                         color: heroForeground.withValues(
-                                            alpha: 0.72),
+                                          alpha: 0.72,
+                                        ),
                                         fontSize: 13,
                                       ),
                                     ),
@@ -662,7 +725,8 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
                                           color: heroForeground.withValues(
-                                              alpha: 0.58),
+                                            alpha: 0.58,
+                                          ),
                                           fontSize: 12,
                                         ),
                                       ),
@@ -753,18 +817,21 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('分享概览',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          )),
+                  Text(
+                    '分享概览',
+                    style: Theme.of(context).textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
                   const SizedBox(height: 4),
-                  Text(teamName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: colorScheme.onSurfaceVariant,
-                        fontSize: 13,
-                      )),
+                  Text(
+                    teamName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: colorScheme.onSurfaceVariant,
+                      fontSize: 13,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -822,17 +889,16 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(value,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  height: 1,
-                )),
+        Text(
+          value,
+          style: Theme.of(context).textTheme.titleLarge
+              ?.copyWith(fontWeight: FontWeight.w800, height: 1),
+        ),
         const SizedBox(height: 4),
-        Text(label,
-            style: TextStyle(
-              color: colorScheme.onSurfaceVariant,
-              fontSize: 12,
-            )),
+        Text(
+          label,
+          style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12),
+        ),
       ],
     );
 
@@ -860,7 +926,10 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
             colorScheme: colorScheme,
             padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
             child: ShareTodoSection(
-                todos: _todos, todoGroups: _todoGroups, isLight: isLight),
+              todos: _todos,
+              todoGroups: _todoGroups,
+              isLight: isLight,
+            ),
           )
         : null;
     final sideSections = <Widget>[];
@@ -872,8 +941,10 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
         _buildSurfacePanel(
           colorScheme: colorScheme,
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-          child:
-              ShareCountdownSection(countdowns: _countdowns, isLight: isLight),
+          child: ShareCountdownSection(
+            countdowns: _countdowns,
+            isLight: isLight,
+          ),
         ),
       );
     }
@@ -936,10 +1007,7 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
         _buildSurfacePanel(
           colorScheme: colorScheme,
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          child: ShareScheduleSection(
-            schedules: _schedules,
-            isLight: isLight,
-          ),
+          child: ShareScheduleSection(schedules: _schedules, isLight: isLight),
         ),
       );
     }
@@ -951,8 +1019,10 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
         _buildSurfacePanel(
           colorScheme: colorScheme,
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child:
-              ShareCountdownSection(countdowns: _countdowns, isLight: isLight),
+          child: ShareCountdownSection(
+            countdowns: _countdowns,
+            isLight: isLight,
+          ),
         ),
       );
     }
@@ -962,7 +1032,10 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
           colorScheme: colorScheme,
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
           child: ShareTodoSection(
-              todos: _todos, todoGroups: _todoGroups, isLight: isLight),
+            todos: _todos,
+            todoGroups: _todoGroups,
+            isLight: isLight,
+          ),
         ),
       );
     }
@@ -1015,18 +1088,23 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
               color: colorScheme.primaryContainer,
               shape: BoxShape.circle,
             ),
-            child: Icon(Icons.inbox_outlined,
-                size: 34, color: colorScheme.onPrimaryContainer),
+            child: Icon(
+              Icons.inbox_outlined,
+              size: 34,
+              color: colorScheme.onPrimaryContainer,
+            ),
           ),
           const SizedBox(height: 16),
-          Text('暂无分享内容',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700)),
+          Text(
+            '暂无分享内容',
+            style: Theme.of(context).textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w700),
+          ),
           const SizedBox(height: 6),
-          Text('团队还没有公开待办、日程、倒计时或公告',
-              style: TextStyle(color: colorScheme.onSurfaceVariant)),
+          Text(
+            '团队还没有公开待办、日程、倒计时或公告',
+            style: TextStyle(color: colorScheme.onSurfaceVariant),
+          ),
         ],
       ),
     );
@@ -1053,8 +1131,9 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
             color: colorScheme.tertiary,
           ),
           const SizedBox(height: 14),
-          ...announcements.map((a) =>
-              _buildAnnouncementCard(Map<String, dynamic>.from(a as Map))),
+          ...announcements.map(
+            (a) => _buildAnnouncementCard(Map<String, dynamic>.from(a as Map)),
+          ),
         ],
       ),
     );
@@ -1083,16 +1162,19 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      )),
+              Text(
+                title,
+                style: Theme.of(context).textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
               const SizedBox(height: 2),
-              Text(subtitle,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: colorScheme.onSurfaceVariant,
-                  )),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
             ],
           ),
         ),
@@ -1133,28 +1215,30 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
             children: [
               if (isPriority) ...[
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: colorScheme.tertiary,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Text('置顶',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: colorScheme.onTertiary,
-                        fontWeight: FontWeight.w700,
-                      )),
+                  child: Text(
+                    '置顶',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: colorScheme.onTertiary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 8),
               ],
               Expanded(
                 child: Text(
                   a['title']?.toString() ?? '',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        height: 1.3,
-                      ),
+                  style: Theme.of(context).textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w700, height: 1.3),
                 ),
               ),
             ],
@@ -1172,14 +1256,19 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
             const SizedBox(height: 11),
             Row(
               children: [
-                Icon(Icons.schedule_rounded,
-                    size: 14, color: colorScheme.onSurfaceVariant),
+                Icon(
+                  Icons.schedule_rounded,
+                  size: 14,
+                  color: colorScheme.onSurfaceVariant,
+                ),
                 const SizedBox(width: 5),
-                Text(meta,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: colorScheme.onSurfaceVariant,
-                    )),
+                Text(
+                  meta,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ],
             ),
           ],

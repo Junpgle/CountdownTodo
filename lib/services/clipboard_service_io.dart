@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:ffi';
+
 import 'package:ffi/ffi.dart';
 import 'package:win32/win32.dart';
 
@@ -64,7 +65,7 @@ class ClipboardService {
 
     final uri = Uri.tryParse(toParse);
     if (uri == null || !uri.hasScheme) {
-//       debugPrint('[ClipboardService] URL parse failed: $trimmed');
+      //       debugPrint('[ClipboardService] URL parse failed: $trimmed');
       return false;
     }
 
@@ -72,29 +73,30 @@ class ClipboardService {
     if (!uri.hasAuthority) {
       // But for http/https, we need authority
       if (['http', 'https'].contains(uri.scheme.toLowerCase())) {
-//         debugPrint('[ClipboardService] HTTP URL without authority: $trimmed');
+        //         debugPrint('[ClipboardService] HTTP URL without authority: $trimmed');
         return false;
       }
     }
 
     if (!ClipboardConfig.allowedSchemes.contains(uri.scheme.toLowerCase())) {
-//       debugPrint('[ClipboardService] Scheme not allowed: ${uri.scheme}');
+      //       debugPrint('[ClipboardService] Scheme not allowed: ${uri.scheme}');
       return false;
     }
 
     final host = uri.host;
     if (host.isEmpty) {
-//       debugPrint('[ClipboardService] Empty host: $trimmed');
+      //       debugPrint('[ClipboardService] Empty host: $trimmed');
       return false;
     }
 
     // Valid hosts: localhost, IPv4, or domain with at least one dot
-    final isValidHost = host == 'localhost' ||
+    final isValidHost =
+        host == 'localhost' ||
         _ipv4HostPattern.hasMatch(host) ||
         _domainHostPattern.hasMatch(host);
 
     if (!isValidHost) {
-//       debugPrint('[ClipboardService] Invalid host: $host');
+      //       debugPrint('[ClipboardService] Invalid host: $host');
     }
 
     return isValidHost;
@@ -133,9 +135,9 @@ class ClipboardService {
     try {
       _lastClipboardSequenceNumber = GetClipboardSequenceNumber();
       _lastClipboardContent = _getClipboardText()?.trim();
-//       debugPrint('[ClipboardService] Initialized');
+      //       debugPrint('[ClipboardService] Initialized');
     } catch (e) {
-//       debugPrint('[ClipboardService] Init error: $e');
+      //       debugPrint('[ClipboardService] Init error: $e');
       _initialized = false;
     }
   }
@@ -144,7 +146,7 @@ class ClipboardService {
   void startListening() async {
     await _initClipboard();
     if (_pollTimer?.isActive == true) {
-//       debugPrint('[ClipboardService] Already listening');
+      //       debugPrint('[ClipboardService] Already listening');
       return;
     }
     _pollTimer?.cancel();
@@ -170,19 +172,19 @@ class ClipboardService {
         if (!isNew) return;
 
         _lastClipboardContent = content;
-//         debugPrint(
-//             '[ClipboardService] New content detected: ${content.length > 50 ? "${content.substring(0, 50)}..." : content}');
+        //         debugPrint(
+        //             '[ClipboardService] New content detected: ${content.length > 50 ? "${content.substring(0, 50)}..." : content}');
 
         if (_isValidUrl(content)) {
           _urlController.add(content);
         } else {
-//           debugPrint('[ClipboardService] Content is not a valid URL');
+          //           debugPrint('[ClipboardService] Content is not a valid URL');
         }
       } catch (e) {
-//         debugPrint('[ClipboardService] Error: $e');
+        //         debugPrint('[ClipboardService] Error: $e');
       }
     });
-//     debugPrint('[ClipboardService] Started listening');
+    //     debugPrint('[ClipboardService] Started listening');
   }
 
   /// Stop listening for clipboard changes

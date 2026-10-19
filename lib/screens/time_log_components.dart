@@ -20,25 +20,22 @@ ButtonStyle _timeLogPrimaryActionStyle({
   required Color foregroundColor,
   EdgeInsetsGeometry? padding,
   MaterialTapTargetSize? tapTargetSize,
-}) =>
-    ButtonStyle(
-      backgroundColor: WidgetStatePropertyAll(backgroundColor),
-      backgroundBuilder: (context, states, child) =>
-          child ?? const SizedBox.shrink(),
-      foregroundColor: WidgetStatePropertyAll(foregroundColor),
-      overlayColor: WidgetStatePropertyAll(
-        foregroundColor.withValues(alpha: 0.12),
-      ),
-      side: const WidgetStatePropertyAll(BorderSide.none),
-      surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
-      shadowColor: const WidgetStatePropertyAll(Colors.transparent),
-      elevation: const WidgetStatePropertyAll(0),
-      padding: padding == null ? null : WidgetStatePropertyAll(padding),
-      tapTargetSize: tapTargetSize,
-      shape: WidgetStatePropertyAll(
-        RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
+}) => ButtonStyle(
+  backgroundColor: WidgetStatePropertyAll(backgroundColor),
+  backgroundBuilder: (context, states, child) =>
+      child ?? const SizedBox.shrink(),
+  foregroundColor: WidgetStatePropertyAll(foregroundColor),
+  overlayColor: WidgetStatePropertyAll(foregroundColor.withValues(alpha: 0.12)),
+  side: const WidgetStatePropertyAll(BorderSide.none),
+  surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+  shadowColor: const WidgetStatePropertyAll(Colors.transparent),
+  elevation: const WidgetStatePropertyAll(0),
+  padding: padding == null ? null : WidgetStatePropertyAll(padding),
+  tapTargetSize: tapTargetSize,
+  shape: WidgetStatePropertyAll(
+    RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+  ),
+);
 
 // ══════════════════════════════════════════════════════════
 // 日视图 — 补录模式（网格拖拽选时间段）
@@ -152,8 +149,8 @@ class _DayViewState extends State<_DayView> {
     _dayPomodoros = [
       for (final pomodoro in widget.pomodoros)
         if ((pomodoro.endTime ??
-                (pomodoro.startTime + pomodoro.effectiveDuration * 1000)) >
-            gridStartMs &&
+                    (pomodoro.startTime + pomodoro.effectiveDuration * 1000)) >
+                gridStartMs &&
             pomodoro.startTime < gridEndMs)
           pomodoro,
     ];
@@ -599,10 +596,8 @@ class _DayViewState extends State<_DayView> {
     final colorScheme = Theme.of(context).colorScheme;
     final useFloating = floatingBottomBarShouldFloat(context);
     const actionControlHeight = 40.0;
-    Widget actionControl(Widget child) => SizedBox(
-      height: actionControlHeight,
-      child: child,
-    );
+    Widget actionControl(Widget child) =>
+        SizedBox(height: actionControlHeight, child: child);
     final child = Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: useFloating
@@ -841,9 +836,7 @@ class _DayViewState extends State<_DayView> {
       if (pom.tagUuids.isNotEmpty) {
         tag = _firstPomodoroTagForUuids(pom.tagUuids, tagIndicesByUuid);
       }
-      final base = tag != null
-          ? hexColor(tag.color)
-          : focusColor;
+      final base = tag != null ? hexColor(tag.color) : focusColor;
       final fill = base.withValues(alpha: isDark ? 0.35 : 0.45);
       final mark = base.withValues(alpha: 0.85);
       for (int h = sH; h <= eH; h++) {
@@ -1020,10 +1013,7 @@ class _DayViewState extends State<_DayView> {
             style: _timeLogPrimaryActionStyle(
               backgroundColor: colorScheme.primary,
               foregroundColor: colorScheme.onPrimary,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 12,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
             child: Text(
@@ -1209,7 +1199,6 @@ class _DayGridPainter extends CustomPainter {
         }
       }
     }
-
   }
 
   @override
@@ -1265,8 +1254,7 @@ class _DayGridInteractionPainter extends CustomPainter {
       final lastBlock = max(dragStart!, dragEnd!);
       selectionPaint.color = selColor;
       for (var index = firstBlock; index <= lastBlock; index++) {
-        final rowStartMs =
-            gridStartMs + index * 60 * minutesPerBlock * 1000;
+        final rowStartMs = gridStartMs + index * 60 * minutesPerBlock * 1000;
         final rowEndMs = rowStartMs + 60 * minutesPerBlock * 1000;
         final segmentEnd = min(rowEndMs, gridEndMs);
         final endOffset =
@@ -1275,12 +1263,7 @@ class _DayGridInteractionPainter extends CustomPainter {
         final width = (endOffset * blockWidth).clamp(1.0, blockWidth);
         canvas.drawRRect(
           RRect.fromRectAndRadius(
-            Rect.fromLTWH(
-              left,
-              index ~/ bpr * hourH + 1,
-              width,
-              hourH - 2,
-            ),
+            Rect.fromLTWH(left, index ~/ bpr * hourH + 1, width, hourH - 2),
             const Radius.circular(3),
           ),
           selectionPaint,

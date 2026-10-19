@@ -19,11 +19,11 @@ class JournalImagePickContext {
   });
 
   String encode() => jsonEncode({
-        'accountId': accountId,
-        'entryId': entryId,
-        'draftId': draftId,
-        'isEditing': isEditing,
-      });
+    'accountId': accountId,
+    'entryId': entryId,
+    'draftId': draftId,
+    'isEditing': isEditing,
+  });
 
   static JournalImagePickContext? decode(String? value) {
     if (value == null || value.isEmpty) return null;

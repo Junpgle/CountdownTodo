@@ -79,6 +79,7 @@ enum _QuickCaptureTarget { todo, fixedSchedule, cancel }
 
 class TodoSectionWidget extends StatefulWidget {
   final List<TodoItem> todos;
+
   /// Monotonic revision for parent-owned in-place todo/group mutations.
   /// When omitted, the widget keeps its content-signature fallback.
   final int? dataRevision;
@@ -301,10 +302,10 @@ abstract class _TodoSectionStateBase extends State<TodoSectionWidget>
 
   DateFormat _cachedDateFormat(String pattern) {
     final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent(
-      (locale, pattern),
-      () => DateFormat(pattern, locale),
-    );
+    return _dateFormatters.putIfAbsent((
+      locale,
+      pattern,
+    ), () => DateFormat(pattern, locale));
   }
 
   bool _isAiGeneratedTodo(TodoItem todo) => isAiGeneratedTodo(todo);
@@ -363,20 +364,25 @@ class _TodoSectionViewModel {
   final List<_SortedDisplayItem> todayItems;
   final List<_SortedDisplayItem> futureItems;
   final List<_GroupDisplayData> separateGroupData;
-  late final List<TodoItem> overdueTodos = <TodoItem>[
-    ...pastItems.map((item) => item.todo).whereType<TodoItem>(),
-    ...pastItems.expand(
-      (item) => item.groupTodos ?? const <TodoItem>[],
-    ),
-  ].where((todo) => !todo.isDone && !todo.isDeleted && todo.dueDate != null)
-      .toList(growable: false);
-  late final int futureUndoneCount =
-      futureItems.where((item) => !item.isDone).length;
-  late final int todayDoneCount =
-      todayItems.where((item) => item.isDone).length;
+  late final List<TodoItem> overdueTodos =
+      <TodoItem>[
+            ...pastItems.map((item) => item.todo).whereType<TodoItem>(),
+            ...pastItems.expand(
+              (item) => item.groupTodos ?? const <TodoItem>[],
+            ),
+          ]
+          .where(
+            (todo) => !todo.isDone && !todo.isDeleted && todo.dueDate != null,
+          )
+          .toList(growable: false);
+  late final int futureUndoneCount = futureItems
+      .where((item) => !item.isDone)
+      .length;
+  late final int todayDoneCount = todayItems
+      .where((item) => item.isDone)
+      .length;
   late final int todayUndoneCount = todayItems.length - todayDoneCount;
-  late final bool allTodayDone =
-      todayItems.isNotEmpty && todayUndoneCount == 0;
+  late final bool allTodayDone = todayItems.isNotEmpty && todayUndoneCount == 0;
 
   _TodoSectionViewModel({
     required this.today,

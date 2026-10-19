@@ -697,11 +697,8 @@ class _SettingsPageState extends State<SettingsPage> {
       await ReminderScheduleService.scheduleAll(
         todos: todos,
         courses: const [],
-        loadCourses: (from, to) => CourseService.getCoursesForDateRange(
-          _username,
-          from: from,
-          to: to,
-        ),
+        loadCourses: (from, to) =>
+            CourseService.getCoursesForDateRange(_username, from: from, to: to),
         expectedUsername: _username,
       );
     } catch (e) {

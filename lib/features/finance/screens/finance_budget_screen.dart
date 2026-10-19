@@ -54,10 +54,10 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
 
   DateFormat _cachedDateFormat(String pattern) {
     final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent(
-      (locale, pattern),
-      () => DateFormat(pattern, locale),
-    );
+    return _dateFormatters.putIfAbsent((
+      locale,
+      pattern,
+    ), () => DateFormat(pattern, locale));
   }
 
   @override
@@ -163,12 +163,14 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     Iterable<FinanceBudget> budgets,
     int asOfAt,
   ) {
-    final snapshots = FinanceRepository.latestPaymentBalanceSnapshots(
-      budgets,
-      asOfAt: asOfAt,
-      nowAt: widget.clock().millisecondsSinceEpoch,
-    ).toList()
-      ..sort((left, right) => _budgetTitle(left).compareTo(_budgetTitle(right)));
+    final snapshots =
+        FinanceRepository.latestPaymentBalanceSnapshots(
+          budgets,
+          asOfAt: asOfAt,
+          nowAt: widget.clock().millisecondsSinceEpoch,
+        ).toList()..sort(
+          (left, right) => _budgetTitle(left).compareTo(_budgetTitle(right)),
+        );
     return snapshots;
   }
 
@@ -187,8 +189,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
       final from = DateTime(month.year, month.month);
       final to = DateTime(month.year, month.month + 1);
       final now = widget.clock();
-      final isCurrentMonth =
-          month.year == now.year && month.month == now.month;
+      final isCurrentMonth = month.year == now.year && month.month == now.month;
       final asOfAt = isCurrentMonth
           ? now.millisecondsSinceEpoch
           : to.millisecondsSinceEpoch - 1;
@@ -207,9 +208,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
       final balanceSnapshots = allBudgets
           .where((budget) => budget.isPaymentMethod)
           .toList(growable: false);
-      final applicableSnapshots = month.isAfter(
-        DateTime(now.year, now.month),
-      )
+      final applicableSnapshots = month.isAfter(DateTime(now.year, now.month))
           ? const <FinanceBudget>[]
           : _latestPaymentSnapshots(balanceSnapshots, asOfAt);
       final earliestSnapshotAt = applicableSnapshots
@@ -235,9 +234,8 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
           .toSet();
       final balanceAsOfAt = _balanceAsOfAt;
       final balanceNow = widget.clock();
-      final snapshotsForBalance = month.isAfter(
-        DateTime(balanceNow.year, balanceNow.month),
-      )
+      final snapshotsForBalance =
+          month.isAfter(DateTime(balanceNow.year, balanceNow.month))
           ? const <FinanceBudget>[]
           : FinanceRepository.latestPaymentBalanceSnapshots(
               balanceSnapshots,
@@ -318,10 +316,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
       final paymentMethodUuid = transaction.paymentMethodUuid;
       final snapshotAt = snapshotsByMethod[paymentMethodUuid];
       if (paymentMethodUuid == null || snapshotAt == null) continue;
-      final eventAt = _balanceEventTime(
-        transaction,
-        snapshotAt: snapshotAt,
-      );
+      final eventAt = _balanceEventTime(transaction, snapshotAt: snapshotAt);
       if (eventAt <= snapshotAt) continue;
       final eligibleAt = eventAt;
       if (eligibleAt <= now ||
@@ -338,7 +333,8 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
       // Match paymentMethodBalanceAt: picker precision can put a repayment's
       // paidAt in the same minute as a balance snapshot even though the
       // repayment was recorded later. Refresh when that record becomes active.
-      final eventAt = paidAt <= snapshotAt &&
+      final eventAt =
+          paidAt <= snapshotAt &&
               paidAt ~/ 60000 == snapshotAt ~/ 60000 &&
               repayment.updatedAt > snapshotAt
           ? repayment.updatedAt
@@ -511,8 +507,10 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     final nextMonth = DateTime(_month.year, _month.month + delta);
     final firstAllowedMonth = DateTime(2000);
     final lastAllowedDate = widget.clock().add(const Duration(days: 3650));
-    final lastAllowedMonth =
-        DateTime(lastAllowedDate.year, lastAllowedDate.month);
+    final lastAllowedMonth = DateTime(
+      lastAllowedDate.year,
+      lastAllowedDate.month,
+    );
     return !nextMonth.isBefore(firstAllowedMonth) &&
         !nextMonth.isAfter(lastAllowedMonth);
   }
@@ -536,32 +534,27 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     await _load();
   }
 
-  int _usedFor(
-    FinanceBudget budget, {
-    Map<String, int>? budgetSpending,
-  }) {
+  int _usedFor(FinanceBudget budget, {Map<String, int>? budgetSpending}) {
     final paymentMethodUuid = budget.paymentMethodUuid;
     if (paymentMethodUuid != null) {
       final balance = _paymentMethodBalances[paymentMethodUuid];
       if (balance != null) return budget.amountMinor - balance;
       // Keep a correct fallback if a newly eligible snapshot appears between
       // loading data and the next screen refresh.
-      return budget.amountMinor - FinanceRepository.paymentMethodBalanceAt(
-        snapshot: budget,
-        transactions: _balanceTransactions,
-        loanRepayments: _loanRepayments,
-        loanInterestTransactionUuids: _loanInterestTransactionUuids,
-        asOfAt: _balanceAsOfAt,
-      );
+      return budget.amountMinor -
+          FinanceRepository.paymentMethodBalanceAt(
+            snapshot: budget,
+            transactions: _balanceTransactions,
+            loanRepayments: _loanRepayments,
+            loanInterestTransactionUuids: _loanInterestTransactionUuids,
+            asOfAt: _balanceAsOfAt,
+          );
     }
     return budgetSpending?[budget.uuid] ??
         _summary.spendingForBudget(budget, _categories);
   }
 
-  int _balanceEventTime(
-    FinanceTransaction transaction, {
-    int? snapshotAt,
-  }) {
+  int _balanceEventTime(FinanceTransaction transaction, {int? snapshotAt}) {
     return transaction.balanceEventAt(snapshotAt: snapshotAt);
   }
 
@@ -570,10 +563,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
       return FinanceRepository.summarizeTransactions(_transactions);
     }
     final cutoff = asOfAt ?? _balanceAsOfAt;
-    return FinanceSummary.fromTransactions(
-      _transactions,
-      asOfAt: cutoff,
-    );
+    return FinanceSummary.fromTransactions(_transactions, asOfAt: cutoff);
   }
 
   String _budgetTitle(FinanceBudget budget) {
@@ -710,9 +700,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
                     if (_balanceSyncSupported == false) ...[
                       Text(
                         '当前服务暂不支持余额云同步，余额和还款账户保存在本机。',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
+                        style: Theme.of(context).textTheme.bodySmall
                             ?.copyWith(color: colorScheme.onSurfaceVariant),
                       ),
                       const SizedBox(height: 8),
@@ -806,8 +794,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     final used = overall == null
         ? summaryBudgets.fold<int>(
             0,
-            (sum, item) =>
-                sum + _usedFor(item, budgetSpending: budgetSpending),
+            (sum, item) => sum + _usedFor(item, budgetSpending: budgetSpending),
           )
         : _usedFor(overall, budgetSpending: budgetSpending);
     final remaining = budgetTotal - used;
@@ -816,16 +803,14 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
         : (used / budgetTotal).clamp(0.0, 1.0).toDouble();
     final isOver = remaining < 0;
     final monthLabel = _monthLabel;
-    final title = overall == null
-        ? '$monthLabel分类预算合计'
-        : '$monthLabel总预算';
+    final title = overall == null ? '$monthLabel分类预算合计' : '$monthLabel总预算';
     final subtitle = overall != null
         ? _isFutureMonth
-            ? '根据$monthLabel待发生账单估算'
-            : '所有支出按$monthLabel账单计算'
+              ? '根据$monthLabel待发生账单估算'
+              : '所有支出按$monthLabel账单计算'
         : summaryBudgets.length < categoryBudgets.length
-            ? '父子分类按大类汇总，细分类预算单独显示'
-            : '只汇总已设置分类的预算';
+        ? '父子分类按大类汇总，细分类预算单独显示'
+        : '只汇总已设置分类的预算';
     final remainingLabel = _isFutureMonth ? '计划剩余' : '剩余';
     final overBudgetLabel = _isFutureMonth ? '计划超出' : '已超支';
     final usedLabel = _isFutureMonth ? '计划使用' : '已使用';
@@ -909,10 +894,10 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
         ? '计划使用'
         : budget.isPaymentMethod
         ? (used < 0
-            ? '录入后净增加'
-            : used > 0
-                ? '录入后净扣减'
-                : '录入后余额不变')
+              ? '录入后净增加'
+              : used > 0
+              ? '录入后净扣减'
+              : '录入后余额不变')
         : '已使用';
     final snapshotAt = DateTime.fromMillisecondsSinceEpoch(
       budget.effectiveBalanceSnapshotAt,

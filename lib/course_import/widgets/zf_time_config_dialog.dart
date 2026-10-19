@@ -61,8 +61,10 @@ class _ZfTimeConfigDialogState extends State<ZfTimeConfigDialog> {
         height: 400,
         child: Column(
           children: [
-            const Text("正方教务不含时间，请分别设置每节课的开始与结束时刻：",
-                style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const Text(
+              "正方教务不含时间，请分别设置每节课的开始与结束时刻：",
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
             const SizedBox(height: 12),
             Expanded(
               child: ListView.builder(
@@ -81,9 +83,12 @@ class _ZfTimeConfigDialogState extends State<ZfTimeConfigDialog> {
                     child: ListTile(
                       dense: true,
                       leading: CircleAvatar(
-                          radius: 12,
-                          child: Text("${index + 1}",
-                              style: const TextStyle(fontSize: 10))),
+                        radius: 12,
+                        child: Text(
+                          "${index + 1}",
+                          style: const TextStyle(fontSize: 10),
+                        ),
+                      ),
                       title: Row(
                         children: [
                           // 开始时间按钮
@@ -91,47 +96,55 @@ class _ZfTimeConfigDialogState extends State<ZfTimeConfigDialog> {
                             child: InkWell(
                               onTap: () => _pickSingleTime(index, true),
                               child: Container(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 4,
+                                ),
                                 decoration: BoxDecoration(
                                   border: Border.all(
-                                      color:
-                                          Colors.grey.withValues(alpha: 0.3)),
+                                    color: Colors.grey.withValues(alpha: 0.3),
+                                  ),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
                                   "${t['sH']}:${t['sM']!.toString().padLeft(2, '0')}",
                                   textAlign: TextAlign.center,
                                   style: const TextStyle(
-                                      fontWeight: FontWeight.bold),
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                           const Padding(
                             padding: EdgeInsets.symmetric(horizontal: 8.0),
-                            child: Text("至",
-                                style: TextStyle(
-                                    fontSize: 12, color: Colors.grey)),
+                            child: Text(
+                              "至",
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey,
+                              ),
+                            ),
                           ),
                           // 结束时间按钮
                           Expanded(
                             child: InkWell(
                               onTap: () => _pickSingleTime(index, false),
                               child: Container(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 4,
+                                ),
                                 decoration: BoxDecoration(
                                   border: Border.all(
-                                      color:
-                                          Colors.grey.withValues(alpha: 0.3)),
+                                    color: Colors.grey.withValues(alpha: 0.3),
+                                  ),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
                                   "${t['eH']}:${t['eM']!.toString().padLeft(2, '0')}",
                                   textAlign: TextAlign.center,
                                   style: const TextStyle(
-                                      fontWeight: FontWeight.bold),
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
                             ),
@@ -148,7 +161,9 @@ class _ZfTimeConfigDialogState extends State<ZfTimeConfigDialog> {
       ),
       actions: [
         TextButton(
-            onPressed: () => Navigator.pop(context), child: const Text("取消")),
+          onPressed: () => Navigator.pop(context),
+          child: const Text("取消"),
+        ),
         FilledButton(
           onPressed: () {
             Map<int, Map<String, int>> resultMap = {};

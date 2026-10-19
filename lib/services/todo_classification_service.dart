@@ -81,15 +81,14 @@ class TodoClassificationService {
     List<TodoItem> history = const [],
     Map<String, int> categoryReminderDefaults = const {},
     DateTime? dueDate,
-  }) =>
-      _recommendForText(
-        title: title,
-        remark: remark,
-        groups: groups,
-        history: history,
-        categoryReminderDefaults: categoryReminderDefaults,
-        dueDate: dueDate,
-      );
+  }) => _recommendForText(
+    title: title,
+    remark: remark,
+    groups: groups,
+    history: history,
+    categoryReminderDefaults: categoryReminderDefaults,
+    dueDate: dueDate,
+  );
 
   static Future<TodoClassificationSuggestion> _recommendForText({
     required String title,
@@ -111,7 +110,8 @@ class TodoClassificationService {
         : _tokensFor(text, scoringTokenCache);
 
     // Load feedback weights for all score types with one grouped query.
-    final feedbackByType = suppliedFeedbackByType ??
+    final feedbackByType =
+        suppliedFeedbackByType ??
         await SuggestionFeedbackService.getAllPosteriorsByTypes(
           keywords: textTokens.toList(),
           suggestionTypes: const ['group', 'tag', 'priority'],
@@ -137,8 +137,8 @@ class TodoClassificationService {
     final confidence = groupScore.confidence;
     final reminderMinutes =
         group != null && categoryReminderDefaults.containsKey(group.id)
-            ? categoryReminderDefaults[group.id]
-            : _reminderForPriority(priority);
+        ? categoryReminderDefaults[group.id]
+        : _reminderForPriority(priority);
 
     return TodoClassificationSuggestion(
       groupId: confidence >= 0.18 ? group?.id : null,
@@ -177,8 +177,8 @@ class TodoClassificationService {
       final batchSize = remainingLimit <= 0
           ? 1
           : remainingLimit < 6
-              ? remainingLimit
-              : 6;
+          ? remainingLimit
+          : 6;
       var batchEnd = offset + batchSize;
       if (batchEnd > eligibleTodos.length) batchEnd = eligibleTodos.length;
       final batch = eligibleTodos.sublist(offset, batchEnd);
@@ -191,9 +191,11 @@ class TodoClassificationService {
       ];
       final feedbackByQuery =
           await SuggestionFeedbackService.getAllPosteriorsForQueries(
-        keywordSets: [for (final tokens in batchTextTokens) tokens.toList()],
-        suggestionTypes: const ['group', 'tag', 'priority'],
-      );
+            keywordSets: [
+              for (final tokens in batchTextTokens) tokens.toList(),
+            ],
+            suggestionTypes: const ['group', 'tag', 'priority'],
+          );
 
       final groupedHistory = historyByGroup ??= _indexHistoryByGroup(todos);
       final scoringTokenCache = <String, Set<String>>{};
@@ -301,16 +303,23 @@ class TodoClassificationService {
       scores[uuid] = (scores[uuid] ?? 0) + score;
     }
 
-    final sameTodoRecords = history
-        .where((r) =>
-            !r.isDeleted && r.todoUuid == todo.id && r.tagUuids.isNotEmpty)
-        .toList()
-      ..sort((a, b) => b.startTime.compareTo(a.startTime));
+    final sameTodoRecords =
+        history
+            .where(
+              (r) =>
+                  !r.isDeleted &&
+                  r.todoUuid == todo.id &&
+                  r.tagUuids.isNotEmpty,
+            )
+            .toList()
+          ..sort((a, b) => b.startTime.compareTo(a.startTime));
     for (var i = 0; i < sameTodoRecords.length && i < 12; i++) {
       final record = sameTodoRecords[i];
       final recencyBoost = max(0.0, 2.0 - i * 0.15);
-      final durationBoost =
-          min(2.0, (record.effectiveDuration / 1800).clamp(0, 2).toDouble());
+      final durationBoost = min(
+        2.0,
+        (record.effectiveDuration / 1800).clamp(0, 2).toDouble(),
+      );
       for (final uuid in record.tagUuids) {
         addScore(uuid, 7.0 + recencyBoost + durationBoost);
       }
@@ -563,10 +572,7 @@ class TodoClassificationService {
     return tokens;
   }
 
-  static Set<String> _tokensFor(
-    String text,
-    Map<String, Set<String>>? cache,
-  ) {
+  static Set<String> _tokensFor(String text, Map<String, Set<String>>? cache) {
     if (cache == null) return _tokens(text);
     return cache.putIfAbsent(text, () => _tokens(text));
   }

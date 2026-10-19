@@ -818,14 +818,10 @@ class AiActionParser {
     Map<String, dynamic> data,
     Map<String, String> existingTodoTitles,
   ) {
-    final sourceTodoId = [
-      data['sourceTodoId'],
-      data['todoId'],
-      data['source_id'],
-    ].map((value) => value?.toString().trim() ?? '').firstWhere(
-      (value) => value.isNotEmpty,
-      orElse: () => '',
-    );
+    final sourceTodoId =
+        [data['sourceTodoId'], data['todoId'], data['source_id']]
+            .map((value) => value?.toString().trim() ?? '')
+            .firstWhere((value) => value.isNotEmpty, orElse: () => '');
     final splitTodos = _listFrom(data['todos']);
     if (sourceTodoId.isEmpty ||
         !existingTodoTitles.containsKey(sourceTodoId) ||
@@ -867,20 +863,14 @@ class AiActionParser {
   ) {
     final rawSourceTodoIds = _stringList(
       data['sourceTodoIds'] ?? data['todoIds'],
-    )
-        .map((id) => id.trim())
-        .where((id) => id.isNotEmpty)
-        .toSet()
-        .toList();
+    ).map((id) => id.trim()).where((id) => id.isNotEmpty).toSet().toList();
     final todo = data['todo'];
     final deleteSources =
         data['deleteSources'] == true ||
         data['deleteSourceTodos'] == true ||
         data['deleteSource'] == true;
     if (rawSourceTodoIds.length < 2 ||
-        rawSourceTodoIds.any(
-          (id) => !existingTodoTitles.containsKey(id),
-        ) ||
+        rawSourceTodoIds.any((id) => !existingTodoTitles.containsKey(id)) ||
         todo is! Map ||
         todo['title']?.toString().trim().isNotEmpty != true) {
       return [];

@@ -190,11 +190,13 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
           final details = <String>[];
           final fixedTimes = policy['fixedTimes'] ?? policy['fixed_times'];
           if (fixedTimes is List) {
-            final times = fixedTimes.map((value) {
-              final minute = int.tryParse(value.toString());
-              if (minute == null) return value.toString();
-              return '${(minute ~/ 60).toString().padLeft(2, '0')}:${(minute % 60).toString().padLeft(2, '0')}';
-            }).join('、');
+            final times = fixedTimes
+                .map((value) {
+                  final minute = int.tryParse(value.toString());
+                  if (minute == null) return value.toString();
+                  return '${(minute ~/ 60).toString().padLeft(2, '0')}:${(minute % 60).toString().padLeft(2, '0')}';
+                })
+                .join('、');
             details.add('时间 ${times.isEmpty ? '清空' : times}');
           }
           for (final entry in const {
@@ -213,15 +215,15 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
               details.add('${entry.value}${value == true ? '开' : '关'}');
             }
           }
-          changes.add(
-            details.isEmpty ? '更新提醒规则' : '提醒：${details.join('、')}',
-          );
+          changes.add(details.isEmpty ? '更新提醒规则' : '提醒：${details.join('、')}');
         } else {
           changes.add('更新提醒规则');
         }
       }
       if (fields.containsKey('effectiveFromOption')) {
-        changes.add('生效范围：${_habitEffectiveFromLabel(fields['effectiveFromOption'])}');
+        changes.add(
+          '生效范围：${_habitEffectiveFromLabel(fields['effectiveFromOption'])}',
+        );
       } else if (const {
         'targetValue',
         'unit',
@@ -1914,9 +1916,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                         ],
                       ),
                     if (selectedTagUuids.any(
-                      (uuid) => !availableTags.any(
-                        (tag) => tag.uuid == uuid,
-                      ),
+                      (uuid) => !availableTags.any((tag) => tag.uuid == uuid),
                     ))
                       Align(
                         alignment: Alignment.centerLeft,
@@ -2611,13 +2611,12 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       try {
         await _saveHistorySilently();
       } catch (historyError) {
-        debugPrint('AI action recovery state could not be saved: $historyError');
+        debugPrint(
+          'AI action recovery state could not be saved: $historyError',
+        );
       }
       if (!mounted) return;
-      AppSnackBars.error(
-        context,
-        '操作执行中断；已成功保存的操作已完成，未完成的操作仍保留在确认卡中：$error',
-      );
+      AppSnackBars.error(context, '操作执行中断；已成功保存的操作已完成，未完成的操作仍保留在确认卡中：$error');
     } finally {
       _executingMessageIds.remove(msg.id);
     }
@@ -2783,7 +2782,10 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       );
       if (widget.onTodosBatchAction != null) {
         if (result.newTodos.isNotEmpty || result.updatedTodos.isNotEmpty) {
-          await widget.onTodosBatchAction!(result.newTodos, result.updatedTodos);
+          await widget.onTodosBatchAction!(
+            result.newTodos,
+            result.updatedTodos,
+          );
           result.markWriteGroupAdded(AiTodoActionWriteGroup.newTodos);
           result.markWriteGroupAdded(AiTodoActionWriteGroup.updatedTodos);
           await _saveHistorySilently();
@@ -2792,7 +2794,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         // Fallback to separate calls
         final standaloneNewTodos = result.newTodos
             .where(
-              (todo) => !plannedNewTodos.any((planned) => planned.id == todo.id),
+              (todo) =>
+                  !plannedNewTodos.any((planned) => planned.id == todo.id),
             )
             .toList();
         if (standaloneNewTodos.isNotEmpty) {

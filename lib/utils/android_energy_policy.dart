@@ -3,30 +3,38 @@ import '../services/power_save_mode_service.dart';
 
 /// Shared Android-only limits for energy-sensitive UI and sensor work.
 abstract final class AndroidEnergyPolicy {
-  static const Duration androidStrictFocusSensorPeriod =
-      Duration(milliseconds: 200);
-  static const Duration androidPowerSaveStrictFocusSensorPeriod =
-      Duration(milliseconds: 500);
-  static const Duration defaultStrictFocusSensorPeriod =
-      Duration(milliseconds: 100);
-  static const Duration androidDisconnectedSyncProbeInterval =
-      Duration(minutes: 2);
+  static const Duration androidStrictFocusSensorPeriod = Duration(
+    milliseconds: 200,
+  );
+  static const Duration androidPowerSaveStrictFocusSensorPeriod = Duration(
+    milliseconds: 500,
+  );
+  static const Duration defaultStrictFocusSensorPeriod = Duration(
+    milliseconds: 100,
+  );
+  static const Duration androidDisconnectedSyncProbeInterval = Duration(
+    minutes: 2,
+  );
   static const Duration androidPowerSaveDisconnectedSyncProbeInterval =
       Duration(minutes: 5);
-  static const Duration defaultDisconnectedSyncProbeInterval =
-      Duration(minutes: 1);
-  static const Duration androidForegroundWidgetRefreshInterval =
-      Duration(hours: 1);
-  static const Duration defaultForegroundWidgetRefreshInterval =
-      Duration(minutes: 30);
-  static const Duration androidPowerSaveVisibleClockInterval =
-      Duration(minutes: 1);
+  static const Duration defaultDisconnectedSyncProbeInterval = Duration(
+    minutes: 1,
+  );
+  static const Duration androidForegroundWidgetRefreshInterval = Duration(
+    hours: 1,
+  );
+  static const Duration defaultForegroundWidgetRefreshInterval = Duration(
+    minutes: 30,
+  );
+  static const Duration androidPowerSaveVisibleClockInterval = Duration(
+    minutes: 1,
+  );
   static const Duration defaultVisibleClockInterval = Duration(seconds: 1);
 
   static Duration get strictFocusSensorPeriod => strictFocusSensorPeriodFor(
-        isAndroid: AppPlatform.isAndroid,
-        isPowerSaveMode: PowerSaveModeService.isEnabled,
-      );
+    isAndroid: AppPlatform.isAndroid,
+    isPowerSaveMode: PowerSaveModeService.isEnabled,
+  );
 
   static Duration strictFocusSensorPeriodFor({
     required bool isAndroid,
@@ -86,9 +94,9 @@ abstract final class AndroidEnergyPolicy {
 
   /// Decorative motion is paused while Android Battery Saver is active.
   static bool get shouldRunDecorativeMotion => shouldRunDecorativeMotionFor(
-        isAndroid: AppPlatform.isAndroid,
-        isPowerSaveMode: PowerSaveModeService.isEnabled,
-      );
+    isAndroid: AppPlatform.isAndroid,
+    isPowerSaveMode: PowerSaveModeService.isEnabled,
+  );
 
   static bool shouldRunDecorativeMotionFor({
     required bool isAndroid,
@@ -147,9 +155,9 @@ abstract final class AndroidEnergyPolicy {
   /// Visible clocks only need minute-level updates while Android Battery Saver
   /// is active. Countdown engines and notification timing remain untouched.
   static Duration get visibleClockInterval => visibleClockIntervalFor(
-        isAndroid: AppPlatform.isAndroid,
-        isPowerSaveMode: PowerSaveModeService.isEnabled,
-      );
+    isAndroid: AppPlatform.isAndroid,
+    isPowerSaveMode: PowerSaveModeService.isEnabled,
+  );
 
   static Duration visibleClockIntervalFor({
     required bool isAndroid,

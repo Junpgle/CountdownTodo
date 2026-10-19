@@ -25,10 +25,10 @@ final Map<(String?, String), DateFormat> _planAvailabilityDateFormats = {};
 
 DateFormat _planAvailabilityDateFormat(String pattern) {
   final locale = Intl.defaultLocale;
-  return _planAvailabilityDateFormats.putIfAbsent(
-    (locale, pattern),
-    () => DateFormat(pattern, locale),
-  );
+  return _planAvailabilityDateFormats.putIfAbsent((
+    locale,
+    pattern,
+  ), () => DateFormat(pattern, locale));
 }
 
 class _PlanSplitRequest {
@@ -1539,7 +1539,10 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                           Icons.calendar_today_outlined,
                           size: 18,
                         ),
-                        label: Text(_planAvailabilityDateFormat('yyyy-MM-dd').format(_date)),
+                        label: Text(
+                          _planAvailabilityDateFormat('yyyy-MM-dd')
+                              .format(_date),
+                        ),
                       ),
                       TextButton(
                         key: const ValueKey('plan-window-start'),
@@ -1734,8 +1737,9 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                           style: theme.textTheme.bodySmall,
                         ),
                         children: [
-                          for (final item
-                              in _busyInDisplayOrder(_snapshot!).take(50))
+                          for (final item in _busyInDisplayOrder(
+                            _snapshot!,
+                          ).take(50))
                             Padding(
                               padding: const EdgeInsets.symmetric(vertical: 6),
                               child: Align(

@@ -18,15 +18,15 @@ class ClipboardSharePayload {
   final String? teamName;
 
   const ClipboardSharePayload.challenge(this.challenge)
-      : kind = ClipboardShareKind.challenge,
-        inviteCode = null,
-        teamName = null;
+    : kind = ClipboardShareKind.challenge,
+      inviteCode = null,
+      teamName = null;
 
   const ClipboardSharePayload.teamInvite({
     required this.inviteCode,
     this.teamName,
-  })  : kind = ClipboardShareKind.teamInvite,
-        challenge = null;
+  }) : kind = ClipboardShareKind.teamInvite,
+       challenge = null;
 
   static String signature(String text) {
     return sha256.convert(utf8.encode(text.trim())).toString();
@@ -43,13 +43,14 @@ class ClipboardSharePayload {
       return ClipboardSharePayload.challenge(challenge);
     }
 
-    final inviteMatch = RegExp(
-      r'邀请码\s*[:：]\s*\[([a-zA-Z0-9]+)\]',
-    ).firstMatch(text);
+    final inviteMatch = RegExp(r'邀请码\s*[:：]\s*\[([a-zA-Z0-9]+)\]')
+        .firstMatch(text);
     if (inviteMatch == null) return null;
 
-    final teamName =
-        RegExp(r'邀请您加入「([^」]+)」团队').firstMatch(text)?.group(1)?.trim();
+    final teamName = RegExp(r'邀请您加入「([^」]+)」团队')
+        .firstMatch(text)
+        ?.group(1)
+        ?.trim();
     return ClipboardSharePayload.teamInvite(
       inviteCode: inviteMatch.group(1)!,
       teamName: teamName == null || teamName.isEmpty ? null : teamName,

@@ -76,7 +76,9 @@ abstract final class ThirtyDayChallengeRepository {
     return prefs.getBool(await _scopedPausedKey(username)) ?? false;
   }
 
-  static Future<bool> isHabitCenterPromotionDismissed({String? username}) async {
+  static Future<bool> isHabitCenterPromotionDismissed({
+    String? username,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(await _scopedHabitCenterPromotionKey(username)) ??
         false;
@@ -94,8 +96,7 @@ abstract final class ThirtyDayChallengeRepository {
 
   static Future<Map<String, dynamic>?> exportBackup({String? username}) async {
     final hasStartedChallenge = await hasStarted(username: username);
-    var corruptStateBackup =
-        await getCorruptStateBackup(username: username);
+    var corruptStateBackup = await getCorruptStateBackup(username: username);
     ThirtyDayChallengeState? state;
     if (!hasStartedChallenge && corruptStateBackup == null) {
       final prefs = await SharedPreferences.getInstance();
@@ -112,8 +113,9 @@ abstract final class ThirtyDayChallengeRepository {
       'intro_seen': await hasSeenIntro(username: username),
       'started': await hasStarted(username: username),
       'paused': await isPaused(username: username),
-      'habit_center_promotion_dismissed':
-          await isHabitCenterPromotionDismissed(username: username),
+      'habit_center_promotion_dismissed': await isHabitCenterPromotionDismissed(
+        username: username,
+      ),
     };
     if (corruptStateBackup != null) {
       bundle['corrupt_state_backup'] = corruptStateBackup;
@@ -250,8 +252,9 @@ abstract final class ThirtyDayChallengeRepository {
 
     if (customTitle != null) {
       final trimmed = customTitle.trim();
-      task.customTitle =
-          trimmed.isEmpty || trimmed == task.originalTitle ? null : trimmed;
+      task.customTitle = trimmed.isEmpty || trimmed == task.originalTitle
+          ? null
+          : trimmed;
     }
     if (feeling != null) {
       task.feeling = feeling.trim();

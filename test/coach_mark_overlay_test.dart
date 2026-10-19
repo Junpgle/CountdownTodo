@@ -34,11 +34,7 @@ void main() {
     final result = CoachMarkOverlay.show(
       context: pageContext,
       steps: [
-        CoachMarkStep(
-          targetKey: targetKey,
-          title: '首页指引',
-          description: '操作说明',
-        ),
+        CoachMarkStep(targetKey: targetKey, title: '首页指引', description: '操作说明'),
       ],
       onFinish: () {},
       onSkip: () {},
@@ -86,11 +82,7 @@ void main() {
     final result = CoachMarkOverlay.show(
       context: pageContext,
       steps: [
-        CoachMarkStep(
-          targetKey: targetKey,
-          title: '首页指引',
-          description: '操作说明',
-        ),
+        CoachMarkStep(targetKey: targetKey, title: '首页指引', description: '操作说明'),
       ],
       onFinish: () {},
       onSkip: () {},
@@ -104,8 +96,9 @@ void main() {
     expect(find.text('首页指引'), findsNothing);
   });
 
-  testWidgets('an action can finish the guide before opening a setting',
-      (tester) async {
+  testWidgets('an action can finish the guide before opening a setting', (
+    tester,
+  ) async {
     final targetKey = GlobalKey();
     late BuildContext pageContext;
     var openedSettings = false;

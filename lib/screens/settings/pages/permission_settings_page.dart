@@ -14,20 +14,22 @@ import '../../../utils/app_dialogs.dart';
 class PermissionSettingsPage extends StatefulWidget {
   final String? initialTarget;
   final bool isEmbedded;
-  const PermissionSettingsPage(
-      {super.key, this.initialTarget, this.isEmbedded = false});
+  const PermissionSettingsPage({
+    super.key,
+    this.initialTarget,
+    this.isEmbedded = false,
+  });
 
   @override
   State<PermissionSettingsPage> createState() => _PermissionSettingsPageState();
 }
 
 class _PermissionSettingsPageState extends State<PermissionSettingsPage> {
-  static const platform =
-      MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
+  static const platform = MethodChannel(
+    'com.math_quiz.junpgle.com.math_quiz_app/notifications',
+  );
 
-  final Map<String, GlobalKey> _itemKeys = {
-    'permissions': GlobalKey(),
-  };
+  final Map<String, GlobalKey> _itemKeys = {'permissions': GlobalKey()};
 
   late handlers.PermissionHandler _permissionHandler;
   bool _isCheckingPermissions = false;

@@ -1,13 +1,17 @@
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
+
 import '../../models.dart';
 import '../course_schedule_semantics.dart';
 
 class HfutScheduleParser {
-  static final RegExp _weekdayColumnPattern =
-      RegExp(r'class="columns weekday"');
-  static final RegExp _cardViewPattern =
-      RegExp(r'class="card-view common-card');
+  static final RegExp _weekdayColumnPattern = RegExp(
+    r'class="columns weekday"',
+  );
+  static final RegExp _cardViewPattern = RegExp(
+    r'class="card-view common-card',
+  );
   static final RegExp _cardContentPattern = RegExp(
     r'<div class="card-content">(.*?)</div>\s*<button',
     dotAll: true,
@@ -15,17 +19,16 @@ class HfutScheduleParser {
   static final RegExp _paragraphPattern = RegExp(r'<p>(.*?)</p>', dotAll: true);
   static final RegExp _breakTagPattern = RegExp(r'<br\s*/?>');
   static final RegExp _htmlTagPattern = RegExp(r'<[^>]+>');
-  static final RegExp _unitSuffixPattern =
-      RegExp(r'(?:\s+)\d+\s*[\(（]([\d,，]+)[\)）]\s*$');
+  static final RegExp _unitSuffixPattern = RegExp(
+    r'(?:\s+)\d+\s*[\(（]([\d,，]+)[\)）]\s*$',
+  );
   static final RegExp _commaSeparatorPattern = RegExp(r'[,，]');
   static final RegExp _weekParityPattern = RegExp(r'[（(][双单][）)]');
   static final RegExp _weekRangeSeparatorPattern = RegExp(r'[~\-]');
   static final RegExp _lineBreakPattern = RegExp(r'[\n\r]+');
   static final RegExp _whitespacePattern = RegExp(r'\s+');
-  static final RegExp _teacherNamePattern =
-      RegExp(r'[\(（]([^\d周单双]+)[\)）]');
-  static final RegExp _teacherRolePattern =
-      RegExp(r'(?:教师|讲师)[:：]\s*(\S+)');
+  static final RegExp _teacherNamePattern = RegExp(r'[\(（]([^\d周单双]+)[\)）]');
+  static final RegExp _teacherRolePattern = RegExp(r'(?:教师|讲师)[:：]\s*(\S+)');
   static final RegExp _unitColumnPattern = RegExp(
     r'class="columns unit">(.*?)</div>\s*<div class="columns weekday"',
     dotAll: true,
@@ -38,14 +41,16 @@ class HfutScheduleParser {
     'top': RegExp(r'top:\s*(\d+)px'),
     'height': RegExp(r'height:\s*(\d+)px'),
   };
-  static final RegExp _taskActivityStartPattern =
-      RegExp(r'new\s+TaskActivity\s*\(');
+  static final RegExp _taskActivityStartPattern = RegExp(
+    r'new\s+TaskActivity\s*\(',
+  );
   static final RegExp _teacherPushPattern = RegExp(
     r'''actTeacherName\.push\(\s*(?:"([^"]+)"|'([^']+)')\s*\)''',
   );
   static final RegExp _teacherAssignmentPattern = RegExp(r'teachers\s*=');
-  static final RegExp _teacherObjectNamePattern =
-      RegExp(r'''name\s*:\s*(?:"([^"]+)"|'([^']+)')''');
+  static final RegExp _teacherObjectNamePattern = RegExp(
+    r'''name\s*:\s*(?:"([^"]+)"|'([^']+)')''',
+  );
   static final RegExp _teachersArrayNamePattern = RegExp(
     r'''teachers\s*:\s*\[\s*\{\s*[^}]*name\s*:\s*(?:"([^"]+)"|'([^']+)')''',
   );
@@ -54,8 +59,9 @@ class HfutScheduleParser {
   static final RegExp _roomAssignmentPattern = RegExp(
     r'''room\s*=\s*\{[^}]*name\s*:\s*(?:"([^"]+)"|'([^']+)')''',
   );
-  static final RegExp _activityAssignmentPattern =
-      RegExp(r'activities\s*\[(\d+)\]\s*\[(\d+)\]');
+  static final RegExp _activityAssignmentPattern = RegExp(
+    r'activities\s*\[(\d+)\]\s*\[(\d+)\]',
+  );
 
   /// 校验传入的字符串（JSON或HTML）是否符合课表格式
   static bool isValid(String rawInput) {
@@ -223,13 +229,14 @@ class HfutScheduleParser {
         int endUnit = endUnitFallback;
         final unitMatch = _unitSuffixPattern.firstMatch(textToParse);
         if (unitMatch != null) {
-          final unitNums = unitMatch
-              .group(1)!
-              .split(_commaSeparatorPattern)
-              .map((s) => int.tryParse(s.trim()) ?? 0)
-              .where((n) => n > 0)
-              .toList()
-            ..sort();
+          final unitNums =
+              unitMatch
+                  .group(1)!
+                  .split(_commaSeparatorPattern)
+                  .map((s) => int.tryParse(s.trim()) ?? 0)
+                  .where((n) => n > 0)
+                  .toList()
+                ..sort();
           if (unitNums.isNotEmpty) {
             startUnit = unitNums.first;
             endUnit = unitNums.last;
@@ -289,17 +296,19 @@ class HfutScheduleParser {
           }
 
           for (int week in weekList) {
-            courses.add(CourseItem(
-              courseName: courseName,
-              teacherName: teacherName,
-              date: '',
-              weekday: weekday,
-              startTime: startTime,
-              endTime: endTime,
-              weekIndex: week,
-              roomName: roomName,
-              lessonType: '',
-            ));
+            courses.add(
+              CourseItem(
+                courseName: courseName,
+                teacherName: teacherName,
+                date: '',
+                weekday: weekday,
+                startTime: startTime,
+                endTime: endTime,
+                weekIndex: week,
+                roomName: roomName,
+                lessonType: '',
+              ),
+            );
           }
         }
       }
@@ -409,8 +418,10 @@ class HfutScheduleParser {
       int h = int.tryParse(m.group(2) ?? '0') ?? 0;
       if (!cls.contains('rest-time')) {
         int divEnd = m.end;
-        String after =
-            unitHtml.substring(divEnd, (divEnd + 30).clamp(0, unitHtml.length));
+        String after = unitHtml.substring(
+          divEnd,
+          (divEnd + 30).clamp(0, unitHtml.length),
+        );
         final spanMatch = _unitNumberPattern.firstMatch(after);
         if (spanMatch != null) {
           int unit = int.tryParse(spanMatch.group(1) ?? '0') ?? 0;
@@ -434,13 +445,13 @@ class HfutScheduleParser {
       540: 8,
       660: 9,
       720: 10,
-      780: 11
+      780: 11,
     };
   }
 
   static int _extractInlineStylePx(String html, String prop) {
-    final pattern = _inlineStylePxPatterns[prop] ??
-        RegExp('$prop:\\s*(\\d+)px');
+    final pattern =
+        _inlineStylePxPatterns[prop] ?? RegExp('$prop:\\s*(\\d+)px');
     final match = pattern.firstMatch(html);
     return int.tryParse(match?.group(1) ?? '0') ?? 0;
   }
@@ -481,7 +492,9 @@ class HfutScheduleParser {
         int teacherIdx = prevPart.lastIndexOf(_teacherAssignmentPattern);
         if (teacherIdx != -1) {
           String teacherBlock = prevPart.substring(teacherIdx);
-          final nameMatches = _teacherObjectNamePattern.allMatches(teacherBlock);
+          final nameMatches = _teacherObjectNamePattern.allMatches(
+            teacherBlock,
+          );
           for (var m in nameMatches) {
             String? n = m.group(1) ?? m.group(2);
             if (n != null && n.isNotEmpty && !names.contains(n)) names.add(n);
@@ -504,8 +517,9 @@ class HfutScheduleParser {
 
       String argsStr = currentPart.substring(0, endArgsIdx);
       List<String> args = _extractArgs(argsStr);
-      int weekIdx = args
-          .indexWhere((s) => s.length >= 20 && s.contains(_binaryWeekPattern));
+      int weekIdx = args.indexWhere(
+        (s) => s.length >= 20 && s.contains(_binaryWeekPattern),
+      );
       if (weekIdx == -1) continue;
 
       String validWeeks = args[weekIdx];
@@ -530,9 +544,7 @@ class HfutScheduleParser {
           teacherName = fallbackTeacher;
         }
       }
-      courseName = courseName
-          .replaceFirst(_courseNamePrefixPattern, '')
-          .trim();
+      courseName = courseName.replaceFirst(_courseNamePrefixPattern, '').trim();
       if (courseName.isEmpty && weekIdx >= 3) courseName = args[weekIdx - 3];
 
       String assignmentsStr = currentPart.substring(endArgsIdx);
@@ -559,17 +571,19 @@ class HfutScheduleParser {
         List<int> units = entry.value..sort();
         for (int w = 1; w < validWeeks.length; w++) {
           if (validWeeks[w] == '1') {
-            courses.add(CourseItem(
-              courseName: courseName,
-              teacherName: teacherName,
-              date: '',
-              weekday: weekday,
-              startTime: _unitToTime(units.first, true),
-              endTime: _unitToTime(units.last, false),
-              weekIndex: w,
-              roomName: roomName,
-              lessonType: '',
-            ));
+            courses.add(
+              CourseItem(
+                courseName: courseName,
+                teacherName: teacherName,
+                date: '',
+                weekday: weekday,
+                startTime: _unitToTime(units.first, true),
+                endTime: _unitToTime(units.last, false),
+                weekIndex: w,
+                roomName: roomName,
+                lessonType: '',
+              ),
+            );
           }
         }
       }
@@ -615,7 +629,8 @@ class HfutScheduleParser {
     final scheduleList = data['scheduleList'] as List? ?? [];
 
     debugPrint(
-        '[HfutParser] Parsing JSON: ${lessonList.length} lessons, ${scheduleList.length} schedules');
+      '[HfutParser] Parsing JSON: ${lessonList.length} lessons, ${scheduleList.length} schedules',
+    );
 
     // 【修改点】使用 String 作为 Key，防止 `int` 和 `String` 的隐式类型崩溃异常
     Map<String, dynamic> lessonMap = {};
@@ -639,15 +654,18 @@ class HfutScheduleParser {
         if (teachers.isNotEmpty) {
           teacherMap[lessonId] = teachers.join(', ');
           debugPrint(
-              '[HfutParser] Lesson $lessonId teachers found: ${teacherMap[lessonId]}');
+            '[HfutParser] Lesson $lessonId teachers found: ${teacherMap[lessonId]}',
+          );
         } else {
           debugPrint(
-              '[HfutParser] Lesson $lessonId NO teachers in teacherAssignmentList');
+            '[HfutParser] Lesson $lessonId NO teachers in teacherAssignmentList',
+          );
           // Try another fallback for teacher name inside lesson item
           if (item['teacherNames'] != null) {
             teacherMap[lessonId] = item['teacherNames'].toString();
             debugPrint(
-                '[HfutParser] Using fallback teacherNames: ${teacherMap[lessonId]}');
+              '[HfutParser] Using fallback teacherNames: ${teacherMap[lessonId]}',
+            );
           } else if (item['teachers'] != null && item['teachers'] is List) {
             String names = (item['teachers'] as List)
                 .map((t) => t['name']?.toString() ?? '')
@@ -678,33 +696,37 @@ class HfutScheduleParser {
         if (lessonInfo != null) {
           String roomName = schedule['room'] != null
               ? (schedule['room']['nameZh'] ??
-                  schedule['room']['name'] ??
-                  '未知教室')
+                    schedule['room']['name'] ??
+                    '未知教室')
               : '未知教室';
 
           // 优先使用聚在结构的 schedule['personName']，如果为空，则使用刚才提取的 teacherMap 原生数据
-          String teacherName = schedule['personName']?.toString() ??
+          String teacherName =
+              schedule['personName']?.toString() ??
               teacherMap[lessonId] ??
               '未知教师';
           if (teacherName == '未知教师' || teacherName.isEmpty) {
             debugPrint(
-                '[HfutParser] Warning: Missing teacher for schedule of lesson $lessonId');
+              '[HfutParser] Warning: Missing teacher for schedule of lesson $lessonId',
+            );
           }
           if (teacherName.isEmpty || teacherName == 'null') {
             teacherName = '未知教师';
           }
 
-          courses.add(CourseItem(
-            courseName: lessonInfo['courseName']?.toString().trim() ?? '未知课程',
-            teacherName: teacherName,
-            date: schedule['date']?.toString() ?? '',
-            weekday: (schedule['weekday'] as num?)?.toInt() ?? 1,
-            startTime: (schedule['startTime'] as num?)?.toInt() ?? 0,
-            endTime: (schedule['endTime'] as num?)?.toInt() ?? 0,
-            weekIndex: (schedule['weekIndex'] as num?)?.toInt() ?? 1,
-            roomName: roomName,
-            lessonType: schedule['lessonType']?.toString() ?? '',
-          ));
+          courses.add(
+            CourseItem(
+              courseName: lessonInfo['courseName']?.toString().trim() ?? '未知课程',
+              teacherName: teacherName,
+              date: schedule['date']?.toString() ?? '',
+              weekday: (schedule['weekday'] as num?)?.toInt() ?? 1,
+              startTime: (schedule['startTime'] as num?)?.toInt() ?? 0,
+              endTime: (schedule['endTime'] as num?)?.toInt() ?? 0,
+              weekIndex: (schedule['weekIndex'] as num?)?.toInt() ?? 1,
+              roomName: roomName,
+              lessonType: schedule['lessonType']?.toString() ?? '',
+            ),
+          );
         }
       }
     }
@@ -724,13 +746,13 @@ class HfutScheduleParser {
         if (data['result'] != null && data['result']['lessonList'] != null) {
           return {
             'lessonList': data['result']['lessonList'],
-            'scheduleList': data['result']['scheduleList'] ?? []
+            'scheduleList': data['result']['scheduleList'] ?? [],
           };
         }
         if (data['lessonList'] != null) {
           return {
             'lessonList': data['lessonList'],
-            'scheduleList': data['scheduleList'] ?? []
+            'scheduleList': data['scheduleList'] ?? [],
           };
         }
       }
@@ -741,7 +763,7 @@ class HfutScheduleParser {
       if (lessonListStr != null && scheduleListStr != null) {
         return {
           'lessonList': jsonDecode(lessonListStr),
-          'scheduleList': jsonDecode(scheduleListStr)
+          'scheduleList': jsonDecode(scheduleListStr),
         };
       }
     } catch (_) {}
@@ -797,7 +819,7 @@ class HfutScheduleParser {
       8: 1700,
       9: 1900,
       10: 2000,
-      11: 2100
+      11: 2100,
     };
     Map<int, int> endTimes = {
       1: 850,
@@ -810,7 +832,7 @@ class HfutScheduleParser {
       8: 1750,
       9: 1950,
       10: 2050,
-      11: 2130
+      11: 2130,
     };
     return isStart ? (startTimes[unit] ?? 0) : (endTimes[unit] ?? 0);
   }

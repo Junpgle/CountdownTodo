@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+
 import '../../models.dart';
 import '../../services/browser_file_service.dart';
 import '../../services/course_service.dart';
@@ -390,9 +392,7 @@ class CourseImportHandler {
     if (selectedSchool == null) return;
 
     // 2. 根据学校执行不同的导入方式
-    final pickedFile = await FilePicker.pickFile(
-      type: FileType.any,
-    );
+    final pickedFile = await FilePicker.pickFile(type: FileType.any);
 
     if (pickedFile == null) return;
     final filePath = pickedFile.path;

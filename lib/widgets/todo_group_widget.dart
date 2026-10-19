@@ -220,8 +220,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
 
       if (elapsedMinutes < totalMinutes) {
         final changeMicros =
-            startMicros +
-            (elapsedMinutes + 1) * Duration.microsecondsPerMinute;
+            startMicros + (elapsedMinutes + 1) * Duration.microsecondsPerMinute;
         if (changeMicros > nowMicros &&
             (nextChangeMicros == null || changeMicros < nextChangeMicros)) {
           nextChangeMicros = changeMicros;
@@ -237,10 +236,10 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
 
   DateFormat _cachedDateFormat(String pattern) {
     final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent(
-      (locale, pattern),
-      () => DateFormat(pattern, locale),
-    );
+    return _dateFormatters.putIfAbsent((
+      locale,
+      pattern,
+    ), () => DateFormat(pattern, locale));
   }
 
   @override
@@ -397,11 +396,8 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                           child: Column(
                             children: [
                               ...visibleTodos.map(
-                                (todo) => _buildTodoItem(
-                                  context,
-                                  todo,
-                                  now: now,
-                                ),
+                                (todo) =>
+                                    _buildTodoItem(context, todo, now: now),
                               ),
                               if (widget.onlyShowMostUrgentTodo &&
                                   totalCount > 1)
@@ -739,8 +735,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
       if (isDateOnly) {
         timeStr = '${_cachedDateFormat('MM/dd').format(dueDate)}内完成';
       } else {
-        timeStr =
-            '${_cachedDateFormat('MM/dd HH:mm').format(dueDate)}前完成';
+        timeStr = '${_cachedDateFormat('MM/dd HH:mm').format(dueDate)}前完成';
       }
     } else {
       timeStr = '未安排';
@@ -977,8 +972,9 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                                     ),
                                   ),
                                 ),
-                                if (ConflictVisibilityService
-                                    .isVisibleTodoConflict(todo)) ...[
+                                if (ConflictVisibilityService.isVisibleTodoConflict(
+                                  todo,
+                                )) ...[
                                   const SizedBox(width: 4),
                                   Icon(
                                     Icons.warning_amber_rounded,

@@ -92,9 +92,9 @@ class TimelineRangeStatistics {
   int get recurrenceSeriesCount => recurrenceSeries.length;
 
   int get recurringLongestStreak => recurrenceSeries.fold<int>(
-        0,
-        (longest, series) => math.max(longest, series.longestStreak),
-      );
+    0,
+    (longest, series) => math.max(longest, series.longestStreak),
+  );
 
   TimelineRecurrenceSeriesStatistics? get bestRecurrenceSeries {
     TimelineRecurrenceSeriesStatistics? best;
@@ -141,16 +141,20 @@ class TimelineStatisticsService {
     final startMs = start.millisecondsSinceEpoch;
     final endMs = end.millisecondsSinceEpoch;
     final records = pomodoroRecords
-        .where((record) =>
-            !record.isDeleted &&
-            record.startTime >= startMs &&
-            record.startTime < endMs)
+        .where(
+          (record) =>
+              !record.isDeleted &&
+              record.startTime >= startMs &&
+              record.startTime < endMs,
+        )
         .toList();
     final blocks = planBlocks
-        .where((block) =>
-            !block.isDeleted &&
-            block.startTime >= startMs &&
-            block.startTime < endMs)
+        .where(
+          (block) =>
+              !block.isDeleted &&
+              block.startTime >= startMs &&
+              block.startTime < endMs,
+        )
         .toList();
 
     final tagNames = <String, String>{
@@ -210,7 +214,8 @@ class TimelineStatisticsService {
       final block = blocks[blockIndex];
       final actualSeconds = actualSecondsByBlock[blockIndex];
       planActualSeconds += actualSeconds;
-      final reachedTarget = block.plannedMinutes > 0 &&
+      final reachedTarget =
+          block.plannedMinutes > 0 &&
           actualSeconds >= block.plannedMinutes * 60 * 0.8;
       if (block.status == TodoPlanStatus.finished || reachedTarget) {
         planCompletedCount++;
@@ -250,8 +255,10 @@ class TimelineStatisticsService {
       timeLogCount: timeLogCount,
       pauseSeconds: pauseSeconds,
       pauseCount: pauseCount,
-      plannedMinutes:
-          blocks.fold<int>(0, (sum, block) => sum + block.plannedMinutes),
+      plannedMinutes: blocks.fold<int>(
+        0,
+        (sum, block) => sum + block.plannedMinutes,
+      ),
       planActualSeconds: planActualSeconds,
       planBlockCount: blocks.length,
       planCompletedCount: planCompletedCount,
@@ -312,8 +319,9 @@ class TimelineStatisticsService {
       }
 
       final planBlockId = record.planBlockId;
-      final directlyLinked =
-          planBlockId == null ? null : blocksById[planBlockId];
+      final directlyLinked = planBlockId == null
+          ? null
+          : blocksById[planBlockId];
       if (directlyLinked != null) {
         for (final blockIndex in directlyLinked) {
           if (explicitlyLinked?.contains(blockIndex) == true) continue;
@@ -408,7 +416,8 @@ class TimelineStatisticsService {
       }
       final seriesId = representative.recurrenceSeriesId!.trim();
       final occurrenceStart = _todoStart(representative);
-      final effectiveDue = due ??
+      final effectiveDue =
+          due ??
           DateTime(
             occurrenceStart.year,
             occurrenceStart.month,
@@ -418,7 +427,9 @@ class TimelineStatisticsService {
             59,
             999,
           );
-      occurrencesBySeries.putIfAbsent(seriesId, () => []).add(
+      occurrencesBySeries
+          .putIfAbsent(seriesId, () => [])
+          .add(
             _RecurrenceOccurrence(
               start: occurrenceStart,
               title: representative.title,
@@ -456,16 +467,18 @@ class TimelineStatisticsService {
         if (!occurrence.isCompleted) break;
         endingStreak++;
       }
-      result.add(TimelineRecurrenceSeriesStatistics(
-        seriesId: entry.key,
-        title: occurrences.last.title,
-        scheduledCount: occurrences.length,
-        completedCount: completed,
-        missedCount: missed,
-        pendingCount: pending,
-        longestStreak: longestStreak,
-        endingStreak: endingStreak,
-      ));
+      result.add(
+        TimelineRecurrenceSeriesStatistics(
+          seriesId: entry.key,
+          title: occurrences.last.title,
+          scheduledCount: occurrences.length,
+          completedCount: completed,
+          missedCount: missed,
+          pendingCount: pending,
+          longestStreak: longestStreak,
+          endingStreak: endingStreak,
+        ),
+      );
     }
     result.sort((a, b) {
       final completed = b.completedCount.compareTo(a.completedCount);
@@ -500,7 +513,8 @@ class TimelineStatisticsService {
   static DateTime? _todoDueEnd(TodoItem todo) {
     final due = todo.dueDate?.toLocal();
     if (due == null) return null;
-    final looksDateOnly = due.hour == 0 &&
+    final looksDateOnly =
+        due.hour == 0 &&
         due.minute == 0 &&
         due.second == 0 &&
         due.millisecond == 0;

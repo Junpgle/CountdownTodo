@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../../utils/theme_color_tokens.dart';
 import '../../../widgets/app_settings_widgets.dart';
 import '../../../widgets/app_state_views.dart';
@@ -53,33 +54,47 @@ class AccountSection extends StatelessWidget {
             child: Row(
               children: [
                 CircleAvatar(
-                    backgroundColor:
-                        Theme.of(context).colorScheme.primaryContainer,
-                    child: const Icon(Icons.person)),
+                  backgroundColor: Theme.of(context)
+                      .colorScheme
+                      .primaryContainer,
+                  child: const Icon(Icons.person),
+                ),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(username,
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
-                      Text(userId != null ? "UID: $userId" : "离线模式",
-                          style: TextStyle(
-                              fontSize: 13,
-                              color: colorScheme.onSurfaceVariant)),
+                      Text(
+                        username,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        userId != null ? "UID: $userId" : "离线模式",
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                Icon(Icons.edit_square,
-                    size: 20, color: colorScheme.onSurfaceVariant),
+                Icon(
+                  Icons.edit_square,
+                  size: 20,
+                  color: colorScheme.onSurfaceVariant,
+                ),
               ],
             ),
           ),
         ),
         const AppSettingsDivider(),
         Padding(
-          padding:
-              const EdgeInsets.only(left: 56, right: 16, top: 12, bottom: 16),
+          padding: const EdgeInsets.only(
+            left: 56,
+            right: 16,
+            top: 12,
+            bottom: 16,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -106,20 +121,27 @@ class AccountSection extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 12),
-              Text("今日同步额度",
-                  style: TextStyle(
-                      fontSize: 12, color: colorScheme.onSurfaceVariant)),
+              Text(
+                "今日同步额度",
+                style: TextStyle(
+                  fontSize: 12,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
               const SizedBox(height: 6),
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
                 child: LinearProgressIndicator(
                   value: syncProgress,
                   minHeight: 6,
-                  backgroundColor:
-                      Theme.of(context).colorScheme.surfaceContainerHighest,
-                  valueColor: AlwaysStoppedAnimation<Color>(syncProgress > 0.9
-                      ? colorScheme.error
-                      : Theme.of(context).colorScheme.primary),
+                  backgroundColor: Theme.of(context)
+                      .colorScheme
+                      .surfaceContainerHighest,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    syncProgress > 0.9
+                        ? colorScheme.error
+                        : Theme.of(context).colorScheme.primary,
+                  ),
                 ),
               ),
             ],
@@ -136,9 +158,13 @@ class AccountSection extends StatelessWidget {
         const AppSettingsDivider(),
         ListTile(
           leading: Icon(Icons.logout, color: colorScheme.error),
-          title: Text('退出当前账号',
-              style: TextStyle(
-                  color: colorScheme.error, fontWeight: FontWeight.w600)),
+          title: Text(
+            '退出当前账号',
+            style: TextStyle(
+              color: colorScheme.error,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           onTap: onLogout,
         ),
       ],

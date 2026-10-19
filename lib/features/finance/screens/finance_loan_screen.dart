@@ -93,10 +93,8 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen>
 
   void _onFinanceChanged() => _load(showLoading: false);
 
-  String _displayName(FinanceLoan loan) => financeLoanDisplayName(
-    loan,
-    _overviews.map((overview) => overview.loan),
-  );
+  String _displayName(FinanceLoan loan) =>
+      financeLoanDisplayName(loan, _overviews.map((overview) => overview.loan));
 
   Future<void> _load({bool showLoading = true}) async {
     final generation = ++_loadGeneration;
@@ -143,12 +141,11 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen>
   Future<void> _openDetail(FinanceLoanOverview overview) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) =>
-            FinanceLoanDetailScreen(
-              loan: overview.loan,
-              loanDisplayName: _displayName(overview.loan),
-              clock: widget.clock,
-            ),
+        builder: (_) => FinanceLoanDetailScreen(
+          loan: overview.loan,
+          loanDisplayName: _displayName(overview.loan),
+          clock: widget.clock,
+        ),
       ),
     );
     if (mounted) await _load();
@@ -291,9 +288,7 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen>
           ),
           const SizedBox(height: 14),
           FinanceStatusBadge(
-            label: overview.isPaidOff
-                ? '已全部还清'
-                : (isOverdue ? '有逾期待还' : '还款中'),
+            label: overview.isPaidOff ? '已全部还清' : (isOverdue ? '有逾期待还' : '还款中'),
             icon: overview.isPaidOff
                 ? Icons.check_circle_outline
                 : Icons.schedule_outlined,
@@ -512,10 +507,10 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen>
 
   DateFormat _cachedDateFormat(String pattern) {
     final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent(
-      (locale, pattern),
-      () => DateFormat(pattern, locale),
-    );
+    return _dateFormatters.putIfAbsent((
+      locale,
+      pattern,
+    ), () => DateFormat(pattern, locale));
   }
 
   FinanceLoan get _currentLoan => _loan ?? widget.loan;

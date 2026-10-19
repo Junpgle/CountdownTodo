@@ -1,8 +1,10 @@
 part of 'storage_service.dart';
+
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 List<TodoPlanBlock> _parsePlanBlockItemsIsolate(
-    List<Map<String, dynamic>> maps) {
+  List<Map<String, dynamic>> maps,
+) {
   return maps.map((m) => TodoPlanBlock.fromJson(m)).toList();
 }
 
@@ -17,7 +19,8 @@ mixin _StorageFixed on _StorageServiceBase {
       recentlyResolvedUuids.remove(uuid);
       recentlyResolvedTimes.remove(uuid);
       debugPrint(
-          '🔓 [MemoryShield] Timeout auto-released recently resolved item: $uuid');
+        '🔓 [MemoryShield] Timeout auto-released recently resolved item: $uuid',
+      );
       return false;
     }
     return true;
@@ -70,7 +73,8 @@ mixin _StorageFixed on _StorageServiceBase {
     for (final item in deduped.values) {
       final data = item.toJson();
       final existing = existingById[item.id];
-      final hasChanged = existing == null ||
+      final hasChanged =
+          existing == null ||
           _hasSubstantialChange(existing, data, [
             'title',
             'date',
@@ -167,11 +171,7 @@ mixin _StorageFixed on _StorageServiceBase {
   }) async {
     final localFrom = from.toLocal();
     final localTo = to.toLocal();
-    final startDate = DateTime(
-      localFrom.year,
-      localFrom.month,
-      localFrom.day,
-    );
+    final startDate = DateTime(localFrom.year, localFrom.month, localFrom.day);
     final endDate = DateTime(localTo.year, localTo.month, localTo.day);
     if (!endDate.isAfter(startDate)) return const [];
 
@@ -203,28 +203,27 @@ mixin _StorageFixed on _StorageServiceBase {
   Future<List<HabitGoal>> getHabitGoals() => HabitStorage.getHabitGoals();
   Future<void> saveHabitGoals(List<HabitGoal> items) =>
       HabitStorage.saveHabitGoals(items);
-  Future<List<HabitGoalRuleRevision>> getHabitRules({
-    String? habitUuid,
-  }) =>
+  Future<List<HabitGoalRuleRevision>> getHabitRules({String? habitUuid}) =>
       HabitStorage.getRuleRevisions(habitUuid: habitUuid);
-  Future<void> saveHabitRules(
-    List<HabitGoalRuleRevision> items,
-  ) =>
+  Future<void> saveHabitRules(List<HabitGoalRuleRevision> items) =>
       HabitStorage.saveRuleRevisions(items);
   Future<List<HabitCheckIn>> getHabitCheckIns({
     String? habitUuid,
     String? fromDate,
     String? toDate,
-  }) =>
-      HabitStorage.getCheckIns(
-        habitUuid: habitUuid,
-        fromDate: fromDate,
-        toDate: toDate,
-      );
+  }) => HabitStorage.getCheckIns(
+    habitUuid: habitUuid,
+    fromDate: fromDate,
+    toDate: toDate,
+  );
   Future<void> saveHabitCheckIns(List<HabitCheckIn> items) =>
       HabitStorage.saveCheckIns(items);
-  Future<void> savePlanBlocks(String username, List<TodoPlanBlock> items,
-      {bool sync = true, bool isSyncSource = false}) async {
+  Future<void> savePlanBlocks(
+    String username,
+    List<TodoPlanBlock> items, {
+    bool sync = true,
+    bool isSyncSource = false,
+  }) async {
     final Map<String, TodoPlanBlock> dedupeMap = {};
     for (var item in items) {
       if (!dedupeMap.containsKey(item.id) ||
@@ -240,8 +239,9 @@ mixin _StorageFixed on _StorageServiceBase {
     Map<String, Map<String, dynamic>> existingItemsMap = {};
     if (!isSyncSource && dedupeList.isNotEmpty) {
       final uuids = dedupeList.map((e) => "'${e.id}'").join(',');
-      final List<Map<String, dynamic>> existing = await db
-          .rawQuery('SELECT * FROM todo_plan_blocks WHERE uuid IN ($uuids)');
+      final List<Map<String, dynamic>> existing = await db.rawQuery(
+        'SELECT * FROM todo_plan_blocks WHERE uuid IN ($uuids)',
+      );
       for (var row in existing) {
         existingItemsMap[row['uuid']] = row;
       }
@@ -254,7 +254,8 @@ mixin _StorageFixed on _StorageServiceBase {
       final oldData = existingItemsMap[item.id];
       // Automatic reminder maintenance may carry a snapshot read before a
       // reviewed cancellation. It must never revive that cancelled block.
-      if (!isSyncSource && oldData?['status'] == TodoPlanStatus.cancelled.index &&
+      if (!isSyncSource &&
+          oldData?['status'] == TodoPlanStatus.cancelled.index &&
           item.status == TodoPlanStatus.reminded) {
         continue;
       }
@@ -276,26 +277,36 @@ mixin _StorageFixed on _StorageServiceBase {
           'calendar_event_id',
           'is_deleted',
           'version',
-          'updated_at'
+          'updated_at',
         ]);
       }
 
       if (!isSyncSource && item.status == TodoPlanStatus.reminded) {
         // These predicates run inside batch.commit's write transaction, so a
         // cancellation committed after the audit read is protected as well.
-        const guard = 'NOT EXISTS (SELECT 1 FROM todo_plan_blocks WHERE uuid=? AND status=3)';
+        const guard =
+            'NOT EXISTS (SELECT 1 FROM todo_plan_blocks WHERE uuid=? AND status=3)';
         if (hasChanged) {
-          batch.rawInsert('''INSERT INTO op_logs
+          batch.rawInsert(
+            '''INSERT INTO op_logs
             (op_type,target_table,target_uuid,data_json,timestamp,is_synced,sync_error)
             SELECT 'UPSERT','todo_plan_blocks',?,?,?,0,'' WHERE $guard''',
-            [item.id, jsonEncode(itemData), DateTime.now().millisecondsSinceEpoch, item.id]);
+            [
+              item.id,
+              jsonEncode(itemData),
+              DateTime.now().millisecondsSinceEpoch,
+              item.id,
+            ],
+          );
         }
         if (hasChanged || oldData == null) {
           final keys = itemData.keys.toList();
-          batch.rawInsert('INSERT INTO todo_plan_blocks (${keys.join(',')}) '
+          batch.rawInsert(
+            'INSERT INTO todo_plan_blocks (${keys.join(',')}) '
             'SELECT ${List.filled(keys.length, '?').join(',')} WHERE $guard '
             'ON CONFLICT(uuid) DO UPDATE SET ${keys.where((k) => k != 'uuid').map((k) => '$k=excluded.$k').join(',')}',
-            [...keys.map((k) => itemData[k]), item.id]);
+            [...keys.map((k) => itemData[k]), item.id],
+          );
         }
         continue;
       }
@@ -312,8 +323,11 @@ mixin _StorageFixed on _StorageServiceBase {
       }
 
       if (hasChanged || oldData == null) {
-        batch.insert('todo_plan_blocks', itemData,
-            conflictAlgorithm: ConflictAlgorithm.replace);
+        batch.insert(
+          'todo_plan_blocks',
+          itemData,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
       }
     }
 
@@ -328,30 +342,51 @@ mixin _StorageFixed on _StorageServiceBase {
   }
 
   Future<List<TodoPlanBlock>> cancelPlanBlocksReviewed(
-    String username, PlanCleanupRequest request, {
-    required Future<void> Function(DatabaseExecutor executor, bool retry) validate,
+    String username,
+    PlanCleanupRequest request, {
+    required Future<void> Function(DatabaseExecutor executor, bool retry)
+    validate,
     bool sync = true,
   }) async {
-    if (username != request.identity.username || request.rows.isEmpty ||
-        request.rows.length > 50 || request.ids.toSet().length != request.rows.length ||
-        request.rows.any((row) => row['uuid'] is! String || (row['uuid'] as String).trim().isEmpty ||
-          row['todo_uuid'] != request.todoId || ![0, 2, 4].contains(row['status']) ||
-          row['version'] is! int || (row['version'] as int) < 1 ||
-          row['updated_at'] is! int)) {
+    if (username != request.identity.username ||
+        request.rows.isEmpty ||
+        request.rows.length > 50 ||
+        request.ids.toSet().length != request.rows.length ||
+        request.rows.any(
+          (row) =>
+              row['uuid'] is! String ||
+              (row['uuid'] as String).trim().isEmpty ||
+              row['todo_uuid'] != request.todoId ||
+              ![0, 2, 4].contains(row['status']) ||
+              row['version'] is! int ||
+              (row['version'] as int) < 1 ||
+              row['updated_at'] is! int,
+        )) {
       throw StateError('收尾请求无效，请重新核对');
     }
     await request.identity.check();
     final db = await DatabaseHelper.instance.databaseForUser(username);
     var changed = false;
     final saved = await db.transaction((tx) async {
-      final current = await tx.query('todo_plan_blocks',
+      final current = await tx.query(
+        'todo_plan_blocks',
         where: 'uuid IN (${List.filled(request.ids.length, '?').join(',')})',
-        whereArgs: request.ids);
+        whereArgs: request.ids,
+      );
       final byId = {for (final row in current) row['uuid']: row};
-      final original = current.length == request.rows.length && request.rows.every((row) =>
-        PlanCleanupRequest.sameRow(byId[row['uuid']]!, row));
-      final retry = current.length == request.rows.length && request.rows.every((row) =>
-        PlanCleanupRequest.sameRow(byId[row['uuid']]!, request.cancelledRow(row)));
+      final original =
+          current.length == request.rows.length &&
+          request.rows.every(
+            (row) => PlanCleanupRequest.sameRow(byId[row['uuid']]!, row),
+          );
+      final retry =
+          current.length == request.rows.length &&
+          request.rows.every(
+            (row) => PlanCleanupRequest.sameRow(
+              byId[row['uuid']]!,
+              request.cancelledRow(row),
+            ),
+          );
       if (!original && !retry) throw StateError('规划已变化，请核对后再试；尚未取消任何规划');
       await validate(tx, retry);
       await request.identity.check();
@@ -359,14 +394,25 @@ mixin _StorageFixed on _StorageServiceBase {
       for (final row in request.rows) {
         final next = request.cancelledRow(row);
         if (!retry) {
-          await tx.update('todo_plan_blocks', {
-            'status': next['status'], 'version': next['version'], 'updated_at': next['updated_at'],
-          }, where: 'uuid=?', whereArgs: [row['uuid']]);
+          await tx.update(
+            'todo_plan_blocks',
+            {
+              'status': next['status'],
+              'version': next['version'],
+              'updated_at': next['updated_at'],
+            },
+            where: 'uuid=?',
+            whereArgs: [row['uuid']],
+          );
           final payload = {...next}..remove('id');
           await tx.insert('op_logs', {
-            'op_type': 'UPSERT', 'target_table': 'todo_plan_blocks',
-            'target_uuid': row['uuid'], 'data_json': jsonEncode(payload),
-            'timestamp': request.cancelledAt, 'is_synced': 0, 'sync_error': '',
+            'op_type': 'UPSERT',
+            'target_table': 'todo_plan_blocks',
+            'target_uuid': row['uuid'],
+            'data_json': jsonEncode(payload),
+            'timestamp': request.cancelledAt,
+            'is_synced': 0,
+            'sync_error': '',
           });
         }
         result.add(TodoPlanBlock.fromJson(next)..isChangedLocally = true);
@@ -471,6 +517,7 @@ mixin _StorageFixed on _StorageServiceBase {
     }
     return saved;
   }
+
   Future<TodoPlanBlock> savePlanBlockEdited(
     String username,
     TodoPlanBlock draft, {
@@ -583,14 +630,12 @@ mixin _StorageFixed on _StorageServiceBase {
       final db = await DatabaseHelper.instance.databaseForUser(username);
       final maps = await db.query(
         'todo_plan_blocks',
-        where: 'is_deleted = 0 '
+        where:
+            'is_deleted = 0 '
             'AND COALESCE(reminder_minutes, 5) > 0 '
             'AND start_time > ? '
             'AND start_time - COALESCE(reminder_minutes, 5) * 60000 < ?',
-        whereArgs: [
-          now.millisecondsSinceEpoch,
-          limit.millisecondsSinceEpoch,
-        ],
+        whereArgs: [now.millisecondsSinceEpoch, limit.millisecondsSinceEpoch],
       );
       if (maps.length > 50) {
         return await compute(_parsePlanBlockItemsIsolate, maps);
@@ -609,7 +654,8 @@ mixin _StorageFixed on _StorageServiceBase {
     try {
       final db = await DatabaseHelper.instance.databaseForUser(username);
       final nowMs = now.millisecondsSinceEpoch;
-      final maps = await db.rawQuery('''
+      final maps = await db.rawQuery(
+        '''
         SELECT rowid AS _dashboard_rowid, * FROM todo_plan_blocks
         WHERE is_deleted = 0 AND end_time >= ?
         UNION ALL
@@ -617,7 +663,9 @@ mixin _StorageFixed on _StorageServiceBase {
         WHERE is_deleted = 0 AND status = ?
           AND (end_time < ? OR end_time IS NULL)
         ORDER BY _dashboard_rowid ASC
-      ''', [nowMs, TodoPlanStatus.focusing.index, nowMs]);
+      ''',
+        [nowMs, TodoPlanStatus.focusing.index, nowMs],
+      );
       if (maps.length > 50) {
         return await compute(_parsePlanBlockItemsIsolate, maps);
       }
@@ -629,7 +677,9 @@ mixin _StorageFixed on _StorageServiceBase {
   }
 
   Future<void> deletePlanBlockGlobally(
-      String username, String idToDelete) async {
+    String username,
+    String idToDelete,
+  ) async {
     final blocks = await getPlanBlocks(username, includeDeleted: true);
     final index = blocks.indexWhere((b) => b.id == idToDelete);
     if (index != -1) {
@@ -640,7 +690,9 @@ mixin _StorageFixed on _StorageServiceBase {
   }
 
   Future<List<TodoPlanBlock>> getPlanBlocksByTodo(
-      String username, String todoId) async {
+    String username,
+    String todoId,
+  ) async {
     try {
       final db = await DatabaseHelper.instance.databaseForUser(username);
       final maps = await db.query(
@@ -661,11 +713,19 @@ mixin _StorageFixed on _StorageServiceBase {
   }
 
   Future<List<TodoPlanBlock>> getPlanBlocksByDay(
-      String username, DateTime day) async {
-    final startOfDay =
-        DateTime(day.year, day.month, day.day).millisecondsSinceEpoch;
-    final endOfDay =
-        DateTime(day.year, day.month, day.day + 1).millisecondsSinceEpoch;
+    String username,
+    DateTime day,
+  ) async {
+    final startOfDay = DateTime(
+      day.year,
+      day.month,
+      day.day,
+    ).millisecondsSinceEpoch;
+    final endOfDay = DateTime(
+      day.year,
+      day.month,
+      day.day + 1,
+    ).millisecondsSinceEpoch;
 
     try {
       final db = await DatabaseHelper.instance.databaseForUser(username);

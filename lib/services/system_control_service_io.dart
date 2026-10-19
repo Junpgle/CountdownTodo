@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:ffi';
+
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'package:win32/win32.dart';
@@ -12,22 +13,38 @@ typedef _RoInitializeNative = Int32 Function(Int32 aptType);
 typedef _RoInitialize = int Function(int aptType);
 
 typedef _RoGetActivationFactoryNative = Int32 Function(
-    IntPtr activatableClassId, Pointer<GUID> iid, Pointer<VTablePointer> factory);
+  IntPtr activatableClassId,
+  Pointer<GUID> iid,
+  Pointer<VTablePointer> factory,
+);
 typedef _RoGetActivationFactory = int Function(
-    int activatableClassId, Pointer<GUID> iid, Pointer<VTablePointer> factory);
+  int activatableClassId,
+  Pointer<GUID> iid,
+  Pointer<VTablePointer> factory,
+);
 
 typedef _WindowsCreateStringNative = Int32 Function(
-    Pointer<Utf16> sourceString, Uint32 length, Pointer<IntPtr> string);
+  Pointer<Utf16> sourceString,
+  Uint32 length,
+  Pointer<IntPtr> string,
+);
 typedef _WindowsCreateString = int Function(
-    Pointer<Utf16> sourceString, int length, Pointer<IntPtr> string);
+  Pointer<Utf16> sourceString,
+  int length,
+  Pointer<IntPtr> string,
+);
 
 typedef _WindowsDeleteStringNative = Int32 Function(IntPtr string);
 typedef _WindowsDeleteString = int Function(int string);
 
 typedef _WindowsGetStringRawBufferNative = Pointer<Utf16> Function(
-    IntPtr string, Pointer<Uint32> length);
+  IntPtr string,
+  Pointer<Uint32> length,
+);
 typedef _WindowsGetStringRawBuffer = Pointer<Utf16> Function(
-    int string, Pointer<Uint32> length);
+  int string,
+  Pointer<Uint32> length,
+);
 
 // ══════════════════════════════════════════════════════════════════════════
 // 数据类
@@ -67,7 +84,8 @@ class MediaInfo {
   int get hashCode => Object.hash(title, artist, album, albumArtist, status);
 
   @override
-  String toString() => 'MediaInfo(title: "$title", artist: "$artist", '
+  String toString() =>
+      'MediaInfo(title: "$title", artist: "$artist", '
       'album: "$album", albumArtist: "$albumArtist", status: $status)';
 }
 
@@ -83,10 +101,16 @@ class SystemControlService {
 
   static final _user32 = DynamicLibrary.open('user32.dll');
 
-  static final _keybdEvent = _user32.lookupFunction<
-      Void Function(Uint8 bVk, Uint8 bScan, Uint32 dwFlags, IntPtr dwExtraInfo),
-      void Function(
-          int bVk, int bScan, int dwFlags, int dwExtraInfo)>('keybd_event');
+  static final _keybdEvent = _user32
+      .lookupFunction<
+        Void Function(
+          Uint8 bVk,
+          Uint8 bScan,
+          Uint32 dwFlags,
+          IntPtr dwExtraInfo,
+        ),
+        void Function(int bVk, int bScan, int dwFlags, int dwExtraInfo)
+      >('keybd_event');
 
   static const _keyEventfKeyup = 0x0002;
   static const _keyEventfSilent = 0x0004;
@@ -95,9 +119,11 @@ class SystemControlService {
   static const _vkVolumeMute = 0xAD;
 
   static final _winmm = DynamicLibrary.open('winmm.dll');
-  static final _waveOutGetVolume = _winmm.lookupFunction<
-      Uint32 Function(Uint32, Pointer<Uint32>),
-      int Function(int, Pointer<Uint32>)>('waveOutGetVolume');
+  static final _waveOutGetVolume = _winmm
+      .lookupFunction<
+        Uint32 Function(Uint32, Pointer<Uint32>),
+        int Function(int, Pointer<Uint32>)
+      >('waveOutGetVolume');
 
   static double _cachedVolume = 0.5;
   static double? _savedVolume;
@@ -129,7 +155,8 @@ class SystemControlService {
     _cachedVolume = _readSystemVolume();
     _lastSentVolSteps = (_cachedVolume * 50).round();
     debugPrint(
-        '[SCS] initVolume done: vol=$_cachedVolume, steps=$_lastSentVolSteps');
+      '[SCS] initVolume done: vol=$_cachedVolume, steps=$_lastSentVolSteps',
+    );
   }
 
   static void setVolume(double target) {
@@ -199,8 +226,10 @@ class SystemControlService {
   static void initBrightness() {
     debugPrint('[SCS] initBrightness start');
     try {
-      final hMon =
-          MonitorFromWindow(GetDesktopWindow(), MONITOR_DEFAULTTOPRIMARY);
+      final hMon = MonitorFromWindow(
+        GetDesktopWindow(),
+        MONITOR_DEFAULTTOPRIMARY,
+      );
       debugPrint('[SCS] hMonitor: $hMon');
 
       final cnt = calloc<Uint32>();
@@ -233,7 +262,8 @@ class SystemControlService {
         final range = _maxBri - _minBri;
         if (range > 0) _cachedBrightness = (cr.value - _minBri) / range;
         debugPrint(
-            '[SCS] brightness range: $_minBri~$_maxBri, current: ${cr.value}');
+          '[SCS] brightness range: $_minBri~$_maxBri, current: ${cr.value}',
+        );
       } else {
         debugPrint('[SCS] Monitor does not support DDC/CI brightness');
       }
@@ -251,13 +281,16 @@ class SystemControlService {
   static void setBrightness(double value) {
     _cachedBrightness = value.clamp(0.0, 1.0);
     debugPrint(
-        '[SCS] setBrightness($_cachedBrightness) supported=$_briSupported');
+      '[SCS] setBrightness($_cachedBrightness) supported=$_briSupported',
+    );
     final physHandle = _physHandle;
     if (!_briSupported || physHandle == null || physHandle.isNull) return;
     try {
       final range = _maxBri - _minBri;
       SetMonitorBrightness(
-          physHandle, (_minBri + _cachedBrightness * range).round());
+        physHandle,
+        (_minBri + _cachedBrightness * range).round(),
+      );
     } catch (e) {
       debugPrint('[SCS] setBrightness error: $e');
     }
@@ -298,26 +331,38 @@ class SystemControlService {
     if (kDebugMode) debugPrint('[SCS] _initWinRT start');
     try {
       final combase = DynamicLibrary.open('combase.dll');
-      _roInit = combase
-          .lookupFunction<_RoInitializeNative, _RoInitialize>('RoInitialize');
-      _roGetFactory = combase.lookupFunction<_RoGetActivationFactoryNative,
-          _RoGetActivationFactory>('RoGetActivationFactory');
-      _winCreateStr = combase.lookupFunction<_WindowsCreateStringNative,
-          _WindowsCreateString>('WindowsCreateString');
-      _winDeleteStr = combase.lookupFunction<_WindowsDeleteStringNative,
-          _WindowsDeleteString>('WindowsDeleteString');
-      _winGetStrBuf = combase.lookupFunction<_WindowsGetStringRawBufferNative,
-          _WindowsGetStringRawBuffer>('WindowsGetStringRawBuffer');
+      _roInit = combase.lookupFunction<_RoInitializeNative, _RoInitialize>(
+        'RoInitialize',
+      );
+      _roGetFactory = combase
+          .lookupFunction<
+            _RoGetActivationFactoryNative,
+            _RoGetActivationFactory
+          >('RoGetActivationFactory');
+      _winCreateStr = combase
+          .lookupFunction<_WindowsCreateStringNative, _WindowsCreateString>(
+            'WindowsCreateString',
+          );
+      _winDeleteStr = combase
+          .lookupFunction<_WindowsDeleteStringNative, _WindowsDeleteString>(
+            'WindowsDeleteString',
+          );
+      _winGetStrBuf = combase
+          .lookupFunction<
+            _WindowsGetStringRawBufferNative,
+            _WindowsGetStringRawBuffer
+          >('WindowsGetStringRawBuffer');
 
       final hr = _roInit(0);
-      if (kDebugMode) debugPrint('[SCS] RoInitialize: 0x${hr.toRadixString(16)}');
+      if (kDebugMode)
+        debugPrint('[SCS] RoInitialize: 0x${hr.toRadixString(16)}');
 
-      final className =
-          'Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager'
-              .toNativeUtf16();
+      final className = 'Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager'
+          .toNativeUtf16();
       final hstrPtr = calloc<IntPtr>();
       final hr2 = _winCreateStr(className, 138, hstrPtr);
-      if (kDebugMode) debugPrint('[SCS] WindowsCreateString: 0x${hr2.toRadixString(16)}');
+      if (kDebugMode)
+        debugPrint('[SCS] WindowsCreateString: 0x${hr2.toRadixString(16)}');
       _hstrSMTCClass = hstrPtr.value;
       calloc.free(hstrPtr);
       calloc.free(className);
@@ -390,7 +435,10 @@ class SystemControlService {
       if (kDebugMode) debugPrint('[SCS] [1] RoGetActivationFactory...');
       final factoryPtr = calloc<VTablePointer>();
       final hr = _roGetFactory(
-          _hstrSMTCClass, _iidSMTCManagerStatics, factoryPtr);
+        _hstrSMTCClass,
+        _iidSMTCManagerStatics,
+        factoryPtr,
+      );
       if (kDebugMode) debugPrint('[SCS] [1] result: 0x${hr.toRadixString(16)}');
       if (hr != S_OK) {
         calloc.free(factoryPtr);
@@ -410,14 +458,18 @@ class SystemControlService {
       final requestAddr = factory.value[6];
       if (kDebugMode) debugPrint('[SCS] [2] vtable[6] addr: $requestAddr');
 
-      final requestFn = Pointer<
-                  NativeFunction<
-                      Int32 Function(VTablePointer self,
-                          Pointer<VTablePointer> result)>>.fromAddress(
-              requestAddr)
-          .asFunction<
-              int Function(VTablePointer self,
-                  Pointer<VTablePointer> result)>();
+      final requestFn =
+          Pointer<
+                NativeFunction<
+                  Int32 Function(
+                    VTablePointer self,
+                    Pointer<VTablePointer> result,
+                  )
+                >
+              >.fromAddress(requestAddr)
+              .asFunction<
+                int Function(VTablePointer self, Pointer<VTablePointer> result)
+              >();
 
       final hr2 = requestFn(factory, asyncOpPtr);
       if (kDebugMode) {
@@ -457,14 +509,18 @@ class SystemControlService {
       final sessionPtr = calloc<VTablePointer>();
       final getSessionAddr = sessionManager.value[6];
       if (kDebugMode) debugPrint('[SCS] [4] vtable[6] addr: $getSessionAddr');
-      final getSessionFn = Pointer<
-                  NativeFunction<
-                      Int32 Function(VTablePointer self,
-                          Pointer<VTablePointer> result)>>.fromAddress(
-              getSessionAddr)
-          .asFunction<
-              int Function(VTablePointer self,
-                  Pointer<VTablePointer> result)>();
+      final getSessionFn =
+          Pointer<
+                NativeFunction<
+                  Int32 Function(
+                    VTablePointer self,
+                    Pointer<VTablePointer> result,
+                  )
+                >
+              >.fromAddress(getSessionAddr)
+              .asFunction<
+                int Function(VTablePointer self, Pointer<VTablePointer> result)
+              >();
 
       final hr3 = getSessionFn(sessionManager, sessionPtr);
       if (kDebugMode) {
@@ -497,14 +553,18 @@ class SystemControlService {
       final playbackInfoPtr = calloc<VTablePointer>();
       final getPlaybackAddr = session.value[8];
       if (kDebugMode) debugPrint('[SCS] [5] vtable[8] addr: $getPlaybackAddr');
-      final getPlaybackFn = Pointer<
-                  NativeFunction<
-                      Int32 Function(VTablePointer self,
-                          Pointer<VTablePointer> result)>>.fromAddress(
-              getPlaybackAddr)
-          .asFunction<
-              int Function(VTablePointer self,
-                  Pointer<VTablePointer> result)>();
+      final getPlaybackFn =
+          Pointer<
+                NativeFunction<
+                  Int32 Function(
+                    VTablePointer self,
+                    Pointer<VTablePointer> result,
+                  )
+                >
+              >.fromAddress(getPlaybackAddr)
+              .asFunction<
+                int Function(VTablePointer self, Pointer<VTablePointer> result)
+              >();
 
       final hr4 = getPlaybackFn(session, playbackInfoPtr);
       if (kDebugMode) {
@@ -518,20 +578,25 @@ class SystemControlService {
         final getStatusAddr = playbackInfo.value[7];
         if (kDebugMode) {
           debugPrint(
-            '[SCS] [5] get_PlaybackStatus vtable[7] addr: $getStatusAddr');
+            '[SCS] [5] get_PlaybackStatus vtable[7] addr: $getStatusAddr',
+          );
         }
-        final getStatusFn = Pointer<
-                NativeFunction<
-                    Int32 Function(VTablePointer self,
-                        Pointer<Int32> result)>>.fromAddress(getStatusAddr)
-            .asFunction<
-                int Function(VTablePointer self, Pointer<Int32> result)>();
+        final getStatusFn =
+            Pointer<
+                  NativeFunction<
+                    Int32 Function(VTablePointer self, Pointer<Int32> result)
+                  >
+                >.fromAddress(getStatusAddr)
+                .asFunction<
+                  int Function(VTablePointer self, Pointer<Int32> result)
+                >();
 
         final statusPtr = calloc<Int32>();
         final hrS = getStatusFn(playbackInfo, statusPtr);
         if (kDebugMode) {
           debugPrint(
-            '[SCS] [5] playback status: 0x${hrS.toRadixString(16)} val=${statusPtr.value}');
+            '[SCS] [5] playback status: 0x${hrS.toRadixString(16)} val=${statusPtr.value}',
+          );
         }
         if (hrS == S_OK) {
           switch (statusPtr.value) {
@@ -561,21 +626,28 @@ class SystemControlService {
       int tryGetMediaIndex = 10;
       final tryGetMediaAddr = session.value[tryGetMediaIndex];
       if (kDebugMode) {
-        debugPrint('[SCS] [6] vtable[$tryGetMediaIndex] addr: $tryGetMediaAddr');
+        debugPrint(
+          '[SCS] [6] vtable[$tryGetMediaIndex] addr: $tryGetMediaAddr',
+        );
       }
-      final tryGetMediaFn = Pointer<
-                  NativeFunction<
-                      Int32 Function(VTablePointer self,
-                          Pointer<VTablePointer> result)>>.fromAddress(
-              tryGetMediaAddr)
-          .asFunction<
-              int Function(VTablePointer self,
-                  Pointer<VTablePointer> result)>();
+      final tryGetMediaFn =
+          Pointer<
+                NativeFunction<
+                  Int32 Function(
+                    VTablePointer self,
+                    Pointer<VTablePointer> result,
+                  )
+                >
+              >.fromAddress(tryGetMediaAddr)
+              .asFunction<
+                int Function(VTablePointer self, Pointer<VTablePointer> result)
+              >();
 
       final hr5 = tryGetMediaFn(session, mediaPropsAsyncPtr);
       if (kDebugMode) {
         debugPrint(
-          '[SCS] [6] TryGetMediaPropertiesAsync: 0x${hr5.toRadixString(16)}');
+          '[SCS] [6] TryGetMediaPropertiesAsync: 0x${hr5.toRadixString(16)}',
+        );
       }
       IUnknown(session).release();
 
@@ -606,8 +678,10 @@ class SystemControlService {
           artist = _readHstr(mediaProps, 8);
           album = _readHstr(mediaProps, 9);
           if (kDebugMode) {
-            debugPrint('[SCS] [6] title="$title", artist="$artist", '
-                'album="$album", albumArtist="$albumArtist"');
+            debugPrint(
+              '[SCS] [6] title="$title", artist="$artist", '
+              'album="$album", albumArtist="$albumArtist"',
+            );
           }
           IUnknown(mediaProps).release();
         }
@@ -615,13 +689,15 @@ class SystemControlService {
         calloc.free(mediaPropsAsyncPtr);
       }
 
-      _setMediaInfo(MediaInfo(
-        title: title,
-        artist: artist.isNotEmpty ? artist : albumArtist,
-        album: album,
-        albumArtist: albumArtist,
-        status: status,
-      ));
+      _setMediaInfo(
+        MediaInfo(
+          title: title,
+          artist: artist.isNotEmpty ? artist : albumArtist,
+          album: album,
+          albumArtist: albumArtist,
+          status: status,
+        ),
+      );
       if (kDebugMode) debugPrint('[SCS] === _pollSMTC result: $_mediaInfo ===');
     } catch (e, st) {
       if (kDebugMode) debugPrint('[SCS] _pollSMTC error: $e\n$st');
@@ -640,12 +716,15 @@ class SystemControlService {
   static String _readHstr(VTablePointer obj, int idx) {
     try {
       final addr = obj.value[idx];
-      final fn = Pointer<
-              NativeFunction<
-                  Int32 Function(VTablePointer self,
-                      Pointer<IntPtr> result)>>.fromAddress(addr)
-          .asFunction<
-              int Function(VTablePointer self, Pointer<IntPtr> result)>();
+      final fn =
+          Pointer<
+                NativeFunction<
+                  Int32 Function(VTablePointer self, Pointer<IntPtr> result)
+                >
+              >.fromAddress(addr)
+              .asFunction<
+                int Function(VTablePointer self, Pointer<IntPtr> result)
+              >();
       final p = calloc<IntPtr>();
       if (fn(obj, p) == S_OK) {
         final s = _hstringToDart(p.value);
@@ -669,13 +748,17 @@ class SystemControlService {
     try {
       // IAsyncInfo vtable: 3=get_Id, 4=get_Status, ...
       final getStatusAddr = asyncOp.value[4];
-      if (kDebugMode) debugPrint('[SCS] get_Status vtable[4] addr: $getStatusAddr');
-      final getStatusFn = Pointer<
-              NativeFunction<
-                  Int32 Function(VTablePointer self,
-                      Pointer<Int32> result)>>.fromAddress(getStatusAddr)
-          .asFunction<
-              int Function(VTablePointer self, Pointer<Int32> result)>();
+      if (kDebugMode)
+        debugPrint('[SCS] get_Status vtable[4] addr: $getStatusAddr');
+      final getStatusFn =
+          Pointer<
+                NativeFunction<
+                  Int32 Function(VTablePointer self, Pointer<Int32> result)
+                >
+              >.fromAddress(getStatusAddr)
+              .asFunction<
+                int Function(VTablePointer self, Pointer<Int32> result)
+              >();
 
       final statusPtr = calloc<Int32>();
       final stopwatch = Stopwatch()..start();
@@ -725,15 +808,20 @@ class SystemControlService {
 
       // IAsyncOperation vtable: IUnknown(0-2), IAsyncInfo(3-7), GetResults(10)
       final getResultsAddr = asyncOp.value[10];
-      if (kDebugMode) debugPrint('[SCS] GetResults vtable[10] addr: $getResultsAddr');
-      final getResultsFn = Pointer<
-                  NativeFunction<
-                      Int32 Function(VTablePointer self,
-                          Pointer<VTablePointer> result)>>.fromAddress(
-              getResultsAddr)
-          .asFunction<
-              int Function(VTablePointer self,
-                  Pointer<VTablePointer> result)>();
+      if (kDebugMode)
+        debugPrint('[SCS] GetResults vtable[10] addr: $getResultsAddr');
+      final getResultsFn =
+          Pointer<
+                NativeFunction<
+                  Int32 Function(
+                    VTablePointer self,
+                    Pointer<VTablePointer> result,
+                  )
+                >
+              >.fromAddress(getResultsAddr)
+              .asFunction<
+                int Function(VTablePointer self, Pointer<VTablePointer> result)
+              >();
 
       final resultPtr = calloc<VTablePointer>();
       final hr = getResultsFn(asyncOp, resultPtr);
@@ -789,11 +877,13 @@ class SystemControlService {
       if (players.any((p) => title.contains(p))) {
         final parts = title.split(' - ');
         if (parts.length >= 2) {
-          _setMediaInfo(MediaInfo(
-            title: parts.sublist(1).join(' - ').trim(),
-            artist: parts[0].trim(),
-            status: PlaybackStatus.playing,
-          ));
+          _setMediaInfo(
+            MediaInfo(
+              title: parts.sublist(1).join(' - ').trim(),
+              artist: parts[0].trim(),
+              status: PlaybackStatus.playing,
+            ),
+          );
           return;
         }
       }

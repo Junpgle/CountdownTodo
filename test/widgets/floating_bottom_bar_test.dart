@@ -31,44 +31,25 @@ void main() {
 
   test('limits the floating treatment to mobile portrait phone layouts', () {
     expect(
-      floatingBottomBarShouldFloatFor(
-        isMobile: true,
-        width: 390,
-        height: 844,
-      ),
+      floatingBottomBarShouldFloatFor(isMobile: true, width: 390, height: 844),
       isTrue,
     );
     expect(
-      floatingBottomBarShouldFloatFor(
-        isMobile: true,
-        width: 844,
-        height: 390,
-      ),
+      floatingBottomBarShouldFloatFor(isMobile: true, width: 844, height: 390),
       isFalse,
     );
     expect(
-      floatingBottomBarShouldFloatFor(
-        isMobile: true,
-        width: 800,
-        height: 1280,
-      ),
+      floatingBottomBarShouldFloatFor(isMobile: true, width: 800, height: 1280),
       isFalse,
     );
     expect(
-      floatingBottomBarShouldFloatFor(
-        isMobile: false,
-        width: 390,
-        height: 844,
-      ),
+      floatingBottomBarShouldFloatFor(isMobile: false, width: 390, height: 844),
       isFalse,
     );
   });
 
   test('scales the capsule width with the number of destinations', () {
-    final threeItemWidth = floatingBottomNavigationWidthFor(
-      390,
-      itemCount: 3,
-    );
+    final threeItemWidth = floatingBottomNavigationWidthFor(390, itemCount: 3);
 
     expect(threeItemWidth, closeTo(262, 0.001));
     expect(
@@ -85,8 +66,9 @@ void main() {
     );
   });
 
-  testWidgets('keeps the bar child when the effect is disabled',
-      (tester) async {
+  testWidgets('keeps the bar child when the effect is disabled', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(false);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
 
@@ -136,8 +118,9 @@ void main() {
     expect(find.text('Content-sized control'), findsOneWidget);
   });
 
-  testWidgets('does not add a second glass layer to stock buttons',
-      (tester) async {
+  testWidgets('does not add a second glass layer to stock buttons', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(true);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
     final theme = applyAppLiquidGlassTheme(
@@ -156,10 +139,7 @@ void main() {
             height: 64,
             margin: EdgeInsets.zero,
             mobilePortraitOnly: false,
-            child: FilledButton(
-              onPressed: () {},
-              child: const Text('Action'),
-            ),
+            child: FilledButton(onPressed: () {}, child: const Text('Action')),
           ),
         ),
       ),
@@ -170,8 +150,9 @@ void main() {
     expect(find.byType(FilledButton), findsOneWidget);
   });
 
-  testWidgets('can keep interactive content on the native fallback',
-      (tester) async {
+  testWidgets('can keep interactive content on the native fallback', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(true);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
 
@@ -198,8 +179,9 @@ void main() {
     expect(find.byType(GlassContainer), findsNothing);
   });
 
-  testWidgets('fixed-height fallback tolerates an unbounded positioned width',
-      (tester) async {
+  testWidgets('fixed-height fallback tolerates an unbounded positioned width', (
+    tester,
+  ) async {
     const childKey = Key('unbounded-fallback-child');
     await tester.pumpWidget(
       const MaterialApp(
@@ -234,30 +216,22 @@ void main() {
 
   test('resolves the shared top-bar title reveal progress', () {
     expect(
-      floatingGlassTopBarTitleProgress(
-        scrollOffset: 0,
-        contentOffset: 60,
-      ),
+      floatingGlassTopBarTitleProgress(scrollOffset: 0, contentOffset: 60),
       0,
     );
     expect(
-      floatingGlassTopBarTitleProgress(
-        scrollOffset: 47,
-        contentOffset: 60,
-      ),
+      floatingGlassTopBarTitleProgress(scrollOffset: 47, contentOffset: 60),
       closeTo(0.5, 0.001),
     );
     expect(
-      floatingGlassTopBarTitleProgress(
-        scrollOffset: 70,
-        contentOffset: 60,
-      ),
+      floatingGlassTopBarTitleProgress(scrollOffset: 70, contentOffset: 60),
       1,
     );
   });
 
-  testWidgets('fades scroll content without adding a blur layer',
-      (tester) async {
+  testWidgets('fades scroll content without adding a blur layer', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(true);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
 
@@ -294,8 +268,9 @@ void main() {
     expect(find.text('Faded content'), findsOneWidget);
   });
 
-  testWidgets('keeps content visible when Android 17 disables shader fades',
-      (tester) async {
+  testWidgets('keeps content visible when Android 17 disables shader fades', (
+    tester,
+  ) async {
     final previousPolicy =
         AndroidWindowRenderingPolicy.disableShaderContentFade.value;
     addTearDown(() {
@@ -342,7 +317,8 @@ void main() {
 
     final normalized =
         AndroidWindowRenderingPolicy.normalizeCompactWindowMediaQuery(
-            malformed);
+          malformed,
+        );
 
     expect(normalized.padding.top, 64);
     expect(normalized.viewPadding.top, 64);
@@ -367,15 +343,17 @@ void main() {
 
     final normalized =
         AndroidWindowRenderingPolicy.normalizeCompactWindowMediaQuery(
-            malformed);
+          malformed,
+        );
 
     expect(normalized.padding.top, 64);
     expect(normalized.viewPadding.top, 64);
     expect(normalized.viewPadding.bottom, 24);
   });
 
-  testWidgets('fades grouped sliver content beneath a pinned top bar',
-      (tester) async {
+  testWidgets('fades grouped sliver content beneath a pinned top bar', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(false);
 
     await tester.pumpWidget(
@@ -383,18 +361,12 @@ void main() {
         home: Scaffold(
           body: CustomScrollView(
             slivers: [
-              const SliverAppBar(
-                pinned: true,
-                title: Text('Sliver top bar'),
-              ),
+              const SliverAppBar(pinned: true, title: Text('Sliver top bar')),
               FloatingGlassSliverContentFadeGroup(
                 topBarHeight: 80,
                 slivers: const [
                   SliverToBoxAdapter(
-                    child: SizedBox(
-                      height: 480,
-                      child: Text('Sliver content'),
-                    ),
+                    child: SizedBox(height: 480, child: Text('Sliver content')),
                   ),
                 ],
               ),
@@ -429,8 +401,9 @@ void main() {
     expect(find.text('Top fade'), findsOneWidget);
   });
 
-  testWidgets('keeps an embedded AppBar finite with the shared top fade',
-      (tester) async {
+  testWidgets('keeps an embedded AppBar finite with the shared top fade', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(true);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
 
@@ -461,8 +434,9 @@ void main() {
     expect(find.text('Embedded top fade'), findsOneWidget);
   });
 
-  testWidgets('wraps AppBar controls with the shared floating shell',
-      (tester) async {
+  testWidgets('wraps AppBar controls with the shared floating shell', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(true);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
 
@@ -496,8 +470,9 @@ void main() {
     expect(find.text('Floating controls'), findsOneWidget);
   });
 
-  testWidgets('can keep AppBar controls inside one continuous top surface',
-      (tester) async {
+  testWidgets('can keep AppBar controls inside one continuous top surface', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(true);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
     final theme = applyAppLiquidGlassTheme(
@@ -544,12 +519,7 @@ void main() {
         home: Scaffold(
           appBar: FloatingGlassAppBar(
             title: const Text('Text action'),
-            actions: [
-              TextButton(
-                onPressed: () {},
-                child: const Text('恢复默认'),
-              ),
-            ],
+            actions: [TextButton(onPressed: () {}, child: const Text('恢复默认'))],
           ),
         ),
       ),
@@ -561,8 +531,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('keeps composite segmented actions out of circular shells',
-      (tester) async {
+  testWidgets('keeps composite segmented actions out of circular shells', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -592,8 +563,9 @@ void main() {
     expect(find.byType(FloatingGlassAppBarAction), findsNothing);
   });
 
-  testWidgets('animates an AppBar control into its glass shell',
-      (tester) async {
+  testWidgets('animates an AppBar control into its glass shell', (
+    tester,
+  ) async {
     final collapseProgress = ValueNotifier<double>(0);
 
     await LiquidGlassEffectService.setEnabled(true);
@@ -624,8 +596,9 @@ void main() {
     collapseProgress.dispose();
   });
 
-  testWidgets('does not nest a second glass circle inside an AppBar action',
-      (tester) async {
+  testWidgets('does not nest a second glass circle inside an AppBar action', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(true);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
     final collapseProgress = ValueNotifier<double>(1);
@@ -659,8 +632,9 @@ void main() {
     collapseProgress.dispose();
   });
 
-  testWidgets('keeps the implicit settings back button plain at rest',
-      (tester) async {
+  testWidgets('keeps the implicit settings back button plain at rest', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(true);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
     final theme = applyAppLiquidGlassTheme(
@@ -680,20 +654,14 @@ void main() {
             builder: (_) => const SizedBox.shrink(),
           ),
           onGenerateInitialRoutes: (_, _) => [
-            MaterialPageRoute<void>(
-              builder: (_) => const SizedBox.shrink(),
-            ),
+            MaterialPageRoute<void>(builder: (_) => const SizedBox.shrink()),
             MaterialPageRoute<void>(
               builder: (_) => Scaffold(
-                appBar: const FloatingGlassAppBar(
-                  title: Text('设置'),
-                ),
+                appBar: const FloatingGlassAppBar(title: Text('设置')),
                 body: ListView.builder(
                   itemCount: 20,
-                  itemBuilder: (context, index) => SizedBox(
-                    height: 80,
-                    child: Text('Setting $index'),
-                  ),
+                  itemBuilder: (context, index) =>
+                      SizedBox(height: 80, child: Text('Setting $index')),
                 ),
               ),
             ),
@@ -709,8 +677,9 @@ void main() {
     expect(find.byType(GlassContainer), findsNothing);
   });
 
-  testWidgets('home AppBar icon layers stay transparent inside the shell',
-      (tester) async {
+  testWidgets('home AppBar icon layers stay transparent inside the shell', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(true);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
     final theme = applyAppLiquidGlassTheme(
@@ -740,8 +709,9 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 16));
 
-    final iconButtons =
-        tester.widgetList<IconButton>(find.byType(IconButton)).toList();
+    final iconButtons = tester
+        .widgetList<IconButton>(find.byType(IconButton))
+        .toList();
     expect(iconButtons, isNotEmpty);
     expect(
       iconButtons.every((button) => button.style?.backgroundBuilder != null),
@@ -749,8 +719,9 @@ void main() {
     );
   });
 
-  testWidgets('uses the shared draggable glass action for home content',
-      (tester) async {
+  testWidgets('uses the shared draggable glass action for home content', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(true);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
     final theme = applyAppLiquidGlassTheme(
@@ -788,8 +759,9 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 16));
 
-    final iconButtons =
-        tester.widgetList<IconButton>(find.byType(IconButton)).toList();
+    final iconButtons = tester
+        .widgetList<IconButton>(find.byType(IconButton))
+        .toList();
     expect(iconButtons, hasLength(1));
     expect(iconButtons.single.style?.backgroundBuilder, isNotNull);
     expect(find.byType(GlassContainer), findsNothing);
@@ -797,8 +769,9 @@ void main() {
     expect(find.byType(FloatingActionButton), findsNothing);
   });
 
-  testWidgets('uses the current theme primary for the active glass tint',
-      (tester) async {
+  testWidgets('uses the current theme primary for the active glass tint', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(true);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
 
@@ -806,21 +779,13 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: ThemeData(useMaterial3: true, colorScheme: colorScheme),
-        home: Scaffold(
-          body: LiquidGlassSwitch(value: true, onChanged: (_) {}),
-        ),
+        home: Scaffold(body: LiquidGlassSwitch(value: true, onChanged: (_) {})),
       ),
     );
     await tester.pump(const Duration(milliseconds: 16));
 
-    expect(
-      liquidGlassSwitchActiveColorFor(colorScheme),
-      colorScheme.primary,
-    );
-    expect(
-      liquidGlassSwitchActiveColorFor(colorScheme),
-      isNot(Colors.blue),
-    );
+    expect(liquidGlassSwitchActiveColorFor(colorScheme), colorScheme.primary);
+    expect(liquidGlassSwitchActiveColorFor(colorScheme), isNot(Colors.blue));
     expect(find.byType(GlassEffect), findsOneWidget);
     expect(find.byType(GlassSwitch), findsOneWidget);
     expect(
@@ -830,8 +795,9 @@ void main() {
     expect(find.byType(LiquidGlassSwitch), findsOneWidget);
   });
 
-  testWidgets('updates the glass switch before an async callback completes',
-      (tester) async {
+  testWidgets('updates the glass switch before an async callback completes', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(true);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
 
@@ -856,27 +822,23 @@ void main() {
     await tester.pump();
 
     expect(changedValue, isTrue);
+    expect(tester.widget<GlassSwitch>(find.byType(GlassSwitch)).value, isTrue);
     expect(
-      tester.widget<GlassSwitch>(find.byType(GlassSwitch)).value,
-      isTrue,
+      tester.widget<LiquidGlassSwitch>(find.byType(LiquidGlassSwitch)).value,
+      isFalse,
     );
-    expect(
-        tester.widget<LiquidGlassSwitch>(find.byType(LiquidGlassSwitch)).value,
-        isFalse);
     callbackCompleter.complete();
   });
 
-  testWidgets('keeps list tile switches on the trailing edge on macOS',
-      (tester) async {
+  testWidgets('keeps list tile switches on the trailing edge on macOS', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(true);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
 
     await tester.pumpWidget(
       MaterialApp(
-        theme: ThemeData(
-          useMaterial3: true,
-          platform: TargetPlatform.macOS,
-        ),
+        theme: ThemeData(useMaterial3: true, platform: TargetPlatform.macOS),
         home: Scaffold(
           body: LiquidGlassSwitchListTile(
             title: const Text('Glass setting'),
@@ -893,8 +855,9 @@ void main() {
     expect(tile.trailing, isNotNull);
   });
 
-  testWidgets('keeps the LiquidGlassSwitch drag-to-toggle interaction',
-      (tester) async {
+  testWidgets('keeps the LiquidGlassSwitch drag-to-toggle interaction', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(true);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
 
@@ -921,8 +884,9 @@ void main() {
     expect(changedValue, isTrue);
   });
 
-  testWidgets('uses the canonical liquid-glass capsule geometry',
-      (tester) async {
+  testWidgets('uses the canonical liquid-glass capsule geometry', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(true);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
 
@@ -935,10 +899,7 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 16));
 
-    expect(
-      tester.getSize(find.byType(LiquidGlassSwitch)),
-      const Size(58, 26),
-    );
+    expect(tester.getSize(find.byType(LiquidGlassSwitch)), const Size(58, 26));
     expect(tester.getSize(find.byType(GlassEffect)), const Size(35.2, 22));
   });
 
@@ -997,8 +958,9 @@ void main() {
     );
   });
 
-  testWidgets('keeps the top-bar shell on the real Liquid Glass renderer',
-      (tester) async {
+  testWidgets('keeps the top-bar shell on the real Liquid Glass renderer', (
+    tester,
+  ) async {
     await LiquidGlassEffectService.setEnabled(true);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
 
@@ -1036,10 +998,8 @@ void main() {
               ListView.builder(
                 controller: controller,
                 itemCount: 20,
-                itemBuilder: (context, index) => SizedBox(
-                  height: 80,
-                  child: Text('Content $index'),
-                ),
+                itemBuilder: (context, index) =>
+                    SizedBox(height: 80, child: Text('Content $index')),
               ),
               const Positioned(
                 top: 0,
@@ -1068,8 +1028,9 @@ void main() {
     controller.dispose();
   });
 
-  testWidgets('enables tickers only for the visible indexed child',
-      (tester) async {
+  testWidgets('enables tickers only for the visible indexed child', (
+    tester,
+  ) async {
     final tickerModes = <String, bool>{};
 
     Widget probe(String name) {
@@ -1100,8 +1061,9 @@ void main() {
     expect(tickerModes, {'workbench': false, 'stats': true});
   });
 
-  testWidgets('does not re-enable tickers disabled by a parent route',
-      (tester) async {
+  testWidgets('does not re-enable tickers disabled by a parent route', (
+    tester,
+  ) async {
     final tickerModes = <bool>[];
 
     await tester.pumpWidget(

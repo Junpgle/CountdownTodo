@@ -21,8 +21,9 @@ class MinorModeService with WidgetsBindingObserver {
 
   final MethodChannel _channel = const MethodChannel(_channelName);
   final EventChannel _eventChannel = const EventChannel(_eventChannelName);
-  final ValueNotifier<MinorModeState> stateNotifier =
-      ValueNotifier(const MinorModeState.unsupported());
+  final ValueNotifier<MinorModeState> stateNotifier = ValueNotifier(
+    const MinorModeState.unsupported(),
+  );
   final ValueNotifier<MinorAgeSignalState> googleAgeSignalNotifier =
       ValueNotifier(const MinorAgeSignalState.unavailable());
   final ValueNotifier<DateTime?> manualBirthDateNotifier = ValueNotifier(null);
@@ -84,11 +85,13 @@ class MinorModeService with WidgetsBindingObserver {
     final manualAgeBand = _manualAgeBand(manualBirthDate);
 
     if (!AppPlatform.isAndroid) {
-      return _publish(_applyManualAgeBand(
-        MinorModeState.unsupported(manualEnabled: manualEnabled),
-        manualEnabled: manualEnabled,
-        manualAgeBand: manualAgeBand,
-      ));
+      return _publish(
+        _applyManualAgeBand(
+          MinorModeState.unsupported(manualEnabled: manualEnabled),
+          manualEnabled: manualEnabled,
+          manualAgeBand: manualAgeBand,
+        ),
+      );
     }
 
     try {
@@ -98,10 +101,7 @@ class MinorModeService with WidgetsBindingObserver {
         _hasPlatformState = true;
         return _publish(
           _applyManualAgeBand(
-            MinorModeState.fromPlatformMap(
-              map,
-              manualEnabled: manualEnabled,
-            ),
+            MinorModeState.fromPlatformMap(map, manualEnabled: manualEnabled),
             manualEnabled: manualEnabled,
             manualAgeBand: manualAgeBand,
           ),
@@ -141,10 +141,10 @@ class MinorModeService with WidgetsBindingObserver {
       source: current.systemEnabled
           ? current.source
           : shouldEnable
-              ? MinorModeSource.manual
-              : current.systemSupported
-                  ? MinorModeSource.androidSystem
-                  : MinorModeSource.unsupported,
+          ? MinorModeSource.manual
+          : current.systemSupported
+          ? MinorModeSource.androidSystem
+          : MinorModeSource.unsupported,
       ageBand: current.systemEnabled ? current.ageBand : ageBand,
     );
     return _publish(next);
@@ -163,10 +163,10 @@ class MinorModeService with WidgetsBindingObserver {
           source: current.systemEnabled
               ? current.source
               : enabled
-                  ? MinorModeSource.manual
-                  : current.systemSupported
-                      ? MinorModeSource.androidSystem
-                      : MinorModeSource.unsupported,
+              ? MinorModeSource.manual
+              : current.systemSupported
+              ? MinorModeSource.androidSystem
+              : MinorModeSource.unsupported,
           lastError: current.lastError,
         ),
         manualEnabled: enabled,
@@ -187,24 +187,16 @@ class MinorModeService with WidgetsBindingObserver {
       );
       if (raw is Map) {
         return _publishGoogleAgeSignal(
-          MinorAgeSignalState.fromPlatformMap(
-            Map<Object?, Object?>.from(raw),
-          ),
+          MinorAgeSignalState.fromPlatformMap(Map<Object?, Object?>.from(raw)),
         );
       }
       throw const FormatException('Invalid Google age signals response');
     } on MissingPluginException catch (error) {
-      return _publishGoogleAgeSignal(
-        _googleAgeSignalFailure(error),
-      );
+      return _publishGoogleAgeSignal(_googleAgeSignalFailure(error));
     } on PlatformException catch (error) {
-      return _publishGoogleAgeSignal(
-        _googleAgeSignalFailure(error),
-      );
+      return _publishGoogleAgeSignal(_googleAgeSignalFailure(error));
     } catch (error) {
-      return _publishGoogleAgeSignal(
-        _googleAgeSignalFailure(error),
-      );
+      return _publishGoogleAgeSignal(_googleAgeSignalFailure(error));
     }
   }
 
@@ -220,24 +212,16 @@ class MinorModeService with WidgetsBindingObserver {
       );
       if (raw is Map) {
         return _publishGoogleAgeSignal(
-          MinorAgeSignalState.fromPlatformMap(
-            Map<Object?, Object?>.from(raw),
-          ),
+          MinorAgeSignalState.fromPlatformMap(Map<Object?, Object?>.from(raw)),
         );
       }
       throw const FormatException('Invalid Google age signals response');
     } on MissingPluginException catch (error) {
-      return _publishGoogleAgeSignal(
-        _googleAgeSignalFailure(error),
-      );
+      return _publishGoogleAgeSignal(_googleAgeSignalFailure(error));
     } on PlatformException catch (error) {
-      return _publishGoogleAgeSignal(
-        _googleAgeSignalFailure(error),
-      );
+      return _publishGoogleAgeSignal(_googleAgeSignalFailure(error));
     } catch (error) {
-      return _publishGoogleAgeSignal(
-        _googleAgeSignalFailure(error),
-      );
+      return _publishGoogleAgeSignal(_googleAgeSignalFailure(error));
     }
   }
 
@@ -273,8 +257,9 @@ class MinorModeService with WidgetsBindingObserver {
     if (authorized) {
       _cachedAuthorizedAction = action;
       _cachedAuthorizationFingerprint = _authorizationFingerprint(current);
-      _cachedAuthorizationExpiresAt =
-          DateTime.now().add(_parentAuthorizationSession);
+      _cachedAuthorizationExpiresAt = DateTime.now().add(
+        _parentAuthorizationSession,
+      );
     }
     return authorized;
   }
@@ -410,10 +395,7 @@ class MinorModeService with WidgetsBindingObserver {
     _hasPlatformState = true;
     _publish(
       _applyManualAgeBand(
-        MinorModeState.fromPlatformMap(
-          map,
-          manualEnabled: manualEnabled,
-        ),
+        MinorModeState.fromPlatformMap(map, manualEnabled: manualEnabled),
         manualEnabled: manualEnabled,
         manualAgeBand: _manualAgeBand(manualBirthDate),
       ),
@@ -458,10 +440,7 @@ class MinorModeService with WidgetsBindingObserver {
   void _markPlatformReadFailed(Object error) {
     if (!_hasPlatformState) return;
     _publish(
-      state.copyWith(
-        systemStateReadFailed: true,
-        lastError: error.toString(),
-      ),
+      state.copyWith(systemStateReadFailed: true, lastError: error.toString()),
     );
   }
 
@@ -479,10 +458,7 @@ class MinorModeService with WidgetsBindingObserver {
     return nextState;
   }
 
-  bool _hasCachedAuthorization(
-    MinorModeAction action,
-    MinorModeState current,
-  ) {
+  bool _hasCachedAuthorization(MinorModeAction action, MinorModeState current) {
     final expiresAt = _cachedAuthorizationExpiresAt;
     return _cachedAuthorizedAction == action &&
         _cachedAuthorizationFingerprint == _authorizationFingerprint(current) &&

@@ -49,18 +49,20 @@ import '../utils/ai_settings_navigation.dart';
 import '../utils/app_dialogs.dart';
 
 final RegExp _searchTermSeparatorPattern = RegExp(r'[\s,，;；]+');
-final RegExp _fullSearchDatePattern =
-    RegExp(r'^(\d{4})[./\-/年](\d{1,2})[./\-/月](\d{1,2})[日号]?$');
-final RegExp _shortSearchDatePattern =
-    RegExp(r'^(\d{1,2})[./\-/月](\d{1,2})[日号]?$');
+final RegExp _fullSearchDatePattern = RegExp(
+  r'^(\d{4})[./\-/年](\d{1,2})[./\-/月](\d{1,2})[日号]?$',
+);
+final RegExp _shortSearchDatePattern = RegExp(
+  r'^(\d{1,2})[./\-/月](\d{1,2})[日号]?$',
+);
 final Map<(String?, String), DateFormat> _searchDateFormats = {};
 
 DateFormat _searchDateFormat(String pattern) {
   final locale = Intl.defaultLocale;
-  return _searchDateFormats.putIfAbsent(
-    (locale, pattern),
-    () => DateFormat(pattern, locale),
-  );
+  return _searchDateFormats.putIfAbsent((
+    locale,
+    pattern,
+  ), () => DateFormat(pattern, locale));
 }
 
 class SearchResultWithScore {
@@ -1069,9 +1071,8 @@ class SearchService {
 
           final history = await StorageService.getScreenTimeHistory();
           if (shouldContinue?.call() == false) return dbItems;
-          final targetDateKey = _searchDateFormat('yyyy-MM-dd').format(
-            startOfDay!,
-          );
+          final targetDateKey = _searchDateFormat('yyyy-MM-dd')
+              .format(startOfDay!);
           final targetDayStats = history[targetDateKey];
 
           if (targetDayStats != null && targetDayStats.isNotEmpty) {

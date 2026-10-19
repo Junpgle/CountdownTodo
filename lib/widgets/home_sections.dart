@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+
 import 'dart:math' as math;
+
 import 'package:intl/intl.dart' hide TextDirection;
+
 import '../services/liquid_glass_effect_service.dart';
 import '../utils/app_image_filters.dart';
 import '../utils/time_utils.dart';
@@ -36,8 +39,9 @@ class SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Color? textColor = isLight ? Colors.white : null;
-    final Color iconColor =
-        isLight ? Colors.white70 : Theme.of(context).colorScheme.primary;
+    final Color iconColor = isLight
+        ? Colors.white70
+        : Theme.of(context).colorScheme.primary;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
@@ -55,10 +59,10 @@ class SectionHeader extends StatelessWidget {
           Text(
             title,
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                  color: textColor,
-                ),
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
+              color: textColor,
+            ),
           ),
           const Spacer(),
           if (onAction != null && actionIcon != null) ...[
@@ -92,7 +96,7 @@ class SectionHeader extends StatelessWidget {
                 icon: Icon(Icons.add_circle_outline, color: iconColor),
                 tooltip: "添加",
               ),
-            )
+            ),
         ],
       ),
     );
@@ -162,10 +166,12 @@ class _ShimmerPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
-    final baseColor =
-        brightness == Brightness.dark ? Colors.grey[800]! : Colors.grey[200]!;
-    final highlightColor =
-        brightness == Brightness.dark ? Colors.grey[700]! : Colors.grey[100]!;
+    final baseColor = brightness == Brightness.dark
+        ? Colors.grey[800]!
+        : Colors.grey[200]!;
+    final highlightColor = brightness == Brightness.dark
+        ? Colors.grey[700]!
+        : Colors.grey[100]!;
     final resolvedBorderRadius = BorderRadius.circular(borderRadius);
     final resolvedWidth = width == double.infinity ? null : width;
 
@@ -239,10 +245,10 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
 
   DateFormat _cachedDateFormat(String pattern) {
     final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent(
-      (locale, pattern),
-      () => DateFormat(pattern, locale),
-    );
+    return _dateFormatters.putIfAbsent((
+      locale,
+      pattern,
+    ), () => DateFormat(pattern, locale));
   }
 
   @override
@@ -372,9 +378,10 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4))
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
       child: Padding(
@@ -432,64 +439,100 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, constraints) {
-      final bool isTablet = constraints.maxWidth >= 600;
-      final colorScheme = Theme.of(context).colorScheme;
-      final useDarkGlass =
-          widget.isLight || colorScheme.brightness == Brightness.dark;
-      final useWallpaperGlass =
-          widget.isLight && LiquidGlassEffectService.configuration.enabled;
-      final foregroundColor =
-          useWallpaperGlass ? colorScheme.onPrimary : colorScheme.onSurface;
-      final secondaryColor = useWallpaperGlass
-          ? colorScheme.onPrimary.withValues(alpha: 0.7)
-          : colorScheme.onSurfaceVariant;
-      final permissionForegroundColor =
-          widget.isLight ? colorScheme.onPrimary : foregroundColor;
-      final permissionSecondaryColor = widget.isLight
-          ? colorScheme.onPrimary.withValues(alpha: 0.7)
-          : secondaryColor;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool isTablet = constraints.maxWidth >= 600;
+        final colorScheme = Theme.of(context).colorScheme;
+        final useDarkGlass =
+            widget.isLight || colorScheme.brightness == Brightness.dark;
+        final useWallpaperGlass =
+            widget.isLight && LiquidGlassEffectService.configuration.enabled;
+        final foregroundColor = useWallpaperGlass
+            ? colorScheme.onPrimary
+            : colorScheme.onSurface;
+        final secondaryColor = useWallpaperGlass
+            ? colorScheme.onPrimary.withValues(alpha: 0.7)
+            : colorScheme.onSurfaceVariant;
+        final permissionForegroundColor = widget.isLight
+            ? colorScheme.onPrimary
+            : foregroundColor;
+        final permissionSecondaryColor = widget.isLight
+            ? colorScheme.onPrimary.withValues(alpha: 0.7)
+            : secondaryColor;
 
-      if (!widget.hasPermission) {
-        return OptionalLiquidGlassCard(
-          margin: const EdgeInsets.only(bottom: 24),
-          borderRadius: 24,
-          tint: (widget.isLight ? colorScheme.scrim : colorScheme.tertiary)
-              .withValues(alpha: 0.16),
-          isDark: useDarkGlass,
-          fallbackDecoration: BoxDecoration(
-            color: Colors.amber.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: ListTile(
-              contentPadding: EdgeInsets.symmetric(
-                  horizontal: isTablet ? 24 : 16, vertical: isTablet ? 8 : 4),
-              leading: const Icon(Icons.lock_clock, color: Colors.orange),
-              title: Text(
-                "未开启屏幕时间统计",
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: permissionForegroundColor,
+        if (!widget.hasPermission) {
+          return OptionalLiquidGlassCard(
+            margin: const EdgeInsets.only(bottom: 24),
+            borderRadius: 24,
+            tint: (widget.isLight ? colorScheme.scrim : colorScheme.tertiary)
+                .withValues(alpha: 0.16),
+            isDark: useDarkGlass,
+            fallbackDecoration: BoxDecoration(
+              color: Colors.amber.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: ListTile(
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: isTablet ? 24 : 16,
+                  vertical: isTablet ? 8 : 4,
+                ),
+                leading: const Icon(Icons.lock_clock, color: Colors.orange),
+                title: Text(
+                  "未开启屏幕时间统计",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: permissionForegroundColor,
+                  ),
+                ),
+                subtitle: Text(
+                  "点击前往开启权限以同步手机使用时长",
+                  style: TextStyle(color: permissionSecondaryColor),
+                ),
+                onTap: widget.onOpenSettings,
+              ),
+            ),
+          );
+        }
+
+        if (widget.isLoading) {
+          return _buildShimmerLoading(isTablet);
+        }
+
+        if (widget.stats.isEmpty) {
+          return OptionalLiquidGlassCard(
+            borderRadius: 24,
+            tint: (widget.isLight ? colorScheme.scrim : colorScheme.primary)
+                .withValues(alpha: 0.16),
+            isDark: useDarkGlass,
+            fallbackDecoration: BoxDecoration(
+              color: colorScheme.surface,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: EdgeInsets.all(isTablet ? 50 : 30),
+              child: Center(
+                child: Text(
+                  "今日暂无屏幕使用数据",
+                  style: TextStyle(color: secondaryColor),
                 ),
               ),
-              subtitle: Text(
-                "点击前往开启权限以同步手机使用时长",
-                style: TextStyle(color: permissionSecondaryColor),
-              ),
-              onTap: widget.onOpenSettings,
             ),
-          ),
-        );
-      }
+          );
+        }
 
-      if (widget.isLoading) {
-        return _buildShimmerLoading(isTablet);
-      }
+        final chartData = _chartDataForCurrentStats();
+        final totalTime = chartData.totalTime;
 
-      if (widget.stats.isEmpty) {
         return OptionalLiquidGlassCard(
           borderRadius: 24,
           tint: (widget.isLight ? colorScheme.scrim : colorScheme.primary)
@@ -500,145 +543,133 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
               BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4))
-            ],
-          ),
-          child: Padding(
-            padding: EdgeInsets.all(isTablet ? 50 : 30),
-            child: Center(
-              child: Text(
-                "今日暂无屏幕使用数据",
-                style: TextStyle(color: secondaryColor),
-              ),
-            ),
-          ),
-        );
-      }
-
-      final chartData = _chartDataForCurrentStats();
-      final totalTime = chartData.totalTime;
-
-      return OptionalLiquidGlassCard(
-        borderRadius: 24,
-        tint: (widget.isLight ? colorScheme.scrim : colorScheme.primary)
-            .withValues(alpha: 0.16),
-        isDark: useDarkGlass,
-        fallbackDecoration: BoxDecoration(
-          color: colorScheme.surface,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
                 color: Colors.black.withValues(alpha: 0.04),
                 blurRadius: 8,
-                offset: const Offset(0, 2))
-          ],
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: widget.onViewDetail,
-            borderRadius: BorderRadius.circular(24),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1000),
-                child: Padding(
-                  padding: EdgeInsets.symmetric(
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: widget.onViewDetail,
+              borderRadius: BorderRadius.circular(24),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1000),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
                       horizontal: isTablet ? 28 : 16,
-                      vertical: isTablet ? 24 : 16),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text("今日总计",
-                                  style: TextStyle(
-                                      color: secondaryColor,
-                                      fontSize: isTablet ? 15 : 13,
-                                      fontWeight: FontWeight.w600)),
-                              if (widget.lastSyncTime != null)
+                      vertical: isTablet ? 24 : 16,
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
                                 Text(
+                                  "今日总计",
+                                  style: TextStyle(
+                                    color: secondaryColor,
+                                    fontSize: isTablet ? 15 : 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                if (widget.lastSyncTime != null)
+                                  Text(
                                     "更新: ${_cachedDateFormat('HH:mm').format(widget.lastSyncTime!)}",
                                     style: TextStyle(
-                                        fontSize: isTablet ? 11 : 10,
-                                        color: secondaryColor.withValues(
-                                            alpha: 0.7))),
-                            ],
-                          ),
-                          Text(_formatSeconds(totalTime),
+                                      fontSize: isTablet ? 11 : 10,
+                                      color: secondaryColor.withValues(
+                                        alpha: 0.7,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            Text(
+                              _formatSeconds(totalTime),
                               style: TextStyle(
-                                  fontSize: isTablet ? 28 : 22,
-                                  fontWeight: FontWeight.bold,
-                                  color: useWallpaperGlass
-                                      ? foregroundColor
-                                      : colorScheme.primary)),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Divider(
-                        height: 1,
-                        color: secondaryColor.withValues(alpha: 0.28),
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              children: [
-                                SizedBox(
-                                  width: double.infinity,
-                                  height: isTablet ? 160 : 100,
-                                  child: RepaintBoundary(
-                                    child: CustomPaint(
-                                      painter: chartData.devicePainter,
+                                fontSize: isTablet ? 28 : 22,
+                                fontWeight: FontWeight.bold,
+                                color: useWallpaperGlass
+                                    ? foregroundColor
+                                    : colorScheme.primary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Divider(
+                          height: 1,
+                          color: secondaryColor.withValues(alpha: 0.28),
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  SizedBox(
+                                    width: double.infinity,
+                                    height: isTablet ? 160 : 100,
+                                    child: RepaintBoundary(
+                                      child: CustomPaint(
+                                        painter: chartData.devicePainter,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text("设备分布",
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    "设备分布",
                                     style: TextStyle(
-                                        fontSize: isTablet ? 13 : 11,
-                                        fontWeight: FontWeight.w600,
-                                        color: foregroundColor)),
-                              ],
-                            ),
-                          ),
-                          Expanded(
-                            child: Column(
-                              children: [
-                                SizedBox(
-                                  width: double.infinity,
-                                  height: isTablet ? 160 : 100,
-                                  child: RepaintBoundary(
-                                    child: CustomPaint(
-                                      painter: chartData.appPainter,
+                                      fontSize: isTablet ? 13 : 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: foregroundColor,
                                     ),
                                   ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text("Top 应用",
-                                    style: TextStyle(
-                                        fontSize: isTablet ? 13 : 11,
-                                        fontWeight: FontWeight.w600,
-                                        color: foregroundColor)),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  SizedBox(
+                                    width: double.infinity,
+                                    height: isTablet ? 160 : 100,
+                                    child: RepaintBoundary(
+                                      child: CustomPaint(
+                                        painter: chartData.appPainter,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    "Top 应用",
+                                    style: TextStyle(
+                                      fontSize: isTablet ? 13 : 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: foregroundColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-        ),
-      );
-    });
+        );
+      },
+    );
   }
 }
 
@@ -744,8 +775,10 @@ class PieChartPainter extends CustomPainter {
         final y = center.dy + textRadius * math.sin(middleAngle);
 
         final textPainter = _labelPainters[i];
-        final textOffset =
-            Offset(x - textPainter.width / 2, y - textPainter.height / 2);
+        final textOffset = Offset(
+          x - textPainter.width / 2,
+          y - textPainter.height / 2,
+        );
         textPainter.paint(canvas, textOffset);
       }
 
@@ -771,10 +804,8 @@ class EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     Color bgColor = isLight
         ? Colors.white.withValues(alpha: 0.1)
-        : Theme.of(context)
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(alpha: 0.3);
+        : Theme.of(context).colorScheme.surfaceContainerHighest
+              .withValues(alpha: 0.3);
     Color textColor = isLight ? Colors.white70 : Colors.grey.shade600;
 
     final content = Container(
@@ -788,7 +819,7 @@ class EmptyState extends StatelessWidget {
             color: Colors.black.withValues(alpha: isLight ? 0.1 : 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
-          )
+          ),
         ],
         border: Border.all(
           color: isLight
@@ -800,8 +831,11 @@ class EmptyState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.inbox_rounded,
-              size: 36, color: textColor.withValues(alpha: 0.5)),
+          Icon(
+            Icons.inbox_rounded,
+            size: 36,
+            color: textColor.withValues(alpha: 0.5),
+          ),
           const SizedBox(height: 12),
           Text(
             text,
@@ -820,10 +854,7 @@ class EmptyState extends StatelessWidget {
       borderRadius: BorderRadius.circular(20),
       child: AppPlatform.isAndroid
           ? content
-          : BackdropFilter(
-              filter: AppImageFilters.blur10,
-              child: content,
-            ),
+          : BackdropFilter(filter: AppImageFilters.blur10, child: content),
     );
   }
 }
@@ -846,174 +877,203 @@ class MathStatsCard extends StatelessWidget {
     final accuracy = stats['accuracy'] ?? 0.0;
     final bestTimeVal = stats['bestTime'] != null
         ? (stats['bestTime'] is num
-            ? (stats['bestTime'] as num).toInt()
-            : int.tryParse(stats['bestTime'].toString()) ?? 0)
+              ? (stats['bestTime'] as num).toInt()
+              : int.tryParse(stats['bestTime'].toString()) ?? 0)
         : 0;
     final accuracyInt = (accuracy * 100).toInt();
 
-    return LayoutBuilder(builder: (context, constraints) {
-      final bool isTablet = constraints.maxWidth >= 600;
-      final colorScheme = Theme.of(context).colorScheme;
-      final useDarkGlass = isLight || colorScheme.brightness == Brightness.dark;
-      final useWallpaperGlass =
-          isLight && LiquidGlassEffectService.configuration.enabled;
-      final foregroundColor =
-          useWallpaperGlass ? colorScheme.onPrimary : colorScheme.onSurface;
-      final secondaryColor = useWallpaperGlass
-          ? colorScheme.onPrimary.withValues(alpha: 0.7)
-          : colorScheme.onSurfaceVariant;
-      final todayCountStyle = TextStyle(
-        fontSize: isTablet ? 16 : 14,
-        fontWeight: FontWeight.bold,
-        color: foregroundColor,
-      );
-      final bestTimeStyle = TextStyle(
-        fontSize: isTablet ? 26 : 20,
-        fontWeight: FontWeight.w900,
-        color: useWallpaperGlass ? foregroundColor : colorScheme.primary,
-      );
-      final accuracyStyle = TextStyle(
-        fontSize: isTablet ? 26 : 20,
-        fontWeight: FontWeight.w900,
-        color: foregroundColor,
-      );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool isTablet = constraints.maxWidth >= 600;
+        final colorScheme = Theme.of(context).colorScheme;
+        final useDarkGlass =
+            isLight || colorScheme.brightness == Brightness.dark;
+        final useWallpaperGlass =
+            isLight && LiquidGlassEffectService.configuration.enabled;
+        final foregroundColor = useWallpaperGlass
+            ? colorScheme.onPrimary
+            : colorScheme.onSurface;
+        final secondaryColor = useWallpaperGlass
+            ? colorScheme.onPrimary.withValues(alpha: 0.7)
+            : colorScheme.onSurfaceVariant;
+        final todayCountStyle = TextStyle(
+          fontSize: isTablet ? 16 : 14,
+          fontWeight: FontWeight.bold,
+          color: foregroundColor,
+        );
+        final bestTimeStyle = TextStyle(
+          fontSize: isTablet ? 26 : 20,
+          fontWeight: FontWeight.w900,
+          color: useWallpaperGlass ? foregroundColor : colorScheme.primary,
+        );
+        final accuracyStyle = TextStyle(
+          fontSize: isTablet ? 26 : 20,
+          fontWeight: FontWeight.w900,
+          color: foregroundColor,
+        );
 
-      return OptionalLiquidGlassCard(
-        borderRadius: 24,
-        tint: (isLight ? colorScheme.scrim : colorScheme.tertiary)
-            .withValues(alpha: 0.16),
-        isDark: useDarkGlass,
-        fallbackDecoration: BoxDecoration(
-          color: colorScheme.surface,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: isLight
-                ? Colors.white.withValues(alpha: 0.2)
-                : Theme.of(context).dividerColor.withValues(alpha: 0.5),
+        return OptionalLiquidGlassCard(
+          borderRadius: 24,
+          tint: (isLight ? colorScheme.scrim : colorScheme.tertiary).withValues(
+            alpha: 0.16,
           ),
-          boxShadow: [
-            BoxShadow(
+          isDark: useDarkGlass,
+          fallbackDecoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: isLight
+                  ? Colors.white.withValues(alpha: 0.2)
+                  : Theme.of(context).dividerColor.withValues(alpha: 0.5),
+            ),
+            boxShadow: [
+              BoxShadow(
                 color: Colors.black.withValues(alpha: 0.05),
                 blurRadius: 10,
-                offset: const Offset(0, 4))
-          ],
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(24),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1000),
-                child: Padding(
-                  padding: EdgeInsets.all(isTablet ? 24 : 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(children: [
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: todayCount > 0
-                                ? Colors.green.withValues(alpha: 0.12)
-                                : Colors.orangeAccent.withValues(alpha: 0.12),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                              todayCount > 0
-                                  ? Icons.check_circle
-                                  : Icons.error_outline,
-                              color: todayCount > 0
-                                  ? Colors.green
-                                  : Colors.orangeAccent,
-                              size: isTablet ? 26 : 22),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                            child: TweenAnimationBuilder<int>(
-                          duration: const Duration(milliseconds: 800),
-                          curve: Curves.easeOutCubic,
-                          tween: IntTween(begin: 0, end: todayCount),
-                          builder: (context, value, child) {
-                            return Text(
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(24),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1000),
+                  child: Padding(
+                    padding: EdgeInsets.all(isTablet ? 24 : 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: todayCount > 0
+                                    ? Colors.green.withValues(alpha: 0.12)
+                                    : Colors.orangeAccent.withValues(
+                                        alpha: 0.12,
+                                      ),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
                                 todayCount > 0
-                                    ? "今日已完成 $value 次测验"
-                                    : "今日还未完成测验",
-                                style: todayCountStyle);
-                          },
-                        )),
-                        Icon(Icons.arrow_forward_ios,
-                            size: isTablet ? 14 : 12, color: secondaryColor)
-                      ]),
-                      Divider(
-                          height: isTablet ? 32 : 24,
-                          color: secondaryColor.withValues(alpha: 0.28)),
-                      Row(children: [
-                        Expanded(
-                            child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                              Text("最佳战绩",
-                                  style: TextStyle(
-                                      color: secondaryColor,
-                                      fontSize: isTablet ? 13 : 12)),
-                              const SizedBox(height: 4),
-                              TweenAnimationBuilder<int>(
+                                    ? Icons.check_circle
+                                    : Icons.error_outline,
+                                color: todayCount > 0
+                                    ? Colors.green
+                                    : Colors.orangeAccent,
+                                size: isTablet ? 26 : 22,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TweenAnimationBuilder<int>(
                                 duration: const Duration(milliseconds: 800),
                                 curve: Curves.easeOutCubic,
-                                tween: IntTween(begin: 0, end: bestTimeVal),
+                                tween: IntTween(begin: 0, end: todayCount),
                                 builder: (context, value, child) {
                                   return Text(
-                                      bestTimeVal > 0 ? "$value秒" : "--",
-                                      style: bestTimeStyle);
-                                },
-                              )
-                            ])),
-                        Expanded(
-                            child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                              Text("总正确率",
-                                  style: TextStyle(
-                                      color: secondaryColor,
-                                      fontSize: isTablet ? 13 : 12)),
-                              const SizedBox(height: 4),
-                              TweenAnimationBuilder<int>(
-                                duration: const Duration(milliseconds: 800),
-                                curve: Curves.easeOutCubic,
-                                tween: IntTween(begin: 0, end: accuracyInt),
-                                builder: (context, value, child) {
-                                  return Text(
-                                    "$value.0%",
-                                    style: accuracyStyle,
+                                    todayCount > 0
+                                        ? "今日已完成 $value 次测验"
+                                        : "今日还未完成测验",
+                                    style: todayCountStyle,
                                   );
                                 },
                               ),
-                              const SizedBox(height: 6),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: LinearProgressIndicator(
-                                  value: accuracy,
-                                  minHeight: 4,
-                                  backgroundColor: secondaryColor.withValues(
-                                    alpha: 0.18,
+                            ),
+                            Icon(
+                              Icons.arrow_forward_ios,
+                              size: isTablet ? 14 : 12,
+                              color: secondaryColor,
+                            ),
+                          ],
+                        ),
+                        Divider(
+                          height: isTablet ? 32 : 24,
+                          color: secondaryColor.withValues(alpha: 0.28),
+                        ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    "最佳战绩",
+                                    style: TextStyle(
+                                      color: secondaryColor,
+                                      fontSize: isTablet ? 13 : 12,
+                                    ),
                                   ),
-                                  color: useWallpaperGlass
-                                      ? foregroundColor
-                                      : colorScheme.primary,
-                                ),
-                              )
-                            ]))
-                      ]),
-                    ],
+                                  const SizedBox(height: 4),
+                                  TweenAnimationBuilder<int>(
+                                    duration: const Duration(milliseconds: 800),
+                                    curve: Curves.easeOutCubic,
+                                    tween: IntTween(begin: 0, end: bestTimeVal),
+                                    builder: (context, value, child) {
+                                      return Text(
+                                        bestTimeVal > 0 ? "$value秒" : "--",
+                                        style: bestTimeStyle,
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    "总正确率",
+                                    style: TextStyle(
+                                      color: secondaryColor,
+                                      fontSize: isTablet ? 13 : 12,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  TweenAnimationBuilder<int>(
+                                    duration: const Duration(milliseconds: 800),
+                                    curve: Curves.easeOutCubic,
+                                    tween: IntTween(begin: 0, end: accuracyInt),
+                                    builder: (context, value, child) {
+                                      return Text(
+                                        "$value.0%",
+                                        style: accuracyStyle,
+                                      );
+                                    },
+                                  ),
+                                  const SizedBox(height: 6),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: LinearProgressIndicator(
+                                      value: accuracy,
+                                      minHeight: 4,
+                                      backgroundColor: secondaryColor
+                                          .withValues(alpha: 0.18),
+                                      color: useWallpaperGlass
+                                          ? foregroundColor
+                                          : colorScheme.primary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-        ),
-      );
-    });
+        );
+      },
+    );
   }
 }

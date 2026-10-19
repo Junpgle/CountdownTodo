@@ -1,7 +1,9 @@
 import '../../widgets/floating_glass_control.dart';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
+
 import '../../services/storage/app_settings_storage.dart';
 import '../../storage_service.dart';
 import '../../utils/local_image_provider.dart';
@@ -76,9 +78,7 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
             toolbarWidgetColor: Colors.white,
             lockAspectRatio: false,
           ),
-          IOSUiSettings(
-            title: '裁剪壁纸',
-          ),
+          IOSUiSettings(title: '裁剪壁纸'),
           WebUiSettings(
             context: context,
             presentStyle: WebPresentStyle.dialog,
@@ -91,7 +91,8 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
       }
     } catch (e) {
       debugPrint(
-          'ImageCropper not supported on this platform, using original image: $e');
+        'ImageCropper not supported on this platform, using original image: $e',
+      );
     }
 
     final savedPath = await persistImagePath(sourcePath, 'wallpaper');
@@ -126,8 +127,9 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
     if (_isLoading) {
       return Scaffold(
         appBar: FloatingGlassAppBar(
-            flexibleSpace: const FloatingGlassTopBarBackground(),
-            title: const Text('壁纸设置')),
+          flexibleSpace: const FloatingGlassTopBarBackground(),
+          title: const Text('壁纸设置'),
+        ),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -153,8 +155,10 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
           children: [
             _buildSectionTitle('基本设置'),
             ListTile(
-              leading:
-                  const Icon(Icons.source_outlined, color: Colors.deepPurple),
+              leading: const Icon(
+                Icons.source_outlined,
+                color: Colors.deepPurple,
+              ),
               title: const Text('壁纸来源'),
               subtitle: const Text('GitHub: 随机仓库壁纸 | Bing: 必应每日一图 | 自定义: 本地图片'),
               trailing: DropdownButton<String>(
@@ -182,8 +186,10 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
               const Divider(height: 1, indent: 56),
               _buildSectionTitle('必应选项'),
               ListTile(
-                leading:
-                    const Icon(Icons.image_outlined, color: Colors.deepPurple),
+                leading: const Icon(
+                  Icons.image_outlined,
+                  color: Colors.deepPurple,
+                ),
                 title: const Text('图片格式'),
                 trailing: DropdownButton<String>(
                   value: _format,
@@ -209,9 +215,12 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
                   value: _index,
                   underline: const SizedBox(),
                   items: List.generate(
-                      8,
-                      (i) => DropdownMenuItem(
-                          value: i, child: Text(i == 0 ? '今日' : '$i 天前'))),
+                    8,
+                    (i) => DropdownMenuItem(
+                      value: i,
+                      child: Text(i == 0 ? '今日' : '$i 天前'),
+                    ),
+                  ),
                   onChanged: (val) {
                     if (val != null) {
                       setState(() => _index = val);
@@ -222,8 +231,10 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
               ),
               const Divider(height: 1, indent: 56),
               ListTile(
-                leading: const Icon(Icons.language_outlined,
-                    color: Colors.deepPurple),
+                leading: const Icon(
+                  Icons.language_outlined,
+                  color: Colors.deepPurple,
+                ),
                 title: const Text('地区/语言'),
                 trailing: DropdownButton<String>(
                   value: _mkt,
@@ -255,8 +266,10 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
               ),
               const Divider(height: 1, indent: 56),
               ListTile(
-                leading: const Icon(Icons.monitor_outlined,
-                    color: Colors.deepPurple),
+                leading: const Icon(
+                  Icons.monitor_outlined,
+                  color: Colors.deepPurple,
+                ),
                 title: const Text('分辨率'),
                 trailing: DropdownButton<String>(
                   value: _resolution,
@@ -339,9 +352,7 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
                   onPressed: _clearCustomWallpaper,
                   icon: const Icon(Icons.delete_outline),
                   label: const Text('清除'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.red,
-                  ),
+                  style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
                 ),
               ],
             ],
@@ -354,10 +365,7 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
             '自定义壁纸将从本地加载，不会联网获取。',
             style: TextStyle(
               fontSize: 12,
-              color: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.color
+              color: Theme.of(context).textTheme.bodySmall?.color
                   ?.withValues(alpha: 0.6),
             ),
           ),
@@ -377,18 +385,14 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
             Icon(
               Icons.wallpaper,
               size: 48,
-              color: Theme.of(context)
-                  .colorScheme
-                  .onSurfaceVariant
+              color: Theme.of(context).colorScheme.onSurfaceVariant
                   .withValues(alpha: 0.4),
             ),
             const SizedBox(height: 8),
             Text(
               '暂无自定义壁纸',
               style: TextStyle(
-                color: Theme.of(context)
-                    .colorScheme
-                    .onSurfaceVariant
+                color: Theme.of(context).colorScheme.onSurfaceVariant
                     .withValues(alpha: 0.5),
               ),
             ),

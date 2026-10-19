@@ -547,8 +547,7 @@ class _TodoOverdueTriageSheetState extends State<TodoOverdueTriageSheet> {
                                           runSpacing: 6,
                                           children: slots.map((slot) {
                                             final isToday =
-                                                slot.start.day ==
-                                                now.day;
+                                                slot.start.day == now.day;
                                             final prefix = isToday
                                                 ? '今天'
                                                 : '明天';

@@ -137,8 +137,9 @@ abstract final class CourseScheduleSemantics {
   }) {
     final canonicalSemester = canonicalSemesterId(semesterId);
     return courses.map((course) {
-      final weekday =
-          course.weekday.clamp(DateTime.monday, DateTime.sunday).toInt();
+      final weekday = course.weekday
+          .clamp(DateTime.monday, DateTime.sunday)
+          .toInt();
       final weekIndex = course.weekIndex < 1 ? 1 : course.weekIndex;
       return CourseItem(
         courseName: course.courseName,
@@ -172,23 +173,25 @@ abstract final class CourseScheduleSemantics {
   }) {
     final canonicalSemester = canonicalSemesterId(semesterId);
     return courses
-        .map((course) => CourseItem(
-              courseName: course.courseName,
-              teacherName: course.teacherName,
-              date: course.date,
-              weekday: course.weekday,
-              startTime: course.startTime,
-              endTime: course.endTime,
-              weekIndex: course.weekIndex,
-              roomName: course.roomName,
-              lessonType: course.lessonType,
-              semesterId: canonicalSemester,
-              teamUuid: course.teamUuid,
-              version: course.version,
-              updatedAt: course.updatedAt,
-              createdAt: course.createdAt,
-              isDeleted: course.isDeleted,
-            ))
+        .map(
+          (course) => CourseItem(
+            courseName: course.courseName,
+            teacherName: course.teacherName,
+            date: course.date,
+            weekday: course.weekday,
+            startTime: course.startTime,
+            endTime: course.endTime,
+            weekIndex: course.weekIndex,
+            roomName: course.roomName,
+            lessonType: course.lessonType,
+            semesterId: canonicalSemester,
+            teamUuid: course.teamUuid,
+            version: course.version,
+            updatedAt: course.updatedAt,
+            createdAt: course.createdAt,
+            isDeleted: course.isDeleted,
+          ),
+        )
         .toList();
   }
 
@@ -253,8 +256,8 @@ abstract final class CourseScheduleSemantics {
     for (final course in incoming) {
       final normalizedCourse =
           canonicalSemesterId(course.semesterId) == course.semesterId
-              ? course
-              : assignIdOnly([course], semesterId: targetSemesterId).single;
+          ? course
+          : assignIdOnly([course], semesterId: targetSemesterId).single;
       merged[normalizedCourse.uuid] = normalizedCourse;
     }
     return merged.values.toList();

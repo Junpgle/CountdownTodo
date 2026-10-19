@@ -13,7 +13,8 @@ class SearchRecordDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fields = (result.extraData?['fields'] as Map?)?.map(
+    final fields =
+        (result.extraData?['fields'] as Map?)?.map(
           (key, value) => MapEntry(key.toString(), value.toString()),
         ) ??
         const <String, String>{};
@@ -33,12 +34,13 @@ class SearchRecordDetailScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(entry.key,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant,
-                          )),
+                      Text(
+                        entry.key,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                       const SizedBox(height: 4),
                       SelectableText(entry.value),
                     ],

@@ -251,8 +251,8 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
                       ),
                     )
                   : _hasError
-                      ? _buildError(subColor)
-                      : _buildSummary(colorScheme, subColor),
+                  ? _buildError(subColor)
+                  : _buildSummary(colorScheme, subColor),
             ),
           ),
         ),
@@ -383,8 +383,8 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
     final amountColor = widget.isLight
         ? Colors.white
         : transaction.type == FinanceTransactionType.expense
-            ? colorScheme.error
-            : colorScheme.primary;
+        ? colorScheme.error
+        : colorScheme.primary;
 
     return Row(
       children: [
@@ -436,10 +436,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
         children: [
           Icon(Icons.receipt_long_outlined, size: 20, color: subColor),
           const SizedBox(width: 8),
-          Text(
-            '暂时无法读取本月账单',
-            style: TextStyle(color: subColor),
-          ),
+          Text('暂时无法读取本月账单', style: TextStyle(color: subColor)),
         ],
       ),
     );

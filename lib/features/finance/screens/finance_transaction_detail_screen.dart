@@ -55,8 +55,8 @@ class _FinanceTransactionDetailScreenState
     category = widget.category;
     categoryDisplayName = widget.categoryDisplayName;
     paymentMethod = widget.paymentMethod;
-    _paymentMethods = widget.paymentMethods.isEmpty &&
-            widget.paymentMethod != null
+    _paymentMethods =
+        widget.paymentMethods.isEmpty && widget.paymentMethod != null
         ? [widget.paymentMethod!]
         : widget.paymentMethods;
     FinanceStorage.revision.addListener(_onFinanceChanged);

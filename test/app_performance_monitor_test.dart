@@ -38,9 +38,13 @@ void main() {
     expect(snapshot.maxFrameSpan, const Duration(milliseconds: 35));
     expect(snapshot.events.single.screen, '首页');
     expect(
-        snapshot.events.single.buildDuration, const Duration(milliseconds: 20));
+      snapshot.events.single.buildDuration,
+      const Duration(milliseconds: 20),
+    );
     expect(
-        snapshot.events.single.rasterDuration, const Duration(milliseconds: 4));
+      snapshot.events.single.rasterDuration,
+      const Duration(milliseconds: 4),
+    );
   });
 
   test('threshold and screen tracking can be changed for a session', () {

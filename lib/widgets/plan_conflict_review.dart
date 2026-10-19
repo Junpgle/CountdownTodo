@@ -27,10 +27,10 @@ final Map<(String?, String), DateFormat> _planConflictReviewDateFormats = {};
 
 DateFormat _planConflictReviewDateFormat(String pattern) {
   final locale = Intl.defaultLocale;
-  return _planConflictReviewDateFormats.putIfAbsent(
-    (locale, pattern),
-    () => DateFormat(pattern, locale),
-  );
+  return _planConflictReviewDateFormats.putIfAbsent((
+    locale,
+    pattern,
+  ), () => DateFormat(pattern, locale));
 }
 
 String _time(DateTime value) =>

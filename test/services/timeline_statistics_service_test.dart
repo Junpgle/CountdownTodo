@@ -68,8 +68,9 @@ void main() {
       todoUuid: 'todo-1',
       planBlockId: 'block-1',
       startTime: blockStart.millisecondsSinceEpoch,
-      endTime:
-          blockStart.add(const Duration(minutes: 50)).millisecondsSinceEpoch,
+      endTime: blockStart
+          .add(const Duration(minutes: 50))
+          .millisecondsSinceEpoch,
       plannedDuration: 50 * 60,
       actualDuration: 50 * 60,
     );
@@ -119,11 +120,7 @@ void main() {
   });
 
   test('recurrence rate excludes an in-progress occurrence from failures', () {
-    TodoItem occurrence(
-      int day, {
-      required bool isDone,
-      int dueHour = 22,
-    }) {
+    TodoItem occurrence(int day, {required bool isDone, int dueHour = 22}) {
       return TodoItem(
         id: 'habit-$day',
         title: '每日阅读',

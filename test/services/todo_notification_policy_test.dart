@@ -3,10 +3,10 @@ import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/services/todo_notification_policy.dart';
 
 TodoItem _todo({required DateTime start, required DateTime due}) => TodoItem(
-      title: '公考七日班',
-      createdDate: start.toUtc().millisecondsSinceEpoch,
-      dueDate: due,
-    );
+  title: '公考七日班',
+  createdDate: start.toUtc().millisecondsSinceEpoch,
+  dueDate: due,
+);
 
 void main() {
   group('TodoNotificationPolicy.isInsideLiveWindow', () {

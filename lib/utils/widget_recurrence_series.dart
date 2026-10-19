@@ -182,14 +182,13 @@ List<WidgetRecurrenceOccurrenceItem> _buildOccurrenceWindow(
   WidgetRecurrenceOccurrenceItem actualItem(
     TodoItem occurrence,
     int startAtMs,
-  ) =>
-      WidgetRecurrenceOccurrenceItem(
-        occurrenceId: occurrence.id,
-        startAtMs: startAtMs,
-        dueAtMs: occurrence.dueDate?.toLocal().millisecondsSinceEpoch,
-        isDone: occurrence.isDone,
-        isDateOnly: occurrence.isDateOnly,
-      );
+  ) => WidgetRecurrenceOccurrenceItem(
+    occurrenceId: occurrence.id,
+    startAtMs: startAtMs,
+    dueAtMs: occurrence.dueDate?.toLocal().millisecondsSinceEpoch,
+    isDone: occurrence.isDone,
+    isDateOnly: occurrence.isDateOnly,
+  );
 
   int lowerBoundActual(int target) {
     var low = 0;

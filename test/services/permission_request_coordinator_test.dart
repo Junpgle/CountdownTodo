@@ -11,36 +11,62 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  test('keeps normal productivity and APK update permissions outside the gate',
-      () {
-    expect(
-        AppPermissionKind.notification.requiresMinorModeAuthorization, isFalse);
-    expect(AppPermissionKind.calendar.requiresMinorModeAuthorization, isFalse);
-    expect(
-        AppPermissionKind.exactAlarm.requiresMinorModeAuthorization, isFalse);
-    expect(AppPermissionKind.requestInstall.requiresMinorModeAuthorization,
-        isFalse);
-    expect(AppPermissionKind.usageStats.requiresMinorModeAuthorization, isTrue);
-    expect(AppPermissionKind.batteryOptimization.requiresMinorModeAuthorization,
-        isTrue);
-    expect(
-        AppPermissionKind.liveUpdates.requiresMinorModeAuthorization, isTrue);
-    expect(
-        AppPermissionKind.localNetwork.requiresMinorModeAuthorization, isFalse);
-    expect(
+  test(
+    'keeps normal productivity and APK update permissions outside the gate',
+    () {
+      expect(
+        AppPermissionKind.notification.requiresMinorModeAuthorization,
+        isFalse,
+      );
+      expect(
+        AppPermissionKind.calendar.requiresMinorModeAuthorization,
+        isFalse,
+      );
+      expect(
+        AppPermissionKind.exactAlarm.requiresMinorModeAuthorization,
+        isFalse,
+      );
+      expect(
+        AppPermissionKind.requestInstall.requiresMinorModeAuthorization,
+        isFalse,
+      );
+      expect(
+        AppPermissionKind.usageStats.requiresMinorModeAuthorization,
+        isTrue,
+      );
+      expect(
+        AppPermissionKind.batteryOptimization.requiresMinorModeAuthorization,
+        isTrue,
+      );
+      expect(
+        AppPermissionKind.liveUpdates.requiresMinorModeAuthorization,
+        isTrue,
+      );
+      expect(
+        AppPermissionKind.localNetwork.requiresMinorModeAuthorization,
+        isFalse,
+      );
+      expect(
         AppPermissionKind.bandDeviceManagement.requiresMinorModeAuthorization,
-        isTrue);
-  });
+        isTrue,
+      );
+    },
+  );
 
-  testWidgets('does not show a second rationale for available LAN access',
-      (tester) async {
+  testWidgets('does not show a second rationale for available LAN access', (
+    tester,
+  ) async {
     late BuildContext context;
-    await tester.pumpWidget(MaterialApp(
-      home: Builder(builder: (builderContext) {
-        context = builderContext;
-        return const Scaffold(body: SizedBox.expand());
-      }),
-    ));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (builderContext) {
+            context = builderContext;
+            return const Scaffold(body: SizedBox.expand());
+          },
+        ),
+      ),
+    );
 
     var requested = false;
     final coordinator = PermissionRequestCoordinator(
@@ -61,117 +87,133 @@ void main() {
     coordinator.dispose();
   });
 
-  testWidgets('returns the requested status, invokes callback and hides banner',
-      (tester) async {
-    late BuildContext context;
-    await tester.pumpWidget(MaterialApp(
-      home: Builder(builder: (builderContext) {
-        context = builderContext;
-        return const Scaffold(body: SizedBox.expand());
-      }),
-    ));
+  testWidgets(
+    'returns the requested status, invokes callback and hides banner',
+    (tester) async {
+      late BuildContext context;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (builderContext) {
+              context = builderContext;
+              return const Scaffold(body: SizedBox.expand());
+            },
+          ),
+        ),
+      );
 
-    var statusReads = 0;
-    final requestCompleter = Completer<PermissionStatus>();
-    PermissionRequestResult? callbackResult;
-    final coordinator = PermissionRequestCoordinator(
-      context: context,
-      statusReader: (_) async => statusReads++ == 0
-          ? PermissionStatus.denied
-          : PermissionStatus.granted,
-      requester: (_) => requestCompleter.future,
-      settingsOpener: (_) async => false,
-      onResult: (result) => callbackResult = result,
-    );
+      var statusReads = 0;
+      final requestCompleter = Completer<PermissionStatus>();
+      PermissionRequestResult? callbackResult;
+      final coordinator = PermissionRequestCoordinator(
+        context: context,
+        statusReader: (_) async => statusReads++ == 0
+            ? PermissionStatus.denied
+            : PermissionStatus.granted,
+        requester: (_) => requestCompleter.future,
+        settingsOpener: (_) async => false,
+        onResult: (result) => callbackResult = result,
+      );
 
-    final resultFuture = coordinator.request(AppPermissionKind.notification);
-    await tester.pump();
-    expect(find.text('需要“通知”权限'), findsOneWidget);
-    expect(find.text('用于发送待办、课程和专注结束提醒。'), findsOneWidget);
+      final resultFuture = coordinator.request(AppPermissionKind.notification);
+      await tester.pump();
+      expect(find.text('需要“通知”权限'), findsOneWidget);
+      expect(find.text('用于发送待办、课程和专注结束提醒。'), findsOneWidget);
 
-    await tester.tap(find.text('允许并继续'));
-    await tester.pump();
-    expect(find.text('正在打开“通知”权限'), findsOneWidget);
+      await tester.tap(find.text('允许并继续'));
+      await tester.pump();
+      expect(find.text('正在打开“通知”权限'), findsOneWidget);
 
-    requestCompleter.complete(PermissionStatus.granted);
-    await tester.pump();
-    final result = await resultFuture;
-    await tester.pump();
+      requestCompleter.complete(PermissionStatus.granted);
+      await tester.pump();
+      final result = await resultFuture;
+      await tester.pump();
 
-    expect(result.granted, isTrue);
-    expect(result.changed, isTrue);
-    expect(callbackResult, same(result));
-    expect(result.cancelledByUser, isFalse);
-    expect(find.text('需要“通知”权限'), findsNothing);
-    coordinator.dispose();
-  });
+      expect(result.granted, isTrue);
+      expect(result.changed, isTrue);
+      expect(callbackResult, same(result));
+      expect(result.cancelledByUser, isFalse);
+      expect(find.text('需要“通知”权限'), findsNothing);
+      coordinator.dispose();
+    },
+  );
 
   testWidgets(
-      'permanently denied permission waits for foreground before checking result',
-      (tester) async {
-    late BuildContext context;
-    await tester.pumpWidget(MaterialApp(
-      home: Builder(builder: (builderContext) {
-        context = builderContext;
-        return const Scaffold(body: SizedBox.expand());
-      }),
-    ));
+    'permanently denied permission waits for foreground before checking result',
+    (tester) async {
+      late BuildContext context;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (builderContext) {
+              context = builderContext;
+              return const Scaffold(body: SizedBox.expand());
+            },
+          ),
+        ),
+      );
 
-    var statusReads = 0;
-    var settingsOpened = false;
-    var callbackCalled = false;
-    final coordinator = PermissionRequestCoordinator(
-      context: context,
-      statusReader: (_) async => statusReads++ == 0
-          ? PermissionStatus.permanentlyDenied
-          : PermissionStatus.granted,
-      requester: (_) async => PermissionStatus.denied,
-      settingsOpener: (_) async {
-        settingsOpened = true;
-        return true;
-      },
-      onResult: (_) => callbackCalled = true,
+      var statusReads = 0;
+      var settingsOpened = false;
+      var callbackCalled = false;
+      final coordinator = PermissionRequestCoordinator(
+        context: context,
+        statusReader: (_) async => statusReads++ == 0
+            ? PermissionStatus.permanentlyDenied
+            : PermissionStatus.granted,
+        requester: (_) async => PermissionStatus.denied,
+        settingsOpener: (_) async {
+          settingsOpened = true;
+          return true;
+        },
+        onResult: (_) => callbackCalled = true,
+      );
+
+      final resultFuture = coordinator.request(AppPermissionKind.notification);
+      await tester.pump();
+      expect(settingsOpened, isFalse);
+      expect(find.text('需要“通知”权限'), findsOneWidget);
+
+      await tester.tap(find.text('允许并继续'));
+      await tester.pump();
+      expect(settingsOpened, isTrue);
+      expect(callbackCalled, isFalse);
+      expect(statusReads, 1);
+      expect(find.text('正在打开“通知”权限'), findsOneWidget);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      expect(callbackCalled, isFalse);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      final result = await resultFuture;
+      await tester.pump();
+
+      expect(result.openedSettings, isTrue);
+      expect(result.cancelledByUser, isFalse);
+      expect(result.granted, isTrue);
+      expect(callbackCalled, isTrue);
+      expect(statusReads, 2);
+      expect(find.text('需要“通知”权限'), findsNothing);
+      coordinator.dispose();
+    },
+  );
+
+  testWidgets('denying the rationale does not open Android permission UI', (
+    tester,
+  ) async {
+    late BuildContext context;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (builderContext) {
+            context = builderContext;
+            return const Scaffold(body: SizedBox.expand());
+          },
+        ),
+      ),
     );
-
-    final resultFuture = coordinator.request(AppPermissionKind.notification);
-    await tester.pump();
-    expect(settingsOpened, isFalse);
-    expect(find.text('需要“通知”权限'), findsOneWidget);
-
-    await tester.tap(find.text('允许并继续'));
-    await tester.pump();
-    expect(settingsOpened, isTrue);
-    expect(callbackCalled, isFalse);
-    expect(statusReads, 1);
-    expect(find.text('正在打开“通知”权限'), findsOneWidget);
-
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-    await tester.pump();
-    expect(callbackCalled, isFalse);
-
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await tester.pump();
-    final result = await resultFuture;
-    await tester.pump();
-
-    expect(result.openedSettings, isTrue);
-    expect(result.cancelledByUser, isFalse);
-    expect(result.granted, isTrue);
-    expect(callbackCalled, isTrue);
-    expect(statusReads, 2);
-    expect(find.text('需要“通知”权限'), findsNothing);
-    coordinator.dispose();
-  });
-
-  testWidgets('denying the rationale does not open Android permission UI',
-      (tester) async {
-    late BuildContext context;
-    await tester.pumpWidget(MaterialApp(
-      home: Builder(builder: (builderContext) {
-        context = builderContext;
-        return const Scaffold(body: SizedBox.expand());
-      }),
-    ));
 
     var requested = false;
     var settingsOpened = false;

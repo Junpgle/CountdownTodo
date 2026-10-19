@@ -103,14 +103,14 @@ class AppPerformanceMonitor {
       List.unmodifiable(_allowedThresholds);
 
   static AppPerformanceSnapshot get snapshot => AppPerformanceSnapshot(
-        frameCount: _diagnosticFrameCount,
-        slowBuildCount: _diagnosticSlowBuildCount,
-        slowRasterCount: _diagnosticSlowRasterCount,
-        overThresholdCount: _diagnosticOverThresholdCount,
-        maxFrameSpan: _diagnosticMaxFrameSpan,
-        thresholdMilliseconds: _thresholdMilliseconds,
-        events: List.unmodifiable(_events),
-      );
+    frameCount: _diagnosticFrameCount,
+    slowBuildCount: _diagnosticSlowBuildCount,
+    slowRasterCount: _diagnosticSlowRasterCount,
+    overThresholdCount: _diagnosticOverThresholdCount,
+    maxFrameSpan: _diagnosticMaxFrameSpan,
+    thresholdMilliseconds: _thresholdMilliseconds,
+    events: List.unmodifiable(_events),
+  );
 
   /// Installs the low-level callback used by both the existing log and the
   /// opt-in diagnostics panel.

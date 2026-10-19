@@ -8,10 +8,7 @@ import '../../utils/app_dialogs.dart';
 /// usable time range.  Courses with the same identity and weekday share one
 /// repaired range across all of their imported weeks.
 class CourseTimeRepairDialog extends StatefulWidget {
-  const CourseTimeRepairDialog({
-    super.key,
-    required this.courses,
-  });
+  const CourseTimeRepairDialog({super.key, required this.courses});
 
   final List<CourseItem> courses;
 
@@ -31,16 +28,7 @@ class CourseTimeRepairDialog extends StatefulWidget {
 }
 
 class _CourseTimeRepairDialogState extends State<CourseTimeRepairDialog> {
-  static const _weekdayNames = [
-    '',
-    '周一',
-    '周二',
-    '周三',
-    '周四',
-    '周五',
-    '周六',
-    '周日',
-  ];
+  static const _weekdayNames = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
   static const _defaultTimeRanges = [
     [800, 845],
@@ -194,10 +182,7 @@ class _CourseTimeRepairDialogState extends State<CourseTimeRepairDialog> {
             ),
             if (_error != null) ...[
               const SizedBox(height: 8),
-              Text(
-                _error!,
-                style: TextStyle(color: colorScheme.error),
-              ),
+              Text(_error!, style: TextStyle(color: colorScheme.error)),
             ],
             const SizedBox(height: 12),
             Expanded(
@@ -210,20 +195,24 @@ class _CourseTimeRepairDialogState extends State<CourseTimeRepairDialog> {
                   final weekday = sample.weekday >= 1 && sample.weekday <= 7
                       ? _weekdayNames[sample.weekday]
                       : '星期未知';
-                  final weeks = group.courseIndexes
-                      .map((courseIndex) =>
-                          widget.courses[courseIndex].weekIndex)
-                      .toSet()
-                      .toList()
-                    ..sort();
+                  final weeks =
+                      group.courseIndexes
+                          .map(
+                            (courseIndex) =>
+                                widget.courses[courseIndex].weekIndex,
+                          )
+                          .toSet()
+                          .toList()
+                        ..sort();
                   final weekText = weeks.length > 8
                       ? '第${weeks.first}-${weeks.last}周等'
                       : '第${weeks.join('、')}周';
 
                   return DecoratedBox(
                     decoration: BoxDecoration(
-                      color: colorScheme.surfaceContainerHighest
-                          .withValues(alpha: 0.35),
+                      color: colorScheme.surfaceContainerHighest.withValues(
+                        alpha: 0.35,
+                      ),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Padding(
@@ -285,18 +274,12 @@ class _CourseTimeRepairDialogState extends State<CourseTimeRepairDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('取消导入'),
         ),
-        FilledButton(
-          onPressed: _confirm,
-          child: const Text('确认并导入'),
-        ),
+        FilledButton(onPressed: _confirm, child: const Text('确认并导入')),
       ],
     );
   }
 
-  Widget _timeButton({
-    required String label,
-    required VoidCallback onPressed,
-  }) {
+  Widget _timeButton({required String label, required VoidCallback onPressed}) {
     return OutlinedButton(
       onPressed: onPressed,
       style: OutlinedButton.styleFrom(
@@ -309,10 +292,7 @@ class _CourseTimeRepairDialogState extends State<CourseTimeRepairDialog> {
 }
 
 class _TimeRepairGroup {
-  _TimeRepairGroup({
-    required this.key,
-    required this.sample,
-  });
+  _TimeRepairGroup({required this.key, required this.sample});
 
   final String key;
   final CourseItem sample;

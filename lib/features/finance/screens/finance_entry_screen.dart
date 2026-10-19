@@ -105,8 +105,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     final now = DateTime.now();
     final transaction = widget.transaction;
     _editingTransaction = transaction;
-    _timezoneOffsetMinutes = transaction?.timezoneOffsetMinutes ??
-        now.timeZoneOffset.inMinutes;
+    _timezoneOffsetMinutes =
+        transaction?.timezoneOffsetMinutes ?? now.timeZoneOffset.inMinutes;
     final template = transaction == null ? widget.initialTemplate : null;
     final draft = transaction == null ? widget.initialDraft : null;
     _originalTransaction = widget.originalTransaction;
@@ -721,9 +721,10 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         Navigator.of(context).pop(transaction);
         return;
       }
-      final currentRepayment = await FinanceStorage.getRepaymentForInterestTransaction(
-        transaction.uuid,
-      );
+      final currentRepayment =
+          await FinanceStorage.getRepaymentForInterestTransaction(
+            transaction.uuid,
+          );
       if (!mounted) return;
       // Refresh repayment fields and version while keeping unsaved text edits.
       setState(() {
@@ -1136,15 +1137,15 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       occurredAt: _occurredAt == null
           ? old?.occurredAt ?? now
           : DateTime.utc(
-                _occurredAt!.year,
-                _occurredAt!.month,
-                _occurredAt!.day,
-                _occurredAt!.hour,
-                _occurredAt!.minute,
-                _occurredAt!.second,
-                _occurredAt!.millisecond,
-              ).millisecondsSinceEpoch -
-              _timezoneOffsetMinutes * 60000,
+                  _occurredAt!.year,
+                  _occurredAt!.month,
+                  _occurredAt!.day,
+                  _occurredAt!.hour,
+                  _occurredAt!.minute,
+                  _occurredAt!.second,
+                  _occurredAt!.millisecond,
+                ).millisecondsSinceEpoch -
+                _timezoneOffsetMinutes * 60000,
       timezoneOffsetMinutes: _timezoneOffsetMinutes,
       merchant: _emptyToNull(_merchantController.text),
       note: _noteWithCalculation(),
@@ -1590,8 +1591,10 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         current != null &&
         (current.uuid == selectedParent.uuid ||
             current.parentUuid?.trim() == selectedParent.uuid);
-    final selectedParentDisplayName =
-        financeCategorySiblingDisplayName(selectedParent, _categories);
+    final selectedParentDisplayName = financeCategorySiblingDisplayName(
+      selectedParent,
+      _categories,
+    );
     final selected = await _showFinanceOptionPicker<FinanceCategory>(
       title:
           '${financeCategoryDisplayName(selectedParent, _categories)} · 选择小类',
@@ -1604,16 +1607,14 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       onAdd: () => _addSubcategory(selectedParent),
       optionBuilder: (context, item, isSelected, onTap) {
         final isParent = item.uuid == selectedParent.uuid;
-        final itemDisplayName =
-            financeCategorySiblingDisplayName(item, _categories);
+        final itemDisplayName = financeCategorySiblingDisplayName(
+          item,
+          _categories,
+        );
         return _buildFinanceOptionTile(
           context,
-          title: isParent
-              ? '仅记为$selectedParentDisplayName'
-              : itemDisplayName,
-          subtitle: isParent
-              ? '不选择小类'
-              : '$selectedParentDisplayName下的细分类',
+          title: isParent ? '仅记为$selectedParentDisplayName' : itemDisplayName,
+          subtitle: isParent ? '不选择小类' : '$selectedParentDisplayName下的细分类',
           iconText: item.icon,
           accent: _optionAccent(item.colorValue, Theme.of(context).colorScheme),
           isSelected: isSelected,
@@ -2092,9 +2093,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
           const SizedBox(height: 6),
           Text(
             '按记录时区 ${financeTimezoneLabel(_timezoneOffsetMinutes)} 显示',
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
+            style: Theme.of(context).textTheme.bodySmall
                 ?.copyWith(color: colorScheme.onSurfaceVariant),
           ),
         ],
@@ -2115,9 +2114,9 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
           occurrence.microsecond,
         ).millisecondsSinceEpoch -
         _timezoneOffsetMinutes * 60000;
-    return DateTime.fromMillisecondsSinceEpoch(
-      occurrenceAt,
-    ).timeZoneOffset.inMinutes;
+    return DateTime.fromMillisecondsSinceEpoch(occurrenceAt)
+        .timeZoneOffset
+        .inMinutes;
   }
 
   Widget _buildInstallmentField(ColorScheme colorScheme) {
@@ -2126,7 +2125,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     }
     final hasPlan = _installmentEnabled;
     final now = DateTime.now();
-    final selectedMonthLabel = _date.year == now.year && _date.month == now.month
+    final selectedMonthLabel =
+        _date.year == now.year && _date.month == now.month
         ? '当前月份'
         : '${_date.year}年${_date.month}月';
     final subtitle = _isEditingInstallment

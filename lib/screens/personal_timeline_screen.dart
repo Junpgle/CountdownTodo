@@ -362,8 +362,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
             dueEnd != null &&
             !dueEnd.isBefore(start) &&
             dueEnd.isBefore(end);
-        final plannedInRange =
-            createdInRange || dueInRange || completedInRange;
+        final plannedInRange = createdInRange || dueInRange || completedInRange;
         if (!plannedInRange || _isRecurringTodo(todo)) continue;
 
         regularPlannedCount++;
@@ -373,9 +372,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
               ? _effectiveTodoDueEnd(todo)
               : dueEnd;
           if (completionDue != null) {
-            final doneAt = DateTime.fromMillisecondsSinceEpoch(
-              todo.updatedAt,
-            );
+            final doneAt = DateTime.fromMillisecondsSinceEpoch(todo.updatedAt);
             final diff = completionDue.difference(doneAt);
             if (!diff.isNegative && diff.inHours <= 24) sprintCount++;
             if (diff.inHours >= 24) earlyCount++;
@@ -398,8 +395,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
           ? regularCompletedCount
           : regularPlannedCount;
       final medalCompletedCount =
-          regularCompletedCount +
-          rangeStatistics.recurringCompletedCount;
+          regularCompletedCount + rangeStatistics.recurringCompletedCount;
       final medalTotalCount =
           regularTotalCount + rangeStatistics.recurringScheduledCount;
 
@@ -3715,10 +3711,11 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
     final categoryByUuid = <String, FinanceCategory>{
       for (final category in categories) category.uuid: category,
     };
-    final topCategories = summary.expenseByCategory.entries
-        .where((entry) => entry.value > 0)
-        .toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
+    final topCategories =
+        summary.expenseByCategory.entries
+            .where((entry) => entry.value > 0)
+            .toList()
+          ..sort((a, b) => b.value.compareTo(a.value));
 
     var spendingDays = 0;
     MapEntry<String, int>? peakDay;

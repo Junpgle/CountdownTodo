@@ -116,9 +116,7 @@ class TodoParserService {
     r'(?<next>下周|这周)?(?:周|星期)(?<day>一|二|三|四|五|六|日|天)',
   );
   static final _specificDatePatterns = <RegExp>[
-    RegExp(
-      r'(?:(?<y>\d{4})年)?(?<m>\d{1,2})\s*月\s*(?<d>\d{1,2})(?:日|号)?',
-    ),
+    RegExp(r'(?:(?<y>\d{4})年)?(?<m>\d{1,2})\s*月\s*(?<d>\d{1,2})(?:日|号)?'),
     RegExp(r'(?<y>\d{4})[/\-](?<m>\d{1,2})[/\-](?<d>\d{1,2})'),
   ];
   static final _timeRangePatterns = <RegExp>[

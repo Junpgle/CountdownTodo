@@ -423,9 +423,7 @@ class AiChatService {
       if (effective != 'mimo') {
         body['stream_options'] = {'include_usage': true};
       }
-      body['thinking'] = {
-        'type': deepThinking ? 'enabled' : 'disabled',
-      };
+      body['thinking'] = {'type': deepThinking ? 'enabled' : 'disabled'};
     }
     return body;
   }
@@ -681,9 +679,7 @@ class AiChatService {
         if (malformedToolCallStream ||
             completedCalls.any((entry) => !entry.value.isComplete)) {
           emittedCount++;
-          yield AiChatStreamChunk(
-            content: '模型函数调用响应不完整，未生成待确认操作卡，请重试。',
-          );
+          yield AiChatStreamChunk(content: '模型函数调用响应不完整，未生成待确认操作卡，请重试。');
         } else {
           final toolCalls = completedCalls
               .map((entry) => entry.value.toFunctionCall())

@@ -53,10 +53,10 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
 
   DateFormat _cachedDateFormat(String pattern) {
     final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent(
-      (locale, pattern),
-      () => DateFormat(pattern, locale),
-    );
+    return _dateFormatters.putIfAbsent((
+      locale,
+      pattern,
+    ), () => DateFormat(pattern, locale));
   }
 
   // --- 🚀 视图模式分级 (1周, 2周, 1个月) ---

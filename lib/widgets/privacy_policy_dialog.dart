@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+
 import '../services/github_resource_service.dart';
 import '../utils/app_dialogs.dart';
 
@@ -108,16 +109,17 @@ class _PrivacyPolicyDialogState extends State<PrivacyPolicyDialog> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .primary
+                  color: Theme.of(context).colorScheme.primary
                       .withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.info_outline,
-                        color: Theme.of(context).colorScheme.primary, size: 20),
+                    Icon(
+                      Icons.info_outline,
+                      color: Theme.of(context).colorScheme.primary,
+                      size: 20,
+                    ),
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -134,35 +136,45 @@ class _PrivacyPolicyDialogState extends State<PrivacyPolicyDialog> {
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : _content == null
-                      ? const Center(child: Text('加载失败，请检查网络连接'))
-                      : Markdown(
-                          data: _content!,
-                          padding: EdgeInsets.zero,
-                          styleSheet: MarkdownStyleSheet(
-                            h1: const TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.bold),
-                            h2: const TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.bold),
-                            h3: const TextStyle(
-                                fontSize: 14, fontWeight: FontWeight.bold),
-                            p: const TextStyle(fontSize: 13, height: 1.5),
-                            listBullet: const TextStyle(fontSize: 13),
-                            blockquote: TextStyle(
-                              fontSize: 13,
-                              color: Colors.grey[600],
-                              fontStyle: FontStyle.italic,
-                            ),
-                            code: const TextStyle(
-                                fontSize: 12, fontFamily: 'monospace'),
-                            codeblockDecoration: BoxDecoration(
-                              color: Colors.grey[100],
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            tableHead: const TextStyle(
-                                fontSize: 13, fontWeight: FontWeight.bold),
-                            tableBody: const TextStyle(fontSize: 13),
-                          ),
+                  ? const Center(child: Text('加载失败，请检查网络连接'))
+                  : Markdown(
+                      data: _content!,
+                      padding: EdgeInsets.zero,
+                      styleSheet: MarkdownStyleSheet(
+                        h1: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
                         ),
+                        h2: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        h3: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        p: const TextStyle(fontSize: 13, height: 1.5),
+                        listBullet: const TextStyle(fontSize: 13),
+                        blockquote: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey[600],
+                          fontStyle: FontStyle.italic,
+                        ),
+                        code: const TextStyle(
+                          fontSize: 12,
+                          fontFamily: 'monospace',
+                        ),
+                        codeblockDecoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        tableHead: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        tableBody: const TextStyle(fontSize: 13),
+                      ),
+                    ),
             ),
           ],
         ),

@@ -103,10 +103,7 @@ class AppSettingsCard extends StatelessWidget {
       borderRadius: resolvedRadius.topLeft.x,
       mode: OptionalLiquidGlassPanelMode.adaptiveRepeated,
       fallback: fallback,
-      child: Material(
-        type: MaterialType.transparency,
-        child: child,
-      ),
+      child: Material(type: MaterialType.transparency, child: child),
     );
   }
 }
@@ -192,8 +189,9 @@ class AppSettingsChoiceCard<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isSelected = value == groupValue;
-    final foreground =
-        isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant;
+    final foreground = isSelected
+        ? colorScheme.primary
+        : colorScheme.onSurfaceVariant;
 
     return Semantics(
       button: true,
@@ -230,8 +228,9 @@ class AppSettingsChoiceCard<T> extends StatelessWidget {
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 12,
-                    fontWeight:
-                        isSelected ? FontWeight.bold : FontWeight.normal,
+                    fontWeight: isSelected
+                        ? FontWeight.bold
+                        : FontWeight.normal,
                     color: foreground,
                   ),
                 ),

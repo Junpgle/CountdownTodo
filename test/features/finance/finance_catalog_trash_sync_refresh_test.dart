@@ -58,10 +58,7 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(home: FinanceSettingsScreen(username: 'default')),
     );
-    await _waitFor(
-      tester,
-      () => find.text('分类与付款方式').evaluate().isNotEmpty,
-    );
+    await _waitFor(tester, () => find.text('分类与付款方式').evaluate().isNotEmpty);
     await tester.ensureVisible(find.text('付款方式').last);
     await tester.tap(find.text('付款方式').last);
     await tester.pumpAndSettle();
@@ -108,10 +105,7 @@ void main() {
       }),
     );
 
-    await _waitFor(
-      tester,
-      () => find.text('另一设备删除的账单').evaluate().isNotEmpty,
-    );
+    await _waitFor(tester, () => find.text('另一设备删除的账单').evaluate().isNotEmpty);
     expect(find.text('回收站是空的'), findsNothing);
     expect(tester.takeException(), isNull);
   });

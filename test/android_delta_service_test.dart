@@ -82,10 +82,12 @@ List<int> _buildPatch(int baseSize, Uint8List target) {
 
 void _addUint32(BytesBuilder builder, int value) {
   builder.add(
-      Uint8List(4)..buffer.asByteData().setUint32(0, value, Endian.little));
+    Uint8List(4)..buffer.asByteData().setUint32(0, value, Endian.little),
+  );
 }
 
 void _addUint64(BytesBuilder builder, int value) {
   builder.add(
-      Uint8List(8)..buffer.asByteData().setUint64(0, value, Endian.little));
+    Uint8List(8)..buffer.asByteData().setUint64(0, value, Endian.little),
+  );
 }

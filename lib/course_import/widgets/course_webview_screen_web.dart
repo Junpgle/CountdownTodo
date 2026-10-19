@@ -1,4 +1,5 @@
 import '../../widgets/floating_glass_control.dart';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -21,8 +22,9 @@ class CourseWebViewScreen extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: FloatingGlassAppBar(
-          flexibleSpace: const FloatingGlassTopBarBackground(),
-          title: const Text('网页导入')),
+        flexibleSpace: const FloatingGlassTopBarBackground(),
+        title: const Text('网页导入'),
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),
@@ -45,9 +47,8 @@ class CourseWebViewScreen extends StatelessWidget {
                 const SizedBox(height: 8),
                 Text(
                   '请在浏览器打开教务页面，导出 HTML/MHTML/JSON/ICS 后回到课表导入选择文件。',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+                  style: Theme.of(context).textTheme.bodyMedium
+                      ?.copyWith(color: colorScheme.onSurfaceVariant),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 20),

@@ -535,10 +535,9 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                                       const SizedBox(width: 4),
                                                       recurrenceIcon,
                                                     ],
-                                                    if (ConflictVisibilityService
-                                                        .isVisibleTodoConflict(
-                                                          todo,
-                                                        )) ...[
+                                                    if (ConflictVisibilityService.isVisibleTodoConflict(
+                                                      todo,
+                                                    )) ...[
                                                       const SizedBox(width: 4),
                                                       Icon(
                                                         Icons
@@ -1132,243 +1131,246 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
           },
           child: (!showTodayItems && todayItems.isNotEmpty)
               ? GestureDetector(
-                key: const ValueKey('today_summary_card'),
-                onTap: () => setState(() {
-                  _isTodayManuallyExpanded = true;
-                  _isTodayExpanded = true;
-                }),
-                child: Container(
-                  margin: const EdgeInsets.symmetric(vertical: 10),
-                  decoration: BoxDecoration(
-                    color: widget.isLight
-                        ? (isDarkTheme
-                              ? Colors.grey[850]!.withValues(alpha: 0.95)
-                              : Colors.white.withValues(alpha: 0.95))
-                        : (allTodayDone
-                              ? (isDarkTheme
-                                    ? Colors.green.withValues(alpha: 0.15)
-                                    : Colors.green.withValues(alpha: 0.08))
-                              : (isDarkTheme
-                                    ? Colors.white.withValues(alpha: 0.08)
-                                    : Theme.of(context).colorScheme.primary
-                                          .withValues(alpha: 0.04))),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: allTodayDone
-                          ? Colors.green.withValues(alpha: 0.4)
-                          : (widget.isLight
+                  key: const ValueKey('today_summary_card'),
+                  onTap: () => setState(() {
+                    _isTodayManuallyExpanded = true;
+                    _isTodayExpanded = true;
+                  }),
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: widget.isLight
+                          ? (isDarkTheme
+                                ? Colors.grey[850]!.withValues(alpha: 0.95)
+                                : Colors.white.withValues(alpha: 0.95))
+                          : (allTodayDone
                                 ? (isDarkTheme
-                                      ? Colors.white.withValues(alpha: 0.15)
-                                      : Colors.black.withValues(alpha: 0.1))
+                                      ? Colors.green.withValues(alpha: 0.15)
+                                      : Colors.green.withValues(alpha: 0.08))
                                 : (isDarkTheme
-                                      ? Colors.white.withValues(alpha: 0.22)
+                                      ? Colors.white.withValues(alpha: 0.08)
                                       : Theme.of(context).colorScheme.primary
-                                            .withValues(alpha: 0.25))),
-                      width: 1.5,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(
-                          alpha: widget.isLight ? 0.15 : 0.08,
-                        ),
-                        blurRadius: 12,
-                        offset: const Offset(0, 5),
+                                            .withValues(alpha: 0.04))),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: allTodayDone
+                            ? Colors.green.withValues(alpha: 0.4)
+                            : (widget.isLight
+                                  ? (isDarkTheme
+                                        ? Colors.white.withValues(alpha: 0.15)
+                                        : Colors.black.withValues(alpha: 0.1))
+                                  : (isDarkTheme
+                                        ? Colors.white.withValues(alpha: 0.22)
+                                        : Theme.of(context).colorScheme.primary
+                                              .withValues(alpha: 0.25))),
+                        width: 1.5,
                       ),
-                    ],
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 16,
-                    ),
-                    child: Row(
-                      children: [
-                        GestureDetector(
-                          onTap: allTodayDone
-                              ? () {
-                                  TodoCompletionCelebrationService.playCelebrationImpact();
-                                  showTodoAllDoneCelebration(
-                                    context,
-                                    completedTodayCount: todayItems.length,
-                                  );
-                                }
-                              : null,
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: allTodayDone
-                                  ? Colors.green.withValues(alpha: 0.1)
-                                  : Theme.of(context).colorScheme.primary
-                                        .withValues(alpha: 0.1),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              allTodayDone
-                                  ? Icons.celebration_rounded
-                                  : Icons.task_alt_rounded,
-                              size: 20,
-                              color: allTodayDone
-                                  ? Colors.green
-                                  : Theme.of(context).colorScheme.primary,
-                            ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(
+                            alpha: widget.isLight ? 0.15 : 0.08,
                           ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                allTodayDone ? "任务已全部达成！" : "今日事今日毕",
-                                style: TextStyle(
-                                  color: allTodayDone
-                                      ? (isDarkTheme
-                                            ? Colors.green.shade200
-                                            : Colors.green.shade900)
-                                      : (widget.isLight
-                                            ? (isDarkTheme
-                                                  ? Colors.white
-                                                  : Colors.black)
-                                            : (isDarkTheme
-                                                  ? Colors.white.withValues(
-                                                      alpha: 0.9,
-                                                    )
-                                                  : Colors.black.withValues(
-                                                      alpha: 0.85,
-                                                    ))),
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                  letterSpacing: 0.2,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                allTodayDone
-                                    ? "今天也很努力呢，休息一下吧 ✨"
-                                    : "今日还有 ${vm.todayUndoneCount} 个待办等待完成",
-                                style: TextStyle(
-                                  color: (allTodayDone
-                                      ? (isDarkTheme
-                                            ? Colors.green[200]
-                                            : Colors.green[800])
-                                      : (widget.isLight
-                                            ? (isDarkTheme
-                                                  ? Colors.white.withValues(
-                                                      alpha: 0.7,
-                                                    )
-                                                  : Colors.black.withValues(
-                                                      alpha: 0.6,
-                                                    ))
-                                            : (isDarkTheme
-                                                  ? Colors.white
-                                                  : Colors.black))),
-                                  fontSize: 12.5,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Icon(
-                          Icons.arrow_forward_ios_rounded,
-                          size: 14,
-                          color: (allTodayDone ? Colors.green : Colors.grey)
-                              .withValues(alpha: 0.5),
+                          blurRadius: 12,
+                          offset: const Offset(0, 5),
                         ),
                       ],
                     ),
-                  ),
-                ),
-              )
-            : (showTodayItems && todayItems.isNotEmpty)
-            ? Column(
-                key: const ValueKey('today_expanded_items'),
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildGroupLabel(
-                    text:
-                        "今日 · ${vm.todayDoneCount}/${todayItems.length} 已完成",
-                    expanded: true,
-                    onTap: () => setState(() {
-                      _isTodayExpanded = false;
-                      _isTodayManuallyExpanded = false;
-                    }),
-                  ),
-                  _buildAnimatedSection(
-                    expanded: _isTodayExpanded,
-                    child: ReorderableListView.builder(
-                      itemCount: todayItems.length,
-                      itemBuilder: (context, index) {
-                        final item = todayItems[index];
-                        if (item.todo != null) {
-                          return _buildTodoItemCard(
-                            item.todo!,
-                            isPast: false,
-                            isFuture: false,
-                            now: now,
-                            key: _getTodoDismissKey('dismiss', item.todo!.id),
-                            dragHandle: ReorderableDelayedDragStartListener(
-                              index: index,
-                              child: _buildTodoDragHandleIcon(
-                                item.todo!,
-                                Theme.of(context).colorScheme.onSurfaceVariant,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 16,
+                      ),
+                      child: Row(
+                        children: [
+                          GestureDetector(
+                            onTap: allTodayDone
+                                ? () {
+                                    TodoCompletionCelebrationService.playCelebrationImpact();
+                                    showTodoAllDoneCelebration(
+                                      context,
+                                      completedTodayCount: todayItems.length,
+                                    );
+                                  }
+                                : null,
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: allTodayDone
+                                    ? Colors.green.withValues(alpha: 0.1)
+                                    : Theme.of(context).colorScheme.primary
+                                          .withValues(alpha: 0.1),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                allTodayDone
+                                    ? Icons.celebration_rounded
+                                    : Icons.task_alt_rounded,
+                                size: 20,
+                                color: allTodayDone
+                                    ? Colors.green
+                                    : Theme.of(context).colorScheme.primary,
                               ),
                             ),
-                          );
-                        }
-                        return Container(
-                          key: ValueKey('group_${item.group!.id}'),
-                          child: _buildGroupWidget(
-                            item.group!,
-                            item.groupTodos!,
                           ),
-                        );
-                      },
-                      padding: EdgeInsets.zero,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      buildDefaultDragHandles: false,
-                      onReorderItem: (oldIndex, newIndex) {
-                        final List<int> todayIndices = [];
-                        for (int i = 0; i < widget.todos.length; i++) {
-                          final t = widget.todos[i];
-                          if (_isHistoricalTodoAt(t, today) ||
-                              t.isDeleted ||
-                              (!hideFolders && t.groupId != null)) {
-                            continue;
-                          }
-                          if (t.dueDate == null ||
-                              (t.dueDate!.year == today.year &&
-                                  t.dueDate!.month == today.month &&
-                                  t.dueDate!.day == today.day)) {
-                            todayIndices.add(i);
-                          }
-                        }
-                        final reordered = List<_SortedDisplayItem>.from(
-                          todayItems,
-                        );
-                        final item = reordered.removeAt(oldIndex);
-                        reordered.insert(newIndex, item);
-                        final updatedList = List<TodoItem>.from(widget.todos);
-                        final reorderedTodos = reordered
-                            .where((e) => e.todo != null)
-                            .map((e) => e.todo!)
-                            .toList();
-                        for (
-                          int i = 0;
-                          i < todayIndices.length && i < reorderedTodos.length;
-                          i++
-                        ) {
-                          updatedList[todayIndices[i]] = reorderedTodos[i];
-                        }
-                        widget.onTodosChanged(updatedList);
-                      },
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  allTodayDone ? "任务已全部达成！" : "今日事今日毕",
+                                  style: TextStyle(
+                                    color: allTodayDone
+                                        ? (isDarkTheme
+                                              ? Colors.green.shade200
+                                              : Colors.green.shade900)
+                                        : (widget.isLight
+                                              ? (isDarkTheme
+                                                    ? Colors.white
+                                                    : Colors.black)
+                                              : (isDarkTheme
+                                                    ? Colors.white.withValues(
+                                                        alpha: 0.9,
+                                                      )
+                                                    : Colors.black.withValues(
+                                                        alpha: 0.85,
+                                                      ))),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                    letterSpacing: 0.2,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  allTodayDone
+                                      ? "今天也很努力呢，休息一下吧 ✨"
+                                      : "今日还有 ${vm.todayUndoneCount} 个待办等待完成",
+                                  style: TextStyle(
+                                    color: (allTodayDone
+                                        ? (isDarkTheme
+                                              ? Colors.green[200]
+                                              : Colors.green[800])
+                                        : (widget.isLight
+                                              ? (isDarkTheme
+                                                    ? Colors.white.withValues(
+                                                        alpha: 0.7,
+                                                      )
+                                                    : Colors.black.withValues(
+                                                        alpha: 0.6,
+                                                      ))
+                                              : (isDarkTheme
+                                                    ? Colors.white
+                                                    : Colors.black))),
+                                    fontSize: 12.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(
+                            Icons.arrow_forward_ios_rounded,
+                            size: 14,
+                            color: (allTodayDone ? Colors.green : Colors.grey)
+                                .withValues(alpha: 0.5),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ],
-              )
-            : const SizedBox.shrink(key: ValueKey('today_empty')),
-      ),
-    );
+                )
+              : (showTodayItems && todayItems.isNotEmpty)
+              ? Column(
+                  key: const ValueKey('today_expanded_items'),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildGroupLabel(
+                      text:
+                          "今日 · ${vm.todayDoneCount}/${todayItems.length} 已完成",
+                      expanded: true,
+                      onTap: () => setState(() {
+                        _isTodayExpanded = false;
+                        _isTodayManuallyExpanded = false;
+                      }),
+                    ),
+                    _buildAnimatedSection(
+                      expanded: _isTodayExpanded,
+                      child: ReorderableListView.builder(
+                        itemCount: todayItems.length,
+                        itemBuilder: (context, index) {
+                          final item = todayItems[index];
+                          if (item.todo != null) {
+                            return _buildTodoItemCard(
+                              item.todo!,
+                              isPast: false,
+                              isFuture: false,
+                              now: now,
+                              key: _getTodoDismissKey('dismiss', item.todo!.id),
+                              dragHandle: ReorderableDelayedDragStartListener(
+                                index: index,
+                                child: _buildTodoDragHandleIcon(
+                                  item.todo!,
+                                  Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                              ),
+                            );
+                          }
+                          return Container(
+                            key: ValueKey('group_${item.group!.id}'),
+                            child: _buildGroupWidget(
+                              item.group!,
+                              item.groupTodos!,
+                            ),
+                          );
+                        },
+                        padding: EdgeInsets.zero,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        buildDefaultDragHandles: false,
+                        onReorderItem: (oldIndex, newIndex) {
+                          final List<int> todayIndices = [];
+                          for (int i = 0; i < widget.todos.length; i++) {
+                            final t = widget.todos[i];
+                            if (_isHistoricalTodoAt(t, today) ||
+                                t.isDeleted ||
+                                (!hideFolders && t.groupId != null)) {
+                              continue;
+                            }
+                            if (t.dueDate == null ||
+                                (t.dueDate!.year == today.year &&
+                                    t.dueDate!.month == today.month &&
+                                    t.dueDate!.day == today.day)) {
+                              todayIndices.add(i);
+                            }
+                          }
+                          final reordered = List<_SortedDisplayItem>.from(
+                            todayItems,
+                          );
+                          final item = reordered.removeAt(oldIndex);
+                          reordered.insert(newIndex, item);
+                          final updatedList = List<TodoItem>.from(widget.todos);
+                          final reorderedTodos = reordered
+                              .where((e) => e.todo != null)
+                              .map((e) => e.todo!)
+                              .toList();
+                          for (
+                            int i = 0;
+                            i < todayIndices.length &&
+                                i < reorderedTodos.length;
+                            i++
+                          ) {
+                            updatedList[todayIndices[i]] = reorderedTodos[i];
+                          }
+                          widget.onTodosChanged(updatedList);
+                        },
+                      ),
+                    ),
+                  ],
+                )
+              : const SizedBox.shrink(key: ValueKey('today_empty')),
+        ),
+      );
     }
 
     if (_isWholeListExpanded && futureItems.isNotEmpty) {
@@ -1676,8 +1678,10 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
         ).toLocal();
         final totalMin = end.difference(cDate).inMinutes;
         if (totalMin > 0 && now.isAfter(cDate)) {
-          final progress = (now.difference(cDate).inMinutes / totalMin)
-              .clamp(0.0, 1.0);
+          final progress = (now.difference(cDate).inMinutes / totalMin).clamp(
+            0.0,
+            1.0,
+          );
           if (progress > groupProgress) groupProgress = progress;
         }
       }

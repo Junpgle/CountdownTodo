@@ -2,6 +2,7 @@
 // 仅在 macOS 平台启用 PlatformMenuBar，为应用提供系统级「文件 / 查看 / 窗口 / 帮助」菜单。
 // Windows、Linux、Android、iOS、Web 不受影响。
 import 'dart:io' show Platform;
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -57,8 +58,10 @@ class MacosMenuBar extends StatelessWidget {
               members: [
                 PlatformMenuItem(
                   label: '隐藏 CountDownTodo',
-                  shortcut:
-                      SingleActivator(LogicalKeyboardKey.keyH, meta: true),
+                  shortcut: SingleActivator(
+                    LogicalKeyboardKey.keyH,
+                    meta: true,
+                  ),
                   onSelected: _onHideWindow,
                 ),
               ],
@@ -77,22 +80,30 @@ class MacosMenuBar extends StatelessWidget {
             ),
             const PlatformMenuItem(
               label: '新建倒计时',
-              shortcut: SingleActivator(LogicalKeyboardKey.keyN,
-                  meta: true, shift: true),
+              shortcut: SingleActivator(
+                LogicalKeyboardKey.keyN,
+                meta: true,
+                shift: true,
+              ),
               onSelected: _onNewCountdown,
             ),
             const PlatformMenuItemGroup(
               members: [
                 PlatformMenuItem(
                   label: '导入数据...',
-                  shortcut:
-                      SingleActivator(LogicalKeyboardKey.keyO, meta: true),
+                  shortcut: SingleActivator(
+                    LogicalKeyboardKey.keyO,
+                    meta: true,
+                  ),
                   onSelected: _onImportData,
                 ),
                 PlatformMenuItem(
                   label: '导出数据...',
-                  shortcut: SingleActivator(LogicalKeyboardKey.keyS,
-                      meta: true, shift: true),
+                  shortcut: SingleActivator(
+                    LogicalKeyboardKey.keyS,
+                    meta: true,
+                    shift: true,
+                  ),
                   onSelected: _onExportData,
                 ),
               ],
@@ -104,30 +115,20 @@ class MacosMenuBar extends StatelessWidget {
         PlatformMenu(
           label: '查看',
           menus: [
-            PlatformMenuItem(
-              label: '同步一次',
-              onSelected: _onSyncOnce,
-            ),
+            PlatformMenuItem(label: '同步一次', onSelected: _onSyncOnce),
             PlatformMenuItem(
               label: '刷新',
-              shortcut:
-                  const SingleActivator(LogicalKeyboardKey.keyR, meta: true),
+              shortcut: const SingleActivator(
+                LogicalKeyboardKey.keyR,
+                meta: true,
+              ),
               onSelected: _onRefresh,
             ),
             const PlatformMenuItemGroup(
               members: [
-                PlatformMenuItem(
-                  label: '切换到浅色模式',
-                  onSelected: _onLightMode,
-                ),
-                PlatformMenuItem(
-                  label: '切换到深色模式',
-                  onSelected: _onDarkMode,
-                ),
-                PlatformMenuItem(
-                  label: '跟随系统主题',
-                  onSelected: _onSystemTheme,
-                ),
+                PlatformMenuItem(label: '切换到浅色模式', onSelected: _onLightMode),
+                PlatformMenuItem(label: '切换到深色模式', onSelected: _onDarkMode),
+                PlatformMenuItem(label: '跟随系统主题', onSelected: _onSystemTheme),
               ],
             ),
           ],
@@ -137,10 +138,7 @@ class MacosMenuBar extends StatelessWidget {
         const PlatformMenu(
           label: '窗口',
           menus: [
-            PlatformMenuItem(
-              label: '显示主窗口',
-              onSelected: _onShowWindow,
-            ),
+            PlatformMenuItem(label: '显示主窗口', onSelected: _onShowWindow),
             PlatformMenuItem(
               label: '隐藏窗口',
               shortcut: SingleActivator(LogicalKeyboardKey.keyW, meta: true),
@@ -150,18 +148,20 @@ class MacosMenuBar extends StatelessWidget {
               members: [
                 PlatformMenuItem(
                   label: '最小化',
-                  shortcut:
-                      SingleActivator(LogicalKeyboardKey.keyM, meta: true),
+                  shortcut: SingleActivator(
+                    LogicalKeyboardKey.keyM,
+                    meta: true,
+                  ),
                   onSelected: _onMinimize,
                 ),
-                PlatformMenuItem(
-                  label: '居中窗口',
-                  onSelected: _onCenterWindow,
-                ),
+                PlatformMenuItem(label: '居中窗口', onSelected: _onCenterWindow),
                 PlatformMenuItem(
                   label: '进入/退出全屏',
-                  shortcut: SingleActivator(LogicalKeyboardKey.keyF,
-                      meta: true, control: true),
+                  shortcut: SingleActivator(
+                    LogicalKeyboardKey.keyF,
+                    meta: true,
+                    control: true,
+                  ),
                   onSelected: _onToggleFullScreen,
                 ),
               ],
@@ -173,18 +173,9 @@ class MacosMenuBar extends StatelessWidget {
         const PlatformMenu(
           label: '帮助',
           menus: [
-            PlatformMenuItem(
-              label: '使用指南',
-              onSelected: _onUsageGuide,
-            ),
-            PlatformMenuItem(
-              label: '检查更新',
-              onSelected: _onCheckUpdate,
-            ),
-            PlatformMenuItem(
-              label: '打开 GitHub 项目页',
-              onSelected: _onOpenGitHub,
-            ),
+            PlatformMenuItem(label: '使用指南', onSelected: _onUsageGuide),
+            PlatformMenuItem(label: '检查更新', onSelected: _onCheckUpdate),
+            PlatformMenuItem(label: '打开 GitHub 项目页', onSelected: _onOpenGitHub),
             PlatformMenuItemGroup(
               members: [
                 PlatformMenuItem(
@@ -266,8 +257,9 @@ class MacosMenuBar extends StatelessWidget {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: const Text('添加重要日'),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -314,10 +306,10 @@ class MacosMenuBar extends StatelessWidget {
                   ),
                   items: [
                     const DropdownMenuItem(value: null, child: Text('仅自己可见')),
-                    ...teams.map((t) => DropdownMenuItem(
-                          value: t.uuid,
-                          child: Text(t.name),
-                        )),
+                    ...teams.map(
+                      (t) =>
+                          DropdownMenuItem(value: t.uuid, child: Text(t.name)),
+                    ),
                   ],
                   onChanged: (val) {
                     setDialogState(() {
@@ -358,7 +350,10 @@ class MacosMenuBar extends StatelessWidget {
 
   /// 保存倒计时到 StorageService 并触发刷新/同步
   static void _saveCountdown(
-      String username, CountdownItem countdown, String? teamUuid) async {
+    String username,
+    CountdownItem countdown,
+    String? teamUuid,
+  ) async {
     final allCountdowns = await StorageService.getCountdowns(username);
     allCountdowns.add(countdown);
     await StorageService.saveCountdowns(username, allCountdowns);
@@ -371,17 +366,15 @@ class MacosMenuBar extends StatelessWidget {
   static void _onImportData() {
     final context = appNavigatorKey.currentContext;
     if (context == null) return;
-    Navigator.of(context).push(
-      PageTransitions.slideHorizontal(const DataImportPage()),
-    );
+    Navigator.of(context)
+        .push(PageTransitions.slideHorizontal(const DataImportPage()));
   }
 
   static void _onExportData() {
     final context = appNavigatorKey.currentContext;
     if (context == null) return;
-    Navigator.of(context).push(
-      PageTransitions.slideHorizontal(const DataExportPage()),
-    );
+    Navigator.of(context)
+        .push(PageTransitions.slideHorizontal(const DataExportPage()));
   }
 
   // ──────────────────── 查看菜单 ────────────────────
@@ -465,9 +458,8 @@ class MacosMenuBar extends StatelessWidget {
   static void _onAbout() {
     final context = appNavigatorKey.currentContext;
     if (context == null) return;
-    Navigator.of(context).push(
-      PageTransitions.slideHorizontal(const AboutScreen()),
-    );
+    Navigator.of(context)
+        .push(PageTransitions.slideHorizontal(const AboutScreen()));
   }
 
   // ──────────────────── 工具方法 ────────────────────
@@ -478,10 +470,7 @@ class MacosMenuBar extends StatelessWidget {
     if (context == null) return;
     AppSnackBars.showSnackBar(
       context,
-      SnackBar(
-        content: Text(message),
-        duration: const Duration(seconds: 2),
-      ),
+      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
     );
   }
 }

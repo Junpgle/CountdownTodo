@@ -365,9 +365,8 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
       return row.paused ? '已暂停 · 查看当前专注' : '正在专注 · 查看当前专注';
     }
     if (row.legacy) {
-      final start = _planBacklogDateFormat('M/d HH:mm').format(
-        row.todo.effectiveStartTime,
-      );
+      final start = _planBacklogDateFormat('M/d HH:mm')
+          .format(row.todo.effectiveStartTime);
       return '旧式时间安排 · $start';
     }
     if (row.planCount > 0) {
@@ -413,10 +412,7 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
     );
     final buttons = <Widget>[
       if (row.needsReview)
-        OutlinedButton(
-          onPressed: () => _view(row),
-          child: const Text('核对待办'),
-        )
+        OutlinedButton(onPressed: () => _view(row), child: const Text('核对待办'))
       else if (row.focusing)
         FilledButton.tonal(
           onPressed: () => _viewFocus(row),
@@ -489,9 +485,7 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
           OutlinedButton.icon(
             onPressed: _pickDate,
             icon: const Icon(Icons.calendar_today_rounded, size: 18),
-            label: Text(
-              '目标：${_planBacklogDateFormat('M月d日').format(_date)}',
-            ),
+            label: Text('目标：${_planBacklogDateFormat('M月d日').format(_date)}'),
           ),
         ],
       ),

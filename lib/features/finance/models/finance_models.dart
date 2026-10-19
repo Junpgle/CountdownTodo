@@ -1601,8 +1601,9 @@ Map<String, String> financePaymentMethodDisplayNames(
   final methodsByName = <String, List<FinancePaymentMethod>>{};
   for (final method in paymentMethods) {
     if (method.isDeleted) continue;
-    (methodsByName[_normalizeFinancePaymentMethodName(method.name)] ??= [])
-        .add(method);
+    (methodsByName[_normalizeFinancePaymentMethodName(method.name)] ??= []).add(
+      method,
+    );
   }
 
   final namesByUuid = <String, String>{};
@@ -2791,8 +2792,10 @@ class FinanceSummary {
     }
     for (final budgetUuids in budgetUuidsByCategory.values) {
       for (final budgetUuid in budgetUuids) {
-        spendingByBudget[budgetUuid] =
-            math.max(0, totalsByBudget[budgetUuid] ?? 0);
+        spendingByBudget[budgetUuid] = math.max(
+          0,
+          totalsByBudget[budgetUuid] ?? 0,
+        );
       }
     }
     return spendingByBudget;

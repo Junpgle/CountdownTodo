@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../../services/api_service.dart';
 import '../../../utils/app_dialogs.dart';
 
@@ -42,58 +43,74 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
               controller: oldPassCtrl,
               obscureText: true,
               decoration: const InputDecoration(
-                  labelText: "当前密码", prefixIcon: Icon(Icons.lock_outline)),
+                labelText: "当前密码",
+                prefixIcon: Icon(Icons.lock_outline),
+              ),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: newPassCtrl,
               obscureText: true,
               decoration: const InputDecoration(
-                  labelText: "新密码", prefixIcon: Icon(Icons.lock)),
+                labelText: "新密码",
+                prefixIcon: Icon(Icons.lock),
+              ),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: confirmPassCtrl,
               obscureText: true,
               decoration: const InputDecoration(
-                  labelText: "确认新密码",
-                  prefixIcon: Icon(Icons.check_circle_outline)),
+                labelText: "确认新密码",
+                prefixIcon: Icon(Icons.check_circle_outline),
+              ),
             ),
           ],
         ),
       ),
       actions: [
         TextButton(
-            onPressed: isSubmitting ? null : () => Navigator.pop(context),
-            child: const Text("取消")),
+          onPressed: isSubmitting ? null : () => Navigator.pop(context),
+          child: const Text("取消"),
+        ),
         FilledButton(
           onPressed: isSubmitting
               ? null
               : () async {
                   if (newPassCtrl.text != confirmPassCtrl.text) {
-                    AppSnackBars.showSnackBar(context,
-                        const SnackBar(content: Text('两次输入的新密码不一致')));
+                    AppSnackBars.showSnackBar(
+                      context,
+                      const SnackBar(content: Text('两次输入的新密码不一致')),
+                    );
                     return;
                   }
                   if (newPassCtrl.text.isEmpty || oldPassCtrl.text.isEmpty) {
-                    AppSnackBars.showSnackBar(context,
-                        const SnackBar(content: Text('请填写完整')));
+                    AppSnackBars.showSnackBar(
+                      context,
+                      const SnackBar(content: Text('请填写完整')),
+                    );
                     return;
                   }
 
                   setState(() => isSubmitting = true);
                   final res = await ApiService.changePassword(
-                      widget.userId, oldPassCtrl.text, newPassCtrl.text);
+                    widget.userId,
+                    oldPassCtrl.text,
+                    newPassCtrl.text,
+                  );
                   if (!context.mounted) return;
                   setState(() => isSubmitting = false);
 
                   final messenger = ScaffoldMessenger.of(context);
                   Navigator.pop(context);
                   AppSnackBars.showSnackBarFromMessenger(
-                      messenger,
-                      SnackBar(
-                          content: Text(res['message'] ??
-                              (res['success'] ? '修改成功' : '修改失败'))));
+                    messenger,
+                    SnackBar(
+                      content: Text(
+                        res['message'] ?? (res['success'] ? '修改成功' : '修改失败'),
+                      ),
+                    ),
+                  );
 
                   if (res['success']) {
                     widget.onLogout(true);
@@ -104,7 +121,10 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
                   width: 20,
                   height: 20,
                   child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white))
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
               : const Text("确认修改"),
         ),
       ],

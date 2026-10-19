@@ -36,10 +36,10 @@ class _TodoRecurrenceOccurrencePickerState
 
   DateFormat _cachedDateFormat(String pattern) {
     final locale = Intl.defaultLocale;
-    return _dateFormats.putIfAbsent(
-      (locale, pattern),
-      () => DateFormat(pattern, locale),
-    );
+    return _dateFormats.putIfAbsent((
+      locale,
+      pattern,
+    ), () => DateFormat(pattern, locale));
   }
 
   @override
@@ -115,8 +115,9 @@ class _TodoRecurrenceOccurrencePickerState
                 for (var index = 0; index < widget.occurrences.length; index++)
                   Padding(
                     padding: EdgeInsets.only(
-                      right:
-                          index == widget.occurrences.length - 1 ? 0 : _spacing,
+                      right: index == widget.occurrences.length - 1
+                          ? 0
+                          : _spacing,
                     ),
                     child: _buildOccurrenceCard(
                       context,
@@ -147,8 +148,13 @@ class _TodoRecurrenceOccurrencePickerState
     return Semantics(
       selected: isCurrent,
       button: !isCurrent,
-      label: '$dateLabel，'
-          '${isCurrent ? '正在编辑' : occurrence.isDone ? '已完成' : '待完成'}',
+      label:
+          '$dateLabel，'
+          '${isCurrent
+              ? '正在编辑'
+              : occurrence.isDone
+              ? '已完成'
+              : '待完成'}',
       child: InkWell(
         key: ValueKey('related_recurrence_${occurrence.id}'),
         borderRadius: BorderRadius.circular(12),
@@ -190,8 +196,8 @@ class _TodoRecurrenceOccurrencePickerState
                 isCurrent
                     ? '正在编辑'
                     : occurrence.isDone
-                        ? '已完成'
-                        : '待完成',
+                    ? '已完成'
+                    : '待完成',
                 style: TextStyle(
                   fontSize: 10,
                   color: colorScheme.onSurfaceVariant,

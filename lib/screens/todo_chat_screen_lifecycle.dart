@@ -680,8 +680,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     final previousUserMessage = _latestUserTextFromHistory(
       excludingMessageId: currentUserMessageId,
     );
-    final previousAssistantMessage =
-        _latestAssistantMessageForActionRouting();
+    final previousAssistantMessage = _latestAssistantMessageForActionRouting();
     final pendingCountdownTitleSuffix =
         AiTodoContextBuilder.pendingCountdownTitleSuffixForRequest(
           protocolSourceText,
@@ -853,8 +852,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
         .toList(growable: false);
     final lastUserIndex = userMessages.isEmpty
         ? -1
-        : userMessages.length -
-              (_messages.last.role == ChatRole.user ? 2 : 1);
+        : userMessages.length - (_messages.last.role == ChatRole.user ? 2 : 1);
     final previousUserMessage = lastUserIndex < 0
         ? ''
         : userMessages[lastUserIndex].content.trim();
@@ -870,7 +868,8 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
         (message.financeDrafts?.isNotEmpty ?? false) ||
         (message.financeActions?.any((action) => action.isMutation) ?? false) ||
         (message.recognition?.todoResults.isNotEmpty ?? false);
-    final messageHasPendingCountdowns = message.todoActions?.any(
+    final messageHasPendingCountdowns =
+        message.todoActions?.any(
           (action) =>
               action.type == AiTodoActionType.createCountdown &&
               !action.isAdded &&

@@ -71,8 +71,9 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
     String? fallbackVersion,
   }) async {
     if (path == null || path.isEmpty) return null;
-    final embeddedVersion =
-        await UpdateService.readDownloadedPackageVersion(path);
+    final embeddedVersion = await UpdateService.readDownloadedPackageVersion(
+      path,
+    );
     return embeddedVersion ?? _versionFromPackagePath(path) ?? fallbackVersion;
   }
 
@@ -108,12 +109,8 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
         final androidInfo = await DeviceInfoPlugin().androidInfo;
         final supportedAbis = androidInfo.supportedAbis;
         final abi = supportedAbis.firstWhere(
-          (value) => {
-            'arm64-v8a',
-            'armeabi-v7a',
-            'x86_64',
-            'x86',
-          }.contains(value),
+          (value) =>
+              {'arm64-v8a', 'armeabi-v7a', 'x86_64', 'x86'}.contains(value),
           orElse: () => supportedAbis.isNotEmpty ? supportedAbis.first : '',
         );
         if (abi.isNotEmpty) return 'Android · $abi';
@@ -171,7 +168,8 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
       final latestChangelog = manifest == null
           ? null
           : _findChangelog(manifest.changelogHistory, manifest.versionName);
-      final hasUpdate = manifest != null &&
+      final hasUpdate =
+          manifest != null &&
           _compareVersions(manifest.versionName, packageInfo.version) > 0;
       final hasDelta = hasUpdate && AppPlatform.isAndroid
           ? await UpdateService.hasUsableDeltaPackage(manifest)
@@ -179,7 +177,8 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
       final downloadedPackagePath = manifest == null
           ? null
           : await UpdateService.isPackageAlreadyDownloaded(
-              manifest.versionName);
+              manifest.versionName,
+            );
       final downloadedPackageVersion = await _resolveDownloadedPackageVersion(
         downloadedPackagePath,
         fallbackVersion: manifest?.versionName,
@@ -326,8 +325,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
           _isDownloading = false;
           _downloadKind = null;
         });
-        AppSnackBars.showSnackBar(
-            context, SnackBar(content: Text(message)));
+        AppSnackBars.showSnackBar(context, SnackBar(content: Text(message)));
       },
     );
   }
@@ -374,8 +372,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
           _isForceDownloading = false;
           _forceDownloadProgress = 0;
         });
-        AppSnackBars.showSnackBar(
-            context, SnackBar(content: Text(message)));
+        AppSnackBars.showSnackBar(context, SnackBar(content: Text(message)));
       },
     );
   }
@@ -411,10 +408,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
     await _promptInstall(path);
   }
 
-  Future<void> _finishAutoDownload(
-    String path,
-    String fallbackVersion,
-  ) async {
+  Future<void> _finishAutoDownload(String path, String fallbackVersion) async {
     final packageVersion = await _resolveDownloadedPackageVersion(
       path,
       fallbackVersion: fallbackVersion,
@@ -466,8 +460,10 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
         _downloadedPackageVersion = null;
         _forceDownloadProgress = 0;
       });
-      AppSnackBars.showSnackBar(context,
-          const SnackBar(content: Text('已清除安装包')));
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('已清除安装包')),
+      );
     } catch (error) {
       if (!mounted) return;
       AppSnackBars.showSnackBar(
@@ -479,8 +475,10 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
 
   Future<void> _promptInstall(String path) async {
     if (AppPlatform.isWeb) {
-      AppSnackBars.showSnackBar(context,
-          const SnackBar(content: Text('已打开最新版本资源')));
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('已打开最新版本资源')),
+      );
       return;
     }
 
@@ -489,7 +487,8 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('下载完成'),
         content: Text(
-            AppPlatform.isMacOS ? '更新包已下载完成，是否打开下载目录？' : '更新包已下载完成，是否立即安装？'),
+          AppPlatform.isMacOS ? '更新包已下载完成，是否打开下载目录？' : '更新包已下载完成，是否立即安装？',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -528,8 +527,9 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
         builder: (sheetContext, setSheetState) {
           final items = entry?.items ?? const <String>[];
           final hasMoreItems = items.length > 5;
-          final visibleItems =
-              isExpanded ? items : items.take(5).toList(growable: false);
+          final visibleItems = isExpanded
+              ? items
+              : items.take(5).toList(growable: false);
 
           return SafeArea(
             child: FractionallySizedBox(
@@ -542,9 +542,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
                         children: [
                           Text(
                             'v${entry.versionName}',
-                            style: Theme.of(sheetContext)
-                                .textTheme
-                                .titleLarge
+                            style: Theme.of(sheetContext).textTheme.titleLarge
                                 ?.copyWith(fontWeight: FontWeight.bold),
                           ),
                           if (entry.date.isNotEmpty) ...[
@@ -646,8 +644,10 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
               color: colorScheme.primaryContainer,
               borderRadius: BorderRadius.circular(14),
             ),
-            child: Icon(Icons.verified_outlined,
-                color: colorScheme.onPrimaryContainer),
+            child: Icon(
+              Icons.verified_outlined,
+              color: colorScheme.onPrimaryContainer,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -661,21 +661,21 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('当前版本',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .labelLarge
-                                  ?.copyWith(fontWeight: FontWeight.w700)),
+                          Text(
+                            '当前版本',
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
                           const SizedBox(height: 3),
-                          Text(_currentVersionLabel(),
-                              style: Theme.of(context).textTheme.bodyMedium),
+                          Text(
+                            _currentVersionLabel(),
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
                           const SizedBox(height: 3),
                           Text(
                             '架构：$_architectureLabel',
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: colorScheme.onSurfaceVariant,
-                                    ),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: colorScheme.onSurfaceVariant),
                           ),
                         ],
                       ),
@@ -696,12 +696,19 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    Icon(Icons.event_outlined,
-                        size: 15, color: colorScheme.onSurfaceVariant),
+                    Icon(
+                      Icons.event_outlined,
+                      size: 15,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                     const SizedBox(width: 5),
-                    Text('更新于 $date',
-                        style: TextStyle(
-                            fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                    Text(
+                      '更新于 $date',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -747,8 +754,10 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
                   color: colorScheme.onPrimaryContainer.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(Icons.new_releases_outlined,
-                    color: colorScheme.onPrimaryContainer),
+                child: Icon(
+                  Icons.new_releases_outlined,
+                  color: colorScheme.onPrimaryContainer,
+                ),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -767,8 +776,9 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
                     Text(
                       'v${manifest.versionName}',
                       style: TextStyle(
-                        color: colorScheme.onPrimaryContainer
-                            .withValues(alpha: 0.8),
+                        color: colorScheme.onPrimaryContainer.withValues(
+                          alpha: 0.8,
+                        ),
                         fontSize: 13,
                       ),
                     ),
@@ -776,18 +786,25 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
                 ),
               ),
               if (latestDate?.isNotEmpty == true)
-                Text('更新于 $latestDate',
-                    style: TextStyle(
-                        color: colorScheme.onPrimaryContainer, fontSize: 12)),
+                Text(
+                  '更新于 $latestDate',
+                  style: TextStyle(
+                    color: colorScheme.onPrimaryContainer,
+                    fontSize: 12,
+                  ),
+                ),
             ],
           ),
           if (manifest.updateInfo.title.isNotEmpty &&
               manifest.updateInfo.title != '版本更新 ${manifest.versionName}') ...[
             const SizedBox(height: 12),
-            Text(manifest.updateInfo.title,
-                style: TextStyle(
-                    color: colorScheme.onPrimaryContainer,
-                    fontWeight: FontWeight.w600)),
+            Text(
+              manifest.updateInfo.title,
+              style: TextStyle(
+                color: colorScheme.onPrimaryContainer,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ],
           if (notes.isNotEmpty) ...[
             const SizedBox(height: 14),
@@ -816,16 +833,20 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
                               children: [
                                 Padding(
                                   padding: const EdgeInsets.only(top: 6),
-                                  child: Icon(Icons.circle,
-                                      size: 5,
-                                      color: colorScheme.onPrimaryContainer),
+                                  child: Icon(
+                                    Icons.circle,
+                                    size: 5,
+                                    color: colorScheme.onPrimaryContainer,
+                                  ),
                                 ),
                                 const SizedBox(width: 8),
                                 Expanded(
-                                  child: Text(note,
-                                      style: TextStyle(
-                                          color:
-                                              colorScheme.onPrimaryContainer)),
+                                  child: Text(
+                                    note,
+                                    style: TextStyle(
+                                      color: colorScheme.onPrimaryContainer,
+                                    ),
+                                  ),
                                 ),
                               ],
                             ),
@@ -888,8 +909,9 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
                     minHeight: 6,
                     borderRadius: BorderRadius.circular(6),
                     color: colorScheme.onPrimaryContainer,
-                    backgroundColor:
-                        colorScheme.onPrimaryContainer.withValues(alpha: 0.15),
+                    backgroundColor: colorScheme.onPrimaryContainer.withValues(
+                      alpha: 0.15,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -950,23 +972,30 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
         children: [
           Row(
             children: [
-              Icon(Icons.alt_route_rounded,
-                  color: colorScheme.primary, size: 21),
+              Icon(
+                Icons.alt_route_rounded,
+                color: colorScheme.primary,
+                size: 21,
+              ),
               const SizedBox(width: 9),
-              const Text('更新渠道',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              const Text(
+                '更新渠道',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
             ],
           ),
           const SizedBox(height: 5),
-          Text('选择版本清单的获取线路，安装包仍使用清单提供的地址。',
-              style:
-                  TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+          Text(
+            '选择版本清单的获取线路，安装包仍使用清单提供的地址。',
+            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+          ),
           const SizedBox(height: 12),
           OptionalLiquidGlassCard(
             borderRadius: 16,
             fallbackDecoration: BoxDecoration(
-              color:
-                  colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+              color: colorScheme.surfaceContainerHighest.withValues(
+                alpha: 0.35,
+              ),
               border: Border.all(color: colorScheme.outlineVariant),
               borderRadius: BorderRadius.circular(16),
             ),
@@ -1000,8 +1029,11 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
           const SizedBox(height: 8),
           Row(
             children: [
-              Icon(Icons.info_outline,
-                  size: 15, color: colorScheme.onSurfaceVariant),
+              Icon(
+                Icons.info_outline,
+                size: 15,
+                color: colorScheme.onSurfaceVariant,
+              ),
               const SizedBox(width: 5),
               Expanded(
                 child: Text(
@@ -1009,7 +1041,9 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
                       ? '当前使用阿里云加速线路，国内访问通常更快。'
                       : '当前使用 GitHub 官方线路，版本信息更新更及时。',
                   style: TextStyle(
-                      fontSize: 12, color: colorScheme.onSurfaceVariant),
+                    fontSize: 12,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ],
@@ -1117,13 +1151,16 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
             color: colorScheme.tertiaryContainer,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Icon(Icons.rocket_launch_outlined,
-              color: colorScheme.onTertiaryContainer),
+          child: Icon(
+            Icons.rocket_launch_outlined,
+            color: colorScheme.onTertiaryContainer,
+          ),
         ),
         title: const Text('获取尝鲜版本'),
-        subtitle: Text('前往 GitHub 下载最新开发版，体验最新功能',
-            style:
-                TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12)),
+        subtitle: Text(
+          '前往 GitHub 下载最新开发版，体验最新功能',
+          style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12),
+        ),
         trailing: Icon(Icons.open_in_new, color: colorScheme.onSurfaceVariant),
         onTap: _openBetaReleases,
       ),
@@ -1136,15 +1173,17 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
     final downloadedVersion = _downloadedPackageVersion;
     final downloadedVersionLabel =
         downloadedVersion == null || downloadedVersion.trim().isEmpty
-            ? '最新版'
-            : 'v$downloadedVersion';
+        ? '最新版'
+        : 'v$downloadedVersion';
     return Material(
       color: Colors.transparent,
       child: Column(
         children: [
           ListTile(
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 3,
+            ),
             leading: Container(
               width: 38,
               height: 38,
@@ -1152,37 +1191,43 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
                 color: colorScheme.primaryContainer,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(Icons.download_rounded,
-                  color: colorScheme.onPrimaryContainer),
+              child: Icon(
+                Icons.download_rounded,
+                color: colorScheme.onPrimaryContainer,
+              ),
             ),
             title: Text(
-                packageReady ? '立即安装 $downloadedVersionLabel' : '强制下载最新版完整包'),
+              packageReady ? '立即安装 $downloadedVersionLabel' : '强制下载最新版完整包',
+            ),
             subtitle: packageReady
                 ? Text('完整安装包 $downloadedVersionLabel 已下载完成，确认后开始安装')
                 : _isForceDownloading
-                    ? Text(
-                        '下载中 ${(_forceDownloadProgress * 100).toStringAsFixed(0)}%',
-                        style:
-                            TextStyle(fontSize: 12, color: colorScheme.primary),
-                      )
-                    : const Text('忽略当前版本检查，下载清单中的最新完整安装包'),
+                ? Text(
+                    '下载中 ${(_forceDownloadProgress * 100).toStringAsFixed(0)}%',
+                    style: TextStyle(fontSize: 12, color: colorScheme.primary),
+                  )
+                : const Text('忽略当前版本检查，下载清单中的最新完整安装包'),
             trailing: packageReady
-                ? Icon(Icons.system_update_alt_rounded,
-                    color: colorScheme.primary)
+                ? Icon(
+                    Icons.system_update_alt_rounded,
+                    color: colorScheme.primary,
+                  )
                 : _isForceDownloading
-                    ? SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          value: _forceDownloadProgress > 0
-                              ? _forceDownloadProgress
-                              : null,
-                          color: colorScheme.primary,
-                        ),
-                      )
-                    : Icon(Icons.file_download_outlined,
-                        color: colorScheme.onSurfaceVariant),
+                ? SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      value: _forceDownloadProgress > 0
+                          ? _forceDownloadProgress
+                          : null,
+                      color: colorScheme.primary,
+                    ),
+                  )
+                : Icon(
+                    Icons.file_download_outlined,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
             onTap: packageReady
                 ? _installDownloadedPackage
                 : (_isForceDownloading ? null : _forceDownloadLatest),
@@ -1225,11 +1270,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
         child: Column(
           children: [
             _buildBetaReleaseTile(),
-            Divider(
-              height: 1,
-              indent: 62,
-              color: colorScheme.outlineVariant,
-            ),
+            Divider(height: 1, indent: 62, color: colorScheme.outlineVariant),
             _buildForceDownloadTile(),
           ],
         ),
@@ -1252,8 +1293,10 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
         child: Material(
           color: Colors.transparent,
           child: LiquidGlassSwitchListTile(
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 3,
+            ),
             secondary: Container(
               width: 38,
               height: 38,
@@ -1305,12 +1348,17 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
             child: Row(
               children: [
-                Icon(Icons.cloud_off_outlined,
-                    size: 18, color: colorScheme.error),
+                Icon(
+                  Icons.cloud_off_outlined,
+                  size: 18,
+                  color: colorScheme.error,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(_errorMessage!,
-                      style: TextStyle(color: colorScheme.error)),
+                  child: Text(
+                    _errorMessage!,
+                    style: TextStyle(color: colorScheme.error),
+                  ),
                 ),
               ],
             ),

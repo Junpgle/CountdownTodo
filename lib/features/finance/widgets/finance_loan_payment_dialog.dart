@@ -39,7 +39,8 @@ class _FinanceLoanPaymentDialogState extends State<FinanceLoanPaymentDialog> {
   @override
   void initState() {
     super.initState();
-    _methodUuid = widget.installment.paymentMethodUuid ??
+    _methodUuid =
+        widget.installment.paymentMethodUuid ??
         (widget.installment.isPaid ? _unlinked : null);
     final paidAt = widget.installment.paidAt;
     _paidAt = paidAt == null || paidAt <= 0

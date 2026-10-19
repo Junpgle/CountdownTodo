@@ -1,6 +1,8 @@
 import '../widgets/floating_glass_control.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import '../storage_service.dart';
 import '../utils/app_dialogs.dart';
 
@@ -41,8 +43,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _saveSettings() async {
     if (selectedOps.isEmpty) {
-      AppSnackBars.showSnackBar(context,
-          const SnackBar(content: Text('请至少选择一种运算符号')));
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('请至少选择一种运算符号')),
+      );
       return;
     }
 
@@ -77,8 +81,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await StorageService.saveSettings(settings);
 
     if (!mounted) return;
-    AppSnackBars.showSnackBar(
-        context, const SnackBar(content: Text('设置已保存')));
+    AppSnackBars.showSnackBar(context, const SnackBar(content: Text('设置已保存')));
     Navigator.pop(context);
   }
 
@@ -98,8 +101,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildRangeRow(String label, TextEditingController minCtrl,
-      TextEditingController maxCtrl) {
+  Widget _buildRangeRow(
+    String label,
+    TextEditingController minCtrl,
+    TextEditingController maxCtrl,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -113,19 +119,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: const InputDecoration(
-                    labelText: "最小值", border: OutlineInputBorder()),
+                  labelText: "最小值",
+                  border: OutlineInputBorder(),
+                ),
               ),
             ),
             const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 10),
-                child: Text("至")),
+              padding: EdgeInsets.symmetric(horizontal: 10),
+              child: Text("至"),
+            ),
             Expanded(
               child: TextField(
                 controller: maxCtrl,
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: const InputDecoration(
-                    labelText: "最大值", border: OutlineInputBorder()),
+                  labelText: "最大值",
+                  border: OutlineInputBorder(),
+                ),
               ),
             ),
           ],
@@ -140,8 +151,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
-          flexibleSpace: const FloatingGlassTopBarBackground(),
-          title: const Text("题目设置")),
+        flexibleSpace: const FloatingGlassTopBarBackground(),
+        title: const Text("题目设置"),
+      ),
       body: floatingGlassSettingsBody(
         context,
         standalone: true,
@@ -155,8 +167,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text("运算类型 (可多选)",
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const Text(
+                "运算类型 (可多选)",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
               const SizedBox(height: 10),
               Wrap(
                 spacing: 10,
@@ -170,17 +184,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const Divider(height: 30),
               _buildRangeRow("第一个数范围", _minN1Ctrl, _maxN1Ctrl),
               _buildRangeRow("第二个数范围", _minN2Ctrl, _maxN2Ctrl),
-              const Text("结果最大值",
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text(
+                "结果最大值",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 5),
               TextField(
                 controller: _maxResCtrl,
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: const InputDecoration(
-                    hintText: "例如: 100",
-                    border: OutlineInputBorder(),
-                    helperText: "加法和乘法结果不超过此值"),
+                  hintText: "例如: 100",
+                  border: OutlineInputBorder(),
+                  helperText: "加法和乘法结果不超过此值",
+                ),
               ),
               const SizedBox(height: 30),
               SizedBox(
@@ -195,7 +212,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   onPressed: _saveSettings,
                 ),
-              )
+              ),
             ],
           ),
         ),

@@ -10,6 +10,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:web/web.dart' as web;
+
 import 'services/github_resource_service.dart';
 import './utils/app_dialogs.dart';
 
@@ -25,12 +26,12 @@ class ChangelogEntry {
   });
 
   factory ChangelogEntry.fromJson(Map<String, dynamic> json) => ChangelogEntry(
-        versionName: json['version_name']?.toString() ?? '',
-        date: json['date']?.toString() ?? '',
-        items: (json['items'] as List<dynamic>? ?? [])
-            .map((e) => e.toString())
-            .toList(),
-      );
+    versionName: json['version_name']?.toString() ?? '',
+    date: json['date']?.toString() ?? '',
+    items: (json['items'] as List<dynamic>? ?? [])
+        .map((e) => e.toString())
+        .toList(),
+  );
 }
 
 class AppManifest {
@@ -62,7 +63,7 @@ class AppManifest {
           .toList();
     } else if (json['announcement'] != null) {
       announcementsList = [
-        Announcement.fromJson(json['announcement'] as Map<String, dynamic>)
+        Announcement.fromJson(json['announcement'] as Map<String, dynamic>),
       ];
     }
 
@@ -120,14 +121,14 @@ class UpdateInfo {
   final Map<String, String> androidArchPackages;
 
   UpdateInfo.fromJson(Map<String, dynamic> json)
-      : title = json['title']?.toString() ?? '版本更新',
-        description = json['description']?.toString() ?? '',
-        fullPackageUrl = json['full_package_url']?.toString() ?? '',
-        pcPackageUrl = json['PC_package_url']?.toString() ?? '',
-        macPackageUrl = json['mac_package_url']?.toString() ?? '',
-        androidArchPackages = json['android_arch_packages'] != null
-            ? Map<String, String>.from(json['android_arch_packages'] as Map)
-            : {};
+    : title = json['title']?.toString() ?? '版本更新',
+      description = json['description']?.toString() ?? '',
+      fullPackageUrl = json['full_package_url']?.toString() ?? '',
+      pcPackageUrl = json['PC_package_url']?.toString() ?? '',
+      macPackageUrl = json['mac_package_url']?.toString() ?? '',
+      androidArchPackages = json['android_arch_packages'] != null
+          ? Map<String, String>.from(json['android_arch_packages'] as Map)
+          : {};
 }
 
 class Announcement {
@@ -139,15 +140,16 @@ class Announcement {
   final List<String> targetVersions;
 
   Announcement.fromJson(Map<String, dynamic> json)
-      : show = json['show'] == true,
-        id = json['id']?.toString() ?? '',
-        title = json['title']?.toString() ?? '',
-        content = json['content']?.toString() ?? '',
-        remindMode = json['remind_mode']?.toString() ?? 'once',
-        targetVersions = (json['target_versions'] as List<dynamic>?)
-                ?.map((e) => e.toString())
-                .toList() ??
-            [];
+    : show = json['show'] == true,
+      id = json['id']?.toString() ?? '',
+      title = json['title']?.toString() ?? '',
+      content = json['content']?.toString() ?? '',
+      remindMode = json['remind_mode']?.toString() ?? 'once',
+      targetVersions =
+          (json['target_versions'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [];
 }
 
 class WallpaperConfig {
@@ -155,8 +157,8 @@ class WallpaperConfig {
   final String imageUrl;
 
   WallpaperConfig.fromJson(Map<String, dynamic> json)
-      : show = json['show'] == true,
-        imageUrl = json['image_url']?.toString() ?? '';
+    : show = json['show'] == true,
+      imageUrl = json['image_url']?.toString() ?? '';
 }
 
 class _AnnouncementCarouselDialog extends StatefulWidget {
@@ -249,11 +251,13 @@ class _AnnouncementCarouselDialogState
 
 class UpdateService {
   static final GitHubResourceService _resourceService = GitHubResourceService();
-  static final RegExp _announcementUnixMillisecondsPattern =
-      RegExp(r'(1\d{12})');
+  static final RegExp _announcementUnixMillisecondsPattern = RegExp(
+    r'(1\d{12})',
+  );
   static final RegExp _announcementUnixSecondsPattern = RegExp(r'(1\d{9})');
-  static final RegExp _announcementDateDigitsPattern =
-      RegExp(r'(\d{14}|\d{12}|\d{10}|\d{8})');
+  static final RegExp _announcementDateDigitsPattern = RegExp(
+    r'(\d{14}|\d{12}|\d{10}|\d{8})',
+  );
   static const String manifestUrl =
       'https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json';
   static const String fallbackManifestUrl =
@@ -279,8 +283,9 @@ class UpdateService {
   static String? _lastPromptedUpdateVersion;
   static DateTime? _lastPromptedUpdateAt;
 
-  static ValueNotifier<String?> wallpaperUrlNotifier =
-      ValueNotifier<String?>(null);
+  static ValueNotifier<String?> wallpaperUrlNotifier = ValueNotifier<String?>(
+    null,
+  );
   static ValueNotifier<bool> wallpaperShowNotifier = ValueNotifier<bool>(false);
   static const String _wallpaperUrlKey = 'manifest_wallpaper_url';
   static const String _wallpaperShowKey = 'manifest_wallpaper_show';
@@ -394,8 +399,10 @@ class UpdateService {
       final sec = int.tryParse(unixSec);
       if (sec != null) {
         return _dateTimeToSortKey(
-          DateTime.fromMillisecondsSinceEpoch(sec * 1000, isUtc: true)
-              .toLocal(),
+          DateTime.fromMillisecondsSinceEpoch(
+            sec * 1000,
+            isUtc: true,
+          ).toLocal(),
         );
       }
     }
@@ -462,7 +469,8 @@ class UpdateService {
     }
     if (manifest.updateInfo.androidArchPackages.isNotEmpty) {
       return _giteePackageUrl(
-          manifest.updateInfo.androidArchPackages.values.first);
+        manifest.updateInfo.androidArchPackages.values.first,
+      );
     }
     return '';
   }
@@ -552,8 +560,8 @@ class UpdateService {
     final source = decoded is List
         ? decoded
         : (decoded as Map<String, dynamic>)['changelog_history']
-                as List<dynamic>? ??
-            [];
+                  as List<dynamic>? ??
+              [];
     return source
         .map((e) => ChangelogEntry.fromJson(e as Map<String, dynamic>))
         .toList();
@@ -572,8 +580,9 @@ class UpdateService {
 
   static Future<List<ChangelogEntry>> _readBundledChangelogArchive() async {
     try {
-      final rawJson =
-          await rootBundle.loadString('update_changelog_archive.json');
+      final rawJson = await rootBundle.loadString(
+        'update_changelog_archive.json',
+      );
       return _parseChangelogArchive(rawJson);
     } catch (_) {
       return const [];
@@ -713,8 +722,10 @@ class UpdateService {
       return;
     }
     onProgress(1.0);
-    final launched =
-        await launchUrl(Uri.parse(downloadUrl), webOnlyWindowName: '_blank');
+    final launched = await launchUrl(
+      Uri.parse(downloadUrl),
+      webOnlyWindowName: '_blank',
+    );
     if (launched) {
       onComplete(downloadUrl);
     } else {
@@ -742,8 +753,10 @@ class UpdateService {
       return;
     }
     onProgress(1);
-    final launched =
-        await launchUrl(Uri.parse(downloadUrl), webOnlyWindowName: '_blank');
+    final launched = await launchUrl(
+      Uri.parse(downloadUrl),
+      webOnlyWindowName: '_blank',
+    );
     if (launched) {
       onComplete(downloadUrl);
     } else {
@@ -758,10 +771,7 @@ class UpdateService {
     final running = _updateCheckFuture;
     if (running != null) return running;
 
-    final future = _checkUpdateAndPromptInternal(
-      context,
-      isManual: isManual,
-    );
+    final future = _checkUpdateAndPromptInternal(context, isManual: isManual);
     _updateCheckFuture = future;
     future.then<void>(
       (_) {
@@ -790,8 +800,10 @@ class UpdateService {
     );
     if (manifest == null) {
       if (isManual && context.mounted) {
-        AppSnackBars.showSnackBar(context,
-            const SnackBar(content: Text('检查失败，请检查网络')));
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(content: Text('检查失败，请检查网络')),
+        );
       }
       return;
     }
@@ -940,9 +952,7 @@ class UpdateService {
     await showAppDialog(
       context: context,
       barrierDismissible: true,
-      builder: (_) => _AnnouncementCarouselDialog(
-        announcements: announcements,
-      ),
+      builder: (_) => _AnnouncementCarouselDialog(announcements: announcements),
     );
 
     _isAnnouncementDialogShowing = false;
@@ -1001,8 +1011,9 @@ class UpdateService {
                   if (manifest.wallpaper.show &&
                       manifest.wallpaper.imageUrl.isNotEmpty)
                     ClipRRect(
-                      borderRadius:
-                          const BorderRadius.vertical(top: Radius.circular(20)),
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(20),
+                      ),
                       child: GitHubResourceImage(
                         url: manifest.wallpaper.imageUrl,
                         height: 200,
@@ -1085,10 +1096,7 @@ class UpdateService {
           const SizedBox(height: 10),
           Text(
             '网页版会通过刷新页面加载最新资源；若已有待更新的离线缓存，会先应用缓存更新再刷新。',
-            style: TextStyle(
-              fontSize: 12,
-              color: colorScheme.onSurfaceVariant,
-            ),
+            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 20),
           SizedBox(

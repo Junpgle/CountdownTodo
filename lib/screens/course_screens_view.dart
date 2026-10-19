@@ -309,9 +309,8 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                         alignment: Alignment.center,
                         child: Text(
                           _viewMode == 2
-                              ? _cachedDateFormat('yyyy年M月').format(
-                                  _selectedMonth,
-                                )
+                              ? _cachedDateFormat('yyyy年M月')
+                                    .format(_selectedMonth)
                               : (_viewMode == 1
                                     ? _getBiWeekLabel()
                                     : _getWeekLabel()),

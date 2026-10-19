@@ -39,10 +39,7 @@ bool isTodoEligibleForWidget(TodoItem todo, {DateTime? now}) {
 ///
 /// Expired recurring occurrences are removed before a series is collapsed so
 /// a current or future occurrence from the same series can take their place.
-List<TodoItem> selectTodosForWidget(
-  Iterable<TodoItem> todos, {
-  DateTime? now,
-}) {
+List<TodoItem> selectTodosForWidget(Iterable<TodoItem> todos, {DateTime? now}) {
   final current = (now ?? DateTime.now()).toLocal();
   return collapseRecurrenceSeriesForTodoPicker(
     todos.where((todo) => isTodoEligibleForWidget(todo, now: current)),

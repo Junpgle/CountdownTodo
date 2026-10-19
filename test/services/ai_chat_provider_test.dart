@@ -122,10 +122,7 @@ void main() {
       'prompt_tokens': 46,
       'completion_tokens': 20,
       'total_tokens': 66,
-      'prompt_tokens_details': {
-        'cached_tokens': 45,
-        'audio_tokens': 25,
-      },
+      'prompt_tokens_details': {'cached_tokens': 45, 'audio_tokens': 25},
       'seconds': 4,
     });
 
@@ -192,53 +189,56 @@ void main() {
     expect(body['stream'], isTrue);
   });
 
-  test('migrates stored recognition prompts away from legacy todo fields',
-      () async {
-    const legacyTextPrompt = '保留自定义识别偏好\n'
-        '普通todo使用isAllDay=false、startTime=null、endTime=null\n'
-        '旧动作：[CREATE_TODO]\n'
+  test(
+    'migrates stored recognition prompts away from legacy todo fields',
+    () async {
+      const legacyTextPrompt =
+          '保留自定义识别偏好\n'
+          '普通todo使用isAllDay=false、startTime=null、endTime=null\n'
+          '旧动作：[CREATE_TODO]\n'
+          '普通待办返回 `todo_list`: []\n'
+          'plan_todos';
+      const legacyVisionPrompt = '旧版图片规则\n待办使用startTime和endTime表示时间段';
+      SharedPreferences.setMockInitialValues({
+        'llm_config': jsonEncode({
+          'provider': 'zhipu',
+          'api_key': 'recognition-key',
+          'model': 'test-model',
+          'vision_model': 'test-vision-model',
+          'api_url': 'https://example.com/v1/chat/completions',
+          'text_prompt': legacyTextPrompt,
+          'vision_prompt': legacyVisionPrompt,
+        }),
+      });
+
+      final config = await LLMService.getConfig();
+
+      expect(config, isNotNull);
+      expect(config!.textPrompt, contains('CDT_RECOGNITION_PROTOCOL_V2'));
+      expect(config.textPrompt, contains('保留自定义识别偏好'));
+      expect(config.textPrompt, isNot(contains('plan_todos')));
+      expect(config.textPrompt, isNot(contains('isAllDay')));
+      expect(config.textPrompt, isNot(contains('[CREATE_TODO]')));
+      expect(config.textPrompt, isNot(contains('`todo_list`')));
+      expect(config.visionPrompt, contains('CDT_RECOGNITION_PROTOCOL_V2'));
+      expect(config.visionPrompt, isNot(contains('startTime')));
+      final prefs = await SharedPreferences.getInstance();
+      final stored =
+          jsonDecode(prefs.getString('llm_config')!) as Map<String, dynamic>;
+      expect(stored['recognition_prompt_protocol_version'], 2);
+
+      final migratedChatPrompt = ChatStorageService.ensureCurrentPromptProtocol(
+        '自定义聊天规则 isAllDay=true\n'
+        '旧动作：[cReAtE_tOdO]\n'
         '普通待办返回 `todo_list`: []\n'
-        'plan_todos';
-    const legacyVisionPrompt = '旧版图片规则\n待办使用startTime和endTime表示时间段';
-    SharedPreferences.setMockInitialValues({
-      'llm_config': jsonEncode({
-        'provider': 'zhipu',
-        'api_key': 'recognition-key',
-        'model': 'test-model',
-        'vision_model': 'test-vision-model',
-        'api_url': 'https://example.com/v1/chat/completions',
-        'text_prompt': legacyTextPrompt,
-        'vision_prompt': legacyVisionPrompt,
-      }),
-    });
-
-    final config = await LLMService.getConfig();
-
-    expect(config, isNotNull);
-    expect(config!.textPrompt, contains('CDT_RECOGNITION_PROTOCOL_V2'));
-    expect(config.textPrompt, contains('保留自定义识别偏好'));
-    expect(config.textPrompt, isNot(contains('plan_todos')));
-    expect(config.textPrompt, isNot(contains('isAllDay')));
-    expect(config.textPrompt, isNot(contains('[CREATE_TODO]')));
-    expect(config.textPrompt, isNot(contains('`todo_list`')));
-    expect(config.visionPrompt, contains('CDT_RECOGNITION_PROTOCOL_V2'));
-    expect(config.visionPrompt, isNot(contains('startTime')));
-    final prefs = await SharedPreferences.getInstance();
-    final stored =
-        jsonDecode(prefs.getString('llm_config')!) as Map<String, dynamic>;
-    expect(stored['recognition_prompt_protocol_version'], 2);
-
-    final migratedChatPrompt = ChatStorageService.ensureCurrentPromptProtocol(
-      '自定义聊天规则 isAllDay=true\n'
-      '旧动作：[cReAtE_tOdO]\n'
-      '普通待办返回 `todo_list`: []\n'
-      '待办使用 start_time 和 end_time 表示时间段',
-    );
-    expect(migratedChatPrompt, contains('自定义聊天规则 isAllDay=true'));
-    expect(migratedChatPrompt, isNot(contains('[cReAtE_tOdO]')));
-    expect(migratedChatPrompt, isNot(contains('`todo_list`')));
-    expect(migratedChatPrompt, isNot(contains('start_time')));
-  });
+        '待办使用 start_time 和 end_time 表示时间段',
+      );
+      expect(migratedChatPrompt, contains('自定义聊天规则 isAllDay=true'));
+      expect(migratedChatPrompt, isNot(contains('[cReAtE_tOdO]')));
+      expect(migratedChatPrompt, isNot(contains('`todo_list`')));
+      expect(migratedChatPrompt, isNot(contains('start_time')));
+    },
+  );
 
   test('keeps LLM API keys out of SharedPreferences', () async {
     SharedPreferences.setMockInitialValues({});
@@ -267,8 +267,10 @@ void main() {
 
     expect((await LLMService.getConfig())!.apiKey, 'global-secret');
     expect(await LLMService.getProviderApiKey('zhipu'), 'provider-secret');
-    expect((await LLMService.getCustomTextModels()).single.apiKey,
-        'custom-secret');
+    expect(
+      (await LLMService.getCustomTextModels()).single.apiKey,
+      'custom-secret',
+    );
   });
 
   test('stores replies in the session that started the request', () async {
@@ -314,47 +316,49 @@ void main() {
     );
   });
 
-  test('cancelling before response headers closes the pending request',
-      () async {
-    await HttpOverrides.runZoned(() async {
-      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      final requestReceived = Completer<void>();
-      server.listen((request) async {
-        await utf8.decoder.bind(request).join();
-        if (!requestReceived.isCompleted) requestReceived.complete();
-        await Future<void>.delayed(const Duration(seconds: 5));
-        try {
-          request.response
-            ..statusCode = HttpStatus.ok
-            ..headers.contentType = ContentType('text', 'event-stream')
-            ..write('data: [DONE]\\n\\n');
-          await request.response.close();
-        } catch (_) {
-          // The cancellation test deliberately closes the client first.
-        }
-      });
+  test(
+    'cancelling before response headers closes the pending request',
+    () async {
+      await HttpOverrides.runZoned(() async {
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        final requestReceived = Completer<void>();
+        server.listen((request) async {
+          await utf8.decoder.bind(request).join();
+          if (!requestReceived.isCompleted) requestReceived.complete();
+          await Future<void>.delayed(const Duration(seconds: 5));
+          try {
+            request.response
+              ..statusCode = HttpStatus.ok
+              ..headers.contentType = ContentType('text', 'event-stream')
+              ..write('data: [DONE]\\n\\n');
+            await request.response.close();
+          } catch (_) {
+            // The cancellation test deliberately closes the client first.
+          }
+        });
 
-      try {
-        final cancelToken = Completer<void>();
-        final response = AiChatService.streamChat(
-          apiUrl: 'http://${server.address.address}:${server.port}/v1',
-          apiKey: 'test-key',
-          model: 'test-model',
-          messages: const [
-            {'role': 'user', 'content': 'hello'},
-          ],
-          deepThinking: false,
-          cancelToken: cancelToken,
-        ).toList();
-        await requestReceived.future.timeout(const Duration(seconds: 2));
-        cancelToken.complete();
-        await expectLater(
-          response,
-          completes,
-        ).timeout(const Duration(seconds: 2));
-      } finally {
-        await server.close(force: true);
-      }
-    }, createHttpClient: _RealHttpOverrides().createHttpClient);
-  });
+        try {
+          final cancelToken = Completer<void>();
+          final response = AiChatService.streamChat(
+            apiUrl: 'http://${server.address.address}:${server.port}/v1',
+            apiKey: 'test-key',
+            model: 'test-model',
+            messages: const [
+              {'role': 'user', 'content': 'hello'},
+            ],
+            deepThinking: false,
+            cancelToken: cancelToken,
+          ).toList();
+          await requestReceived.future.timeout(const Duration(seconds: 2));
+          cancelToken.complete();
+          await expectLater(
+            response,
+            completes,
+          ).timeout(const Duration(seconds: 2));
+        } finally {
+          await server.close(force: true);
+        }
+      }, createHttpClient: _RealHttpOverrides().createHttpClient);
+    },
+  );
 }

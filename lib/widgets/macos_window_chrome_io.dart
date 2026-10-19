@@ -52,15 +52,9 @@ class MacosWindowChrome extends StatelessWidget {
           left: 84,
           right: 240,
           height: macosWindowChromeHeight,
-          child: DragToMoveArea(
-            child: SizedBox.expand(),
-          ),
+          child: DragToMoveArea(child: SizedBox.expand()),
         ),
-        const Positioned(
-          top: 0,
-          left: 7,
-          child: _MacosTrafficLights(),
-        ),
+        const Positioned(top: 0, left: 7, child: _MacosTrafficLights()),
       ],
     );
   }
@@ -83,10 +77,7 @@ class _MacosTrafficLights extends StatelessWidget {
     return const Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _MacosTrafficLight(
-          type: _MacosTrafficLightType.close,
-          label: '关闭窗口',
-        ),
+        _MacosTrafficLight(type: _MacosTrafficLightType.close, label: '关闭窗口'),
         _MacosTrafficLight(
           type: _MacosTrafficLightType.minimize,
           label: '最小化窗口',
@@ -103,10 +94,7 @@ class _MacosTrafficLights extends StatelessWidget {
 enum _MacosTrafficLightType { close, minimize, zoom }
 
 class _MacosTrafficLight extends StatefulWidget {
-  const _MacosTrafficLight({
-    required this.type,
-    required this.label,
-  });
+  const _MacosTrafficLight({required this.type, required this.label});
 
   final _MacosTrafficLightType type;
   final String label;
@@ -200,11 +188,7 @@ class _MacosTrafficLightState extends State<_MacosTrafficLight> {
                 child: AnimatedOpacity(
                   duration: const Duration(milliseconds: 80),
                   opacity: _isHovered ? 1 : 0,
-                  child: Icon(
-                    _hoverIcon,
-                    size: 9,
-                    color: glyphColor,
-                  ),
+                  child: Icon(_hoverIcon, size: 9, color: glyphColor),
                 ),
               ),
             ),

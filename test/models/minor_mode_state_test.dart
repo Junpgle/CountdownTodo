@@ -17,8 +17,8 @@ void main() {
       source: systemEnabled
           ? MinorModeSource.androidSystem
           : manualEnabled
-              ? MinorModeSource.manual
-              : MinorModeSource.unsupported,
+          ? MinorModeSource.manual
+          : MinorModeSource.unsupported,
       ageBand: ageBand,
       parentAuthenticationSupported: true,
     );
@@ -39,7 +39,9 @@ void main() {
 
     expect(systemState.effectiveMinorMode, isTrue);
     expect(
-        systemState.copyWith(manualEnabled: false).effectiveMinorMode, isTrue);
+      systemState.copyWith(manualEnabled: false).effectiveMinorMode,
+      isTrue,
+    );
   });
 
   test('maps Android age ranges and unknown values safely', () {

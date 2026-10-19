@@ -27,10 +27,10 @@ final Map<(String?, String), DateFormat> _countdownSectionDateFormats = {};
 
 DateFormat _countdownSectionDateFormat(String pattern) {
   final locale = Intl.defaultLocale;
-  return _countdownSectionDateFormats.putIfAbsent(
-    (locale, pattern),
-    () => DateFormat(pattern, locale),
-  );
+  return _countdownSectionDateFormats.putIfAbsent((
+    locale,
+    pattern,
+  ), () => DateFormat(pattern, locale));
 }
 
 class _CountdownDerivedInput {
@@ -330,7 +330,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
     with TickerProviderStateMixin {
   final Map<String, AnimationController> _pulseControllers = {};
   final Map<String, _CountdownHolidayClassification>
-      _holidayClassificationsById = {};
+  _holidayClassificationsById = {};
   final GlobalKey _localHistoryKey = GlobalKey();
   String? _selectedTeamUuid; // 🚀 选中的团队视口
   List<CountdownItem>? _derivedSource;

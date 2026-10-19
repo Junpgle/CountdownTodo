@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../utils/app_dialogs.dart';
 
 /// Predefined snooze durations in minutes
@@ -67,10 +68,12 @@ class _SnoozeDialogState extends State<SnoozeDialog> {
             spacing: 8,
             runSpacing: 8,
             children: SnoozePresets.durations
-                .map((m) => ActionChip(
-                      label: Text(_formatPresetLabel(m)),
-                      onPressed: () => _selectMinutes(m),
-                    ))
+                .map(
+                  (m) => ActionChip(
+                    label: Text(_formatPresetLabel(m)),
+                    onPressed: () => _selectMinutes(m),
+                  ),
+                )
                 .toList(),
           ),
           const SizedBox(height: 16),
@@ -92,10 +95,7 @@ class _SnoozeDialogState extends State<SnoozeDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('取消'),
         ),
-        TextButton(
-          onPressed: _submitCustom,
-          child: const Text('确定'),
-        ),
+        TextButton(onPressed: _submitCustom, child: const Text('确定')),
       ],
     );
   }

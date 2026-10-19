@@ -38,22 +38,22 @@ class FixedScheduleDetailScreen extends StatelessWidget {
   }
 
   String _phaseLabel(DateTime now) => switch (item.phaseAt(now)) {
-        FixedSchedulePhase.timeTbd => '时间待定',
-        FixedSchedulePhase.upcoming => '即将开始',
-        FixedSchedulePhase.ongoing => '进行中',
-        FixedSchedulePhase.ended => '已结束',
-        FixedSchedulePhase.cancelled => '已取消',
-      };
+    FixedSchedulePhase.timeTbd => '时间待定',
+    FixedSchedulePhase.upcoming => '即将开始',
+    FixedSchedulePhase.ongoing => '进行中',
+    FixedSchedulePhase.ended => '已结束',
+    FixedSchedulePhase.cancelled => '已取消',
+  };
 
   String _recurrenceLabel() => switch (item.recurrence) {
-        RecurrenceType.none => '不重复',
-        RecurrenceType.daily => '每天重复',
-        RecurrenceType.weekdays => '工作日重复',
-        RecurrenceType.weekly => '每周重复',
-        RecurrenceType.monthly => '每月重复',
-        RecurrenceType.yearly => '每年重复',
-        RecurrenceType.customDays => '每 ${item.customIntervalDays ?? 1} 天重复',
-      };
+    RecurrenceType.none => '不重复',
+    RecurrenceType.daily => '每天重复',
+    RecurrenceType.weekdays => '工作日重复',
+    RecurrenceType.weekly => '每周重复',
+    RecurrenceType.monthly => '每月重复',
+    RecurrenceType.yearly => '每年重复',
+    RecurrenceType.customDays => '每 ${item.customIntervalDays ?? 1} 天重复',
+  };
 
   String _reminderLabel(int minutes) {
     if (minutes == 0) return '开始时';
@@ -74,10 +74,8 @@ class FixedScheduleDetailScreen extends StatelessWidget {
   Future<void> _openEditor(BuildContext context) async {
     final result = await Navigator.of(context).push<FixedScheduleItem>(
       PageTransitions.material(
-        builder: (_) => FixedScheduleEditorScreen(
-          username: username,
-          item: item,
-        ),
+        builder: (_) =>
+            FixedScheduleEditorScreen(username: username, item: item),
       ),
     );
     if (!context.mounted || result == null) return;
@@ -173,8 +171,9 @@ class FixedScheduleDetailScreen extends StatelessWidget {
                     icon: Icons.flag_rounded,
                     title: '状态',
                     value: phase,
-                    valueColor:
-                        phase == '进行中' ? colors.primary : colors.onSurface,
+                    valueColor: phase == '进行中'
+                        ? colors.primary
+                        : colors.onSurface,
                   ),
                 ),
                 const SizedBox(width: 12),

@@ -6,8 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('fixed schedule detail uses the shared detail layout',
-      (tester) async {
+  testWidgets('fixed schedule detail uses the shared detail layout', (
+    tester,
+  ) async {
     final item = FixedScheduleItem(
       id: 'schedule-1',
       title: '高等数学考试',

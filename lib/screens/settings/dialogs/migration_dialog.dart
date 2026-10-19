@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../../services/api_service.dart';
 import '../../../services/migration_service.dart';
 import '../../../services/minor_mode_policy.dart';
@@ -8,10 +9,7 @@ import '../../../utils/app_dialogs.dart';
 class MigrationDialog extends StatefulWidget {
   final VoidCallback onSuccess;
 
-  const MigrationDialog({
-    super.key,
-    required this.onSuccess,
-  });
+  const MigrationDialog({super.key, required this.onSuccess});
 
   @override
   State<MigrationDialog> createState() => _MigrationDialogState();
@@ -40,30 +38,39 @@ class _MigrationDialogState extends State<MigrationDialog> {
               children: [
                 const CircularProgressIndicator(),
                 const SizedBox(height: 20),
-                Text(statusText,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 13),
-                    textAlign: TextAlign.center),
+                Text(
+                  statusText,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
               ],
             )
           : Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Text(
-                    '请输入您最初在 Cloudflare 服务器上注册用的邮箱与密码。系统会自动验证拉取，随后向阿里云注入您的配置。',
-                    style: TextStyle(fontSize: 13)),
+                  '请输入您最初在 Cloudflare 服务器上注册用的邮箱与密码。系统会自动验证拉取，随后向阿里云注入您的配置。',
+                  style: TextStyle(fontSize: 13),
+                ),
                 const SizedBox(height: 16),
                 TextField(
                   controller: emailCtrl,
                   decoration: const InputDecoration(
-                      labelText: '旧账号邮箱', border: OutlineInputBorder()),
+                    labelText: '旧账号邮箱',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: passCtrl,
                   obscureText: true,
                   decoration: const InputDecoration(
-                      labelText: '旧账号密码', border: OutlineInputBorder()),
+                    labelText: '旧账号密码',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
               ],
             ),
@@ -71,77 +78,81 @@ class _MigrationDialogState extends State<MigrationDialog> {
           ? null
           : [
               TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text("取消")),
+                onPressed: () => Navigator.pop(context),
+                child: const Text("取消"),
+              ),
               FilledButton(
-                  onPressed: () async {
-                    if (emailCtrl.text.isEmpty || passCtrl.text.isEmpty) {
-                      AppSnackBars.showSnackBar(context,
-                          const SnackBar(content: Text('不能留空哦')));
-                      return;
-                    }
+                onPressed: () async {
+                  if (emailCtrl.text.isEmpty || passCtrl.text.isEmpty) {
+                    AppSnackBars.showSnackBar(
+                      context,
+                      const SnackBar(content: Text('不能留空哦')),
+                    );
+                    return;
+                  }
 
-                    setState(() {
-                      isMigrating = true;
-                      statusText = "准备中...";
-                    });
+                  setState(() {
+                    isMigrating = true;
+                    statusText = "准备中...";
+                  });
 
-                    try {
-                      final authorized =
-                          await MinorModeService.instance.authorizeAction(
-                        MinorModeAction.dataImport,
-                      );
-                      if (!authorized) {
-                        if (!context.mounted) return;
-                        setState(() {
-                          isMigrating = false;
-                          statusText = "";
-                        });
-                        AppSnackBars.showSnackBar(
-                          context,
-                          SnackBar(
-                            content: Text(
-                              MinorModeService.instance
-                                  .authorizationFailureMessage(
-                                MinorModeAction.dataImport,
-                              ),
-                            ),
-                          ),
-                        );
-                        return;
-                      }
-                      if (!context.mounted) return;
-                      await MigrationService.runMigration(
-                          context: context,
-                          oldUrl:
-                              ApiService.legacyCloudflareUrl, // retired D1 URL
-                          newUrl: ApiService.aliyunProdUrl, // ECS URL
-                          email: emailCtrl.text,
-                          password: passCtrl.text,
-                          onProgress: (msg) {
-                            if (!mounted) return;
-                            setState(() => statusText = msg);
-                          });
-
-                      if (!context.mounted) return;
-                      final messenger = ScaffoldMessenger.of(context);
-                      Navigator.pop(context);
-                      AppSnackBars.showSnackBarFromMessenger(
-                          messenger,
-                          const SnackBar(
-                              content: Text('✅ 迁移大成功！您的所有数据和账户已落户阿里云。')));
-                      widget.onSuccess();
-                    } catch (e) {
+                  try {
+                    final authorized = await MinorModeService.instance
+                        .authorizeAction(MinorModeAction.dataImport);
+                    if (!authorized) {
                       if (!context.mounted) return;
                       setState(() {
                         isMigrating = false;
                         statusText = "";
                       });
-                      AppSnackBars.showSnackBar(context,
-                          SnackBar(content: Text('❌ 迁移失败: $e')));
+                      AppSnackBars.showSnackBar(
+                        context,
+                        SnackBar(
+                          content: Text(
+                            MinorModeService.instance
+                                .authorizationFailureMessage(
+                                  MinorModeAction.dataImport,
+                                ),
+                          ),
+                        ),
+                      );
+                      return;
                     }
-                  },
-                  child: const Text("验证并开始迁移")),
+                    if (!context.mounted) return;
+                    await MigrationService.runMigration(
+                      context: context,
+                      oldUrl: ApiService.legacyCloudflareUrl, // retired D1 URL
+                      newUrl: ApiService.aliyunProdUrl, // ECS URL
+                      email: emailCtrl.text,
+                      password: passCtrl.text,
+                      onProgress: (msg) {
+                        if (!mounted) return;
+                        setState(() => statusText = msg);
+                      },
+                    );
+
+                    if (!context.mounted) return;
+                    final messenger = ScaffoldMessenger.of(context);
+                    Navigator.pop(context);
+                    AppSnackBars.showSnackBarFromMessenger(
+                      messenger,
+                      const SnackBar(content: Text('✅ 迁移大成功！您的所有数据和账户已落户阿里云。')),
+                    );
+                    widget.onSuccess();
+                  } catch (e) {
+                    if (!context.mounted) return;
+                    setState(() {
+                      isMigrating = false;
+                      statusText = "";
+                    });
+                    AppSnackBars.showSnackBar(
+                      context,
+                      SnackBar(content: Text('❌ 迁移失败: $e')),
+                    );
+                  }
+                },
+                child: const Text("验证并开始迁移"),
+              ),
             ],
     );
   }

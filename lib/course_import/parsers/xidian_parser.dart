@@ -7,7 +7,9 @@ import '../../utils/time_utils.dart';
 class XidianScheduleParser {
   /// 传入 ICS 字符串和 本学期第一周的周一日期
   static List<CourseItem> parseIcs(
-      String icsString, DateTime semesterStartDate) {
+    String icsString,
+    DateTime semesterStartDate,
+  ) {
     List<CourseItem> courses = [];
 
     // ICS 文件按行分割，处理一下可能的 \r\n
@@ -73,17 +75,19 @@ class XidianScheduleParser {
 
           if (weekIndex < 1) weekIndex = 1; // 容错
 
-          courses.add(CourseItem(
-            courseName: courseName,
-            teacherName: '未知教师', // ics 一般不自带教师字段
-            date: dateStr,
-            weekday: weekday,
-            startTime: startTime,
-            endTime: endTime,
-            weekIndex: weekIndex,
-            roomName: roomName,
-            lessonType: null,
-          ));
+          courses.add(
+            CourseItem(
+              courseName: courseName,
+              teacherName: '未知教师', // ics 一般不自带教师字段
+              date: dateStr,
+              weekday: weekday,
+              startTime: startTime,
+              endTime: endTime,
+              weekIndex: weekIndex,
+              roomName: roomName,
+              lessonType: null,
+            ),
+          );
         }
       }
     }

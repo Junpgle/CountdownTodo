@@ -135,8 +135,9 @@ class PlanReviewRepository {
   final DateTime Function()? clock;
   final void Function(String sql, int rowCount)? onQuery;
   static final _databaseTokens = Expando<int>();
-  static final _conflictFlagsByDatabase =
-      Expando<Future<Map<String, bool>>>('planReviewConflictFlags');
+  static final _conflictFlagsByDatabase = Expando<Future<Map<String, bool>>>(
+    'planReviewConflictFlags',
+  );
   static int _nextDatabaseToken = 0;
   DateTime get now => clock?.call() ?? DateTime.now();
 
@@ -318,13 +319,7 @@ class PlanReviewRepository {
     final db = await _database(username);
     final instant = now;
     final result = await db.transaction((tx) async {
-      final sql = await _sql(
-        tx,
-        start,
-        end,
-        instant,
-        schemaOwner: db,
-      );
+      final sql = await _sql(tx, start, end, instant, schemaOwner: db);
       return _overview(tx, sql, identity, instant);
     });
     await identity.check();
@@ -339,15 +334,11 @@ class PlanReviewRepository {
     final start = DateTime(instant.year, instant.month, instant.day);
     final end = DateTime(start.year, start.month, start.day + 1);
     final result = await db.transaction((tx) async {
-      final sql = await _sql(
-        tx,
-        start,
-        end,
-        instant,
-        schemaOwner: db,
-      );
+      final sql = await _sql(tx, start, end, instant, schemaOwner: db);
       final overview = await _overview(tx, sql, identity, instant);
-      final rows = await _query(tx, '''${sql.cte},
+      final rows = await _query(
+        tx,
+        '''${sql.cte},
         card_rows AS (SELECT *, CASE
           WHEN status=1 THEN 3 WHEN status=5 THEN 0
           WHEN status=6 OR end<=${sql.instant} THEN 2
@@ -361,11 +352,19 @@ class PlanReviewRepository {
         SELECT p.id,'plan' kind,p.title,p.start,p.end,p.minutes*60 seconds,
           p.id planId,p.todoId,p.status,1 verified,COALESCE(m.seconds,0) focusSeconds,
           (SELECT MIN(start) FROM card_rows WHERE status<>1 AND start>${sql.instant}) nextStart
-        FROM chosen p LEFT JOIN measured m ON m.ownerPlan=p.id ORDER BY p.priority,p.start,p.id''', sql.args);
+        FROM chosen p LEFT JOIN measured m ON m.ownerPlan=p.id ORDER BY p.priority,p.start,p.id''',
+        sql.args,
+      );
       final next = rows.isEmpty ? null : rows.first['nextStart'] as int?;
-      final boundary = next != null && next < overview.nextBoundary.millisecondsSinceEpoch
-          ? DateTime.fromMillisecondsSinceEpoch(next) : overview.nextBoundary;
-      return PlanTodayCard(overview, List.unmodifiable(rows.map(PlanTodayRow.new)), boundary);
+      final boundary =
+          next != null && next < overview.nextBoundary.millisecondsSinceEpoch
+          ? DateTime.fromMillisecondsSinceEpoch(next)
+          : overview.nextBoundary;
+      return PlanTodayCard(
+        overview,
+        List.unmodifiable(rows.map(PlanTodayRow.new)),
+        boundary,
+      );
     });
     await identity.check();
     return result;
@@ -445,13 +444,7 @@ class PlanReviewRepository {
     final db = await _database(username);
     final instant = now;
     final result = await db.transaction((tx) async {
-      final sql = await _sql(
-        tx,
-        start,
-        end,
-        instant,
-        schemaOwner: db,
-      );
+      final sql = await _sql(tx, start, end, instant, schemaOwner: db);
       final overview = await _overview(tx, sql, identity, instant);
       final days = await _query(tx, '${sql.cte} ${sql.dayAggregate}', sql.args);
       final ranking = await _query(

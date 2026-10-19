@@ -1,5 +1,6 @@
 import 'dart:async' show TimeoutException, Timer, unawaited;
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:nativeapi/nativeapi.dart' as nativeapi;
@@ -8,6 +9,7 @@ import 'package:window_manager/window_manager.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+
 import '../screens/home_settings_screen.dart';
 import '../utils/page_transitions.dart';
 import '../utils/navigator_utils.dart';
@@ -20,10 +22,12 @@ class WindowService extends WindowListener {
   static const double _minStartupWidth = 720;
   static const double _minStartupHeight = 480;
 
-  static const MethodChannel _nativeChannel =
-      MethodChannel('com.math_quiz_app/window_native');
-  static const MethodChannel _macAppStatusBarChannel =
-      MethodChannel('countdown_todo/macos_app_status_bar');
+  static const MethodChannel _nativeChannel = MethodChannel(
+    'com.math_quiz_app/window_native',
+  );
+  static const MethodChannel _macAppStatusBarChannel = MethodChannel(
+    'countdown_todo/macos_app_status_bar',
+  );
 
   static Timer? _debounce;
   static Rect? _startupBounds;
@@ -55,7 +59,11 @@ class WindowService extends WindowListener {
       final int? h = prefs.getInt(_keyH);
       if (x != null && y != null && w != null && h != null) {
         final bounds = Rect.fromLTWH(
-            x.toDouble(), y.toDouble(), w.toDouble(), h.toDouble());
+          x.toDouble(),
+          y.toDouble(),
+          w.toDouble(),
+          h.toDouble(),
+        );
         if (_isUsableBounds(bounds)) {
           _startupBounds = bounds;
         }
@@ -89,7 +97,8 @@ class WindowService extends WindowListener {
   static Future<void> configureMacIsland() async {
     if (!Platform.isMacOS) return;
     final prefs = await SharedPreferences.getInstance();
-    final enabled = prefs.getBool('macos_island_enabled') ??
+    final enabled =
+        prefs.getBool('macos_island_enabled') ??
         prefs.getBool('macos_status_bar_enabled') ??
         true;
     final showOnNotchlessDisplay =
@@ -124,8 +133,9 @@ class WindowService extends WindowListener {
       };
     }
     try {
-      final raw = await _macAppStatusBarChannel
-          .invokeMethod<dynamic>('getClipboardBrowserSettings');
+      final raw = await _macAppStatusBarChannel.invokeMethod<dynamic>(
+        'getClipboardBrowserSettings',
+      );
       if (raw is! Map) return <String, dynamic>{};
 
       final browsers = <Map<String, String>>[];
@@ -149,7 +159,8 @@ class WindowService extends WindowListener {
       return <String, dynamic>{};
     } on MissingPluginException catch (error) {
       debugPrint(
-          '[WindowService] macOS browser settings plugin unavailable: $error');
+        '[WindowService] macOS browser settings plugin unavailable: $error',
+      );
       return <String, dynamic>{};
     }
   }
@@ -167,7 +178,8 @@ class WindowService extends WindowListener {
       return false;
     } on MissingPluginException catch (error) {
       debugPrint(
-          '[WindowService] macOS default browser plugin unavailable: $error');
+        '[WindowService] macOS default browser plugin unavailable: $error',
+      );
       return false;
     }
   }
@@ -201,7 +213,8 @@ class WindowService extends WindowListener {
   static Future<void> _initTray() async {
     try {
       debugPrint(
-          '[WindowService] _initTray: starting, iconPath=${Platform.isWindows ? 'assets/icon/app_icon.ico' : 'assets/icon/app_icon.png'}');
+        '[WindowService] _initTray: starting, iconPath=${Platform.isWindows ? 'assets/icon/app_icon.ico' : 'assets/icon/app_icon.png'}',
+      );
       final trayIcon = TrayIcon.create();
       if (trayIcon == null) {
         throw StateError('Failed to create the Windows system tray icon');
@@ -233,7 +246,9 @@ class WindowService extends WindowListener {
       throw StateError('The Windows system tray icon has not been created');
     }
     trayIcon.icon = ImageAsset.fromAsset(
-      Platform.isWindows ? 'assets/icon/app_icon.ico' : 'assets/icon/app_icon.png',
+      Platform.isWindows
+          ? 'assets/icon/app_icon.ico'
+          : 'assets/icon/app_icon.png',
     );
     if (Platform.isWindows) {
       trayIcon.iconSize = const nativeapi.Size(width: 18, height: 18);
@@ -316,8 +331,7 @@ class WindowService extends WindowListener {
         // macOS 可能不支持 isEnabled
         isLaunchAtStartup = false;
       }
-      autoLaunchItem.label =
-          isLaunchAtStartup ? '开机自启动: 已开启' : '开机自启动: 已关闭';
+      autoLaunchItem.label = isLaunchAtStartup ? '开机自启动: 已开启' : '开机自启动: 已关闭';
       trayIcon.setContextMenu(menu);
     } catch (e) {
       debugPrint('[WindowService] updateTrayMenu error: $e');
@@ -478,13 +492,15 @@ class WindowService extends WindowListener {
   @override
   void onWindowClose() {
     debugPrint(
-        '[WindowService] onWindowClose() called - preventing close immediately');
+      '[WindowService] onWindowClose() called - preventing close immediately',
+    );
     _doHandleWindowClose();
   }
 
   Future<void> _doHandleWindowClose() async {
     debugPrint(
-        '[WindowService] _doHandleWindowClose triggered (isHandlingClose: $_isHandlingClose)');
+      '[WindowService] _doHandleWindowClose triggered (isHandlingClose: $_isHandlingClose)',
+    );
 
     if (_isHandlingClose) {
       debugPrint('[WindowService] Already handling close, ignoring');
@@ -499,31 +515,37 @@ class WindowService extends WindowListener {
       try {
         if (onShowCloseConfirm != null) {
           debugPrint(
-              '[WindowService] Calling Flutter close confirm callback...');
+            '[WindowService] Calling Flutter close confirm callback...',
+          );
           shouldExit = await onShowCloseConfirm!().timeout(
             const Duration(seconds: 3),
             onTimeout: () {
               debugPrint(
-                  '[WindowService] Flutter callback timed out, using native dialog');
+                '[WindowService] Flutter callback timed out, using native dialog',
+              );
               failureReason = 'Flutter callback timeout';
               throw TimeoutException('Close dialog timeout');
             },
           );
           debugPrint(
-              '[WindowService] Flutter callback succeeded: shouldExit=$shouldExit');
+            '[WindowService] Flutter callback succeeded: shouldExit=$shouldExit',
+          );
         } else {
           debugPrint(
-              '[WindowService] No close dialog handler registered, showing native dialog');
+            '[WindowService] No close dialog handler registered, showing native dialog',
+          );
           failureReason = 'No callback registered';
           throw Exception('No callback registered');
         }
       } catch (e) {
         debugPrint(
-            '[WindowService] Flutter dialog failed ($failureReason): $e, showing native dialog');
+          '[WindowService] Flutter dialog failed ($failureReason): $e, showing native dialog',
+        );
         final result = await _showNativeCloseDialog();
         shouldExit = (result == 6);
         debugPrint(
-            '[WindowService] Native dialog result: $result, shouldExit=$shouldExit');
+          '[WindowService] Native dialog result: $result, shouldExit=$shouldExit',
+        );
       }
 
       debugPrint('[WindowService] Final decision: shouldExit=$shouldExit');

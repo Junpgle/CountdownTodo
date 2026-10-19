@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart'
     as wv_android;
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
+
 import '../services/environment_service.dart';
 
 /// Cloudflare Turnstile 人机验证组件
@@ -175,36 +177,38 @@ class _TurnstileVerificationWidgetState
               // 检测是否加载到了 JSON 而非 HTML
               _webViewController
                   ?.runJavaScriptReturningResult(
-                'document.body ? document.body.innerText.substring(0, 2) : ""',
-              )
+                    'document.body ? document.body.innerText.substring(0, 2) : ""',
+                  )
                   .then((result) {
-                final content = result.toString().replaceAll('"', '');
-                final isJson =
-                    content.startsWith('{') || content.startsWith('[');
-                if (mounted) {
-                  if (isJson) {
-                    debugPrint('[Turnstile] ❌ 检测到 JSON 响应，非 HTML 页面');
-                    _cancelLoadTimeout();
-                    setState(() {
-                      _hasError = true;
-                      _errorMessage =
-                          '人机验证页面配置错误，请检查 TURNSTILE_VERIFY_PAGE_URL';
-                      _isLoadingPage = false;
-                    });
-                    widget.onError?.call('验证页面返回了 JSON 而非 HTML');
-                  }
-                  // 不在这里设置 _isLoadingPage = false
-                  // 等 rendered 事件到达后再设置
-                }
-              }).catchError((e) {
-                debugPrint('[Turnstile] 内容检测失败: $e');
-                // 检测失败不一定是错误，继续等待 rendered 事件
-              });
+                    final content = result.toString().replaceAll('"', '');
+                    final isJson =
+                        content.startsWith('{') || content.startsWith('[');
+                    if (mounted) {
+                      if (isJson) {
+                        debugPrint('[Turnstile] ❌ 检测到 JSON 响应，非 HTML 页面');
+                        _cancelLoadTimeout();
+                        setState(() {
+                          _hasError = true;
+                          _errorMessage =
+                              '人机验证页面配置错误，请检查 TURNSTILE_VERIFY_PAGE_URL';
+                          _isLoadingPage = false;
+                        });
+                        widget.onError?.call('验证页面返回了 JSON 而非 HTML');
+                      }
+                      // 不在这里设置 _isLoadingPage = false
+                      // 等 rendered 事件到达后再设置
+                    }
+                  })
+                  .catchError((e) {
+                    debugPrint('[Turnstile] 内容检测失败: $e');
+                    // 检测失败不一定是错误，继续等待 rendered 事件
+                  });
             }
           },
           onWebResourceError: (WebResourceError error) {
             debugPrint(
-                '[Turnstile] ❌ WebView error: ${error.description} (code: ${error.errorType})');
+              '[Turnstile] ❌ WebView error: ${error.description} (code: ${error.errorType})',
+            );
             // 渲染成功后的子资源错误（如 Turnstile 内部网络请求）可忽略
             if (_isRendered || _isVerified) return;
             _cancelLoadTimeout();
@@ -221,9 +225,9 @@ class _TurnstileVerificationWidgetState
       );
 
     if (defaultTargetPlatform != TargetPlatform.macOS) {
-      controller.setBackgroundColor(widget.isDarkMode
-          ? const Color(0xFF13131F)
-          : const Color(0xFFF8F8FF));
+      controller.setBackgroundColor(
+        widget.isDarkMode ? const Color(0xFF13131F) : const Color(0xFFF8F8FF),
+      );
     }
 
     // 加载验证页面
@@ -291,7 +295,8 @@ class _TurnstileVerificationWidgetState
           final token = data['token'] as String?;
           if (token != null && token.isNotEmpty) {
             debugPrint(
-                '[Turnstile] ✅ success (token=${token.substring(0, 8)}...)');
+              '[Turnstile] ✅ success (token=${token.substring(0, 8)}...)',
+            );
             _cancelLoadTimeout();
             if (mounted) {
               setState(() {
@@ -383,16 +388,17 @@ class _TurnstileVerificationWidgetState
   BoxDecoration _boxDecoration() {
     return BoxDecoration(
       borderRadius: BorderRadius.circular(12),
-      color:
-          widget.isDarkMode ? const Color(0x0DFFFFFF) : const Color(0xFFF8F8FF),
+      color: widget.isDarkMode
+          ? const Color(0x0DFFFFFF)
+          : const Color(0xFFF8F8FF),
       border: Border.all(
         color: _isVerified
             ? const Color(0xFF4CAF50)
             : _hasError
-                ? const Color(0xFFE53E3E)
-                : widget.isDarkMode
-                    ? const Color(0x1AFFFFFF)
-                    : const Color(0xFFDDDDEE),
+            ? const Color(0xFFE53E3E)
+            : widget.isDarkMode
+            ? const Color(0x1AFFFFFF)
+            : const Color(0xFFDDDDEE),
         width: 1,
       ),
     );
@@ -400,8 +406,9 @@ class _TurnstileVerificationWidgetState
 
   Widget _buildLoadingOverlay() {
     return Container(
-      color:
-          widget.isDarkMode ? const Color(0xFF13131F) : const Color(0xFFF8F8FF),
+      color: widget.isDarkMode
+          ? const Color(0xFF13131F)
+          : const Color(0xFFF8F8FF),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -432,8 +439,9 @@ class _TurnstileVerificationWidgetState
 
   Widget _buildVerifiedOverlay() {
     return Container(
-      color:
-          widget.isDarkMode ? const Color(0xFF13131F) : const Color(0xFFF8F8FF),
+      color: widget.isDarkMode
+          ? const Color(0xFF13131F)
+          : const Color(0xFFF8F8FF),
       child: Center(
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -468,8 +476,9 @@ class _TurnstileVerificationWidgetState
 
   Widget _buildErrorState() {
     return Container(
-      color:
-          widget.isDarkMode ? const Color(0xFF13131F) : const Color(0xFFF8F8FF),
+      color: widget.isDarkMode
+          ? const Color(0xFF13131F)
+          : const Color(0xFFF8F8FF),
       child: Center(
         child: Padding(
           padding: const EdgeInsets.all(12),

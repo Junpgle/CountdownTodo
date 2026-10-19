@@ -11,13 +11,13 @@ enum MinorAgeSignalStatus {
 
 extension MinorAgeSignalStatusLabel on MinorAgeSignalStatus {
   String get label => switch (this) {
-        MinorAgeSignalStatus.notRequested => '尚未请求',
-        MinorAgeSignalStatus.shared => '已获得用户或家长授权',
-        MinorAgeSignalStatus.notShared => '用户或家长未分享',
-        MinorAgeSignalStatus.verificationRequired => '需要在 Google Play 完成年龄验证',
-        MinorAgeSignalStatus.unavailable => '当前设备或安装来源不可用',
-        MinorAgeSignalStatus.error => '暂时无法获取',
-      };
+    MinorAgeSignalStatus.notRequested => '尚未请求',
+    MinorAgeSignalStatus.shared => '已获得用户或家长授权',
+    MinorAgeSignalStatus.notShared => '用户或家长未分享',
+    MinorAgeSignalStatus.verificationRequired => '需要在 Google Play 完成年龄验证',
+    MinorAgeSignalStatus.unavailable => '当前设备或安装来源不可用',
+    MinorAgeSignalStatus.error => '暂时无法获取',
+  };
 }
 
 class MinorAgeSignalState {
@@ -44,15 +44,15 @@ class MinorAgeSignalState {
   });
 
   const MinorAgeSignalState.unavailable()
-      : available = false,
-        status = MinorAgeSignalStatus.unavailable,
-        ageLower = null,
-        ageUpper = null,
-        ageBand = MinorAgeBand.unknown,
-        ageRangeSource = null,
-        significantChangeStatus = null,
-        significantChangeApprovalDateMillis = null,
-        lastError = null;
+    : available = false,
+      status = MinorAgeSignalStatus.unavailable,
+      ageLower = null,
+      ageUpper = null,
+      ageBand = MinorAgeBand.unknown,
+      ageRangeSource = null,
+      significantChangeStatus = null,
+      significantChangeApprovalDateMillis = null,
+      lastError = null;
 
   factory MinorAgeSignalState.fromPlatformMap(Map<Object?, Object?> map) {
     return MinorAgeSignalState(
@@ -63,8 +63,9 @@ class MinorAgeSignalState {
       ageBand: _parseAgeBand(map['ageBand']),
       ageRangeSource: map['ageRangeSource']?.toString(),
       significantChangeStatus: map['significantChangeStatus']?.toString(),
-      significantChangeApprovalDateMillis:
-          _asInt(map['significantChangeApprovalDateMillis']),
+      significantChangeApprovalDateMillis: _asInt(
+        map['significantChangeApprovalDateMillis'],
+      ),
       lastError: map['lastError']?.toString(),
     );
   }
@@ -78,8 +79,7 @@ class MinorAgeSignalState {
       MinorAgeBand.age8to11 ||
       MinorAgeBand.age13to15 ||
       MinorAgeBand.age12to15 ||
-      MinorAgeBand.age16to17 =>
-        true,
+      MinorAgeBand.age16to17 => true,
       MinorAgeBand.unknown || MinorAgeBand.adult => false,
     };
   }

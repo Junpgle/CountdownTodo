@@ -56,16 +56,15 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
         (seriesId) => !summaries.any((summary) => summary.id == seriesId),
       );
       if (!_selectedSeriesIds.contains(_targetSeriesId)) {
-        _targetSeriesId =
-            _selectedSeriesIds.isEmpty ? null : _selectedSeriesIds.first;
+        _targetSeriesId = _selectedSeriesIds.isEmpty
+            ? null
+            : _selectedSeriesIds.first;
       }
       _isLoading = false;
     });
   }
 
-  static List<_RecurrenceSeriesSummary> _buildSummaries(
-    List<TodoItem> todos,
-  ) {
+  static List<_RecurrenceSeriesSummary> _buildSummaries(List<TodoItem> todos) {
     final grouped = <String, List<TodoItem>>{};
     for (final todo in todos) {
       final seriesId = todo.recurrenceSeriesId;
@@ -76,8 +75,11 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
     final summaries = <_RecurrenceSeriesSummary>[];
     for (final entry in grouped.entries) {
       final visible = entry.value.where((todo) => !todo.isDeleted).toList()
-        ..sort((a, b) => (a.createdDate ?? a.createdAt)
-            .compareTo(b.createdDate ?? b.createdAt));
+        ..sort(
+          (a, b) => (a.createdDate ?? a.createdAt).compareTo(
+            b.createdDate ?? b.createdAt,
+          ),
+        );
       if (visible.isEmpty) continue;
 
       TodoItem representative = visible.last;
@@ -98,8 +100,9 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
           conflictCount: visible
               .where(ConflictVisibilityService.isVisibleTodoConflict)
               .length,
-          hasActiveRule:
-              visible.any((todo) => todo.recurrence != RecurrenceType.none),
+          hasActiveRule: visible.any(
+            (todo) => todo.recurrence != RecurrenceType.none,
+          ),
         ),
       );
     }
@@ -119,8 +122,9 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
       } else {
         _selectedSeriesIds.remove(seriesId);
         if (_targetSeriesId == seriesId) {
-          _targetSeriesId =
-              _selectedSeriesIds.isEmpty ? null : _selectedSeriesIds.first;
+          _targetSeriesId = _selectedSeriesIds.isEmpty
+              ? null
+              : _selectedSeriesIds.first;
         }
       }
     });

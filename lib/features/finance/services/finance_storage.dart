@@ -3435,8 +3435,8 @@ abstract final class FinanceStorage {
           }
         }
         final duplicateUuids =
-            activeInstallmentUuidsByLoanAndIndex[item.loanUuid]?
-                [item.installmentIndex];
+            activeInstallmentUuidsByLoanAndIndex[item.loanUuid]?[item
+                .installmentIndex];
         if (duplicateUuids?.any((uuid) => uuid != item.uuid) ?? false) {
           skipped++;
           continue;
@@ -4110,7 +4110,11 @@ abstract final class FinanceStorage {
     final activeRefundsByOriginalUuid =
         <String, Map<String, FinanceTransaction>>{};
 
-    for (var offset = 0; offset < transactionUuids.length; offset += batchSize) {
+    for (
+      var offset = 0;
+      offset < transactionUuids.length;
+      offset += batchSize
+    ) {
       final nextOffset = offset + batchSize;
       final end = nextOffset < transactionUuids.length
           ? nextOffset
@@ -4119,7 +4123,8 @@ abstract final class FinanceStorage {
       final placeholders = List.filled(batch.length, '?').join(',');
       final rows = await db.query(
         'finance_transactions',
-        where: 'uuid IN ($placeholders) OR '
+        where:
+            'uuid IN ($placeholders) OR '
             "(type = 'refund' AND is_deleted = 0 AND "
             'related_transaction_uuid IN ($placeholders))',
         whereArgs: [...batch, ...batch],
@@ -4239,7 +4244,9 @@ abstract final class FinanceStorage {
         );
         final remaining = original.amountMinor - refunded;
         if (transaction.amountMinor > remaining) {
-          final remainingMinor = remaining.clamp(0, original.amountMinor).toInt();
+          final remainingMinor = remaining
+              .clamp(0, original.amountMinor)
+              .toInt();
           throw StateError('退款金额超过剩余可退金额 $remainingMinor 分');
         }
       }
@@ -4284,9 +4291,8 @@ abstract final class FinanceStorage {
           item.type == FinanceTransactionType.refund &&
           item.relatedTransactionUuid != null) {
         (activeRefundsByOriginalUuid[item.relatedTransactionUuid!] ??=
-                <String, FinanceTransaction>{})[
-          item.uuid
-        ] = item;
+                <String, FinanceTransaction>{})[item.uuid] =
+            item;
       }
       if (item.isDeleted) return;
       final groupUuid = item.installmentGroupUuid;
@@ -4381,9 +4387,7 @@ abstract final class FinanceStorage {
     final loansByUuid = <String, FinanceLoan>{};
     for (var offset = 0; offset < loanUuids.length; offset += batchSize) {
       final nextOffset = offset + batchSize;
-      final end = nextOffset < loanUuids.length
-          ? nextOffset
-          : loanUuids.length;
+      final end = nextOffset < loanUuids.length ? nextOffset : loanUuids.length;
       final batch = loanUuids.sublist(offset, end);
       final placeholders = List.filled(batch.length, '?').join(',');
       final rows = await db.query(
@@ -4442,7 +4446,8 @@ abstract final class FinanceStorage {
           )) {
         continue;
       }
-      if (_loanTermsDiffer(current, item) && paidLoanUuids.contains(item.uuid)) {
+      if (_loanTermsDiffer(current, item) &&
+          paidLoanUuids.contains(item.uuid)) {
         continue;
       }
       await db.update(
@@ -4485,9 +4490,7 @@ abstract final class FinanceStorage {
 
     for (var offset = 0; offset < loanUuids.length; offset += batchSize) {
       final nextOffset = offset + batchSize;
-      final end = nextOffset < loanUuids.length
-          ? nextOffset
-          : loanUuids.length;
+      final end = nextOffset < loanUuids.length ? nextOffset : loanUuids.length;
       final batch = loanUuids.sublist(offset, end);
       final placeholders = List.filled(batch.length, '?').join(',');
       final loanRows = await db.query(
@@ -4539,7 +4542,11 @@ abstract final class FinanceStorage {
       }
     }
 
-    for (var offset = 0; offset < installmentUuids.length; offset += batchSize) {
+    for (
+      var offset = 0;
+      offset < installmentUuids.length;
+      offset += batchSize
+    ) {
       final nextOffset = offset + batchSize;
       final end = nextOffset < installmentUuids.length
           ? nextOffset
@@ -4598,8 +4605,8 @@ abstract final class FinanceStorage {
       }
       if (!item.isDeleted) {
         final duplicateUuids =
-            activeInstallmentUuidsByLoanAndIndex[item.loanUuid]?
-                [item.installmentIndex];
+            activeInstallmentUuidsByLoanAndIndex[item.loanUuid]?[item
+                .installmentIndex];
         if (duplicateUuids?.any((uuid) => uuid != item.uuid) ?? false) {
           continue;
         }

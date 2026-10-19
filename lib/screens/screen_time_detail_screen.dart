@@ -15,10 +15,10 @@ final Map<(String?, String), DateFormat> _screenTimeDateFormats = {};
 
 DateFormat _screenTimeDateFormat(String pattern) {
   final locale = Intl.defaultLocale;
-  return _screenTimeDateFormats.putIfAbsent(
-    (locale, pattern),
-    () => DateFormat(pattern, locale),
-  );
+  return _screenTimeDateFormats.putIfAbsent((
+    locale,
+    pattern,
+  ), () => DateFormat(pattern, locale));
 }
 
 // ─────────────────────────────────────────────
@@ -187,16 +187,12 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   DeviceFilter _currentFilter = DeviceFilter.all;
   ScreenTimeRange _currentRange = ScreenTimeRange.day;
   Map<String, List<dynamic>> _historyStats = {};
-  final Map<
-    (ScreenTimeRange, int, int),
-    List<Map<String, dynamic>>
-  > _periodStatsCache = {};
-  final Map<
-    (ScreenTimeRange, int, int, DeviceFilter),
-    _ScreenTimePeriodSummary
-  > _periodSummaryCache = {};
-  final Map<(ScreenTimeRange, int, int, DeviceFilter), int>
-  _periodTotalCache = {};
+  final Map<(ScreenTimeRange, int, int), List<Map<String, dynamic>>>
+  _periodStatsCache = {};
+  final Map<(ScreenTimeRange, int, int, DeviceFilter), _ScreenTimePeriodSummary>
+  _periodSummaryCache = {};
+  final Map<(ScreenTimeRange, int, int, DeviceFilter), int> _periodTotalCache =
+      {};
   Map<String, String> _cloudMappings = {};
   bool _isLoading = true;
   Timer? _historyLoadTimer;
@@ -227,9 +223,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   Future<void> _loadHistory() async {
     final history = await StorageService.getScreenTimeHistory();
     final mappings = await StorageService.getAppMappings();
-    final todayStr = _screenTimeDateFormat('yyyy-MM-dd').format(
-      DateTime.now(),
-    );
+    final todayStr = _screenTimeDateFormat('yyyy-MM-dd').format(DateTime.now());
     history[todayStr] = widget.todayStats;
     if (mounted) {
       setState(() {
@@ -683,8 +677,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     _cachePeriodTotal(cacheKey, selectedTotal);
     final topApps = appGroups.entries.toList()
       ..sort(
-        (a, b) =>
-            (b.value['total'] as int).compareTo(a.value['total'] as int),
+        (a, b) => (b.value['total'] as int).compareTo(a.value['total'] as int),
       );
     final catDurs = catTotals.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
@@ -2063,7 +2056,8 @@ class AppDetailScreen extends StatelessWidget {
           String name = item['app_name'] ?? "";
           String device = item['device_name'] ?? "";
           if (name != appName) continue;
-          final matches = filter == DeviceFilter.all ||
+          final matches =
+              filter == DeviceFilter.all ||
               deviceMatchesByName!.putIfAbsent(
                 device,
                 () => ScreenTimeDetailScreen.matchesFilter(device, filter),

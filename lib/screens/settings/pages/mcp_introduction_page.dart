@@ -69,8 +69,7 @@ class McpIntroductionPage extends StatelessWidget {
                         _McpDetailRow(
                           icon: Icons.visibility_outlined,
                           title: '首次建议只读',
-                          detail:
-                              '将 COUNTDOWN_TODO_MCP_READ_ONLY 设为 1 后，服务不会向 AI 客户端提供写入工具。',
+                          detail: '将 COUNTDOWN_TODO_MCP_READ_ONLY 设为 1 后，服务不会向 AI 客户端提供写入工具。',
                         ),
                         _McpDetailRow(
                           icon: Icons.warning_amber_rounded,
@@ -312,11 +311,7 @@ class _McpDetailRow extends StatelessWidget {
               color: colorScheme.primaryContainer,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(
-              icon,
-              size: 19,
-              color: colorScheme.onPrimaryContainer,
-            ),
+            child: Icon(icon, size: 19, color: colorScheme.onPrimaryContainer),
           ),
           const SizedBox(width: 12),
           Expanded(

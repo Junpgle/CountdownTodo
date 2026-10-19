@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as ws_status;
+
 import 'api_service.dart';
 import 'notification_service.dart';
 import '../storage_service.dart';
@@ -18,8 +20,7 @@ import '../utils/json_value_parser.dart';
 
 /// 从 WebSocket 收到的跨端状态（扩充了版本更新字段）
 class CrossDevicePomodoroState {
-  final String
-      action; // 'START'|'STOP'|'SWITCH'|'SYNC_FOCUS'|'SYNC_TAGS'|'UPDATE_TAGS'|'HEARTBEAT'|'UPDATE_AVAILABLE'|'FOCUS_DISCONNECTED'|'CLEAR_FOCUS'|'CONFLICT_ALERT'|'TEAM_UPDATE'
+  final String action; // 'START'|'STOP'|'SWITCH'|'SYNC_FOCUS'|'SYNC_TAGS'|'UPDATE_TAGS'|'HEARTBEAT'|'UPDATE_AVAILABLE'|'FOCUS_DISCONNECTED'|'CLEAR_FOCUS'|'CONFLICT_ALERT'|'TEAM_UPDATE'
   final String? sessionUuid;
   final String? todoUuid;
   final String? todoTitle;
@@ -88,50 +89,47 @@ class CrossDevicePomodoroState {
     this.delta,
   });
 
-  factory CrossDevicePomodoroState.fromJson(Map<String, dynamic> j) =>
-      CrossDevicePomodoroState(
-        action: j['action']?.toString().toUpperCase() ?? 'UNKNOWN',
-        sessionUuid:
-            j['session_uuid']?.toString() ?? j['sessionUuid']?.toString(),
-        todoUuid: j['todo_uuid']?.toString(),
-        todoTitle: j['todo_title']?.toString(),
-        planBlockId: (j['plan_block_id'] ?? j['planBlockId'])?.toString(),
-        duration: _parseInt(j['duration']),
-        targetEndMs: _parseInt(j['target_end_ms'] ?? j['targetEndMs']),
-        sourceDevice: (j['sourceDevice'] ?? j['source_device'])?.toString(),
-        sourceDeviceName: (j['sourceDeviceName'] ??
-                j['source_device_name'] ??
-                j['device_name'])
+  factory CrossDevicePomodoroState.fromJson(
+    Map<String, dynamic> j,
+  ) => CrossDevicePomodoroState(
+    action: j['action']?.toString().toUpperCase() ?? 'UNKNOWN',
+    sessionUuid: j['session_uuid']?.toString() ?? j['sessionUuid']?.toString(),
+    todoUuid: j['todo_uuid']?.toString(),
+    todoTitle: j['todo_title']?.toString(),
+    planBlockId: (j['plan_block_id'] ?? j['planBlockId'])?.toString(),
+    duration: _parseInt(j['duration']),
+    targetEndMs: _parseInt(j['target_end_ms'] ?? j['targetEndMs']),
+    sourceDevice: (j['sourceDevice'] ?? j['source_device'])?.toString(),
+    sourceDeviceName:
+        (j['sourceDeviceName'] ?? j['source_device_name'] ?? j['device_name'])
             ?.toString(),
-        timestamp: _parseInt(j['timestamp']),
-        tags: _parseStringList(j['tags']),
-        note: (j['note'] ?? j['focus_note'] ?? j['focusNote'])?.toString(),
-        mode: _parseInt(j['mode']),
-        currentCycle: _parseInt(j['current_cycle'] ?? j['currentCycle']),
-        totalCycles: _parseInt(j['total_cycles'] ?? j['totalCycles']),
-        plannedFocusSeconds:
-            _parseInt(j['planned_focus_seconds'] ?? j['plannedFocusSeconds']),
-        latestVersion: j['latest_version']?.toString(),
-        downloadUrl: j['download_url']?.toString(),
-        releaseNotes: j['release_notes']?.toString(),
-        manifestData: j['manifest'] as Map<String, dynamic>?,
-        isPaused: j['isPaused'] as bool?,
-        pausedAtMs: _parseInt(j['pausedAtMs']),
-        accumulatedMs: _parseInt(j['accumulatedMs']),
-        pauseStartMs: _parseInt(j['pauseStartMs']),
-        serverElapsedMs:
-            _parseInt(j['server_elapsed_ms'] ?? j['serverElapsedMs']),
-        doNotDisturb: _parseBool(
-          j['do_not_disturb'] ?? j['doNotDisturb'] ?? j['dnd'],
-        ),
-        conflicts: j['conflicts'] != null
-            ? (j['conflicts'] as List)
-                .map((c) => ConflictInfo.fromJson(c))
-                .toList()
-            : null,
-        teamUuid: j['teamUuid']?.toString() ?? j['team_uuid']?.toString(),
-        delta: j['delta'] ?? j['event'],
-      );
+    timestamp: _parseInt(j['timestamp']),
+    tags: _parseStringList(j['tags']),
+    note: (j['note'] ?? j['focus_note'] ?? j['focusNote'])?.toString(),
+    mode: _parseInt(j['mode']),
+    currentCycle: _parseInt(j['current_cycle'] ?? j['currentCycle']),
+    totalCycles: _parseInt(j['total_cycles'] ?? j['totalCycles']),
+    plannedFocusSeconds: _parseInt(
+      j['planned_focus_seconds'] ?? j['plannedFocusSeconds'],
+    ),
+    latestVersion: j['latest_version']?.toString(),
+    downloadUrl: j['download_url']?.toString(),
+    releaseNotes: j['release_notes']?.toString(),
+    manifestData: j['manifest'] as Map<String, dynamic>?,
+    isPaused: j['isPaused'] as bool?,
+    pausedAtMs: _parseInt(j['pausedAtMs']),
+    accumulatedMs: _parseInt(j['accumulatedMs']),
+    pauseStartMs: _parseInt(j['pauseStartMs']),
+    serverElapsedMs: _parseInt(j['server_elapsed_ms'] ?? j['serverElapsedMs']),
+    doNotDisturb: _parseBool(
+      j['do_not_disturb'] ?? j['doNotDisturb'] ?? j['dnd'],
+    ),
+    conflicts: j['conflicts'] != null
+        ? (j['conflicts'] as List).map((c) => ConflictInfo.fromJson(c)).toList()
+        : null,
+    teamUuid: j['teamUuid']?.toString() ?? j['team_uuid']?.toString(),
+    delta: j['delta'] ?? j['event'],
+  );
 
   static int? _parseInt(dynamic v) {
     return JsonValueParser.toNullableInt(v);
@@ -162,30 +160,30 @@ class CrossDevicePomodoroState {
   }
 
   Map<String, dynamic> toJson() => {
-        'action': action,
-        if (todoUuid != null) 'todo_uuid': todoUuid,
-        if (sessionUuid != null) 'session_uuid': sessionUuid,
-        if (todoTitle != null) 'todo_title': todoTitle,
-        if (planBlockId != null) 'plan_block_id': planBlockId,
-        if (duration != null) 'duration': duration,
-        if (targetEndMs != null) 'target_end_ms': targetEndMs,
-        if (sourceDeviceName != null) 'source_device_name': sourceDeviceName,
-        if (tags.isNotEmpty) 'tags': tags,
-        if (note != null) 'note': note,
-        if (mode != null) 'mode': mode,
-        if (currentCycle != null) 'current_cycle': currentCycle,
-        if (totalCycles != null) 'total_cycles': totalCycles,
-        if (plannedFocusSeconds != null)
-          'planned_focus_seconds': plannedFocusSeconds,
-        if (latestVersion != null) 'latest_version': latestVersion,
-        if (downloadUrl != null) 'download_url': downloadUrl,
-        if (releaseNotes != null) 'release_notes': releaseNotes,
-        if (isPaused != null) 'isPaused': isPaused,
-        if (pausedAtMs != null) 'pausedAtMs': pausedAtMs,
-        if (accumulatedMs != null) 'accumulatedMs': accumulatedMs,
-        if (pauseStartMs != null) 'pauseStartMs': pauseStartMs,
-        if (doNotDisturb != null) 'do_not_disturb': doNotDisturb,
-      };
+    'action': action,
+    if (todoUuid != null) 'todo_uuid': todoUuid,
+    if (sessionUuid != null) 'session_uuid': sessionUuid,
+    if (todoTitle != null) 'todo_title': todoTitle,
+    if (planBlockId != null) 'plan_block_id': planBlockId,
+    if (duration != null) 'duration': duration,
+    if (targetEndMs != null) 'target_end_ms': targetEndMs,
+    if (sourceDeviceName != null) 'source_device_name': sourceDeviceName,
+    if (tags.isNotEmpty) 'tags': tags,
+    if (note != null) 'note': note,
+    if (mode != null) 'mode': mode,
+    if (currentCycle != null) 'current_cycle': currentCycle,
+    if (totalCycles != null) 'total_cycles': totalCycles,
+    if (plannedFocusSeconds != null)
+      'planned_focus_seconds': plannedFocusSeconds,
+    if (latestVersion != null) 'latest_version': latestVersion,
+    if (downloadUrl != null) 'download_url': downloadUrl,
+    if (releaseNotes != null) 'release_notes': releaseNotes,
+    if (isPaused != null) 'isPaused': isPaused,
+    if (pausedAtMs != null) 'pausedAtMs': pausedAtMs,
+    if (accumulatedMs != null) 'accumulatedMs': accumulatedMs,
+    if (pauseStartMs != null) 'pauseStartMs': pauseStartMs,
+    if (doNotDisturb != null) 'do_not_disturb': doNotDisturb,
+  };
 }
 
 enum SyncConnectionState { disconnected, connecting, connected, error }
@@ -197,10 +195,10 @@ class PomodoroSyncService {
   static final PomodoroSyncService instance = PomodoroSyncService._();
   factory PomodoroSyncService() => instance;
   PomodoroSyncService._()
-      : _connectChannel = WebSocketChannel.connect,
-        _fetchTeams = ApiService.fetchTeams,
-        _heartbeatInterval = _defaultHeartbeatInterval,
-        _stopDeliveryGrace = const Duration(seconds: 5);
+    : _connectChannel = WebSocketChannel.connect,
+      _fetchTeams = ApiService.fetchTeams,
+      _heartbeatInterval = _defaultHeartbeatInterval,
+      _stopDeliveryGrace = const Duration(seconds: 5);
 
   @visibleForTesting
   factory PomodoroSyncService.forTesting(
@@ -208,11 +206,15 @@ class PomodoroSyncService {
     Duration heartbeatInterval = _defaultHeartbeatInterval,
     Duration stopDeliveryGrace = const Duration(seconds: 5),
   }) => PomodoroSyncService._forTesting(
-        connectChannel, heartbeatInterval, stopDeliveryGrace,
-      );
+    connectChannel,
+    heartbeatInterval,
+    stopDeliveryGrace,
+  );
 
   PomodoroSyncService._forTesting(
-    this._connectChannel, this._heartbeatInterval, this._stopDeliveryGrace,
+    this._connectChannel,
+    this._heartbeatInterval,
+    this._stopDeliveryGrace,
   ) : _fetchTeams = (() async => <dynamic>[]);
 
   final Duration _heartbeatInterval;
@@ -304,8 +306,12 @@ class PomodoroSyncService {
     return current.isNotEmpty && source.isNotEmpty && current == source;
   }
 
-  Future<void> ensureConnected(String userId, String deviceId,
-      {String? authToken, String? appVersion}) async {
+  Future<void> ensureConnected(
+    String userId,
+    String deviceId, {
+    String? authToken,
+    String? appVersion,
+  }) async {
     _isInBackground = false;
     await _transportSuspendFuture;
     if (appVersion != null) _appVersion = appVersion;
@@ -328,8 +334,12 @@ class PomodoroSyncService {
     await _doConnect();
   }
 
-  Future<void> forceReconnect(String userId, String deviceId,
-      {String? authToken, String? appVersion}) async {
+  Future<void> forceReconnect(
+    String userId,
+    String deviceId, {
+    String? authToken,
+    String? appVersion,
+  }) async {
     _isInBackground = false;
     await _transportSuspendFuture;
     if (appVersion != null) _appVersion = appVersion;
@@ -521,14 +531,17 @@ class PomodoroSyncService {
         if (manifest != null && manifest['update_info'] != null) {
           final info = manifest['update_info'] as Map<String, dynamic>;
           if (AppPlatform.isMacOS) {
-            downloadUrl ??= info['mac_package_url']?.toString() ??
+            downloadUrl ??=
+                info['mac_package_url']?.toString() ??
                 info['PC_package_url']?.toString() ??
                 info['full_package_url']?.toString();
           } else if (AppPlatform.isWindows) {
-            downloadUrl ??= info['PC_package_url']?.toString() ??
+            downloadUrl ??=
+                info['PC_package_url']?.toString() ??
                 info['full_package_url']?.toString();
           } else {
-            downloadUrl ??= info['full_package_url']?.toString() ??
+            downloadUrl ??=
+                info['full_package_url']?.toString() ??
                 info['PC_package_url']?.toString();
           }
           releaseNotes ??= info['description']?.toString();
@@ -829,11 +842,12 @@ class PomodoroSyncService {
     _setConnState(SyncConnectionState.disconnected);
   }
 
-  void sendSwitchSignal(
-      {required String? todoUuid,
-      required String? todoTitle,
-      required String sessionUuid,
-      String? note}) {
+  void sendSwitchSignal({
+    required String? todoUuid,
+    required String? todoTitle,
+    required String sessionUuid,
+    String? note,
+  }) {
     _send({
       'action': 'SWITCH',
       'session_uuid': sessionUuid,
@@ -924,10 +938,7 @@ class PomodoroSyncService {
           .toSet();
       _subscribedTeamUuids = teamUuids;
       if (teamUuids.isNotEmpty) {
-        _send({
-          'type': 'subscribe',
-          'teamUuids': teamUuids.toList(),
-        });
+        _send({'type': 'subscribe', 'teamUuids': teamUuids.toList()});
       }
     } catch (e) {
       // debugPrint('[PomodoroSync] 团队订阅失败: $e');

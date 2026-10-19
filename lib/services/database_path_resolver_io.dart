@@ -25,7 +25,9 @@ Future<String> resolveDatabasePath(String targetName) async {
 }
 
 Future<void> migrateLegacyFfiDatabaseIfNeeded(
-    String targetName, String targetPath) async {
+  String targetName,
+  String targetPath,
+) async {
   try {
     final targetFile = File(targetPath);
     if (await targetFile.exists()) return;

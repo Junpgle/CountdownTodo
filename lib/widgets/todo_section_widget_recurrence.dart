@@ -83,8 +83,9 @@ class _TodoRecurrenceDateStructure {
       seriesId: seriesId,
       occurrences: occurrences,
       occurrenceStartEpochs: occurrenceStartEpochs,
-      occurrenceSlotIndexById:
-          Map<String, int>.unmodifiable(occurrenceSlotIndexById),
+      occurrenceSlotIndexById: Map<String, int>.unmodifiable(
+        occurrenceSlotIndexById,
+      ),
       recurrence: todo.recurrence,
       customIntervalDays: todo.customIntervalDays,
       recurrenceEndDayEpoch: recurrenceEndDay?.millisecondsSinceEpoch,
@@ -190,10 +191,7 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
     );
   }
 
-  void _openTodoEditor(
-    TodoItem todo, {
-    bool applyToFutureOccurrences = false,
-  }) {
+  void _openTodoEditor(TodoItem todo, {bool applyToFutureOccurrences = false}) {
     Navigator.push(
       context,
       PageTransitions.material(
@@ -407,8 +405,7 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
       completedCount: summary.completedCount,
       totalCount: todo.recurrenceEndDate == null ? null : summary.totalCount,
       overdueCount: summary.overdueCount,
-      onNodeTap: (node) =>
-          _handleRecurrenceNodeTap(todo, node, dateStructure!),
+      onNodeTap: (node) => _handleRecurrenceNodeTap(todo, node, dateStructure!),
       onManage: () => _showRecurrenceManagement(todo),
     );
   }
@@ -496,10 +493,8 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
               ),
               title: const Text('编辑本期'),
               subtitle: const Text('修改这一期的标题、时间或备注'),
-              onTap: () => Navigator.pop(
-                sheetContext,
-                _RecurrenceOccurrenceAction.edit,
-              ),
+              onTap: () =>
+                  Navigator.pop(sheetContext, _RecurrenceOccurrenceAction.edit),
             ),
           ],
         ),
@@ -535,8 +530,10 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading:
-                  Icon(Icons.edit_calendar_rounded, color: colorScheme.primary),
+              leading: Icon(
+                Icons.edit_calendar_rounded,
+                color: colorScheme.primary,
+              ),
               title: const Text('只修改本期'),
               subtitle: const Text('仅编辑当前显示的这一期待办'),
               onTap: () {
@@ -545,8 +542,10 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
               },
             ),
             ListTile(
-              leading: Icon(Icons.event_repeat_rounded,
-                  color: colorScheme.secondary),
+              leading: Icon(
+                Icons.event_repeat_rounded,
+                color: colorScheme.secondary,
+              ),
               title: const Text('修改后续所有周期'),
               subtitle: const Text('本期及之后的实例同步采用修改内容'),
               onTap: () {
@@ -556,8 +555,10 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
             ),
             if (todo.recurrence != RecurrenceType.none)
               ListTile(
-                leading:
-                    Icon(Icons.stop_circle_outlined, color: colorScheme.error),
+                leading: Icon(
+                  Icons.stop_circle_outlined,
+                  color: colorScheme.error,
+                ),
                 title: const Text('在本期结束循环'),
                 subtitle: const Text('保留已有记录，不再产生新的周期'),
                 onTap: () {
@@ -585,8 +586,11 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
                       }
                     }
                     todo.recurrence = RecurrenceType.none;
-                    todo.recurrenceEndDate =
-                        DateTime(start.year, start.month, start.day);
+                    todo.recurrenceEndDate = DateTime(
+                      start.year,
+                      start.month,
+                      start.day,
+                    );
                     todo.markAsChanged();
                   });
                   widget.onTodosChanged(List<TodoItem>.from(widget.todos));

@@ -394,9 +394,8 @@ void main() {
     expect(find.text('待处理 1'), findsOneWidget);
     expect(
       find.text(
-        DateFormat('yyyy-MM-dd HH:mm').format(
-          DateTime.fromMillisecondsSinceEpoch(1788000000000),
-        ),
+        DateFormat('yyyy-MM-dd HH:mm')
+            .format(DateTime.fromMillisecondsSinceEpoch(1788000000000)),
       ),
       findsOneWidget,
     );

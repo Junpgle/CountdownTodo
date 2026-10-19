@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../services/medal_recommendation_service.dart';
 
 /// 勋章推荐卡片 Widget
@@ -24,20 +25,24 @@ class MedalRecommendationCard extends StatelessWidget {
             // Header
             Row(
               children: [
-                const Icon(Icons.emoji_events_outlined,
-                    color: Colors.amber, size: 24),
+                const Icon(
+                  Icons.emoji_events_outlined,
+                  color: Colors.amber,
+                  size: 24,
+                ),
                 const SizedBox(width: 12),
                 Text(
                   '下一个目标',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                  style: Theme.of(context).textTheme.titleLarge
+                      ?.copyWith(fontWeight: FontWeight.bold),
                 ),
                 if (recommendation.isML) ...[
                   const SizedBox(width: 8),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: Theme.of(context).colorScheme.primaryContainer,
                       borderRadius: BorderRadius.circular(8),
@@ -45,9 +50,11 @@ class MedalRecommendationCard extends StatelessWidget {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.auto_awesome,
-                            size: 10,
-                            color: Theme.of(context).colorScheme.primary),
+                        Icon(
+                          Icons.auto_awesome,
+                          size: 10,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
                         const SizedBox(width: 2),
                         Text(
                           'AI',
@@ -92,15 +99,15 @@ class MedalRecommendationCard extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: 24),
                   child: Column(
                     children: [
-                      Icon(Icons.celebration_outlined,
-                          size: 48, color: Colors.grey[300]),
+                      Icon(
+                        Icons.celebration_outlined,
+                        size: 48,
+                        color: Colors.grey[300],
+                      ),
                       const SizedBox(height: 12),
                       Text(
                         '恭喜！已获得所有勋章',
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 16,
-                        ),
+                        style: TextStyle(color: Colors.grey[600], fontSize: 16),
                       ),
                     ],
                   ),
@@ -108,23 +115,25 @@ class MedalRecommendationCard extends StatelessWidget {
               )
             else
               Column(
-                children: recommendation.topRecommendations
-                    .asMap()
-                    .entries
-                    .map((entry) {
-                  final index = entry.key;
-                  final medal = entry.value;
-                  return Padding(
-                    padding: EdgeInsets.only(
+                children: recommendation.topRecommendations.asMap().entries.map(
+                  (entry) {
+                    final index = entry.key;
+                    final medal = entry.value;
+                    return Padding(
+                      padding: EdgeInsets.only(
                         bottom:
                             index < recommendation.topRecommendations.length - 1
-                                ? 16
-                                : 0),
-                    child: _buildMedalProgressItem(context, medal,
-                        reason:
-                            recommendation.recommendReasons[medal.medal.id]),
-                  );
-                }).toList(),
+                            ? 16
+                            : 0,
+                      ),
+                      child: _buildMedalProgressItem(
+                        context,
+                        medal,
+                        reason: recommendation.recommendReasons[medal.medal.id],
+                      ),
+                    );
+                  },
+                ).toList(),
               ),
 
             if (recommendation.topRecommendations.isNotEmpty) ...[
@@ -138,9 +147,7 @@ class MedalRecommendationCard extends StatelessWidget {
                 child: TextButton.icon(
                   onPressed: onViewAll,
                   icon: const Icon(Icons.list_outlined),
-                  label: Text(
-                    '查看全部勋章 (${recommendation.allMedals.length})',
-                  ),
+                  label: Text('查看全部勋章 (${recommendation.allMedals.length})'),
                   style: TextButton.styleFrom(
                     foregroundColor: Theme.of(context).colorScheme.primary,
                   ),
@@ -192,18 +199,13 @@ class MedalRecommendationCard extends StatelessWidget {
                   children: [
                     Text(
                       medal.medal.title,
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleMedium
+                      style: Theme.of(context).textTheme.titleMedium
                           ?.copyWith(fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       medal.nextMilestone,
-                      style: TextStyle(
-                        color: Colors.grey[600],
-                        fontSize: 12,
-                      ),
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -263,10 +265,7 @@ class MedalRecommendationCard extends StatelessWidget {
 class MedalListDialog extends StatefulWidget {
   final MedalRecommendation recommendation;
 
-  const MedalListDialog({
-    super.key,
-    required this.recommendation,
-  });
+  const MedalListDialog({super.key, required this.recommendation});
 
   @override
   State<MedalListDialog> createState() => _MedalListDialogState();
@@ -302,9 +301,7 @@ class _MedalListDialogState extends State<MedalListDialog>
               children: [
                 Text(
                   '勋章系统',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleLarge
+                  style: Theme.of(context).textTheme.titleLarge
                       ?.copyWith(fontWeight: FontWeight.bold),
                 ),
                 IconButton(
@@ -333,7 +330,9 @@ class _MedalListDialogState extends State<MedalListDialog>
               controller: _tabController,
               children: [
                 _buildMedalList(
-                    context, widget.recommendation.topRecommendations),
+                  context,
+                  widget.recommendation.topRecommendations,
+                ),
                 _buildMedalList(context, widget.recommendation.earnedMedals),
                 _buildMedalList(context, widget.recommendation.allMedals),
               ],
@@ -344,18 +343,12 @@ class _MedalListDialogState extends State<MedalListDialog>
     );
   }
 
-  Widget _buildMedalList(
-    BuildContext context,
-    List<MedalProgress> medals,
-  ) {
+  Widget _buildMedalList(BuildContext context, List<MedalProgress> medals) {
     if (medals.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
-          child: Text(
-            '暂无勋章',
-            style: TextStyle(color: Colors.grey[600]),
-          ),
+          child: Text('暂无勋章', style: TextStyle(color: Colors.grey[600])),
         ),
       );
     }
@@ -397,9 +390,7 @@ class _MedalListDialogState extends State<MedalListDialog>
                         children: [
                           Text(
                             medal.medal.title,
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
+                            style: Theme.of(context).textTheme.titleMedium
                                 ?.copyWith(fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(height: 4),

@@ -40,9 +40,9 @@ abstract final class ChallengeShareCodec {
     final rawTasks = decoded['tasks'];
     final tasks = rawTasks is List
         ? rawTasks
-            .map((task) => task.toString().trim())
-            .where((task) => task.isNotEmpty)
-            .toList(growable: false)
+              .map((task) => task.toString().trim())
+              .where((task) => task.isNotEmpty)
+              .toList(growable: false)
         : const <String>[];
     if (title.isEmpty || tasks.isEmpty) return null;
 

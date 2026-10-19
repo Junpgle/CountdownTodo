@@ -1,4 +1,5 @@
 part of 'storage_service.dart';
+
 // ignore_for_file: constant_identifier_names, unused_element, unused_element_parameter, annotate_overrides
 
 const String _recurrenceOccurrenceNamespace =
@@ -176,17 +177,17 @@ abstract class _StorageServiceBase {
   ValueNotifier<Color?> appWallpaperColorNotifier = ValueNotifier(null);
   final Map<String, Future<List<TodoItem>>> _inflightTodoRequests = {};
   final Map<(String, int, int), Future<List<TodoItem>>>
-      _inflightTodoSearchDateRequests = {};
+  _inflightTodoSearchDateRequests = {};
   final Map<(String, int, int), Future<List<TodoItem>>>
-      _inflightTimelineTodoRequests = {};
+  _inflightTimelineTodoRequests = {};
   final ValueNotifier<Map<String, dynamic>> conflictScanNotifier =
       ValueNotifier<Map<String, dynamic>>({
-    'isScanning': false,
-    'progress': 0,
-    'current': 0,
-    'total': 0,
-    'message': '',
-  });
+        'isScanning': false,
+        'progress': 0,
+        'current': 0,
+        'total': 0,
+        'message': '',
+      });
   final ValueNotifier<int> dataRefreshNotifier = ValueNotifier<int>(0);
 
   /// Dedicated cache refresh signal for screen-time consumers. Keeping this
@@ -223,33 +224,33 @@ abstract class _StorageServiceBase {
     required DateTime from,
     required DateTime to,
   });
-  Future<void> deleteFixedSchedule(
-    String username,
-    FixedScheduleItem item,
-  );
+  Future<void> deleteFixedSchedule(String username, FixedScheduleItem item);
   Future<List<HabitGoal>> getHabitGoals();
   Future<void> saveHabitGoals(List<HabitGoal> items);
-  Future<List<HabitGoalRuleRevision>> getHabitRules({
-    String? habitUuid,
-  });
-  Future<void> saveHabitRules(
-    List<HabitGoalRuleRevision> items,
-  );
+  Future<List<HabitGoalRuleRevision>> getHabitRules({String? habitUuid});
+  Future<void> saveHabitRules(List<HabitGoalRuleRevision> items);
   Future<List<HabitCheckIn>> getHabitCheckIns({
     String? habitUuid,
     String? fromDate,
     String? toDate,
   });
   Future<void> saveHabitCheckIns(List<HabitCheckIn> items);
-  Future<void> savePlanBlocks(String username, List<TodoPlanBlock> items,
-      {bool sync = true, bool isSyncSource = false});
+  Future<void> savePlanBlocks(
+    String username,
+    List<TodoPlanBlock> items, {
+    bool sync = true,
+    bool isSyncSource = false,
+  });
   Future<List<TodoPlanBlock>> cancelPlanBlocksReviewed(
-    String username, PlanCleanupRequest request, {
-    required Future<void> Function(DatabaseExecutor executor, bool retry) validate,
+    String username,
+    PlanCleanupRequest request, {
+    required Future<void> Function(DatabaseExecutor executor, bool retry)
+    validate,
     bool sync = true,
   });
   Future<List<TodoPlanBlock>> savePlanBlocksCreated(
-    String username, List<TodoPlanBlock> drafts, {
+    String username,
+    List<TodoPlanBlock> drafts, {
     required Future<void> Function(DatabaseExecutor executor) beforeWrite,
     bool sync = true,
   });
@@ -279,7 +280,9 @@ abstract class _StorageServiceBase {
   });
   Future<void> deletePlanBlockGlobally(String username, String idToDelete);
   Future<List<TodoPlanBlock>> getPlanBlocksByTodo(
-      String username, String todoId);
+    String username,
+    String todoId,
+  );
   Future<List<TodoPlanBlock>> getPlanBlocksByDay(String username, DateTime day);
   void triggerRefresh([
     Set<DataRefreshDomain> domains = const {DataRefreshDomain.all},
@@ -325,18 +328,29 @@ abstract class _StorageServiceBase {
   Future<void> saveSettings(Map<String, dynamic> settings);
   Future<Map<String, dynamic>> getSettings();
   Future<void> saveWindowsScheduledReminders(
-      List<Map<String, dynamic>> reminders);
+    List<Map<String, dynamic>> reminders,
+  );
   Future<List<Map<String, dynamic>>> getWindowsScheduledReminders();
   Future<void> savePomodoroTags(
-      String username, List<Map<String, dynamic>> tags);
+    String username,
+    List<Map<String, dynamic>> tags,
+  );
   Future<void> saveHistory(
-      String username, int score, int duration, String details);
+    String username,
+    int score,
+    int duration,
+    String details,
+  );
   Future<List<String>> getHistory(String username);
   Future<Map<String, dynamic>> getMathStats(String username);
   Future<void> updateLeaderboard(String username, int score, int duration);
   Future<List<Map<String, dynamic>>> getLeaderboard();
-  Future<void> saveCountdowns(String username, List<CountdownItem> items,
-      {bool sync = true, bool isSyncSource = false});
+  Future<void> saveCountdowns(
+    String username,
+    List<CountdownItem> items, {
+    bool sync = true,
+    bool isSyncSource = false,
+  });
   Future<void> _clearGhostConflictFlags(
     dynamic db, {
     Iterable<String> tables = const ['todos', 'todo_groups', 'countdowns'],
@@ -348,22 +362,28 @@ abstract class _StorageServiceBase {
     DateTime? to,
   });
   Future<void> deleteCountdownGlobally(String username, String idToDelete);
-  Future<void> saveTodos(String username, List<TodoItem> items,
-      {bool sync = true,
-      bool isSyncSource = false,
-      bool recomputeScheduleConflicts = true,
-      Set<String> authoritativeTodoIds = const {},
-      Map<String, TodoItem>? recurrenceBaselines,
-      Map<String, TodoItem?>? recurrenceUploadBaselines,
-      List<TodoItem>? bandSyncSnapshot});
+  Future<void> saveTodos(
+    String username,
+    List<TodoItem> items, {
+    bool sync = true,
+    bool isSyncSource = false,
+    bool recomputeScheduleConflicts = true,
+    Set<String> authoritativeTodoIds = const {},
+    Map<String, TodoItem>? recurrenceBaselines,
+    Map<String, TodoItem?>? recurrenceUploadBaselines,
+    List<TodoItem>? bandSyncSnapshot,
+  });
   Future<bool> _saveRecurrenceMaintenance(
     String username,
     List<TodoItem> todos,
     Map<String, TodoItem> baselines, {
     Map<String, TodoItem?>? uploadBaselines,
   });
-  bool _hasSubstantialChange(Map<String, dynamic> before,
-      Map<String, dynamic> after, List<String> fields);
+  bool _hasSubstantialChange(
+    Map<String, dynamic> before,
+    Map<String, dynamic> after,
+    List<String> fields,
+  );
   Future<void> _refreshTodoScheduleConflicts(
     String username, {
     Set<String>? affectedDayKeys,
@@ -373,25 +393,38 @@ abstract class _StorageServiceBase {
   Future<void> ignoreLocalScheduleConflict(String username, TodoItem item);
   Future<Set<String>> _getIgnoredScheduleConflictKeys(String username);
   Future<void> _recordLocalAuditOptimized(
-      String username,
-      String table,
-      String uuid,
-      Map<String, dynamic> afterData,
-      String? teamUuid,
-      Map<String, dynamic>? existingData);
-  Future<void> _recordLocalAudit(String username, String table, String uuid,
-      Map<String, dynamic> afterData, String? teamUuid);
+    String username,
+    String table,
+    String uuid,
+    Map<String, dynamic> afterData,
+    String? teamUuid,
+    Map<String, dynamic>? existingData,
+  );
+  Future<void> _recordLocalAudit(
+    String username,
+    String table,
+    String uuid,
+    Map<String, dynamic> afterData,
+    String? teamUuid,
+  );
   Future<void> _syncTodosToBand(List<TodoItem> items);
-  Future<void> updateSingleTodo(String username, TodoItem item,
-      {bool sync = true});
+  Future<void> updateSingleTodo(
+    String username,
+    TodoItem item, {
+    bool sync = true,
+  });
   Future<TodoItem?> getTodoByUuid(String username, String uuid);
   Future<void> permanentlyDeleteTodo(String username, String uuid);
   Future<void> clearTodoRecycleBin(String username);
   bool _isHistoricalTodo(TodoItem todo, DateTime today);
   Future<int> clearHistoricalTodos(String username);
   Future<void> permanentlyDeleteCountdown(String username, String uuid);
-  Future<List<TodoItem>> getTodos(String username,
-      {bool includeDeleted = false, int? limit, int offset = 0});
+  Future<List<TodoItem>> getTodos(
+    String username, {
+    bool includeDeleted = false,
+    int? limit,
+    int offset = 0,
+  });
   Future<List<TodoItem>> getTodosForWidget(String username);
   Future<List<TodoItem>> getTodosForSearchDateRange(
     String username, {
@@ -408,8 +441,12 @@ abstract class _StorageServiceBase {
     required int startMs,
     required int endMs,
   });
-  Future<List<TodoItem>> _getTodosInternal(String username,
-      {bool includeDeleted = false, int? limit, int offset = 0});
+  Future<List<TodoItem>> _getTodosInternal(
+    String username, {
+    bool includeDeleted = false,
+    int? limit,
+    int offset = 0,
+  });
   Future<List<TodoItem>> _getTodosForSearchDateRangeInternal(
     String username, {
     required int startMs,
@@ -417,7 +454,9 @@ abstract class _StorageServiceBase {
   });
   Future<void> clearTeamItems(String teamUuid);
   Future<List<TodoItem>> _handleRecurrenceLogic(
-      String username, List<TodoItem> todos);
+    String username,
+    List<TodoItem> todos,
+  );
   DateTime _getRecurrenceBaseDate(TodoItem todo);
   List<int> _recurrenceRollOffsets(
     TodoItem todo,
@@ -437,13 +476,8 @@ abstract class _StorageServiceBase {
     TodoItem active,
     List<TodoItem> existing,
   );
-  String recurrenceOccurrenceIdForTest(
-    String seriesId,
-    int startMs,
-  );
-  bool deduplicatePersistedRecurrenceOccurrencesForTest(
-    List<TodoItem> todos,
-  );
+  String recurrenceOccurrenceIdForTest(String seriesId, int startMs);
+  bool deduplicatePersistedRecurrenceOccurrencesForTest(List<TodoItem> todos);
   bool pruneRecurrenceOccurrencesAfterEndDateForTest(
     List<TodoItem> todos, {
     required String seriesId,
@@ -452,9 +486,7 @@ abstract class _StorageServiceBase {
   Set<String> pruneRecurrenceOccurrencesAfterEndDatesForTest(
     List<TodoItem> todos,
   );
-  Set<String> _pruneRecurrenceOccurrencesAfterEndDates(
-    List<TodoItem> todos,
-  );
+  Set<String> _pruneRecurrenceOccurrencesAfterEndDates(List<TodoItem> todos);
   Future<int> mergeRecurrenceSeries(
     String username, {
     required String targetSeriesId,
@@ -470,13 +502,10 @@ abstract class _StorageServiceBase {
     required String targetSeriesId,
     required Set<String> seriesIds,
   });
-  List<int> _futureRecurrenceRollOffsets(
-    TodoItem todo,
-    DateTime baseLocal,
-  );
+  List<int> _futureRecurrenceRollOffsets(TodoItem todo, DateTime baseLocal);
   DateTime? _nextRecurrenceDate(DateTime current, TodoItem todo);
   ({TodoItem occurrence, bool isNew, bool didChange})
-      _getOrCreateRecurrenceOccurrence({
+  _getOrCreateRecurrenceOccurrence({
     required TodoItem source,
     required int rollByDays,
     required String seriesId,
@@ -493,25 +522,33 @@ abstract class _StorageServiceBase {
     required List<TodoItem> todos,
     required List<TodoItem> generatedOccurrences,
   });
-  bool _deduplicatePersistedRecurrenceOccurrences(List<TodoItem> todos,
-      {Set<String>? changedIds});
+  bool _deduplicatePersistedRecurrenceOccurrences(
+    List<TodoItem> todos, {
+    Set<String>? changedIds,
+  });
   int _compareRecurrenceOccurrenceIdentity(TodoItem a, TodoItem b);
-  bool _copyRecurrenceOccurrenceData(
-    TodoItem source,
-    TodoItem target,
-  );
+  bool _copyRecurrenceOccurrenceData(TodoItem source, TodoItem target);
   String? _overlappingRecurrencePairKey(TodoItem previous, TodoItem next);
   TodoItem _copyForNextRecurrence(TodoItem source);
   void _rollRecurrenceDateByDays(TodoItem todo, int days);
   Future<bool> deleteTodoGlobally(String username, String idToDelete);
-  Future<void> saveTodoGroups(String username, List<TodoGroup> items,
-      {bool sync = true, bool isSyncSource = false});
+  Future<void> saveTodoGroups(
+    String username,
+    List<TodoGroup> items, {
+    bool sync = true,
+    bool isSyncSource = false,
+  });
   Future<void> _clearTodoGroupPrefsMirror(String username);
-  Future<List<TodoGroup>> getTodoGroups(String username,
-      {bool includeDeleted = false});
+  Future<List<TodoGroup>> getTodoGroups(
+    String username, {
+    bool includeDeleted = false,
+  });
   Future<void> deleteTodoGroupGlobally(String username, String idToDelete);
-  Future<void> saveTimeLogs(String username, List<TimeLogItem> items,
-      {bool sync = true});
+  Future<void> saveTimeLogs(
+    String username,
+    List<TimeLogItem> items, {
+    bool sync = true,
+  });
   Future<List<TimeLogItem>> getTimeLogs(
     String username, {
     int? limit,
@@ -519,14 +556,19 @@ abstract class _StorageServiceBase {
     DateTime? to,
   });
   Future<bool> deleteTimeLogGlobally(String username, String idToDelete);
-  Future<void> saveLocalScreenTime(Map<dynamic, dynamic> stats,
-      {String? username});
+  Future<void> saveLocalScreenTime(
+    Map<dynamic, dynamic> stats, {
+    String? username,
+  });
   Future<Map<String, dynamic>?> getLocalScreenTimePackage({String? username});
   Future<Map<String, dynamic>> getLocalScreenTimeMap({String? username});
   Future<List<dynamic>> getLocalScreenTime({String? username});
   Future<void> saveScreenTimeCache(List<dynamic> stats, {String? username});
-  Future<void> saveScreenTimeHistoryToSql(String date, List<dynamic> stats,
-      {String? username});
+  Future<void> saveScreenTimeHistoryToSql(
+    String date,
+    List<dynamic> stats, {
+    String? username,
+  });
   Future<List<dynamic>> getScreenTimeCache();
   Future<Map<String, List<dynamic>>> getScreenTimeHistory({
     String? username,
@@ -554,9 +596,7 @@ abstract class _StorageServiceBase {
     bool syncFinance = true,
     bool financeSyncExplicitlyAuthorized = false,
   });
-  bool recomputeLocalTodoScheduleConflictsForTest(
-    List<TodoItem> todos,
-  );
+  bool recomputeLocalTodoScheduleConflictsForTest(List<TodoItem> todos);
   bool _recomputeLocalTodoScheduleConflicts(
     List<TodoItem> todos, {
     Set<String> ignoredScheduleConflictKeys = const <String>{},
@@ -573,14 +613,13 @@ abstract class _StorageServiceBase {
     int bEnd,
   );
   String? _scheduleConflictKeyFromPayload(
-      TodoItem item, Map<String, dynamic> peer);
-  int? _parseMillis(dynamic value);
-  bool _isSameRecurrenceSeries(TodoItem first, TodoItem second);
-  bool _isRecurringTodoForLww(TodoItem todo);
-  bool _isSameRecurrenceSeriesPayload(
     TodoItem item,
     Map<String, dynamic> peer,
   );
+  int? _parseMillis(dynamic value);
+  bool _isSameRecurrenceSeries(TodoItem first, TodoItem second);
+  bool _isRecurringTodoForLww(TodoItem todo);
+  bool _isSameRecurrenceSeriesPayload(TodoItem item, Map<String, dynamic> peer);
   List<TodoItem> clearResolvedRecurrenceMigrationConflictsForTest(
     List<TodoItem> todos,
   );
@@ -590,7 +629,8 @@ abstract class _StorageServiceBase {
   bool _payloadHasConflict(Map<String, dynamic> data);
   bool _payloadHasVersionConflict(Map<String, dynamic> data);
   Map<String, dynamic> _stripClientOnlyConflictForSync(
-      Map<String, dynamic> data);
+    Map<String, dynamic> data,
+  );
   void _preserveLocalTodoSourceFields(TodoItem local, TodoItem incoming);
   Set<String> repairMissingRemoteRecurrenceSeriesIdsForTest(
     List<TodoItem> incoming,
@@ -618,14 +658,14 @@ abstract class _StorageServiceBase {
   );
   bool _isMissingRecurrenceSeriesId(TodoItem todo);
   String? _remoteRecurrencePlanSignature(TodoItem todo);
-  bool _isRemoteOccurrenceOnRecurrence(
-    TodoItem ruleSource,
-    TodoItem candidate,
-  );
+  bool _isRemoteOccurrenceOnRecurrence(TodoItem ruleSource, TodoItem candidate);
   Map<String, dynamic> _conflictPeerSummary(_TodoInterval interval);
   String _localDayKey(int ms);
-  Future<bool> syncScreenTimeAlone(String username, String deviceName,
-      {int? expectedUserId});
+  Future<bool> syncScreenTimeAlone(
+    String username,
+    String deviceName, {
+    int? expectedUserId,
+  });
   Future<void> saveAppSetting(String key, dynamic value);
   Future<int> getSyncInterval();
   Future<bool> getConflictDetectionEnabled();
@@ -731,7 +771,9 @@ abstract class _StorageServiceBase {
   Future<String?> getLastCourseImportUrl();
   Future<Map<String, int>> getCategoryReminderMinutes(String username);
   Future<void> saveCategoryReminderMinutes(
-      String username, Map<String, int> data);
+    String username,
+    Map<String, int> data,
+  );
   Future<List<Map<String, dynamic>>> getSyncFailures();
   Future<void> resolveConflictLocally({
     required String uuid,

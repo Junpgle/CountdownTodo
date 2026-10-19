@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models.dart';
 import '../services/band_sync_service.dart';
 import '../services/course_service.dart';
@@ -333,8 +334,10 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
               const Divider(height: 24),
               Row(
                 children: [
-                  Icon(Icons.devices,
-                      color: Theme.of(context).colorScheme.primary),
+                  Icon(
+                    Icons.devices,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                   const SizedBox(width: 8),
                   Text(
                     '设备: $_deviceName',
@@ -358,15 +361,19 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
             Card(
               elevation: 2,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.info_outline,
-                            color: Colors.purple, size: 32),
+                        const Icon(
+                          Icons.info_outline,
+                          color: Colors.purple,
+                          size: 32,
+                        ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
@@ -399,8 +406,10 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
                                 const SnackBar(content: Text('已向手环推送最新版本信息')),
                               );
                             },
-                            icon: const Icon(Icons.system_update_alt_rounded,
-                                size: 18),
+                            icon: const Icon(
+                              Icons.system_update_alt_rounded,
+                              size: 18,
+                            ),
                             label: const Text('检查更新'),
                           ),
                       ],
@@ -408,10 +417,14 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
                     const Divider(height: 24),
                     LiquidGlassSwitchListTile(
                       contentPadding: EdgeInsets.zero,
-                      title: const Text('自动检查手环更新',
-                          style: TextStyle(fontSize: 14)),
-                      subtitle: const Text('连接时自动将最新版本信息推送至手环',
-                          style: TextStyle(fontSize: 12)),
+                      title: const Text(
+                        '自动检查手环更新',
+                        style: TextStyle(fontSize: 14),
+                      ),
+                      subtitle: const Text(
+                        '连接时自动将最新版本信息推送至手环',
+                        style: TextStyle(fontSize: 12),
+                      ),
                       value: _isAutoUpdateEnabled,
                       onChanged: _saveUpdateSettings,
                     ),
@@ -439,10 +452,7 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '上次同步',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
+                  Text('上次同步', style: Theme.of(context).textTheme.bodySmall),
                   const SizedBox(height: 4),
                   Text(
                     BandSyncService.lastSyncTimeStr,
@@ -523,10 +533,7 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          '数据同步',
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
+        Text('数据同步', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 12),
         Row(
           children: [
@@ -578,8 +585,9 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
               child: OutlinedButton.icon(
                 icon: const Icon(Icons.open_in_new),
                 label: const Text('启动手环应用'),
-                onPressed:
-                    _isConnected ? () => BandSyncService.launchApp() : null,
+                onPressed: _isConnected
+                    ? () => BandSyncService.launchApp()
+                    : null,
               ),
             ),
             const SizedBox(width: 8),
@@ -611,9 +619,7 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
         backgroundColor: onPressed != null ? color : Colors.grey[300],
         foregroundColor: onPressed != null ? Colors.white : Colors.grey[600],
         padding: const EdgeInsets.symmetric(vertical: 12),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
       onPressed: onPressed,
     );
@@ -635,10 +641,7 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  '同步日志',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+                Text('同步日志', style: Theme.of(context).textTheme.titleMedium),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -724,17 +727,15 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  '收到手环消息',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+                Text('收到手环消息', style: Theme.of(context).textTheme.titleMedium),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     TextButton(
                       onPressed: () {
-                        final allMsgs =
-                            messages.map((m) => m.toString()).join('\n');
+                        final allMsgs = messages
+                            .map((m) => m.toString())
+                            .join('\n');
                         if (allMsgs.isNotEmpty) {
                           _copyToClipboard(allMsgs, '手环消息');
                         }
@@ -861,8 +862,9 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
         _logs.add('收到番茄钟消息（无操作指令）');
       }
     } else if (type == 'debug') {
-      final message =
-          bandData is Map ? bandData['message']?.toString() ?? '' : '';
+      final message = bandData is Map
+          ? bandData['message']?.toString() ?? ''
+          : '';
       setState(() {
         _logs.add('[手环] $message');
       });
@@ -887,8 +889,10 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
       return;
     }
 
-    final allTodos =
-        await StorageService.getTodos(username, includeDeleted: true);
+    final allTodos = await StorageService.getTodos(
+      username,
+      includeDeleted: true,
+    );
     final todosById = <String, TodoItem>{
       for (final todo in allTodos) todo.id: todo,
     };
@@ -972,30 +976,34 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
     // 只发送未完成的待办
     final todoMaps = todos
         .where((t) => !t.isDeleted && !t.isDone)
-        .map((t) => {
-              'id': t.id,
-              'title': t.title,
-              'content': t.title,
-              'is_completed': t.isDone ? 1 : 0,
-              'status': t.isDone ? 'done' : 'undone',
-              'updated_at': t.updatedAt,
-              'created_at': t.createdAt,
-              'created_date': t.createdDate,
-              'due_date': t.dueDate?.millisecondsSinceEpoch,
-              'remark': t.remark ?? '',
-              'priority': 'normal',
-            })
+        .map(
+          (t) => {
+            'id': t.id,
+            'title': t.title,
+            'content': t.title,
+            'is_completed': t.isDone ? 1 : 0,
+            'status': t.isDone ? 'done' : 'undone',
+            'updated_at': t.updatedAt,
+            'created_at': t.createdAt,
+            'created_date': t.createdDate,
+            'due_date': t.dueDate?.millisecondsSinceEpoch,
+            'remark': t.remark ?? '',
+            'priority': 'normal',
+          },
+        )
         .toList();
     _logs.add('筛选后 ${todoMaps.length} 条待办数据');
 
     final success = await BandSyncService.syncTodos(todoMaps);
     setState(() {
       _isSyncing = false;
-      _logs.add(success
-          ? (BandSyncService.supportsSyncResult
-              ? '待办同步成功 (${todoMaps.length}条)'
-              : '待办发送完成，手环未提供回执')
-          : '待办同步失败');
+      _logs.add(
+        success
+            ? (BandSyncService.supportsSyncResult
+                  ? '待办同步成功 (${todoMaps.length}条)'
+                  : '待办发送完成，手环未提供回执')
+            : '待办同步失败',
+      );
     });
   }
 
@@ -1017,46 +1025,51 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
 
     // 只发送今天及未来两周的课程，按日期精确匹配
     final twoWeeksLater = now.add(const Duration(days: 14));
-    final courseMaps = courses.where((c) {
-      try {
-        final courseDate = DateTime.parse(c.date);
-        return c.date.compareTo(todayStr) >= 0 &&
-            courseDate.isBefore(twoWeeksLater);
-      } catch (e) {
-        return false;
-      }
-    }).map((c) {
-      final startH = c.startTime ~/ 100;
-      final startM = c.startTime % 100;
-      final endH = c.endTime ~/ 100;
-      final endM = c.endTime % 100;
-      return {
-        'id': '${c.courseName}_${c.date}_$startH$startM',
-        'name': c.courseName,
-        'courseName': c.courseName,
-        'teacher': c.teacherName,
-        'teacherName': c.teacherName,
-        'location': c.roomName,
-        'roomName': c.roomName,
-        'weekday': c.weekday,
-        'weekIndex': c.weekIndex,
-        'date': c.date,
-        'startTime':
-            '${startH.toString().padLeft(2, '0')}:${startM.toString().padLeft(2, '0')}',
-        'endTime':
-            '${endH.toString().padLeft(2, '0')}:${endM.toString().padLeft(2, '0')}',
-      };
-    }).toList();
+    final courseMaps = courses
+        .where((c) {
+          try {
+            final courseDate = DateTime.parse(c.date);
+            return c.date.compareTo(todayStr) >= 0 &&
+                courseDate.isBefore(twoWeeksLater);
+          } catch (e) {
+            return false;
+          }
+        })
+        .map((c) {
+          final startH = c.startTime ~/ 100;
+          final startM = c.startTime % 100;
+          final endH = c.endTime ~/ 100;
+          final endM = c.endTime % 100;
+          return {
+            'id': '${c.courseName}_${c.date}_$startH$startM',
+            'name': c.courseName,
+            'courseName': c.courseName,
+            'teacher': c.teacherName,
+            'teacherName': c.teacherName,
+            'location': c.roomName,
+            'roomName': c.roomName,
+            'weekday': c.weekday,
+            'weekIndex': c.weekIndex,
+            'date': c.date,
+            'startTime':
+                '${startH.toString().padLeft(2, '0')}:${startM.toString().padLeft(2, '0')}',
+            'endTime':
+                '${endH.toString().padLeft(2, '0')}:${endM.toString().padLeft(2, '0')}',
+          };
+        })
+        .toList();
     _logs.add('筛选后 ${courseMaps.length} 条课程数据');
 
     final success = await BandSyncService.syncCourses(courseMaps);
     setState(() {
       _isSyncing = false;
-      _logs.add(success
-          ? (BandSyncService.supportsSyncResult
-              ? '课程同步成功 (${courseMaps.length}条)'
-              : '课程发送完成，手环未提供回执')
-          : '课程同步失败');
+      _logs.add(
+        success
+            ? (BandSyncService.supportsSyncResult
+                  ? '课程同步成功 (${courseMaps.length}条)'
+                  : '课程发送完成，手环未提供回执')
+            : '课程同步失败',
+      );
     });
   }
 
@@ -1077,25 +1090,30 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
     // 只发送未过期的倒计时
     final countdownMaps = countdowns
         .where(
-            (c) => !c.isDeleted && c.targetDate.millisecondsSinceEpoch >= now)
-        .map((c) => {
-              'id': c.id,
-              'title': c.title,
-              'targetDate': c.targetDate.millisecondsSinceEpoch,
-              'target_time': c.targetDate.millisecondsSinceEpoch,
-              'updated_at': c.updatedAt,
-            })
+          (c) => !c.isDeleted && c.targetDate.millisecondsSinceEpoch >= now,
+        )
+        .map(
+          (c) => {
+            'id': c.id,
+            'title': c.title,
+            'targetDate': c.targetDate.millisecondsSinceEpoch,
+            'target_time': c.targetDate.millisecondsSinceEpoch,
+            'updated_at': c.updatedAt,
+          },
+        )
         .toList();
     _logs.add('筛选后 ${countdownMaps.length} 条倒计时数据');
 
     final success = await BandSyncService.syncCountdowns(countdownMaps);
     setState(() {
       _isSyncing = false;
-      _logs.add(success
-          ? (BandSyncService.supportsSyncResult
-              ? '倒计时同步成功 (${countdownMaps.length}条)'
-              : '倒计时发送完成，手环未提供回执')
-          : '倒计时同步失败');
+      _logs.add(
+        success
+            ? (BandSyncService.supportsSyncResult
+                  ? '倒计时同步成功 (${countdownMaps.length}条)'
+                  : '倒计时发送完成，手环未提供回执')
+            : '倒计时同步失败',
+      );
     });
   }
 
@@ -1116,10 +1134,7 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
       final tags = await PomodoroService.getTags();
       final tagNames = tags
           .where((t) => runState.tagUuids.contains(t.uuid))
-          .map((t) => {
-                'name': t.name,
-                'color': t.color,
-              })
+          .map((t) => {'name': t.name, 'color': t.color})
           .toList();
 
       final pomodoroData = [
@@ -1139,18 +1154,20 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
           'plannedFocusSeconds': runState.plannedFocusSeconds,
           'isCountUp': runState.mode == TimerMode.countUp,
           'mode': runState.mode.index,
-        }
+        },
       ];
 
       _logs.add('同步运行中的番茄钟: ${runState.todoTitle ?? "自由专注"}');
       final success = await BandSyncService.syncPomodoro(pomodoroData);
       setState(() {
         _isSyncing = false;
-        _logs.add(success
-            ? (BandSyncService.supportsSyncResult
-                ? '番茄钟同步成功'
-                : '番茄钟发送完成，手环未提供回执')
-            : '番茄钟同步失败');
+        _logs.add(
+          success
+              ? (BandSyncService.supportsSyncResult
+                    ? '番茄钟同步成功'
+                    : '番茄钟发送完成，手环未提供回执')
+              : '番茄钟同步失败',
+        );
       });
     } catch (e) {
       _logs.add('番茄钟同步异常: $e');

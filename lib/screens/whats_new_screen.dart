@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../update_service.dart';
 import '../utils/page_transitions.dart';
 import 'home_dashboard.dart';
@@ -52,9 +53,11 @@ class _WhatsNewScreenState extends State<WhatsNewScreen> {
       if (manifest != null && mounted) {
         setState(() {
           _changelogHistory = manifest.changelogHistory
-              .where((e) =>
-                  _normalizeVersion(e.versionName) ==
-                  _normalizeVersion(_currentVersion))
+              .where(
+                (e) =>
+                    _normalizeVersion(e.versionName) ==
+                    _normalizeVersion(_currentVersion),
+              )
               .toList();
           _loading = false;
         });
@@ -83,10 +86,8 @@ class _WhatsNewScreenState extends State<WhatsNewScreen> {
     final dest = (username != null && username.isNotEmpty)
         ? HomeDashboard(username: username)
         : const LoginScreen();
-    Navigator.of(context).pushAndRemoveUntil(
-      PageTransitions.fadeThrough(dest),
-      (_) => false,
-    );
+    Navigator.of(context)
+        .pushAndRemoveUntil(PageTransitions.fadeThrough(dest), (_) => false);
   }
 
   @override
@@ -134,16 +135,21 @@ class _WhatsNewScreenState extends State<WhatsNewScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 16),
-        Row(children: [
-          Icon(Icons.system_update_rounded, size: 28, color: scheme.primary),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              _loading ? '版本更新' : 'v$_currentVersion 更新日志',
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+        Row(
+          children: [
+            Icon(Icons.system_update_rounded, size: 28, color: scheme.primary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _loading ? '版本更新' : 'v$_currentVersion 更新日志',
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
-          ),
-        ]),
+          ],
+        ),
         const SizedBox(height: 16),
         if (_loading)
           const Center(child: CircularProgressIndicator(strokeWidth: 2))
@@ -152,8 +158,9 @@ class _WhatsNewScreenState extends State<WhatsNewScreen> {
         else if (_changelogHistory.isEmpty)
           _buildEmptyNotice(scheme)
         else
-          ..._changelogHistory
-              .map((entry) => _buildVersionEntry(entry, scheme)),
+          ..._changelogHistory.map(
+            (entry) => _buildVersionEntry(entry, scheme),
+          ),
       ],
     );
   }
@@ -195,8 +202,11 @@ class _WhatsNewScreenState extends State<WhatsNewScreen> {
       ),
       child: Column(
         children: [
-          Icon(Icons.new_releases_outlined,
-              size: 48, color: scheme.primary.withValues(alpha: 0.5)),
+          Icon(
+            Icons.new_releases_outlined,
+            size: 48,
+            color: scheme.primary.withValues(alpha: 0.5),
+          ),
           const SizedBox(height: 12),
           Text(
             '本版本暂无更新日志',
@@ -222,19 +232,28 @@ class _WhatsNewScreenState extends State<WhatsNewScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
                   color: scheme.primary,
-                  borderRadius: BorderRadius.circular(20)),
-              child: Text('v${entry.versionName}',
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  'v${entry.versionName}',
                   style: TextStyle(
-                      color: scheme.onPrimary,
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold)),
-            ),
-          ]),
+                    color: scheme.onPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 14),
           ...entry.items.map((item) => _buildBulletItem(item, scheme)),
         ],
@@ -265,17 +284,22 @@ class _WhatsNewScreenState extends State<WhatsNewScreen> {
             child: Container(
               width: 6,
               height: 6,
-              decoration:
-                  BoxDecoration(color: dotColor, shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                color: dotColor,
+                shape: BoxShape.circle,
+              ),
             ),
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(item,
-                style: TextStyle(
-                    fontSize: 13.5,
-                    color: scheme.onSurface.withValues(alpha: 0.75),
-                    height: 1.45)),
+            child: Text(
+              item,
+              style: TextStyle(
+                fontSize: 13.5,
+                color: scheme.onSurface.withValues(alpha: 0.75),
+                height: 1.45,
+              ),
+            ),
           ),
         ],
       ),

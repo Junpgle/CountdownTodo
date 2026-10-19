@@ -6,8 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('recurrence series only keeps its aggregate card in todo sections', () {
-    TodoItem occurrence(int day,
-        {RecurrenceType recurrence = RecurrenceType.none}) {
+    TodoItem occurrence(
+      int day, {
+      RecurrenceType recurrence = RecurrenceType.none,
+    }) {
       return TodoItem(
         title: '每日循环',
         recurrence: recurrence,
@@ -25,15 +27,17 @@ void main() {
 
     final visible =
         TodoSectionWidgetState.collapseRecurrenceInstancesForDisplayForTest([
-      past,
-      repairedPast,
-      current,
-      future,
-      normal,
-    ]);
+          past,
+          repairedPast,
+          current,
+          future,
+          normal,
+        ]);
 
     expect(
-        visible.map((todo) => todo.id), containsAll([current.id, normal.id]));
+      visible.map((todo) => todo.id),
+      containsAll([current.id, normal.id]),
+    );
     expect(visible, hasLength(2));
     expect(
       visible.map((todo) => todo.id),
@@ -55,34 +59,36 @@ void main() {
 
     final filtered =
         TodoSectionWidgetState.filterHabitOnlyRecurringTodosForTest(
-      [hidden, visible],
-      {'habit-only-series'},
-    );
+          [hidden, visible],
+          {'habit-only-series'},
+        );
 
     expect(filtered.map((todo) => todo.id), [visible.id]);
   });
 
-  test('ended recurrence series uses its latest occurrence as aggregate card',
-      () {
-    final previous = TodoItem(
-      title: '已结束循环',
-      recurrenceSeriesId: 'series-ended',
-      createdDate: DateTime(2026, 7, 14).millisecondsSinceEpoch,
-    );
-    final latest = TodoItem(
-      title: '已结束循环',
-      recurrenceSeriesId: 'series-ended',
-      createdDate: DateTime(2026, 7, 15).millisecondsSinceEpoch,
-    );
+  test(
+    'ended recurrence series uses its latest occurrence as aggregate card',
+    () {
+      final previous = TodoItem(
+        title: '已结束循环',
+        recurrenceSeriesId: 'series-ended',
+        createdDate: DateTime(2026, 7, 14).millisecondsSinceEpoch,
+      );
+      final latest = TodoItem(
+        title: '已结束循环',
+        recurrenceSeriesId: 'series-ended',
+        createdDate: DateTime(2026, 7, 15).millisecondsSinceEpoch,
+      );
 
-    final visible =
-        TodoSectionWidgetState.collapseRecurrenceInstancesForDisplayForTest([
-      previous,
-      latest,
-    ]);
+      final visible =
+          TodoSectionWidgetState.collapseRecurrenceInstancesForDisplayForTest([
+            previous,
+            latest,
+          ]);
 
-    expect(visible.single.id, latest.id);
-  });
+      expect(visible.single.id, latest.id);
+    },
+  );
 
   test('finite recurrence summary counts the whole series', () {
     final nodes = List.generate(
@@ -92,8 +98,8 @@ void main() {
         state: index < 2
             ? TodoRecurrenceNodeState.completed
             : index == 2
-                ? TodoRecurrenceNodeState.current
-                : TodoRecurrenceNodeState.future,
+            ? TodoRecurrenceNodeState.current
+            : TodoRecurrenceNodeState.future,
       ),
     );
 
@@ -115,11 +121,11 @@ void main() {
 
   test('todo editor exposes every persisted occurrence in its series', () {
     TodoItem occurrence(int day, {bool isDeleted = false}) => TodoItem(
-          title: '每日循环',
-          recurrenceSeriesId: 'series-editor-navigation',
-          isDeleted: isDeleted,
-          createdDate: DateTime(2026, 7, day).millisecondsSinceEpoch,
-        );
+      title: '每日循环',
+      recurrenceSeriesId: 'series-editor-navigation',
+      isDeleted: isDeleted,
+      createdDate: DateTime(2026, 7, day).millisecondsSinceEpoch,
+    );
 
     final first = occurrence(13);
     final current = occurrence(15);
@@ -130,25 +136,21 @@ void main() {
       recurrenceSeriesId: 'other-series',
     );
 
-    final related =
-        TodoEditScreenState.relatedRecurrenceOccurrencesForTest(current, [
-      future,
-      unrelated,
-      deleted,
+    final related = TodoEditScreenState.relatedRecurrenceOccurrencesForTest(
       current,
-      first,
-    ]);
+      [future, unrelated, deleted, current, first],
+    );
 
     expect(related.map((todo) => todo.id), [first.id, current.id, future.id]);
   });
 
   test('todo editor aggregates focus records from every series occurrence', () {
     TodoItem occurrence(int day, {bool isDeleted = false}) => TodoItem(
-          title: '每日循环',
-          recurrenceSeriesId: 'series-focus-summary',
-          isDeleted: isDeleted,
-          createdDate: DateTime(2026, 7, day).millisecondsSinceEpoch,
-        );
+      title: '每日循环',
+      recurrenceSeriesId: 'series-focus-summary',
+      isDeleted: isDeleted,
+      createdDate: DateTime(2026, 7, day).millisecondsSinceEpoch,
+    );
 
     final previous = occurrence(14, isDeleted: true);
     final current = occurrence(15);
@@ -167,24 +169,25 @@ void main() {
   });
 
   test('daily focus records on two dates count as two recurrence periods', () {
-    TodoItem occurrence(int day,
-            {RecurrenceType recurrence = RecurrenceType.none}) =>
-        TodoItem(
-          title: '每日循环',
-          recurrence: recurrence,
-          recurrenceSeriesId: 'series-focus-periods',
-          createdDate: DateTime(2026, 7, day, 19).millisecondsSinceEpoch,
-          dueDate: DateTime(2026, 7, day, 22),
-        );
+    TodoItem occurrence(
+      int day, {
+      RecurrenceType recurrence = RecurrenceType.none,
+    }) => TodoItem(
+      title: '每日循环',
+      recurrence: recurrence,
+      recurrenceSeriesId: 'series-focus-periods',
+      createdDate: DateTime(2026, 7, day, 19).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 7, day, 22),
+    );
 
     final july13 = occurrence(13);
     final july14 = occurrence(14);
     final current = occurrence(15, recurrence: RecurrenceType.daily);
     PomodoroRecord record(DateTime start) => PomodoroRecord(
-          todoUuid: current.id,
-          startTime: start.millisecondsSinceEpoch,
-          plannedDuration: 25 * 60,
-        );
+      todoUuid: current.id,
+      startTime: start.millisecondsSinceEpoch,
+      plannedDuration: 25 * 60,
+    );
 
     final count = TodoEditScreenState.focusedRecurrencePeriodCountForTest(
       current,

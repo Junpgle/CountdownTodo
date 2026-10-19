@@ -9,7 +9,8 @@ import 'dart:io';
 /// both engines.
 Future<Directory> getIslandIpcDirectory() async {
   final env = Platform.environment;
-  final basePath = env['APPDATA'] ??
+  final basePath =
+      env['APPDATA'] ??
       env['LOCALAPPDATA'] ??
       Directory.systemTemp.absolute.path;
   final dir = Directory('$basePath${Platform.pathSeparator}CountDownTodo');
@@ -54,9 +55,6 @@ Future<void> appendIslandIpcLog(String message) async {
   try {
     final file = await getIslandIpcFile('island_ipc.log');
     final timestamp = DateTime.now().toIso8601String();
-    await file.writeAsString(
-      '[$timestamp] $message\n',
-      mode: FileMode.append,
-    );
+    await file.writeAsString('[$timestamp] $message\n', mode: FileMode.append);
   } catch (_) {}
 }

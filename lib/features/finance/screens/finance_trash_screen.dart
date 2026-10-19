@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../../../widgets/floating_glass_control.dart';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -34,10 +35,10 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
 
   DateFormat _cachedDateFormat(String pattern) {
     final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent(
-      (locale, pattern),
-      () => DateFormat(pattern, locale),
-    );
+    return _dateFormatters.putIfAbsent((
+      locale,
+      pattern,
+    ), () => DateFormat(pattern, locale));
   }
 
   @override
@@ -151,9 +152,7 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
     if (!mounted) return;
     AppSnackBars.showSnackBar(
       context,
-      SnackBar(
-        content: Text(restoreGroup ? '整组分期账单已恢复' : '账单已恢复'),
-      ),
+      SnackBar(content: Text(restoreGroup ? '整组分期账单已恢复' : '账单已恢复')),
     );
   }
 
@@ -169,10 +168,7 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
       return;
     }
     if (!mounted) return;
-    AppSnackBars.showSnackBar(
-      context,
-      const SnackBar(content: Text('预算已恢复')),
-    );
+    AppSnackBars.showSnackBar(context, const SnackBar(content: Text('预算已恢复')));
   }
 
   Future<void> _restoreLoan(FinanceLoan loan) async {
@@ -187,10 +183,7 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
       return;
     }
     if (!mounted) return;
-    AppSnackBars.showSnackBar(
-      context,
-      const SnackBar(content: Text('贷款已恢复')),
-    );
+    AppSnackBars.showSnackBar(context, const SnackBar(content: Text('贷款已恢复')));
   }
 
   Future<void> _restoreRule(FinanceRecurringRule rule) async {
@@ -212,13 +205,12 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
   }
 
   List<FinanceTrashEntry> get _entries {
-    final balanceSnapshotDateFormat =
-        _cachedDateFormat('yyyy年M月d日 HH:mm');
+    final balanceSnapshotDateFormat = _cachedDateFormat('yyyy年M月d日 HH:mm');
     final categories = {
-      for (final category in _categories) category.uuid: category
+      for (final category in _categories) category.uuid: category,
     };
     final paymentMethods = {
-      for (final method in _paymentMethods) method.uuid: method
+      for (final method in _paymentMethods) method.uuid: method,
     };
     String categoryName(String? uuid) {
       final category = categories[uuid];
@@ -242,11 +234,11 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
           title: item.merchant?.trim().isNotEmpty == true
               ? item.merchant!
               : categories[item.categoryUuid] == null
-                  ? item.type.label
-                  : financeCategoryDisplayName(
-                      categories[item.categoryUuid]!,
-                      _categories,
-                    ),
+              ? item.type.label
+              : financeCategoryDisplayName(
+                  categories[item.categoryUuid]!,
+                  _categories,
+                ),
           details: [
             item.transactionDate,
             if (item.isInstallment)
@@ -264,13 +256,13 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
           title: item.isPaymentMethod
               ? '${paymentMethodName(item.paymentMethodUuid)}余额'
               : item.isOverall
-                  ? '全部支出预算'
-                  : '${categoryName(item.categoryUuid)}预算',
+              ? '全部支出预算'
+              : '${categoryName(item.categoryUuid)}预算',
           details: [
             item.monthKey,
             if (item.isPaymentMethod)
               '余额对应时间 ${balanceSnapshotDateFormat.format(DateTime.fromMillisecondsSinceEpoch(item.effectiveBalanceSnapshotAt))}',
-            if (item.note?.isNotEmpty == true) item.note!
+            if (item.note?.isNotEmpty == true) item.note!,
           ].join(' · '),
           amountLabel: item.isPaymentMethod ? '录入时余额' : '预算额度',
           amountMinor: item.amountMinor,
@@ -315,7 +307,7 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
           details: [
             if (item.merchant?.isNotEmpty == true) item.merchant!,
             if (item.note?.isNotEmpty == true) item.note!,
-            '已使用 ${item.useCount} 次'
+            '已使用 ${item.useCount} 次',
           ].join(' · '),
           amountLabel: item.type.label,
           amountMinor: item.amountMinor,
@@ -334,7 +326,10 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
         title: const Text('记账回收站'),
         actions: [
           IconButton(
-              tooltip: '刷新', onPressed: _load, icon: const Icon(Icons.refresh)),
+            tooltip: '刷新',
+            onPressed: _load,
+            icon: const Icon(Icons.refresh),
+          ),
         ],
       ),
       body: FloatingGlassTopBarContentFade(
@@ -342,22 +337,25 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _loadError != null
-                ? FinancePageList(topPadding: topBarHeight, children: [
-                    FinanceEmptyState(
-                      icon: Icons.error_outline_rounded,
-                      title: '回收站加载失败',
-                      description: '请重新加载后再恢复记录。',
-                      actionLabel: '重新加载',
-                      onAction: _load,
-                    ),
-                  ])
-                : RefreshIndicator(
-                    onRefresh: _load,
-                    child: FinanceTrashManager(
-                      topPadding: topBarHeight,
-                      entries: _entries,
-                    ),
+            ? FinancePageList(
+                topPadding: topBarHeight,
+                children: [
+                  FinanceEmptyState(
+                    icon: Icons.error_outline_rounded,
+                    title: '回收站加载失败',
+                    description: '请重新加载后再恢复记录。',
+                    actionLabel: '重新加载',
+                    onAction: _load,
                   ),
+                ],
+              )
+            : RefreshIndicator(
+                onRefresh: _load,
+                child: FinanceTrashManager(
+                  topPadding: topBarHeight,
+                  entries: _entries,
+                ),
+              ),
       ),
     );
   }

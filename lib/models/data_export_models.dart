@@ -44,15 +44,9 @@ class ExportResult {
   });
 }
 
-enum TeamDataStrategy {
-  skip,
-  convertToPersonal,
-}
+enum TeamDataStrategy { skip, convertToPersonal }
 
-enum UuidStrategy {
-  keepOriginal,
-  regenerate,
-}
+enum UuidStrategy { keepOriginal, regenerate }
 
 class ImportOptions {
   final TeamDataStrategy teamStrategy;

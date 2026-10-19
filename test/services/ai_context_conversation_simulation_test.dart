@@ -485,9 +485,7 @@ void main() {
       return ChatMessage(
         id: 'message-$index',
         role: index.isEven ? ChatRole.user : ChatRole.assistant,
-        content: index == 0 || index == 14
-            ? '分析我上个月的效率'
-            : '对话消息 $index',
+        content: index == 0 || index == 14 ? '分析我上个月的效率' : '对话消息 $index',
       );
     });
 

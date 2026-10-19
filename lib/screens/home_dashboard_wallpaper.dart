@@ -1,4 +1,5 @@
 part of 'home_dashboard.dart';
+
 // ignore_for_file: annotate_overrides
 
 mixin _HomeDashboardWallpaperMixin on _HomeDashboardStateBase {
@@ -437,13 +438,14 @@ mixin _HomeDashboardWallpaperMixin on _HomeDashboardStateBase {
             boxShadow: [
               if (progress > 0)
                 BoxShadow(
-                  color: (isLight
-                          ? Colors.lightBlueAccent
-                          : Theme.of(context).colorScheme.primary)
-                      .withValues(alpha: 0.5),
+                  color:
+                      (isLight
+                              ? Colors.lightBlueAccent
+                              : Theme.of(context).colorScheme.primary)
+                          .withValues(alpha: 0.5),
                   blurRadius: 4,
                   offset: const Offset(0, 1),
-                )
+                ),
             ],
           ),
         ),

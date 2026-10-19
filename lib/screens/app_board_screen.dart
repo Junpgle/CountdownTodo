@@ -22,10 +22,10 @@ final Map<(String?, String), DateFormat> _appBoardDateFormats = {};
 
 DateFormat _appBoardDateFormat(String pattern) {
   final locale = Intl.defaultLocale;
-  return _appBoardDateFormats.putIfAbsent(
-    (locale, pattern),
-    () => DateFormat(pattern, locale),
-  );
+  return _appBoardDateFormats.putIfAbsent((
+    locale,
+    pattern,
+  ), () => DateFormat(pattern, locale));
 }
 
 class AppBoardScreen extends StatefulWidget {
@@ -1388,12 +1388,7 @@ class _GanttChartState extends State<GanttChart> {
       totalDays: totalDays,
       startDates: startDates,
       activeRows: _packTasks(activeTodos, startDates, minDate, maxDate),
-      completedRows: _packTasks(
-        completedTodos,
-        startDates,
-        minDate,
-        maxDate,
-      ),
+      completedRows: _packTasks(completedTodos, startDates, minDate, maxDate),
     );
 
     _layoutTodoSource = todos;
@@ -1980,17 +1975,16 @@ class TaskDetailModal extends StatelessWidget {
                 _buildInfoRow(
                   Icons.access_time,
                   '开始时间',
-                  _appBoardDateFormat('yyyy-MM-dd HH:mm').format(
-                    DateTime.fromMillisecondsSinceEpoch(task.createdAt),
-                  ),
+                  _appBoardDateFormat(
+                    'yyyy-MM-dd HH:mm',
+                  ).format(DateTime.fromMillisecondsSinceEpoch(task.createdAt)),
                 ),
                 _buildInfoRow(
                   Icons.calendar_today,
                   '截止时间',
                   task.dueDate != null
-                      ? _appBoardDateFormat('yyyy-MM-dd HH:mm').format(
-                          task.dueDate!,
-                        )
+                      ? _appBoardDateFormat('yyyy-MM-dd HH:mm')
+                            .format(task.dueDate!)
                       : '无截止日期',
                 ),
                 _buildInfoRow(

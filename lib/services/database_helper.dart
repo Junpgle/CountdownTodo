@@ -2490,7 +2490,11 @@ class DatabaseHelper {
     final rowsByUuid = <String, Map<String, dynamic>>{};
 
     try {
-      for (var offset = 0; offset < uniqueTerms.length; offset += termsPerBatch) {
+      for (
+        var offset = 0;
+        offset < uniqueTerms.length;
+        offset += termsPerBatch
+      ) {
         final nextOffset = offset + termsPerBatch;
         final end = nextOffset < uniqueTerms.length
             ? nextOffset
@@ -2522,8 +2526,7 @@ class DatabaseHelper {
           }
         }
 
-        final rows = await db.rawQuery(
-          '''
+        final rows = await db.rawQuery('''
           WITH ${ctes.join(', ')}
           SELECT t.*
           FROM todos AS t
@@ -2538,9 +2541,7 @@ class DatabaseHelper {
               )$ftsCondition
             )
           ORDER BY t.updated_at DESC
-          ''',
-          queryArgs,
-        );
+          ''', queryArgs);
         for (final row in rows) {
           rowsByUuid[row['uuid'].toString()] = row;
         }
@@ -2709,17 +2710,14 @@ class DatabaseHelper {
 
   Future<List<Map<String, dynamic>>> searchTodoGroupsByTerms(
     List<String> terms,
-  ) =>
-      _searchRowsByTerms(
-        table: 'todo_groups',
-        matchColumns: const ['name'],
-        orderColumn: 'updated_at',
-        terms: terms,
-      );
+  ) => _searchRowsByTerms(
+    table: 'todo_groups',
+    matchColumns: const ['name'],
+    orderColumn: 'updated_at',
+    terms: terms,
+  );
 
-  Future<List<Map<String, dynamic>>> searchCoursesByTerms(
-    List<String> terms,
-  ) =>
+  Future<List<Map<String, dynamic>>> searchCoursesByTerms(List<String> terms) =>
       _searchRowsByTerms(
         table: 'courses',
         matchColumns: const ['course_name', 'teacher_name', 'room_name'],
@@ -2729,23 +2727,21 @@ class DatabaseHelper {
 
   Future<List<Map<String, dynamic>>> searchCountdownsByTerms(
     List<String> terms,
-  ) =>
-      _searchRowsByTerms(
-        table: 'countdowns',
-        matchColumns: const ['title', 'team_name'],
-        orderColumn: 'updated_at',
-        terms: terms,
-      );
+  ) => _searchRowsByTerms(
+    table: 'countdowns',
+    matchColumns: const ['title', 'team_name'],
+    orderColumn: 'updated_at',
+    terms: terms,
+  );
 
   Future<List<Map<String, dynamic>>> searchTimeLogsByTerms(
     List<String> terms,
-  ) =>
-      _searchRowsByTerms(
-        table: 'time_logs',
-        matchColumns: const ['title', 'remark'],
-        orderColumn: 'start_time',
-        terms: terms,
-      );
+  ) => _searchRowsByTerms(
+    table: 'time_logs',
+    matchColumns: const ['title', 'remark'],
+    orderColumn: 'start_time',
+    terms: terms,
+  );
 
   Future<List<Map<String, dynamic>>> _searchRowsByTerms({
     required String table,
@@ -2776,8 +2772,7 @@ class DatabaseHelper {
         chunk.length,
         (index) => '(?, $index)',
       ).join(', ');
-      final rows = await db.rawQuery(
-        '''
+      final rows = await db.rawQuery('''
         WITH search_terms(term, term_order) AS (VALUES $termRows)
         SELECT t.*
         FROM $table AS t
@@ -2785,9 +2780,7 @@ class DatabaseHelper {
         WHERE t.is_deleted = 0
         GROUP BY t.uuid
         ORDER BY MIN(s.term_order), t.$orderColumn DESC
-        ''',
-        chunk,
-      );
+        ''', chunk);
       for (final row in rows) {
         rowsByUuid[row['uuid'].toString()] = row;
       }
@@ -3059,7 +3052,8 @@ class DatabaseHelper {
       final conflictLength = includeConflictData
           ? (_toNullableInt(row['_conflict_length']) ?? 0)
           : 0;
-      final hasOversizedText = contentLength > _todoTextChunkSize ||
+      final hasOversizedText =
+          contentLength > _todoTextChunkSize ||
           remarkLength > _todoTextChunkSize ||
           conflictLength > _todoTextChunkSize;
       if (hasOversizedText) {

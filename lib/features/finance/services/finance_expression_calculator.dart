@@ -159,11 +159,11 @@ String _formatCents(BigInt cents) {
 
 class _FinanceExpressionParser {
   _FinanceExpressionParser(String source)
-      : _source = source
-            .replaceAll('×', '*')
-            .replaceAll('÷', '/')
-            .replaceAll('−', '-')
-            .replaceAll(',', '');
+    : _source = source
+          .replaceAll('×', '*')
+          .replaceAll('÷', '/')
+          .replaceAll('−', '-')
+          .replaceAll(',', '');
 
   final String _source;
   var _index = 0;

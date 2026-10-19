@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../../storage_service.dart';
 import '../../widgets/floating_glass_control.dart';
 import '../../widgets/optional_liquid_glass_surface.dart';
@@ -37,13 +38,13 @@ class GreetingTimeSlot {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'startHour': startHour,
-        'startMinute': startMinute,
-        'endHour': endHour,
-        'endMinute': endMinute,
-        'greetings': greetings,
-      };
+    'id': id,
+    'startHour': startHour,
+    'startMinute': startMinute,
+    'endHour': endHour,
+    'endMinute': endMinute,
+    'greetings': greetings,
+  };
 
   factory GreetingTimeSlot.fromJson(Map<String, dynamic> json) {
     return GreetingTimeSlot(
@@ -89,13 +90,13 @@ class SalutationTimeSlot {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'startHour': startHour,
-        'startMinute': startMinute,
-        'endHour': endHour,
-        'endMinute': endMinute,
-        'text': text,
-      };
+    'id': id,
+    'startHour': startHour,
+    'startMinute': startMinute,
+    'endHour': endHour,
+    'endMinute': endMinute,
+    'text': text,
+  };
 
   factory SalutationTimeSlot.fromJson(Map<String, dynamic> json) {
     return SalutationTimeSlot(
@@ -196,7 +197,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
         "新的一天，把快乐置顶。",
         "迎着光，做自己的小太阳。",
         "起床充电，活力满格。",
-        "今日宜：开心、努力、好运。"
+        "今日宜：开心、努力、好运。",
       ],
     ),
     GreetingTimeSlot(
@@ -210,7 +211,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
         "中场能量补给，快乐不打烊。",
         "稳住状态，万事可期。",
         "生活不慌不忙，慢慢发光。",
-        "好好吃饭，就是好好爱自己。"
+        "好好吃饭，就是好好爱自己。",
       ],
     ),
     GreetingTimeSlot(
@@ -224,7 +225,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
         "状态在线，干劲拉满。",
         "不急不躁，温柔又有力量。",
         "把普通日子，过得热气腾腾。",
-        "继续向前，好运正在路上。"
+        "继续向前，好运正在路上。",
       ],
     ),
     GreetingTimeSlot(
@@ -238,7 +239,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
         "卸下疲惫，拥抱温柔。",
         "今日圆满，万事顺心。",
         "把烦恼清空，把快乐装满。",
-        "好好休息，明天依旧闪亮。"
+        "好好休息，明天依旧闪亮。",
       ],
     ),
     GreetingTimeSlot(
@@ -252,7 +253,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
         "安静沉淀，积蓄力量。",
         "不慌不忙，自在生长。",
         "温柔治愈，接纳所有情绪。",
-        "今夜安睡，明日更好。"
+        "今夜安睡，明日更好。",
       ],
     ),
     GreetingTimeSlot(
@@ -266,7 +267,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
         "此刻努力，未来可期。",
         "安静时光，悄悄变优秀。",
         "不负自己，不负岁月。",
-        "愿你眼里有光，心中有梦。"
+        "愿你眼里有光，心中有梦。",
       ],
     ),
   ];
@@ -306,14 +307,16 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
             .toList();
       } else {
         _salutationSlots = _defaultSalutationSlots
-            .map((e) => SalutationTimeSlot(
-                  id: e.id,
-                  startHour: e.startHour,
-                  startMinute: e.startMinute,
-                  endHour: e.endHour,
-                  endMinute: e.endMinute,
-                  text: e.text,
-                ))
+            .map(
+              (e) => SalutationTimeSlot(
+                id: e.id,
+                startHour: e.startHour,
+                startMinute: e.startMinute,
+                endHour: e.endHour,
+                endMinute: e.endMinute,
+                text: e.text,
+              ),
+            )
             .toList();
       }
 
@@ -330,14 +333,16 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
             .toList();
       } else {
         _timeSlots = _defaultTimeSlots
-            .map((e) => GreetingTimeSlot(
-                  id: e.id,
-                  startHour: e.startHour,
-                  startMinute: e.startMinute,
-                  endHour: e.endHour,
-                  endMinute: e.endMinute,
-                  greetings: List.from(e.greetings),
-                ))
+            .map(
+              (e) => GreetingTimeSlot(
+                id: e.id,
+                startHour: e.startHour,
+                startMinute: e.startMinute,
+                endHour: e.endHour,
+                endMinute: e.endMinute,
+                greetings: List.from(e.greetings),
+              ),
+            )
             .toList();
       }
 
@@ -380,14 +385,16 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
   void _addSalutationSlot() {
     final id = 'salutation_${DateTime.now().millisecondsSinceEpoch}';
     setState(() {
-      _salutationSlots.add(SalutationTimeSlot(
-        id: id,
-        startHour: 8,
-        startMinute: 0,
-        endHour: 20,
-        endMinute: 0,
-        text: '',
-      ));
+      _salutationSlots.add(
+        SalutationTimeSlot(
+          id: id,
+          startHour: 8,
+          startMinute: 0,
+          endHour: 20,
+          endMinute: 0,
+          text: '',
+        ),
+      );
     });
     _editSalutationSlot(_salutationSlots.length - 1);
   }
@@ -420,14 +427,16 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
   void _addTimeSlot() {
     final id = 'slot_${DateTime.now().millisecondsSinceEpoch}';
     setState(() {
-      _timeSlots.add(GreetingTimeSlot(
-        id: id,
-        startHour: 8,
-        startMinute: 0,
-        endHour: 20,
-        endMinute: 0,
-        greetings: [],
-      ));
+      _timeSlots.add(
+        GreetingTimeSlot(
+          id: id,
+          startHour: 8,
+          startMinute: 0,
+          endHour: 20,
+          endMinute: 0,
+          greetings: [],
+        ),
+      );
     });
     _editTimeSlot(_timeSlots.length - 1);
   }
@@ -440,8 +449,9 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
 
   void _editTimeSlot(int index) {
     final slot = _timeSlots[index];
-    final greetingController =
-        TextEditingController(text: slot.greetings.join('\n'));
+    final greetingController = TextEditingController(
+      text: slot.greetings.join('\n'),
+    );
 
     showAppDialog(
       context: context,
@@ -470,8 +480,9 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
     if (_isLoading) {
       return Scaffold(
         appBar: FloatingGlassAppBar(
-            flexibleSpace: const FloatingGlassTopBarBackground(),
-            title: const Text('首页文字自定义')),
+          flexibleSpace: const FloatingGlassTopBarBackground(),
+          title: const Text('首页文字自定义'),
+        ),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -487,10 +498,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
               flexibleSpace: const FloatingGlassTopBarBackground(),
               title: const Text('首页文字自定义'),
               actions: [
-                TextButton(
-                  onPressed: _saveConfig,
-                  child: const Text('保存'),
-                ),
+                TextButton(onPressed: _saveConfig, child: const Text('保存')),
               ],
             ),
       body: floatingGlassSettingsBody(
@@ -660,9 +668,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
       borderRadius: 12,
       tint: Theme.of(context).colorScheme.primaryContainer,
       fallbackDecoration: BoxDecoration(
-        color: Theme.of(context)
-            .colorScheme
-            .primaryContainer
+        color: Theme.of(context).colorScheme.primaryContainer
             .withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(12),
       ),
@@ -673,13 +679,19 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
           children: [
             Row(
               children: [
-                Icon(Icons.visibility,
-                    size: 18, color: Theme.of(context).colorScheme.primary),
+                Icon(
+                  Icons.visibility,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
                 const SizedBox(width: 8),
-                Text('实时预览 (基于当前时间)',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.primary)),
+                Text(
+                  '实时预览 (基于当前时间)',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 12),
@@ -712,10 +724,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
           children: [
             const Text(
               '日期格式',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
@@ -742,9 +751,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Theme.of(context)
-                    .colorScheme
-                    .surfaceContainerHighest
+                color: Theme.of(context).colorScheme.surfaceContainerHighest
                     .withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -752,11 +759,15 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
                 children: [
                   const Icon(Icons.preview, size: 16),
                   const SizedBox(width: 8),
-                  const Text('预览: ',
-                      style: TextStyle(fontWeight: FontWeight.w500)),
+                  const Text(
+                    '预览: ',
+                    style: TextStyle(fontWeight: FontWeight.w500),
+                  ),
                   Text(
-                    DateFormat(_selectedDateFormat, 'zh_CN')
-                        .format(DateTime.now()),
+                    DateFormat(
+                      _selectedDateFormat,
+                      'zh_CN',
+                    ).format(DateTime.now()),
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.primary,
                       fontWeight: FontWeight.bold,
@@ -785,10 +796,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
           children: [
             const Text(
               '用户名格式',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             const Text(
@@ -808,9 +816,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Theme.of(context)
-                    .colorScheme
-                    .surfaceContainerHighest
+                color: Theme.of(context).colorScheme.surfaceContainerHighest
                     .withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -818,8 +824,10 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
                 children: [
                   const Icon(Icons.preview, size: 16),
                   const SizedBox(width: 8),
-                  const Text('预览: ',
-                      style: TextStyle(fontWeight: FontWeight.w500)),
+                  const Text(
+                    '预览: ',
+                    style: TextStyle(fontWeight: FontWeight.w500),
+                  ),
                   Text(
                     _usernameFormatController.text.replaceAll('{name}', '小明'),
                     style: TextStyle(
@@ -850,10 +858,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
           children: [
             const Text(
               '时间问候语模式',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             const Text(
@@ -901,10 +906,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
           children: [
             const Text(
               '固定时间问候语',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             const Text(
@@ -943,10 +945,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
                 const Expanded(
                   child: Text(
                     '分时段时间问候语',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
                 IconButton(
@@ -1016,8 +1015,11 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
                             onPressed: () => _editSalutationSlot(index),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.delete_outline,
-                                size: 20, color: Colors.red),
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              size: 20,
+                              color: Colors.red,
+                            ),
                             onPressed: () => _removeSalutationSlot(index),
                           ),
                           const Icon(Icons.drag_handle),
@@ -1048,10 +1050,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
           children: [
             const Text(
               '随机问候语模式',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             const Text(
@@ -1099,10 +1098,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
           children: [
             const Text(
               '固定随机问候语',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             const Text(
@@ -1143,10 +1139,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
                 const Expanded(
                   child: Text(
                     '分时段随机问候语',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
                 IconButton(
@@ -1218,8 +1211,11 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
                             onPressed: () => _editTimeSlot(index),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.delete_outline,
-                                size: 20, color: Colors.red),
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              size: 20,
+                              color: Colors.red,
+                            ),
                             onPressed: () => _removeTimeSlot(index),
                           ),
                           const Icon(Icons.drag_handle),
@@ -1245,26 +1241,30 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
           _salutationMode = 'timed';
           _fixedSalutationController.clear();
           _salutationSlots = _defaultSalutationSlots
-              .map((e) => SalutationTimeSlot(
-                    id: e.id,
-                    startHour: e.startHour,
-                    startMinute: e.startMinute,
-                    endHour: e.endHour,
-                    endMinute: e.endMinute,
-                    text: e.text,
-                  ))
+              .map(
+                (e) => SalutationTimeSlot(
+                  id: e.id,
+                  startHour: e.startHour,
+                  startMinute: e.startMinute,
+                  endHour: e.endHour,
+                  endMinute: e.endMinute,
+                  text: e.text,
+                ),
+              )
               .toList();
           _greetingMode = 'timed';
           _fixedGreetingController.clear();
           _timeSlots = _defaultTimeSlots
-              .map((e) => GreetingTimeSlot(
-                    id: e.id,
-                    startHour: e.startHour,
-                    startMinute: e.startMinute,
-                    endHour: e.endHour,
-                    endMinute: e.endMinute,
-                    greetings: List.from(e.greetings),
-                  ))
+              .map(
+                (e) => GreetingTimeSlot(
+                  id: e.id,
+                  startHour: e.startHour,
+                  startMinute: e.startMinute,
+                  endHour: e.endHour,
+                  endMinute: e.endMinute,
+                  greetings: List.from(e.greetings),
+                ),
+              )
               .toList();
         });
       },
@@ -1298,10 +1298,14 @@ class _SalutationSlotEditDialogState extends State<_SalutationSlotEditDialog> {
   @override
   void initState() {
     super.initState();
-    _startTime =
-        TimeOfDay(hour: widget.slot.startHour, minute: widget.slot.startMinute);
-    _endTime =
-        TimeOfDay(hour: widget.slot.endHour, minute: widget.slot.endMinute);
+    _startTime = TimeOfDay(
+      hour: widget.slot.startHour,
+      minute: widget.slot.startMinute,
+    );
+    _endTime = TimeOfDay(
+      hour: widget.slot.endHour,
+      minute: widget.slot.endMinute,
+    );
   }
 
   String _formatTime(TimeOfDay time) {
@@ -1371,8 +1375,11 @@ class _SalutationSlotEditDialogState extends State<_SalutationSlotEditDialog> {
                 padding: const EdgeInsets.only(top: 8),
                 child: Row(
                   children: [
-                    Icon(Icons.info_outline,
-                        size: 14, color: Theme.of(context).colorScheme.primary),
+                    Icon(
+                      Icons.info_outline,
+                      size: 14,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       '跨天时段：${_formatTime(_startTime)} - 次日 ${_formatTime(_endTime)}',
@@ -1386,10 +1393,7 @@ class _SalutationSlotEditDialogState extends State<_SalutationSlotEditDialog> {
               ),
             const SizedBox(height: 16),
             // 问候语输入
-            const Text(
-              '问候语文本',
-              style: TextStyle(fontWeight: FontWeight.w500),
-            ),
+            const Text('问候语文本', style: TextStyle(fontWeight: FontWeight.w500)),
             const SizedBox(height: 8),
             TextFormField(
               controller: widget.textController,
@@ -1408,14 +1412,16 @@ class _SalutationSlotEditDialogState extends State<_SalutationSlotEditDialog> {
         ),
         FilledButton(
           onPressed: () {
-            widget.onSave(SalutationTimeSlot(
-              id: widget.slot.id,
-              startHour: _startTime.hour,
-              startMinute: _startTime.minute,
-              endHour: _endTime.hour,
-              endMinute: _endTime.minute,
-              text: widget.textController.text.trim(),
-            ));
+            widget.onSave(
+              SalutationTimeSlot(
+                id: widget.slot.id,
+                startHour: _startTime.hour,
+                startMinute: _startTime.minute,
+                endHour: _endTime.hour,
+                endMinute: _endTime.minute,
+                text: widget.textController.text.trim(),
+              ),
+            );
             Navigator.pop(context);
           },
           child: const Text('保存'),
@@ -1448,10 +1454,14 @@ class _TimeSlotEditDialogState extends State<_TimeSlotEditDialog> {
   @override
   void initState() {
     super.initState();
-    _startTime =
-        TimeOfDay(hour: widget.slot.startHour, minute: widget.slot.startMinute);
-    _endTime =
-        TimeOfDay(hour: widget.slot.endHour, minute: widget.slot.endMinute);
+    _startTime = TimeOfDay(
+      hour: widget.slot.startHour,
+      minute: widget.slot.startMinute,
+    );
+    _endTime = TimeOfDay(
+      hour: widget.slot.endHour,
+      minute: widget.slot.endMinute,
+    );
   }
 
   String _formatTime(TimeOfDay time) {
@@ -1521,8 +1531,11 @@ class _TimeSlotEditDialogState extends State<_TimeSlotEditDialog> {
                 padding: const EdgeInsets.only(top: 8),
                 child: Row(
                   children: [
-                    Icon(Icons.info_outline,
-                        size: 14, color: Theme.of(context).colorScheme.primary),
+                    Icon(
+                      Icons.info_outline,
+                      size: 14,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       '跨天时段：${_formatTime(_startTime)} - 次日 ${_formatTime(_endTime)}',
@@ -1566,14 +1579,16 @@ class _TimeSlotEditDialogState extends State<_TimeSlotEditDialog> {
                 .where((e) => e.isNotEmpty)
                 .toList();
 
-            widget.onSave(GreetingTimeSlot(
-              id: widget.slot.id,
-              startHour: _startTime.hour,
-              startMinute: _startTime.minute,
-              endHour: _endTime.hour,
-              endMinute: _endTime.minute,
-              greetings: greetings,
-            ));
+            widget.onSave(
+              GreetingTimeSlot(
+                id: widget.slot.id,
+                startHour: _startTime.hour,
+                startMinute: _startTime.minute,
+                endHour: _endTime.hour,
+                endMinute: _endTime.minute,
+                greetings: greetings,
+              ),
+            );
             Navigator.pop(context);
           },
           child: const Text('保存'),

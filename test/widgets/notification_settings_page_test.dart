@@ -21,10 +21,7 @@ void main() {
       colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
     );
     await tester.pumpWidget(
-      MaterialApp(
-        theme: theme,
-        home: NotificationSettingsPage(),
-      ),
+      MaterialApp(theme: theme, home: NotificationSettingsPage()),
     );
     await tester.pumpAndSettle();
 

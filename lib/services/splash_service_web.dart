@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'github_resource_service.dart';
 
 class SplashService {
@@ -95,7 +96,9 @@ class SplashService {
     }
     if (dayConfig['bg_color_bottom'] != null) {
       await prefs.setString(
-          bgBottomKey, dayConfig['bg_color_bottom'].toString());
+        bgBottomKey,
+        dayConfig['bg_color_bottom'].toString(),
+      );
     }
     final duration = int.tryParse(dayConfig['duration_ms']?.toString() ?? '');
     if (duration != null) {

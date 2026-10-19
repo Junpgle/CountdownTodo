@@ -1,12 +1,16 @@
 // Island window entrypoint for desktop_multi_window
 import 'package:flutter/material.dart';
+
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' hide window;
+
 import 'package:flutter/services.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import 'dart:convert';
+
 import 'island_ui.dart';
 import 'island_payload.dart';
 import 'island_config.dart';
@@ -29,8 +33,9 @@ Future<File> _getPayloadFile() async {
 Map<String, dynamic>? _payloadFromRaw(dynamic raw) {
   if (raw is! Map) return null;
   final rawMap = Map<String, dynamic>.from(raw);
-  final dynamic payloadRaw =
-      rawMap.containsKey('payload') ? rawMap['payload'] : rawMap;
+  final dynamic payloadRaw = rawMap.containsKey('payload')
+      ? rawMap['payload']
+      : rawMap;
   if (payloadRaw is! Map) return null;
   return Map<String, dynamic>.from(payloadRaw);
 }
@@ -42,10 +47,12 @@ void _applyIncomingPayload(
   String windowId,
 ) {
   if (payload['handshake'] == 'ping') {
-    controller?.invokeMethod('onAction', {
-      'action': 'handshake_pong',
-      'windowId': windowId,
-    }).catchError((_) {});
+    controller
+        ?.invokeMethod('onAction', {
+          'action': 'handshake_pong',
+          'windowId': windowId,
+        })
+        .catchError((_) {});
     return;
   }
 
@@ -80,14 +87,17 @@ Future<void> _launchUrl(String url) async {
 /// Restore window position from storage
 Future<void> _restoreWindowPosition() async {
   try {
-    final bounds = await loadIslandBounds(IslandConfig.defaultIslandId) ??
+    final bounds =
+        await loadIslandBounds(IslandConfig.defaultIslandId) ??
         await StorageService.getIslandBounds(IslandConfig.defaultIslandId);
     if (bounds != null && bounds.isNotEmpty) {
       final left = (bounds['left'] as num?)?.toInt();
       final top = (bounds['top'] as num?)?.toInt();
-      final width = (bounds['width'] as num?)?.toInt() ??
+      final width =
+          (bounds['width'] as num?)?.toInt() ??
           IslandConfig.defaultWidth.toInt();
-      final height = (bounds['height'] as num?)?.toInt() ??
+      final height =
+          (bounds['height'] as num?)?.toInt() ??
           IslandConfig.defaultHeight.toInt();
 
       if (left != null && top != null) {
@@ -125,23 +135,16 @@ void _setupReminderExpireTimer(
   Map<String, dynamic> reminder,
   ValueNotifier<Map<String, dynamic>?> payloadNotifier,
 ) {
-  IslandReminderService.setupExpireTimer(
-    reminder,
-    (currentState) {
-      final stateStr = currentState['state']?.toString();
-      if (stateStr == 'reminder_split' ||
-          stateStr == 'reminder_capsule' ||
-          stateStr == 'reminder_popup') {
-        final prevState = stateStr == 'reminder_split' ? 'focusing' : 'idle';
-        payloadNotifier.value = {
-          ...currentState,
-          'state': prevState,
-        };
-        debugPrint('[Island] Reminder expired, restored state: $prevState');
-      }
-    },
-    () => payloadNotifier.value ?? {},
-  );
+  IslandReminderService.setupExpireTimer(reminder, (currentState) {
+    final stateStr = currentState['state']?.toString();
+    if (stateStr == 'reminder_split' ||
+        stateStr == 'reminder_capsule' ||
+        stateStr == 'reminder_popup') {
+      final prevState = stateStr == 'reminder_split' ? 'focusing' : 'idle';
+      payloadNotifier.value = {...currentState, 'state': prevState};
+      debugPrint('[Island] Reminder expired, restored state: $prevState');
+    }
+  }, () => payloadNotifier.value ?? {});
 }
 
 @pragma('vm:entry-point')
@@ -149,8 +152,9 @@ Future<void> islandMain(List<String> args) async {
   clearIslandHwndCache();
 
   WidgetsFlutterBinding.ensureInitialized();
-  const enableNativeChrome =
-      bool.fromEnvironment('ENABLE_WINDOWS_ISLAND_NATIVE_CHROME');
+  const enableNativeChrome = bool.fromEnvironment(
+    'ENABLE_WINDOWS_ISLAND_NATIVE_CHROME',
+  );
 
   PlatformDispatcher.instance.onError = (error, stack) {
     debugPrint('[Island] Unhandled error: $error\n$stack');
@@ -161,8 +165,9 @@ Future<void> islandMain(List<String> args) async {
     debugPrint('[Island] FlutterError: ${details.exceptionAsString()}');
   };
 
-  final ValueNotifier<Map<String, dynamic>?> payloadNotifier =
-      ValueNotifier(IslandPayload.fromMap(null).toMap());
+  final ValueNotifier<Map<String, dynamic>?> payloadNotifier = ValueNotifier(
+    IslandPayload.fromMap(null).toMap(),
+  );
 
   Map<String, dynamic>? lastReportedBounds;
   bool boundsSaveEnabled = false;
@@ -212,7 +217,8 @@ Future<void> islandMain(List<String> args) async {
         'island applied file payload seq=$sequence state=${payload['state']}',
       );
       debugPrint(
-          '[Island] Applied payload from file: state=${payload['state']}');
+        '[Island] Applied payload from file: state=${payload['state']}',
+      );
     } catch (e) {
       debugPrint('[Island] load latest payload failed: $e');
       await appendIslandIpcLog('island failed to load payload: $e');
@@ -263,8 +269,10 @@ Future<void> islandMain(List<String> args) async {
           lastReportedBounds = rect;
           if (needsSaveAfterDrag) needsSaveAfterDrag = false;
           await saveIslandBounds(IslandConfig.defaultIslandId, rect);
-          StorageService.saveIslandBounds(IslandConfig.defaultIslandId, rect)
-              .catchError((_) {});
+          StorageService.saveIslandBounds(
+            IslandConfig.defaultIslandId,
+            rect,
+          ).catchError((_) {});
           await appendIslandIpcLog(
             'island saved bounds left=${rect['left']} top=${rect['top']} width=${rect['width']} height=${rect['height']}',
           );
@@ -274,8 +282,9 @@ Future<void> islandMain(List<String> args) async {
   });
 
   try {
-    controller = await WindowController.fromCurrentEngine()
-        .timeout(const Duration(milliseconds: 350));
+    controller = await WindowController.fromCurrentEngine().timeout(
+      const Duration(milliseconds: 350),
+    );
     final windowController = controller;
     try {
       await windowController.invokeMethod('setFrame', {
@@ -296,12 +305,14 @@ Future<void> islandMain(List<String> args) async {
     }
 
     debugPrint(
-        '[Island] islandMain started for windowId=${windowController.windowId}');
+      '[Island] islandMain started for windowId=${windowController.windowId}',
+    );
 
     const globalChannel = MethodChannel('mixin.one/desktop_multi_window');
     globalChannel.setMethodCallHandler((call) async {
-      final fromWindowId =
-          (call.arguments is Map) ? call.arguments['windowId'] : 0;
+      final fromWindowId = (call.arguments is Map)
+          ? call.arguments['windowId']
+          : 0;
       debugPrint('[Island] GLOBAL CALL: "${call.method}" from=$fromWindowId');
 
       if (call.method == 'postWindowMessage' || call.method == 'updateState') {
@@ -362,9 +373,11 @@ Future<void> islandMain(List<String> args) async {
         if (call.method == 'setWindowSize') {
           final a = call.arguments as Map?;
           if (a != null) {
-            final w = (a['width'] as num?)?.toInt() ??
+            final w =
+                (a['width'] as num?)?.toInt() ??
                 IslandConfig.defaultWidth.toInt();
-            final h = (a['height'] as num?)?.toInt() ??
+            final h =
+                (a['height'] as num?)?.toInt() ??
                 IslandConfig.defaultHeight.toInt();
             Future.microtask(() => resizeCurrentWindow(w, h));
           }
@@ -447,8 +460,9 @@ Future<void> islandMain(List<String> args) async {
         final reminder = await IslandReminderService.checkUpcomingReminder();
         final currentState =
             payloadNotifier.value?['state']?.toString() ?? 'idle';
-        final currentReminderData = payloadNotifier.value?['reminderPopupData']
-            as Map<String, dynamic>?;
+        final currentReminderData =
+            payloadNotifier.value?['reminderPopupData']
+                as Map<String, dynamic>?;
         final currentMinutesUntil =
             currentReminderData?['minutesUntil'] as int?;
         final isCurrentlyAcknowledged =
@@ -463,10 +477,12 @@ Future<void> islandMain(List<String> args) async {
 
           if (itemId != null) {
             final isNewReminder = lastShownReminderId != itemId;
-            final isSameButChanged = currentMinutesUntil != null &&
+            final isSameButChanged =
+                currentMinutesUntil != null &&
                 newMinutesUntil != null &&
                 currentMinutesUntil != newMinutesUntil;
-            final isAcknowledged = isCurrentlyAcknowledged ||
+            final isAcknowledged =
+                isCurrentlyAcknowledged ||
                 acknowledgedReminders.contains(itemId);
 
             if (!isAcknowledged &&
@@ -489,8 +505,8 @@ Future<void> islandMain(List<String> args) async {
             lastShownReminderId = itemId!;
             final bool isAlreadyReminderState =
                 currentState == 'reminder_split' ||
-                    currentState == 'reminder_capsule' ||
-                    currentState == 'reminder_popup';
+                currentState == 'reminder_capsule' ||
+                currentState == 'reminder_popup';
 
             String targetState;
             if (!isAlreadyReminderState) {
@@ -520,227 +536,249 @@ Future<void> islandMain(List<String> args) async {
       }
     }
 
-    runApp(MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        scaffoldBackgroundColor: IslandConfig.scaffoldBg,
-      ),
-      home: ExcludeSemantics(
-        child: Scaffold(
-          backgroundColor: IslandConfig.scaffoldBg,
-          body: Focus(
-            onKeyEvent: (node, event) {
-              // 拦截 SendKeys 等外部注入的重复按键，防止 HardwareKeyboard 断言崩
-              return KeyEventResult.handled;
-            },
-            child: Stack(
-              alignment: Alignment.topCenter,
-              children: [
-                IslandUI(
-                  payloadNotifier: payloadNotifier,
-                  initialPayload: payloadNotifier.value,
-                  onAction: (action, [modifiedSecs, data]) async {
-                    try {
-                      if (action == 'reminder_ok') {
-                        final itemId = payloadNotifier
-                            .value?['reminderPopupData']?['itemId']
-                            ?.toString();
-                        if (itemId != null) {
-                          acknowledgedReminders.add(itemId);
-                        }
-                        final currentPayload = payloadNotifier.value ?? {};
-                        final currentReminder =
-                            currentPayload['reminderPopupData']
-                                as Map<String, dynamic>?;
-                        final updatedReminder = {
-                          ...?currentReminder,
-                          'acknowledged': true,
-                        };
-                        payloadNotifier.value = {
-                          ...currentPayload,
-                          'reminderPopupData': updatedReminder,
-                        };
-                        try {
-                          final file = await _getActionFile();
-                          await file.writeAsString(jsonEncode({
-                            'action': action,
-                            'itemId': itemId,
-                            'windowId': currentWindowId(),
-                            'timestamp': DateTime.now().millisecondsSinceEpoch,
-                          }));
-                        } catch (_) {}
-                        return;
-                      }
-
-                      if (action == 'remind_later') {
-                        try {
-                          final file = await _getActionFile();
-                          await file.writeAsString(jsonEncode({
-                            'action': action,
-                            'windowId': currentWindowId(),
-                            'timestamp': DateTime.now().millisecondsSinceEpoch,
-                          }));
-                        } catch (_) {}
-                        return;
-                      }
-
-                      if (action == 'snooze_reminder') {
-                        final currentPayload = payloadNotifier.value ?? {};
-                        final reminderData = currentPayload['reminderPopupData']
-                            as Map<String, dynamic>?;
-                        final newMinutes =
-                            (data is String ? int.tryParse(data) : null) ??
-                                currentPayload['snoozeMinutes'] as int? ??
-                                5;
-                        if (reminderData != null) {
-                          lastShownReminderId = null;
-                          acknowledgedReminders
-                              .remove(reminderData['itemId']?.toString());
+    runApp(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(scaffoldBackgroundColor: IslandConfig.scaffoldBg),
+        home: ExcludeSemantics(
+          child: Scaffold(
+            backgroundColor: IslandConfig.scaffoldBg,
+            body: Focus(
+              onKeyEvent: (node, event) {
+                // 拦截 SendKeys 等外部注入的重复按键，防止 HardwareKeyboard 断言崩
+                return KeyEventResult.handled;
+              },
+              child: Stack(
+                alignment: Alignment.topCenter,
+                children: [
+                  IslandUI(
+                    payloadNotifier: payloadNotifier,
+                    initialPayload: payloadNotifier.value,
+                    onAction: (action, [modifiedSecs, data]) async {
+                      try {
+                        if (action == 'reminder_ok') {
+                          final itemId = payloadNotifier
+                              .value?['reminderPopupData']?['itemId']
+                              ?.toString();
+                          if (itemId != null) {
+                            acknowledgedReminders.add(itemId);
+                          }
+                          final currentPayload = payloadNotifier.value ?? {};
+                          final currentReminder =
+                              currentPayload['reminderPopupData']
+                                  as Map<String, dynamic>?;
                           final updatedReminder = {
-                            ...reminderData,
-                            'minutesUntil': newMinutes,
-                            'acknowledged': false,
-                            'needsExpand': true,
+                            ...?currentReminder,
+                            'acknowledged': true,
                           };
-                          final currentState =
-                              payloadNotifier.value?['state']?.toString() ??
-                                  'idle';
-                          final targetState = currentState == 'focusing'
-                              ? 'reminder_split'
-                              : 'reminder_capsule';
                           payloadNotifier.value = {
-                            ...payloadNotifier.value ?? {},
-                            'state': targetState,
+                            ...currentPayload,
                             'reminderPopupData': updatedReminder,
                           };
-                          _setupReminderExpireTimer(
-                              updatedReminder, payloadNotifier);
+                          try {
+                            final file = await _getActionFile();
+                            await file.writeAsString(
+                              jsonEncode({
+                                'action': action,
+                                'itemId': itemId,
+                                'windowId': currentWindowId(),
+                                'timestamp':
+                                    DateTime.now().millisecondsSinceEpoch,
+                              }),
+                            );
+                          } catch (_) {}
+                          return;
                         }
-                        return;
-                      }
 
-                      if (action == 'check_reminder') {
-                        lastShownReminderId = null;
-                        await checkAndShowReminder();
-                        return;
-                      }
+                        if (action == 'remind_later') {
+                          try {
+                            final file = await _getActionFile();
+                            await file.writeAsString(
+                              jsonEncode({
+                                'action': action,
+                                'windowId': currentWindowId(),
+                                'timestamp':
+                                    DateTime.now().millisecondsSinceEpoch,
+                              }),
+                            );
+                          } catch (_) {}
+                          return;
+                        }
 
-                      if (action == 'open_link') {
-                        String? url = data;
-                        if (url == null) {
+                        if (action == 'snooze_reminder') {
                           final currentPayload = payloadNotifier.value ?? {};
-                          final copiedLinkData =
-                              currentPayload['copiedLinkData']
+                          final reminderData =
+                              currentPayload['reminderPopupData']
                                   as Map<String, dynamic>?;
-                          url = copiedLinkData?['url']?.toString();
+                          final newMinutes =
+                              (data is String ? int.tryParse(data) : null) ??
+                              currentPayload['snoozeMinutes'] as int? ??
+                              5;
+                          if (reminderData != null) {
+                            lastShownReminderId = null;
+                            acknowledgedReminders.remove(
+                              reminderData['itemId']?.toString(),
+                            );
+                            final updatedReminder = {
+                              ...reminderData,
+                              'minutesUntil': newMinutes,
+                              'acknowledged': false,
+                              'needsExpand': true,
+                            };
+                            final currentState =
+                                payloadNotifier.value?['state']?.toString() ??
+                                'idle';
+                            final targetState = currentState == 'focusing'
+                                ? 'reminder_split'
+                                : 'reminder_capsule';
+                            payloadNotifier.value = {
+                              ...payloadNotifier.value ?? {},
+                              'state': targetState,
+                              'reminderPopupData': updatedReminder,
+                            };
+                            _setupReminderExpireTimer(
+                              updatedReminder,
+                              payloadNotifier,
+                            );
+                          }
+                          return;
                         }
-                        if (url != null) {
-                          await _launchUrl(url);
+
+                        if (action == 'check_reminder') {
+                          lastShownReminderId = null;
+                          await checkAndShowReminder();
+                          return;
                         }
-                        // 通知主应用刷新岛的状态（恢复到打开链接前的状态）
+
+                        if (action == 'open_link') {
+                          String? url = data;
+                          if (url == null) {
+                            final currentPayload = payloadNotifier.value ?? {};
+                            final copiedLinkData =
+                                currentPayload['copiedLinkData']
+                                    as Map<String, dynamic>?;
+                            url = copiedLinkData?['url']?.toString();
+                          }
+                          if (url != null) {
+                            await _launchUrl(url);
+                          }
+                          // 通知主应用刷新岛的状态（恢复到打开链接前的状态）
+                          try {
+                            final file = await _getActionFile();
+                            await file.writeAsString(
+                              jsonEncode({
+                                'action': 'link_opened',
+                                'windowId': currentWindowId(),
+                                'timestamp':
+                                    DateTime.now().millisecondsSinceEpoch,
+                              }),
+                            );
+                          } catch (_) {}
+                          return;
+                        }
+
+                        final current = payloadNotifier.value;
+                        String syncMode = 'local';
+                        if (current != null) {
+                          if (current.containsKey('legacy')) {
+                            final legacy = current['legacy'] as Map?;
+                            if (legacy != null && legacy['isLocal'] is bool) {
+                              syncMode = (legacy['isLocal'] as bool)
+                                  ? 'local'
+                                  : 'remote';
+                            }
+                          } else if (current.containsKey('focusData')) {
+                            final fd =
+                                current['focusData'] as Map<String, dynamic>?;
+                            if (fd != null && fd['syncMode'] != null) {
+                              syncMode = fd['syncMode']?.toString() ?? 'local';
+                            }
+                          }
+                        }
+
+                        if ((action == 'finish' || action == 'abandon') &&
+                            syncMode != 'local') {
+                          return;
+                        }
+
                         try {
                           final file = await _getActionFile();
-                          await file.writeAsString(jsonEncode({
-                            'action': 'link_opened',
-                            'windowId': currentWindowId(),
-                            'timestamp': DateTime.now().millisecondsSinceEpoch,
-                          }));
+                          await file.writeAsString(
+                            jsonEncode({
+                              'action': action,
+                              'modifiedSecs': modifiedSecs ?? 0,
+                              'windowId': currentWindowId(),
+                              'timestamp':
+                                  DateTime.now().millisecondsSinceEpoch,
+                            }),
+                          );
                         } catch (_) {}
-                        return;
-                      }
-
-                      final current = payloadNotifier.value;
-                      String syncMode = 'local';
-                      if (current != null) {
-                        if (current.containsKey('legacy')) {
-                          final legacy = current['legacy'] as Map?;
-                          if (legacy != null && legacy['isLocal'] is bool) {
-                            syncMode = (legacy['isLocal'] as bool)
-                                ? 'local'
-                                : 'remote';
-                          }
-                        } else if (current.containsKey('focusData')) {
-                          final fd =
-                              current['focusData'] as Map<String, dynamic>?;
-                          if (fd != null && fd['syncMode'] != null) {
-                            syncMode = fd['syncMode']?.toString() ?? 'local';
-                          }
-                        }
-                      }
-
-                      if ((action == 'finish' || action == 'abandon') &&
-                          syncMode != 'local') {
-                        return;
-                      }
-
-                      try {
-                        final file = await _getActionFile();
-                        await file.writeAsString(jsonEncode({
-                          'action': action,
-                          'modifiedSecs': modifiedSecs ?? 0,
-                          'windowId': currentWindowId(),
-                          'timestamp': DateTime.now().millisecondsSinceEpoch,
-                        }));
                       } catch (_) {}
-                    } catch (_) {}
-                  },
-                ),
-                ValueListenableBuilder<Map<String, dynamic>?>(
-                  valueListenable: payloadNotifier,
-                  builder: (context, val, child) {
-                    if (val == null || (val.isEmpty)) {
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
+                    },
+                  ),
+                  ValueListenableBuilder<Map<String, dynamic>?>(
+                    valueListenable: payloadNotifier,
+                    builder: (context, val, child) {
+                      if (val == null || (val.isEmpty)) {
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.35),
-                            borderRadius: BorderRadius.circular(8)),
-                        child: const Text('灵动岛已就绪 — 等待主程序数据',
-                            style:
-                                TextStyle(color: Colors.white, fontSize: 12)),
-                      );
-                    }
-                    return const SizedBox.shrink();
-                  },
-                ),
-              ],
-            ),
-          ), // Focus
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            '灵动岛已就绪 — 等待主程序数据',
+                            style: TextStyle(color: Colors.white, fontSize: 12),
+                          ),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    },
+                  ),
+                ],
+              ),
+            ), // Focus
+          ),
         ),
       ),
-    ));
+    );
 
     Future.microtask(() async {
       try {
         final file = await _getActionFile();
-        await file.writeAsString(jsonEncode({
-          'action': 'ready',
-          'windowId': currentWindowId(),
-          'timestamp': DateTime.now().millisecondsSinceEpoch,
-        }));
+        await file.writeAsString(
+          jsonEncode({
+            'action': 'ready',
+            'windowId': currentWindowId(),
+            'timestamp': DateTime.now().millisecondsSinceEpoch,
+          }),
+        );
       } catch (_) {}
     });
   } catch (e) {
     debugPrint('[Island] initialization failed: $e');
-    runApp(MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        scaffoldBackgroundColor: IslandConfig.scaffoldBg,
-      ),
-      home: ExcludeSemantics(
-        child: Scaffold(
-          backgroundColor: IslandConfig.scaffoldBg,
-          body: Focus(
-            onKeyEvent: (node, event) => KeyEventResult.handled,
-            child: Center(
-              child: IslandUI(
-                payloadNotifier: payloadNotifier,
-                initialPayload: payloadNotifier.value,
+    runApp(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(scaffoldBackgroundColor: IslandConfig.scaffoldBg),
+        home: ExcludeSemantics(
+          child: Scaffold(
+            backgroundColor: IslandConfig.scaffoldBg,
+            body: Focus(
+              onKeyEvent: (node, event) => KeyEventResult.handled,
+              child: Center(
+                child: IslandUI(
+                  payloadNotifier: payloadNotifier,
+                  initialPayload: payloadNotifier.value,
+                ),
               ),
             ),
           ),
         ),
       ),
-    ));
+    );
   }
 }

@@ -931,10 +931,10 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
   DateFormat _cachedDateFormat(String pattern) {
     final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent(
-      (locale, pattern),
-      () => DateFormat(pattern, locale),
-    );
+    return _dateFormatters.putIfAbsent((
+      locale,
+      pattern,
+    ), () => DateFormat(pattern, locale));
   }
 
   Future<void> _pickScheduleStartTime() async {
@@ -2298,7 +2298,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                             _isAllDay
                                 ? _dateWithSemesterWeek(
                                     _createdAt,
-                                    _cachedDateFormat('MM-dd').format(_createdAt),
+                                    _cachedDateFormat('MM-dd')
+                                        .format(_createdAt),
                                   )
                                 : (_dueDate == null
                                       ? "未安排"
@@ -2323,7 +2324,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                           subtitle: Text(
                             _dateWithSemesterWeek(
                               _scheduleDate,
-                              _cachedDateFormat('yyyy-MM-dd').format(_scheduleDate),
+                              _cachedDateFormat('yyyy-MM-dd')
+                                  .format(_scheduleDate),
                             ),
                           ),
                           trailing: Row(
@@ -2519,10 +2521,11 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                                                 ? "未指定"
                                                 : _dateWithSemesterWeek(
                                                     _recurrenceEndDate!,
-                                                    _cachedDateFormat('yyyy-MM-dd')
-                                                        .format(
-                                                          _recurrenceEndDate!,
-                                                        ),
+                                                    _cachedDateFormat(
+                                                      'yyyy-MM-dd',
+                                                    ).format(
+                                                      _recurrenceEndDate!,
+                                                    ),
                                                   ),
                                             style: TextStyle(
                                               color: _recurrenceEndDate == null
@@ -2747,90 +2750,90 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     if (todoCount == 0) return const SizedBox.shrink();
 
     return Material(
-        color: Theme.of(context).colorScheme.primaryContainer
-            .withValues(alpha: 0.3),
+      color: Theme.of(context).colorScheme.primaryContainer
+          .withValues(alpha: 0.3),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () {
-            if (results == null || results.isEmpty) return;
-            final typedResults = results
-                .map((e) => Map<String, dynamic>.from(e as Map))
-                .toList();
-            setState(() => _pendingTodoConfirm = null);
-            StorageService.clearPendingTodoConfirm();
-            if (widget.onLLMResultsParsed != null) {
-              widget.onLLMResultsParsed!(
-                typedResults,
-                imagePath,
-                null,
-                null,
-                null,
-              );
-            }
-          },
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                if (localImageExists(imagePath))
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: localImageWidget(
-                      imagePath!,
-                      width: 44,
-                      height: 44,
-                      fit: BoxFit.cover,
-                    ),
-                  )
-                else
-                  Container(
+        onTap: () {
+          if (results == null || results.isEmpty) return;
+          final typedResults = results
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
+          setState(() => _pendingTodoConfirm = null);
+          StorageService.clearPendingTodoConfirm();
+          if (widget.onLLMResultsParsed != null) {
+            widget.onLLMResultsParsed!(
+              typedResults,
+              imagePath,
+              null,
+              null,
+              null,
+            );
+          }
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              if (localImageExists(imagePath))
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: localImageWidget(
+                    imagePath!,
                     width: 44,
                     height: 44,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary
-                          .withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      Icons.checklist_rounded,
-                      color: Theme.of(context).colorScheme.primary,
-                      size: 24,
-                    ),
+                    fit: BoxFit.cover,
                   ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'AI识别完成',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '发现 $todoCount 个事项，点击查看',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
+                )
+              else
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary
+                        .withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.checklist_rounded,
+                    color: Theme.of(context).colorScheme.primary,
+                    size: 24,
                   ),
                 ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  size: 20,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'AI识别完成',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '发现 $todoCount 个事项，点击查看',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                size: 20,
+              ),
+            ],
           ),
         ),
+      ),
     );
   }
 
@@ -2939,81 +2942,88 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                 enabled: _parsedWithAi,
                 isLight: Theme.of(context).brightness == Brightness.light,
                 child: OptionalLiquidGlassCard(
-                padding: const EdgeInsets.all(16),
-                borderRadius: 16,
-                highContrast: true,
-                fallbackDecoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.02),
-                      blurRadius: 10,
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        "解析结果 (${_currentParseIndex + 1}/${_parsedResults.length})",
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Row(
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.arrow_back_ios, size: 16),
-                            onPressed: _currentParseIndex > 0
-                                ? () {
-                                    setState(() => _currentParseIndex--);
-                                    _applyParsedResult(
-                                      _parsedResults[_currentParseIndex],
-                                    );
-                                  }
-                                : null,
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.arrow_forward_ios, size: 16),
-                            onPressed:
-                                _currentParseIndex < _parsedResults.length - 1
-                                ? () {
-                                    setState(() => _currentParseIndex++);
-                                    _applyParsedResult(
-                                      _parsedResults[_currentParseIndex],
-                                    );
-                                  }
-                                : null,
-                          ),
-                        ],
+                  padding: const EdgeInsets.all(16),
+                  borderRadius: 16,
+                  highContrast: true,
+                  fallbackDecoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.02),
+                        blurRadius: 10,
                       ),
                     ],
                   ),
-                  const Divider(),
-                  _buildParseResultRow(
-                    '类型',
-                    _parsedKindLabel(_parsedResults[_currentParseIndex]),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            "解析结果 (${_currentParseIndex + 1}/${_parsedResults.length})",
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.arrow_back_ios,
+                                  size: 16,
+                                ),
+                                onPressed: _currentParseIndex > 0
+                                    ? () {
+                                        setState(() => _currentParseIndex--);
+                                        _applyParsedResult(
+                                          _parsedResults[_currentParseIndex],
+                                        );
+                                      }
+                                    : null,
+                              ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.arrow_forward_ios,
+                                  size: 16,
+                                ),
+                                onPressed:
+                                    _currentParseIndex <
+                                        _parsedResults.length - 1
+                                    ? () {
+                                        setState(() => _currentParseIndex++);
+                                        _applyParsedResult(
+                                          _parsedResults[_currentParseIndex],
+                                        );
+                                      }
+                                    : null,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const Divider(),
+                      _buildParseResultRow(
+                        '类型',
+                        _parsedKindLabel(_parsedResults[_currentParseIndex]),
+                      ),
+                      _buildParseResultRow(
+                        '内容',
+                        _parsedResults[_currentParseIndex].title,
+                      ),
+                      _buildParseResultRow(
+                        '时间',
+                        _parsedTimeLabel(_parsedResults[_currentParseIndex]),
+                      ),
+                      _buildParseResultRow(
+                        "重复",
+                        _getRecurrenceLabel(
+                          _parsedResults[_currentParseIndex].recurrence,
+                        ),
+                      ),
+                    ],
                   ),
-                  _buildParseResultRow(
-                    '内容',
-                    _parsedResults[_currentParseIndex].title,
-                  ),
-                  _buildParseResultRow(
-                    '时间',
-                    _parsedTimeLabel(_parsedResults[_currentParseIndex]),
-                  ),
-                  _buildParseResultRow(
-                    "重复",
-                    _getRecurrenceLabel(
-                      _parsedResults[_currentParseIndex].recurrence,
-                    ),
-                  ),
-                  ],
-                ),
                 ),
               ),
             ),

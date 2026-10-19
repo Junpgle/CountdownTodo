@@ -116,8 +116,9 @@ void main() {
       for (final loan in loans) {
         await FinanceStorage.saveLoan(loan);
       }
-      final installment =
-          (await FinanceStorage.getLoanInstallments(loans.last.uuid)).single;
+      final installment = (await FinanceStorage.getLoanInstallments(
+        loans.last.uuid,
+      )).single;
       await FinanceStorage.setLoanInstallmentPaid(
         installment.uuid,
         true,
@@ -125,8 +126,9 @@ void main() {
       );
 
       final paid = (await FinanceStorage.getLoanInstallment(installment.uuid))!;
-      final interest =
-          (await FinanceStorage.getTransaction(paid.interestTransactionUuid!))!;
+      final interest = (await FinanceStorage.getTransaction(
+        paid.interestTransactionUuid!,
+      ))!;
       expect(interest.merchant, '贷款利息 · 教育分期（同名贷款 2/2）');
     });
 
@@ -142,8 +144,8 @@ void main() {
         repaymentDay: 1,
       );
       await FinanceStorage.saveLoan(loan);
-      final installment =
-          (await FinanceStorage.getLoanInstallments(loan.uuid)).single;
+      final installment = (await FinanceStorage.getLoanInstallments(loan.uuid))
+          .single;
       final paidAt = DateTime(
         startDate.year,
         startDate.month,
@@ -706,11 +708,10 @@ void main() {
           expectedOccurrences.map((item) => item.millisecondsSinceEpoch),
         );
 
-        final editedFirst = FinanceTransaction.fromMap(
-          installments.first.toMap(),
-        )
-          ..note = '补充分期备注'
-          ..markAsChanged();
+        final editedFirst =
+            FinanceTransaction.fromMap(installments.first.toMap())
+              ..note = '补充分期备注'
+              ..markAsChanged();
         final editedInstallments = await FinanceStorage.saveInstallmentPlan(
           transaction: editedFirst,
           original: installments.first,
@@ -728,7 +729,8 @@ void main() {
           expectedOccurrences.map((item) => item.millisecondsSinceEpoch),
         );
       },
-      skip: DateTime(2027, 2, 15, 9).timeZoneOffset ==
+      skip:
+          DateTime(2027, 2, 15, 9).timeZoneOffset ==
           DateTime(2027, 3, 15, 9).timeZoneOffset,
     );
 

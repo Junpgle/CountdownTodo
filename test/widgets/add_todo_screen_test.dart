@@ -9,9 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   setUp(() {
-    SharedPreferences.setMockInitialValues({
-      'tip_shown_coach_add_todo': true,
-    });
+    SharedPreferences.setMockInitialValues({'tip_shown_coach_add_todo': true});
     ApiService.setBaseUrlOverride('http://127.0.0.1:1');
   });
 

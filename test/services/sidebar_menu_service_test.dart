@@ -14,16 +14,17 @@ void main() {
     expect(pair.features.where((key) => key == 'journal'), hasLength(1));
     expect(pair.utilities, ['update', 'changelog']);
     expect(
-        pair.features,
-        containsAll(<String>[
-          'teams',
-          'aiAssistant',
-          'timeline',
-          'screenTime',
-          'planCenter',
-          'habits',
-          'challengeCenter',
-        ]));
+      pair.features,
+      containsAll(<String>[
+        'teams',
+        'aiAssistant',
+        'timeline',
+        'screenTime',
+        'planCenter',
+        'habits',
+        'challengeCenter',
+      ]),
+    );
   });
 
   test('visibility defaults to true and ignores unknown keys', () {

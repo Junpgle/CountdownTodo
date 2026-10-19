@@ -111,8 +111,7 @@ class ConflictVisibilityService {
     return peers.isEmpty ||
         peers.every(
           (peer) =>
-              peer is Map &&
-              isAllDayTodoData(Map<String, dynamic>.from(peer)),
+              peer is Map && isAllDayTodoData(Map<String, dynamic>.from(peer)),
         );
   }
 
@@ -196,14 +195,18 @@ class ConflictVisibilityService {
       return true;
     }
 
-    final startMs = _parseMillis(data['start_time'] ??
-        data['startTime'] ??
-        data['created_date'] ??
-        data['createdDate']);
-    final endMs = _parseMillis(data['end_time'] ??
-        data['endTime'] ??
-        data['due_date'] ??
-        data['dueDate']);
+    final startMs = _parseMillis(
+      data['start_time'] ??
+          data['startTime'] ??
+          data['created_date'] ??
+          data['createdDate'],
+    );
+    final endMs = _parseMillis(
+      data['end_time'] ??
+          data['endTime'] ??
+          data['due_date'] ??
+          data['dueDate'],
+    );
     if (startMs <= 0 || endMs <= startMs) return false;
 
     final start = DateTime.fromMillisecondsSinceEpoch(startMs).toLocal();

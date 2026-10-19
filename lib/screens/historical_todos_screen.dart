@@ -62,11 +62,10 @@ final Map<(String?, String), DateFormat> _historicalTodoDateFormats = {};
 DateFormat _historicalTodoDateFormat(
   String? locale, {
   String pattern = 'yyyy-MM-dd',
-}) =>
-    _historicalTodoDateFormats.putIfAbsent(
-      (locale, pattern),
-      () => DateFormat(pattern, locale),
-    );
+}) => _historicalTodoDateFormats.putIfAbsent((
+  locale,
+  pattern,
+), () => DateFormat(pattern, locale));
 
 class HistoricalTodosScreen extends StatefulWidget {
   final String username;
@@ -256,7 +255,8 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
       return cached;
     }
 
-    final candidates = cached != null &&
+    final candidates =
+        cached != null &&
             identical(cached.source, items) &&
             query.startsWith(cached.query)
         ? cached.matchingItems
@@ -327,9 +327,8 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
       return cached.value;
     }
 
-    final value = _historicalTodoDateFormat(locale).format(
-      DateTime.fromMillisecondsSinceEpoch(updatedAt).toLocal(),
-    );
+    final value = _historicalTodoDateFormat(locale)
+        .format(DateTime.fromMillisecondsSinceEpoch(updatedAt).toLocal());
     _dateLabels[item] = _HistoricalTodoDateLabel(
       updatedAt: updatedAt,
       locale: locale,
@@ -640,9 +639,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     final time = _historicalTodoDateFormat(
       Intl.defaultLocale,
       pattern: 'HH:mm',
-    ).format(
-      DateTime.fromMillisecondsSinceEpoch(item.updatedAt).toLocal(),
-    );
+    ).format(DateTime.fromMillisecondsSinceEpoch(item.updatedAt).toLocal());
     return ManagementCard(
       key: ValueKey(item.id),
       margin: const EdgeInsets.only(bottom: 10),

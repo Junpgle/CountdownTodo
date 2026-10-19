@@ -1,11 +1,15 @@
 part of 'storage_service.dart';
+
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 mixin _StorageSync on _StorageServiceBase {
   static const int _screenTimeHistoryWriteBatchSize = 30;
 
-  Future<void> saveTimeLogs(String username, List<TimeLogItem> items,
-          {bool sync = true}) async {
+  Future<void> saveTimeLogs(
+    String username,
+    List<TimeLogItem> items, {
+    bool sync = true,
+  }) async {
     await PomodoroStorage.saveTimeLogs(
       username,
       items,
@@ -14,19 +18,19 @@ mixin _StorageSync on _StorageServiceBase {
     );
     triggerRefresh({DataRefreshDomain.timeLogs});
   }
+
   Future<List<TimeLogItem>> getTimeLogs(
     String username, {
     int? limit,
     DateTime? from,
     DateTime? to,
-  }) =>
-      PomodoroStorage.getTimeLogs(
-        username,
-        limit: limit,
-        from: from,
-        to: to,
-        saveMigratedTimeLogs: saveTimeLogs,
-      );
+  }) => PomodoroStorage.getTimeLogs(
+    username,
+    limit: limit,
+    from: from,
+    to: to,
+    saveMigratedTimeLogs: saveTimeLogs,
+  );
   Future<bool> deleteTimeLogGlobally(String username, String idToDelete) async {
     List<TimeLogItem> localLogs = await getTimeLogs(username);
     int index = localLogs.indexWhere((t) => t.id == idToDelete);
@@ -166,8 +170,7 @@ mixin _StorageSync on _StorageServiceBase {
     String date,
     List<dynamic> stats, {
     String? username,
-  }) =>
-      _saveScreenTimeHistoryBatchToSql({date: stats}, username: username);
+  }) => _saveScreenTimeHistoryBatchToSql({date: stats}, username: username);
 
   Future<void> _saveScreenTimeHistoryBatchToSql(
     Map<String, List<dynamic>> history, {
@@ -186,9 +189,11 @@ mixin _StorageSync on _StorageServiceBase {
     // History migration and cloud repair may cover many dates. Commit a
     // bounded group together so each date does not open its own transaction.
     final dates = history.keys.toList(growable: false);
-    for (var start = 0;
-        start < dates.length;
-        start += _screenTimeHistoryWriteBatchSize) {
+    for (
+      var start = 0;
+      start < dates.length;
+      start += _screenTimeHistoryWriteBatchSize
+    ) {
       final batch = db.batch();
       final nextStart = start + _screenTimeHistoryWriteBatchSize;
       final end = nextStart < dates.length ? nextStart : dates.length;
@@ -231,8 +236,8 @@ mixin _StorageSync on _StorageServiceBase {
       lastSyncMs = prefs.getInt(keyLastScreenTimeSync);
     }
     if (lastSyncMs != null) {
-      DateTime lastSyncDate =
-          DateTime.fromMillisecondsSinceEpoch(lastSyncMs).toLocal();
+      DateTime lastSyncDate = DateTime.fromMillisecondsSinceEpoch(lastSyncMs)
+          .toLocal();
       DateTime now = DateTime.now();
 
       // 如果缓存日期不是今天，说明缓存已过期，返回空列表触发新的同步
@@ -272,8 +277,10 @@ mixin _StorageSync on _StorageServiceBase {
     if (requestedUsername != null) {
       await UserSessionStorage.ensureCurrentUsername(requestedUsername);
     }
-    final String historyKey =
-        _scopedKey(keyScreenTimeHistory, effectiveUsername);
+    final String historyKey = _scopedKey(
+      keyScreenTimeHistory,
+      effectiveUsername,
+    );
     final dbHelper = DatabaseHelper.instance;
 
     try {
@@ -359,16 +366,20 @@ mixin _StorageSync on _StorageServiceBase {
       final int userId = prefs.getInt('current_user_id') ?? 0;
       if (userId > 0) {
         final datesNeedingDeviceNames = result.entries
-            .where((entry) => entry.value.any((item) {
-                  final deviceName = item['device_name']?.toString() ?? '';
-                  return deviceName.isEmpty;
-                }))
+            .where(
+              (entry) => entry.value.any((item) {
+                final deviceName = item['device_name']?.toString() ?? '';
+                return deviceName.isEmpty;
+              }),
+            )
             .map((entry) => entry.key)
             .toList();
 
-        for (var start = 0;
-            start < datesNeedingDeviceNames.length;
-            start += _screenTimeHistoryWriteBatchSize) {
+        for (
+          var start = 0;
+          start < datesNeedingDeviceNames.length;
+          start += _screenTimeHistoryWriteBatchSize
+        ) {
           final nextStart = start + _screenTimeHistoryWriteBatchSize;
           final end = nextStart < datesNeedingDeviceNames.length
               ? nextStart
@@ -428,14 +439,13 @@ mixin _StorageSync on _StorageServiceBase {
             raw.entries
                 .where(
                   (entry) =>
-                      (fromDate == null || entry.key.compareTo(fromDate) >= 0) &&
+                      (fromDate == null ||
+                          entry.key.compareTo(fromDate) >= 0) &&
                       (toDate == null || entry.key.compareTo(toDate) < 0),
                 )
                 .map(
-                  (entry) => MapEntry(
-                    entry.key,
-                    List<dynamic>.from(entry.value),
-                  ),
+                  (entry) =>
+                      MapEntry(entry.key, List<dynamic>.from(entry.value)),
                 ),
           );
         } catch (_) {}
@@ -453,8 +463,10 @@ mixin _StorageSync on _StorageServiceBase {
     if (requestedUsername != null) {
       await UserSessionStorage.ensureCurrentUsername(requestedUsername);
     }
-    await prefs.setInt(_scopedKey(keyLastScreenTimeSync, effectiveUsername),
-        DateTime.now().millisecondsSinceEpoch);
+    await prefs.setInt(
+      _scopedKey(keyLastScreenTimeSync, effectiveUsername),
+      DateTime.now().millisecondsSinceEpoch,
+    );
   }
 
   Future<DateTime?> getLastScreenTimeSync() async {
@@ -465,8 +477,10 @@ mixin _StorageSync on _StorageServiceBase {
       timestamp = prefs.getInt(keyLastScreenTimeSync);
     }
     if (timestamp != null) {
-      return DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true)
-          .toLocal();
+      return DateTime.fromMillisecondsSinceEpoch(
+        timestamp,
+        isUtc: true,
+      ).toLocal();
     }
     return null;
   }
@@ -477,8 +491,10 @@ mixin _StorageSync on _StorageServiceBase {
     DateTime now = DateTime.now();
     if (lastSync != null) {
       try {
-        final lastDate =
-            DateTime.fromMillisecondsSinceEpoch(lastSync, isUtc: true).toLocal();
+        final lastDate = DateTime.fromMillisecondsSinceEpoch(
+          lastSync,
+          isUtc: true,
+        ).toLocal();
         final elapsed = now.difference(lastDate);
         if (!elapsed.isNegative && elapsed < const Duration(days: 7)) return;
       } on RangeError {
@@ -493,9 +509,7 @@ mixin _StorageSync on _StorageServiceBase {
       final packageName = item['package_name'];
       final mappedName = item['mapped_name'];
       final category = item['category'];
-      final cat = category is String && category.isNotEmpty
-          ? category
-          : '未分类';
+      final cat = category is String && category.isNotEmpty ? category : '未分类';
       if (packageName is String && packageName.isNotEmpty) {
         lookupMap[packageName] = cat;
       }
@@ -550,9 +564,7 @@ mixin _StorageSync on _StorageServiceBase {
     await prefs.remove(
       'finance_last_sync_time_${ApiService.syncServerKey}_$username',
     );
-    await prefs.remove(
-      'finance_sync_v1_${financeSyncServerScope}_$username',
-    );
+    await prefs.remove('finance_sync_v1_${financeSyncServerScope}_$username');
   }
 
   Future<Map<String, dynamic>> syncData(
@@ -573,19 +585,11 @@ mixin _StorageSync on _StorageServiceBase {
   }) async {
     username = username.trim();
     if (username.isEmpty) {
-      return {
-        'success': false,
-        'hasChanges': false,
-        'error': '账户未登录，无法同步',
-      };
+      return {'success': false, 'hasChanges': false, 'error': '账户未登录，无法同步'};
     }
     final session = await UserSessionStorage.captureSession(username);
     if (session == null) {
-      return {
-        'success': false,
-        'hasChanges': false,
-        'error': '账户已切换，已取消旧账户同步',
-      };
+      return {'success': false, 'hasChanges': false, 'error': '账户已切换，已取消旧账户同步'};
     }
 
     if (syncFinance &&
@@ -593,7 +597,8 @@ mixin _StorageSync on _StorageServiceBase {
         !await AppSettingsStorage.isFinanceCloudSyncEnabled(username)) {
       syncFinance = false;
     }
-    final syncsCoreData = syncTodos ||
+    final syncsCoreData =
+        syncTodos ||
         syncCountdowns ||
         syncTimeLogs ||
         syncPomodoro ||
@@ -641,8 +646,9 @@ mixin _StorageSync on _StorageServiceBase {
       final userId = session.userId;
 
       // 2. 环境信息准备
-      final String deviceId =
-          await UserSessionStorage.getDeviceIdForUser(username);
+      final String deviceId = await UserSessionStorage.getDeviceIdForUser(
+        username,
+      );
       final String friendlyName =
           await UserSessionStorage.getDeviceFriendlyName();
       final String serverKey = ApiService.syncServerKey;
@@ -662,8 +668,9 @@ mixin _StorageSync on _StorageServiceBase {
           prefs.getBool(habitCursorBootstrapKey) == true;
       final habitCursorCapabilityKey =
           'habit_sync_cursor_capability_v1_${fixedScheduleServerScope}_$username';
-      final habitCursorCapabilityKnown =
-          prefs.containsKey(habitCursorCapabilityKey);
+      final habitCursorCapabilityKnown = prefs.containsKey(
+        habitCursorCapabilityKey,
+      );
       final habitCursorSupportedByLastServer =
           prefs.getBool(habitCursorCapabilityKey) == true;
       int lastSyncTime = forceFullSync
@@ -672,12 +679,14 @@ mixin _StorageSync on _StorageServiceBase {
       int habitLastSyncTime = forceFullSync
           ? 0
           : (!habitSyncCursorInitialized
-              ? 0
-              : (!habitCursorCapabilityKnown || habitCursorSupportedByLastServer
-                  ? (prefs.getInt(
-                          'habit_last_sync_time_${serverKey}_$username') ??
-                      0)
-                  : lastSyncTime));
+                ? 0
+                : (!habitCursorCapabilityKnown ||
+                          habitCursorSupportedByLastServer
+                      ? (prefs.getInt(
+                              'habit_last_sync_time_${serverKey}_$username',
+                            ) ??
+                            0)
+                      : lastSyncTime));
       _lastSyncRequestAt = DateTime.now().millisecondsSinceEpoch;
 
       if (syncFinance) {
@@ -746,9 +755,7 @@ mixin _StorageSync on _StorageServiceBase {
       final List<HabitCheckIn> allLocalHabitCheckIns = localSnapshots[8];
       final List<HabitSleepCoachingPlan> allLocalHabitSleepCoachingPlans =
           localSnapshots[9];
-      final conflictedHabitGoalIds = syncHabits
-          ? <String>{}
-          : const <String>{};
+      final conflictedHabitGoalIds = syncHabits ? <String>{} : const <String>{};
       // 有些历史冲突只保存在本地 conflict_data，服务端后续同步不一定
       // 再把它放进 conflicts 或 server_habit_goals，因此这里也要登记快照。
       for (final goal in allLocalHabitGoals) {
@@ -758,9 +765,7 @@ mixin _StorageSync on _StorageServiceBase {
         staleHabitConflictSnapshots['habit_goals:${goal.uuid}'] =
             Map<String, dynamic>.from(goal.conflictData!);
       }
-      final conflictedHabitRuleIds = syncHabits
-          ? <String>{}
-          : const <String>{};
+      final conflictedHabitRuleIds = syncHabits ? <String>{} : const <String>{};
       for (final rule in allLocalHabitRules) {
         if (!rule.hasConflict) continue;
         conflictedHabitRuleIds.add(rule.uuid);
@@ -781,26 +786,31 @@ mixin _StorageSync on _StorageServiceBase {
         );
         hasChanges = true;
         debugPrint(
-            '🧹 [同步修复] 已自动消解 ${autoResolvedMigrationConflicts.length} 条仅由循环系列迁移产生的版本冲突');
+          '🧹 [同步修复] 已自动消解 ${autoResolvedMigrationConflicts.length} 条仅由循环系列迁移产生的版本冲突',
+        );
       }
       final localSeriesBaselines = {
         for (final todo in allLocalTodos) todo.id: todo.detachedCopy(),
       };
       final repairedLocalSeriesIds =
           await _repairLocalRecurrenceSeriesAliasesFromHistory(
-        db,
-        allLocalTodos,
-      );
+            db,
+            allLocalTodos,
+          );
       if (repairedLocalSeriesIds.isNotEmpty) {
         final deletedBeforeDedupe = {
           for (final todo in allLocalTodos)
             if (todo.isDeleted) todo.id,
         };
         _deduplicatePersistedRecurrenceOccurrences(allLocalTodos);
-        repairedLocalSeriesIds.addAll(allLocalTodos
-            .where((todo) =>
-                todo.isDeleted && !deletedBeforeDedupe.contains(todo.id))
-            .map((todo) => todo.id));
+        repairedLocalSeriesIds.addAll(
+          allLocalTodos
+              .where(
+                (todo) =>
+                    todo.isDeleted && !deletedBeforeDedupe.contains(todo.id),
+              )
+              .map((todo) => todo.id),
+        );
 
         await _saveRecurrenceMaintenance(
           username,
@@ -809,14 +819,15 @@ mixin _StorageSync on _StorageServiceBase {
         );
         hasChanges = true;
         debugPrint(
-            '🧷 [同步修复] 根据本机同步历史将 ${repairedLocalSeriesIds.length} 个被拆分的循环实例归回原系列');
+          '🧷 [同步修复] 根据本机同步历史将 ${repairedLocalSeriesIds.length} 个被拆分的循环实例归回原系列',
+        );
       }
       final localTodosById = {for (final item in allLocalTodos) item.id: item};
       final localGroupsById = {
-        for (final item in allLocalGroups) item.id: item
+        for (final item in allLocalGroups) item.id: item,
       };
       final localCountdownsById = {
-        for (final item in allLocalCountdowns) item.id: item
+        for (final item in allLocalCountdowns) item.id: item,
       };
       if (!forceFullSync &&
           ((syncCountdowns && allLocalCountdowns.isEmpty) ||
@@ -826,8 +837,11 @@ mixin _StorageSync on _StorageServiceBase {
       }
 
       // 按时间戳升序排列，这样 Map 的 putIfAbsent/赋值逻辑会自然保留最后一次更新
-      final List<Map<String, dynamic>> pendingOps = await db.query('op_logs',
-          where: 'is_synced = 0', orderBy: 'timestamp ASC, id ASC');
+      final List<Map<String, dynamic>> pendingOps = await db.query(
+        'op_logs',
+        where: 'is_synced = 0',
+        orderBy: 'timestamp ASC, id ASC',
+      );
       final requestOplogSnapshot = pendingOps
           .map(SyncOplogEntry.fromRow)
           .whereType<SyncOplogEntry>()
@@ -875,7 +889,8 @@ mixin _StorageSync on _StorageServiceBase {
             continue;
           }
           final localTodo = localTodosById[uuid];
-          final hasLocalVersionConflict = localTodo != null &&
+          final hasLocalVersionConflict =
+              localTodo != null &&
               localTodo.hasConflict &&
               ConflictVisibilityService.isVersionConflictData(
                 localTodo.serverVersionData,
@@ -953,8 +968,10 @@ mixin _StorageSync on _StorageServiceBase {
       }
 
       if (consumedConflictOpIds.isNotEmpty) {
-        final placeholders =
-            List.filled(consumedConflictOpIds.length, '?').join(',');
+        final placeholders = List.filled(
+          consumedConflictOpIds.length,
+          '?',
+        ).join(',');
         await db.update(
           'op_logs',
           {'is_synced': 1, 'sync_error': ''},
@@ -973,8 +990,8 @@ mixin _StorageSync on _StorageServiceBase {
       dirtyHabitGoals = dedupHabitGoals.values.toList();
       dirtyHabitRules = dedupHabitRules.values.toList();
       dirtyHabitCheckIns = dedupHabitCheckIns.values.toList();
-      dirtyHabitSleepCoachingPlans =
-          dedupHabitSleepCoachingPlans.values.toList();
+      dirtyHabitSleepCoachingPlans = dedupHabitSleepCoachingPlans.values
+          .toList();
 
       // 兜底：除 op_logs 外，再按 updatedAt 增量补采，避免日志遗漏导致改删/新增不同步
       if (syncTodos) {
@@ -1070,8 +1087,8 @@ mixin _StorageSync on _StorageServiceBase {
         dirtyHabitGoals = dedupHabitGoals.values.toList();
         dirtyHabitRules = dedupHabitRules.values.toList();
         dirtyHabitCheckIns = dedupHabitCheckIns.values.toList();
-        dirtyHabitSleepCoachingPlans =
-            dedupHabitSleepCoachingPlans.values.toList();
+        dirtyHabitSleepCoachingPlans = dedupHabitSleepCoachingPlans.values
+            .toList();
       }
 
       if (shouldUploadAllLocal) {
@@ -1138,8 +1155,8 @@ mixin _StorageSync on _StorageServiceBase {
         dirtyHabitGoals = dedupHabitGoals.values.toList();
         dirtyHabitRules = dedupHabitRules.values.toList();
         dirtyHabitCheckIns = dedupHabitCheckIns.values.toList();
-        dirtyHabitSleepCoachingPlans =
-            dedupHabitSleepCoachingPlans.values.toList();
+        dirtyHabitSleepCoachingPlans = dedupHabitSleepCoachingPlans.values
+            .toList();
       }
 
       // TimeLogs 暂时保持原有逻辑 (直到迁移至 SQL)
@@ -1172,14 +1189,17 @@ mixin _StorageSync on _StorageServiceBase {
             'record_date': finalDate,
             'apps': localScreenStats
                 .whereType<Map>()
-                .map((e) => {
-                      'app_name': e['app_name']?.toString() ?? 'Unknown',
-                      'duration': (e['duration'] is int) ? e['duration'] : 0,
-                    })
+                .map(
+                  (e) => {
+                    'app_name': e['app_name']?.toString() ?? 'Unknown',
+                    'duration': (e['duration'] is int) ? e['duration'] : 0,
+                  },
+                )
                 .toList(),
           };
           debugPrint(
-              "🚀 准备同步本机屏幕时间 ($finalDate): ${localScreenStats.length} 条数据");
+            "🚀 准备同步本机屏幕时间 ($finalDate): ${localScreenStats.length} 条数据",
+          );
         } catch (se) {
           debugPrint("屏幕时间 payload 构造失败: $se");
         }
@@ -1219,7 +1239,8 @@ mixin _StorageSync on _StorageServiceBase {
           timeLogsChanges: dirtyTimeLogs,
           planBlocksChanges: dirtyPlanBlocks,
           fixedSchedulesChanges: dirtyFixedSchedules,
-          fixedSchedulesFullSync: syncFixedSchedules &&
+          fixedSchedulesFullSync:
+              syncFixedSchedules &&
               (!fixedScheduleSyncInitialized || forceFullSync),
           habitGoalsChanges: dirtyHabitGoals,
           habitRuleChanges: dirtyHabitRules,
@@ -1279,18 +1300,21 @@ mixin _StorageSync on _StorageServiceBase {
       bool hasPendingFinanceUpload() =>
           syncFinance && (financeRequest?.hasPendingChanges ?? false);
       bool isDebounceIgnored(Map<String, dynamic> syncResponse) {
-        final financeProtocolAvailable = syncFinance &&
+        final financeProtocolAvailable =
+            syncFinance &&
             SyncCapabilityService.supportsFinance(
               syncResponse['sync_capabilities'],
             ) &&
             syncResponse['new_finance_sync_time'] != null &&
             syncResponse['finance_acknowledged_changes'] is List;
-        final pendingForThisResponse = hasPendingCoreUpload() ||
+        final pendingForThisResponse =
+            hasPendingCoreUpload() ||
             (financeProtocolAvailable && hasPendingFinanceUpload());
         if (!forceFullSync && !pendingForThisResponse) {
           return false;
         }
-        final remotePayloadEmpty = (syncResponse['server_todos'] as List?)?.isEmpty == true &&
+        final remotePayloadEmpty =
+            (syncResponse['server_todos'] as List?)?.isEmpty == true &&
             (syncResponse['server_todo_groups'] as List?)?.isEmpty == true &&
             (syncResponse['server_countdowns'] as List?)?.isEmpty == true &&
             (syncResponse['server_time_logs'] as List?)?.isEmpty == true &&
@@ -1313,13 +1337,10 @@ mixin _StorageSync on _StorageServiceBase {
                     (syncResponse['server_finance_payment_methods'] as List?)
                             ?.isEmpty ==
                         true &&
-                    (syncResponse[
-                                'server_finance_transactions'] as List?)
+                    (syncResponse['server_finance_transactions'] as List?)
                             ?.isEmpty ==
                         true &&
-                    (syncResponse[
-                                'server_finance_loans'] as List?)
-                            ?.isEmpty ==
+                    (syncResponse['server_finance_loans'] as List?)?.isEmpty ==
                         true &&
                     (syncResponse['server_finance_loan_installments'] as List?)
                             ?.isEmpty ==
@@ -1335,7 +1356,8 @@ mixin _StorageSync on _StorageServiceBase {
                         true));
         final syncTimeUnchanged =
             (syncResponse['new_sync_time'] ?? -1) == lastSyncTime;
-        final forceFullRelevant = forceFullSync &&
+        final forceFullRelevant =
+            forceFullSync &&
             (!syncFinance ||
                 financeProtocolAvailable ||
                 syncTodos ||
@@ -1359,13 +1381,15 @@ mixin _StorageSync on _StorageServiceBase {
         await UserSessionStorage.ensureCurrentSession(session);
         response = await sendSyncRequest();
         await UserSessionStorage.ensureCurrentSession(session);
-        final financeProtocolAvailable = syncFinance &&
+        final financeProtocolAvailable =
+            syncFinance &&
             SyncCapabilityService.supportsFinance(
               response['sync_capabilities'],
             ) &&
             response['new_finance_sync_time'] != null &&
             response['finance_acknowledged_changes'] is List;
-        final hasPendingUploadForResponse = hasPendingCoreUpload() ||
+        final hasPendingUploadForResponse =
+            hasPendingCoreUpload() ||
             (financeProtocolAvailable && hasPendingFinanceUpload());
         if (isDebounceIgnored(response) && hasPendingUploadForResponse) {
           throw Exception('同步被服务端防抖延迟，已保留本地待同步记录');
@@ -1385,29 +1409,29 @@ mixin _StorageSync on _StorageServiceBase {
 
       final fixedSchedulesSupported =
           SyncCapabilityService.supportsFixedSchedules(
-        response['sync_capabilities'],
-      );
+            response['sync_capabilities'],
+          );
       final acknowledgeFixedScheduleOps =
           SyncCapabilityService.shouldAcknowledgeFixedScheduleOps(
-        syncEnabled: syncFixedSchedules,
-        rawCapabilities: response['sync_capabilities'],
-      );
+            syncEnabled: syncFixedSchedules,
+            rawCapabilities: response['sync_capabilities'],
+          );
       final habitsSupported = SyncCapabilityService.supportsHabits(
         response['sync_capabilities'],
       );
       final sleepCoachingSupported =
           SyncCapabilityService.supportsSleepCoaching(
-        response['sync_capabilities'],
-      );
+            response['sync_capabilities'],
+          );
       final habitSyncCursorSupported =
           SyncCapabilityService.supportsHabitSyncCursor(
-        response['sync_capabilities'],
-      );
+            response['sync_capabilities'],
+          );
       final acknowledgeHabitOps =
           SyncCapabilityService.shouldAcknowledgeHabitOps(
-        syncEnabled: syncHabits,
-        rawCapabilities: response['sync_capabilities'],
-      );
+            syncEnabled: syncHabits,
+            rawCapabilities: response['sync_capabilities'],
+          );
       final financeSupported = SyncCapabilityService.supportsFinance(
         response['sync_capabilities'],
       );
@@ -1423,8 +1447,9 @@ mixin _StorageSync on _StorageServiceBase {
       if (joinedTeamUuids == null) {
         try {
           final localTeamRows = await db.query('teams', columns: ['uuid']);
-          final localKnownTeams =
-              localTeamRows.map((r) => r['uuid'].toString()).toSet();
+          final localKnownTeams = localTeamRows
+              .map((r) => r['uuid'].toString())
+              .toSet();
           // 合并到 currentTeams 中，使孤立检测和防复活守卫也能受益
           currentTeams = localKnownTeams;
         } catch (_) {}
@@ -1492,8 +1517,8 @@ mixin _StorageSync on _StorageServiceBase {
           }
           final item = c['item'];
           if (item is! Map) continue;
-          final uuid =
-              (item['uuid'] ?? item['id'] ?? item['todo_uuid'])?.toString();
+          final uuid = (item['uuid'] ?? item['id'] ?? item['todo_uuid'])
+              ?.toString();
           if (uuid != null && uuid.isNotEmpty) {
             blockingConflictUuids.add(uuid);
           }
@@ -1506,16 +1531,14 @@ mixin _StorageSync on _StorageServiceBase {
           acknowledgeHabitOps: acknowledgeHabitOps,
           acknowledgeSleepCoachingOps: syncHabits && sleepCoachingSupported,
         );
-        await _updateOplogRowsByIds(
-          db,
-          oplogResolution.acknowledgedIds,
-          {'is_synced': 1, 'sync_error': ''},
-        );
-        await _updateOplogRowsByIds(
-          db,
-          oplogResolution.blockedIds,
-          {'is_synced': 0, 'sync_error': 'server_conflict'},
-        );
+        await _updateOplogRowsByIds(db, oplogResolution.acknowledgedIds, {
+          'is_synced': 1,
+          'sync_error': '',
+        });
+        await _updateOplogRowsByIds(db, oplogResolution.blockedIds, {
+          'is_synced': 0,
+          'sync_error': 'server_conflict',
+        });
 
         // 重新读取当前待同步日志。本次请求发出后新增的操作
         // 没有上传，不能被本次响应确认，也不能被旧的服务端快照覆盖。
@@ -1528,13 +1551,14 @@ mixin _StorageSync on _StorageServiceBase {
             .map(SyncOplogEntry.fromRow)
             .whereType<SyncOplogEntry>()
             .toList(growable: false);
-        _pendingSyncOplogUuids =
-            SyncOplogPolicy.todoUuids(currentPendingEntries);
+        _pendingSyncOplogUuids = SyncOplogPolicy.todoUuids(
+          currentPendingEntries,
+        );
         inFlightTodoMutationUuids =
             SyncOplogPolicy.todoUuidsCreatedAfterSnapshot(
-          requestSnapshot: requestOplogSnapshot,
-          currentPending: currentPendingEntries,
-        );
+              requestSnapshot: requestOplogSnapshot,
+              currentPending: currentPendingEntries,
+            );
         if (inFlightTodoMutationUuids.isNotEmpty) {
           // allLocalTodos 是请求发出前的快照。用当前 SQLite 值回基
           // 请求期间被修改的待办，使后续合并和全量落库都保留最新用户意图。
@@ -1577,10 +1601,10 @@ mixin _StorageSync on _StorageServiceBase {
             completionTodoUuids.add(todoUuid);
           }
 
-          final completionTodoUuidList =
-              completionTodoUuids.toList(growable: false);
-          final localCompletionsByTodoUuid =
-              <String, Map<String, Object?>>{};
+          final completionTodoUuidList = completionTodoUuids.toList(
+            growable: false,
+          );
+          final localCompletionsByTodoUuid = <String, Map<String, Object?>>{};
           const queryChunkSize = 500;
           for (
             var start = 0;
@@ -1600,10 +1624,7 @@ mixin _StorageSync on _StorageServiceBase {
             for (final row in completionRows) {
               final todoUuid = row['todo_uuid']?.toString();
               if (todoUuid != null) {
-                localCompletionsByTodoUuid.putIfAbsent(
-                  todoUuid,
-                  () => row,
-                );
+                localCompletionsByTodoUuid.putIfAbsent(todoUuid, () => row);
               }
             }
           }
@@ -1636,7 +1657,8 @@ mixin _StorageSync on _StorageServiceBase {
               completionTodoUuids.add(todoUuid);
             }
             final rawCompleted = ic['is_completed'];
-            final isCompleted = rawCompleted == 1 ||
+            final isCompleted =
+                rawCompleted == 1 ||
                 rawCompleted == true ||
                 rawCompleted?.toString() == '1' ||
                 rawCompleted?.toString().toLowerCase() == 'true';
@@ -1652,8 +1674,7 @@ mixin _StorageSync on _StorageServiceBase {
                 serverUpdatedAt > 0 &&
                 serverUpdatedAt < localUpdatedAt) {
               // 本地有更新且晚于服务端，跳过 DB 写入，但仍需从 DB 读取正确值更新内存
-              final localIsCompleted =
-                  (existing?['is_completed'] as int?) ?? 0;
+              final localIsCompleted = (existing?['is_completed'] as int?) ?? 0;
               final localTodo = localTodosById[todoUuid];
               if (localTodo != null && localTodo.collabType == 1) {
                 if (localTodo.isDone != (localIsCompleted == 1)) {
@@ -1670,17 +1691,14 @@ mixin _StorageSync on _StorageServiceBase {
             }
             //debugPrint(
             //    '🧪 [SyncDiag][IndepCompletion] WRITE $todoUuid isCompleted=$isCompleted (raw=$rawCompleted)');
-            batch.insert(
-                'todo_completions',
-                {
-                  'todo_uuid': todoUuid,
-                  'user_id': userId,
-                  'is_completed': isCompleted ? 1 : 0,
-                  'updated_at': serverUpdatedAt > 0
-                      ? serverUpdatedAt
-                      : DateTime.now().millisecondsSinceEpoch,
-                },
-                conflictAlgorithm: ConflictAlgorithm.replace);
+            batch.insert('todo_completions', {
+              'todo_uuid': todoUuid,
+              'user_id': userId,
+              'is_completed': isCompleted ? 1 : 0,
+              'updated_at': serverUpdatedAt > 0
+                  ? serverUpdatedAt
+                  : DateTime.now().millisecondsSinceEpoch,
+            }, conflictAlgorithm: ConflictAlgorithm.replace);
             final localTodo = localTodosById[todoUuid];
             if (localTodo != null && localTodo.collabType == 1) {
               if (localTodo.isDone != isCompleted) {
@@ -1739,8 +1757,8 @@ mixin _StorageSync on _StorageServiceBase {
               PomodoroSyncService.instance.subscribedTeamUuids;
           final subscriptionsChanged =
               currentTeams.length != subscribedTeamUuids.length ||
-                  !currentTeams.containsAll(subscribedTeamUuids) ||
-                  !subscribedTeamUuids.containsAll(currentTeams);
+              !currentTeams.containsAll(subscribedTeamUuids) ||
+              !subscribedTeamUuids.containsAll(currentTeams);
           if (teamChanged || subscriptionsChanged) {
             debugPrint("👥 [协同] 团队列表发生变化，请求 WebSocket 刷新订阅...");
             // 利用 resumeSync 内部的逻辑可以触发重连与重新订阅
@@ -1751,8 +1769,9 @@ mixin _StorageSync on _StorageServiceBase {
         final errorMsg = response['message']?.toString() ?? '同步失败';
 
         // 🚀 记录同步失败的原因，方便用户查看
-        await db.update('op_logs', {'sync_error': errorMsg},
-            where: 'is_synced = 0');
+        await db.update('op_logs', {
+          'sync_error': errorMsg,
+        }, where: 'is_synced = 0');
         throw Exception(errorMsg);
       }
 
@@ -1790,21 +1809,23 @@ mixin _StorageSync on _StorageServiceBase {
 
       // 服务端有时只在 conflicts 返回冲突快照，不会重复返回整条习惯记录。
       // 先把这些快照登记下来，后面可判断是否只是残留冲突标记。
-      final localHabitGoalIds =
-          allLocalHabitGoals.map((item) => item.uuid).toSet();
-      final localHabitRuleIds =
-          allLocalHabitRules.map((item) => item.uuid).toSet();
+      final localHabitGoalIds = allLocalHabitGoals
+          .map((item) => item.uuid)
+          .toSet();
+      final localHabitRuleIds = allLocalHabitRules
+          .map((item) => item.uuid)
+          .toSet();
       for (final conflict in conflicts) {
-        final itemId =
-            (conflict.item['uuid'] ?? conflict.item['id'])?.toString();
+        final itemId = (conflict.item['uuid'] ?? conflict.item['id'])
+            ?.toString();
         if (itemId == null || itemId.isEmpty || conflict.conflictWith.isEmpty) {
           continue;
         }
         final table = localHabitGoalIds.contains(itemId)
             ? 'habit_goals'
             : localHabitRuleIds.contains(itemId)
-                ? 'habit_goal_rule_revisions'
-                : null;
+            ? 'habit_goal_rule_revisions'
+            : null;
         if (table != null) {
           staleHabitConflictSnapshots['$table:$itemId'] =
               Map<String, dynamic>.from(conflict.conflictWith);
@@ -1821,17 +1842,20 @@ mixin _StorageSync on _StorageServiceBase {
 
       // 🚀 核心修复：获取本地忽略表，防止”僵尸数据”复活
       final ignoredRows = await db.query('ignored_remote_items');
-      final Set<String> ignoredUuids =
-          ignoredRows.map((e) => e['uuid'].toString()).toSet();
+      final Set<String> ignoredUuids = ignoredRows
+          .map((e) => e['uuid'].toString())
+          .toSet();
 
       // 合并 Todos。旧版服务端没有持久化 recurrence_series_id；先利用本地
       // 已知关系或唯一、可验证的循环轨迹修复，再进入常规 LWW 合并。
-      List<dynamic> serverTodos =
-          syncTodos ? (response['server_todos'] ?? []) : const [];
+      List<dynamic> serverTodos = syncTodos
+          ? (response['server_todos'] ?? [])
+          : const [];
       final remoteTodoEntries = <({Map<String, dynamic> raw, TodoItem item})>[];
       for (final raw in serverTodos) {
-        final serverRaw =
-            raw is Map ? raw.cast<String, dynamic>() : <String, dynamic>{};
+        final serverRaw = raw is Map
+            ? raw.cast<String, dynamic>()
+            : <String, dynamic>{};
         final sanitizedServerRaw = _stripClientOnlyConflictForSync(serverRaw);
         remoteTodoEntries.add((
           raw: serverRaw,
@@ -1855,11 +1879,13 @@ mixin _StorageSync on _StorageServiceBase {
       );
 
       // Snapshot items with conflicts before merge, to detect resolutions after merge
-      final Set<String> preMergeConflictIds =
-          allLocalTodos.where((t) => t.hasConflict).map((t) => t.id).toSet();
+      final Set<String> preMergeConflictIds = allLocalTodos
+          .where((t) => t.hasConflict)
+          .map((t) => t.id)
+          .toSet();
 
       final Map<String, int> todosIndexMap = {
-        for (var i = 0; i < allLocalTodos.length; i++) allLocalTodos[i].id: i
+        for (var i = 0; i < allLocalTodos.length; i++) allLocalTodos[i].id: i,
       };
       for (final entry in remoteTodoEntries) {
         final serverRaw = entry.raw;
@@ -1871,11 +1897,13 @@ mixin _StorageSync on _StorageServiceBase {
         // 🚀 核心防御：非所属团队的数据处理（防止退出/被踢后数据回流）
         if (isOutsideJoinedTeam(sItem.teamUuid)) {
           debugPrint(
-              '🚫 [合并跳过] UUID: ${sItem.id} 团队 ${sItem.teamUuid} 已不在当前团队列表中');
+            '🚫 [合并跳过] UUID: ${sItem.id} 团队 ${sItem.teamUuid} 已不在当前团队列表中',
+          );
           continue;
         }
         final serverDeviceId = serverRaw['device_id']?.toString();
-        final bool isUpdatedByOtherDevice = serverDeviceId != null &&
+        final bool isUpdatedByOtherDevice =
+            serverDeviceId != null &&
             serverDeviceId.isNotEmpty &&
             serverDeviceId != deviceId;
         if (todosIndexMap.containsKey(sItem.id)) {
@@ -1886,12 +1914,12 @@ mixin _StorageSync on _StorageServiceBase {
           final serverWinsStrictRecurringLww =
               rejectedMaintenanceIds.contains(sItem.id) ||
               TodoLwwService.shouldReplaceRecurringSnapshot(
-            incomingUpdatedAt: sItem.updatedAt,
-            incomingVersion: sItem.version,
-            currentUpdatedAt: local.updatedAt,
-            currentVersion: local.version,
-            incomingHasConflict: sItem.hasConflict,
-          );
+                incomingUpdatedAt: sItem.updatedAt,
+                incomingVersion: sItem.version,
+                currentUpdatedAt: local.updatedAt,
+                currentVersion: local.version,
+                incomingHasConflict: sItem.hasConflict,
+              );
 
           // 请求前强制落库或请求期间新增的本地修改均跳过本次
           // merge，防止用请求发出前的旧内存/服务端快照覆盖用户意图。
@@ -1901,12 +1929,14 @@ mixin _StorageSync on _StorageServiceBase {
             inFlightMutationUuids: inFlightTodoMutationUuids,
           )) {
             debugPrint(
-                '🛡️ [merge] SKIP UUID=${sItem.id} (local mutation protected)');
+              '🛡️ [merge] SKIP UUID=${sItem.id} (local mutation protected)',
+            );
             continue;
           }
 
           debugPrint(
-              '🔄 [合并对比] UUID: ${sItem.id}, Server(V:${sItem.version}, D:${sItem.isDeleted}), Local(V:${local.version}, D:${local.isDeleted})');
+            '🔄 [合并对比] UUID: ${sItem.id}, Server(V:${sItem.version}, D:${sItem.isDeleted}), Local(V:${local.version}, D:${local.isDeleted})',
+          );
 
           // 防回滚：本地已删除且更”新”时，拒绝服务端旧的未删除数据复活
           if (!rejectedMaintenanceIds.contains(sItem.id) &&
@@ -1926,7 +1956,8 @@ mixin _StorageSync on _StorageServiceBase {
               sItem.version <= local.version &&
               (!usesStrictRecurringLww || !serverWinsStrictRecurringLww)) {
             debugPrint(
-                '🛡️ [防复活] UUID: ${sItem.id} 本地已删除(V:${local.version})，服务端未删除(V:${sItem.version})，拒绝复活');
+              '🛡️ [防复活] UUID: ${sItem.id} 本地已删除(V:${local.version})，服务端未删除(V:${sItem.version})，拒绝复活',
+            );
             continue;
           }
           // 🚀 补充防护：已解散团队的已删除待办，无条件拒绝未删除版本复活
@@ -1938,7 +1969,8 @@ mixin _StorageSync on _StorageServiceBase {
               currentTeams.isNotEmpty &&
               !currentTeams.contains(local.teamUuid)) {
             debugPrint(
-                '🛡️ [防复活-强拦截] UUID: ${sItem.id} 团队 ${local.teamUuid} 已解散(currentTeams=$currentTeams)，拒绝未删除版本复活');
+              '🛡️ [防复活-强拦截] UUID: ${sItem.id} 团队 ${local.teamUuid} 已解散(currentTeams=$currentTeams)，拒绝未删除版本复活',
+            );
             continue;
           }
 
@@ -1947,7 +1979,8 @@ mixin _StorageSync on _StorageServiceBase {
               sItem.updatedAt > local.updatedAt && !sItem.hasConflict;
           if (sItem.hasConflict || local.hasConflict) {
             debugPrint(
-                '🩺 [合并决策] UUID=${sItem.id} sV=${sItem.version} lV=${local.version} sU=${sItem.updatedAt} lU=${local.updatedAt} sConflict=${sItem.hasConflict} lConflict=${local.hasConflict} versionCond=$mergeVersionCond timeCond=$mergeTimeCond isDeleted=${sItem.isDeleted}');
+              '🩺 [合并决策] UUID=${sItem.id} sV=${sItem.version} lV=${local.version} sU=${sItem.updatedAt} lU=${local.updatedAt} sConflict=${sItem.hasConflict} lConflict=${local.hasConflict} versionCond=$mergeVersionCond timeCond=$mergeTimeCond isDeleted=${sItem.isDeleted}',
+            );
           }
           final shouldReplaceTodo = usesStrictRecurringLww
               ? serverWinsStrictRecurringLww
@@ -1979,7 +2012,8 @@ mixin _StorageSync on _StorageServiceBase {
             if (sItem.hasConflict && !localItem.hasConflict) {
               if (isRecentlyResolved(localItem.id)) {
                 debugPrint(
-                    '⏭️ [MemoryShield] Skipping conflict resurrection for recently resolved todo: ${localItem.id}');
+                  '⏭️ [MemoryShield] Skipping conflict resurrection for recently resolved todo: ${localItem.id}',
+                );
               } else {
                 // Server still has conflict but local was resolved — sync conflict metadata only
                 localItem.hasConflict = true;
@@ -2008,10 +2042,11 @@ mixin _StorageSync on _StorageServiceBase {
       }
 
       // 合并 TodoGroups
-      List<dynamic> serverGroups =
-          syncTodos ? (response['server_todo_groups'] ?? []) : const [];
+      List<dynamic> serverGroups = syncTodos
+          ? (response['server_todo_groups'] ?? [])
+          : const [];
       final Map<String, int> groupsIndexMap = {
-        for (var i = 0; i < allLocalGroups.length; i++) allLocalGroups[i].id: i
+        for (var i = 0; i < allLocalGroups.length; i++) allLocalGroups[i].id: i,
       };
       for (var raw in serverGroups) {
         TodoGroup sItem = TodoGroup.fromJson(raw);
@@ -2021,7 +2056,8 @@ mixin _StorageSync on _StorageServiceBase {
         }
         if (isOutsideJoinedTeam(sItem.teamUuid)) {
           debugPrint(
-              '🚫 [合并跳过] 文件夹 UUID: ${sItem.id} 团队 ${sItem.teamUuid} 已不在当前团队列表中');
+            '🚫 [合并跳过] 文件夹 UUID: ${sItem.id} 团队 ${sItem.teamUuid} 已不在当前团队列表中',
+          );
           continue;
         }
         if (groupsIndexMap.containsKey(sItem.id)) {
@@ -2059,7 +2095,8 @@ mixin _StorageSync on _StorageServiceBase {
             if (sItem.hasConflict && !localGroup.hasConflict) {
               if (isRecentlyResolved(localGroup.id)) {
                 debugPrint(
-                    '⏭️ [MemoryShield] Skipping conflict resurrection for recently resolved group: ${localGroup.id}');
+                  '⏭️ [MemoryShield] Skipping conflict resurrection for recently resolved group: ${localGroup.id}',
+                );
               } else {
                 localGroup.hasConflict = true;
                 localGroup.conflictData = sItem.conflictData;
@@ -2083,11 +2120,12 @@ mixin _StorageSync on _StorageServiceBase {
       }
 
       // 合并 Countdowns
-      List<dynamic> serverCountdowns =
-          syncCountdowns ? (response['server_countdowns'] ?? []) : const [];
+      List<dynamic> serverCountdowns = syncCountdowns
+          ? (response['server_countdowns'] ?? [])
+          : const [];
       final Map<String, int> countdownsIndexMap = {
         for (var i = 0; i < allLocalCountdowns.length; i++)
-          allLocalCountdowns[i].id: i
+          allLocalCountdowns[i].id: i,
       };
       for (var raw in serverCountdowns) {
         CountdownItem sItem = CountdownItem.fromJson(raw);
@@ -2097,7 +2135,8 @@ mixin _StorageSync on _StorageServiceBase {
         }
         if (isOutsideJoinedTeam(sItem.teamUuid)) {
           debugPrint(
-              '🚫 [合并跳过] 倒计时 UUID: ${sItem.id} 团队 ${sItem.teamUuid} 已不在当前团队列表中');
+            '🚫 [合并跳过] 倒计时 UUID: ${sItem.id} 团队 ${sItem.teamUuid} 已不在当前团队列表中',
+          );
           continue;
         }
         if (countdownsIndexMap.containsKey(sItem.id)) {
@@ -2136,7 +2175,8 @@ mixin _StorageSync on _StorageServiceBase {
             if (sItem.hasConflict && !localCountdown.hasConflict) {
               if (isRecentlyResolved(localCountdown.id)) {
                 debugPrint(
-                    '⏭️ [MemoryShield] Skipping conflict resurrection for recently resolved countdown: ${localCountdown.id}');
+                  '⏭️ [MemoryShield] Skipping conflict resurrection for recently resolved countdown: ${localCountdown.id}',
+                );
               } else {
                 localCountdown.hasConflict = true;
                 localCountdown.conflictData = sItem.conflictData;
@@ -2160,17 +2200,19 @@ mixin _StorageSync on _StorageServiceBase {
       }
 
       // 合并 TimeLogs
-      List<dynamic> serverTimeLogs =
-          syncTimeLogs ? (response['server_time_logs'] ?? []) : const [];
+      List<dynamic> serverTimeLogs = syncTimeLogs
+          ? (response['server_time_logs'] ?? [])
+          : const [];
       final Map<String, int> timeLogsIndexMap = {
         for (var i = 0; i < allLocalTimeLogs.length; i++)
-          allLocalTimeLogs[i].id: i
+          allLocalTimeLogs[i].id: i,
       };
       for (var raw in serverTimeLogs) {
         TimeLogItem sItem = TimeLogItem.fromJson(raw);
         if (isOutsideJoinedTeam(sItem.teamUuid)) {
           debugPrint(
-              '🚫 [合并跳过] 时间日志 UUID: ${sItem.id} 团队 ${sItem.teamUuid} 已不在当前团队列表中');
+            '🚫 [合并跳过] 时间日志 UUID: ${sItem.id} 团队 ${sItem.teamUuid} 已不在当前团队列表中',
+          );
           continue;
         }
         if (timeLogsIndexMap.containsKey(sItem.id)) {
@@ -2195,11 +2237,12 @@ mixin _StorageSync on _StorageServiceBase {
         List<dynamic> serverPlanBlocks = response['server_plan_blocks'] ?? [];
         final Map<String, int> planBlocksIndexMap = {
           for (var i = 0; i < allLocalPlanBlocks.length; i++)
-            allLocalPlanBlocks[i].id: i
+            allLocalPlanBlocks[i].id: i,
         };
         for (var raw in serverPlanBlocks) {
-          TodoPlanBlock sItem =
-              TodoPlanBlock.fromJson((raw as Map).cast<String, dynamic>());
+          TodoPlanBlock sItem = TodoPlanBlock.fromJson(
+            (raw as Map).cast<String, dynamic>(),
+          );
           if (ignoredUuids.contains(sItem.id)) {
             debugPrint('🚫 [合并跳过] 规划块 UUID: ${sItem.id} 已忽略');
             continue;
@@ -2273,9 +2316,7 @@ mixin _StorageSync on _StorageServiceBase {
         };
         for (final raw in serverHabitGoals) {
           if (raw is! Map) continue;
-          final serverItem = HabitGoal.fromJson(
-            Map<String, dynamic>.from(raw),
-          );
+          final serverItem = HabitGoal.fromJson(Map<String, dynamic>.from(raw));
           if (ignoredUuids.contains(serverItem.uuid)) continue;
           final localIndex = habitGoalsIndexMap[serverItem.uuid];
           if (localIndex == null) {
@@ -2293,7 +2334,8 @@ mixin _StorageSync on _StorageServiceBase {
           }
           // 冲突标记会推高服务端 updated_at；时间路径必须排除冲突项，
           // 避免用冲突快照覆盖本地更新的内容（与倒计时合并规则一致）。
-          final serverWins = serverItem.version > localItem.version ||
+          final serverWins =
+              serverItem.version > localItem.version ||
               (serverItem.updatedAt > localItem.updatedAt &&
                   !serverItem.hasConflict);
           if (serverWins) {
@@ -2335,13 +2377,13 @@ mixin _StorageSync on _StorageServiceBase {
           }
           final localItem = allLocalHabitRules[localIndex];
           if (serverItem.hasConflict) {
-            staleHabitConflictSnapshots[
-                    'habit_goal_rule_revisions:${serverItem.uuid}'] =
+            staleHabitConflictSnapshots['habit_goal_rule_revisions:${serverItem.uuid}'] =
                 serverItem.toJson();
           }
           // 与目标一致：冲突标记会推高服务端 updated_at，
           // 时间路径必须排除冲突项，避免冲突快照覆盖本地新内容。
-          final serverWins = serverItem.version > localItem.version ||
+          final serverWins =
+              serverItem.version > localItem.version ||
               (serverItem.updatedAt > localItem.updatedAt &&
                   !serverItem.hasConflict);
           if (serverWins) {
@@ -2397,7 +2439,7 @@ mixin _StorageSync on _StorageServiceBase {
         // 这里持久化，而由同步后的打卡记录计算。
         final serverHabitSleepCoachingPlans =
             (response['server_habit_sleep_coaching_plans'] as List?) ??
-                const [];
+            const [];
         final sleepCoachingPlanIndexMap = <String, int>{
           for (var i = 0; i < allLocalHabitSleepCoachingPlans.length; i++)
             allLocalHabitSleepCoachingPlans[i].uuid: i,
@@ -2450,8 +2492,9 @@ mixin _StorageSync on _StorageServiceBase {
       // 服务器在标记 has_conflict=1 时可能不会同时更新 updated_at，
       // 导致该条目被 filterWithActualTime 过滤掉，不在 server_todos 中。
       // 这里从 conflicts 数组直接补标，确保 ConflictInboxScreen 能看到。
-      final ignoredScheduleConflictKeys =
-          await _getIgnoredScheduleConflictKeys(username);
+      final ignoredScheduleConflictKeys = await _getIgnoredScheduleConflictKeys(
+        username,
+      );
       if (conflicts.isNotEmpty) {
         final conflictDetectionEnabled = await getConflictDetectionEnabled();
         for (final c in conflicts) {
@@ -2459,7 +2502,8 @@ mixin _StorageSync on _StorageServiceBase {
           if (itemId.isEmpty) continue;
           if (isRecentlyResolved(itemId)) {
             debugPrint(
-                '⏭️ [MemoryShield] Skipping re-flag of recently resolved item in conflicts: $itemId');
+              '⏭️ [MemoryShield] Skipping re-flag of recently resolved item in conflicts: $itemId',
+            );
             continue;
           }
           final serverVersion = c.conflictWith;
@@ -2468,8 +2512,9 @@ mixin _StorageSync on _StorageServiceBase {
             if (!conflictDetectionEnabled) continue;
             final todo = allLocalTodos[todosIndexMap[itemId]!];
             if (ConflictVisibilityService.isAllDayTodo(todo)) {
-              if (ConflictVisibilityService
-                  .clearImpossibleTodoScheduleConflict(todo)) {
+              if (ConflictVisibilityService.clearImpossibleTodoScheduleConflict(
+                todo,
+              )) {
                 hasChanges = true;
               }
               continue;
@@ -2497,7 +2542,8 @@ mixin _StorageSync on _StorageServiceBase {
 
           final serverVersionId =
               (serverVersion['uuid'] ?? serverVersion['id'] ?? '').toString();
-          final bool isSameItemServerVersion = serverVersionId.isNotEmpty &&
+          final bool isSameItemServerVersion =
+              serverVersionId.isNotEmpty &&
               serverVersionId == itemId.toString();
           if (!isSameItemServerVersion) {
             debugPrint('⚠️ 跳过无可用云端快照的冲突标记: ${c.type} $itemId');
@@ -2510,8 +2556,10 @@ mixin _StorageSync on _StorageServiceBase {
                 (serverVersion['version'] as num?)?.toInt() ?? 0;
             // Skip if already resolved (hasConflict cleared) or version bumped above server
             if (!todo.hasConflict || todo.version > serverConflictVer) {
-              debugPrint('⏭️ Skipping re-flag of resolved todo $itemId '
-                  '(hasConflict=${todo.hasConflict}, localV=${todo.version}, serverV=$serverConflictVer)');
+              debugPrint(
+                '⏭️ Skipping re-flag of resolved todo $itemId '
+                '(hasConflict=${todo.hasConflict}, localV=${todo.version}, serverV=$serverConflictVer)',
+              );
             } else {
               todo.hasConflict = true;
               todo.serverVersionData = serverVersion;
@@ -2555,9 +2603,11 @@ mixin _StorageSync on _StorageServiceBase {
           await PomodoroService.syncTagsFromCloud();
           await PomodoroService.syncTagsToCloud();
           await PomodoroService.syncRecordsToCloud(
-              forceFullSync: forceFullSync);
+            forceFullSync: forceFullSync,
+          );
           pomodoroChanged = await PomodoroService.syncRecordsFromCloud(
-              forceFullSync: forceFullSync);
+            forceFullSync: forceFullSync,
+          );
           if (pomodoroChanged) hasChanges = true;
         } catch (pe) {
           debugPrint("Pomodoro sync error: $pe");
@@ -2614,23 +2664,38 @@ mixin _StorageSync on _StorageServiceBase {
       if (hasChanges) {
         await UserSessionStorage.ensureCurrentSession(session);
         if (syncTodos) {
-          await saveTodos(username, allLocalTodos,
-              sync: false,
-              isSyncSource: true,
-              authoritativeTodoIds: rejectedMaintenanceIds);
-          await saveTodoGroups(username, allLocalGroups,
-              sync: false, isSyncSource: true);
+          await saveTodos(
+            username,
+            allLocalTodos,
+            sync: false,
+            isSyncSource: true,
+            authoritativeTodoIds: rejectedMaintenanceIds,
+          );
+          await saveTodoGroups(
+            username,
+            allLocalGroups,
+            sync: false,
+            isSyncSource: true,
+          );
         }
         if (syncCountdowns) {
-          await saveCountdowns(username, allLocalCountdowns,
-              sync: false, isSyncSource: true);
+          await saveCountdowns(
+            username,
+            allLocalCountdowns,
+            sync: false,
+            isSyncSource: true,
+          );
         }
         if (syncTimeLogs) {
           await saveTimeLogs(username, allLocalTimeLogs, sync: false);
         }
         if (syncPlanBlocks) {
-          await savePlanBlocks(username, allLocalPlanBlocks,
-              sync: false, isSyncSource: true);
+          await savePlanBlocks(
+            username,
+            allLocalPlanBlocks,
+            sync: false,
+            isSyncSource: true,
+          );
         }
         if (syncFixedSchedules && fixedSchedulesSupported) {
           await saveFixedSchedules(
@@ -2688,16 +2753,25 @@ mixin _StorageSync on _StorageServiceBase {
         final repairedItems = <TodoItem>[];
         final persistedRepairItems = <String, TodoItem>{};
         const repairChunkSize = 400;
-        for (var start = 0; start < repairCandidates.length; start += repairChunkSize) {
+        for (
+          var start = 0;
+          start < repairCandidates.length;
+          start += repairChunkSize
+        ) {
           final rows = await DatabaseHelper.instance.getTodoMaps(
             includeDeleted: true,
             includeConflictData: true,
-            uuids: repairCandidates.skip(start).take(repairChunkSize)
-                .map((todo) => todo.id).toList(),
+            uuids: repairCandidates
+                .skip(start)
+                .take(repairChunkSize)
+                .map((todo) => todo.id)
+                .toList(),
             databaseOverride: db,
           );
           for (final row in rows) {
-            persistedRepairItems[row['uuid'].toString()] = TodoItem.fromSql(row);
+            persistedRepairItems[row['uuid'].toString()] = TodoItem.fromSql(
+              row,
+            );
           }
         }
         for (final todo in repairCandidates) {
@@ -2738,13 +2812,12 @@ mixin _StorageSync on _StorageServiceBase {
           response['new_sync_time'] ?? DateTime.now().millisecondsSinceEpoch;
       if (syncsCoreData) {
         await prefs.setInt(
-            'last_sync_time_${serverKey}_$username', newSyncTime);
+          'last_sync_time_${serverKey}_$username',
+          newSyncTime,
+        );
       }
       if (syncHabits && habitsSupported) {
-        await prefs.setBool(
-          habitCursorCapabilityKey,
-          habitSyncCursorSupported,
-        );
+        await prefs.setBool(habitCursorCapabilityKey, habitSyncCursorSupported);
         final rawHabitSyncTime = response['new_habit_sync_time'];
         final newHabitSyncTime = rawHabitSyncTime is num
             ? rawHabitSyncTime.toInt()
@@ -2802,8 +2875,8 @@ mixin _StorageSync on _StorageServiceBase {
         final conflictIds = <String>{};
         var unresolvedConflictCount = 0;
         for (final conflict in conflicts) {
-          final itemId =
-              (conflict.item['uuid'] ?? conflict.item['id'])?.toString();
+          final itemId = (conflict.item['uuid'] ?? conflict.item['id'])
+              ?.toString();
           if (itemId == null ||
               itemId.isEmpty ||
               autoResolvedHabitConflictIds.contains(itemId)) {
@@ -2867,8 +2940,8 @@ mixin _StorageSync on _StorageServiceBase {
       }
 
       conflicts.removeWhere((conflict) {
-        final itemId =
-            (conflict.item['uuid'] ?? conflict.item['id'])?.toString();
+        final itemId = (conflict.item['uuid'] ?? conflict.item['id'])
+            ?.toString();
         if (itemId == null || itemId.isEmpty) return false;
         if (autoResolvedHabitConflictIds.contains(itemId)) return true;
         final local = findLocalTodo(itemId);
@@ -2886,13 +2959,16 @@ mixin _StorageSync on _StorageServiceBase {
       final serverConflictIds = conflicts
           .map((c) => (c.item['uuid'] ?? c.item['id'] ?? '').toString())
           .toSet();
-      recentlyResolvedUuids
-          .removeWhere((id) => !serverConflictIds.contains(id));
-      recentlyResolvedTimes
-          .removeWhere((id, _) => !serverConflictIds.contains(id));
+      recentlyResolvedUuids.removeWhere(
+        (id) => !serverConflictIds.contains(id),
+      );
+      recentlyResolvedTimes.removeWhere(
+        (id, _) => !serverConflictIds.contains(id),
+      );
       if (recentlyResolvedUuids.isNotEmpty) {
         debugPrint(
-            '🛡️ [MemoryShield] Remaining locked items in memory shield: $recentlyResolvedUuids');
+          '🛡️ [MemoryShield] Remaining locked items in memory shield: $recentlyResolvedUuids',
+        );
       }
 
       await UserSessionStorage.ensureCurrentSession(session);
@@ -2931,8 +3007,8 @@ mixin _StorageSync on _StorageServiceBase {
       final localJson = table == 'habit_goals'
           ? goalsById[uuid]?.toJson()
           : table == 'habit_goal_rule_revisions'
-              ? rulesById[uuid]?.toJson()
-              : null;
+          ? rulesById[uuid]?.toJson()
+          : null;
       if (localJson == null ||
           !HabitSyncConflictService.hasSameBusinessContent(
             localJson,
@@ -2945,86 +3021,91 @@ mixin _StorageSync on _StorageServiceBase {
 
     if (candidates.isEmpty) return <String>{};
 
-    final results = await Future.wait(candidates.values.map((candidate) async {
-      final localJson = candidate.table == 'habit_goals'
-          ? goalsById[candidate.uuid]?.toJson()
-          : rulesById[candidate.uuid]?.toJson();
-      if (localJson == null) {
-        return (
-          candidate: candidate,
-          resolved: false,
-          resolvedData: null as Map<String, dynamic>?,
-        );
-      }
-
-      try {
-        final result = await ApiService.resolveConflict(
-          uuid: candidate.uuid,
-          table: candidate.table,
-          resolution: 'accept_server',
-        );
-        if (result['success'] == true) {
+    final results = await Future.wait(
+      candidates.values.map((candidate) async {
+        final localJson = candidate.table == 'habit_goals'
+            ? goalsById[candidate.uuid]?.toJson()
+            : rulesById[candidate.uuid]?.toJson();
+        if (localJson == null) {
           return (
             candidate: candidate,
-            resolved: true,
+            resolved: false,
             resolvedData: null as Map<String, dynamic>?,
           );
         }
-        debugPrint(
-            '⚠️ [同步修复] 服务端清理习惯冲突失败 ${candidate.uuid}: ${result['error'] ?? '未知错误'}');
-      } catch (error) {
-        debugPrint('⚠️ [同步修复] 服务端清理习惯冲突异常 ${candidate.uuid}: $error');
-      }
 
-      // 兼容旧服务端或解除接口暂时不可用的情况：本地先清理并排队一条
-      // 高版本的干净数据，下一次普通同步仍可完成服务端收敛。
-      try {
-        final snapshot = snapshots['${candidate.table}:${candidate.uuid}'];
-        final serverVersion =
-            int.tryParse(snapshot?['version']?.toString() ?? '') ?? 0;
-        final currentVersion =
-            int.tryParse(localJson['version']?.toString() ?? '') ?? 1;
-        final resolvedData = Map<String, dynamic>.from(localJson)
-          ..['version'] = (serverVersion > currentVersion
-                  ? serverVersion
-                  : currentVersion) +
-              1
-          ..['updated_at'] = DateTime.now().millisecondsSinceEpoch
-          ..['has_conflict'] = 0
-          ..remove('conflict_data')
-          ..remove('serverVersionData');
-        await StorageService.resolveConflictLocally(
-          uuid: candidate.uuid,
-          table: candidate.table,
-          resolvedData: resolvedData,
-          createOplog: true,
-          touchUpdatedAt: false,
-        );
-        final fallback = await ApiService.resolveConflict(
-          uuid: candidate.uuid,
-          table: candidate.table,
-          resolution: 'keep_local',
-          bumpedVersion: resolvedData['version'] as int,
-          data: resolvedData,
-        );
-        if (fallback['success'] != true) {
+        try {
+          final result = await ApiService.resolveConflict(
+            uuid: candidate.uuid,
+            table: candidate.table,
+            resolution: 'accept_server',
+          );
+          if (result['success'] == true) {
+            return (
+              candidate: candidate,
+              resolved: true,
+              resolvedData: null as Map<String, dynamic>?,
+            );
+          }
           debugPrint(
-              'ℹ️ [同步修复] 已清除本地习惯冲突并排队重试 ${candidate.uuid}: ${fallback['error'] ?? '等待下次同步'}');
+            '⚠️ [同步修复] 服务端清理习惯冲突失败 ${candidate.uuid}: ${result['error'] ?? '未知错误'}',
+          );
+        } catch (error) {
+          debugPrint('⚠️ [同步修复] 服务端清理习惯冲突异常 ${candidate.uuid}: $error');
         }
-        return (
-          candidate: candidate,
-          resolved: true,
-          resolvedData: resolvedData,
-        );
-      } catch (error) {
-        debugPrint('⚠️ [同步修复] 本地排队清理习惯冲突失败 ${candidate.uuid}: $error');
-        return (
-          candidate: candidate,
-          resolved: false,
-          resolvedData: null as Map<String, dynamic>?,
-        );
-      }
-    }));
+
+        // 兼容旧服务端或解除接口暂时不可用的情况：本地先清理并排队一条
+        // 高版本的干净数据，下一次普通同步仍可完成服务端收敛。
+        try {
+          final snapshot = snapshots['${candidate.table}:${candidate.uuid}'];
+          final serverVersion =
+              int.tryParse(snapshot?['version']?.toString() ?? '') ?? 0;
+          final currentVersion =
+              int.tryParse(localJson['version']?.toString() ?? '') ?? 1;
+          final resolvedData = Map<String, dynamic>.from(localJson)
+            ..['version'] =
+                (serverVersion > currentVersion
+                    ? serverVersion
+                    : currentVersion) +
+                1
+            ..['updated_at'] = DateTime.now().millisecondsSinceEpoch
+            ..['has_conflict'] = 0
+            ..remove('conflict_data')
+            ..remove('serverVersionData');
+          await StorageService.resolveConflictLocally(
+            uuid: candidate.uuid,
+            table: candidate.table,
+            resolvedData: resolvedData,
+            createOplog: true,
+            touchUpdatedAt: false,
+          );
+          final fallback = await ApiService.resolveConflict(
+            uuid: candidate.uuid,
+            table: candidate.table,
+            resolution: 'keep_local',
+            bumpedVersion: resolvedData['version'] as int,
+            data: resolvedData,
+          );
+          if (fallback['success'] != true) {
+            debugPrint(
+              'ℹ️ [同步修复] 已清除本地习惯冲突并排队重试 ${candidate.uuid}: ${fallback['error'] ?? '等待下次同步'}',
+            );
+          }
+          return (
+            candidate: candidate,
+            resolved: true,
+            resolvedData: resolvedData,
+          );
+        } catch (error) {
+          debugPrint('⚠️ [同步修复] 本地排队清理习惯冲突失败 ${candidate.uuid}: $error');
+          return (
+            candidate: candidate,
+            resolved: false,
+            resolvedData: null as Map<String, dynamic>?,
+          );
+        }
+      }),
+    );
 
     final resolvedIds = <String>{};
     _SyncListIndex<HabitGoal>? goalIndex;

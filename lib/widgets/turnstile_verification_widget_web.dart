@@ -342,10 +342,10 @@ class _TurnstileVerificationWidgetState
             color: _isVerified
                 ? const Color(0xFF4CAF50)
                 : _hasError
-                    ? const Color(0xFFE53E3E)
-                    : widget.isDarkMode
-                        ? const Color(0x1AFFFFFF)
-                        : const Color(0xFFDDDDEE),
+                ? const Color(0xFFE53E3E)
+                : widget.isDarkMode
+                ? const Color(0x1AFFFFFF)
+                : const Color(0xFFDDDDEE),
           ),
         ),
         child: ClipRRect(
@@ -389,8 +389,11 @@ class _TurnstileVerificationWidgetState
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.check_circle_outline,
-                  color: Color(0xFF4CAF50), size: 20),
+              Icon(
+                Icons.check_circle_outline,
+                color: Color(0xFF4CAF50),
+                size: 20,
+              ),
               SizedBox(width: 8),
               Text('验证已通过'),
             ],

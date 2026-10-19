@@ -93,8 +93,11 @@ class IslandConfig {
   // ── UI Sizes ─────────────────────────────────────────────────────────────
 
   /// Get target size for each island state
-  static Size sizeForState(IslandStateConfig state,
-      {bool hasSubtitle = false, String? expandedPart}) {
+  static Size sizeForState(
+    IslandStateConfig state, {
+    bool hasSubtitle = false,
+    String? expandedPart,
+  }) {
     switch (state) {
       case IslandStateConfig.idle:
         return const Size(100, 34);

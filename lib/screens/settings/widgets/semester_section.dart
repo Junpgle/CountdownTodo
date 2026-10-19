@@ -61,9 +61,11 @@ class SemesterSection extends StatelessWidget {
           child: ListTile(
             contentPadding: const EdgeInsets.only(left: 56, right: 16),
             title: const Text('开学日期'),
-            trailing: Text(semesterStart == null
-                ? "未设置"
-                : AppTimeFormats.date(semesterStart!)),
+            trailing: Text(
+              semesterStart == null
+                  ? "未设置"
+                  : AppTimeFormats.date(semesterStart!),
+            ),
             onTap: () => onPickSemesterDate(true),
           ),
         ),
@@ -73,9 +75,9 @@ class SemesterSection extends StatelessWidget {
           child: ListTile(
             contentPadding: const EdgeInsets.only(left: 56, right: 16),
             title: const Text('放假日期'),
-            trailing: Text(semesterEnd == null
-                ? "未设置"
-                : AppTimeFormats.date(semesterEnd!)),
+            trailing: Text(
+              semesterEnd == null ? "未设置" : AppTimeFormats.date(semesterEnd!),
+            ),
             onTap: () => onPickSemesterDate(false),
           ),
         ),
@@ -84,8 +86,10 @@ class SemesterSection extends StatelessWidget {
           context: context,
           targetId: 'semester_sync',
           child: ListTile(
-            leading: Icon(Icons.cloud_download_outlined,
-                color: colorScheme.secondary),
+            leading: Icon(
+              Icons.cloud_download_outlined,
+              color: colorScheme.secondary,
+            ),
             title: const Text('从云端同步开学/放假时间'),
             subtitle: const Text('将另一设备设置的学期日期同步到本机'),
             trailing: const Icon(Icons.chevron_right),

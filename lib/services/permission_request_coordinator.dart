@@ -29,58 +29,54 @@ enum AppPermissionKind {
 
 extension AppPermissionKindDetails on AppPermissionKind {
   String get label => switch (this) {
-        AppPermissionKind.notification => '通知',
-        AppPermissionKind.storage => '存储读写',
-        AppPermissionKind.usageStats => '应用使用情况',
-        AppPermissionKind.requestInstall => '安装未知来源应用',
-        AppPermissionKind.exactAlarm => '精确提醒',
-        AppPermissionKind.batteryOptimization => '忽略电池优化',
-        AppPermissionKind.calendar => '日历读写',
-        AppPermissionKind.liveUpdates => '实时通知',
-        AppPermissionKind.localNetwork => '局域网访问',
-        AppPermissionKind.bandDeviceManagement => '小米手环设备管理',
-      };
+    AppPermissionKind.notification => '通知',
+    AppPermissionKind.storage => '存储读写',
+    AppPermissionKind.usageStats => '应用使用情况',
+    AppPermissionKind.requestInstall => '安装未知来源应用',
+    AppPermissionKind.exactAlarm => '精确提醒',
+    AppPermissionKind.batteryOptimization => '忽略电池优化',
+    AppPermissionKind.calendar => '日历读写',
+    AppPermissionKind.liveUpdates => '实时通知',
+    AppPermissionKind.localNetwork => '局域网访问',
+    AppPermissionKind.bandDeviceManagement => '小米手环设备管理',
+  };
 
   String get rationale => switch (this) {
-        AppPermissionKind.notification => '用于发送待办、课程和专注结束提醒。',
-        AppPermissionKind.storage => '用于导入课表文件和保存版本更新安装包。',
-        AppPermissionKind.usageStats => '用于统计各应用使用时长，生成屏幕时间分析。',
-        AppPermissionKind.requestInstall => '用于在应用内安装已经下载的版本更新。',
-        AppPermissionKind.exactAlarm => '用于在应用退出后仍按设定时间准时发送提醒。',
-        AppPermissionKind.batteryOptimization => '用于减少锁屏后专注计时和实时同步被系统中断。',
-        AppPermissionKind.calendar => '用于将课程、待办和计划写入 Android 系统日历。',
-        AppPermissionKind.liveUpdates => '用于在支持的 Android 设备上展示实时活动和状态更新。',
-        AppPermissionKind.localNetwork => '用于发现同一局域网中的其他设备并进行局域网同步。',
-        AppPermissionKind.bandDeviceManagement =>
-          '用于向已连接的小米手环同步待办、课程、倒数日和专注状态。',
-      };
+    AppPermissionKind.notification => '用于发送待办、课程和专注结束提醒。',
+    AppPermissionKind.storage => '用于导入课表文件和保存版本更新安装包。',
+    AppPermissionKind.usageStats => '用于统计各应用使用时长，生成屏幕时间分析。',
+    AppPermissionKind.requestInstall => '用于在应用内安装已经下载的版本更新。',
+    AppPermissionKind.exactAlarm => '用于在应用退出后仍按设定时间准时发送提醒。',
+    AppPermissionKind.batteryOptimization => '用于减少锁屏后专注计时和实时同步被系统中断。',
+    AppPermissionKind.calendar => '用于将课程、待办和计划写入 Android 系统日历。',
+    AppPermissionKind.liveUpdates => '用于在支持的 Android 设备上展示实时活动和状态更新。',
+    AppPermissionKind.localNetwork => '用于发现同一局域网中的其他设备并进行局域网同步。',
+    AppPermissionKind.bandDeviceManagement => '用于向已连接的小米手环同步待办、课程、倒数日和专注状态。',
+  };
 
   bool get opensDedicatedSettings => switch (this) {
-        AppPermissionKind.usageStats ||
-        AppPermissionKind.exactAlarm ||
-        AppPermissionKind.batteryOptimization ||
-        AppPermissionKind.liveUpdates =>
-          true,
-        _ => false,
-      };
+    AppPermissionKind.usageStats ||
+    AppPermissionKind.exactAlarm ||
+    AppPermissionKind.batteryOptimization ||
+    AppPermissionKind.liveUpdates => true,
+    _ => false,
+  };
 
   /// Advanced system/device permissions require the same parent gate no
   /// matter which screen initiated the request. Normal productivity
   /// permissions and APK installation remain outside this gate.
   bool get requiresMinorModeAuthorization => switch (this) {
-        AppPermissionKind.usageStats ||
-        AppPermissionKind.batteryOptimization ||
-        AppPermissionKind.liveUpdates ||
-        AppPermissionKind.bandDeviceManagement =>
-          true,
-        AppPermissionKind.notification ||
-        AppPermissionKind.storage ||
-        AppPermissionKind.requestInstall ||
-        AppPermissionKind.exactAlarm ||
-        AppPermissionKind.calendar ||
-        AppPermissionKind.localNetwork =>
-          false,
-      };
+    AppPermissionKind.usageStats ||
+    AppPermissionKind.batteryOptimization ||
+    AppPermissionKind.liveUpdates ||
+    AppPermissionKind.bandDeviceManagement => true,
+    AppPermissionKind.notification ||
+    AppPermissionKind.storage ||
+    AppPermissionKind.requestInstall ||
+    AppPermissionKind.exactAlarm ||
+    AppPermissionKind.calendar ||
+    AppPermissionKind.localNetwork => false,
+  };
 }
 
 @immutable
@@ -104,13 +100,17 @@ class PermissionRequestResult {
 }
 
 typedef PermissionResultCallback = void Function(
-    PermissionRequestResult result);
+  PermissionRequestResult result,
+);
 typedef PermissionStatusReader = Future<PermissionStatus> Function(
-    AppPermissionKind permission);
+  AppPermissionKind permission,
+);
 typedef PermissionRequester = Future<PermissionStatus> Function(
-    AppPermissionKind permission);
+  AppPermissionKind permission,
+);
 typedef PermissionSettingsOpener = Future<bool> Function(
-    AppPermissionKind permission);
+  AppPermissionKind permission,
+);
 
 /// Coordinates permission prompts, settings round-trips and their UI feedback.
 class PermissionRequestCoordinator with WidgetsBindingObserver {
@@ -121,13 +121,14 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
     PermissionStatusReader? statusReader,
     PermissionRequester? requester,
     PermissionSettingsOpener? settingsOpener,
-  })  : _platformChannel = platformChannel ??
-            const MethodChannel(
-              'com.math_quiz.junpgle.com.math_quiz_app/notifications',
-            ),
-        _statusReaderOverride = statusReader,
-        _requesterOverride = requester,
-        _settingsOpenerOverride = settingsOpener {
+  }) : _platformChannel =
+           platformChannel ??
+           const MethodChannel(
+             'com.math_quiz.junpgle.com.math_quiz_app/notifications',
+           ),
+       _statusReaderOverride = statusReader,
+       _requesterOverride = requester,
+       _settingsOpenerOverride = settingsOpener {
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -180,7 +181,8 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
   }
 
   Future<PermissionRequestResult> _performRequest(
-      AppPermissionKind permission) async {
+    AppPermissionKind permission,
+  ) async {
     final previousStatus = await status(permission);
 
     final agreedKey = 'permission_agreed_${permission.name}';
@@ -263,8 +265,9 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
           previousStatus.isPermanentlyDenied) {
         openedSettings = await _openSettingsAndWait(permission);
       } else if (!previousStatus.isGranted && !previousStatus.isLimited) {
-        final requestedStatus = await (_requesterOverride?.call(permission) ??
-            _requestPermission(permission));
+        final requestedStatus =
+            await (_requesterOverride?.call(permission) ??
+                _requestPermission(permission));
         if (requestedStatus.isPermanentlyDenied) {
           openedSettings = await _openSettingsAndWait(permission);
         } else if (permission == AppPermissionKind.storage ||
@@ -289,8 +292,9 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
     _resumeCompleter = Completer<void>();
     _leftApp = false;
 
-    final opened = await (_settingsOpenerOverride?.call(permission) ??
-        _openPermissionSettings(permission));
+    final opened =
+        await (_settingsOpenerOverride?.call(permission) ??
+            _openPermissionSettings(permission));
     if (!opened) {
       _resumeCompleter = null;
       return false;
@@ -338,7 +342,8 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
           return await Permission.requestInstallPackages.status;
         case AppPermissionKind.exactAlarm:
           try {
-            final granted = await _platformChannel.invokeMethod<bool>(
+            final granted =
+                await _platformChannel.invokeMethod<bool>(
                   'checkExactAlarmPermission',
                 ) ??
                 true;
@@ -352,7 +357,8 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
           return await Permission.calendarFullAccess.status;
         case AppPermissionKind.liveUpdates:
           try {
-            final granted = await _platformChannel.invokeMethod<bool>(
+            final granted =
+                await _platformChannel.invokeMethod<bool>(
                   'checkLiveUpdatesPermission',
                 ) ??
                 true;
@@ -363,7 +369,8 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
         case AppPermissionKind.localNetwork:
           if (!AppPlatform.isAndroid) return PermissionStatus.granted;
           try {
-            final granted = await _platformChannel.invokeMethod<bool>(
+            final granted =
+                await _platformChannel.invokeMethod<bool>(
                   'checkLocalNetworkPermission',
                 ) ??
                 false;
@@ -385,7 +392,8 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
   }
 
   Future<PermissionStatus> _requestPermission(
-      AppPermissionKind permission) async {
+    AppPermissionKind permission,
+  ) async {
     try {
       switch (permission) {
         case AppPermissionKind.notification:
@@ -408,7 +416,8 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
         case AppPermissionKind.localNetwork:
           if (!AppPlatform.isAndroid) return PermissionStatus.granted;
           try {
-            final granted = await _platformChannel.invokeMethod<bool>(
+            final granted =
+                await _platformChannel.invokeMethod<bool>(
                   'requestLocalNetworkPermission',
                 ) ??
                 false;
@@ -419,8 +428,8 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
             return PermissionStatus.denied;
           }
         case AppPermissionKind.usageStats ||
-              AppPermissionKind.exactAlarm ||
-              AppPermissionKind.liveUpdates:
+            AppPermissionKind.exactAlarm ||
+            AppPermissionKind.liveUpdates:
           return await status(permission);
       }
     } catch (_) {
@@ -571,16 +580,18 @@ class PermissionRationaleBanner extends StatelessWidget {
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: [
-                            colorScheme.primaryContainer
-                                .withValues(alpha: 0.18),
+                            colorScheme.primaryContainer.withValues(
+                              alpha: 0.18,
+                            ),
                             colorScheme.surface.withValues(alpha: 0.12),
                           ],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
                         border: Border.all(
-                          color:
-                              colorScheme.outlineVariant.withValues(alpha: 0.3),
+                          color: colorScheme.outlineVariant.withValues(
+                            alpha: 0.3,
+                          ),
                           width: 1,
                         ),
                       ),
@@ -607,8 +618,9 @@ class PermissionRationaleBanner extends StatelessWidget {
                                     shape: BoxShape.circle,
                                     boxShadow: [
                                       BoxShadow(
-                                        color: colorScheme.primary
-                                            .withValues(alpha: 0.3),
+                                        color: colorScheme.primary.withValues(
+                                          alpha: 0.3,
+                                        ),
                                         blurRadius: 8,
                                         offset: const Offset(0, 4),
                                       ),
@@ -678,7 +690,9 @@ class PermissionRationaleBanner extends StatelessWidget {
                                     onPressed: onDeny,
                                     style: TextButton.styleFrom(
                                       padding: const EdgeInsets.symmetric(
-                                          horizontal: 16, vertical: 12),
+                                        horizontal: 16,
+                                        vertical: 12,
+                                      ),
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(12),
                                       ),
@@ -696,7 +710,9 @@ class PermissionRationaleBanner extends StatelessWidget {
                                     onPressed: onAllow,
                                     style: FilledButton.styleFrom(
                                       padding: const EdgeInsets.symmetric(
-                                          horizontal: 20, vertical: 12),
+                                        horizontal: 20,
+                                        vertical: 12,
+                                      ),
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(12),
                                       ),
@@ -705,7 +721,8 @@ class PermissionRationaleBanner extends StatelessWidget {
                                     child: const Text(
                                       '允许并继续',
                                       style: TextStyle(
-                                          fontWeight: FontWeight.w600),
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
                                   ),
                                 ],

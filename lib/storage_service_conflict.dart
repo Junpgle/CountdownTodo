@@ -1,10 +1,9 @@
 part of 'storage_service.dart';
+
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 mixin _StorageConflict on _StorageServiceBase {
-  bool recomputeLocalTodoScheduleConflictsForTest(
-    List<TodoItem> todos,
-  ) =>
+  bool recomputeLocalTodoScheduleConflictsForTest(List<TodoItem> todos) =>
       _recomputeLocalTodoScheduleConflicts(todos);
   bool _recomputeLocalTodoScheduleConflicts(
     List<TodoItem> todos, {
@@ -31,9 +30,9 @@ mixin _StorageConflict on _StorageServiceBase {
       if (startDay != endDay) continue;
       eligibleTodos.add(todo);
 
-      buckets.putIfAbsent(startDay, () => <_TodoInterval>[]).add(
-            _TodoInterval(todo: todo, startMs: startMs, endMs: endMs),
-          );
+      buckets
+          .putIfAbsent(startDay, () => <_TodoInterval>[])
+          .add(_TodoInterval(todo: todo, startMs: startMs, endMs: endMs));
     }
 
     onProgress?.call(
@@ -155,16 +154,21 @@ mixin _StorageConflict on _StorageServiceBase {
   }
 
   String? _scheduleConflictKeyFromPayload(
-      TodoItem item, Map<String, dynamic> peer) {
+    TodoItem item,
+    Map<String, dynamic> peer,
+  ) {
     if (_isSameRecurrenceSeriesPayload(item, peer)) return null;
     final itemEnd = item.dueDate?.millisecondsSinceEpoch;
     final peerId = (peer['uuid'] ?? peer['id'] ?? '').toString();
-    final peerStart = _parseMillis(peer['start_time'] ??
-        peer['created_date'] ??
-        peer['createdDate'] ??
-        peer['created_at']);
-    final peerEnd =
-        _parseMillis(peer['end_time'] ?? peer['due_date'] ?? peer['dueDate']);
+    final peerStart = _parseMillis(
+      peer['start_time'] ??
+          peer['created_date'] ??
+          peer['createdDate'] ??
+          peer['created_at'],
+    );
+    final peerEnd = _parseMillis(
+      peer['end_time'] ?? peer['due_date'] ?? peer['dueDate'],
+    );
     if (itemEnd == null ||
         peerId.isEmpty ||
         peerStart == null ||
@@ -218,8 +222,7 @@ mixin _StorageConflict on _StorageServiceBase {
 
   List<TodoItem> clearResolvedRecurrenceMigrationConflictsForTest(
     List<TodoItem> todos,
-  ) =>
-      _clearResolvedRecurrenceMigrationConflicts(todos);
+  ) => _clearResolvedRecurrenceMigrationConflicts(todos);
   List<TodoItem> _clearResolvedRecurrenceMigrationConflicts(
     List<TodoItem> todos,
   ) {
@@ -287,7 +290,8 @@ mixin _StorageConflict on _StorageServiceBase {
 
   bool _payloadHasVersionConflict(Map<String, dynamic> data) {
     if (!_payloadHasConflict(data)) return false;
-    final rawConflictData = data['conflict_data'] ??
+    final rawConflictData =
+        data['conflict_data'] ??
         data['conflictData'] ??
         data['serverVersionData'];
     Map<String, dynamic>? conflictData;
@@ -307,7 +311,8 @@ mixin _StorageConflict on _StorageServiceBase {
   }
 
   Map<String, dynamic> _stripClientOnlyConflictForSync(
-      Map<String, dynamic> data) {
+    Map<String, dynamic> data,
+  ) {
     final result = Map<String, dynamic>.from(data);
     final rawConflictData =
         result['conflict_data'] ?? result['serverVersionData'];
@@ -353,8 +358,7 @@ mixin _StorageConflict on _StorageServiceBase {
   Set<String> repairMissingRemoteRecurrenceSeriesIdsForTest(
     List<TodoItem> incoming,
     List<TodoItem> local,
-  ) =>
-      _repairMissingRemoteRecurrenceSeriesIds(incoming, local);
+  ) => _repairMissingRemoteRecurrenceSeriesIds(incoming, local);
   Set<String> _repairMissingRemoteRecurrenceSeriesIds(
     List<TodoItem> incoming,
     List<TodoItem> local,
@@ -375,8 +379,10 @@ mixin _StorageConflict on _StorageServiceBase {
           remoteSeriesId == localSeriesId) {
         continue;
       }
-      final resolvedRemoteSeriesId =
-          _resolveRecurrenceSeriesAlias(remoteSeriesId, localById);
+      final resolvedRemoteSeriesId = _resolveRecurrenceSeriesAlias(
+        remoteSeriesId,
+        localById,
+      );
       if (resolvedRemoteSeriesId == localSeriesId) {
         todo.recurrenceSeriesId = localSeriesId;
         repairedIds.add(todo.id);
@@ -442,25 +448,28 @@ mixin _StorageConflict on _StorageServiceBase {
       final matchingCandidates = candidatesByActiveSignature == null
           ? candidates
           : candidatesByActiveSignature[entry.key] ?? const <TodoItem>[];
-      final matching = matchingCandidates.where((candidate) {
-        if (candidate.isDeleted ||
-            (candidatesByActiveSignature == null &&
-                _remoteRecurrencePlanSignature(candidate) != entry.key)) {
-          return false;
-        }
-        final candidateSeriesId = candidate.recurrenceSeriesId;
-        final anchorSeriesId = anchor.recurrenceSeriesId;
-        if (candidateSeriesId != null &&
-            candidateSeriesId.trim().isNotEmpty &&
-            anchorSeriesId != null &&
-            anchorSeriesId.trim().isNotEmpty &&
-            candidateSeriesId != anchorSeriesId) {
-          return false;
-        }
-        return _isRemoteOccurrenceOnRecurrence(anchor, candidate);
-      }).toList()
-        ..sort((a, b) => (a.createdDate ?? a.createdAt)
-            .compareTo(b.createdDate ?? b.createdAt));
+      final matching =
+          matchingCandidates.where((candidate) {
+            if (candidate.isDeleted ||
+                (candidatesByActiveSignature == null &&
+                    _remoteRecurrencePlanSignature(candidate) != entry.key)) {
+              return false;
+            }
+            final candidateSeriesId = candidate.recurrenceSeriesId;
+            final anchorSeriesId = anchor.recurrenceSeriesId;
+            if (candidateSeriesId != null &&
+                candidateSeriesId.trim().isNotEmpty &&
+                anchorSeriesId != null &&
+                anchorSeriesId.trim().isNotEmpty &&
+                candidateSeriesId != anchorSeriesId) {
+              return false;
+            }
+            return _isRemoteOccurrenceOnRecurrence(anchor, candidate);
+          }).toList()..sort(
+            (a, b) => (a.createdDate ?? a.createdAt).compareTo(
+              b.createdDate ?? b.createdAt,
+            ),
+          );
 
       final knownSeriesIds = matching
           .map((todo) => todo.recurrenceSeriesId?.trim())
@@ -522,11 +531,7 @@ mixin _StorageConflict on _StorageServiceBase {
   Set<String> repairLocalRecurrenceSeriesAliasesFromHistoryForTest(
     List<TodoItem> todos,
     Map<String, List<String>> historicalSeriesByTodoId,
-  ) =>
-      _repairLocalRecurrenceSeriesAliases(
-        todos,
-        historicalSeriesByTodoId,
-      );
+  ) => _repairLocalRecurrenceSeriesAliases(todos, historicalSeriesByTodoId);
   Future<Set<String>> _repairLocalRecurrenceSeriesAliasesFromHistory(
     Database db,
     List<TodoItem> todos,
@@ -576,10 +581,7 @@ mixin _StorageConflict on _StorageServiceBase {
         }
       }
     }
-    return _repairLocalRecurrenceSeriesAliases(
-      todos,
-      historicalSeriesByTodoId,
-    );
+    return _repairLocalRecurrenceSeriesAliases(todos, historicalSeriesByTodoId);
   }
 
   Set<String> _repairLocalRecurrenceSeriesAliases(
@@ -598,8 +600,9 @@ mixin _StorageConflict on _StorageServiceBase {
           .map((seriesId) => seriesId.trim())
           .where((seriesId) => seriesId.isNotEmpty)
           .toList();
-      final currentSeriesCount =
-          history.where((seriesId) => seriesId == currentSeriesId).length;
+      final currentSeriesCount = history
+          .where((seriesId) => seriesId == currentSeriesId)
+          .length;
       final previousSeriesCounts = <String, int>{};
       for (final seriesId in history) {
         if (seriesId == currentSeriesId) continue;
@@ -642,8 +645,10 @@ mixin _StorageConflict on _StorageServiceBase {
   String? _remoteRecurrencePlanSignature(TodoItem todo) {
     final startMs = todo.createdDate;
     if (startMs == null || startMs <= 0) return null;
-    final start =
-        DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true).toLocal();
+    final start = DateTime.fromMillisecondsSinceEpoch(
+      startMs,
+      isUtc: true,
+    ).toLocal();
     final dueMs = todo.dueDate?.millisecondsSinceEpoch;
     final durationMs = dueMs == null ? null : dueMs - startMs;
     if (durationMs != null && durationMs < 0) return null;
@@ -678,15 +683,20 @@ mixin _StorageConflict on _StorageServiceBase {
     final candidateStartMs = candidate.createdDate;
     if (ruleStartMs == null || candidateStartMs == null) return false;
 
-    final ruleStart =
-        DateTime.fromMillisecondsSinceEpoch(ruleStartMs, isUtc: true).toLocal();
+    final ruleStart = DateTime.fromMillisecondsSinceEpoch(
+      ruleStartMs,
+      isUtc: true,
+    ).toLocal();
     final candidateStart = DateTime.fromMillisecondsSinceEpoch(
       candidateStartMs,
       isUtc: true,
     ).toLocal();
     final ruleDay = DateTime(ruleStart.year, ruleStart.month, ruleStart.day);
-    final candidateDay =
-        DateTime(candidateStart.year, candidateStart.month, candidateStart.day);
+    final candidateDay = DateTime(
+      candidateStart.year,
+      candidateStart.month,
+      candidateStart.day,
+    );
     if (ruleSource.recurrence == RecurrenceType.weekdays &&
         (candidateDay.weekday == DateTime.saturday ||
             candidateDay.weekday == DateTime.sunday)) {
@@ -726,8 +736,8 @@ mixin _StorageConflict on _StorageServiceBase {
       'recurrence_series_id': interval.todo.recurrenceSeriesId,
       'schedule_scope':
           (interval.todo.teamUuid != null && interval.todo.teamUuid!.isNotEmpty)
-              ? 'team'
-              : 'personal',
+          ? 'team'
+          : 'personal',
       'start_time': interval.startMs,
       'end_time': interval.endMs,
     };

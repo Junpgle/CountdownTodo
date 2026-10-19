@@ -5,12 +5,7 @@ import 'storage/storage_key_scope.dart';
 
 /// The four persisted dashboard groups. A pair of groups shares one component
 /// pool so a component can move from one group to the other.
-enum HomeLayoutTarget {
-  mobileHome,
-  mobileFocus,
-  wideLeft,
-  wideRight,
-}
+enum HomeLayoutTarget { mobileHome, mobileFocus, wideLeft, wideRight }
 
 class HomeLayoutPair {
   final List<String> first;
@@ -32,12 +27,7 @@ class HomeLayoutService {
   static const int maxHabitDisplayLimit = 5;
 
   static const Map<HomeLayoutTarget, List<String>> _defaults = {
-    HomeLayoutTarget.mobileHome: [
-      'banners',
-      'countdowns',
-      'agenda',
-      'todos',
-    ],
+    HomeLayoutTarget.mobileHome: ['banners', 'countdowns', 'agenda', 'todos'],
     HomeLayoutTarget.mobileFocus: [
       'timeline',
       'pomodoro',
@@ -46,11 +36,7 @@ class HomeLayoutService {
       'screenTime',
       'math',
     ],
-    HomeLayoutTarget.wideLeft: [
-      'banners',
-      'countdowns',
-      'todos',
-    ],
+    HomeLayoutTarget.wideLeft: ['banners', 'countdowns', 'todos'],
     HomeLayoutTarget.wideRight: [
       'agenda',
       'timeline',
@@ -137,10 +123,7 @@ class HomeLayoutService {
       ..._defaults[secondTarget]!,
     };
     final first = _sanitizeOrder(firstRaw, allowed);
-    final second = _sanitizeOrder(
-      secondRaw,
-      allowed.difference(first.toSet()),
-    );
+    final second = _sanitizeOrder(secondRaw, allowed.difference(first.toSet()));
 
     // Add newly introduced sections to their original default group. This
     // keeps upgrades safe while preserving an intentional cross-group move.
@@ -257,7 +240,9 @@ class HomeLayoutService {
   }
 
   static Future<void> save(
-      HomeLayoutTarget target, Iterable<String> order) async {
+    HomeLayoutTarget target,
+    Iterable<String> order,
+  ) async {
     final prefs = await StorageService.prefs;
     final normalized = _sanitizeOrder(order, _defaults[target]!.toSet());
     await prefs.setString(await _key(target), jsonEncode(normalized));

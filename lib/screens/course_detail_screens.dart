@@ -327,10 +327,7 @@ class _PlanBlockDetailScreenState extends State<PlanBlockDetailScreen> {
 
     try {
       final results = await Future.wait([
-        StorageService.getPlanBlocks(
-          widget.username,
-          includeDeleted: true,
-        ),
+        StorageService.getPlanBlocks(widget.username, includeDeleted: true),
         PomodoroService.getRecords(),
       ]);
       final planBlocks = results[0] as List<TodoPlanBlock>;
@@ -1402,10 +1399,7 @@ class PomodoroDetailScreen extends StatelessWidget {
     final endLocal = interval.endMs != null
         ? DateTime.fromMillisecondsSinceEpoch(interval.endMs!).toLocal()
         : null;
-    final startLabel = AppTimeFormats.format(
-      startLocal,
-      'yyyy-MM-dd HH:mm:ss',
-    );
+    final startLabel = AppTimeFormats.format(startLocal, 'yyyy-MM-dd HH:mm:ss');
     final endLabel = endLocal == null
         ? ''
         : ' - ${AppTimeFormats.format(endLocal, 'HH:mm:ss')}';

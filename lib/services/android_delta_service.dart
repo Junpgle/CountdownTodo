@@ -218,8 +218,9 @@ class AndroidDeltaService {
   ) async {
     var remaining = length;
     while (remaining > 0) {
-      final bytes =
-          await base.read(remaining > 64 * 1024 ? 64 * 1024 : remaining);
+      final bytes = await base.read(
+        remaining > 64 * 1024 ? 64 * 1024 : remaining,
+      );
       if (bytes.isEmpty) {
         throw const FormatException('Unexpected end of base APK');
       }
@@ -235,8 +236,9 @@ class AndroidDeltaService {
   ) async {
     var remaining = length;
     while (remaining > 0) {
-      final bytes =
-          await patch.read(remaining > 64 * 1024 ? 64 * 1024 : remaining);
+      final bytes = await patch.read(
+        remaining > 64 * 1024 ? 64 * 1024 : remaining,
+      );
       if (bytes.isEmpty) {
         throw const FormatException('Unexpected end of delta data');
       }

@@ -87,10 +87,7 @@ mixin _TodoSectionContract {
 
   void _editTodo(TodoItem todo, BuildContext cardCtx);
 
-  void _openTodoEditor(
-    TodoItem todo, {
-    bool applyToFutureOccurrences = false,
-  });
+  void _openTodoEditor(TodoItem todo, {bool applyToFutureOccurrences = false});
 
   String _buildTimeLabel(
     TodoItem todo,

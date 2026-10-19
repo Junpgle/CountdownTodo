@@ -14,8 +14,7 @@ class JournalStorage {
   @visibleForTesting
   factory JournalStorage.forTesting({
     required Future<Database> Function(String accountId) databaseLoader,
-  }) =>
-      JournalStorage._(databaseLoader: databaseLoader, reconcileMedia: false);
+  }) => JournalStorage._(databaseLoader: databaseLoader, reconcileMedia: false);
 
   static final instance = JournalStorage._(
     databaseLoader: DatabaseHelper.instance.databaseForUser,
@@ -73,11 +72,7 @@ class JournalStorage {
       whereArgs.addAll(['%$term%', '%$term%']);
     }
     if (occurredOn != null) {
-      final start = DateTime(
-        occurredOn.year,
-        occurredOn.month,
-        occurredOn.day,
-      );
+      final start = DateTime(occurredOn.year, occurredOn.month, occurredOn.day);
       final end = DateTime(
         occurredOn.year,
         occurredOn.month,
@@ -116,10 +111,12 @@ class JournalStorage {
       grouped.putIfAbsent(attachment.entryId, () => []).add(attachment);
     }
     return entryRows
-        .map((row) => JournalEntry.fromMap(
-              row,
-              attachments: grouped[row['uuid']?.toString()] ?? const [],
-            ))
+        .map(
+          (row) => JournalEntry.fromMap(
+            row,
+            attachments: grouped[row['uuid']?.toString()] ?? const [],
+          ),
+        )
         .toList();
   }
 
@@ -146,8 +143,10 @@ class JournalStorage {
 
   /// Retrieves one attachment's bytes when a web preview becomes visible.
   /// Native previews use the local path and do not need this query.
-  Future<JournalAttachment?> loadAttachment(String id,
-      {String? accountId}) async {
+  Future<JournalAttachment?> loadAttachment(
+    String id, {
+    String? accountId,
+  }) async {
     final db = await _databaseFor(accountId);
     final rows = await db.query(
       'journal_attachments',
@@ -159,8 +158,10 @@ class JournalStorage {
   }
 
   Future<void> saveEntry(
-      JournalEntry entry, List<JournalAttachment> attachments,
-      {String? accountId}) async {
+    JournalEntry entry,
+    List<JournalAttachment> attachments, {
+    String? accountId,
+  }) async {
     final db = await _databaseFor(accountId);
     await db.transaction((txn) async {
       await txn.insert(
@@ -198,8 +199,11 @@ class JournalStorage {
       whereArgs: [id],
     );
     await db.transaction((txn) async {
-      await txn.delete('journal_attachments',
-          where: 'entry_uuid = ?', whereArgs: [id]);
+      await txn.delete(
+        'journal_attachments',
+        where: 'entry_uuid = ?',
+        whereArgs: [id],
+      );
       await txn.delete('journal_entries', where: 'uuid = ?', whereArgs: [id]);
     });
     return rows.map(JournalAttachment.fromMap).toList();

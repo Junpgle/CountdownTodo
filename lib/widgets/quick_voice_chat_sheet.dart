@@ -465,71 +465,71 @@ class _QuickVoiceChatSheetState extends State<QuickVoiceChatSheet>
           color: colors.surfaceContainerHigh,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
           child: SafeArea(
-          top: false,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildDragTarget(
-                      '进入 AI',
-                      Icons.auto_awesome_rounded,
-                      QuickVoiceTarget.openAi,
-                      colors.primary,
-                    ),
-                    _buildDragTarget(
-                      '取消',
-                      Icons.close_rounded,
-                      QuickVoiceTarget.cancel,
-                      colors.error,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                AnimatedSwitcher(
-                  duration: Duration(milliseconds: _reduceMotion ? 0 : 160),
-                  child: Text(
-                    title,
-                    key: ValueKey(title),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
+            top: false,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildDragTarget(
+                        '进入 AI',
+                        Icons.auto_awesome_rounded,
+                        QuickVoiceTarget.openAi,
+                        colors.primary,
+                      ),
+                      _buildDragTarget(
+                        '取消',
+                        Icons.close_rounded,
+                        QuickVoiceTarget.cancel,
+                        colors.error,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  AnimatedSwitcher(
+                    duration: Duration(milliseconds: _reduceMotion ? 0 : 160),
+                    child: Text(
+                      title,
+                      key: ValueKey(title),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                ValueListenableBuilder<int>(
-                  valueListenable: _seconds,
-                  builder: (context, seconds, _) => Text(
-                    recording ? '${seconds}s / 60s' : '请稍候',
+                  const SizedBox(height: 10),
+                  ValueListenableBuilder<int>(
+                    valueListenable: _seconds,
+                    builder: (context, seconds, _) => Text(
+                      recording ? '${seconds}s / 60s' : '请稍候',
+                      style: TextStyle(color: colors.onSurfaceVariant),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  if (recording)
+                    _buildWave(color)
+                  else
+                    const SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: CircularProgressIndicator(strokeWidth: 3),
+                    ),
+                  const SizedBox(height: 20),
+                  Text(
+                    recording ? '按住说话 · 左上进入 AI · 右上取消' : '语音内容将交给 AI 理解需求',
+                    textAlign: TextAlign.center,
                     style: TextStyle(color: colors.onSurfaceVariant),
                   ),
-                ),
-                const SizedBox(height: 18),
-                if (recording)
-                  _buildWave(color)
-                else
-                  const SizedBox(
-                    width: 32,
-                    height: 32,
-                    child: CircularProgressIndicator(strokeWidth: 3),
-                  ),
-                const SizedBox(height: 20),
-                Text(
-                  recording ? '按住说话 · 左上进入 AI · 右上取消' : '语音内容将交给 AI 理解需求',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: colors.onSurfaceVariant),
-                ),
-                if (_phase == _VoicePhase.transcribing)
-                  TextButton(onPressed: _cancel, child: const Text('取消等待')),
-              ],
+                  if (_phase == _VoicePhase.transcribing)
+                    TextButton(onPressed: _cancel, child: const Text('取消等待')),
+                ],
+              ),
             ),
-          ),
           ),
         ),
       ),

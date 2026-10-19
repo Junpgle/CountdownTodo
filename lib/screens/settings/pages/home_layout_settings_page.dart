@@ -71,8 +71,10 @@ class _HomeLayoutSettingsPageState extends State<HomeLayoutSettingsPage> {
         ? const [HomeLayoutTarget.wideLeft, HomeLayoutTarget.wideRight]
         : const [HomeLayoutTarget.mobileHome, HomeLayoutTarget.mobileFocus];
     final pair = await HomeLayoutService.loadPair(targets[0], targets[1]);
-    final visibility =
-        await HomeLayoutService.loadVisibility(targets[0], targets[1]);
+    final visibility = await HomeLayoutService.loadVisibility(
+      targets[0],
+      targets[1],
+    );
     final habitDisplayLimit = await HomeLayoutService.loadHabitDisplayLimit();
     if (!mounted || _isWide != isWide) return;
     setState(() {
@@ -88,8 +90,10 @@ class _HomeLayoutSettingsPageState extends State<HomeLayoutSettingsPage> {
     final targets = _visibleTargets;
     final first = HomeLayoutService.defaultOrder(targets[0]);
     final second = HomeLayoutService.defaultOrder(targets[1]);
-    final visibility =
-        HomeLayoutService.defaultVisibility(targets[0], targets[1]);
+    final visibility = HomeLayoutService.defaultVisibility(
+      targets[0],
+      targets[1],
+    );
     const habitDisplayLimit = HomeLayoutService.defaultHabitDisplayLimit;
     setState(() {
       _orders[targets[0]] = first;
@@ -339,21 +343,22 @@ class _HomeLayoutSettingsPageState extends State<HomeLayoutSettingsPage> {
       child: Material(
         type: MaterialType.transparency,
         child: ListTile(
-          leading: Icon(Icons.format_list_numbered_rounded,
-              color: colorScheme.primary),
+          leading: Icon(
+            Icons.format_list_numbered_rounded,
+            color: colorScheme.primary,
+          ),
           title: const Text('首页展示习惯数量'),
           subtitle: const Text('首页默认展示 3 个，可按需要调整为 1–5 个'),
           trailing: DropdownButtonHideUnderline(
             child: DropdownButton<int>(
               value: _habitDisplayLimit,
               items: [
-                for (var count = HomeLayoutService.minHabitDisplayLimit;
-                    count <= HomeLayoutService.maxHabitDisplayLimit;
-                    count++)
-                  DropdownMenuItem(
-                    value: count,
-                    child: Text('$count 个'),
-                  ),
+                for (
+                  var count = HomeLayoutService.minHabitDisplayLimit;
+                  count <= HomeLayoutService.maxHabitDisplayLimit;
+                  count++
+                )
+                  DropdownMenuItem(value: count, child: Text('$count 个')),
               ],
               onChanged: (value) {
                 if (value != null && value != _habitDisplayLimit) {
@@ -447,12 +452,12 @@ class _HomeLayoutSettingsPageState extends State<HomeLayoutSettingsPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                            child:
-                                _buildGroup(context, targets[0], targets[1])),
+                          child: _buildGroup(context, targets[0], targets[1]),
+                        ),
                         const SizedBox(width: 16),
                         Expanded(
-                            child:
-                                _buildGroup(context, targets[1], targets[0])),
+                          child: _buildGroup(context, targets[1], targets[0]),
+                        ),
                       ],
                     )
                   else ...[

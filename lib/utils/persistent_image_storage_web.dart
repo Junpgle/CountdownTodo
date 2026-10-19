@@ -10,7 +10,6 @@ Future<String?> persistImageBytes(
   Uint8List bytes,
   String subdirectory,
   String fileName,
-) async =>
-    null;
+) async => null;
 
 Future<void> deletePersistedImagePath(String? path) async {}

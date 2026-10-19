@@ -290,10 +290,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
     final dateText = AppTimeFormats.date(_date);
     final existing = widget.item;
     final item = existing == null
-        ? FixedScheduleItem(
-            title: title,
-            date: dateText,
-          )
+        ? FixedScheduleItem(title: title, date: dateText)
         : FixedScheduleItem.fromJson(existing.toJson());
     item
       ..title = title
@@ -565,12 +562,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
                     title: Text(
                       _recurrence == RecurrenceType.none ? '日期' : '首次日期',
                     ),
-                    subtitle: Text(
-                      _dateWithSemesterWeek(
-                        _date,
-                        dateText,
-                      ),
-                    ),
+                    subtitle: Text(_dateWithSemesterWeek(_date, dateText)),
                     onTap: _pickDate,
                   ),
                   LiquidGlassSwitchListTile(

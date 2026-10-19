@@ -39,10 +39,10 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
 
   DateFormat _cachedDateFormat(String pattern) {
     final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent(
-      (locale, pattern),
-      () => DateFormat(pattern, locale),
-    );
+    return _dateFormatters.putIfAbsent((
+      locale,
+      pattern,
+    ), () => DateFormat(pattern, locale));
   }
 
   final Map<String, GlobalKey> _itemKeys = {
@@ -241,11 +241,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       await ReminderScheduleService.scheduleAll(
         todos: todos,
         courses: const <CourseItem>[],
-        loadCourses: (from, to) => CourseService.getCoursesForDateRange(
-          _username,
-          from: from,
-          to: to,
-        ),
+        loadCourses: (from, to) =>
+            CourseService.getCoursesForDateRange(_username, from: from, to: to),
         expectedUsername: _username,
         force: true,
       );

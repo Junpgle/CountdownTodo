@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'dart:async';
+
 import '../models.dart';
 import '../services/api_service.dart';
 import '../services/team_share_link.dart';
@@ -121,10 +123,7 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text('${widget.team.name} · 分享管理'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadShares,
-          ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadShares),
         ],
       ),
       body: FloatingGlassTopBarContentFade(
@@ -132,8 +131,8 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _shares.isEmpty
-                ? _buildEmptyState()
-                : _buildSharesList(topBarHeight),
+            ? _buildEmptyState()
+            : _buildSharesList(topBarHeight),
       ),
       floatingActionButton: FloatingGlassActionButton.extended(
         onPressed: _showCreateShareDialog,
@@ -238,10 +237,7 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
                 isExpired ? '已过期' : '过期时间 ${_formatDate(share.expiresAt!)}',
                 color: isExpired ? Colors.red : null,
               ),
-            _buildInfoRow(
-              Icons.visibility,
-              '浏览 ${share.viewCount} 次',
-            ),
+            _buildInfoRow(Icons.visibility, '浏览 ${share.viewCount} 次'),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -379,8 +375,9 @@ class _CreateShareScreenState extends State<_CreateShareScreen> {
       final result = await ApiService.createTeamShare(
         teamUuid: widget.team.uuid,
         title: _titleController.text.isNotEmpty ? _titleController.text : null,
-        description:
-            _descController.text.isNotEmpty ? _descController.text : null,
+        description: _descController.text.isNotEmpty
+            ? _descController.text
+            : null,
         shareTodos: _shareTodos,
         shareSchedules: _shareSchedules,
         shareCountdowns: _shareCountdowns,
@@ -568,7 +565,8 @@ class _CreateShareScreenState extends State<_CreateShareScreen> {
                 width: double.infinity,
                 height: 48,
                 child: ElevatedButton(
-                  onPressed: (_shareTodos ||
+                  onPressed:
+                      (_shareTodos ||
                               _shareSchedules ||
                               _shareCountdowns ||
                               _shareAnnouncements) &&

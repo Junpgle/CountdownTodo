@@ -244,8 +244,9 @@ class StrictFocusSessionCoordinator with WidgetsBindingObserver {
     if (!state.isPaused || _isInBackground || !_monitoring) return;
     final resumeEpoch = _backgroundEpoch;
     final now = DateTime.now().millisecondsSinceEpoch;
-    final pauseDuration =
-        (now - state.pausedAtMs).clamp(0, 24 * 3600 * 1000).toInt();
+    final pauseDuration = (now - state.pausedAtMs)
+        .clamp(0, 24 * 3600 * 1000)
+        .toInt();
     final intervals = List<PauseInterval>.from(state.pauseIntervals);
     if (intervals.isNotEmpty && intervals.last.isOngoing) {
       intervals.last.endMs = now;
@@ -280,20 +281,24 @@ class StrictFocusSessionCoordinator with WidgetsBindingObserver {
     await NotificationService.reconcileScheduledRemindersForDoNotDisturb();
 
     if (wasWaitingForFlip) {
-      unawaited(NotificationService.updatePomodoroNotification(
-        remainingSeconds: 0,
-        phase: 'focusing',
-        todoTitle: resumed.todoTitle,
-        currentCycle: resumed.currentCycle,
-        totalCycles: resumed.totalCycles,
-        tagNames: resumed.tagNames,
-        alertKey: 'pomo_start_${resumed.sessionStartMs}',
-        timerMode: resumed.mode == TimerMode.countUp ? 'countUp' : 'countdown',
-        timerAnchorMs: resumed.mode == TimerMode.countUp
-            ? resumed.sessionStartMs + resumed.accumulatedMs
-            : resumed.targetEndMs,
-        isPaused: false,
-      ));
+      unawaited(
+        NotificationService.updatePomodoroNotification(
+          remainingSeconds: 0,
+          phase: 'focusing',
+          todoTitle: resumed.todoTitle,
+          currentCycle: resumed.currentCycle,
+          totalCycles: resumed.totalCycles,
+          tagNames: resumed.tagNames,
+          alertKey: 'pomo_start_${resumed.sessionStartMs}',
+          timerMode: resumed.mode == TimerMode.countUp
+              ? 'countUp'
+              : 'countdown',
+          timerAnchorMs: resumed.mode == TimerMode.countUp
+              ? resumed.sessionStartMs + resumed.accumulatedMs
+              : resumed.targetEndMs,
+          isPaused: false,
+        ),
+      );
       PomodoroSyncService.instance.sendStartSignal(
         sessionUuid: resumed.sessionUuid,
         todoUuid: resumed.todoUuid,
@@ -333,8 +338,9 @@ class StrictFocusSessionCoordinator with WidgetsBindingObserver {
   Future<void> _updateFloat(PomodoroRunState state) {
     final countUpAnchor = state.sessionStartMs + state.accumulatedMs;
     return FloatWindowService.update(
-      endMs:
-          state.mode == TimerMode.countUp ? countUpAnchor : state.targetEndMs,
+      endMs: state.mode == TimerMode.countUp
+          ? countUpAnchor
+          : state.targetEndMs,
       title: state.todoTitle ?? '自由专注',
       tags: state.tagNames,
       isLocal: true,

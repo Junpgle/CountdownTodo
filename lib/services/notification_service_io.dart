@@ -425,9 +425,7 @@ class NotificationService {
       if (dueDate == null) continue;
       final localDueDate = dueDate.toLocal();
       if (!AppTimeFormats.isSameDay(localDueDate, now)) continue;
-      final todoType = ItemSemanticsService.specialTodoTypeForTitle(
-        todo.title,
-      );
+      final todoType = ItemSemanticsService.specialTodoTypeForTitle(todo.title);
       if (todoType != 'default') continue;
       final startDate = DateTime.fromMillisecondsSinceEpoch(
         todo.createdDate ?? todo.createdAt,

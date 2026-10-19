@@ -41,8 +41,9 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
               .toList();
           for (var t in teams) {
             final uuid = t['uuid']?.toString();
-            final role =
-                (t['role'] == 0 || t['user_role'] == 0) ? 'admin' : 'member';
+            final role = (t['role'] == 0 || t['user_role'] == 0)
+                ? 'admin'
+                : 'member';
             if (uuid != null) _teamRoles[uuid] = role;
           }
         });
@@ -190,10 +191,7 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
             widget.onTodosChanged(updatedList);
           },
           onFixedScheduleAdded: (item) async {
-            await StorageService.saveFixedSchedules(
-              widget.username,
-              [item],
-            );
+            await StorageService.saveFixedSchedules(widget.username, [item]);
             widget.onRefreshRequested();
           },
           onLLMResultsParsed: widget.onLLMResultsParsed,
@@ -220,8 +218,13 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
       final currentTeamName = _selectedSubTeamUuid != null
           ? existingTeams[_selectedSubTeamUuid]
           : null;
-      widget.onLLMResultsParsed!(llmResults, imagePath, originalText,
-          _selectedSubTeamUuid, currentTeamName);
+      widget.onLLMResultsParsed!(
+        llmResults,
+        imagePath,
+        originalText,
+        _selectedSubTeamUuid,
+        currentTeamName,
+      );
     } else {
       // 如果没有回调，使用旧的对话框方式
       _showAddTodoDialogWithData(llmResults, imagePath, originalText);

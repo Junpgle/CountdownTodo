@@ -7,25 +7,25 @@ import 'package:countdown_todo/services/strict_focus_sensor_service.dart';
 void main() {
   group('StrictFocusPoseDetector', () {
     Map<String, dynamic> up(DateTime base) => {
-          'x': 0.0,
-          'y': 0.0,
-          'z': 9.8,
-          'timestamp': base,
-        };
+      'x': 0.0,
+      'y': 0.0,
+      'z': 9.8,
+      'timestamp': base,
+    };
 
     Map<String, dynamic> down(DateTime base) => {
-          'x': 0.0,
-          'y': 0.0,
-          'z': -9.8,
-          'timestamp': base,
-        };
+      'x': 0.0,
+      'y': 0.0,
+      'z': -9.8,
+      'timestamp': base,
+    };
 
     Map<String, dynamic> upright(DateTime base) => {
-          'x': 0.0,
-          'y': 9.8,
-          'z': 0.0,
-          'timestamp': base,
-        };
+      'x': 0.0,
+      'y': 9.8,
+      'z': 0.0,
+      'timestamp': base,
+    };
 
     StrictFocusSensorEvent? sample(
       StrictFocusPoseDetector detector,
@@ -45,8 +45,10 @@ void main() {
 
       expect(sample(detector, up(base)), isNull);
       expect(
-        sample(detector, up(base.add(const Duration(milliseconds: 700))))
-            ?.state,
+        sample(
+          detector,
+          up(base.add(const Duration(milliseconds: 700))),
+        )?.state,
         StrictFocusSensorState.waitingForFlip,
       );
       expect(
@@ -54,8 +56,10 @@ void main() {
         isNull,
       );
       expect(
-        sample(detector, down(base.add(const Duration(milliseconds: 1401))))
-            ?.state,
+        sample(
+          detector,
+          down(base.add(const Duration(milliseconds: 1401))),
+        )?.state,
         StrictFocusSensorState.faceDown,
       );
     });
@@ -74,8 +78,10 @@ void main() {
         isNull,
       );
       expect(
-        sample(detector, up(base.add(const Duration(milliseconds: 1700))))
-            ?.state,
+        sample(
+          detector,
+          up(base.add(const Duration(milliseconds: 1700))),
+        )?.state,
         StrictFocusSensorState.waitingForFlip,
       );
     });
@@ -88,8 +94,10 @@ void main() {
       sample(detector, up(base.add(const Duration(milliseconds: 700))));
       sample(detector, down(base.add(const Duration(milliseconds: 701))));
       expect(
-        sample(detector, down(base.add(const Duration(milliseconds: 1401))))
-            ?.state,
+        sample(
+          detector,
+          down(base.add(const Duration(milliseconds: 1401))),
+        )?.state,
         StrictFocusSensorState.faceDown,
       );
 
@@ -98,8 +106,10 @@ void main() {
         isNull,
       );
       expect(
-        sample(detector, upright(base.add(const Duration(milliseconds: 2102))))
-            ?.state,
+        sample(
+          detector,
+          upright(base.add(const Duration(milliseconds: 2102))),
+        )?.state,
         StrictFocusSensorState.notFaceDown,
       );
     });

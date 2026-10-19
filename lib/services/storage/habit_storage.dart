@@ -403,8 +403,11 @@ abstract final class HabitStorage {
       if (current == null || isNewer(item, current)) keyedItems[key] = item;
     }
     final itemsToSave = [...unkeyedItems, ...keyedItems.values];
-    final existing =
-        await _rowsById(db, tableCheckIns, itemsToSave.map((e) => e.uuid));
+    final existing = await _rowsById(
+      db,
+      tableCheckIns,
+      itemsToSave.map((e) => e.uuid),
+    );
     final dedupeKeys = itemsToSave
         .map((item) => item.dedupeKey)
         .whereType<String>()
@@ -428,14 +431,16 @@ abstract final class HabitStorage {
     var wroteAny = false;
     for (final item in itemsToSave) {
       final data = item.toJson();
-      final oldByDedupe =
-          item.dedupeKey == null ? null : existingByDedupe[item.dedupeKey!];
+      final oldByDedupe = item.dedupeKey == null
+          ? null
+          : existingByDedupe[item.dedupeKey!];
       if (oldByDedupe != null && oldByDedupe['uuid'] != item.uuid) {
         final oldUpdatedAt =
             int.tryParse(oldByDedupe['updated_at']?.toString() ?? '') ?? 0;
         final oldVersion =
             int.tryParse(oldByDedupe['version']?.toString() ?? '') ?? 0;
-        final incomingWins = item.updatedAt > oldUpdatedAt ||
+        final incomingWins =
+            item.updatedAt > oldUpdatedAt ||
             (item.updatedAt == oldUpdatedAt && item.version > oldVersion) ||
             (item.updatedAt == oldUpdatedAt &&
                 item.version == oldVersion &&
@@ -476,8 +481,11 @@ abstract final class HabitStorage {
   }) async {
     if (items.isEmpty) return;
     final db = await DatabaseHelper.instance.database;
-    final existing =
-        await _rowsById(db, tableSleepCoachingPlans, items.map((e) => e.uuid));
+    final existing = await _rowsById(
+      db,
+      tableSleepCoachingPlans,
+      items.map((e) => e.uuid),
+    );
     final batch = db.batch();
     var wroteAny = false;
     for (final item in items) {

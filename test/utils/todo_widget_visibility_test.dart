@@ -44,10 +44,7 @@ void main() {
         seriesId: 'daily-series',
       );
 
-      expect(
-        recurringTodoWidgetVisibleUntil(item),
-        DateTime(2026, 7, 22),
-      );
+      expect(recurringTodoWidgetVisibleUntil(item), DateTime(2026, 7, 22));
       expect(
         isTodoEligibleForWidget(item, now: DateTime(2026, 7, 21, 23, 59)),
         isTrue,
@@ -68,20 +65,22 @@ void main() {
       );
     });
 
-    test('historical series occurrence is recurring even without active rule',
-        () {
-      final item = todo(
-        scheduled: DateTime(2026, 7, 20, 9),
-        recurrence: RecurrenceType.none,
-        seriesId: 'rolled-series',
-      );
+    test(
+      'historical series occurrence is recurring even without active rule',
+      () {
+        final item = todo(
+          scheduled: DateTime(2026, 7, 20, 9),
+          recurrence: RecurrenceType.none,
+          seriesId: 'rolled-series',
+        );
 
-      expect(isRecurringTodoOccurrence(item), isTrue);
-      expect(
-        isTodoEligibleForWidget(item, now: DateTime(2026, 7, 22)),
-        isFalse,
-      );
-    });
+        expect(isRecurringTodoOccurrence(item), isTrue);
+        expect(
+          isTodoEligibleForWidget(item, now: DateTime(2026, 7, 22)),
+          isFalse,
+        );
+      },
+    );
 
     test('occurrence without a due date expires from its start day', () {
       final item = todo(
@@ -90,21 +89,12 @@ void main() {
         seriesId: 'year-boundary-series',
       );
 
-      expect(
-        recurringTodoWidgetVisibleUntil(item),
-        DateTime(2027, 1, 2),
-      );
+      expect(recurringTodoWidgetVisibleUntil(item), DateTime(2027, 1, 2));
     });
 
     test('completed and deleted todos are not eligible', () {
-      final completed = todo(
-        scheduled: DateTime(2026, 7, 26),
-        isDone: true,
-      );
-      final deleted = todo(
-        scheduled: DateTime(2026, 7, 26),
-        isDeleted: true,
-      );
+      final completed = todo(scheduled: DateTime(2026, 7, 26), isDone: true);
+      final deleted = todo(scheduled: DateTime(2026, 7, 26), isDeleted: true);
 
       expect(isTodoEligibleForWidget(completed), isFalse);
       expect(isTodoEligibleForWidget(deleted), isFalse);
@@ -112,28 +102,30 @@ void main() {
   });
 
   group('widget recurrence selection', () {
-    test('expired history is removed before the current occurrence is chosen',
-        () {
-      final expired = todo(
-        scheduled: DateTime(2026, 7, 20, 9),
-        dueDate: DateTime(2026, 7, 20, 18),
-        seriesId: 'selection-series',
-      );
-      final current = todo(
-        scheduled: DateTime(2026, 7, 26, 9),
-        dueDate: DateTime(2026, 7, 26, 18),
-        recurrence: RecurrenceType.daily,
-        seriesId: 'selection-series',
-      );
+    test(
+      'expired history is removed before the current occurrence is chosen',
+      () {
+        final expired = todo(
+          scheduled: DateTime(2026, 7, 20, 9),
+          dueDate: DateTime(2026, 7, 20, 18),
+          seriesId: 'selection-series',
+        );
+        final current = todo(
+          scheduled: DateTime(2026, 7, 26, 9),
+          dueDate: DateTime(2026, 7, 26, 18),
+          recurrence: RecurrenceType.daily,
+          seriesId: 'selection-series',
+        );
 
-      final selected = selectTodosForWidget(
-        [expired, current],
-        now: DateTime(2026, 7, 26, 12),
-      );
+        final selected = selectTodosForWidget([
+          expired,
+          current,
+        ], now: DateTime(2026, 7, 26, 12));
 
-      expect(selected, hasLength(1));
-      expect(selected.single.id, current.id);
-    });
+        expect(selected, hasLength(1));
+        expect(selected.single.id, current.id);
+      },
+    );
 
     test('future occurrence can replace an expired series history', () {
       final expired = todo(
@@ -147,10 +139,10 @@ void main() {
         seriesId: 'future-series',
       );
 
-      final selected = selectTodosForWidget(
-        [expired, future],
-        now: DateTime(2026, 7, 26, 12),
-      );
+      final selected = selectTodosForWidget([
+        expired,
+        future,
+      ], now: DateTime(2026, 7, 26, 12));
 
       expect(selected, hasLength(1));
       expect(selected.single.id, future.id);

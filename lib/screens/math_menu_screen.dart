@@ -1,5 +1,7 @@
 import '../widgets/floating_glass_control.dart';
+
 import 'package:flutter/material.dart';
+
 import 'quiz_screen.dart';
 import 'other_screens.dart';
 import 'settings_screen.dart';
@@ -101,33 +103,40 @@ class _MathMenuScreenState extends State<MathMenuScreen>
                             horizontal: isTablet ? 40 : 20,
                           ),
                           decoration: BoxDecoration(
-                            gradient: LinearGradient(colors: [
-                              Theme.of(context).colorScheme.secondary,
-                              Colors.lightBlue
-                            ]),
-                            borderRadius:
-                                BorderRadius.circular(isTablet ? 24 : 16),
+                            gradient: LinearGradient(
+                              colors: [
+                                Theme.of(context).colorScheme.secondary,
+                                Colors.lightBlue,
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(
+                              isTablet ? 24 : 16,
+                            ),
                           ),
                           child: Column(
                             children: [
-                              Icon(Icons.calculate,
-                                  size: isTablet ? 64 : 48,
-                                  color: Colors.white),
+                              Icon(
+                                Icons.calculate,
+                                size: isTablet ? 64 : 48,
+                                color: Colors.white,
+                              ),
                               SizedBox(height: isTablet ? 16 : 10),
                               Text(
                                 "保持大脑活跃！",
                                 style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: isTablet ? 26 : 20,
-                                    fontWeight: FontWeight.bold),
+                                  color: Colors.white,
+                                  fontSize: isTablet ? 26 : 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                               const SizedBox(height: 6),
                               Text(
                                 "每日坚持练习，提高计算速度",
                                 style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: isTablet ? 16 : 14),
-                              )
+                                  color: Colors.white70,
+                                  fontSize: isTablet ? 16 : 14,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -135,7 +144,8 @@ class _MathMenuScreenState extends State<MathMenuScreen>
                     ),
                     SliverPadding(
                       padding: EdgeInsets.symmetric(
-                          horizontal: isTablet ? 24.0 : 16.0),
+                        horizontal: isTablet ? 24.0 : 16.0,
+                      ),
                       sliver: SliverGrid.count(
                         crossAxisCount: columns,
                         crossAxisSpacing: isTablet ? 20 : 16,
@@ -242,58 +252,74 @@ class _MenuCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, constraints) {
-      final bool isLargeCard = constraints.maxWidth > 180;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool isLargeCard = constraints.maxWidth > 180;
 
-      return Card(
-        elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              gradient: LinearGradient(
+        return Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [colorStart, colorEnd]),
-            ),
-            child: Padding(
-              padding: EdgeInsets.all(isLargeCard ? 20.0 : 16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
+                  colors: [colorStart, colorEnd],
+                ),
+              ),
+              child: Padding(
+                padding: EdgeInsets.all(isLargeCard ? 20.0 : 16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
                       padding: EdgeInsets.all(isLargeCard ? 10 : 8),
                       decoration: BoxDecoration(
-                          color: Colors.white24,
-                          borderRadius: BorderRadius.circular(10)),
-                      child: Icon(icon,
-                          color: Colors.white, size: isLargeCard ? 32 : 28)),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(title,
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        icon,
+                        color: Colors.white,
+                        size: isLargeCard ? 32 : 28,
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
                           style: TextStyle(
-                              fontSize: isLargeCard ? 18 : 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white)),
-                      const SizedBox(height: 4),
-                      Text(subtitle,
+                            fontSize: isLargeCard ? 18 : 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          subtitle,
                           style: TextStyle(
-                              fontSize: isLargeCard ? 14 : 12,
-                              color: Colors.white70)),
-                    ],
-                  ),
-                ],
+                            fontSize: isLargeCard ? 14 : 12,
+                            color: Colors.white70,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-      );
-    });
+        );
+      },
+    );
   }
 }
 
@@ -313,10 +339,7 @@ class _AnimatedMenuCard extends StatelessWidget {
         if (value == 0) return const SizedBox.shrink();
         return Transform.translate(
           offset: Offset(0, 30 * (1 - value)),
-          child: Opacity(
-            opacity: value,
-            child: child,
-          ),
+          child: Opacity(opacity: value, child: child),
         );
       },
     );

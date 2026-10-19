@@ -48,15 +48,11 @@ void main() {
 
     test('slows disconnected HTTP probes only on Android', () {
       expect(
-        AndroidEnergyPolicy.disconnectedSyncProbeIntervalFor(
-          isAndroid: true,
-        ),
+        AndroidEnergyPolicy.disconnectedSyncProbeIntervalFor(isAndroid: true),
         const Duration(minutes: 2),
       );
       expect(
-        AndroidEnergyPolicy.disconnectedSyncProbeIntervalFor(
-          isAndroid: false,
-        ),
+        AndroidEnergyPolicy.disconnectedSyncProbeIntervalFor(isAndroid: false),
         const Duration(minutes: 1),
       );
       expect(
@@ -96,9 +92,7 @@ void main() {
 
     test('uses an hourly Android foreground widget fallback', () {
       expect(
-        AndroidEnergyPolicy.foregroundWidgetRefreshIntervalFor(
-          isAndroid: true,
-        ),
+        AndroidEnergyPolicy.foregroundWidgetRefreshIntervalFor(isAndroid: true),
         const Duration(hours: 1),
       );
       expect(
@@ -133,22 +127,24 @@ void main() {
       );
     });
 
-    test('reduces visible clock updates without changing countdown engines',
-        () {
-      expect(
-        AndroidEnergyPolicy.visibleClockIntervalFor(
-          isAndroid: true,
-          isPowerSaveMode: true,
-        ),
-        const Duration(minutes: 1),
-      );
-      expect(
-        AndroidEnergyPolicy.visibleClockIntervalFor(
-          isAndroid: true,
-          isPowerSaveMode: false,
-        ),
-        const Duration(seconds: 1),
-      );
-    });
+    test(
+      'reduces visible clock updates without changing countdown engines',
+      () {
+        expect(
+          AndroidEnergyPolicy.visibleClockIntervalFor(
+            isAndroid: true,
+            isPowerSaveMode: true,
+          ),
+          const Duration(minutes: 1),
+        );
+        expect(
+          AndroidEnergyPolicy.visibleClockIntervalFor(
+            isAndroid: true,
+            isPowerSaveMode: false,
+          ),
+          const Duration(seconds: 1),
+        );
+      },
+    );
   });
 }

@@ -6,11 +6,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('model config keeps text and multimodal selections independent',
-      (tester) async {
+  testWidgets('model config keeps text and multimodal selections independent', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues({});
-    const secureStorageChannel =
-        MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
+    const secureStorageChannel = MethodChannel(
+      'plugins.it_nomads.com/flutter_secure_storage',
+    );
     final secureValues = <String, String>{};
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;

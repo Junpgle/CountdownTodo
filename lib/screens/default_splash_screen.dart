@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+
 import 'dart:async';
+
 import '../widgets/floating_glass_control.dart';
 
 class DefaultSplashScreen extends StatefulWidget {
@@ -25,9 +27,10 @@ class _DefaultSplashScreenState extends State<DefaultSplashScreen>
       vsync: this,
       duration: const Duration(milliseconds: 150),
     );
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
-    );
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
 
     _controller.forward();
 

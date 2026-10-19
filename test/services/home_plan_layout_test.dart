@@ -32,10 +32,7 @@ void main() {
         secondOrder: ['pomodoro'],
       );
       expect(p.first.take(2), ['todos', 'agenda']);
-      expect(
-        [...p.first, ...p.second].where((k) => k == 'agenda').length,
-        1,
-      );
+      expect([...p.first, ...p.second].where((k) => k == 'agenda').length, 1);
     },
   );
   test(
@@ -55,10 +52,7 @@ void main() {
       final pair = await HomeLayoutService.loadPair(a, b);
       expect(pair.first.contains('agenda'), isFalse);
       expect(pair.second.first, 'agenda');
-      expect(
-        (await HomeLayoutService.loadVisibility(a, b))['agenda'],
-        isFalse,
-      );
+      expect((await HomeLayoutService.loadVisibility(a, b))['agenda'], isFalse);
     },
   );
   test('duplicated plan module in old preferences is normalized', () {

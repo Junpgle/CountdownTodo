@@ -38,9 +38,11 @@ class CourseImportPreflight {
   /// step. With multiple semesters the user must explicitly choose one. When
   /// none exists, the same flow offers creating the missing semester.
   static Future<SemesterInfo?> selectTargetSemester(
-      BuildContext context) async {
-    final semesters =
-        (await StorageService.getSemesters()).where(hasUsableSemester).toList();
+    BuildContext context,
+  ) async {
+    final semesters = (await StorageService.getSemesters())
+        .where(hasUsableSemester)
+        .toList();
     final activeSemesterId = await StorageService.getActiveSemesterId();
     if (!context.mounted) return null;
 
@@ -59,9 +61,7 @@ class CourseImportPreflight {
             children: [
               Icon(Icons.school_outlined, color: colorScheme.primary),
               const SizedBox(width: 10),
-              Text(
-                hasConfiguredSemester ? '选择导入到哪个学期' : '导入前需要设置学期',
-              ),
+              Text(hasConfiguredSemester ? '选择导入到哪个学期' : '导入前需要设置学期'),
             ],
           ),
           content: SingleChildScrollView(
@@ -111,8 +111,9 @@ class CourseImportPreflight {
                                   semester.name,
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
-                                    color:
-                                        isActive ? colorScheme.primary : null,
+                                    color: isActive
+                                        ? colorScheme.primary
+                                        : null,
                                   ),
                                 ),
                                 const SizedBox(height: 4),
@@ -158,7 +159,8 @@ class CourseImportPreflight {
   }
 
   static Future<SemesterInfo?> _showCreateSemesterDialog(
-      BuildContext context) async {
+    BuildContext context,
+  ) async {
     final nameController = TextEditingController();
     DateTime? startDate;
     DateTime? endDate;
@@ -206,8 +208,9 @@ class CourseImportPreflight {
                           );
                           if (picked != null && dialogContext.mounted) {
                             setState(() {
-                              startDate =
-                                  CourseScheduleSemantics.mondayOf(picked);
+                              startDate = CourseScheduleSemantics.mondayOf(
+                                picked,
+                              );
                             });
                           }
                         },
@@ -266,8 +269,9 @@ class CourseImportPreflight {
                       return;
                     }
 
-                    final normalizedStart =
-                        CourseScheduleSemantics.mondayOf(startDate!);
+                    final normalizedStart = CourseScheduleSemantics.mondayOf(
+                      startDate!,
+                    );
                     final id =
                         'semester_${normalizedStart.millisecondsSinceEpoch}';
                     Navigator.pop(

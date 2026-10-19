@@ -123,19 +123,15 @@ Future<FinanceAmountCalculation?> showFinanceAmountCalculator(
     constraints: BoxConstraints(
       maxHeight: MediaQuery.sizeOf(context).height * 0.86,
     ),
-    builder: (_) => FinanceAmountCalculatorSheet(
-      initialExpression: initialExpression,
-    ),
+    builder: (_) =>
+        FinanceAmountCalculatorSheet(initialExpression: initialExpression),
   );
 }
 
 class FinanceAmountCalculatorSheet extends StatefulWidget {
   final String initialExpression;
 
-  const FinanceAmountCalculatorSheet({
-    super.key,
-    this.initialExpression = '',
-  });
+  const FinanceAmountCalculatorSheet({super.key, this.initialExpression = ''});
 
   @override
   State<FinanceAmountCalculatorSheet> createState() =>
@@ -281,9 +277,7 @@ class _FinanceAmountCalculatorSheetState
 
   Widget _buildKeyRow(List<Widget> children) {
     return Row(
-      children: [
-        for (final child in children) Expanded(child: child),
-      ],
+      children: [for (final child in children) Expanded(child: child)],
     );
   }
 
@@ -304,8 +298,9 @@ class _FinanceAmountCalculatorSheetState
             backgroundColor: isOperator
                 ? colors.secondaryContainer
                 : colors.surfaceContainerHighest,
-            foregroundColor:
-                isOperator ? colors.onSecondaryContainer : colors.onSurface,
+            foregroundColor: isOperator
+                ? colors.onSecondaryContainer
+                : colors.onSurface,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14),
             ),
@@ -433,8 +428,9 @@ class _FinanceAmountCalculatorSheetState
                         width: 38,
                         height: 4,
                         decoration: BoxDecoration(
-                          color:
-                              colors.onSurfaceVariant.withValues(alpha: 0.72),
+                          color: colors.onSurfaceVariant.withValues(
+                            alpha: 0.72,
+                          ),
                           borderRadius: BorderRadius.circular(4),
                         ),
                       ),
@@ -483,8 +479,10 @@ class _FinanceAmountCalculatorSheetState
                       errorText: _showValidationError && _error != null
                           ? _error
                           : null,
-                      prefixIcon:
-                          Icon(Icons.edit_outlined, color: colors.primary),
+                      prefixIcon: Icon(
+                        Icons.edit_outlined,
+                        color: colors.primary,
+                      ),
                       suffixIcon: IconButton(
                         tooltip: '删除一位',
                         onPressed: _deleteBackward,
@@ -597,9 +595,7 @@ class _FinanceAmountCalculatorSheetState
                     key: const ValueKey('finance-calculator-use-result'),
                     onPressed: _canUseResult ? _useResult : null,
                     icon: const Icon(Icons.done_rounded),
-                    label: Text(
-                      result == null ? '先完成计算' : '使用结果 ¥$result',
-                    ),
+                    label: Text(result == null ? '先完成计算' : '使用结果 ¥$result'),
                   ),
                 ],
               ),

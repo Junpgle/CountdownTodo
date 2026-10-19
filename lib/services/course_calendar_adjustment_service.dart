@@ -21,10 +21,10 @@ class CourseDayTransfer {
   });
 
   Map<String, dynamic> toJson() => {
-        'from_date': fromDate,
-        'to_date': toDate,
-        'label': label,
-      };
+    'from_date': fromDate,
+    'to_date': toDate,
+    'label': label,
+  };
 
   factory CourseDayTransfer.fromJson(Map<String, dynamic> json) =>
       CourseDayTransfer(
@@ -50,28 +50,29 @@ class CourseCalendarAdjustment {
   });
 
   factory CourseCalendarAdjustment.empty() => const CourseCalendarAdjustment(
-        holidayDates: <String>{},
-        holidayLabels: <String, String>{},
-        transfers: [],
-        handledOfficialHolidayKeys: <String>{},
-      );
+    holidayDates: <String>{},
+    holidayLabels: <String, String>{},
+    transfers: [],
+    handledOfficialHolidayKeys: <String>{},
+  );
 
   Map<String, dynamic> toJson() => {
-        'holiday_dates': holidayDates.toList()..sort(),
-        'holiday_labels': holidayLabels,
-        'transfers': transfers.map((t) => t.toJson()).toList(),
-        'official_holiday_prompt_enabled': officialHolidayPromptEnabled,
-        'handled_official_holiday_keys': handledOfficialHolidayKeys.toList()
-          ..sort(),
-      };
+    'holiday_dates': holidayDates.toList()..sort(),
+    'holiday_labels': holidayLabels,
+    'transfers': transfers.map((t) => t.toJson()).toList(),
+    'official_holiday_prompt_enabled': officialHolidayPromptEnabled,
+    'handled_official_holiday_keys': handledOfficialHolidayKeys.toList()
+      ..sort(),
+  };
 
   factory CourseCalendarAdjustment.fromJson(Map<String, dynamic> json) {
     final holidays = (json['holiday_dates'] as List? ?? const [])
         .map((e) => e.toString())
         .where((e) => e.isNotEmpty)
         .toSet();
-    final labels = (json['holiday_labels'] as Map? ?? const {})
-        .map((key, value) => MapEntry(key.toString(), value.toString()));
+    final labels = (json['holiday_labels'] as Map? ?? const {}).map(
+      (key, value) => MapEntry(key.toString(), value.toString()),
+    );
     final transfers = (json['transfers'] as List? ?? const [])
         .whereType<Map>()
         .map((e) => CourseDayTransfer.fromJson(Map<String, dynamic>.from(e)))
@@ -98,16 +99,15 @@ class CourseCalendarAdjustment {
     List<CourseDayTransfer>? transfers,
     bool? officialHolidayPromptEnabled,
     Set<String>? handledOfficialHolidayKeys,
-  }) =>
-      CourseCalendarAdjustment(
-        holidayDates: holidayDates ?? this.holidayDates,
-        holidayLabels: holidayLabels ?? this.holidayLabels,
-        transfers: transfers ?? this.transfers,
-        officialHolidayPromptEnabled:
-            officialHolidayPromptEnabled ?? this.officialHolidayPromptEnabled,
-        handledOfficialHolidayKeys:
-            handledOfficialHolidayKeys ?? this.handledOfficialHolidayKeys,
-      );
+  }) => CourseCalendarAdjustment(
+    holidayDates: holidayDates ?? this.holidayDates,
+    holidayLabels: holidayLabels ?? this.holidayLabels,
+    transfers: transfers ?? this.transfers,
+    officialHolidayPromptEnabled:
+        officialHolidayPromptEnabled ?? this.officialHolidayPromptEnabled,
+    handledOfficialHolidayKeys:
+        handledOfficialHolidayKeys ?? this.handledOfficialHolidayKeys,
+  );
 }
 
 class OfficialHolidayWindow {
@@ -279,12 +279,14 @@ class CourseCalendarAdjustmentService {
     if (key.isEmpty) return;
     final adjustment = await load();
     if (adjustment.handledOfficialHolidayKeys.contains(key)) return;
-    await save(adjustment.copyWith(
-      handledOfficialHolidayKeys: {
-        ...adjustment.handledOfficialHolidayKeys,
-        key,
-      },
-    ));
+    await save(
+      adjustment.copyWith(
+        handledOfficialHolidayKeys: {
+          ...adjustment.handledOfficialHolidayKeys,
+          key,
+        },
+      ),
+    );
   }
 
   static Future<OfficialHolidayWindow?> pendingOfficialHolidayWindow({
@@ -299,12 +301,13 @@ class CourseCalendarAdjustmentService {
           _isWindowConfigured(adjustment, window)) {
         continue;
       }
-      final dates = window.holidayDates
-          .map((date) => _df.parseStrict(date))
-          .toList()
-        ..sort();
+      final dates =
+          window.holidayDates.map((date) => _df.parseStrict(date)).toList()
+            ..sort();
       final first = CalendarDateMath.addDays(
-          dates.first, -_officialHolidayPromptLeadDays);
+        dates.first,
+        -_officialHolidayPromptLeadDays,
+      );
       final last = CalendarDateMath.addDays(dates.last, 7);
       if (!current.isBefore(first) &&
           !current.isAfter(last) &&
@@ -329,8 +332,10 @@ class CourseCalendarAdjustmentService {
     DateTime now,
   ) async {
     final prefs = await SharedPreferences.getInstance();
-    final stored =
-        await _readScopedValue(_officialHolidaySnoozeTodayKey, prefs);
+    final stored = await _readScopedValue(
+      _officialHolidaySnoozeTodayKey,
+      prefs,
+    );
     return stored == _officialHolidaySnoozeValue(key, now);
   }
 
@@ -369,8 +374,9 @@ class CourseCalendarAdjustmentService {
     final windowHolidays = window.holidayDates.toSet();
     if (adjustment.holidayDates.any(windowHolidays.contains)) return true;
 
-    final windowTransferKeys =
-        window.transfers.map((t) => '${t.fromDate}>${t.toDate}').toSet();
+    final windowTransferKeys = window.transfers
+        .map((t) => '${t.fromDate}>${t.toDate}')
+        .toSet();
     if (windowTransferKeys.isEmpty) return false;
     return adjustment.transfers
         .map((t) => '${t.fromDate}>${t.toDate}')
@@ -394,8 +400,9 @@ class CourseCalendarAdjustmentService {
 
     Future<DateTime?> resolveFallbackSemesterMonday() async {
       if (!fallbackSemesterMondayResolved) {
-        fallbackSemesterMonday =
-            await _resolveFallbackSemesterMonday(fallbackCourses ?? rawCourses);
+        fallbackSemesterMonday = await _resolveFallbackSemesterMonday(
+          fallbackCourses ?? rawCourses,
+        );
         fallbackSemesterMondayResolved = true;
       }
       return fallbackSemesterMonday;
@@ -430,7 +437,9 @@ class CourseCalendarAdjustmentService {
     }
 
     final adjusted = rawCourses
-        .where((course) => !resolvedAdjustment.holidayDates.contains(course.date))
+        .where(
+          (course) => !resolvedAdjustment.holidayDates.contains(course.date),
+        )
         .map((course) => course)
         .toList();
 
@@ -448,12 +457,14 @@ class CourseCalendarAdjustmentService {
                 semesterMonday,
                 targetDate,
               );
-        adjusted.add(_copyCourseForDate(
-          course,
-          date: transfer.toDate,
-          weekday: targetWeekday,
-          weekIndex: targetWeekIndex,
-        ));
+        adjusted.add(
+          _copyCourseForDate(
+            course,
+            date: transfer.toDate,
+            weekday: targetWeekday,
+            weekIndex: targetWeekIndex,
+          ),
+        );
       }
     }
 
@@ -466,7 +477,8 @@ class CourseCalendarAdjustmentService {
   }
 
   static Future<DateTime?> _resolveFallbackSemesterMonday(
-      List<CourseItem> courses) async {
+    List<CourseItem> courses,
+  ) async {
     final semStart = await StorageService.getSemesterStart();
     if (semStart != null) {
       return CourseScheduleSemantics.mondayOf(semStart);

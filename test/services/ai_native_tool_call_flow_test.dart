@@ -126,8 +126,7 @@ void main() {
 
   group('CDT 和记账工具定义及解析', () {
     test('语音式创建两个待办时保留各自备注，不误开设置导航', () {
-      const userMessage =
-          '帮我分开记两个待办，我要写两份，思想汇报，一份备注是六月，一份备注是九月。';
+      const userMessage = '帮我分开记两个待办，我要写两份，思想汇报，一份备注是六月，一份备注是九月。';
       final tools = AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
         userMessage,
       );
@@ -184,7 +183,10 @@ void main() {
 
       expect(todos, hasLength(2));
       expect(todos.map((action) => action.remark), ['六月', '九月']);
-      expect(todos.map((action) => action.timeMode), everyElement('unscheduled'));
+      expect(
+        todos.map((action) => action.timeMode),
+        everyElement('unscheduled'),
+      );
     });
 
     test('明确待办、规划块、习惯与记账请求会提供对应工具', () {

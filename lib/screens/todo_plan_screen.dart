@@ -44,10 +44,10 @@ final Map<(String?, String), DateFormat> _todoPlanDateFormatters = {};
 
 DateFormat _todoPlanDateFormat(String pattern) {
   final locale = Intl.defaultLocale;
-  return _todoPlanDateFormatters.putIfAbsent(
-    (locale, pattern),
-    () => DateFormat(pattern, locale),
-  );
+  return _todoPlanDateFormatters.putIfAbsent((
+    locale,
+    pattern,
+  ), () => DateFormat(pattern, locale));
 }
 
 class TodoPlanScreen extends StatefulWidget {
@@ -436,9 +436,9 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
       }
       final actualSeconds = records.isEmpty
           ? max(b.actualFocusSeconds, 0)
-          : (actualRecordIndex ??= _PlanActualRecordIndex(records)).secondsFor(
-              b,
-            );
+          : (actualRecordIndex ??= _PlanActualRecordIndex(
+              records,
+            )).secondsFor(b);
       if (actualSeconds <= 0 && b.endTime < now) {
         b.status = TodoPlanStatus.missed;
         b.markAsChanged();
@@ -901,7 +901,9 @@ class _PlanGridViewState extends State<_PlanGridView>
   final _manualHostKey = GlobalKey<PlanManualCompletionHostState>();
   final GlobalKey _planGridPomodoroSourceKey = GlobalKey();
   final Map<String, GlobalKey> _planBlockSourceKeys = {};
-  late final _manualCompletion = PlanManualCompletionService(clock: () => widget.dragService.now);
+  late final _manualCompletion = PlanManualCompletionService(
+    clock: () => widget.dragService.now,
+  );
   late Map<String, TodoItem> _todoById;
   int? _dragStartBlock;
   int? _dragEndBlock;
@@ -994,8 +996,7 @@ class _PlanGridViewState extends State<_PlanGridView>
     _executionRecordsSource = widget.pomodoroRecords;
     _executionLogsSource = widget.timeLogs;
     _executionEntriesCache = entries;
-    _executionLaneCountCache =
-        PlanExecutionEntry.timelineLaneCount(entries);
+    _executionLaneCountCache = PlanExecutionEntry.timelineLaneCount(entries);
     return entries;
   }
 
@@ -1206,9 +1207,7 @@ class _PlanGridViewState extends State<_PlanGridView>
                     SizedBox(
                       width: kTimeAxisW,
                       height: totalH,
-                      child: Stack(
-                        children: _buildHourLabels(hourH),
-                      ),
+                      child: Stack(children: _buildHourLabels(hourH)),
                     ),
                     // 网格
                     Expanded(
@@ -1346,9 +1345,8 @@ class _PlanGridViewState extends State<_PlanGridView>
                           : Theme.of(context).colorScheme.onSurfaceVariant;
                     }),
                     overlayColor: WidgetStatePropertyAll(
-                      Theme.of(context).colorScheme.primary.withValues(
-                        alpha: 0.12,
-                      ),
+                      Theme.of(context).colorScheme.primary
+                          .withValues(alpha: 0.12),
                     ),
                     shape: const WidgetStatePropertyAll(
                       RoundedRectangleBorder(
@@ -1893,7 +1891,8 @@ class _PlanGridViewState extends State<_PlanGridView>
           ),
         ),
         manualCompletionService: _manualCompletion,
-        onManualCompleted: (receipt) => _manualHostKey.currentState?.present(receipt),
+        onManualCompleted: (receipt) =>
+            _manualHostKey.currentState?.present(receipt),
       ),
     );
   }

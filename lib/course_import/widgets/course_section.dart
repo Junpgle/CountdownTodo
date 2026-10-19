@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../utils/page_transitions.dart';
 import 'course_adaptation_screen.dart';
 
@@ -56,16 +57,20 @@ class CourseSection extends StatelessWidget {
       children: [
         const Padding(
           padding: EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
-          child: Text('课程设置',
-              style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey)),
+          child: Text(
+            '课程设置',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey,
+            ),
+          ),
         ),
         Card(
           elevation: 2,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Column(
             children: [
               // 1. 首页板块相关
@@ -73,8 +78,10 @@ class CourseSection extends StatelessWidget {
                 context: context,
                 targetId: 'no_course_behavior',
                 child: ListTile(
-                  leading: const Icon(Icons.layers_clear_outlined,
-                      color: Colors.blueGrey),
+                  leading: const Icon(
+                    Icons.layers_clear_outlined,
+                    color: Colors.blueGrey,
+                  ),
                   title: const Text('无课时板块行为'),
                   trailing: DropdownButton<String>(
                     value: noCourseBehavior,
@@ -93,8 +100,10 @@ class CourseSection extends StatelessWidget {
                 context: context,
                 targetId: 'course_calendar_adjustment',
                 child: ListTile(
-                  leading: const Icon(Icons.event_repeat_outlined,
-                      color: Colors.deepPurple),
+                  leading: const Icon(
+                    Icons.event_repeat_outlined,
+                    color: Colors.deepPurple,
+                  ),
                   title: const Text('放假与调休'),
                   subtitle: const Text('设置停课日期，以及补哪一天的课'),
                   trailing: const Icon(Icons.chevron_right),
@@ -109,22 +118,29 @@ class CourseSection extends StatelessWidget {
                   context: context,
                   targetId: 'webview_import',
                   child: ListTile(
-                    leading:
-                        const Icon(Icons.language_outlined, color: Colors.teal),
+                    leading: const Icon(
+                      Icons.language_outlined,
+                      color: Colors.teal,
+                    ),
                     title: const Text('在线登录并导入 (推荐)'),
                     subtitle: const Text('从应用内浏览器登录教务系统直接抓取'),
                     trailing: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.teal.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Text('NEW',
-                          style: TextStyle(
-                              color: Colors.teal,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold)),
+                      child: const Text(
+                        'NEW',
+                        style: TextStyle(
+                          color: Colors.teal,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                     onTap: onWebViewImport,
                   ),
@@ -135,8 +151,10 @@ class CourseSection extends StatelessWidget {
                 context: context,
                 targetId: 'smart_import',
                 child: ListTile(
-                  leading: const Icon(Icons.file_upload_outlined,
-                      color: Colors.indigo),
+                  leading: const Icon(
+                    Icons.file_upload_outlined,
+                    color: Colors.indigo,
+                  ),
                   title: const Text('智能导入本地课表'),
                   subtitle: const Text('自动嗅探文件格式 (工大/厦大/西电/HUEL)'),
                   trailing: const Icon(Icons.chevron_right),
@@ -148,8 +166,10 @@ class CourseSection extends StatelessWidget {
                 context: context,
                 targetId: 'course_sync',
                 child: ListTile(
-                  leading: const Icon(Icons.cloud_download_outlined,
-                      color: Colors.green),
+                  leading: const Icon(
+                    Icons.cloud_download_outlined,
+                    color: Colors.green,
+                  ),
                   title: const Text('从云端获取课表'),
                   subtitle: const Text('将云端课表同步到本机，覆盖本地数据'),
                   trailing: const Icon(Icons.chevron_right),
@@ -163,8 +183,10 @@ class CourseSection extends StatelessWidget {
                 context: context,
                 targetId: 'course_upload',
                 child: ListTile(
-                  leading: Icon(Icons.cloud_upload_outlined,
-                      color: Theme.of(context).colorScheme.primary),
+                  leading: Icon(
+                    Icons.cloud_upload_outlined,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                   title: const Text('上传课表到云端'),
                   subtitle: const Text('用于与电脑或其他设备同步'),
                   trailing: const Icon(Icons.chevron_right),
@@ -182,23 +204,29 @@ class CourseSection extends StatelessWidget {
                   title: const Text('我要请求开发者适配！'),
                   subtitle: const Text('如果没有你的学校，点此申请'),
                   trailing: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.orange.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Text('推荐',
-                        style: TextStyle(
-                            color: Colors.orange,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold)),
+                    child: const Text(
+                      '推荐',
+                      style: TextStyle(
+                        color: Colors.orange,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                   onTap: () {
                     Navigator.push(
                       context,
                       PageTransitions.slideHorizontal(
-                          const CourseAdaptationScreen()),
+                        const CourseAdaptationScreen(),
+                      ),
                     );
                   },
                 ),

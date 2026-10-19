@@ -8,10 +8,7 @@ class AiRecognitionHandle {
   final String sessionId;
   final String messageId;
 
-  const AiRecognitionHandle({
-    required this.sessionId,
-    required this.messageId,
-  });
+  const AiRecognitionHandle({required this.sessionId, required this.messageId});
 }
 
 /// Keeps the standalone todo-recognition flows visible in the AI assistant.
@@ -26,11 +23,7 @@ class AiRecognitionChatBridge {
     String text, {
     String recognizer = '文本识别',
   }) {
-    return _start(
-      source: 'text',
-      inputText: text,
-      recognizer: recognizer,
-    );
+    return _start(source: 'text', inputText: text, recognizer: recognizer);
   }
 
   static Future<AiRecognitionHandle> startImage(
@@ -58,8 +51,8 @@ class AiRecognitionChatBridge {
       kind: ChatMessageKind.recognition,
       content: source == 'image'
           ? (inputText?.trim().isNotEmpty == true
-              ? inputText!.trim()
-              : '请识别这张图片中的待办事项。')
+                ? inputText!.trim()
+                : '请识别这张图片中的待办事项。')
           : '请从下面的文本中识别待办事项：\n${inputText?.trim() ?? ''}',
       attachment: imagePath == null
           ? null
@@ -132,8 +125,8 @@ class AiRecognitionChatBridge {
       final content = total == 0
           ? '识别完成，未发现可添加的事项。'
           : '识别完成：发现 ${todoResults.length} 个待办'
-              '${financeDrafts.isEmpty ? '' : '、${financeDrafts.length} 笔账单'}，'
-              '请返回确认卡核对后保存。';
+                '${financeDrafts.isEmpty ? '' : '、${financeDrafts.length} 笔账单'}，'
+                '请返回确认卡核对后保存。';
       final suggestions = total == 0
           ? const ['换个更清晰的内容重试', '告诉我你想提取什么']
           : const ['检查时间与提醒', '继续分析这些事项', '返回确认卡保存'];
@@ -160,10 +153,7 @@ class AiRecognitionChatBridge {
     }
   }
 
-  static Future<void> fail(
-    AiRecognitionHandle handle,
-    Object error,
-  ) async {
+  static Future<void> fail(AiRecognitionHandle handle, Object error) async {
     try {
       final existing = await _findMessage(handle);
       final info = existing?.recognition;
@@ -190,9 +180,7 @@ class AiRecognitionChatBridge {
     }
   }
 
-  static AiRecognitionHandle? handleFromPending(
-    Map<String, dynamic>? pending,
-  ) {
+  static AiRecognitionHandle? handleFromPending(Map<String, dynamic>? pending) {
     if (pending == null) return null;
     final sessionId = pending['recognitionChatSessionId']?.toString().trim();
     final messageId = pending['recognitionChatMessageId']?.toString().trim();

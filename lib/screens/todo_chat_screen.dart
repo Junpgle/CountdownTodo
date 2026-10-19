@@ -86,10 +86,10 @@ final Map<(String?, String), DateFormat> _todoChatDateFormats = {};
 
 DateFormat _todoChatDateFormat(String pattern) {
   final locale = Intl.defaultLocale;
-  return _todoChatDateFormats.putIfAbsent(
-    (locale, pattern),
-    () => DateFormat(pattern, locale),
-  );
+  return _todoChatDateFormats.putIfAbsent((
+    locale,
+    pattern,
+  ), () => DateFormat(pattern, locale));
 }
 
 String _formatTodoChatDateRange(DateTime start, DateTime end) {

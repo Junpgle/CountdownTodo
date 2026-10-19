@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+
 import 'database_helper.dart';
 
 /// Tracks user accept/reject feedback on classification suggestions
@@ -42,7 +43,8 @@ class SuggestionFeedbackService {
     try {
       final db = await DatabaseHelper.instance.database;
       final placeholders = List.filled(keywords.length, '?').join(',');
-      final rows = await db.rawQuery('''
+      final rows = await db.rawQuery(
+        '''
         SELECT
           SUM(CASE WHEN accepted = 1 THEN 1 ELSE 0 END) AS accepted_count,
           COUNT(*) AS total_count
@@ -50,11 +52,13 @@ class SuggestionFeedbackService {
         WHERE keyword IN ($placeholders)
           AND suggestion_type = ?
           AND suggested_value = ?
-      ''', [
-        ...keywords.map((k) => k.toLowerCase()),
-        suggestionType,
-        suggestedValue
-      ]);
+      ''',
+        [
+          ...keywords.map((k) => k.toLowerCase()),
+          suggestionType,
+          suggestedValue,
+        ],
+      );
 
       if (rows.isEmpty) return null;
       final acceptedCount = (rows.first['accepted_count'] as int?) ?? 0;
@@ -78,7 +82,8 @@ class SuggestionFeedbackService {
     try {
       final db = await DatabaseHelper.instance.database;
       final placeholders = List.filled(keywords.length, '?').join(',');
-      final rows = await db.rawQuery('''
+      final rows = await db.rawQuery(
+        '''
         SELECT
           suggested_value,
           SUM(CASE WHEN accepted = 1 THEN 1 ELSE 0 END) AS accepted_count,
@@ -88,7 +93,9 @@ class SuggestionFeedbackService {
           AND suggestion_type = ?
         GROUP BY suggested_value
         HAVING total_count >= 2
-      ''', [...keywords.map((k) => k.toLowerCase()), suggestionType]);
+      ''',
+        [...keywords.map((k) => k.toLowerCase()), suggestionType],
+      );
 
       final result = <String, double>{};
       for (final row in rows) {
@@ -118,7 +125,8 @@ class SuggestionFeedbackService {
       final db = await DatabaseHelper.instance.database;
       final keywordPlaceholders = List.filled(keywords.length, '?').join(',');
       final typePlaceholders = List.filled(result.length, '?').join(',');
-      final rows = await db.rawQuery('''
+      final rows = await db.rawQuery(
+        '''
         SELECT
           suggestion_type,
           suggested_value,
@@ -129,10 +137,9 @@ class SuggestionFeedbackService {
           AND suggestion_type IN ($typePlaceholders)
         GROUP BY suggestion_type, suggested_value
         HAVING COUNT(*) >= 2
-      ''', [
-        ...keywords.map((keyword) => keyword.toLowerCase()),
-        ...result.keys,
-      ]);
+      ''',
+        [...keywords.map((keyword) => keyword.toLowerCase()), ...result.keys],
+      );
 
       for (final row in rows) {
         final type = row['suggestion_type'] as String;
@@ -191,8 +198,11 @@ class SuggestionFeedbackService {
       final db = await DatabaseHelper.instance.database;
       final typePlaceholders = List.filled(types.length, '?').join(',');
       const chunkSize = 900;
-      for (var offset = 0; offset < normalizedKeywords.length;
-          offset += chunkSize) {
+      for (
+        var offset = 0;
+        offset < normalizedKeywords.length;
+        offset += chunkSize
+      ) {
         final end = offset + chunkSize < normalizedKeywords.length
             ? offset + chunkSize
             : normalizedKeywords.length;
@@ -214,10 +224,7 @@ class SuggestionFeedbackService {
           WHERE f.suggestion_type IN ($typePlaceholders)
           GROUP BY q.query_index, f.suggestion_type, f.suggested_value
           ''',
-          [
-            ...normalizedKeywords.sublist(offset, end),
-            ...types,
-          ],
+          [...normalizedKeywords.sublist(offset, end), ...types],
         );
 
         for (final row in rows) {
@@ -258,8 +265,11 @@ class SuggestionFeedbackService {
 
   /// Blend a rule score with feedback posterior.
   /// [ruleWeight] controls how much the original rule score matters vs feedback.
-  static double blendScore(double ruleScore, double? posterior,
-      {double ruleWeight = 0.6}) {
+  static double blendScore(
+    double ruleScore,
+    double? posterior, {
+    double ruleWeight = 0.6,
+  }) {
     if (posterior == null) return ruleScore;
     return ruleWeight * ruleScore + (1 - ruleWeight) * posterior;
   }

@@ -15,10 +15,7 @@ class MotionGuide {
             ? 0.0
             : (value % 0.2 < 0.1 ? -5.0 : 5.0);
 
-        return Transform.translate(
-          offset: Offset(dx, 0),
-          child: child,
-        );
+        return Transform.translate(offset: Offset(dx, 0), child: child);
       },
       child: child,
     );
@@ -43,9 +40,7 @@ class MotionGuide {
                   shape: BoxShape.rectangle,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .primary
+                    color: Theme.of(context).colorScheme.primary
                         .withValues(alpha: (1 - value) * 0.5),
                     width: value * 20,
                   ),

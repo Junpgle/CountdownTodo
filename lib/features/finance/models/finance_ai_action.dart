@@ -83,44 +83,45 @@ class FinanceAiAction {
   }
 
   Map<String, dynamic> toJson() => {
-        'action': actionName,
-        'transactionId': transactionId,
-        'from': from,
-        'to': to,
-        'keyword': keyword,
-        'type': transactionType?.name,
-        'amount': amountMinor == null ? null : amountMinor! / 100,
-        'amount_minor': amountMinor,
-        'transactionDate': transactionDate,
-        'categoryUuid': categoryUuid,
-        'category': categoryName,
-        'paymentMethodUuid': paymentMethodUuid,
-        'paymentMethod': paymentMethodName,
-        'merchant': merchant,
-        'note': note,
-        'reason': reason,
-        'hasType': hasType,
-        'hasAmount': hasAmount,
-        'hasDate': hasDate,
-        'hasCategory': hasCategory,
-        'hasPaymentMethod': hasPaymentMethod,
-        'hasMerchant': hasMerchant,
-        'hasNote': hasNote,
-        'isAdded': isAdded,
-        'isIgnored': isIgnored,
-      };
+    'action': actionName,
+    'transactionId': transactionId,
+    'from': from,
+    'to': to,
+    'keyword': keyword,
+    'type': transactionType?.name,
+    'amount': amountMinor == null ? null : amountMinor! / 100,
+    'amount_minor': amountMinor,
+    'transactionDate': transactionDate,
+    'categoryUuid': categoryUuid,
+    'category': categoryName,
+    'paymentMethodUuid': paymentMethodUuid,
+    'paymentMethod': paymentMethodName,
+    'merchant': merchant,
+    'note': note,
+    'reason': reason,
+    'hasType': hasType,
+    'hasAmount': hasAmount,
+    'hasDate': hasDate,
+    'hasCategory': hasCategory,
+    'hasPaymentMethod': hasPaymentMethod,
+    'hasMerchant': hasMerchant,
+    'hasNote': hasNote,
+    'isAdded': isAdded,
+    'isIgnored': isIgnored,
+  };
 
   factory FinanceAiAction.fromJson(Map<String, dynamic> json) {
     final type = _parseActionType(json['action'] ?? json['actionType']);
     final rawTransactionType =
         json['transactionType'] ?? json['transaction_type'] ?? json['type'];
-    final isMutationType = type == FinanceAiActionType.update ||
+    final isMutationType =
+        type == FinanceAiActionType.update ||
         type == FinanceAiActionType.delete;
     final hasType = json['hasType'] is bool
         ? json['hasType'] as bool
         : json.containsKey('transactionType') ||
-            json.containsKey('transaction_type') ||
-            (isMutationType && json.containsKey('type'));
+              json.containsKey('transaction_type') ||
+              (isMutationType && json.containsKey('type'));
     final amountMinorValue = json['amount_minor'] ?? json['amountMinor'];
     final amountValue = amountMinorValue != null
         ? _parseMinor(amountMinorValue)
@@ -128,10 +129,11 @@ class FinanceAiAction {
     final hasAmount = json['hasAmount'] is bool
         ? json['hasAmount'] as bool
         : json.containsKey('amount') ||
-            json.containsKey('amount_yuan') ||
-            amountMinorValue != null;
+              json.containsKey('amount_yuan') ||
+              amountMinorValue != null;
     final categoryValue = json['category'] ?? json['categoryName'];
-    final paymentValue = json['paymentMethod'] ??
+    final paymentValue =
+        json['paymentMethod'] ??
         json['payment_method'] ??
         json['paymentMethodName'];
     final dateValue =
@@ -142,7 +144,8 @@ class FinanceAiAction {
         : json.containsKey('transactionDate') ||
               json.containsKey('transaction_date') ||
               json.containsKey('date');
-    final hasDate = hasDateValue &&
+    final hasDate =
+        hasDateValue &&
         rawTransactionDate != null &&
         isFinanceDateKey(rawTransactionDate);
 
@@ -176,15 +179,15 @@ class FinanceAiAction {
       hasCategory: json['hasCategory'] is bool
           ? json['hasCategory'] as bool
           : json.containsKey('category') ||
-              json.containsKey('categoryName') ||
-              json.containsKey('categoryUuid') ||
-              json.containsKey('category_uuid'),
+                json.containsKey('categoryName') ||
+                json.containsKey('categoryUuid') ||
+                json.containsKey('category_uuid'),
       hasPaymentMethod: json['hasPaymentMethod'] is bool
           ? json['hasPaymentMethod'] as bool
           : json.containsKey('paymentMethod') ||
-              json.containsKey('payment_method') ||
-              json.containsKey('paymentMethodUuid') ||
-              json.containsKey('payment_method_uuid'),
+                json.containsKey('payment_method') ||
+                json.containsKey('paymentMethodUuid') ||
+                json.containsKey('payment_method_uuid'),
       hasMerchant: json['hasMerchant'] is bool
           ? json['hasMerchant'] as bool
           : json.containsKey('merchant') || json.containsKey('title'),

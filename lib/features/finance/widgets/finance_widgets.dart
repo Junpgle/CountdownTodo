@@ -113,10 +113,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     }
     return _categoryDisplayNames.putIfAbsent(
       categoryUuid ?? '',
-      () => financeCategoryReferenceDisplayName(
-        categoryUuid,
-        categories.values,
-      ),
+      () =>
+          financeCategoryReferenceDisplayName(categoryUuid, categories.values),
     );
   }
 
@@ -318,9 +316,9 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       _FinanceOverviewView.week =>
         includesNow ? '本周' : _formatFinanceDateRange(range.from, range.to),
       _FinanceOverviewView.day =>
-          focusedDateIsToday
-              ? '今天'
-              : _formatFinanceDayLabel(dateKey(_focusedDate)),
+        focusedDateIsToday
+            ? '今天'
+            : _formatFinanceDayLabel(dateKey(_focusedDate)),
     };
     final period = _FinanceOverviewPeriod(
       from: range.from,
@@ -1586,8 +1584,10 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
   }
 
   void _syncSearchInputs() {
-    final transactionsChanged =
-        !identical(_searchSourceTransactions, transactions);
+    final transactionsChanged = !identical(
+      _searchSourceTransactions,
+      transactions,
+    );
     if (!transactionsChanged &&
         identical(_searchSourceCategories, categories) &&
         identical(_searchSourcePaymentMethods, paymentMethods)) {

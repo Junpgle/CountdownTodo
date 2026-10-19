@@ -29,7 +29,8 @@ abstract final class LegacyAiPromptSanitizer {
 
           final lower = line.toLowerCase();
           final mentionsTodo = lower.contains('todo') || line.contains('待办');
-          final mentionsLegacyRange = lower.contains('starttime') ||
+          final mentionsLegacyRange =
+              lower.contains('starttime') ||
               lower.contains('endtime') ||
               lower.contains('start_time') ||
               lower.contains('end_time') ||

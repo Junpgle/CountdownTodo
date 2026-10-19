@@ -43,11 +43,13 @@ void main() {
       expect(callbackCount, 1);
 
       events
-        ..add(FileSystemModifyEvent(
-          '${tempDirectory.path}${Platform.pathSeparator}other.json',
-          false,
-          true,
-        ))
+        ..add(
+          FileSystemModifyEvent(
+            '${tempDirectory.path}${Platform.pathSeparator}other.json',
+            false,
+            true,
+          ),
+        )
         ..add(FileSystemModifyEvent(target.path, false, true))
         ..add(FileSystemModifyEvent(target.path, false, true))
         ..add(FileSystemModifyEvent(target.path, false, true));
@@ -66,9 +68,8 @@ void main() {
         onFileChanged: () async => callbackCount++,
         fallbackInterval: const Duration(hours: 1),
         degradedPollInterval: const Duration(milliseconds: 10),
-        watchDirectory: (_) => throw const FileSystemException(
-          'watch unavailable',
-        ),
+        watchDirectory: (_) =>
+            throw const FileSystemException('watch unavailable'),
       );
 
       await watcher!.start();

@@ -44,9 +44,7 @@ abstract final class AiToolChatRunner {
       final openMatches = _legacyTextToolOpen.allMatches(content, cursor);
       final openMatch = openMatches.isEmpty ? null : openMatches.first;
       final closeMatches = _legacyTextToolClose.allMatches(content, cursor);
-      final closeBeforeOpen = closeMatches.isEmpty
-          ? null
-          : closeMatches.first;
+      final closeBeforeOpen = closeMatches.isEmpty ? null : closeMatches.first;
       if (closeBeforeOpen != null &&
           (openMatch == null || closeBeforeOpen.start < openMatch.start)) {
         visible.write(content.substring(cursor, closeBeforeOpen.start));
@@ -79,11 +77,8 @@ abstract final class AiToolChatRunner {
     return visible.toString();
   }
 
-  static ({
-    String content,
-    List<AiChatFunctionCall> calls,
-    bool hadToolMarkup,
-  }) _parseLegacyTextToolCalls(
+  static ({String content, List<AiChatFunctionCall> calls, bool hadToolMarkup})
+  _parseLegacyTextToolCalls(
     String content,
     List<Map<String, dynamic>> tools,
     int round,
@@ -209,11 +204,7 @@ abstract final class AiToolChatRunner {
       cleaned = cleaned.substring(0, malformedToolCall.start);
     }
     cleaned = cleaned.replaceAll(_legacyTextToolClose, '');
-    return (
-      content: cleaned,
-      calls: calls,
-      hadToolMarkup: hadToolMarkup,
-    );
+    return (content: cleaned, calls: calls, hadToolMarkup: hadToolMarkup);
   }
 
   static dynamic _decodeLegacyJsonValue(String value) {
@@ -246,11 +237,12 @@ abstract final class AiToolChatRunner {
         'string' => rawValue,
         'integer' => int.tryParse(rawValue),
         'number' => num.tryParse(rawValue),
-        'boolean' => rawValue.toLowerCase() == 'true'
-            ? true
-            : rawValue.toLowerCase() == 'false'
-            ? false
-            : null,
+        'boolean' =>
+          rawValue.toLowerCase() == 'true'
+              ? true
+              : rawValue.toLowerCase() == 'false'
+              ? false
+              : null,
         'object' => decodedJson is Map ? decodedJson : null,
         'array' => decodedJson is List ? decodedJson : null,
         'json' => decodedJson,
@@ -338,12 +330,14 @@ abstract final class AiToolChatRunner {
         return '模型未能生成有效写入提案，应用没有创建确认卡或写入数据。请补充信息后重试。';
       }
       final labels = missing
-          .map((name) => switch (name) {
-                'propose_cdt_actions' => '待办/日程/习惯操作',
-                'propose_finance_drafts' => '记账草案',
-                'propose_finance_actions' => '账单修改草案',
-                _ => name,
-              })
+          .map(
+            (name) => switch (name) {
+              'propose_cdt_actions' => '待办/日程/习惯操作',
+              'propose_finance_drafts' => '记账草案',
+              'propose_finance_actions' => '账单修改草案',
+              _ => name,
+            },
+          )
           .join('、');
       return '已生成部分待确认操作卡，但模型未能补齐：$labels。现有卡片尚未写入，请核对后再补充缺少的操作。';
     }
@@ -354,20 +348,17 @@ abstract final class AiToolChatRunner {
           round >= maxQueryRounds ||
           callCount >= maxCalls ||
           resultChars > AiToolResultContext.maxTurnChars - 400;
-      final unsubmittedWriteProposalNames = requiredWriteProposalNames.difference(
-        completedWriteProposalNames,
-      );
+      final unsubmittedWriteProposalNames = requiredWriteProposalNames
+          .difference(completedWriteProposalNames);
       final roundTools = tools.where((tool) {
         final name = (tool['function'] as Map)['name'] as String;
         final isQuery = AiQueryToolService.toolNames.contains(name);
-        final isUnsubmittedWriteProposal =
-            unsubmittedWriteProposalNames.contains(name);
+        final isUnsubmittedWriteProposal = unsubmittedWriteProposalNames
+            .contains(name);
         return (!finalRound || !isQuery) &&
             (!proposalsProduced || isQuery || isUnsubmittedWriteProposal) &&
-            (!planningRepairAttempted ||
-                isUnsubmittedWriteProposal) &&
-            (!planningScheduleRepairAttempted ||
-                isUnsubmittedWriteProposal) &&
+            (!planningRepairAttempted || isUnsubmittedWriteProposal) &&
+            (!planningScheduleRepairAttempted || isUnsubmittedWriteProposal) &&
             // Action recovery may query once to resolve a real local ID; after
             // that, keep only proposals unless a mixed call still has reads
             // left to finish.
@@ -505,9 +496,7 @@ abstract final class AiToolChatRunner {
           pendingReferenceDomains.addAll(incompletePriorQueryDomains);
           for (final readCall in readCallsInRound) {
             if (matchingReadCallIds.contains(readCall.id)) {
-              pendingReferenceDomains.addAll(
-                _queryReferenceDomains(readCall),
-              );
+              pendingReferenceDomains.addAll(_queryReferenceDomains(readCall));
             }
           }
           final dependencyIssue =
@@ -517,17 +506,12 @@ abstract final class AiToolChatRunner {
         }
         final validationIssue = issue;
         if (validationIssue != null) {
-          proposalValidationIssues.putIfAbsent(
-            call.id,
-            () => validationIssue,
-          );
+          proposalValidationIssues.putIfAbsent(call.id, () => validationIssue);
         } else if (call.name == 'propose_cdt_actions') {
           createdTodoCount += _createdTodoCount(call.arguments);
           createdTodoRemarkCount += _createdTodoRemarkCount(call.arguments);
         } else if (call.name == 'propose_finance_drafts') {
-          createdFinanceDraftCount += _createdFinanceDraftCount(
-            call.arguments,
-          );
+          createdFinanceDraftCount += _createdFinanceDraftCount(call.arguments);
         }
       }
       final cdtProposalCalls = calls
@@ -582,8 +566,9 @@ abstract final class AiToolChatRunner {
             proposedCdtActionNames.add('create_todo');
           }
         }
-        final missingCdtActionNames =
-            requiredCdtActionNames.difference(proposedCdtActionNames);
+        final missingCdtActionNames = requiredCdtActionNames.difference(
+          proposedCdtActionNames,
+        );
         if (missingCdtActionNames.isNotEmpty) {
           final issue =
               '用户明确要求的 CDT 操作未全部包含：'
@@ -725,8 +710,7 @@ abstract final class AiToolChatRunner {
         final claimsDraft = RegExp(
           r'草案.{0,12}已生成|已(?:生成|创建|新建|保存)|我已为|回复.{0,12}确认.{0,20}保存',
         ).hasMatch(content);
-        if (isLikelyClarification(content) &&
-            !unsupportedLegacyToolMarkup) {
+        if (isLikelyClarification(content) && !unsupportedLegacyToolMarkup) {
           if (content.isNotEmpty) yield AiChatStreamChunk(content: content);
           return;
         }
@@ -764,8 +748,7 @@ abstract final class AiToolChatRunner {
           hasWriteProposalTool &&
           !hasPlanningTool &&
           !proposalsProduced) {
-        if (isLikelyClarification(content) &&
-            !unsupportedLegacyToolMarkup) {
+        if (isLikelyClarification(content) && !unsupportedLegacyToolMarkup) {
           if (content.isNotEmpty) yield AiChatStreamChunk(content: content);
           return;
         }
@@ -866,8 +849,7 @@ abstract final class AiToolChatRunner {
         final suggestions = AiActionParser.extractSuggestions(content);
         if (suggestions.isNotEmpty) {
           yield AiChatStreamChunk(
-            content:
-                '[SUGGEST_START]${jsonEncode(suggestions)}[SUGGEST_END]',
+            content: '[SUGGEST_START]${jsonEncode(suggestions)}[SUGGEST_END]',
           );
         }
         return;
@@ -998,10 +980,9 @@ abstract final class AiToolChatRunner {
             if (returnedCatalogIds.isNotEmpty) {
               validatedFinanceCatalogIdsByKind ??= <String, Set<String>>{};
               for (final entry in returnedCatalogIds.entries) {
-                validatedFinanceCatalogIdsByKind.putIfAbsent(
-                  entry.key,
-                  () => <String>{},
-                ).addAll(entry.value);
+                validatedFinanceCatalogIdsByKind
+                    .putIfAbsent(entry.key, () => <String>{})
+                    .addAll(entry.value);
               }
             }
           }
@@ -1042,8 +1023,7 @@ abstract final class AiToolChatRunner {
             allDependencyQueriesSucceeded &&
             actionRepairQueriesUsed &&
             !referenceProposalRetryUsed;
-        if ((actionProposalRepairAttempted &&
-                !canRetryWithReadyReferences) ||
+        if ((actionProposalRepairAttempted && !canRetryWithReadyReferences) ||
             round >= maxQueryRounds + 1) {
           yield AiChatStreamChunk(
             content: deferredReferenceProposal
@@ -1065,7 +1045,13 @@ abstract final class AiToolChatRunner {
           'content':
               '${deferredReferenceProposal ? '上一轮在同一批函数调用中同时查询和提交了依赖现有对象的写入提案；App已执行只读查询，但没有生成该提案的确认卡。' : '上一轮这些写入函数调用未通过参数校验：${invalidWriteProposalIssues.join('；')}。'}'
               'App没有执行无效调用，也没有写入任何数据。'
-              '${deferredReferenceProposal && allDependencyQueriesSucceeded ? '查询结果已返回；现在只根据结果中的真实ID重新调用对应提案工具，不要再次查询。' : deferredReferenceProposal ? '相关查询结果有失败或不完整；不要猜测对象ID，先重试查询或向用户追问。' : validWriteProposalNames.isEmpty ? '现在请修正参数并重新调用对应提案工具。' : '其他有效提案已保留；不要重复它们，只补齐无效调用对应的提案。'}'
+              '${deferredReferenceProposal && allDependencyQueriesSucceeded
+                  ? '查询结果已返回；现在只根据结果中的真实ID重新调用对应提案工具，不要再次查询。'
+                  : deferredReferenceProposal
+                  ? '相关查询结果有失败或不完整；不要猜测对象ID，先重试查询或向用户追问。'
+                  : validWriteProposalNames.isEmpty
+                  ? '现在请修正参数并重新调用对应提案工具。'
+                  : '其他有效提案已保留；不要重复它们，只补齐无效调用对应的提案。'}'
               '如果信息不足或意图有歧义，先向用户追问；不要声称已经完成或保存。',
         });
         continue;
@@ -1197,7 +1183,8 @@ abstract final class AiToolChatRunner {
       (field) => record[field]?.toString().trim().isNotEmpty == true,
     );
     bool hasListReference(Map record, Iterable<String> fields) => fields.any(
-      (field) => record[field] is List &&
+      (field) =>
+          record[field] is List &&
           (record[field] as List).any(
             (value) => value?.toString().trim().isNotEmpty == true,
           ),
@@ -1225,21 +1212,17 @@ abstract final class AiToolChatRunner {
     }
     if (call.name == 'propose_finance_drafts') {
       return records(arguments['drafts']).any(
-        (draft) => hasReference(
-          draft,
-          const [
-            'categoryUuid',
-            'category_uuid',
-            'paymentMethodUuid',
-            'payment_method_uuid',
-          ],
-        ),
-      )
+            (draft) => hasReference(draft, const [
+              'categoryUuid',
+              'category_uuid',
+              'paymentMethodUuid',
+              'payment_method_uuid',
+            ]),
+          )
           ? const {'finance_catalog'}
           : const {};
     }
-    if (call.name != 'propose_cdt_actions' ||
-        arguments['actions'] is! List) {
+    if (call.name != 'propose_cdt_actions' || arguments['actions'] is! List) {
       return const {};
     }
 
@@ -1262,11 +1245,7 @@ abstract final class AiToolChatRunner {
             domains.add('todo_groups');
           }
         case 'create_plan_block':
-          if (hasReference(action, const [
-                'todoId',
-                'todo_id',
-                'todoUuid',
-              ]) ||
+          if (hasReference(action, const ['todoId', 'todo_id', 'todoUuid']) ||
               recordsFor(action, 'blocks').any(
                 (block) => hasReference(block, const [
                   'todoId',
@@ -1303,10 +1282,7 @@ abstract final class AiToolChatRunner {
         case 'create_time_log':
           if (hasListReference(action, const ['tagUuids', 'tagIds']) ||
               recordsFor(action, 'logs').any(
-                (log) => hasListReference(log, const [
-                  'tagUuids',
-                  'tagIds',
-                ]),
+                (log) => hasListReference(log, const ['tagUuids', 'tagIds']),
               )) {
             domains.add('pomodoro_tags');
           }
@@ -1572,15 +1548,13 @@ abstract final class AiToolChatRunner {
           return 'customDays周期待办必须包含正数customIntervalDays';
         }
         final rawRecurrenceEnd = todo['recurrenceEndDate'];
-        if (rawRecurrenceEnd != null &&
-            !_isStrictDateOnly(rawRecurrenceEnd)) {
+        if (rawRecurrenceEnd != null && !_isStrictDateOnly(rawRecurrenceEnd)) {
           return 'recurrenceEndDate必须是有效的yyyy-MM-dd日期';
         }
         if (rawRecurrenceEnd != null &&
             dueDate != null &&
-            _parseStrictLocalDateTime(rawRecurrenceEnd)!.isBefore(
-              DateTime(dueDate.year, dueDate.month, dueDate.day),
-            )) {
+            _parseStrictLocalDateTime(rawRecurrenceEnd)!
+                .isBefore(DateTime(dueDate.year, dueDate.month, dueDate.day))) {
           return 'recurrenceEndDate不能早于待办周期锚点';
         }
         final hasRemarkedMonth = RegExp(
@@ -1726,11 +1700,16 @@ abstract final class AiToolChatRunner {
   ) {
     final items = result['items'];
     if (items is! List) return const {};
-    return items.whereType<Map>().map((item) {
-      return (item['transactionId'] ?? item['transaction_id'] ?? item['id'])
-          ?.toString()
-          .trim();
-    }).whereType<String>().where((id) => id.isNotEmpty).toSet();
+    return items
+        .whereType<Map>()
+        .map((item) {
+          return (item['transactionId'] ?? item['transaction_id'] ?? item['id'])
+              ?.toString()
+              .trim();
+        })
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet();
   }
 
   static Map<String, Set<String>> _financeCatalogIdsFromQuery(
@@ -1854,13 +1833,14 @@ abstract final class AiToolChatRunner {
       final title = (record['title'] ?? record['name'])?.toString().trim();
       switch (actionName) {
         case 'create_todo':
-          final groupIds = [
-            if (record['groupId'] != null) record['groupId'],
-            if (record['group_id'] != null) record['group_id'],
-          ]
-              .map((value) => value.toString().trim())
-              .where((id) => id.isNotEmpty)
-              .toSet();
+          final groupIds =
+              [
+                    if (record['groupId'] != null) record['groupId'],
+                    if (record['group_id'] != null) record['group_id'],
+                  ]
+                  .map((value) => value.toString().trim())
+                  .where((id) => id.isNotEmpty)
+                  .toSet();
           if (groupIds.length > 1) {
             return 'create_todo 的groupId与group_id不能互相冲突';
           }
@@ -1908,7 +1888,9 @@ abstract final class AiToolChatRunner {
           final date = _parseStrictLocalDateTime(rawDate);
           final start = _parseStrictLocalDateTime(rawStart);
           final end = _parseStrictLocalDateTime(rawEnd);
-          if (rawDate != null && rawDate.toString().trim().isNotEmpty && date == null) {
+          if (rawDate != null &&
+              rawDate.toString().trim().isNotEmpty &&
+              date == null) {
             return 'create_schedule 的date必须是有效日期';
           }
           if (rawStart != null &&
@@ -1950,12 +1932,14 @@ abstract final class AiToolChatRunner {
                   .toSet(),
           ];
           if (tagAliases.length > 1 &&
-              tagAliases.skip(1).any(
-                (ids) => !_sameStringSet(tagAliases.first, ids),
-              )) {
+              tagAliases
+                  .skip(1)
+                  .any((ids) => !_sameStringSet(tagAliases.first, ids))) {
             return 'create_time_log 的tagUuids与tagIds不能互相冲突';
           }
-          final tagIds = tagAliases.isEmpty ? const <String>{} : tagAliases.first;
+          final tagIds = tagAliases.isEmpty
+              ? const <String>{}
+              : tagAliases.first;
           final knownTagIds = knownReferenceIdsByDomain?['pomodoro_tags'];
           if (knownTagIds != null &&
               tagIds.any((id) => !knownTagIds.contains(id))) {
@@ -1987,20 +1971,22 @@ abstract final class AiToolChatRunner {
           break;
         case 'create_plan_block':
           final newTodoTitle = record['newTodoTitle']?.toString().trim() ?? '';
-          final todoAliases = [
-            if (record['todoId'] != null) record['todoId'],
-            if (record['todo_id'] != null) record['todo_id'],
-            if (record['todoUuid'] != null) record['todoUuid'],
-          ]
-              .map((value) => value.toString().trim())
-              .where((id) => id.isNotEmpty)
-              .toSet();
+          final todoAliases =
+              [
+                    if (record['todoId'] != null) record['todoId'],
+                    if (record['todo_id'] != null) record['todo_id'],
+                    if (record['todoUuid'] != null) record['todoUuid'],
+                  ]
+                  .map((value) => value.toString().trim())
+                  .where((id) => id.isNotEmpty)
+                  .toSet();
           if (todoAliases.length > 1) {
             return 'create_plan_block 的待办ID字段不能互相冲突';
           }
           final todoId = todoAliases.isNotEmpty;
-          final referencedTodoId =
-              todoAliases.isEmpty ? null : todoAliases.first;
+          final referencedTodoId = todoAliases.isEmpty
+              ? null
+              : todoAliases.first;
           if (referencedTodoId != null &&
               knownTodoIds != null &&
               !knownTodoIds.contains(referencedTodoId)) {
@@ -2048,8 +2034,8 @@ abstract final class AiToolChatRunner {
           if (sourceType == null || !sourceTypes.contains(sourceType)) {
             return 'create_habit 每项都必须指定有效sourceType';
           }
-          final periodType =
-              (record['periodType'] ?? record['habitPeriodType'])?.toString();
+          final periodType = (record['periodType'] ?? record['habitPeriodType'])
+              ?.toString();
           const periodTypes = {
             'daily',
             'weekly',
@@ -2081,9 +2067,9 @@ abstract final class AiToolChatRunner {
                     .toSet(),
           ];
           if (sourceIdAliases.length > 1 &&
-              sourceIdAliases.skip(1).any(
-                (ids) => !_sameStringSet(sourceIdAliases.first, ids),
-              )) {
+              sourceIdAliases
+                  .skip(1)
+                  .any((ids) => !_sameStringSet(sourceIdAliases.first, ids))) {
             return 'create_habit 的sourceIds字段不能互相冲突';
           }
           final sourceIds = sourceIdAliases.isEmpty
@@ -2125,8 +2111,7 @@ abstract final class AiToolChatRunner {
               record['timeToleranceMinutes'] ??
               record['time_tolerance_minutes'];
           final tolerance = _toInt(rawTolerance);
-          if (rawTolerance != null &&
-              (tolerance == null || tolerance < 0)) {
+          if (rawTolerance != null && (tolerance == null || tolerance < 0)) {
             return 'timeToleranceMinutes必须是非负整数';
           }
           final targetValue = _toPositiveDouble(record['targetValue']);
@@ -2262,8 +2247,7 @@ abstract final class AiToolChatRunner {
         if (!mutableFields.any(rawUpdate.containsKey)) {
           return '$actionName每项都必须包含至少一个要修改的字段';
         }
-        if (actionName == 'update_todo' ||
-            actionName == 'categorize_todo') {
+        if (actionName == 'update_todo' || actionName == 'categorize_todo') {
           for (final field in const ['groupId', 'group_id']) {
             if (rawUpdate.containsKey(field) &&
                 rawUpdate[field] is String &&
@@ -2304,13 +2288,14 @@ abstract final class AiToolChatRunner {
                   .toSet(),
           ];
           if (tagAliases.length > 1 &&
-              tagAliases.skip(1).any(
-                (ids) => !_sameStringSet(tagAliases.first, ids),
-              )) {
+              tagAliases
+                  .skip(1)
+                  .any((ids) => !_sameStringSet(tagAliases.first, ids))) {
             return 'update_time_log的tagUuids与tagIds不能互相冲突';
           }
-          final tagIds =
-              tagAliases.isEmpty ? const <String>{} : tagAliases.first;
+          final tagIds = tagAliases.isEmpty
+              ? const <String>{}
+              : tagAliases.first;
           final knownTagIds = knownReferenceIdsByDomain?['pomodoro_tags'];
           if (knownTagIds != null &&
               tagIds.any((id) => !knownTagIds.contains(id))) {
@@ -2378,9 +2363,11 @@ abstract final class AiToolChatRunner {
         return '习惯名称不能为空';
       }
       if (update.containsKey('displayMode') &&
-          !const {'habitOnly', 'todoOnly', 'both'}.contains(
-            update['displayMode'],
-          )) {
+          !const {
+            'habitOnly',
+            'todoOnly',
+            'both',
+          }.contains(update['displayMode'])) {
         return 'displayMode必须是habitOnly、todoOnly或both';
       }
       if (update.containsKey('defaultFocusMinutes')) {
@@ -2418,8 +2405,13 @@ abstract final class AiToolChatRunner {
         }
       }
       if (update.containsKey('periodType') &&
-          !const {'daily', 'weekly', 'weekdays', 'monthly', 'custom'}
-              .contains(update['periodType'])) {
+          !const {
+            'daily',
+            'weekly',
+            'weekdays',
+            'monthly',
+            'custom',
+          }.contains(update['periodType'])) {
         return 'periodType不是支持的习惯周期';
       }
       if (update['periodType'] == 'custom' &&
@@ -2477,8 +2469,7 @@ abstract final class AiToolChatRunner {
         return '只有用户明确要求覆盖全部历史目标时才能使用effectiveFromOption=all';
       }
       if (effectiveFromOption == 'nextPeriod' &&
-          !RegExp(r'下个周期|下一个周期|下一周期|下周|下个月|下月|下期')
-              .hasMatch(requestText)) {
+          !RegExp(r'下个周期|下一个周期|下一周期|下周|下个月|下月|下期').hasMatch(requestText)) {
         return '只有用户明确要求下个周期生效时才能使用effectiveFromOption=nextPeriod';
       }
       if (update.containsKey('sourceType') ||
@@ -2496,8 +2487,7 @@ abstract final class AiToolChatRunner {
   }
 
   static bool _explicitlyRequestsSourceTodoDeletion(String requestText) {
-    const sourceTodo =
-        r'(?:原(?:有|来|始)?(?:的)?|旧(?:的)?|来源|源)(?:待办|任务|事项|项)';
+    const sourceTodo = r'(?:原(?:有|来|始)?(?:的)?|旧(?:的)?|来源|源)(?:待办|任务|事项|项)';
     return RegExp(
       '(?:删除|删掉|移除|清除|去掉)[^。！？\\n]{0,4}$sourceTodo|'
       '$sourceTodo[^。！？\\n]{0,4}(?:删除|删掉|移除|清除|去掉)|'
@@ -2527,13 +2517,14 @@ abstract final class AiToolChatRunner {
       ),
     );
     if (actionName == 'start_pomodoro') {
-      final todoIds = [
-        if (action['todoId'] != null) action['todoId'],
-        if (action['todo_id'] != null) action['todo_id'],
-      ]
-          .map((value) => value.toString().trim())
-          .where((id) => id.isNotEmpty)
-          .toSet();
+      final todoIds =
+          [
+                if (action['todoId'] != null) action['todoId'],
+                if (action['todo_id'] != null) action['todo_id'],
+              ]
+              .map((value) => value.toString().trim())
+              .where((id) => id.isNotEmpty)
+              .toSet();
       if (todoIds.length > 1) {
         return 'start_pomodoro的todoId与todo_id不能互相冲突';
       }
@@ -2558,9 +2549,9 @@ abstract final class AiToolChatRunner {
               .toSet(),
       ];
       if (tagAliases.length > 1 &&
-          tagAliases.skip(1).any(
-            (ids) => !_sameStringSet(tagAliases.first, ids),
-          )) {
+          tagAliases
+              .skip(1)
+              .any((ids) => !_sameStringSet(tagAliases.first, ids))) {
         return 'start_pomodoro的tagUuids与tagIds不能互相冲突';
       }
       final tagIds = tagAliases.isEmpty ? const <String>{} : tagAliases.first;
@@ -2639,11 +2630,9 @@ abstract final class AiToolChatRunner {
         'id',
       ],
       'update_time_log' || 'delete_time_log' => ['logId', 'todoId', 'id'],
-      'update_countdown' || 'complete_countdown' || 'delete_countdown' => [
-        'countdownId',
-        'todoId',
-        'id',
-      ],
+      'update_countdown' ||
+      'complete_countdown' ||
+      'delete_countdown' => ['countdownId', 'todoId', 'id'],
       'update_todo_group' || 'delete_todo_group' => [
         'groupId',
         'categoryId',
@@ -2651,11 +2640,8 @@ abstract final class AiToolChatRunner {
         'todoId',
         'id',
       ],
-      'update_pomodoro_tag' || 'delete_pomodoro_tag' => [
-        'tagId',
-        'todoId',
-        'id',
-      ],
+      'update_pomodoro_tag' ||
+      'delete_pomodoro_tag' => ['tagId', 'todoId', 'id'],
       'update_habit' || 'delete_habit' => [
         'habitUuid',
         'habit_uuid',
@@ -2676,16 +2662,18 @@ abstract final class AiToolChatRunner {
       'split_todo',
     };
     final referenceDomain = switch (actionName) {
-      'update_schedule' || 'cancel_schedule' || 'delete_schedule' =>
-        'fixed_schedules',
+      'update_schedule' ||
+      'cancel_schedule' ||
+      'delete_schedule' => 'fixed_schedules',
       'update_plan_block' ||
       'reschedule_plan_blocks' ||
       'delete_plan_block' ||
       'skip_plan_block' ||
       'start_plan_block_pomodoro' => 'plan_blocks',
       'update_time_log' || 'delete_time_log' => 'time_logs',
-      'update_countdown' || 'complete_countdown' || 'delete_countdown' =>
-        'countdowns',
+      'update_countdown' ||
+      'complete_countdown' ||
+      'delete_countdown' => 'countdowns',
       'update_todo_group' || 'delete_todo_group' => 'todo_groups',
       'update_pomodoro_tag' || 'delete_pomodoro_tag' => 'pomodoro_tags',
       _ => null,
@@ -2764,10 +2752,13 @@ abstract final class AiToolChatRunner {
           }).length;
         } else if (action['action'] == 'create_plan_block' &&
             action['blocks'] is List) {
-          count += (action['blocks'] as List).whereType<Map>().where(
-            (block) =>
-                block['newTodoTitle']?.toString().trim().isNotEmpty == true,
-          ).length;
+          count += (action['blocks'] as List)
+              .whereType<Map>()
+              .where(
+                (block) =>
+                    block['newTodoTitle']?.toString().trim().isNotEmpty == true,
+              )
+              .length;
         }
       }
       return count;
@@ -2838,7 +2829,8 @@ abstract final class AiToolChatRunner {
           continue;
         }
         if ((action['blocks'] as List).whereType<Map>().any(
-          (block) => block['newTodoTitle']?.toString().trim().isNotEmpty == true,
+          (block) =>
+              block['newTodoTitle']?.toString().trim().isNotEmpty == true,
         )) {
           return true;
         }

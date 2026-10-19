@@ -2,8 +2,10 @@ import 'dart:async';
 
 import '../widgets/floating_glass_control.dart';
 import '../widgets/ai_water_border.dart';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../models.dart';
 import '../models/chat_message.dart';
 import '../storage_service.dart';
@@ -66,8 +68,8 @@ class ParsedTodoResult {
         isAllDay || timeSemantics == ParsedTimeSemantics.dateOnly;
     final dueForWrite =
         timeSemantics == ParsedTimeSemantics.deadline && endTime == null
-            ? startTime
-            : endTime;
+        ? startTime
+        : endTime;
     final normalizedTime = TodoItem.normalizeTimeForWrite(
       selectedDate: startTime,
       dueDate: dueForWrite,
@@ -84,8 +86,8 @@ class ParsedTodoResult {
       'timeMode': isDateOnly
           ? TodoTimeMode.dateOnly.name
           : timeSemantics == ParsedTimeSemantics.range
-              ? TodoTimeMode.deadline.name
-              : timeSemantics.name,
+          ? TodoTimeMode.deadline.name
+          : timeSemantics.name,
       'recurrence': recurrence.name,
       'customIntervalDays': customIntervalDays,
       'originalText': originalText,
@@ -160,18 +162,19 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
 
   DateFormat _cachedDateFormat(String pattern) {
     final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent(
-      (locale, pattern),
-      () => DateFormat(pattern, locale),
-    );
+    return _dateFormatters.putIfAbsent((
+      locale,
+      pattern,
+    ), () => DateFormat(pattern, locale));
   }
 
   Future<void> _loadTodoMetadata() async {
     final username = await StorageService.getLoginSession();
     if (username != null) {
       final groups = await StorageService.getTodoGroups(username);
-      final defaults =
-          await StorageService.getCategoryReminderMinutes(username);
+      final defaults = await StorageService.getCategoryReminderMinutes(
+        username,
+      );
       setState(() {
         _todoGroups = groups.where((g) => !g.isDeleted).toList();
         _categoryReminderDefaults = defaults;
@@ -202,7 +205,8 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
             result['dueDate'] ??
             result['due_date'],
       );
-      final isAllDay = RecognizedTodoAdapter.parseBool(
+      final isAllDay =
+          RecognizedTodoAdapter.parseBool(
             result['isAllDay'] ?? result['is_all_day'],
           ) ||
           declaredTimeMode == TodoTimeMode.dateOnly ||
@@ -212,8 +216,8 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
       return ParsedTodoResult(
         title:
             result['title']?.toString() ?? result['content']?.toString() ?? '',
-        remark:
-            (result['remark'] ?? result['notes'] ?? result['note'])?.toString(),
+        remark: (result['remark'] ?? result['notes'] ?? result['note'])
+            ?.toString(),
         location: result['location']?.toString(),
         isAllDay: isAllDay,
         startTime: startTime,
@@ -228,27 +232,29 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         customIntervalDays: _parseNullableInt(
           result['customIntervalDays'] ?? result['custom_interval_days'],
         ),
-        originalText: (result['originalText'] ??
-                result['original_text'] ??
-                widget.originalText)
-            ?.toString(),
+        originalText:
+            (result['originalText'] ??
+                    result['original_text'] ??
+                    widget.originalText)
+                ?.toString(),
         reminderMinutes: _parseNullableInt(
           result['reminderMinutes'] ?? result['reminder_minutes'],
         ),
         groupId: (result['groupId'] ?? result['group_id'])?.toString(),
-        collabType: _parseNullableInt(
-              result['collab_type'] ?? result['collabType'],
-            ) ??
+        collabType:
+            _parseNullableInt(result['collab_type'] ?? result['collabType']) ??
             0,
         itemKind: (result['itemKind'] ?? result['item_kind'])?.toString(),
-        teamUuid: (result['team_uuid'] ??
-                result['teamUuid'] ??
-                widget.initialTeamUuid)
-            ?.toString(),
-        teamName: (result['team_name'] ??
-                result['teamName'] ??
-                widget.initialTeamName)
-            ?.toString(),
+        teamUuid:
+            (result['team_uuid'] ??
+                    result['teamUuid'] ??
+                    widget.initialTeamUuid)
+                ?.toString(),
+        teamName:
+            (result['team_name'] ??
+                    result['teamName'] ??
+                    widget.initialTeamName)
+                ?.toString(),
         recurrenceEndDate: RecognizedTodoAdapter.parseDateTime(
           result['recurrenceEndDate'] ?? result['recurrence_end_date'],
         ),
@@ -332,8 +338,9 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
       recognitionHandle = AiRecognitionChatBridge.handleFromPending(pending);
       if (recognitionHandle == null) {
         try {
-          recognitionHandle =
-              await AiRecognitionChatBridge.startImage(imagePath);
+          recognitionHandle = await AiRecognitionChatBridge.startImage(
+            imagePath,
+          );
         } catch (_) {}
       } else {
         await AiRecognitionChatBridge.markProcessing(recognitionHandle);
@@ -436,8 +443,9 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     RecurrenceType recurrence = todo.recurrence;
     int? customDays = todo.customIntervalDays;
     DateTime? recurrenceEndDate = todo.recurrenceEndDate;
-    final customDaysCtrl =
-        TextEditingController(text: customDays?.toString() ?? '');
+    final customDaysCtrl = TextEditingController(
+      text: customDays?.toString() ?? '',
+    );
 
     showAppDialog(
       context: context,
@@ -477,7 +485,8 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                     value: isAllDay,
                     onChanged: (val) {
                       setDialogState(() {
-                        final wasDateOnlyRange = dueDate != null &&
+                        final wasDateOnlyRange =
+                            dueDate != null &&
                             TodoItem.looksLikeLegacyDateOnlyRange(
                               createdAt,
                               dueDate!,
@@ -547,13 +556,15 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                               initialTime: TimeOfDay.fromDateTime(createdAt),
                             );
                             if (pickedTime != null) {
-                              setDialogState(() => createdAt = DateTime(
-                                    pickedDate.year,
-                                    pickedDate.month,
-                                    pickedDate.day,
-                                    pickedTime.hour,
-                                    pickedTime.minute,
-                                  ));
+                              setDialogState(
+                                () => createdAt = DateTime(
+                                  pickedDate.year,
+                                  pickedDate.month,
+                                  pickedDate.day,
+                                  pickedTime.hour,
+                                  pickedTime.minute,
+                                ),
+                              );
                             }
                           }
                         }
@@ -577,28 +588,34 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                         );
                         if (pickedDate != null) {
                           if (isAllDay) {
-                            setDialogState(() => dueDate = DateTime(
-                                  pickedDate.year,
-                                  pickedDate.month,
-                                  pickedDate.day,
-                                  23,
-                                  59,
-                                ));
+                            setDialogState(
+                              () => dueDate = DateTime(
+                                pickedDate.year,
+                                pickedDate.month,
+                                pickedDate.day,
+                                23,
+                                59,
+                              ),
+                            );
                           } else {
                             if (!context.mounted) return;
                             final pickedTime = await showAppTimePicker(
                               context: context,
-                              initialTime: TimeOfDay.fromDateTime(dueDate ??
-                                  createdAt.add(const Duration(hours: 1))),
+                              initialTime: TimeOfDay.fromDateTime(
+                                dueDate ??
+                                    createdAt.add(const Duration(hours: 1)),
+                              ),
                             );
                             if (pickedTime != null) {
-                              setDialogState(() => dueDate = DateTime(
-                                    pickedDate.year,
-                                    pickedDate.month,
-                                    pickedDate.day,
-                                    pickedTime.hour,
-                                    pickedTime.minute,
-                                  ));
+                              setDialogState(
+                                () => dueDate = DateTime(
+                                  pickedDate.year,
+                                  pickedDate.month,
+                                  pickedDate.day,
+                                  pickedTime.hour,
+                                  pickedTime.minute,
+                                ),
+                              );
                             }
                           }
                         }
@@ -619,10 +636,12 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                         value: null,
                         child: Text('不归类 (独立待办)'),
                       ),
-                      ..._todoGroups.map((g) => DropdownMenuItem<String?>(
-                            value: g.id,
-                            child: Text(g.name),
-                          )),
+                      ..._todoGroups.map(
+                        (g) => DropdownMenuItem<String?>(
+                          value: g.id,
+                          child: Text(g.name),
+                        ),
+                      ),
                     ],
                     onChanged: (val) {
                       setDialogState(() {
@@ -639,8 +658,9 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                     initialValue: reminderMinutes,
                     decoration: InputDecoration(
                       labelText: '温馨提醒 (提前量)',
-                      prefixIcon:
-                          const Icon(Icons.notifications_active_outlined),
+                      prefixIcon: const Icon(
+                        Icons.notifications_active_outlined,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -694,20 +714,33 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                     ),
                     items: const [
                       DropdownMenuItem(
-                          value: RecurrenceType.none, child: Text('不重复')),
+                        value: RecurrenceType.none,
+                        child: Text('不重复'),
+                      ),
                       DropdownMenuItem(
-                          value: RecurrenceType.daily, child: Text('每天重复')),
+                        value: RecurrenceType.daily,
+                        child: Text('每天重复'),
+                      ),
                       DropdownMenuItem(
-                          value: RecurrenceType.weekly, child: Text('每周重复')),
+                        value: RecurrenceType.weekly,
+                        child: Text('每周重复'),
+                      ),
                       DropdownMenuItem(
-                          value: RecurrenceType.monthly, child: Text('每月重复')),
+                        value: RecurrenceType.monthly,
+                        child: Text('每月重复'),
+                      ),
                       DropdownMenuItem(
-                          value: RecurrenceType.yearly, child: Text('每年重复')),
+                        value: RecurrenceType.yearly,
+                        child: Text('每年重复'),
+                      ),
                       DropdownMenuItem(
-                          value: RecurrenceType.weekdays, child: Text('工作日')),
+                        value: RecurrenceType.weekdays,
+                        child: Text('工作日'),
+                      ),
                       DropdownMenuItem(
-                          value: RecurrenceType.customDays,
-                          child: Text('间隔几天')),
+                        value: RecurrenceType.customDays,
+                        child: Text('间隔几天'),
+                      ),
                     ],
                     onChanged: (val) {
                       if (val != null) setDialogState(() => recurrence = val);
@@ -763,10 +796,10 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                   final editedTimeSemantics = isAllDay
                       ? ParsedTimeSemantics.dateOnly
                       : todo.timeSemantics == ParsedTimeSemantics.dateOnly
-                          ? dueDate == null
-                              ? ParsedTimeSemantics.unscheduled
-                              : ParsedTimeSemantics.deadline
-                          : todo.timeSemantics;
+                      ? dueDate == null
+                            ? ParsedTimeSemantics.unscheduled
+                            : ParsedTimeSemantics.deadline
+                      : todo.timeSemantics;
                   setState(() {
                     _allTodos[_currentIndex] = ParsedTodoResult(
                       title: titleCtrl.text,
@@ -841,19 +874,19 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     }
     final (title, message) = switch (intent) {
       CaptureIntentKind.fixedSchedule => (
-          '识别为固定日程',
-          widget.onFixedScheduleAdded == null
-              ? '考试、会议或预约应保存为固定日程。当前入口尚未连接固定日程存储，继续会暂存为待办。'
-              : '考试、会议或预约应保存为固定日程，可以直接按固定日程添加。',
-        ),
+        '识别为固定日程',
+        widget.onFixedScheduleAdded == null
+            ? '考试、会议或预约应保存为固定日程。当前入口尚未连接固定日程存储，继续会暂存为待办。'
+            : '考试、会议或预约应保存为固定日程，可以直接按固定日程添加。',
+      ),
       CaptureIntentKind.planBlock => (
-          '识别为规划时段',
-          '这个时间段更适合建立规划块。当前继续只保存待办，不会占用该时段。',
-        ),
+        '识别为规划时段',
+        '这个时间段更适合建立规划块。当前继续只保存待办，不会占用该时段。',
+      ),
       CaptureIntentKind.needsConfirmation => (
-          '需要确认时间性质',
-          '无法确定这是固定日程还是可调整的规划时段。当前继续会暂存为待办。',
-        ),
+        '需要确认时间性质',
+        '无法确定这是固定日程还是可调整的规划时段。当前继续会暂存为待办。',
+      ),
       CaptureIntentKind.todo => ('', ''),
     };
     return await showAppDialog<_TodoConfirmationAction>(
@@ -950,7 +983,8 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
       _fixedScheduleCount++;
       return true;
     }
-    final recurrenceEnd = todo.recurrenceEndDate ??
+    final recurrenceEnd =
+        todo.recurrenceEndDate ??
         FixedScheduleRecurrenceService.defaultEndDate(
           startDate: dateSource,
           recurrence: item.recurrence,
@@ -959,7 +993,8 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     late final ({
       List<FixedScheduleItem> active,
       List<FixedScheduleItem> changes,
-    }) series;
+    })
+    series;
     try {
       series = FixedScheduleRecurrenceService.rebuildSeries(
         template: item,
@@ -1029,8 +1064,10 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
       String? persistentImagePath;
       if (_confirmedTodos.isNotEmpty && widget.imagePath != null) {
         try {
-          persistentImagePath =
-              await persistImagePath(widget.imagePath!, 'analysis_images');
+          persistentImagePath = await persistImagePath(
+            widget.imagePath!,
+            'analysis_images',
+          );
           if (persistentImagePath != null) {
             // debugPrint('📸 图片已持久化到: $persistentImagePath');
           }
@@ -1075,9 +1112,11 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
       extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
-        title: Text(hasMoreTodos
-            ? '确认事项 (${_currentIndex + 1}/${_allTodos.length})'
-            : '确认完成'),
+        title: Text(
+          hasMoreTodos
+              ? '确认事项 (${_currentIndex + 1}/${_allTodos.length})'
+              : '确认完成',
+        ),
         actions: [
           if (_isRetrying)
             const Padding(
@@ -1142,41 +1181,42 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                             color: _isRetrying
                                 ? Theme.of(context).colorScheme.primary
                                 : (_retryStatus!.contains('失败')
-                                    ? Colors.red
-                                    : Colors.orange),
+                                      ? Colors.red
+                                      : Colors.orange),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Row(
                             children: [
-                            if (_isRetrying)
-                              const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            else
-                              Icon(
-                                _retryStatus!.contains('失败')
-                                    ? Icons.error_outline
-                                    : Icons.info_outline,
-                                size: 16,
-                                color: _retryStatus!.contains('失败')
-                                    ? Colors.red
-                                    : Colors.orange,
-                              ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                _retryStatus!,
-                                style: TextStyle(
-                                  fontSize: 13,
+                              if (_isRetrying)
+                                const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              else
+                                Icon(
+                                  _retryStatus!.contains('失败')
+                                      ? Icons.error_outline
+                                      : Icons.info_outline,
+                                  size: 16,
                                   color: _retryStatus!.contains('失败')
                                       ? Colors.red
-                                      : Colors.black87,
+                                      : Colors.orange,
+                                ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _retryStatus!,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: _retryStatus!.contains('失败')
+                                        ? Colors.red
+                                        : Colors.black87,
+                                  ),
                                 ),
                               ),
-                            ),
                             ],
                           ),
                         ),
@@ -1188,27 +1228,30 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                     child: _allTodos.isEmpty
                         ? _buildEmptyState()
                         : hasMoreTodos
-                            ? AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 350),
-                                transitionBuilder: (child, animation) {
-                                  final slideAnimation = Tween<Offset>(
+                        ? AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 350),
+                            transitionBuilder: (child, animation) {
+                              final slideAnimation =
+                                  Tween<Offset>(
                                     begin: const Offset(0.3, 0.0),
                                     end: Offset.zero,
-                                  ).animate(CurvedAnimation(
-                                    parent: animation,
-                                    curve: Curves.easeOutCubic,
-                                  ));
-                                  return FadeTransition(
-                                    opacity: animation,
-                                    child: SlideTransition(
-                                      position: slideAnimation,
-                                      child: child,
+                                  ).animate(
+                                    CurvedAnimation(
+                                      parent: animation,
+                                      curve: Curves.easeOutCubic,
                                     ),
                                   );
-                                },
-                                child: _buildCurrentTodoCard(currentTodo!),
-                              )
-                            : _buildCompletedState(),
+                              return FadeTransition(
+                                opacity: animation,
+                                child: SlideTransition(
+                                  position: slideAnimation,
+                                  child: child,
+                                ),
+                              );
+                            },
+                            child: _buildCurrentTodoCard(currentTodo!),
+                          )
+                        : _buildCompletedState(),
                   ),
 
                   // 底部按钮
@@ -1233,10 +1276,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         children: [
           Icon(Icons.inbox, size: 64, color: Colors.grey),
           const SizedBox(height: 16),
-          Text(
-            '没有可确认事项',
-            style: TextStyle(color: Colors.grey),
-          ),
+          Text('没有可确认事项', style: TextStyle(color: Colors.grey)),
           const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: _isRetrying ? null : _retryRecognition,
@@ -1256,113 +1296,121 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
       child: AiWaterRippleBorder(
         isLight: Theme.of(context).brightness == Brightness.light,
         child: Card(
-        elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 顶部标签
-              Row(
-                children: [
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      '${switch (_captureIntentFor(todo)) {
-                        CaptureIntentKind.fixedSchedule => '日程',
-                        CaptureIntentKind.planBlock => '规划块',
-                        CaptureIntentKind.needsConfirmation => '待确认',
-                        CaptureIntentKind.todo => '待办',
-                      }} ${_currentIndex + 1}/${_allTodos.length}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 顶部标签
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${switch (_captureIntentFor(todo)) {
+                          CaptureIntentKind.fixedSchedule => '日程',
+                          CaptureIntentKind.planBlock => '规划块',
+                          CaptureIntentKind.needsConfirmation => '待确认',
+                          CaptureIntentKind.todo => '待办',
+                        }} ${_currentIndex + 1}/${_allTodos.length}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onPrimaryContainer,
+                        ),
                       ),
                     ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.edit),
-                    onPressed: _editCurrentTodo,
-                    tooltip: '编辑',
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // 标题
-              Text(
-                todo.title,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // 备注
-              if (todo.remark != null && todo.remark!.isNotEmpty) ...[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    todo.remark!,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: colorScheme.onSurfaceVariant,
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.edit),
+                      onPressed: _editCurrentTodo,
+                      tooltip: '编辑',
                     ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // 标题
+                Text(
+                  todo.title,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
                 const SizedBox(height: 12),
-              ],
 
-              // 时间信息
-              _buildTimeInfo(todo),
-
-              // 已确认数量提示
-              if (_confirmedTodos.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: colorScheme.tertiaryContainer,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.check_circle,
-                        size: 16,
-                        color: colorScheme.onTertiaryContainer,
+                // 备注
+                if (todo.remark != null && todo.remark!.isNotEmpty) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      todo.remark!,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: colorScheme.onSurfaceVariant,
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '已添加 ${_confirmedTodos.length} 个待办',
-                        style: TextStyle(
-                          fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+
+                // 时间信息
+                _buildTimeInfo(todo),
+
+                // 已确认数量提示
+                if (_confirmedTodos.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colorScheme.tertiaryContainer,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.check_circle,
+                          size: 16,
                           color: colorScheme.onTertiaryContainer,
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 8),
+                        Text(
+                          '已添加 ${_confirmedTodos.length} 个待办',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: colorScheme.onTertiaryContainer,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                ],
               ],
-            ],
+            ),
           ),
-        ),
         ),
       ),
     );
@@ -1397,7 +1445,8 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     } else if (todo.isAllDay) {
       timeIcon = Icons.today;
       if (todo.startTime != null) {
-        timeText = '${_cachedDateFormat('yyyy-MM-dd').format(todo.startTime!)}内完成';
+        timeText =
+            '${_cachedDateFormat('yyyy-MM-dd').format(todo.startTime!)}内完成';
       } else {
         timeText = '某天内完成';
       }
@@ -1406,7 +1455,8 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
       timeText = '${_cachedDateFormat('MM-dd HH:mm').format(todo.endTime!)}前完成';
     } else if (todo.startTime != null) {
       timeIcon = Icons.play_circle_outline;
-      timeText = '时间待确认: ${_cachedDateFormat('MM-dd HH:mm').format(todo.startTime!)}';
+      timeText =
+          '时间待确认: ${_cachedDateFormat('MM-dd HH:mm').format(todo.startTime!)}';
     } else {
       timeIcon = Icons.access_time;
       timeText = '未安排';
@@ -1418,10 +1468,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         const SizedBox(width: 8),
         Text(
           timeText,
-          style: TextStyle(
-            fontSize: 14,
-            color: colorScheme.onSurfaceVariant,
-          ),
+          style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
         ),
       ],
     );
@@ -1540,31 +1587,44 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
   }
 
   Widget _buildSkeleton(bool isDark) {
-    final baseColor =
-        isDark ? Colors.grey : Colors.white.withValues(alpha: 0.5);
+    final baseColor = isDark
+        ? Colors.grey
+        : Colors.white.withValues(alpha: 0.5);
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Column(
         children: [
           Container(
-              height: 180,
-              decoration: BoxDecoration(
-                  color: baseColor, borderRadius: BorderRadius.circular(20))),
+            height: 180,
+            decoration: BoxDecoration(
+              color: baseColor,
+              borderRadius: BorderRadius.circular(20),
+            ),
+          ),
           const SizedBox(height: 20),
           Container(
-              height: 80,
-              decoration: BoxDecoration(
-                  color: baseColor, borderRadius: BorderRadius.circular(16))),
+            height: 80,
+            decoration: BoxDecoration(
+              color: baseColor,
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
           const SizedBox(height: 12),
           Container(
-              height: 80,
-              decoration: BoxDecoration(
-                  color: baseColor, borderRadius: BorderRadius.circular(16))),
+            height: 80,
+            decoration: BoxDecoration(
+              color: baseColor,
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
           const Spacer(),
           Container(
-              height: 50,
-              decoration: BoxDecoration(
-                  color: baseColor, borderRadius: BorderRadius.circular(12))),
+            height: 50,
+            decoration: BoxDecoration(
+              color: baseColor,
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
         ],
       ),
     );

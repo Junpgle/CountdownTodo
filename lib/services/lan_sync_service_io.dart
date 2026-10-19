@@ -1,16 +1,19 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:crypto/crypto.dart';
 import 'package:encrypt/encrypt.dart' as enc;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../course_import/course_schedule_semantics.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../services/pomodoro_service.dart';
 import '../services/course_service.dart';
 import 'storage/user_session_storage.dart';
+
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -34,32 +37,32 @@ class LanDevice {
   });
 
   Map<String, dynamic> toJson() => {
-        'deviceId': deviceId,
-        'userId': userId,
-        'deviceName': deviceName,
-        'ip': ip,
-        'port': port,
-        'lastSeen': lastSeen,
-      };
+    'deviceId': deviceId,
+    'userId': userId,
+    'deviceName': deviceName,
+    'ip': ip,
+    'port': port,
+    'lastSeen': lastSeen,
+  };
 
   factory LanDevice.fromJson(Map<String, dynamic> j) => LanDevice(
-        deviceId: j['deviceId'] ?? '',
-        userId: j['userId'] ?? '',
-        deviceName: j['deviceName'] ?? '',
-        ip: j['ip'] ?? '',
-        port: j['port'] ?? 0,
-        lastSeen: j['lastSeen'] ?? 0,
-      );
+    deviceId: j['deviceId'] ?? '',
+    userId: j['userId'] ?? '',
+    deviceName: j['deviceName'] ?? '',
+    ip: j['ip'] ?? '',
+    port: j['port'] ?? 0,
+    lastSeen: j['lastSeen'] ?? 0,
+  );
 
   LanDevice copyWith({bool? pendingApproval}) => LanDevice(
-        deviceId: deviceId,
-        userId: userId,
-        deviceName: deviceName,
-        ip: ip,
-        port: port,
-        lastSeen: lastSeen,
-        pendingApproval: pendingApproval ?? this.pendingApproval,
-      );
+    deviceId: deviceId,
+    userId: userId,
+    deviceName: deviceName,
+    ip: ip,
+    port: port,
+    lastSeen: lastSeen,
+    pendingApproval: pendingApproval ?? this.pendingApproval,
+  );
 
   @override
   bool operator ==(Object other) =>
@@ -112,13 +115,13 @@ class LanSyncConfig {
   });
 
   Map<String, dynamic> toJson() => {
-        'todos': syncTodos,
-        'countdowns': syncCountdowns,
-        'timeLogs': syncTimeLogs,
-        'pomodoroTags': syncPomodoroTags,
-        'pomodoroRecords': syncPomodoroRecords,
-        'courses': syncCourses,
-      };
+    'todos': syncTodos,
+    'countdowns': syncCountdowns,
+    'timeLogs': syncTimeLogs,
+    'pomodoroTags': syncPomodoroTags,
+    'pomodoroRecords': syncPomodoroRecords,
+    'courses': syncCourses,
+  };
 
   int get totalCount =>
       (syncTodos ? 1 : 0) +
@@ -235,7 +238,9 @@ class LanSyncService {
     _scanInProgress = true;
     try {
       final interfaces = await NetworkInterface.list(
-          type: InternetAddressType.IPv4, includeLoopback: false);
+        type: InternetAddressType.IPv4,
+        includeLoopback: false,
+      );
 
       for (var interface in interfaces) {
         for (var addr in interface.addresses) {
@@ -289,8 +294,9 @@ class LanSyncService {
       final request = await client
           .getUrl(Uri.parse('http://$ip:54322/discover'))
           .timeout(const Duration(milliseconds: 300));
-      final response =
-          await request.close().timeout(const Duration(milliseconds: 500));
+      final response = await request.close().timeout(
+        const Duration(milliseconds: 500),
+      );
       final body = await response.transform(utf8.decoder).join();
       final data = jsonDecode(body) as Map<String, dynamic>;
 
@@ -313,8 +319,9 @@ class LanSyncService {
 
   Future<String?> _getLocalIp() async {
     try {
-      final interfaces =
-          await NetworkInterface.list(type: InternetAddressType.IPv4);
+      final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+      );
       for (var interface in interfaces) {
         for (var addr in interface.addresses) {
           if (!addr.isLoopback && addr.type == InternetAddressType.IPv4) {
@@ -359,8 +366,9 @@ class LanSyncService {
 
   void _initEncryption() {
     // 使用固定的系统盐值确保所有设备（无论账号）都能解密初始握手和数据传输
-    final keyBytes =
-        sha256.convert(utf8.encode('lan_sync_global_v1_key')).bytes;
+    final keyBytes = sha256
+        .convert(utf8.encode('lan_sync_global_v1_key'))
+        .bytes;
     final ivBytes = sha256
         .convert(utf8.encode('lan_sync_global_v1_iv'))
         .bytes
@@ -433,10 +441,9 @@ class LanSyncService {
         req.response.statusCode = HttpStatus.internalServerError;
         final errBody = jsonEncode({'error': e.toString()});
         // 即使出错也尝试返回加密结构，防止发送端报“未加密”错误
-        req.response.write(jsonEncode({
-          'encrypted': true,
-          'payload': _encrypt(errBody),
-        }));
+        req.response.write(
+          jsonEncode({'encrypted': true, 'payload': _encrypt(errBody)}),
+        );
         await req.response.close();
       } catch (_) {}
     }
@@ -461,10 +468,9 @@ class LanSyncService {
     if (encryptedData['encrypted'] != true) {
       req.response.statusCode = HttpStatus.badRequest;
       final err = jsonEncode({'error': 'encryption required'});
-      req.response.write(jsonEncode({
-        'encrypted': true,
-        'payload': _encrypt(err),
-      }));
+      req.response.write(
+        jsonEncode({'encrypted': true, 'payload': _encrypt(err)}),
+      );
       await req.response.close();
       return;
     }
@@ -506,10 +512,9 @@ class LanSyncService {
 
       final response = jsonEncode({'pending': true, 'token': token});
       req.response.headers.contentType = ContentType.json;
-      req.response.write(jsonEncode({
-        'encrypted': true,
-        'payload': _encrypt(response),
-      }));
+      req.response.write(
+        jsonEncode({'encrypted': true, 'payload': _encrypt(response)}),
+      );
       await req.response.close();
       return;
     }
@@ -524,10 +529,9 @@ class LanSyncService {
           receivedToken != pendingToken) {
         req.response.headers.contentType = ContentType.json;
         final err = jsonEncode({'error': 'no pending request'});
-        req.response.write(jsonEncode({
-          'encrypted': true,
-          'payload': _encrypt(err),
-        }));
+        req.response.write(
+          jsonEncode({'encrypted': true, 'payload': _encrypt(err)}),
+        );
         await req.response.close();
         return;
       }
@@ -538,27 +542,33 @@ class LanSyncService {
       _emitProgress('正在接收数据...');
       _emitProgressValue(0.1);
 
-      final remoteTodos = (data['todos'] as List?)
+      final remoteTodos =
+          (data['todos'] as List?)
               ?.map((e) => Map<String, dynamic>.from(e))
               .toList() ??
           [];
-      final remoteCountdowns = (data['countdowns'] as List?)
+      final remoteCountdowns =
+          (data['countdowns'] as List?)
               ?.map((e) => Map<String, dynamic>.from(e))
               .toList() ??
           [];
-      final remoteTimeLogs = (data['timeLogs'] as List?)
+      final remoteTimeLogs =
+          (data['timeLogs'] as List?)
               ?.map((e) => Map<String, dynamic>.from(e))
               .toList() ??
           [];
-      final remotePomodoroTags = (data['pomodoroTags'] as List?)
+      final remotePomodoroTags =
+          (data['pomodoroTags'] as List?)
               ?.map((e) => Map<String, dynamic>.from(e))
               .toList() ??
           [];
-      final remotePomodoroRecords = (data['pomodoroRecords'] as List?)
+      final remotePomodoroRecords =
+          (data['pomodoroRecords'] as List?)
               ?.map((e) => Map<String, dynamic>.from(e))
               .toList() ??
           [];
-      final remoteCourses = (data['courses'] as List?)
+      final remoteCourses =
+          (data['courses'] as List?)
               ?.map((e) => Map<String, dynamic>.from(e))
               .toList() ??
           [];
@@ -576,8 +586,9 @@ class LanSyncService {
           : LanSyncConfig();
 
       final username = _currentUserId!;
-      final step =
-          syncConfig.totalCount > 0 ? 0.4 / syncConfig.totalCount : 0.1;
+      final step = syncConfig.totalCount > 0
+          ? 0.4 / syncConfig.totalCount
+          : 0.1;
       double progress = 0.5;
 
       if (syncConfig.syncTodos) {
@@ -629,18 +640,19 @@ class LanSyncService {
         'todos': syncConfig.syncTodos ? localData['todos'] : [],
         'countdowns': syncConfig.syncCountdowns ? localData['countdowns'] : [],
         'timeLogs': syncConfig.syncTimeLogs ? localData['timeLogs'] : [],
-        'pomodoroTags':
-            syncConfig.syncPomodoroTags ? localData['pomodoroTags'] : [],
-        'pomodoroRecords':
-            syncConfig.syncPomodoroRecords ? localData['pomodoroRecords'] : [],
+        'pomodoroTags': syncConfig.syncPomodoroTags
+            ? localData['pomodoroTags']
+            : [],
+        'pomodoroRecords': syncConfig.syncPomodoroRecords
+            ? localData['pomodoroRecords']
+            : [],
         'courses': syncConfig.syncCourses ? localData['courses'] : [],
       });
 
       req.response.headers.contentType = ContentType.json;
-      req.response.write(jsonEncode({
-        'encrypted': true,
-        'payload': _encrypt(responsePayload),
-      }));
+      req.response.write(
+        jsonEncode({'encrypted': true, 'payload': _encrypt(responsePayload)}),
+      );
       await req.response.close();
 
       _emitProgressValue(1.0);
@@ -648,8 +660,11 @@ class LanSyncService {
     }
   }
 
-  Future<void> _mergeTodos(String username, List<Map<String, dynamic>> remote,
-      Function(int) onChanged) async {
+  Future<void> _mergeTodos(
+    String username,
+    List<Map<String, dynamic>> remote,
+    Function(int) onChanged,
+  ) async {
     if (remote.isEmpty) return;
     final local = await StorageService.getTodos(username);
     final Map<String, TodoItem> merged = {for (var t in local) t.id: t};
@@ -670,14 +685,20 @@ class LanSyncService {
       }
     }
     if (changed) {
-      await StorageService.saveTodos(username, merged.values.toList(),
-          sync: false);
+      await StorageService.saveTodos(
+        username,
+        merged.values.toList(),
+        sync: false,
+      );
       onChanged(merged.length);
     }
   }
 
-  Future<void> _mergeCountdowns(String username,
-      List<Map<String, dynamic>> remote, Function(int) onChanged) async {
+  Future<void> _mergeCountdowns(
+    String username,
+    List<Map<String, dynamic>> remote,
+    Function(int) onChanged,
+  ) async {
     if (remote.isEmpty) return;
     final local = await StorageService.getCountdowns(username);
     final Map<String, CountdownItem> merged = {for (var c in local) c.id: c};
@@ -698,14 +719,20 @@ class LanSyncService {
       }
     }
     if (changed) {
-      await StorageService.saveCountdowns(username, merged.values.toList(),
-          sync: false);
+      await StorageService.saveCountdowns(
+        username,
+        merged.values.toList(),
+        sync: false,
+      );
       onChanged(merged.length);
     }
   }
 
-  Future<void> _mergeTimeLogs(String username,
-      List<Map<String, dynamic>> remote, Function(int) onChanged) async {
+  Future<void> _mergeTimeLogs(
+    String username,
+    List<Map<String, dynamic>> remote,
+    Function(int) onChanged,
+  ) async {
     if (remote.isEmpty) return;
     final local = await StorageService.getTimeLogs(username);
     final Map<String, TimeLogItem> merged = {for (var t in local) t.id: t};
@@ -726,14 +753,19 @@ class LanSyncService {
       }
     }
     if (changed) {
-      await StorageService.saveTimeLogs(username, merged.values.toList(),
-          sync: false);
+      await StorageService.saveTimeLogs(
+        username,
+        merged.values.toList(),
+        sync: false,
+      );
       onChanged(merged.length);
     }
   }
 
   Future<void> _mergePomodoroTags(
-      List<Map<String, dynamic>> remote, Function(int) onChanged) async {
+    List<Map<String, dynamic>> remote,
+    Function(int) onChanged,
+  ) async {
     if (remote.isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
     final s = prefs.getString('pomodoro_tags_v2');
@@ -764,7 +796,9 @@ class LanSyncService {
   }
 
   Future<void> _mergePomodoroRecords(
-      List<Map<String, dynamic>> remote, Function(int) onChanged) async {
+    List<Map<String, dynamic>> remote,
+    Function(int) onChanged,
+  ) async {
     if (remote.isEmpty) return;
     final remoteRecords = remote.map(PomodoroRecord.fromJson).toList();
     final changed = await PomodoroService.mergeRecordsLww(remoteRecords);
@@ -773,8 +807,11 @@ class LanSyncService {
     }
   }
 
-  Future<void> _mergeCourses(String username, List<Map<String, dynamic>> remote,
-      Function(int) onChanged) async {
+  Future<void> _mergeCourses(
+    String username,
+    List<Map<String, dynamic>> remote,
+    Function(int) onChanged,
+  ) async {
     if (remote.isEmpty) return;
     final local = await CourseService.getAllCourses(
       username,
@@ -800,7 +837,8 @@ class LanSyncService {
         left.updatedAt == right.updatedAt &&
         left.isDeleted == right.isDeleted;
 
-    final changed = merged.length != local.length ||
+    final changed =
+        merged.length != local.length ||
         merged.any((course) {
           final old = localByUuid[course.uuid];
           return old == null || !sameCourse(old, course);
@@ -835,22 +873,29 @@ class LanSyncService {
     return false;
   }
 
-  Future<Map<String, dynamic>> _gatherLocalData(String username,
-      [LanSyncConfig? config]) async {
+  Future<Map<String, dynamic>> _gatherLocalData(
+    String username, [
+    LanSyncConfig? config,
+  ]) async {
     config ??= LanSyncConfig();
-    final todos =
-        config.syncTodos ? await StorageService.getTodos(username) : [];
+    final todos = config.syncTodos
+        ? await StorageService.getTodos(username)
+        : [];
     final countdowns = config.syncCountdowns
         ? await StorageService.getCountdowns(username)
         : [];
-    final timeLogs =
-        config.syncTimeLogs ? await StorageService.getTimeLogs(username) : [];
-    final pomodoroTags =
-        config.syncPomodoroTags ? await PomodoroService.getTags() : [];
-    final pomodoroRecords =
-        config.syncPomodoroRecords ? await PomodoroService.getRecords() : [];
-    final courses =
-        config.syncCourses ? await CourseService.getAllCourses(username) : [];
+    final timeLogs = config.syncTimeLogs
+        ? await StorageService.getTimeLogs(username)
+        : [];
+    final pomodoroTags = config.syncPomodoroTags
+        ? await PomodoroService.getTags()
+        : [];
+    final pomodoroRecords = config.syncPomodoroRecords
+        ? await PomodoroService.getRecords()
+        : [];
+    final courses = config.syncCourses
+        ? await CourseService.getAllCourses(username)
+        : [];
 
     return {
       'todos': todos.map((t) => t.toJson()).toList(),
@@ -864,23 +909,22 @@ class LanSyncService {
 
   Future<void> _startUdpDiscovery() async {
     try {
-      _udpSocket =
-          await RawDatagramSocket.bind(InternetAddress.anyIPv4, _discoveryPort);
+      _udpSocket = await RawDatagramSocket.bind(
+        InternetAddress.anyIPv4,
+        _discoveryPort,
+      );
       _udpSocket!.joinMulticast(InternetAddress(_multicastGroup));
 
       // RawDatagramSocket already exposes read readiness as a stream. Listening
       // to that event avoids waking the Dart isolate five times per second when
       // the LAN is idle.
-      _udpSubscription = _udpSocket!.listen(
-        (event) {
-          if (event != RawSocketEvent.read) return;
-          Datagram? datagram;
-          while ((datagram = _udpSocket?.receive()) != null) {
-            _processDiscoveryDatagram(datagram);
-          }
-        },
-        onError: (_) {},
-      );
+      _udpSubscription = _udpSocket!.listen((event) {
+        if (event != RawSocketEvent.read) return;
+        Datagram? datagram;
+        while ((datagram = _udpSocket?.receive()) != null) {
+          _processDiscoveryDatagram(datagram);
+        }
+      }, onError: (_) {});
     } catch (e) {
       // debugPrint('[LanSync] UDP discovery failed: $e');
     }
@@ -911,8 +955,10 @@ class LanSyncService {
   void _startDiscoveryBroadcast() {
     _discoveryTimer?.cancel();
     _broadcastDiscovery();
-    _discoveryTimer =
-        Timer.periodic(_discoveryInterval, (_) => _broadcastDiscovery());
+    _discoveryTimer = Timer.periodic(
+      _discoveryInterval,
+      (_) => _broadcastDiscovery(),
+    );
   }
 
   void _broadcastDiscovery() {
@@ -935,8 +981,10 @@ class LanSyncService {
     }
   }
 
-  Future<LanSyncResult> syncWithDevice(LanDevice device,
-      {LanSyncConfig? config}) async {
+  Future<LanSyncResult> syncWithDevice(
+    LanDevice device, {
+    LanSyncConfig? config,
+  }) async {
     if (_isSyncing) return LanSyncResult(success: false, message: '同步进行中');
     _isSyncing = true;
     _currentConfig = config ?? LanSyncConfig();
@@ -961,13 +1009,13 @@ class LanSyncService {
 
       final encryptedPayload = _encrypt(jsonEncode(requestPayload));
 
-      final request = await client
-          .postUrl(Uri.parse('http://${device.ip}:${device.port}/sync'));
+      final request = await client.postUrl(
+        Uri.parse('http://${device.ip}:${device.port}/sync'),
+      );
       request.headers.contentType = ContentType.json;
-      request.write(jsonEncode({
-        'encrypted': true,
-        'payload': encryptedPayload,
-      }));
+      request.write(
+        jsonEncode({'encrypted': true, 'payload': encryptedPayload}),
+      );
       final response = await request.close();
 
       final body = await response.transform(utf8.decoder).join();
@@ -1010,8 +1058,10 @@ class LanSyncService {
   LanSyncConfig _currentConfig = LanSyncConfig();
   String? _currentPendingToken;
 
-  Future<LanSyncResult> confirmAndSync(LanDevice device,
-      {LanSyncConfig? config}) async {
+  Future<LanSyncResult> confirmAndSync(
+    LanDevice device, {
+    LanSyncConfig? config,
+  }) async {
     if (_isSyncing) return LanSyncResult(success: false, message: '同步进行中');
     if (_pendingTokens[device.deviceId] == null) {
       return LanSyncResult(success: false, message: '确认令牌已失效，请重新发起同步');
@@ -1038,11 +1088,13 @@ class LanSyncService {
         'token': _currentPendingToken,
         'config': _currentConfig.toJson(),
         'todos': _currentConfig.syncTodos ? localData['todos'] : [],
-        'countdowns':
-            _currentConfig.syncCountdowns ? localData['countdowns'] : [],
+        'countdowns': _currentConfig.syncCountdowns
+            ? localData['countdowns']
+            : [],
         'timeLogs': _currentConfig.syncTimeLogs ? localData['timeLogs'] : [],
-        'pomodoroTags':
-            _currentConfig.syncPomodoroTags ? localData['pomodoroTags'] : [],
+        'pomodoroTags': _currentConfig.syncPomodoroTags
+            ? localData['pomodoroTags']
+            : [],
         'pomodoroRecords': _currentConfig.syncPomodoroRecords
             ? localData['pomodoroRecords']
             : [],
@@ -1056,13 +1108,13 @@ class LanSyncService {
 
       final encryptedPayload = _encrypt(jsonEncode(payload));
 
-      final request = await client
-          .postUrl(Uri.parse('http://${device.ip}:${device.port}/sync'));
+      final request = await client.postUrl(
+        Uri.parse('http://${device.ip}:${device.port}/sync'),
+      );
       request.headers.contentType = ContentType.json;
-      request.write(jsonEncode({
-        'encrypted': true,
-        'payload': encryptedPayload,
-      }));
+      request.write(
+        jsonEncode({'encrypted': true, 'payload': encryptedPayload}),
+      );
       final response = await request.close();
 
       final encryptedBody = await response.transform(utf8.decoder).join();
@@ -1072,9 +1124,10 @@ class LanSyncService {
 
       if (encryptedResponseData['encrypted'] != true) {
         return LanSyncResult(
-            success: false,
-            message:
-                '同步失败: 响应未加密 (${encryptedResponseData['error'] ?? 'unknown'})');
+          success: false,
+          message:
+              '同步失败: 响应未加密 (${encryptedResponseData['error'] ?? 'unknown'})',
+        );
       }
 
       final decryptedBody = _decrypt(encryptedResponseData['payload']);
@@ -1082,33 +1135,41 @@ class LanSyncService {
 
       if (responseData['success'] != true) {
         return LanSyncResult(
-            success: false, message: '同步失败: ${responseData['error']}');
+          success: false,
+          message: '同步失败: ${responseData['error']}',
+        );
       }
 
       _emitProgress('正在合并远程数据...');
       _emitProgressValue(0.6);
 
-      final remoteTodos = (responseData['todos'] as List?)
+      final remoteTodos =
+          (responseData['todos'] as List?)
               ?.map((e) => Map<String, dynamic>.from(e))
               .toList() ??
           [];
-      final remoteCountdowns = (responseData['countdowns'] as List?)
+      final remoteCountdowns =
+          (responseData['countdowns'] as List?)
               ?.map((e) => Map<String, dynamic>.from(e))
               .toList() ??
           [];
-      final remoteTimeLogs = (responseData['timeLogs'] as List?)
+      final remoteTimeLogs =
+          (responseData['timeLogs'] as List?)
               ?.map((e) => Map<String, dynamic>.from(e))
               .toList() ??
           [];
-      final remotePomodoroTags = (responseData['pomodoroTags'] as List?)
+      final remotePomodoroTags =
+          (responseData['pomodoroTags'] as List?)
               ?.map((e) => Map<String, dynamic>.from(e))
               .toList() ??
           [];
-      final remotePomodoroRecords = (responseData['pomodoroRecords'] as List?)
+      final remotePomodoroRecords =
+          (responseData['pomodoroRecords'] as List?)
               ?.map((e) => Map<String, dynamic>.from(e))
               .toList() ??
           [];
-      final remoteCourses = (responseData['courses'] as List?)
+      final remoteCourses =
+          (responseData['courses'] as List?)
               ?.map((e) => Map<String, dynamic>.from(e))
               .toList() ??
           [];
@@ -1122,15 +1183,28 @@ class LanSyncService {
 
       await _mergeTodos(username, remoteTodos, (count) => todosSynced = count);
       await _mergeCountdowns(
-          username, remoteCountdowns, (count) => countdownsSynced = count);
+        username,
+        remoteCountdowns,
+        (count) => countdownsSynced = count,
+      );
       await _mergeTimeLogs(
-          username, remoteTimeLogs, (count) => timeLogsSynced = count);
+        username,
+        remoteTimeLogs,
+        (count) => timeLogsSynced = count,
+      );
       await _mergePomodoroTags(
-          remotePomodoroTags, (count) => pomodoroTagsSynced = count);
+        remotePomodoroTags,
+        (count) => pomodoroTagsSynced = count,
+      );
       await _mergePomodoroRecords(
-          remotePomodoroRecords, (count) => pomodoroRecordsSynced = count);
+        remotePomodoroRecords,
+        (count) => pomodoroRecordsSynced = count,
+      );
       await _mergeCourses(
-          username, remoteCourses, (count) => coursesSynced = count);
+        username,
+        remoteCourses,
+        (count) => coursesSynced = count,
+      );
       _emitProgressValue(1.0);
       _pendingRequests.remove(device.deviceId);
       _pendingTokens.remove(device.deviceId);
@@ -1232,11 +1306,13 @@ class LanSyncService {
       final total = await file.length();
       int sent = 0;
 
-      await request.addStream(fileStream.map((chunk) {
-        sent += chunk.length;
-        _emitProgressValue((sent / total) * 0.95);
-        return chunk;
-      }));
+      await request.addStream(
+        fileStream.map((chunk) {
+          sent += chunk.length;
+          _emitProgressValue((sent / total) * 0.95);
+          return chunk;
+        }),
+      );
 
       final response = await request.close();
 
@@ -1246,7 +1322,9 @@ class LanSyncService {
         return LanSyncResult(success: true, message: '文件发送成功');
       } else {
         return LanSyncResult(
-            success: false, message: '服务器响应错误: ${response.statusCode}');
+          success: false,
+          message: '服务器响应错误: ${response.statusCode}',
+        );
       }
     } catch (e) {
       return LanSyncResult(success: false, message: '发送失败: $e');

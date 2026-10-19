@@ -18,8 +18,8 @@ class PlanBacklogRow {
       planCount: (row['plan_count'] as num).toInt(),
       nextStart: row['next_start'] as int?,
       nextEnd: row['next_end'] as int?,
-      needsReview: row['bad'] == 1 ||
-          ConflictVisibilityService.blocksTodoPlanning(todo),
+      needsReview:
+          row['bad'] == 1 || ConflictVisibilityService.blocksTodoPlanning(todo),
       focusing: row['focused'] == 1,
       legacy: row['legacy'] == 1,
       sortGroup: row['sort_group'] as int,

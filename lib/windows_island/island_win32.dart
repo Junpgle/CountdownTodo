@@ -1,8 +1,10 @@
 import 'dart:ffi';
 import 'dart:io';
+
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'package:win32/win32.dart';
+
 import 'island_config.dart';
 
 // ── Win32 Window Utilities ────────────────────────────────────────────────
@@ -32,8 +34,10 @@ HWND? getSmallestFlutterWindow() {
     final foundHwnds = <HWND>[];
     final emptyTitleHwnds = <HWND>[];
 
-    final lpEnumFunc = NativeCallable<WNDENUMPROC>.isolateLocal(
-        (Pointer hwndPointer, int lParam) {
+    final lpEnumFunc = NativeCallable<WNDENUMPROC>.isolateLocal((
+      Pointer hwndPointer,
+      int lParam,
+    ) {
       final hwnd = HWND(hwndPointer);
       using((arena) {
         final pidPtr = arena<Uint32>();
@@ -79,8 +83,9 @@ HWND? getSmallestFlutterWindow() {
       lpEnumFunc.close();
     }
 
-    final candidates =
-        emptyTitleHwnds.isNotEmpty ? emptyTitleHwnds : foundHwnds;
+    final candidates = emptyTitleHwnds.isNotEmpty
+        ? emptyTitleHwnds
+        : foundHwnds;
 
     if (candidates.isNotEmpty) {
       HWND? bestHwnd;
@@ -205,7 +210,8 @@ Future<void> initFfiTransparent() async {
           if (w <= IslandConfig.detectionMaxWidth &&
               hSize <= IslandConfig.detectionMaxHeight) {
             debugPrint(
-                '[IslandWin32] HWND found and shrunk on attempt $i: $hwnd (${w}x$hSize)');
+              '[IslandWin32] HWND found and shrunk on attempt $i: $hwnd (${w}x$hSize)',
+            );
             _islandHwndCache = hwnd;
             applyFramelessTransparent(hwnd);
             matched = true;
@@ -219,7 +225,8 @@ Future<void> initFfiTransparent() async {
     await Future.delayed(IslandConfig.ffiRetryInterval);
   }
   debugPrint(
-      '[IslandWin32] WARNING: Valid shrunk HWND not found after ${IslandConfig.ffiMaxAttempts} attempts');
+    '[IslandWin32] WARNING: Valid shrunk HWND not found after ${IslandConfig.ffiMaxAttempts} attempts',
+  );
 }
 
 /// Resize the current island window
@@ -244,8 +251,15 @@ void resizeCurrentWindow(int targetW, int targetH) {
         if (curW > 0 && curW != physicalW) {
           newX = curX - ((physicalW - curW) ~/ 2);
         }
-        SetWindowPos(hwnd, HWND_TOPMOST, newX, newY, physicalW, physicalH,
-            SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_ASYNCWINDOWPOS);
+        SetWindowPos(
+          hwnd,
+          HWND_TOPMOST,
+          newX,
+          newY,
+          physicalW,
+          physicalH,
+          SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_ASYNCWINDOWPOS,
+        );
       }
     });
   } catch (e) {
@@ -269,8 +283,15 @@ void moveCurrentWindow(int targetX, int targetY) {
         final curW = rectPtr.ref.right - rectPtr.ref.left;
         final curH = rectPtr.ref.bottom - rectPtr.ref.top;
 
-        SetWindowPos(hwnd, HWND_TOPMOST, physicalX, physicalY, curW, curH,
-            SWP_NOACTIVATE | SWP_NOSIZE | SWP_FRAMECHANGED);
+        SetWindowPos(
+          hwnd,
+          HWND_TOPMOST,
+          physicalX,
+          physicalY,
+          curW,
+          curH,
+          SWP_NOACTIVATE | SWP_NOSIZE | SWP_FRAMECHANGED,
+        );
       }
     });
   } catch (e) {
@@ -315,12 +336,7 @@ void startWindowDragging() {
       const int wmNclbuttondown = 0x00A1;
       const int htCaption = 2;
       ReleaseCapture();
-      PostMessage(
-        hwnd,
-        wmNclbuttondown,
-        WPARAM(htCaption),
-        LPARAM(0),
-      );
+      PostMessage(hwnd, wmNclbuttondown, WPARAM(htCaption), LPARAM(0));
     }
   } catch (e) {
     debugPrint('[IslandWin32] startWindowDragging error: $e');
@@ -339,13 +355,14 @@ void setWindowPosition(int left, int top, int width, int height) {
         rectPtr.ref.right = left + width;
         rectPtr.ref.bottom = top + height;
         SetWindowPos(
-            hwnd,
-            HWND_TOPMOST,
-            rectPtr.ref.left,
-            rectPtr.ref.top,
-            rectPtr.ref.right - rectPtr.ref.left,
-            rectPtr.ref.bottom - rectPtr.ref.top,
-            SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+          hwnd,
+          HWND_TOPMOST,
+          rectPtr.ref.left,
+          rectPtr.ref.top,
+          rectPtr.ref.right - rectPtr.ref.left,
+          rectPtr.ref.bottom - rectPtr.ref.top,
+          SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED,
+        );
       });
     }
   } catch (e) {

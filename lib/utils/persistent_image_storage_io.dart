@@ -34,10 +34,9 @@ Future<String?> persistImageBytes(
     await imageDir.create(recursive: true);
   }
 
-  final safeName = p.basename(fileName).replaceAll(
-    RegExp(r'[^A-Za-z0-9._-]'),
-    '_',
-  );
+  final safeName = p
+      .basename(fileName)
+      .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
   final uniqueName = '${DateTime.now().microsecondsSinceEpoch}_$safeName';
   final file = File(p.join(imageDir.path, uniqueName));
   await file.writeAsBytes(bytes, flush: true);

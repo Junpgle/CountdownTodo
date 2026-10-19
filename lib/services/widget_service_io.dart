@@ -571,7 +571,8 @@ class WidgetService {
       if (eventAt > asOfAt) continue;
       if (latest == null ||
           eventAt > latestEventAt ||
-          (eventAt == latestEventAt && transaction.updatedAt > latest.updatedAt)) {
+          (eventAt == latestEventAt &&
+              transaction.updatedAt > latest.updatedAt)) {
         latest = transaction;
         latestEventAt = eventAt;
       }

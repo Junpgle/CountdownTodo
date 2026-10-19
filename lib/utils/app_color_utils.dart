@@ -30,15 +30,8 @@ class AppColorUtils {
         fallback.withValues(alpha: opacity.clamp(0.0, 1.0));
   }
 
-  static Color parseHex(
-    String? hex, {
-    double opacity = 1,
-  }) {
-    return hexToColor(
-      hex,
-      fallback: const Color(0xFF607D8B),
-      opacity: opacity,
-    );
+  static Color parseHex(String? hex, {double opacity = 1}) {
+    return hexToColor(hex, fallback: const Color(0xFF607D8B), opacity: opacity);
   }
 }
 

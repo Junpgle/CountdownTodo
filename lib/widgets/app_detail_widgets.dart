@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'floating_glass_control.dart';
 
 import 'optional_liquid_glass_surface.dart';
@@ -52,10 +53,7 @@ class AppDetailHeader extends StatelessWidget {
           Text(
             subtitle!,
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: colorScheme.onSurfaceVariant,
-              fontSize: 14,
-            ),
+            style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 14),
           ),
         ],
         if (progress != null) ...[
@@ -203,23 +201,26 @@ class AppDetailInfoCard extends StatelessWidget {
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(icon, color: colorScheme.primary, size: 22),
           const SizedBox(height: 8),
-          Text(title,
-              style:
-                  TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+          Text(
+            title,
+            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+          ),
           const SizedBox(height: 4),
           Text(
             value,
             style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: valueColor ?? colorScheme.onSurface),
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: valueColor ?? colorScheme.onSurface,
+            ),
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -274,15 +275,17 @@ class AppDetailWideCard extends StatelessWidget {
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
       ),
       child: Row(
         children: [
           Icon(icon, color: colorScheme.primary, size: 22),
           const SizedBox(width: 12),
-          Text(title,
-              style:
-                  TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant)),
+          Text(
+            title,
+            style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+          ),
           const SizedBox(width: 16),
           Expanded(
             child: Row(
@@ -292,12 +295,14 @@ class AppDetailWideCard extends StatelessWidget {
                   child: Text(
                     value,
                     style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: valueColor ??
-                            (isLink
-                                ? colorScheme.primary
-                                : colorScheme.onSurface)),
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color:
+                          valueColor ??
+                          (isLink
+                              ? colorScheme.primary
+                              : colorScheme.onSurface),
+                    ),
                     textAlign: TextAlign.right,
                     maxLines: maxLines,
                     overflow: TextOverflow.ellipsis,
@@ -305,8 +310,11 @@ class AppDetailWideCard extends StatelessWidget {
                 ),
                 if (isLink) ...[
                   const SizedBox(width: 4),
-                  Icon(Icons.chevron_right_rounded,
-                      size: 18, color: colorScheme.primary),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: colorScheme.primary,
+                  ),
                 ],
               ],
             ),
@@ -326,10 +334,7 @@ class AppDetailWideCard extends StatelessWidget {
       );
     }
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: card,
-    );
+    return Padding(padding: const EdgeInsets.only(bottom: 12), child: card);
   }
 }
 
@@ -393,8 +398,9 @@ class AppDetailScreen extends StatelessWidget {
             final isWide = constraints.maxWidth > 700;
 
             if (isWide) {
-              final contentWidth =
-                  constraints.maxWidth > 900 ? 900.0 : constraints.maxWidth;
+              final contentWidth = constraints.maxWidth > 900
+                  ? 900.0
+                  : constraints.maxWidth;
               final horizontalInset = (constraints.maxWidth - contentWidth) / 2;
               return Center(
                 child: SingleChildScrollView(

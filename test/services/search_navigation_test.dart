@@ -47,24 +47,30 @@ void main() {
       },
     );
 
-    await tester.pumpWidget(MaterialApp(
-      navigatorObservers: [observer],
-      home: Scaffold(
-        body: Builder(builder: (context) {
-          return Center(
-            child: FilledButton(
-              key: sourceKey,
-              onPressed: () => unawaited(SearchNavigationHandler.handle(
-                context,
-                result,
-                sourceKey: sourceKey,
-              )),
-              child: const Text('打开搜索结果'),
-            ),
-          );
-        }),
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorObservers: [observer],
+        home: Scaffold(
+          body: Builder(
+            builder: (context) {
+              return Center(
+                child: FilledButton(
+                  key: sourceKey,
+                  onPressed: () => unawaited(
+                    SearchNavigationHandler.handle(
+                      context,
+                      result,
+                      sourceKey: sourceKey,
+                    ),
+                  ),
+                  child: const Text('打开搜索结果'),
+                ),
+              );
+            },
+          ),
+        ),
       ),
-    ));
+    );
 
     await tester.tap(find.text('打开搜索结果'));
     await tester.pumpAndSettle();
@@ -99,23 +105,28 @@ void main() {
       extraData: {'route': '/settings', 'target': 'animation'},
     );
 
-    await tester.pumpWidget(MaterialApp(
-      navigatorObservers: [observer],
-      home: Scaffold(
-        body: Builder(
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorObservers: [observer],
+        home: Scaffold(
+          body: Builder(
             builder: (context) => Center(
-                  child: FilledButton(
-                    key: sourceKey,
-                    onPressed: () => unawaited(SearchNavigationHandler.handle(
-                      context,
-                      result,
-                      sourceKey: sourceKey,
-                    )),
-                    child: const Text('打开动画设置'),
+              child: FilledButton(
+                key: sourceKey,
+                onPressed: () => unawaited(
+                  SearchNavigationHandler.handle(
+                    context,
+                    result,
+                    sourceKey: sourceKey,
                   ),
-                )),
+                ),
+                child: const Text('打开动画设置'),
+              ),
+            ),
+          ),
+        ),
       ),
-    ));
+    );
 
     await tester.tap(find.text('打开动画设置'));
     await tester.pumpAndSettle();

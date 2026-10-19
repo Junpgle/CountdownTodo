@@ -27,8 +27,9 @@ class JournalMediaService {
 
     final compressedBytes = await _compressImage(originalBytes);
     final bytes = compressedBytes ?? originalBytes;
-    final extension =
-        compressedBytes == null ? _safeExtension(file.path) : '.jpg';
+    final extension = compressedBytes == null
+        ? _safeExtension(file.path)
+        : '.jpg';
     final documents = await getApplicationDocumentsDirectory();
     final folder = Directory(
       p.join(_accountRoot(documents, accountId), '.drafts', draftId),
@@ -45,9 +46,7 @@ class JournalMediaService {
       '${attachment.id}_$sortOrder$extension',
     );
     await File(destination).writeAsBytes(bytes, flush: true);
-    return attachment.copyWith(
-      localPath: destination,
-    );
+    return attachment.copyWith(localPath: destination);
   }
 
   /// Copies the images added during this editing session into their durable
@@ -63,10 +62,9 @@ class JournalMediaService {
     final draftFolder = p.normalize(
       p.join(_accountRoot(documents, accountId), '.drafts', draftId),
     );
-    final entryFolder = Directory(p.join(
-      _accountRoot(documents, accountId),
-      entryId,
-    ));
+    final entryFolder = Directory(
+      p.join(_accountRoot(documents, accountId), entryId),
+    );
     final committed = <JournalAttachment>[];
     final created = <JournalAttachment>[];
     final copiedFiles = <File>[];
@@ -141,14 +139,16 @@ class JournalMediaService {
     await for (final entity in folder.list(followLinks: false)) {
       if (entity is! File) continue;
       final parsed = _parseDraftFileName(p.basename(entity.path));
-      attachments.add(JournalAttachment(
-        id: parsed?.id,
-        entryId: entryId,
-        localPath: entity.path,
-        mimeType: _mimeType(p.extension(entity.path).toLowerCase()),
-        sortOrder: parsed?.sortOrder ?? attachments.length,
-        fileSize: await entity.length(),
-      ));
+      attachments.add(
+        JournalAttachment(
+          id: parsed?.id,
+          entryId: entryId,
+          localPath: entity.path,
+          mimeType: _mimeType(p.extension(entity.path).toLowerCase()),
+          sortOrder: parsed?.sortOrder ?? attachments.length,
+          fileSize: await entity.length(),
+        ),
+      );
     }
     attachments.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
     return attachments;
@@ -264,8 +264,9 @@ class JournalMediaService {
 
   String _accountRoot(Directory documents, String accountId) {
     final normalizedAccount = accountId.trim().isEmpty ? 'default' : accountId;
-    final encoded =
-        base64Url.encode(utf8.encode(normalizedAccount)).replaceAll('=', '');
+    final encoded = base64Url
+        .encode(utf8.encode(normalizedAccount))
+        .replaceAll('=', '');
     return p.join(documents.path, 'journal', 'account_$encoded');
   }
 

@@ -36,10 +36,10 @@ final Map<(String?, String), DateFormat> _courseSectionDateFormats = {};
 
 DateFormat _courseSectionDateFormat(String pattern) {
   final locale = Intl.defaultLocale;
-  return _courseSectionDateFormats.putIfAbsent(
-    (locale, pattern),
-    () => DateFormat(pattern, locale),
-  );
+  return _courseSectionDateFormats.putIfAbsent((
+    locale,
+    pattern,
+  ), () => DateFormat(pattern, locale));
 }
 
 // ─────────────────────────────────────────────
@@ -364,8 +364,9 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     }
 
     final visibleBlocks = blocks.where((block) => !block.isDeleted).toList();
-    final visibleTomorrowBlocks =
-        tomorrowBlocks.where((block) => !block.isDeleted).toList();
+    final visibleTomorrowBlocks = tomorrowBlocks
+        .where((block) => !block.isDeleted)
+        .toList();
     final plannedTodoIds = <String>{
       for (final block in visibleBlocks)
         if (block.todoId.isNotEmpty) block.todoId,

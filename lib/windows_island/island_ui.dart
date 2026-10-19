@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+
 import 'dart:async';
 import 'dart:ui';
+
 import 'island_config.dart';
 import 'island_state_stack.dart';
 import 'island_win32.dart';
@@ -18,7 +20,7 @@ export 'island_state_stack.dart' show IslandState;
 class IslandUI extends StatefulWidget {
   final Map<String, dynamic>? initialPayload;
   final void Function(String action, [int? modifiedSecs, String? data])?
-      onAction;
+  onAction;
   final ValueNotifier<Map<String, dynamic>?>? payloadNotifier;
   final bool inLayoutDebugMode;
 
@@ -171,13 +173,13 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       duration: IslandConfig.transitionDuration,
     );
 
-    _sizeAnimation = Tween<Size>(
-      begin: const Size(100, 34),
-      end: const Size(100, 34),
-    ).animate(CurvedAnimation(
-      parent: _sizeController,
-      curve: Curves.easeOutCubic,
-    ));
+    _sizeAnimation =
+        Tween<Size>(
+          begin: const Size(100, 34),
+          end: const Size(100, 34),
+        ).animate(
+          CurvedAnimation(parent: _sizeController, curve: Curves.easeOutCubic),
+        );
     _radiusAnimation = AlwaysStoppedAnimation<double>(
       IslandConfig.capsuleRadius,
     );
@@ -189,24 +191,24 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     );
 
     // 脉冲动画：缩放效果
-    _pulseAnimation = TweenSequence([
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.15), weight: 25),
-      TweenSequenceItem(tween: Tween(begin: 1.15, end: 1.0), weight: 25),
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.15), weight: 25),
-      TweenSequenceItem(tween: Tween(begin: 1.15, end: 1.0), weight: 25),
-    ]).animate(CurvedAnimation(
-      parent: _pulseController,
-      curve: Curves.easeInOut,
-    ));
+    _pulseAnimation =
+        TweenSequence([
+          TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.15), weight: 25),
+          TweenSequenceItem(tween: Tween(begin: 1.15, end: 1.0), weight: 25),
+          TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.15), weight: 25),
+          TweenSequenceItem(tween: Tween(begin: 1.15, end: 1.0), weight: 25),
+        ]).animate(
+          CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+        );
 
     // 颜色闪烁动画
-    _colorAnimation = ColorTween(
-      begin: IslandConfig.focusColor,
-      end: IslandConfig.warningColor,
-    ).animate(CurvedAnimation(
-      parent: _pulseController,
-      curve: Curves.easeInOut,
-    ));
+    _colorAnimation =
+        ColorTween(
+          begin: IslandConfig.focusColor,
+          end: IslandConfig.warningColor,
+        ).animate(
+          CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+        );
 
     widget.payloadNotifier?.addListener(_onNotifierPayload);
 
@@ -251,7 +253,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     if (targetSize.width > _maxNativeResizeWidth ||
         targetSize.height > _maxNativeResizeHeight) {
       debugPrint(
-          '[IslandUI] skip native resize for oversized target: $targetSize');
+        '[IslandUI] skip native resize for oversized target: $targetSize',
+      );
       return;
     }
     // 防抖：快速连续调用只执行最后一次
@@ -261,7 +264,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       if (targetSize == _currentWindowSize) return;
       try {
         resizeCurrentWindow(
-            targetSize.width.round(), targetSize.height.round());
+          targetSize.width.round(),
+          targetSize.height.round(),
+        );
         _currentWindowSize = targetSize;
       } catch (e) {
         debugPrint('[IslandUI] resize error: $e');
@@ -298,26 +303,20 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final beginSize = _sizeAnimation.value;
     final beginRadius = _radiusAnimation.value;
     final version = ++_transitionVersion;
-    final growsWindow = toSize.width > _currentWindowSize.width ||
+    final growsWindow =
+        toSize.width > _currentWindowSize.width ||
         toSize.height > _currentWindowSize.height;
 
     _resizeDebounce?.cancel();
     _sizeController.stop();
     _sizeController.reset();
-    _sizeAnimation = Tween<Size>(
-      begin: beginSize,
-      end: toSize,
-    ).animate(CurvedAnimation(
-      parent: _sizeController,
-      curve: Curves.easeOutCubic,
-    ));
-    _radiusAnimation = Tween<double>(
-      begin: beginRadius,
-      end: endRadius,
-    ).animate(CurvedAnimation(
-      parent: _sizeController,
-      curve: Curves.easeOutCubic,
-    ));
+    _sizeAnimation = Tween<Size>(begin: beginSize, end: toSize).animate(
+      CurvedAnimation(parent: _sizeController, curve: Curves.easeOutCubic),
+    );
+    _radiusAnimation = Tween<double>(begin: beginRadius, end: endRadius)
+        .animate(
+          CurvedAnimation(parent: _sizeController, curve: Curves.easeOutCubic),
+        );
 
     if (growsWindow) {
       _resizeWindowOnce(toSize);
@@ -378,7 +377,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final nextBase = _computeBaseState(stateStr);
 
     debugPrint(
-        '[IslandUI] applyPayload: $stateStr, current: ${_stack.current}, isProtected: ${_stack.isProtected}');
+      '[IslandUI] applyPayload: $stateStr, current: ${_stack.current}, isProtected: ${_stack.isProtected}',
+    );
 
     // ① 受保护状态：只更新数据，不切换状态
     if (_stack.isProtected) {
@@ -397,8 +397,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     // ② 处理 copiedLink overlay
     final copiedLinkDataRaw = payload['copiedLinkData'];
     if (copiedLinkDataRaw != null && stateStr == 'copied_link') {
-      final copiedLinkData =
-          Map<String, dynamic>.from(copiedLinkDataRaw as Map);
+      final copiedLinkData = Map<String, dynamic>.from(
+        copiedLinkDataRaw as Map,
+      );
       _pushWithAutoDismiss(
         IslandState.copiedLink,
         data: {...payload, 'copiedLinkData': copiedLinkData},
@@ -646,8 +647,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     }
     final title = card['title'] as String? ?? '';
     final subtitle = card['subtitle'] as String? ?? '';
-    final maxLen =
-        title.length > subtitle.length ? title.length : subtitle.length;
+    final maxLen = title.length > subtitle.length
+        ? title.length
+        : subtitle.length;
     final textWidth = maxLen.clamp(0, 14) * 10.0;
     final maxWidth = switch (type) {
       'course' => 190.0,
@@ -970,129 +972,126 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   // ── Idle ─────────────────────────────────────────────────────────────────
 
   Widget _buildIdle() => GestureDetector(
-        key: const ValueKey('idle'),
-        behavior: HitTestBehavior.translucent,
-        onTap: () {
-          if (_isFocusing && !_isScrolledInFocus) {
-            // 专注状态默认 → 展开专注详情
-            _stack.push(IslandState.stackedCard, data: _currentPayload);
-            _animateToState(IslandState.stackedCard);
-          } else if (_isFocusing && _isScrolledInFocus) {
-            // 专注状态下滚轮切换后
-            final card = _cards[_currentCardIndex];
-            if (card['type'] == 'focusing') {
-              // 专注状态卡 → 展开专注详情（完成/放弃）
-              _isScrolledInFocus = false;
-              _currentCardIndex = 0;
-              _stack.push(IslandState.stackedCard, data: _currentPayload);
-              _animateToState(IslandState.stackedCard);
-            } else if (card['type'] == 'focus') {
-              // 今日专注统计 → 展开统计详情
-              final detailData = {...?_currentPayload, 'selectedCard': card};
-              _currentPayload = detailData;
-              _stack.push(IslandState.stackedCard, data: detailData);
-              _animateToState(IslandState.stackedCard);
-            } else {
-              // 其他卡片 → 展开对应详情
-              final detailData = {...?_currentPayload, 'selectedCard': card};
-              _currentPayload = detailData;
-              _stack.push(IslandState.stackedCard, data: detailData);
-              _animateToState(IslandState.stackedCard);
-            }
-          } else if (_cards.isNotEmpty &&
-              _currentCardIndex > 0 &&
-              _cards[_currentCardIndex]['type'] != 'time') {
-            // 非时间卡片：直接展开对应类型详情
-            final card = _cards[_currentCardIndex];
-            final detailData = {
-              ...?_currentPayload,
-              'selectedCard': card,
-            };
-            _currentPayload = detailData;
-            _stack.push(IslandState.stackedCard, data: detailData);
-            _animateToState(IslandState.stackedCard);
-          } else {
+    key: const ValueKey('idle'),
+    behavior: HitTestBehavior.translucent,
+    onTap: () {
+      if (_isFocusing && !_isScrolledInFocus) {
+        // 专注状态默认 → 展开专注详情
+        _stack.push(IslandState.stackedCard, data: _currentPayload);
+        _animateToState(IslandState.stackedCard);
+      } else if (_isFocusing && _isScrolledInFocus) {
+        // 专注状态下滚轮切换后
+        final card = _cards[_currentCardIndex];
+        if (card['type'] == 'focusing') {
+          // 专注状态卡 → 展开专注详情（完成/放弃）
+          _isScrolledInFocus = false;
+          _currentCardIndex = 0;
+          _stack.push(IslandState.stackedCard, data: _currentPayload);
+          _animateToState(IslandState.stackedCard);
+        } else if (card['type'] == 'focus') {
+          // 今日专注统计 → 展开统计详情
+          final detailData = {...?_currentPayload, 'selectedCard': card};
+          _currentPayload = detailData;
+          _stack.push(IslandState.stackedCard, data: detailData);
+          _animateToState(IslandState.stackedCard);
+        } else {
+          // 其他卡片 → 展开对应详情
+          final detailData = {...?_currentPayload, 'selectedCard': card};
+          _currentPayload = detailData;
+          _stack.push(IslandState.stackedCard, data: detailData);
+          _animateToState(IslandState.stackedCard);
+        }
+      } else if (_cards.isNotEmpty &&
+          _currentCardIndex > 0 &&
+          _cards[_currentCardIndex]['type'] != 'time') {
+        // 非时间卡片：直接展开对应类型详情
+        final card = _cards[_currentCardIndex];
+        final detailData = {...?_currentPayload, 'selectedCard': card};
+        _currentPayload = detailData;
+        _stack.push(IslandState.stackedCard, data: detailData);
+        _animateToState(IslandState.stackedCard);
+      } else {
+        _initCards();
+        _stack.push(IslandState.cardCarousel, data: _currentPayload);
+        _animateToState(IslandState.cardCarousel);
+        _startCarouselAutoReturnTimer();
+      }
+    },
+    onLongPressStart: (_) => _startDrag(),
+    child: Listener(
+      onPointerSignal: (pointerSignal) {
+        if (pointerSignal is PointerScrollEvent) {
+          final delta = pointerSignal.scrollDelta.dy;
+
+          // idle 态下滚轮切换卡片
+          if (!_cardsLoaded) {
             _initCards();
-            _stack.push(IslandState.cardCarousel, data: _currentPayload);
-            _animateToState(IslandState.cardCarousel);
-            _startCarouselAutoReturnTimer();
           }
-        },
-        onLongPressStart: (_) => _startDrag(),
-        child: Listener(
-          onPointerSignal: (pointerSignal) {
-            if (pointerSignal is PointerScrollEvent) {
-              final delta = pointerSignal.scrollDelta.dy;
 
-              // idle 态下滚轮切换卡片
-              if (!_cardsLoaded) {
-                _initCards();
-              }
+          if (_cards.isEmpty) return;
 
-              if (_cards.isEmpty) return;
+          // 重置自动返回定时器
+          _resetIdleAutoReturnTimer();
 
-              // 重置自动返回定时器
-              _resetIdleAutoReturnTimer();
-
-              if (_isFocusing && _isScrolledInFocus) {
-                // 专注状态下已滚轮切换：继续在卡片间滚动
-                if (delta > 0) {
-                  // 向下滚 → 下一张卡片
-                  setState(() {
-                    _currentCardIndex = (_currentCardIndex + 1) % _cards.length;
-                  });
-                } else if (delta < 0) {
-                  // 向上滚 → 上一张卡片
-                  setState(() {
-                    _currentCardIndex = _currentCardIndex == 0
-                        ? _cards.length - 1
-                        : _currentCardIndex - 1;
-                  });
-                }
-              } else if (!_isFocusing && _currentCardIndex > 0) {
-                // idle 态下非计时显示：已经在卡片上，继续滚轮切换
-                if (delta > 0) {
-                  setState(() {
-                    _currentCardIndex = (_currentCardIndex + 1) % _cards.length;
-                  });
-                } else if (delta < 0) {
-                  setState(() {
-                    _currentCardIndex = _currentCardIndex == 0
-                        ? _cards.length - 1
-                        : _currentCardIndex - 1;
-                  });
-                }
-              } else if (_isFocusing && !_isScrolledInFocus) {
-                // 专注状态默认显示计时：滚轮切换到卡片
-                if (delta != 0) {
-                  setState(() {
-                    _isScrolledInFocus = true;
-                    _currentCardIndex = delta > 0 ? 1 : _cards.length - 1;
-                  });
-                }
-              } else if (!_isFocusing && _currentCardIndex == 0) {
-                // idle 态下显示计时：滚轮切换到卡片
-                if (delta != 0) {
-                  setState(() {
-                    _currentCardIndex = delta > 0 ? 1 : _cards.length - 1;
-                  });
-                }
-              }
-
-              // 同时更新窗口大小
-              final newSize = _idleSizeForCard();
-              _animateSizeTo(newSize);
+          if (_isFocusing && _isScrolledInFocus) {
+            // 专注状态下已滚轮切换：继续在卡片间滚动
+            if (delta > 0) {
+              // 向下滚 → 下一张卡片
+              setState(() {
+                _currentCardIndex = (_currentCardIndex + 1) % _cards.length;
+              });
+            } else if (delta < 0) {
+              // 向上滚 → 上一张卡片
+              setState(() {
+                _currentCardIndex = _currentCardIndex == 0
+                    ? _cards.length - 1
+                    : _currentCardIndex - 1;
+              });
             }
-          },
-          child: Container(
-            color: Colors.transparent,
-            alignment: Alignment.center,
-            child: (_isFocusing && !_isScrolledInFocus)
-                ? _buildFocusTimerDisplay()
-                : _buildIdleCardContent(),
-          ),
-        ),
-      );
+          } else if (!_isFocusing && _currentCardIndex > 0) {
+            // idle 态下非计时显示：已经在卡片上，继续滚轮切换
+            if (delta > 0) {
+              setState(() {
+                _currentCardIndex = (_currentCardIndex + 1) % _cards.length;
+              });
+            } else if (delta < 0) {
+              setState(() {
+                _currentCardIndex = _currentCardIndex == 0
+                    ? _cards.length - 1
+                    : _currentCardIndex - 1;
+              });
+            }
+          } else if (_isFocusing && !_isScrolledInFocus) {
+            // 专注状态默认显示计时：滚轮切换到卡片
+            if (delta != 0) {
+              setState(() {
+                _isScrolledInFocus = true;
+                _currentCardIndex = delta > 0 ? 1 : _cards.length - 1;
+              });
+            }
+          } else if (!_isFocusing && _currentCardIndex == 0) {
+            // idle 态下显示计时：滚轮切换到卡片
+            if (delta != 0) {
+              setState(() {
+                _currentCardIndex = delta > 0 ? 1 : _cards.length - 1;
+              });
+            }
+          }
+
+          // 同时更新窗口大小
+          final newSize = _idleSizeForCard();
+          _animateSizeTo(newSize);
+        }
+      },
+      child: Container(
+        color: Colors.transparent,
+        alignment: Alignment.center,
+        child: (_isFocusing && !_isScrolledInFocus)
+            ? _buildFocusTimerDisplay()
+            : _buildIdleCardContent(),
+      ),
+    ),
+  );
 
   // 专注计时器显示（从 _buildFocusing 提取，用于 idle 态下的专注显示）
   Widget _buildFocusTimerDisplay({bool forceTitle = false}) {
@@ -1122,10 +1121,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             if (fd?['isPaused'] == true) ...[
-                              const Text(
-                                '⏸️ ',
-                                style: TextStyle(fontSize: 10),
-                              ),
+                              const Text('⏸️ ', style: TextStyle(fontSize: 10)),
                             ],
                             Flexible(
                               child: ValueListenableBuilder<String>(
@@ -1137,9 +1133,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                                         : title,
                                     style: TextStyle(
                                       color: _isPulsing
-                                          ? _colorAnimation.value
-                                                  ?.withValues(alpha: 0.7) ??
-                                              Colors.white70
+                                          ? _colorAnimation.value?.withValues(
+                                                  alpha: 0.7,
+                                                ) ??
+                                                Colors.white70
                                           : Colors.white70,
                                       fontSize: 10,
                                       fontWeight: FontWeight.bold,
@@ -1401,8 +1398,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 ),
               ),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
@@ -1532,16 +1531,20 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 children: [
                   Expanded(
                     child: _btn('完成', IslandConfig.successColor, () {
-                      _stack.push(IslandState.finishConfirm,
-                          data: _currentPayload);
+                      _stack.push(
+                        IslandState.finishConfirm,
+                        data: _currentPayload,
+                      );
                       _animateToState(IslandState.finishConfirm);
                     }),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: _btn('放弃', IslandConfig.dangerColor, () {
-                      _stack.push(IslandState.abandonConfirm,
-                          data: _currentPayload);
+                      _stack.push(
+                        IslandState.abandonConfirm,
+                        data: _currentPayload,
+                      );
                       _animateToState(IslandState.abandonConfirm);
                     }),
                   ),
@@ -1655,8 +1658,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     String text = mode == 'finish'
         ? '确认完成?'
         : mode == 'abandon'
-            ? '确认放弃?'
-            : '专注完成';
+        ? '确认放弃?'
+        : '专注完成';
     String ok = mode == 'final' ? '好的' : '确认';
     String cancel = '手滑了';
     final fd = _currentPayload?['focusData'] as Map?;
@@ -1750,7 +1753,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final d = _currentPayload?['copiedLinkData'] as Map?;
     if (d == null) return const SizedBox.shrink();
     final url = d['url']?.toString() ?? '';
-    final display = d['displayUrl']?.toString() ??
+    final display =
+        d['displayUrl']?.toString() ??
         (url.length > 25 ? '${url.substring(0, 25)}...' : url);
 
     return Column(
@@ -1986,7 +1990,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 Expanded(
                   child: _btn('好的', IslandConfig.successColor, () {
                     debugPrint(
-                        '[IslandUI] reminder_ok clicked (popup), itemId=$itemId');
+                      '[IslandUI] reminder_ok clicked (popup), itemId=$itemId',
+                    );
                     widget.onAction?.call('reminder_ok', 0);
                     if (itemId != null) {
                       _acknowledgedReminderIds.add(itemId);
@@ -2044,8 +2049,11 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       );
     } else {
       final icon = type == 'course' ? '📚' : (type == 'todo' ? '📝' : '⏰');
-      reminderCapsule =
-          _capsule(icon, '${d['title']} $mins', IslandConfig.warningColor);
+      reminderCapsule = _capsule(
+        icon,
+        '${d['title']} $mins',
+        IslandConfig.warningColor,
+      );
     }
 
     final row = Row(
@@ -2073,7 +2081,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 _expandedReminderPart = newExpanded;
               });
               Future.microtask(
-                  () => _animateToState(IslandState.reminderSplit));
+                () => _animateToState(IslandState.reminderSplit),
+              );
             },
             child: _capsule('🎯', _timeNotifier.value, IslandConfig.focusColor),
           ),
@@ -2100,8 +2109,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       );
     }
 
-    final card =
-        expanded == 'focusing' ? _expandedFocusing() : _expandedReminder();
+    final card = expanded == 'focusing'
+        ? _expandedFocusing()
+        : _expandedReminder();
     return Stack(
       clipBehavior: Clip.hardEdge,
       children: [
@@ -2137,33 +2147,33 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   }
 
   Widget _capsule(String icon, String text, Color color) => Container(
-        height: 30,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.9),
-          borderRadius: BorderRadius.circular(15),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(icon, style: const TextStyle(fontSize: 12)),
-            const SizedBox(width: 4),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 60),
-              child: Text(
-                text,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w900,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+    height: 30,
+    padding: const EdgeInsets.symmetric(horizontal: 12),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.9),
+      borderRadius: BorderRadius.circular(15),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(icon, style: const TextStyle(fontSize: 12)),
+        const SizedBox(width: 4),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 60),
+          child: Text(
+            text,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
             ),
-          ],
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
-      );
+      ],
+    ),
+  );
 
   /// Capsule variant that accepts a Widget icon (e.g. Material Icons)
   Widget _capsuleWithWidget(Widget iconWidget, String text, Color color) =>
@@ -2207,8 +2217,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       decoration: BoxDecoration(
         color: IslandConfig.bgColor,
         borderRadius: BorderRadius.circular(16),
-        border:
-            Border.all(color: Colors.black.withValues(alpha: 0.5), width: 0.8),
+        border: Border.all(
+          color: Colors.black.withValues(alpha: 0.5),
+          width: 0.8,
+        ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -2262,8 +2274,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               // 放弃 → push abandonConfirm
               Expanded(
                 child: _btn('放弃', IslandConfig.dangerColor, () {
-                  _stack.push(IslandState.abandonConfirm,
-                      data: _currentPayload);
+                  _stack.push(
+                    IslandState.abandonConfirm,
+                    data: _currentPayload,
+                  );
                   _animateToState(IslandState.abandonConfirm);
                 }),
               ),
@@ -2357,8 +2371,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             ),
           ],
           const SizedBox(height: 2),
-          Text(status,
-              style: const TextStyle(color: Colors.white, fontSize: 11)),
+          Text(
+            status,
+            style: const TextStyle(color: Colors.white, fontSize: 11),
+          ),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -2372,8 +2388,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                   }
                   _reminderPopupData = null;
                   _expandedReminderPart = null;
-                  _stack.replaceTop(IslandState.focusing,
-                      data: _currentPayload);
+                  _stack.replaceTop(
+                    IslandState.focusing,
+                    data: _currentPayload,
+                  );
                   _animateToState(IslandState.focusing);
                 }),
               ),
@@ -2418,8 +2436,11 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       );
     } else {
       final icon = type == 'course' ? '📚' : (type == 'todo' ? '📝' : '⏰');
-      capsuleWidget = _capsule(icon, '${d['title']} ${d['minutesUntil']}min',
-          IslandConfig.warningColor);
+      capsuleWidget = _capsule(
+        icon,
+        '${d['title']} ${d['minutesUntil']}min',
+        IslandConfig.warningColor,
+      );
     }
 
     return GestureDetector(
@@ -2519,24 +2540,24 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       );
 
   Widget _btn(String label, Color color, VoidCallback onTap) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          height: 32,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w900,
-              fontSize: 12,
-            ),
-          ),
+    onTap: onTap,
+    child: Container(
+      height: 32,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w900,
+          fontSize: 12,
         ),
-      );
+      ),
+    ),
+  );
 
   void _startDrag() {
     if (widget.inLayoutDebugMode) return;
@@ -2551,8 +2572,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   Future<void> _initCards() async {
     if (_cardsLoaded) return;
 
-    final focusingCard =
-        _cards.where((c) => c['type'] == 'focusing').firstOrNull;
+    final focusingCard = _cards
+        .where((c) => c['type'] == 'focusing')
+        .firstOrNull;
 
     _cards.clear();
     _currentCardIndex = 0;
@@ -2570,8 +2592,13 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final seenCards = <String>{};
 
     void addPayloadCard(
-        String type, String icon, String title, String subtitle, Color color,
-        [Map<String, dynamic>? extra]) {
+      String type,
+      String icon,
+      String title,
+      String subtitle,
+      Color color, [
+      Map<String, dynamic>? extra,
+    ]) {
       if (title.trim().isEmpty) return;
       final key = '$type|$title|$subtitle';
       if (!seenCards.add(key)) return;
@@ -2586,32 +2613,34 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     }
 
     String iconForType(String type) => switch (type) {
-          'todo' => '📝',
-          'course' => '📚',
-          'countdown' => '⏰',
-          'focus' => '🎯',
-          'date' => '📅',
-          'weekday' => '📆',
-          'record' => '✅',
-          _ => '📋',
-        };
+      'todo' => '📝',
+      'course' => '📚',
+      'countdown' => '⏰',
+      'focus' => '🎯',
+      'date' => '📅',
+      'weekday' => '📆',
+      'record' => '✅',
+      _ => '📋',
+    };
 
     Color colorForType(String type) => switch (type) {
-          'course' => IslandConfig.warningColor,
-          'countdown' => IslandConfig.dangerColor,
-          'focus' => IslandConfig.successColor,
-          _ => IslandConfig.focusColor,
-        };
+      'course' => IslandConfig.warningColor,
+      'countdown' => IslandConfig.dangerColor,
+      'focus' => IslandConfig.successColor,
+      _ => IslandConfig.focusColor,
+    };
 
     final rawSlotCards = p?['slotCards'];
     if (rawSlotCards is List) {
       for (final rawCard in rawSlotCards) {
         if (rawCard is! Map) continue;
         final type = rawCard['type']?.toString() ?? 'slot';
-        final title = rawCard['title']?.toString() ??
+        final title =
+            rawCard['title']?.toString() ??
             rawCard['display']?.toString() ??
             '';
-        final subtitle = rawCard['subtitle']?.toString() ??
+        final subtitle =
+            rawCard['subtitle']?.toString() ??
             rawCard['note']?.toString() ??
             rawCard['time']?.toString() ??
             '';
@@ -2642,9 +2671,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           legacy?['detail_title']?.toString() ?? p?['detail_title']?.toString();
       final detailSubtitle =
           legacy?['detail_note']?.toString().isNotEmpty == true
-              ? legacy!['detail_note']?.toString()
-              : legacy?['detail_subtitle']?.toString() ??
-                  p?['detail_subtitle']?.toString();
+          ? legacy!['detail_note']?.toString()
+          : legacy?['detail_subtitle']?.toString() ??
+                p?['detail_subtitle']?.toString();
 
       if (detailType != null && detailTitle != null && detailTitle.isNotEmpty) {
         addPayloadCard(
@@ -2660,7 +2689,12 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       final rightSlot = dash?['rightSlot']?.toString() ?? '';
       addPayloadCard('slot_left', '📌', leftSlot, '', IslandConfig.focusColor);
       addPayloadCard(
-          'slot_right', '📌', rightSlot, '', IslandConfig.warningColor);
+        'slot_right',
+        '📌',
+        rightSlot,
+        '',
+        IslandConfig.warningColor,
+      );
     }
 
     if (_cards.length == 1) {
@@ -2757,10 +2791,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 cardContent = Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(
-                      icon,
-                      style: const TextStyle(fontSize: 14),
-                    ),
+                    Text(icon, style: const TextStyle(fontSize: 14)),
                     const SizedBox(height: 4),
                     Text(
                       title,
@@ -2806,8 +2837,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 child: GestureDetector(
                   onTap: onTap,
                   child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: color.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(8),
@@ -2842,39 +2875,23 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            _quickControlBtn(
-              '🔊',
-              '音量',
-              IslandConfig.focusColor,
-              () {
-                SystemControlService.initVolume();
-                _stack.push(IslandState.volumeControl, data: _currentPayload);
-                _animateToState(IslandState.volumeControl);
-                _startSystemControlAutoReturnTimer();
-              },
-            ),
-            _quickControlBtn(
-              '☀️',
-              '亮度',
-              IslandConfig.warningColor,
-              () {
-                _stack.push(IslandState.brightnessControl,
-                    data: _currentPayload);
-                _animateToState(IslandState.brightnessControl);
-                _startSystemControlAutoReturnTimer();
-              },
-            ),
-            _quickControlBtn(
-              '🎵',
-              '音乐',
-              IslandConfig.focusColor,
-              () {
-                _ensureMediaPollingStarted();
-                _stack.push(IslandState.musicPlayer, data: _currentPayload);
-                _animateToState(IslandState.musicPlayer);
-                _startSystemControlAutoReturnTimer();
-              },
-            ),
+            _quickControlBtn('🔊', '音量', IslandConfig.focusColor, () {
+              SystemControlService.initVolume();
+              _stack.push(IslandState.volumeControl, data: _currentPayload);
+              _animateToState(IslandState.volumeControl);
+              _startSystemControlAutoReturnTimer();
+            }),
+            _quickControlBtn('☀️', '亮度', IslandConfig.warningColor, () {
+              _stack.push(IslandState.brightnessControl, data: _currentPayload);
+              _animateToState(IslandState.brightnessControl);
+              _startSystemControlAutoReturnTimer();
+            }),
+            _quickControlBtn('🎵', '音乐', IslandConfig.focusColor, () {
+              _ensureMediaPollingStarted();
+              _stack.push(IslandState.musicPlayer, data: _currentPayload);
+              _animateToState(IslandState.musicPlayer);
+              _startSystemControlAutoReturnTimer();
+            }),
           ],
         ),
       ),
@@ -2882,37 +2899,37 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   }
 
   Widget _quickControlBtn(
-          String icon, String label, Color color, VoidCallback onTap) =>
-      GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 80,
-          height: 50,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: color.withValues(alpha: 0.4),
-              width: 1,
+    String icon,
+    String label,
+    Color color,
+    VoidCallback onTap,
+  ) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      width: 80,
+      height: 50,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.4), width: 1),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(icon, style: const TextStyle(fontSize: 18)),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
             ),
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(icon, style: const TextStyle(fontSize: 18)),
-              const SizedBox(height: 2),
-              Text(
-                label,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
+        ],
+      ),
+    ),
+  );
 
   // ── 音乐播放器 ─────────────────────────────────────────────────────────
 
@@ -2937,11 +2954,14 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             final musicData = _currentPayload?['musicData'] as Map?;
             final hasMusic = musicData != null && musicData.isNotEmpty;
             final smtcHasMusic = !smtc.isEmpty;
-            final title = musicData?['title']?.toString() ??
+            final title =
+                musicData?['title']?.toString() ??
                 (smtcHasMusic ? smtc.title : '');
-            final artist = musicData?['artist']?.toString() ??
+            final artist =
+                musicData?['artist']?.toString() ??
                 (smtcHasMusic ? smtc.artist : '');
-            final isPlaying = musicData?['isPlaying'] as bool? ??
+            final isPlaying =
+                musicData?['isPlaying'] as bool? ??
                 (smtc.status == PlaybackStatus.playing);
             final currentTime = musicData?['currentTime']?.toString() ?? '0:00';
             final totalTime = musicData?['totalTime']?.toString() ?? '0:00';
@@ -3055,10 +3075,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                   const SizedBox(height: 2),
                   Text(
                     artist.isNotEmpty ? artist : '未知艺术家',
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 11,
-                    ),
+                    style: const TextStyle(color: Colors.white70, fontSize: 11),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -3078,12 +3095,17 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                             final box =
                                 context.findRenderObject() as RenderBox?;
                             if (box == null) return;
-                            final pos =
-                                box.globalToLocal(details.localPosition);
-                            final fraction =
-                                (pos.dx / box.size.width).clamp(0.0, 1.0);
-                            widget.onAction
-                                ?.call('music_seek', (fraction * 1000).round());
+                            final pos = box.globalToLocal(
+                              details.localPosition,
+                            );
+                            final fraction = (pos.dx / box.size.width).clamp(
+                              0.0,
+                              1.0,
+                            );
+                            widget.onAction?.call(
+                              'music_seek',
+                              (fraction * 1000).round(),
+                            );
                           },
                           child: Container(
                             height: 6,
@@ -3094,8 +3116,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                             ),
                             child: FractionallySizedBox(
                               alignment: Alignment.centerLeft,
-                              widthFactor:
-                                  _calculateProgress(currentTime, totalTime),
+                              widthFactor: _calculateProgress(
+                                currentTime,
+                                totalTime,
+                              ),
                               child: Container(
                                 decoration: BoxDecoration(
                                   color: IslandConfig.focusColor,
@@ -3168,8 +3192,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               repeatMode == 'one'
                   ? '🔂'
                   : repeatMode == 'all'
-                      ? '🔁'
-                      : '➡️',
+                  ? '🔁'
+                  : '➡️',
               repeatMode != 'off'
                   ? IslandConfig.focusColor.withValues(alpha: 0.4)
                   : Colors.white.withValues(alpha: 0.1),
@@ -3355,16 +3379,20 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                     child: SliderTheme(
                       data: SliderThemeData(
                         trackHeight: 4,
-                        thumbShape:
-                            const RoundSliderThumbShape(enabledThumbRadius: 7),
-                        overlayShape:
-                            const RoundSliderOverlayShape(overlayRadius: 14),
+                        thumbShape: const RoundSliderThumbShape(
+                          enabledThumbRadius: 7,
+                        ),
+                        overlayShape: const RoundSliderOverlayShape(
+                          overlayRadius: 14,
+                        ),
                         activeTrackColor: IslandConfig.focusColor,
-                        inactiveTrackColor:
-                            Colors.white.withValues(alpha: 0.15),
+                        inactiveTrackColor: Colors.white.withValues(
+                          alpha: 0.15,
+                        ),
                         thumbColor: Colors.white,
-                        overlayColor:
-                            IslandConfig.focusColor.withValues(alpha: 0.2),
+                        overlayColor: IslandConfig.focusColor.withValues(
+                          alpha: 0.2,
+                        ),
                       ),
                       child: Slider(
                         value: currentVolume,
@@ -3518,16 +3546,20 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                     child: SliderTheme(
                       data: SliderThemeData(
                         trackHeight: 4,
-                        thumbShape:
-                            const RoundSliderThumbShape(enabledThumbRadius: 7),
-                        overlayShape:
-                            const RoundSliderOverlayShape(overlayRadius: 14),
+                        thumbShape: const RoundSliderThumbShape(
+                          enabledThumbRadius: 7,
+                        ),
+                        overlayShape: const RoundSliderOverlayShape(
+                          overlayRadius: 14,
+                        ),
                         activeTrackColor: IslandConfig.warningColor,
-                        inactiveTrackColor:
-                            Colors.white.withValues(alpha: 0.15),
+                        inactiveTrackColor: Colors.white.withValues(
+                          alpha: 0.15,
+                        ),
                         thumbColor: Colors.white,
-                        overlayColor:
-                            IslandConfig.warningColor.withValues(alpha: 0.2),
+                        overlayColor: IslandConfig.warningColor.withValues(
+                          alpha: 0.2,
+                        ),
                       ),
                       child: Slider(
                         value: currentBrightness,

@@ -52,17 +52,19 @@ void main() {
     );
   });
 
-  test('does not mistake a not-yet-copied course path for inline text',
-      () async {
-    final courseFile = SharedMediaFile(
-      path: '/cache/exported_schedule.mhtml',
-      type: SharedMediaType.text,
-      mimeType: 'text/plain',
-    );
+  test(
+    'does not mistake a not-yet-copied course path for inline text',
+    () async {
+      final courseFile = SharedMediaFile(
+        path: '/cache/exported_schedule.mhtml',
+        type: SharedMediaType.text,
+        mimeType: 'text/plain',
+      );
 
-    expect(
-      await ExternalSharePayloadClassifier.isInlineText(courseFile),
-      isFalse,
-    );
-  });
+      expect(
+        await ExternalSharePayloadClassifier.isInlineText(courseFile),
+        isFalse,
+      );
+    },
+  );
 }

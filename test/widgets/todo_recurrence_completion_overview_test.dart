@@ -11,37 +11,29 @@ void main() {
     required DateTime start,
     DateTime? due,
     bool isDone = false,
-  }) =>
-      TodoItem(
-        id: id,
-        title: '俯卧撑30个',
-        isDone: isDone,
-        recurrenceSeriesId: 'series-overview',
-        createdDate: start.millisecondsSinceEpoch,
-        dueDate: due,
-      );
+  }) => TodoItem(
+    id: id,
+    title: '俯卧撑30个',
+    isDone: isDone,
+    recurrenceSeriesId: 'series-overview',
+    createdDate: start.millisecondsSinceEpoch,
+    dueDate: due,
+  );
 
   List<TodoItem> buildOccurrences() => [
-        occurrence(
-          id: 'completed',
-          start: DateTime(2026, 7, 27, 19),
-          isDone: true,
-        ),
-        occurrence(
-          id: 'overdue',
-          start: DateTime(2026, 7, 28, 19),
-          due: DateTime(2026, 7, 28, 22),
-        ),
-        occurrence(
-          id: 'current',
-          start: DateTime(2026, 7, 29, 8),
-          due: DateTime(2026, 7, 29, 22),
-        ),
-        occurrence(
-          id: 'future',
-          start: DateTime(2026, 7, 30, 19),
-        ),
-      ];
+    occurrence(id: 'completed', start: DateTime(2026, 7, 27, 19), isDone: true),
+    occurrence(
+      id: 'overdue',
+      start: DateTime(2026, 7, 28, 19),
+      due: DateTime(2026, 7, 28, 22),
+    ),
+    occurrence(
+      id: 'current',
+      start: DateTime(2026, 7, 29, 8),
+      due: DateTime(2026, 7, 29, 22),
+    ),
+    occurrence(id: 'future', start: DateTime(2026, 7, 30, 19)),
+  ];
 
   test('summary separates elapsed, overdue and future occurrences', () {
     final summary = TodoRecurrenceCompletionOverview.calculateSummary(
@@ -91,10 +83,7 @@ void main() {
     expect(find.text('完成情况总览'), findsOneWidget);
     expect(find.text('完成率 33%'), findsOneWidget);
     expect(find.text('已发生 3 期 · 当前共 4 期实例'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('recurrence_metric_已完成')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const ValueKey('recurrence_metric_已完成')), findsOneWidget);
     expect(
       tester
           .widget<LinearProgressIndicator>(

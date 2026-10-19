@@ -24,9 +24,6 @@ void main() {
       aiRow.availability.sublist(0, 4),
       everyElement(MinorModeAvailability.unavailable),
     );
-    expect(
-      aiRow.availability.last,
-      MinorModeAvailability.parentAuthentication,
-    );
+    expect(aiRow.availability.last, MinorModeAvailability.parentAuthentication);
   });
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:ui';
+
 import 'package:flutter/foundation.dart'; // 引入 kIsWeb
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -108,11 +109,13 @@ Future<T?> _runStartupTask<T>(
 Future<void> _reconcileFocusDoNotDisturbWithRunState() async {
   final saved = await PomodoroService.loadRunState();
   final now = DateTime.now().millisecondsSinceEpoch;
-  final countdownAlreadyEnded = saved != null &&
+  final countdownAlreadyEnded =
+      saved != null &&
       saved.mode == TimerMode.countdown &&
       !saved.isPaused &&
       saved.targetEndMs <= now;
-  final shouldBeActive = saved != null &&
+  final shouldBeActive =
+      saved != null &&
       saved.phase == PomodoroPhase.focusing &&
       saved.doNotDisturbDuringFocus &&
       !saved.strictWaitingForFlip &&
@@ -294,9 +297,7 @@ Future<void> main(List<String> args) async {
     brightnessResolver: Theme.maybeBrightnessOf,
   );
   // 浏览器可能在首帧布局前请求焦点遍历；让首个 Flutter 帧先完成，再挂载应用控件。
-  runApp(
-    kIsWeb ? InitialViewLayoutGate(child: app) : app,
-  );
+  runApp(kIsWeb ? InitialViewLayoutGate(child: app) : app);
 }
 
 class MyApp extends StatefulWidget {
@@ -334,8 +335,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     super.initState();
     if (AppPlatform.isAndroid) {
       WidgetsBinding.instance.addObserver(this);
-      PowerSaveModeService.enabledListenable
-          .addListener(_handlePowerSaveModeChanged);
+      PowerSaveModeService.enabledListenable.addListener(
+        _handlePowerSaveModeChanged,
+      );
       _handlePowerSaveModeChanged();
     }
     _shareCode = widget.initialShareCode;
@@ -361,8 +363,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           }
         });
       }
-      _defaultSplashFallbackTimer =
-          Timer(const Duration(milliseconds: 1500), _onDefaultSplashComplete);
+      _defaultSplashFallbackTimer = Timer(
+        const Duration(milliseconds: 1500),
+        _onDefaultSplashComplete,
+      );
       _scheduleSplashReadinessFallback();
       _initializeApp();
       _startSplashSequence();
@@ -450,8 +454,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     Map<String, dynamic>? splashContent;
     try {
       // 异步获取节日开屏内容，不在这加延迟，让 DefaultSplashScreen 自己跑
-      splashContent = await SplashService.getCachedContent()
-          .timeout(const Duration(seconds: 1));
+      splashContent = await SplashService.getCachedContent().timeout(
+        const Duration(seconds: 1),
+      );
     } catch (e) {
       // debugPrint('[Main] 开屏缓存读取失败，跳过节日开屏: $e');
     }
@@ -491,37 +496,38 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
     try {
       // debugPrint('[Main] Attempting to show Flutter dialog...');
-      final result = await showAppDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('关闭确认'),
-          content: const Text('选择操作：'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                // debugPrint('[Main] User chose: minimize');
-                Navigator.of(dialogContext).pop(false);
-              },
-              child: const Text('最小化到托盘'),
+      final result =
+          await showAppDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (dialogContext) => AlertDialog(
+              title: const Text('关闭确认'),
+              content: const Text('选择操作：'),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    // debugPrint('[Main] User chose: minimize');
+                    Navigator.of(dialogContext).pop(false);
+                  },
+                  child: const Text('最小化到托盘'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    // debugPrint('[Main] User chose: exit');
+                    Navigator.of(dialogContext).pop(true);
+                  },
+                  style: TextButton.styleFrom(foregroundColor: Colors.red),
+                  child: const Text('退出程序'),
+                ),
+              ],
             ),
-            TextButton(
-              onPressed: () {
-                // debugPrint('[Main] User chose: exit');
-                Navigator.of(dialogContext).pop(true);
-              },
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
-              child: const Text('退出程序'),
-            ),
-          ],
-        ),
-      ).timeout(
-        const Duration(seconds: 3),
-        onTimeout: () {
-          // debugPrint('[Main] Dialog timeout, defaulting to false (minimize)');
-          return false;
-        },
-      );
+          ).timeout(
+            const Duration(seconds: 3),
+            onTimeout: () {
+              // debugPrint('[Main] Dialog timeout, defaulting to false (minimize)');
+              return false;
+            },
+          );
       // debugPrint('[Main] Dialog result: $result');
       return result ?? false;
     } catch (e) {
@@ -539,8 +545,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         EnvironmentService.init(),
         StorageService.getLoginSession(),
         StorageService.isPrivacyPolicyAgreed(),
-        FeatureGuideScreen.shouldShow()
-            .timeout(const Duration(seconds: 2), onTimeout: () => false),
+        FeatureGuideScreen.shouldShow().timeout(
+          const Duration(seconds: 2),
+          onTimeout: () => false,
+        ),
         widget.platformReady ?? Future<void>.value(),
       ]).timeout(const Duration(seconds: 5));
 
@@ -795,8 +803,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     BandSyncService.setSyncDataProvider(_provideSyncData);
 
     // 全局监听手环番茄钟操作（finish/abandon）
-    _bandPomodoroSub =
-        BandSyncService.onBandPomodoroAction.listen((actionData) {
+    _bandPomodoroSub = BandSyncService.onBandPomodoroAction.listen((
+      actionData,
+    ) {
       final action = actionData['action']?.toString();
       // debugPrint('[Band] 番茄钟操作: $action');
       if (action == 'finish' || action == 'abandon') {
@@ -852,7 +861,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   // --- 静态转换方法，供 compute (Isolate) 调用 ---
 
   static List<Map<String, dynamic>> _transformTodosForBand(
-      List<TodoItem> todos) {
+    List<TodoItem> todos,
+  ) {
     return todos.where((t) => !t.isDeleted && !t.isDone).map((t) {
       final j = t.toJson();
       j.remove('image_path');
@@ -872,14 +882,16 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   static List<Map<String, dynamic>> _transformCoursesForBand(
-      List<dynamic> courses) {
+    List<dynamic> courses,
+  ) {
     return courses
         .map((c) => (c as dynamic).toJson() as Map<String, dynamic>)
         .toList();
   }
 
   static List<Map<String, dynamic>> _transformCountdownsForBand(
-      List<CountdownItem> countdowns) {
+    List<CountdownItem> countdowns,
+  ) {
     return countdowns
         .where((c) => !c.isDeleted)
         .map((c) => c.toJson())
@@ -887,7 +899,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   static List<Map<String, dynamic>> _transformPomodorosForBand(
-      List<PomodoroRecord> records) {
+    List<PomodoroRecord> records,
+  ) {
     return records.map((r) => r.toJson()).toList();
   }
 
@@ -915,8 +928,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     } else if (action == 'abandon') {
       final now = DateTime.now().millisecondsSinceEpoch;
       final actualSeconds = PomodoroRunState.computeActualSeconds(
-          runState.sessionStartMs, runState.accumulatedMs,
-          endMs: now);
+        runState.sessionStartMs,
+        runState.accumulatedMs,
+        endMs: now,
+      );
       if (actualSeconds > 5) {
         final record = PomodoroRecord.fromRunState(
           state: runState,
@@ -939,8 +954,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     _systemUiRestoreTimer?.cancel();
     if (AppPlatform.isAndroid) {
       WidgetsBinding.instance.removeObserver(this);
-      PowerSaveModeService.enabledListenable
-          .removeListener(_handlePowerSaveModeChanged);
+      PowerSaveModeService.enabledListenable.removeListener(
+        _handlePowerSaveModeChanged,
+      );
     }
     _bandPomodoroSub?.cancel();
     unawaited(FloatWindowService.dispose());
@@ -1014,143 +1030,168 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                   valueListenable: StorageService.appWallpaperColorNotifier,
                   builder: (context, appWallpaperColor, _) {
                     return DynamicColorBuilder(
-                      builder: (material_ui.ColorScheme? lightDynamic,
-                          material_ui.ColorScheme? darkDynamic) {
-                        ColorScheme lightScheme;
-                        ColorScheme darkScheme;
+                      builder:
+                          (
+                            material_ui.ColorScheme? lightDynamic,
+                            material_ui.ColorScheme? darkDynamic,
+                          ) {
+                            ColorScheme lightScheme;
+                            ColorScheme darkScheme;
 
-                        if (colorMode == 'system_wallpaper' &&
-                            lightDynamic != null &&
-                            darkDynamic != null) {
-                          lightScheme = flutterColorSchemeFromDynamic(
-                              lightDynamic.harmonized());
-                          darkScheme = flutterColorSchemeFromDynamic(
-                              darkDynamic.harmonized());
-                        } else if ((colorMode == 'custom' ||
-                                colorMode == 'image_extracted') &&
-                            customColor != null) {
-                          lightScheme = ColorScheme.fromSeed(
-                              seedColor: customColor,
-                              brightness: Brightness.light);
-                          darkScheme = ColorScheme.fromSeed(
-                              seedColor: customColor,
-                              brightness: Brightness.dark);
-                        } else if (colorMode == 'app_wallpaper' &&
-                            appWallpaperColor != null) {
-                          lightScheme = ColorScheme.fromSeed(
-                              seedColor: appWallpaperColor,
-                              brightness: Brightness.light);
-                          darkScheme = ColorScheme.fromSeed(
-                              seedColor: appWallpaperColor,
-                              brightness: Brightness.dark);
-                        } else {
-                          lightScheme = ColorScheme.fromSeed(
-                              seedColor: Theme.of(context).colorScheme.primary,
-                              brightness: Brightness.light);
-                          darkScheme = ColorScheme.fromSeed(
-                              seedColor: Theme.of(context).colorScheme.primary,
-                              brightness: Brightness.dark);
-                        }
+                            if (colorMode == 'system_wallpaper' &&
+                                lightDynamic != null &&
+                                darkDynamic != null) {
+                              lightScheme = flutterColorSchemeFromDynamic(
+                                lightDynamic.harmonized(),
+                              );
+                              darkScheme = flutterColorSchemeFromDynamic(
+                                darkDynamic.harmonized(),
+                              );
+                            } else if ((colorMode == 'custom' ||
+                                    colorMode == 'image_extracted') &&
+                                customColor != null) {
+                              lightScheme = ColorScheme.fromSeed(
+                                seedColor: customColor,
+                                brightness: Brightness.light,
+                              );
+                              darkScheme = ColorScheme.fromSeed(
+                                seedColor: customColor,
+                                brightness: Brightness.dark,
+                              );
+                            } else if (colorMode == 'app_wallpaper' &&
+                                appWallpaperColor != null) {
+                              lightScheme = ColorScheme.fromSeed(
+                                seedColor: appWallpaperColor,
+                                brightness: Brightness.light,
+                              );
+                              darkScheme = ColorScheme.fromSeed(
+                                seedColor: appWallpaperColor,
+                                brightness: Brightness.dark,
+                              );
+                            } else {
+                              lightScheme = ColorScheme.fromSeed(
+                                seedColor: Theme.of(context)
+                                    .colorScheme
+                                    .primary,
+                                brightness: Brightness.light,
+                              );
+                              darkScheme = ColorScheme.fromSeed(
+                                seedColor: Theme.of(context)
+                                    .colorScheme
+                                    .primary,
+                                brightness: Brightness.dark,
+                              );
+                            }
 
-                        return ValueListenableBuilder<
-                            LiquidGlassEffectConfiguration>(
-                          valueListenable:
-                              LiquidGlassEffectService.configurationListenable,
-                          builder: (context, liquidGlassConfiguration, _) {
-                            final lightTheme = applyAppLiquidGlassTheme(
-                              ThemeData(
-                                colorScheme: lightScheme,
-                                useMaterial3: true,
-                                fontFamily:
-                                    AppPlatform.isWeb ? _webFontFamily : null,
-                                fontFamilyFallback: AppPlatform.isWeb
-                                    ? _webFontFamilyFallback
-                                    : null,
-                                pageTransitionsTheme: PageTransitions.theme,
-                              ),
-                              enabled: liquidGlassConfiguration.enabled,
-                              mode: liquidGlassConfiguration.mode,
-                              transparencyPercent:
-                                  liquidGlassConfiguration.transparencyPercent,
-                            );
-                            final darkTheme = applyAppLiquidGlassTheme(
-                              ThemeData(
-                                colorScheme: darkScheme,
-                                useMaterial3: true,
-                                fontFamily:
-                                    AppPlatform.isWeb ? _webFontFamily : null,
-                                fontFamilyFallback: AppPlatform.isWeb
-                                    ? _webFontFamilyFallback
-                                    : null,
-                                pageTransitionsTheme: PageTransitions.theme,
-                              ),
-                              enabled: liquidGlassConfiguration.enabled,
-                              mode: liquidGlassConfiguration.mode,
-                              transparencyPercent:
-                                  liquidGlassConfiguration.transparencyPercent,
-                            );
+                            return ValueListenableBuilder<
+                              LiquidGlassEffectConfiguration
+                            >(
+                              valueListenable: LiquidGlassEffectService
+                                  .configurationListenable,
+                              builder: (context, liquidGlassConfiguration, _) {
+                                final lightTheme = applyAppLiquidGlassTheme(
+                                  ThemeData(
+                                    colorScheme: lightScheme,
+                                    useMaterial3: true,
+                                    fontFamily: AppPlatform.isWeb
+                                        ? _webFontFamily
+                                        : null,
+                                    fontFamilyFallback: AppPlatform.isWeb
+                                        ? _webFontFamilyFallback
+                                        : null,
+                                    pageTransitionsTheme: PageTransitions.theme,
+                                  ),
+                                  enabled: liquidGlassConfiguration.enabled,
+                                  mode: liquidGlassConfiguration.mode,
+                                  transparencyPercent: liquidGlassConfiguration
+                                      .transparencyPercent,
+                                );
+                                final darkTheme = applyAppLiquidGlassTheme(
+                                  ThemeData(
+                                    colorScheme: darkScheme,
+                                    useMaterial3: true,
+                                    fontFamily: AppPlatform.isWeb
+                                        ? _webFontFamily
+                                        : null,
+                                    fontFamilyFallback: AppPlatform.isWeb
+                                        ? _webFontFamilyFallback
+                                        : null,
+                                    pageTransitionsTheme: PageTransitions.theme,
+                                  ),
+                                  enabled: liquidGlassConfiguration.enabled,
+                                  mode: liquidGlassConfiguration.mode,
+                                  transparencyPercent: liquidGlassConfiguration
+                                      .transparencyPercent,
+                                );
 
-                            return MacosMenuBar(
-                              child: MaterialApp(
-                                title: 'CountDownTodo',
-                                debugShowCheckedModeBanner: false,
-                                navigatorKey: appNavigatorKey,
-                                navigatorObservers: [
-                                  AppPerformanceNavigatorObserver(),
-                                ],
-                                themeMode: currentThemeMode,
-                                scrollBehavior:
-                                    const MaterialScrollBehavior().copyWith(
-                                  dragDevices: {
-                                    PointerDeviceKind.mouse,
-                                    PointerDeviceKind.touch,
-                                    PointerDeviceKind.trackpad,
-                                    PointerDeviceKind.stylus,
-                                  },
-                                ),
-                                theme: lightTheme,
-                                darkTheme: darkTheme,
-                                localizationsDelegates: const [
-                                  GlobalMaterialLocalizations.delegate,
-                                  GlobalWidgetsLocalizations.delegate,
-                                  GlobalCupertinoLocalizations.delegate,
-                                ],
-                                supportedLocales: const [
-                                  Locale('zh', 'CN'),
-                                  Locale('en', 'US'),
-                                ],
-                                routes: {
-                                  '/login': (context) => const LoginScreen(),
-                                  '/home': (context) => HomeDashboard(
-                                      username: _loggedInUser ?? ''),
-                                  '/teams': (context) => TeamManagementScreen(
-                                      username: _loggedInUser ?? ''),
-                                  '/dev/island': (context) =>
-                                      IslandDebugHost.route(),
-                                },
-                                onGenerateRoute: (settings) {
-                                  final name = settings.name ?? '';
-                                  if (name.startsWith('/share')) {
-                                    final code =
-                                        TeamShareLink.codeFromRoute(name);
-                                    if (code != null && code.isNotEmpty) {
-                                      _shareCode = code;
-                                      if (kIsWeb) {
-                                        ApiService.setServerChoice('aliyun');
+                                return MacosMenuBar(
+                                  child: MaterialApp(
+                                    title: 'CountDownTodo',
+                                    debugShowCheckedModeBanner: false,
+                                    navigatorKey: appNavigatorKey,
+                                    navigatorObservers: [
+                                      AppPerformanceNavigatorObserver(),
+                                    ],
+                                    themeMode: currentThemeMode,
+                                    scrollBehavior:
+                                        const MaterialScrollBehavior().copyWith(
+                                          dragDevices: {
+                                            PointerDeviceKind.mouse,
+                                            PointerDeviceKind.touch,
+                                            PointerDeviceKind.trackpad,
+                                            PointerDeviceKind.stylus,
+                                          },
+                                        ),
+                                    theme: lightTheme,
+                                    darkTheme: darkTheme,
+                                    localizationsDelegates: const [
+                                      GlobalMaterialLocalizations.delegate,
+                                      GlobalWidgetsLocalizations.delegate,
+                                      GlobalCupertinoLocalizations.delegate,
+                                    ],
+                                    supportedLocales: const [
+                                      Locale('zh', 'CN'),
+                                      Locale('en', 'US'),
+                                    ],
+                                    routes: {
+                                      '/login': (context) =>
+                                          const LoginScreen(),
+                                      '/home': (context) => HomeDashboard(
+                                        username: _loggedInUser ?? '',
+                                      ),
+                                      '/teams': (context) =>
+                                          TeamManagementScreen(
+                                            username: _loggedInUser ?? '',
+                                          ),
+                                      '/dev/island': (context) =>
+                                          IslandDebugHost.route(),
+                                    },
+                                    onGenerateRoute: (settings) {
+                                      final name = settings.name ?? '';
+                                      if (name.startsWith('/share')) {
+                                        final code =
+                                            TeamShareLink.codeFromRoute(name);
+                                        if (code != null && code.isNotEmpty) {
+                                          _shareCode = code;
+                                          if (kIsWeb) {
+                                            ApiService.setServerChoice(
+                                              'aliyun',
+                                            );
+                                          }
+                                          return MaterialPageRoute(
+                                            builder: (_) => ShareViewScreen(
+                                              shareCode: code,
+                                            ),
+                                          );
+                                        }
                                       }
-                                      return MaterialPageRoute(
-                                        builder: (_) =>
-                                            ShareViewScreen(shareCode: code),
-                                      );
-                                    }
-                                  }
-                                  return null;
-                                },
-                                builder: (context, child) {
-                                  final content =
-                                      child ?? const SizedBox.shrink();
-                                  final appContent =
-                                      IslandDebugHost.shouldShowOverlay
+                                      return null;
+                                    },
+                                    builder: (context, child) {
+                                      final content =
+                                          child ?? const SizedBox.shrink();
+                                      final appContent =
+                                          IslandDebugHost.shouldShowOverlay
                                           ? Stack(
                                               children: [
                                                 content,
@@ -1159,44 +1200,46 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                             )
                                           : content;
 
-                                  return ValueListenableBuilder<bool>(
-                                    valueListenable:
-                                        AndroidWindowRenderingPolicy
-                                            .disableShaderContentFade,
-                                    child: appContent,
-                                    builder: (context, _, child) {
                                       return ValueListenableBuilder<bool>(
-                                        valueListenable: PowerSaveModeService
-                                            .enabledListenable,
-                                        child: child,
-                                        builder:
-                                            (context, powerSaveMode, child) {
-                                          final content =
-                                              child ?? const SizedBox.shrink();
-                                          final mediaQuery =
-                                              MediaQuery.maybeOf(context);
-                                          final normalizedMediaQuery =
-                                              mediaQuery == null
+                                        valueListenable:
+                                            AndroidWindowRenderingPolicy
+                                                .disableShaderContentFade,
+                                        child: appContent,
+                                        builder: (context, _, child) {
+                                          return ValueListenableBuilder<bool>(
+                                            valueListenable:
+                                                PowerSaveModeService
+                                                    .enabledListenable,
+                                            child: child,
+                                            builder: (context, powerSaveMode, child) {
+                                              final content =
+                                                  child ??
+                                                  const SizedBox.shrink();
+                                              final mediaQuery =
+                                                  MediaQuery.maybeOf(context);
+                                              final normalizedMediaQuery =
+                                                  mediaQuery == null
                                                   ? null
-                                                  : AndroidWindowRenderingPolicy
-                                                      .normalizeCompactWindowMediaQuery(
+                                                  : AndroidWindowRenderingPolicy.normalizeCompactWindowMediaQuery(
                                                       mediaQuery,
                                                     );
-                                          final shouldDisableAnimations =
-                                              AppPlatform.isAndroid &&
+                                              final shouldDisableAnimations =
+                                                  AppPlatform.isAndroid &&
                                                   powerSaveMode;
-                                          final effectiveMediaQuery =
-                                              normalizedMediaQuery != null &&
+                                              final effectiveMediaQuery =
+                                                  normalizedMediaQuery !=
+                                                          null &&
                                                       shouldDisableAnimations &&
                                                       !normalizedMediaQuery
                                                           .disableAnimations
                                                   ? normalizedMediaQuery
-                                                      .copyWith(
-                                                      disableAnimations: true,
-                                                    )
+                                                        .copyWith(
+                                                          disableAnimations:
+                                                              true,
+                                                        )
                                                   : normalizedMediaQuery;
-                                          final adaptedContent =
-                                              effectiveMediaQuery != null &&
+                                              final adaptedContent =
+                                                  effectiveMediaQuery != null &&
                                                       !identical(
                                                         effectiveMediaQuery,
                                                         mediaQuery,
@@ -1207,65 +1250,65 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                                     )
                                                   : content;
 
-                                          return MacosWindowChrome(
-                                            child: AppSystemUiRegion(
-                                              backgroundBrightness:
-                                                  Theme.of(context).brightness,
-                                              child: adaptedContent,
-                                            ),
+                                              return MacosWindowChrome(
+                                                child: AppSystemUiRegion(
+                                                  backgroundBrightness:
+                                                      Theme.of(context)
+                                                          .brightness,
+                                                  child: adaptedContent,
+                                                ),
+                                              );
+                                            },
                                           );
                                         },
                                       );
                                     },
-                                  );
-                                },
-                                home: _shareCode != null
-                                    ? ShareViewScreen(shareCode: _shareCode!)
-                                    : _showDefaultSplash
+                                    home: _shareCode != null
+                                        ? ShareViewScreen(
+                                            shareCode: _shareCode!,
+                                          )
+                                        : _showDefaultSplash
                                         ? DefaultSplashScreen(
                                             onComplete:
-                                                _onDefaultSplashComplete)
+                                                _onDefaultSplashComplete,
+                                          )
                                         : _showHolidaySplash
-                                            ? SplashScreen(
-                                                content: _splashContent!,
-                                                onComplete:
-                                                    _onHolidaySplashComplete,
-                                              )
-                                            : _isChecking
-                                                ? Scaffold(
-                                                    backgroundColor:
-                                                        currentThemeMode ==
-                                                                ThemeMode.dark
-                                                            ? Colors.grey[900]
-                                                            : Theme.of(context)
-                                                                .colorScheme
-                                                                .primary,
-                                                    body: const Center(
-                                                      child:
-                                                          CircularProgressIndicator(
-                                                              color:
-                                                                  Colors.white),
-                                                    ),
-                                                  )
-                                                : _showFeatureGuide
-                                                    ? FeatureGuideScreen(
-                                                        loggedInUser:
-                                                            _loggedInUser)
-                                                    : (_loggedInUser != null &&
-                                                            _loggedInUser!
-                                                                .isNotEmpty)
-                                                        ? HomeDashboard(
-                                                            key: ValueKey(
-                                                                _loggedInUser),
-                                                            username:
-                                                                _loggedInUser!,
-                                                          )
-                                                        : const LoginScreen(),
-                              ),
+                                        ? SplashScreen(
+                                            content: _splashContent!,
+                                            onComplete:
+                                                _onHolidaySplashComplete,
+                                          )
+                                        : _isChecking
+                                        ? Scaffold(
+                                            backgroundColor:
+                                                currentThemeMode ==
+                                                    ThemeMode.dark
+                                                ? Colors.grey[900]
+                                                : Theme.of(context)
+                                                      .colorScheme
+                                                      .primary,
+                                            body: const Center(
+                                              child: CircularProgressIndicator(
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          )
+                                        : _showFeatureGuide
+                                        ? FeatureGuideScreen(
+                                            loggedInUser: _loggedInUser,
+                                          )
+                                        : (_loggedInUser != null &&
+                                              _loggedInUser!.isNotEmpty)
+                                        ? HomeDashboard(
+                                            key: ValueKey(_loggedInUser),
+                                            username: _loggedInUser!,
+                                          )
+                                        : const LoginScreen(),
+                                  ),
+                                );
+                              },
                             );
                           },
-                        );
-                      },
                     );
                   },
                 );

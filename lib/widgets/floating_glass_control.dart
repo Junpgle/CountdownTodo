@@ -240,8 +240,8 @@ class LiquidGlassSwitch extends StatelessWidget {
         final inactiveTrack = _resolveInactiveColor(colorScheme);
         final requestedQuality =
             configuration.mode == LiquidGlassEffectMode.enhanced
-                ? GlassQuality.premium
-                : GlassQuality.standard;
+            ? GlassQuality.premium
+            : GlassQuality.standard;
         return _OptimisticGlassSwitch(
           value: value,
           onChanged: onChanged,
@@ -453,8 +453,9 @@ class LiquidGlassSlider extends StatelessWidget {
         );
         final quality = GlassThemeHelpers.resolveQuality(
           context,
-          widgetQuality:
-              enhanced ? GlassQuality.premium : GlassQuality.standard,
+          widgetQuality: enhanced
+              ? GlassQuality.premium
+              : GlassQuality.standard,
         );
         final slider = GlassSlider(
           value: value,
@@ -466,7 +467,8 @@ class LiquidGlassSlider extends StatelessWidget {
           divisions: divisions,
           label: label,
           activeColor: activeColor ?? colorScheme.primary,
-          inactiveColor: inactiveColor ??
+          inactiveColor:
+              inactiveColor ??
               colorScheme.surfaceContainerHighest.withValues(alpha: 0.72),
           thumbColor: colorScheme.surface,
           settings: settings,
@@ -576,7 +578,8 @@ class LiquidGlassSwitchListTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final selectedStates = <WidgetState>{if (value) WidgetState.selected};
-    final activeTint = activeTrackColor ??
+    final activeTint =
+        activeTrackColor ??
         activeThumbColor ??
         activeColor ??
         colorScheme.primary;
@@ -652,9 +655,7 @@ class LiquidGlassSwitchListTile extends StatelessWidget {
         enabled: onChanged != null,
         toggled: value,
         label: semanticLabel,
-        child: Stack(
-          children: [tile, rowToggle],
-        ),
+        child: Stack(children: [tile, rowToggle]),
       ),
     );
   }
@@ -679,8 +680,10 @@ double _floatingGlassAppBarProgressForFlexibleSpace(
 ) {
   final range = settings.maxExtent - settings.minExtent;
   if (range <= 0.0) return 1.0;
-  return (1.0 - (settings.currentExtent - settings.minExtent) / range)
-      .clamp(0.0, 1.0);
+  return (1.0 - (settings.currentExtent - settings.minExtent) / range).clamp(
+    0.0,
+    1.0,
+  );
 }
 
 /// The default feather below a shared top bar.
@@ -841,14 +844,16 @@ class _RenderFloatingGlassTopBarContentFadeBox extends RenderProxyBox {
   @override
   void attach(PipelineOwner owner) {
     super.attach(owner);
-    AndroidWindowRenderingPolicy.disableShaderContentFade
-        .addListener(_handleRenderingPolicyChanged);
+    AndroidWindowRenderingPolicy.disableShaderContentFade.addListener(
+      _handleRenderingPolicyChanged,
+    );
   }
 
   @override
   void detach() {
-    AndroidWindowRenderingPolicy.disableShaderContentFade
-        .removeListener(_handleRenderingPolicyChanged);
+    AndroidWindowRenderingPolicy.disableShaderContentFade.removeListener(
+      _handleRenderingPolicyChanged,
+    );
     super.detach();
   }
 
@@ -873,8 +878,12 @@ class _RenderFloatingGlassTopBarContentFadeBox extends RenderProxyBox {
       return;
     }
 
-    final maskRect =
-        Rect.fromLTWH(offset.dx, offset.dy, size.width, maskHeight);
+    final maskRect = Rect.fromLTWH(
+      offset.dx,
+      offset.dy,
+      size.width,
+      maskHeight,
+    );
     layer ??= ShaderMaskLayer();
     layer!
       ..shader = floatingGlassTopBarContentFadeShader(
@@ -955,10 +964,7 @@ class FloatingGlassSliverContentFade extends SingleChildRenderObjectWidget {
   }
 
   @override
-  void updateRenderObject(
-    BuildContext context,
-    RenderObject renderObject,
-  ) {
+  void updateRenderObject(BuildContext context, RenderObject renderObject) {
     (renderObject as _RenderFloatingGlassSliverContentFade).fadeHeight =
         topBarHeight + tailExtent;
   }
@@ -985,14 +991,16 @@ class _RenderFloatingGlassSliverContentFade extends RenderProxySliver {
   @override
   void attach(PipelineOwner owner) {
     super.attach(owner);
-    AndroidWindowRenderingPolicy.disableShaderContentFade
-        .addListener(_handleRenderingPolicyChanged);
+    AndroidWindowRenderingPolicy.disableShaderContentFade.addListener(
+      _handleRenderingPolicyChanged,
+    );
   }
 
   @override
   void detach() {
-    AndroidWindowRenderingPolicy.disableShaderContentFade
-        .removeListener(_handleRenderingPolicyChanged);
+    AndroidWindowRenderingPolicy.disableShaderContentFade.removeListener(
+      _handleRenderingPolicyChanged,
+    );
     super.detach();
   }
 
@@ -1028,12 +1036,7 @@ class _RenderFloatingGlassSliverContentFade extends RenderProxySliver {
       return;
     }
 
-    final maskRect = Rect.fromLTWH(
-      offset.dx,
-      0.0,
-      viewportWidth,
-      maskHeight,
-    );
+    final maskRect = Rect.fromLTWH(offset.dx, 0.0, viewportWidth, maskHeight);
     layer ??= ShaderMaskLayer();
     layer!
       ..shader = floatingGlassTopBarContentFadeShader(
@@ -1102,7 +1105,8 @@ class FloatingGlassControl extends StatelessWidget {
 
     final colorScheme = Theme.of(context).colorScheme;
     final dark = isDark ?? colorScheme.brightness == Brightness.dark;
-    final resolvedTint = tint ??
+    final resolvedTint =
+        tint ??
         Color.alphaBlend(
           colorScheme.primary.withValues(alpha: 0.08),
           colorScheme.surface,
@@ -1113,7 +1117,8 @@ class FloatingGlassControl extends StatelessWidget {
       child: child,
     );
 
-    final fallbackWidget = fallback ??
+    final fallbackWidget =
+        fallback ??
         _FloatingGlassControlFallback(
           height: height,
           margin: margin,
@@ -1321,7 +1326,8 @@ class _FloatingGlassPinnedHeaderLayoutState
   @override
   Widget build(BuildContext context) {
     _scheduleHeaderMeasurement();
-    final headerExtent = _measuredHeaderExtent ??
+    final headerExtent =
+        _measuredHeaderExtent ??
         widget.initialHeaderExtent.clamp(0.0, 2000.0).toDouble();
     final body = widget.bodyBuilder(context, headerExtent);
     final fadedBody = widget.fadeContent && headerExtent > 0.0
@@ -1335,17 +1341,12 @@ class _FloatingGlassPinnedHeaderLayoutState
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        Positioned.fill(
-          child: fadedBody,
-        ),
+        Positioned.fill(child: fadedBody),
         Positioned(
           top: 0,
           left: 0,
           right: 0,
-          child: KeyedSubtree(
-            key: _headerKey,
-            child: widget.header,
-          ),
+          child: KeyedSubtree(key: _headerKey, child: widget.header),
         ),
       ],
     );
@@ -1453,8 +1454,8 @@ class _FloatingGlassTopBarOverlayState
     final metrics = notification.metrics;
     if (metrics.axis != Axis.vertical) return;
     final fadeExtent = widget.fadeExtent.clamp(1.0, double.infinity);
-    final nextProgress =
-        ((metrics.pixels - widget.overlapStart) / fadeExtent).clamp(0.0, 1.0);
+    final nextProgress = ((metrics.pixels - widget.overlapStart) / fadeExtent)
+        .clamp(0.0, 1.0);
     if ((nextProgress - _overlapProgress.value).abs() > 0.001) {
       _overlapProgress.value = nextProgress;
     }
@@ -1467,9 +1468,7 @@ class _FloatingGlassTopBarOverlayState
       builder: (context, progress, _) {
         if (progress <= 0.001) return const SizedBox.shrink();
 
-        return IgnorePointer(
-          child: _buildOverlay(context, progress),
-        );
+        return IgnorePointer(child: _buildOverlay(context, progress));
       },
     );
   }
@@ -1598,8 +1597,8 @@ class _FloatingGlassCollapseReporter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final settings =
-        context.dependOnInheritedWidgetOfExactType<FlexibleSpaceBarSettings>();
+    final settings = context
+        .dependOnInheritedWidgetOfExactType<FlexibleSpaceBarSettings>();
     if (settings != null) {
       final nextProgress = _floatingGlassAppBarProgressForFlexibleSpace(
         settings,
@@ -1734,10 +1733,14 @@ class _FloatingGlassAppBarActionContent extends StatelessWidget {
       builder: (context, value, _) {
         final transitionStart = math.max(0.0, floatingThreshold - 0.22);
         final transitionEnd = math.min(1.0, floatingThreshold + 0.22);
-        final transitionRange =
-            math.max(0.001, transitionEnd - transitionStart);
-        final target =
-            ((value - transitionStart) / transitionRange).clamp(0.0, 1.0);
+        final transitionRange = math.max(
+          0.001,
+          transitionEnd - transitionStart,
+        );
+        final target = ((value - transitionStart) / transitionRange).clamp(
+          0.0,
+          1.0,
+        );
 
         // Scroll notifications already provide a frame-by-frame progress
         // signal. Animating each new target again with a 180 ms tween makes
@@ -1928,8 +1931,8 @@ class FloatingGlassAppBar extends StatelessWidget
 
   @override
   Size get preferredSize => Size.fromHeight(
-        (toolbarHeight ?? kToolbarHeight) + (bottom?.preferredSize.height ?? 0),
-      );
+    (toolbarHeight ?? kToolbarHeight) + (bottom?.preferredSize.height ?? 0),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -1949,13 +1952,12 @@ class FloatingGlassAppBar extends StatelessWidget
         systemOverlayStyle ?? floatingGlassTopBarSystemOverlayStyle(context);
     final resolvedForceMaterialTransparency =
         forceMaterialTransparency || backgroundColor == null;
-    final glassTint = floatingControlTint ??
+    final glassTint =
+        floatingControlTint ??
         _floatingAppBarTint(colorScheme, backgroundColor);
-    final glassIsDark = floatingControlIsDark ??
-        _floatingAppBarIsDark(
-          colorScheme,
-          backgroundColor,
-        );
+    final glassIsDark =
+        floatingControlIsDark ??
+        _floatingAppBarIsDark(colorScheme, backgroundColor);
     final resolvedLeading = _resolveFloatingAppBarLeading(context);
     final resolvedActions = _resolveFloatingAppBarActions(context);
     final decoratedLeading = !useFloatingControls || resolvedLeading == null
@@ -1970,20 +1972,21 @@ class FloatingGlassAppBar extends StatelessWidget
     final decoratedActions = !useFloatingControls
         ? resolvedActions
         : resolvedActions
-            ?.map(
-              (action) => _isFloatingGlassAppBarLayoutOnly(action) ||
-                      action is FloatingGlassAppBarAction
-                  ? action
-                  : FloatingGlassAppBarAction(
-                      margin: const EdgeInsets.symmetric(horizontal: 4),
-                      tint: glassTint,
-                      haloColor: colorScheme.primary,
-                      useTopBarGlass: true,
-                      isDark: glassIsDark,
-                      child: action,
-                    ),
-            )
-            .toList(growable: false);
+              ?.map(
+                (action) =>
+                    _isFloatingGlassAppBarLayoutOnly(action) ||
+                        action is FloatingGlassAppBarAction
+                    ? action
+                    : FloatingGlassAppBarAction(
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        tint: glassTint,
+                        haloColor: colorScheme.primary,
+                        useTopBarGlass: true,
+                        isDark: glassIsDark,
+                        child: action,
+                      ),
+              )
+              .toList(growable: false);
 
     Widget buildAppBar(ValueNotifier<double> collapseProgress) {
       final appBar = AppBar(
@@ -2015,7 +2018,8 @@ class FloatingGlassAppBar extends StatelessWidget
         toolbarOpacity: toolbarOpacity,
         bottomOpacity: bottomOpacity,
         toolbarHeight: toolbarHeight,
-        leadingWidth: leadingWidth ??
+        leadingWidth:
+            leadingWidth ??
             (useFloatingControls && decoratedLeading != null
                 ? _floatingAppBarLeadingWidth
                 : null),
@@ -2025,7 +2029,8 @@ class FloatingGlassAppBar extends StatelessWidget
         forceMaterialTransparency: resolvedForceMaterialTransparency,
         useDefaultSemanticsOrder: useDefaultSemanticsOrder,
         clipBehavior: clipBehavior,
-        actionsPadding: actionsPadding ??
+        actionsPadding:
+            actionsPadding ??
             (!useFloatingControls ||
                     decoratedActions == null ||
                     decoratedActions.isEmpty
@@ -2121,10 +2126,7 @@ Color _floatingAppBarResolvedBackground(
 }
 
 Color _floatingAppBarTint(ColorScheme colorScheme, Color? backgroundColor) {
-  final base = _floatingAppBarResolvedBackground(
-    colorScheme,
-    backgroundColor,
-  );
+  final base = _floatingAppBarResolvedBackground(colorScheme, backgroundColor);
   // Keep the lens in the same tonal family as the page. A very small primary
   // lift prevents transparent AppBars from falling back to a detached gray
   // disk while still letting the backdrop show through the glass.
@@ -2136,10 +2138,7 @@ Color _floatingAppBarTint(ColorScheme colorScheme, Color? backgroundColor) {
   );
 }
 
-bool _floatingAppBarIsDark(
-  ColorScheme colorScheme,
-  Color? backgroundColor,
-) {
+bool _floatingAppBarIsDark(ColorScheme colorScheme, Color? backgroundColor) {
   // A transparent Color has black RGB channels. Reading its raw luminance
   // classifies a light page's transparent AppBar as dark and paints a dark
   // circle behind its leading and action icons.
@@ -2197,10 +2196,10 @@ class FloatingGlassSliverAppBar extends StatelessWidget {
     this.floatingControlTint,
     this.floatingControlIsDark,
     this.floatingControlScrollDistance,
-  })  : assert(floating || !snap),
-        assert(stretchTriggerOffset > 0.0),
-        assert(collapsedHeight == null || collapsedHeight >= toolbarHeight),
-        _variant = _FloatingGlassSliverAppBarVariant.small;
+  }) : assert(floating || !snap),
+       assert(stretchTriggerOffset > 0.0),
+       assert(collapsedHeight == null || collapsedHeight >= toolbarHeight),
+       _variant = _FloatingGlassSliverAppBarVariant.small;
 
   const FloatingGlassSliverAppBar.medium({
     super.key,
@@ -2245,10 +2244,10 @@ class FloatingGlassSliverAppBar extends StatelessWidget {
     this.floatingControlTint,
     this.floatingControlIsDark,
     this.floatingControlScrollDistance,
-  })  : assert(floating || !snap),
-        assert(stretchTriggerOffset > 0.0),
-        assert(collapsedHeight == null || collapsedHeight >= toolbarHeight),
-        _variant = _FloatingGlassSliverAppBarVariant.medium;
+  }) : assert(floating || !snap),
+       assert(stretchTriggerOffset > 0.0),
+       assert(collapsedHeight == null || collapsedHeight >= toolbarHeight),
+       _variant = _FloatingGlassSliverAppBarVariant.medium;
 
   const FloatingGlassSliverAppBar.large({
     super.key,
@@ -2293,10 +2292,10 @@ class FloatingGlassSliverAppBar extends StatelessWidget {
     this.floatingControlTint,
     this.floatingControlIsDark,
     this.floatingControlScrollDistance,
-  })  : assert(floating || !snap),
-        assert(stretchTriggerOffset > 0.0),
-        assert(collapsedHeight == null || collapsedHeight >= toolbarHeight),
-        _variant = _FloatingGlassSliverAppBarVariant.large;
+  }) : assert(floating || !snap),
+       assert(stretchTriggerOffset > 0.0),
+       assert(collapsedHeight == null || collapsedHeight >= toolbarHeight),
+       _variant = _FloatingGlassSliverAppBarVariant.large;
 
   final Widget? leading;
   final bool automaticallyImplyLeading;
@@ -2344,13 +2343,12 @@ class FloatingGlassSliverAppBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final glassTint = floatingControlTint ??
+    final glassTint =
+        floatingControlTint ??
         _floatingAppBarTint(colorScheme, backgroundColor);
-    final glassIsDark = floatingControlIsDark ??
-        _floatingAppBarIsDark(
-          colorScheme,
-          backgroundColor,
-        );
+    final glassIsDark =
+        floatingControlIsDark ??
+        _floatingAppBarIsDark(colorScheme, backgroundColor);
     final resolvedLeading = _resolveFloatingSliverAppBarLeading(context);
     final resolvedActions = _resolveFloatingSliverAppBarActions(context);
     final decoratedLeading = resolvedLeading == null
@@ -2364,7 +2362,8 @@ class FloatingGlassSliverAppBar extends StatelessWidget {
           );
     final decoratedActions = resolvedActions
         ?.map(
-          (action) => _isFloatingGlassAppBarLayoutOnly(action) ||
+          (action) =>
+              _isFloatingGlassAppBarLayoutOnly(action) ||
                   action is FloatingGlassAppBarAction
               ? action
               : FloatingGlassAppBarAction(
@@ -2377,9 +2376,11 @@ class FloatingGlassSliverAppBar extends StatelessWidget {
                 ),
         )
         .toList(growable: false);
-    final effectiveLeadingWidth = leadingWidth ??
+    final effectiveLeadingWidth =
+        leadingWidth ??
         (decoratedLeading == null ? null : _floatingAppBarLeadingWidth);
-    final effectiveActionsPadding = actionsPadding ??
+    final effectiveActionsPadding =
+        actionsPadding ??
         (decoratedActions == null || decoratedActions.isEmpty
             ? null
             : _floatingAppBarActionsPadding);
@@ -2396,128 +2397,128 @@ class FloatingGlassSliverAppBar extends StatelessWidget {
           collapseProgress: collapseProgress,
           child: switch (_variant) {
             _FloatingGlassSliverAppBarVariant.small => SliverAppBar(
-                key: key,
-                leading: decoratedLeading,
-                automaticallyImplyLeading: false,
-                title: title,
-                actions: decoratedActions,
-                automaticallyImplyActions: false,
-                flexibleSpace: flexibleSpaceChild,
-                bottom: bottom,
-                elevation: elevation,
-                scrolledUnderElevation: scrolledUnderElevation,
-                shadowColor: shadowColor,
-                surfaceTintColor: surfaceTintColor,
-                forceElevated: forceElevated,
-                backgroundColor: backgroundColor,
-                foregroundColor: foregroundColor,
-                iconTheme: iconTheme,
-                actionsIconTheme: actionsIconTheme,
-                primary: primary,
-                centerTitle: centerTitle,
-                excludeHeaderSemantics: excludeHeaderSemantics,
-                titleSpacing: titleSpacing,
-                collapsedHeight: collapsedHeight,
-                expandedHeight: expandedHeight,
-                floating: floating,
-                pinned: pinned,
-                snap: snap,
-                stretch: stretch,
-                stretchTriggerOffset: stretchTriggerOffset,
-                onStretchTrigger: onStretchTrigger,
-                shape: shape,
-                toolbarHeight: toolbarHeight,
-                leadingWidth: effectiveLeadingWidth,
-                toolbarTextStyle: toolbarTextStyle,
-                titleTextStyle: titleTextStyle,
-                systemOverlayStyle: systemOverlayStyle,
-                forceMaterialTransparency: forceMaterialTransparency,
-                useDefaultSemanticsOrder: useDefaultSemanticsOrder,
-                clipBehavior: clipBehavior,
-                actionsPadding: effectiveActionsPadding,
-              ),
+              key: key,
+              leading: decoratedLeading,
+              automaticallyImplyLeading: false,
+              title: title,
+              actions: decoratedActions,
+              automaticallyImplyActions: false,
+              flexibleSpace: flexibleSpaceChild,
+              bottom: bottom,
+              elevation: elevation,
+              scrolledUnderElevation: scrolledUnderElevation,
+              shadowColor: shadowColor,
+              surfaceTintColor: surfaceTintColor,
+              forceElevated: forceElevated,
+              backgroundColor: backgroundColor,
+              foregroundColor: foregroundColor,
+              iconTheme: iconTheme,
+              actionsIconTheme: actionsIconTheme,
+              primary: primary,
+              centerTitle: centerTitle,
+              excludeHeaderSemantics: excludeHeaderSemantics,
+              titleSpacing: titleSpacing,
+              collapsedHeight: collapsedHeight,
+              expandedHeight: expandedHeight,
+              floating: floating,
+              pinned: pinned,
+              snap: snap,
+              stretch: stretch,
+              stretchTriggerOffset: stretchTriggerOffset,
+              onStretchTrigger: onStretchTrigger,
+              shape: shape,
+              toolbarHeight: toolbarHeight,
+              leadingWidth: effectiveLeadingWidth,
+              toolbarTextStyle: toolbarTextStyle,
+              titleTextStyle: titleTextStyle,
+              systemOverlayStyle: systemOverlayStyle,
+              forceMaterialTransparency: forceMaterialTransparency,
+              useDefaultSemanticsOrder: useDefaultSemanticsOrder,
+              clipBehavior: clipBehavior,
+              actionsPadding: effectiveActionsPadding,
+            ),
             _FloatingGlassSliverAppBarVariant.medium => SliverAppBar.medium(
-                key: key,
-                leading: decoratedLeading,
-                automaticallyImplyLeading: false,
-                title: title,
-                actions: decoratedActions,
-                automaticallyImplyActions: false,
-                flexibleSpace: flexibleSpaceChild,
-                bottom: bottom,
-                elevation: elevation,
-                scrolledUnderElevation: scrolledUnderElevation,
-                shadowColor: shadowColor,
-                surfaceTintColor: surfaceTintColor,
-                forceElevated: forceElevated,
-                backgroundColor: backgroundColor,
-                foregroundColor: foregroundColor,
-                iconTheme: iconTheme,
-                actionsIconTheme: actionsIconTheme,
-                primary: primary,
-                centerTitle: centerTitle,
-                excludeHeaderSemantics: excludeHeaderSemantics,
-                titleSpacing: titleSpacing,
-                collapsedHeight: collapsedHeight,
-                expandedHeight: expandedHeight,
-                floating: floating,
-                pinned: pinned,
-                snap: snap,
-                stretch: stretch,
-                stretchTriggerOffset: stretchTriggerOffset,
-                onStretchTrigger: onStretchTrigger,
-                shape: shape,
-                toolbarHeight: toolbarHeight,
-                leadingWidth: effectiveLeadingWidth,
-                toolbarTextStyle: toolbarTextStyle,
-                titleTextStyle: titleTextStyle,
-                systemOverlayStyle: systemOverlayStyle,
-                forceMaterialTransparency: forceMaterialTransparency,
-                useDefaultSemanticsOrder: useDefaultSemanticsOrder,
-                clipBehavior: clipBehavior,
-                actionsPadding: effectiveActionsPadding,
-              ),
+              key: key,
+              leading: decoratedLeading,
+              automaticallyImplyLeading: false,
+              title: title,
+              actions: decoratedActions,
+              automaticallyImplyActions: false,
+              flexibleSpace: flexibleSpaceChild,
+              bottom: bottom,
+              elevation: elevation,
+              scrolledUnderElevation: scrolledUnderElevation,
+              shadowColor: shadowColor,
+              surfaceTintColor: surfaceTintColor,
+              forceElevated: forceElevated,
+              backgroundColor: backgroundColor,
+              foregroundColor: foregroundColor,
+              iconTheme: iconTheme,
+              actionsIconTheme: actionsIconTheme,
+              primary: primary,
+              centerTitle: centerTitle,
+              excludeHeaderSemantics: excludeHeaderSemantics,
+              titleSpacing: titleSpacing,
+              collapsedHeight: collapsedHeight,
+              expandedHeight: expandedHeight,
+              floating: floating,
+              pinned: pinned,
+              snap: snap,
+              stretch: stretch,
+              stretchTriggerOffset: stretchTriggerOffset,
+              onStretchTrigger: onStretchTrigger,
+              shape: shape,
+              toolbarHeight: toolbarHeight,
+              leadingWidth: effectiveLeadingWidth,
+              toolbarTextStyle: toolbarTextStyle,
+              titleTextStyle: titleTextStyle,
+              systemOverlayStyle: systemOverlayStyle,
+              forceMaterialTransparency: forceMaterialTransparency,
+              useDefaultSemanticsOrder: useDefaultSemanticsOrder,
+              clipBehavior: clipBehavior,
+              actionsPadding: effectiveActionsPadding,
+            ),
             _FloatingGlassSliverAppBarVariant.large => SliverAppBar.large(
-                key: key,
-                leading: decoratedLeading,
-                automaticallyImplyLeading: false,
-                title: title,
-                actions: decoratedActions,
-                automaticallyImplyActions: false,
-                flexibleSpace: flexibleSpaceChild,
-                bottom: bottom,
-                elevation: elevation,
-                scrolledUnderElevation: scrolledUnderElevation,
-                shadowColor: shadowColor,
-                surfaceTintColor: surfaceTintColor,
-                forceElevated: forceElevated,
-                backgroundColor: backgroundColor,
-                foregroundColor: foregroundColor,
-                iconTheme: iconTheme,
-                actionsIconTheme: actionsIconTheme,
-                primary: primary,
-                centerTitle: centerTitle,
-                excludeHeaderSemantics: excludeHeaderSemantics,
-                titleSpacing: titleSpacing,
-                collapsedHeight: collapsedHeight,
-                expandedHeight: expandedHeight,
-                floating: floating,
-                pinned: pinned,
-                snap: snap,
-                stretch: stretch,
-                stretchTriggerOffset: stretchTriggerOffset,
-                onStretchTrigger: onStretchTrigger,
-                shape: shape,
-                toolbarHeight: toolbarHeight,
-                leadingWidth: effectiveLeadingWidth,
-                toolbarTextStyle: toolbarTextStyle,
-                titleTextStyle: titleTextStyle,
-                systemOverlayStyle: systemOverlayStyle,
-                forceMaterialTransparency: forceMaterialTransparency,
-                useDefaultSemanticsOrder: useDefaultSemanticsOrder,
-                clipBehavior: clipBehavior,
-                actionsPadding: effectiveActionsPadding,
-              ),
+              key: key,
+              leading: decoratedLeading,
+              automaticallyImplyLeading: false,
+              title: title,
+              actions: decoratedActions,
+              automaticallyImplyActions: false,
+              flexibleSpace: flexibleSpaceChild,
+              bottom: bottom,
+              elevation: elevation,
+              scrolledUnderElevation: scrolledUnderElevation,
+              shadowColor: shadowColor,
+              surfaceTintColor: surfaceTintColor,
+              forceElevated: forceElevated,
+              backgroundColor: backgroundColor,
+              foregroundColor: foregroundColor,
+              iconTheme: iconTheme,
+              actionsIconTheme: actionsIconTheme,
+              primary: primary,
+              centerTitle: centerTitle,
+              excludeHeaderSemantics: excludeHeaderSemantics,
+              titleSpacing: titleSpacing,
+              collapsedHeight: collapsedHeight,
+              expandedHeight: expandedHeight,
+              floating: floating,
+              pinned: pinned,
+              snap: snap,
+              stretch: stretch,
+              stretchTriggerOffset: stretchTriggerOffset,
+              onStretchTrigger: onStretchTrigger,
+              shape: shape,
+              toolbarHeight: toolbarHeight,
+              leadingWidth: effectiveLeadingWidth,
+              toolbarTextStyle: toolbarTextStyle,
+              titleTextStyle: titleTextStyle,
+              systemOverlayStyle: systemOverlayStyle,
+              forceMaterialTransparency: forceMaterialTransparency,
+              useDefaultSemanticsOrder: useDefaultSemanticsOrder,
+              clipBehavior: clipBehavior,
+              actionsPadding: effectiveActionsPadding,
+            ),
           },
         );
       },
@@ -2576,8 +2577,8 @@ class FloatingGlassActionButton extends StatelessWidget {
     this.foregroundColor,
     this.elevation,
     this.margin = EdgeInsets.zero,
-  })  : _extended = true,
-        child = null;
+  }) : _extended = true,
+       child = null;
 
   const FloatingGlassActionButton.small({
     super.key,
@@ -2589,9 +2590,9 @@ class FloatingGlassActionButton extends StatelessWidget {
     this.foregroundColor,
     this.elevation,
     this.margin = EdgeInsets.zero,
-  })  : _extended = false,
-        icon = null,
-        label = null;
+  }) : _extended = false,
+       icon = null,
+       label = null;
 
   final VoidCallback? onPressed;
   final Object? heroTag;
@@ -2663,9 +2664,9 @@ class FloatingGlassActionButton extends StatelessWidget {
                       const SizedBox(width: 8),
                       DefaultTextStyle(
                         style: Theme.of(context).textTheme.labelLarge!.copyWith(
-                              color: resolvedForeground,
-                              fontWeight: FontWeight.w600,
-                            ),
+                          color: resolvedForeground,
+                          fontWeight: FontWeight.w600,
+                        ),
                         child: label!,
                       ),
                     ],
@@ -2717,8 +2718,9 @@ class FloatingGlassActionButton extends StatelessWidget {
           resistance: 0.015,
           glowColor: resolvedTint,
           glowOpacity: enabled ? 0.7 : 0.2,
-          style:
-              _extended ? GlassButtonStyle.prominent : GlassButtonStyle.filled,
+          style: _extended
+              ? GlassButtonStyle.prominent
+              : GlassButtonStyle.filled,
           child: glassContent,
         );
 
@@ -2796,8 +2798,8 @@ class FloatingGlassTopBarBackground extends StatelessWidget {
         : null;
     final resolvedProgress =
         settings == null || settings.maxExtent <= settings.minExtent
-            ? progress
-            : _floatingGlassAppBarProgressForFlexibleSpace(settings);
+        ? progress
+        : _floatingGlassAppBarProgressForFlexibleSpace(settings);
 
     return ValueListenableBuilder<LiquidGlassEffectConfiguration>(
       valueListenable: LiquidGlassEffectService.configurationListenable,
@@ -2808,15 +2810,17 @@ class FloatingGlassTopBarBackground extends StatelessWidget {
             final content = hasBoundedHeight
                 ? const SizedBox.expand()
                 : SizedBox(
-                    height: (unboundedHeight ??
-                            kToolbarHeight + MediaQuery.paddingOf(context).top)
-                        .clamp(0.0, 1000.0),
+                    height:
+                        (unboundedHeight ??
+                                kToolbarHeight +
+                                    MediaQuery.paddingOf(context).top)
+                            .clamp(0.0, 1000.0),
                   );
 
             if (blur && !configuration.enabled) return content;
 
-            final intensity =
-                (resolvedProgress * fadeExtent.clamp(0.0, 1.0)).clamp(0.0, 1.0);
+            final intensity = (resolvedProgress * fadeExtent.clamp(0.0, 1.0))
+                .clamp(0.0, 1.0);
             if (intensity <= 0.001) return content;
 
             final colorScheme = Theme.of(context).colorScheme;
@@ -2844,15 +2848,11 @@ class FloatingGlassTopBarBackground extends StatelessWidget {
                   end: Alignment.bottomCenter,
                   stops: const [0, 0.38, 0.72, 1],
                   colors: [
-                    topColor.withValues(
-                      alpha: topAlpha * (dark ? 0.94 : 1.0),
-                    ),
+                    topColor.withValues(alpha: topAlpha * (dark ? 0.94 : 1.0)),
                     topColor.withValues(
                       alpha: middleAlpha * (dark ? 0.9 : 1.0),
                     ),
-                    topColor.withValues(
-                      alpha: lowerAlpha * (dark ? 0.9 : 1.0),
-                    ),
+                    topColor.withValues(alpha: lowerAlpha * (dark ? 0.9 : 1.0)),
                     topColor.withValues(alpha: 0),
                   ],
                 ),
@@ -2898,17 +2898,16 @@ class FloatingGlassLargeFlexibleSpace extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final settings =
-        context.dependOnInheritedWidgetOfExactType<FlexibleSpaceBarSettings>();
+    final settings = context
+        .dependOnInheritedWidgetOfExactType<FlexibleSpaceBarSettings>();
     final extent = settings == null
         ? 1.0
         : ((settings.currentExtent - settings.minExtent) /
-                (settings.maxExtent - settings.minExtent))
-            .clamp(0.0, 1.0);
+                  (settings.maxExtent - settings.minExtent))
+              .clamp(0.0, 1.0);
     final colorScheme = Theme.of(context).colorScheme;
-    final expandedStyle = Theme.of(context).textTheme.headlineMedium?.copyWith(
-          color: colorScheme.onSurface,
-        );
+    final expandedStyle = Theme.of(context).textTheme.headlineMedium
+        ?.copyWith(color: colorScheme.onSurface);
 
     return Stack(
       fit: StackFit.expand,

@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../storage_service.dart';
 import 'course_service.dart';
 import 'pomodoro_service.dart';
@@ -27,9 +29,7 @@ class LocalMigrationService {
   static const String keyMigrationCompletedV4 = 'migration_completed_v4';
 
   @visibleForTesting
-  static Future<void> persistCompletionIfSuccessful(
-    List<String> errors,
-  ) async {
+  static Future<void> persistCompletionIfSuccessful(List<String> errors) async {
     final prefs = await SharedPreferences.getInstance();
     if (errors.isEmpty) {
       await prefs.setBool(keyMigrationCompletedV4, true);
@@ -49,7 +49,7 @@ class LocalMigrationService {
       'course_data',
       'time_logs',
       'pomodoro_tags',
-      'pomodoro_records'
+      'pomodoro_records',
     ];
 
     for (var key in keys) {
@@ -66,15 +66,22 @@ class LocalMigrationService {
     int totalSuccess = 0;
 
     yield MigrationProgress(
-        stage: '正在准备本地引擎升级...', progress: 0.1, errors: errors);
+      stage: '正在准备本地引擎升级...',
+      progress: 0.1,
+      errors: errors,
+    );
     final prefs = await SharedPreferences.getInstance();
     await Future.delayed(const Duration(milliseconds: 500));
 
     // 1. 迁移待办事项
     yield MigrationProgress(
-        stage: '正在迁移待办事项...', progress: 0.2, errors: errors);
+      stage: '正在迁移待办事项...',
+      progress: 0.2,
+      errors: errors,
+    );
     try {
-      List<String> legacyTodos = prefs.getStringList("todo_list_$username") ??
+      List<String> legacyTodos =
+          prefs.getStringList("todo_list_$username") ??
           prefs.getStringList("todo_list") ??
           [];
       List<TodoItem> items = [];
@@ -84,29 +91,35 @@ class LocalMigrationService {
           totalSuccess++;
         } catch (e) {
           errors.add(
-              "待办解析失败: ${jsonStr.substring(0, jsonStr.length > 20 ? 20 : jsonStr.length)}... ($e)");
+            "待办解析失败: ${jsonStr.substring(0, jsonStr.length > 20 ? 20 : jsonStr.length)}... ($e)",
+          );
         }
       }
       if (items.isNotEmpty) {
-        await StorageService.saveTodos(username, items,
-            sync: true, isSyncSource: false);
+        await StorageService.saveTodos(
+          username,
+          items,
+          sync: true,
+          isSyncSource: false,
+        );
       }
     } catch (e) {
       errors.add("待办迁移致命错误: $e");
     }
     yield MigrationProgress(
-        stage: '待办迁移完成',
-        progress: 0.3,
-        errors: errors,
-        totalSuccess: totalSuccess);
+      stage: '待办迁移完成',
+      progress: 0.3,
+      errors: errors,
+      totalSuccess: totalSuccess,
+    );
 
     // 2. 迁移倒计时
     yield MigrationProgress(stage: '正在迁移倒计时...', progress: 0.4, errors: errors);
     try {
       List<String> legacyCDs =
           prefs.getStringList("countdown_list_$username") ??
-              prefs.getStringList("countdown_list") ??
-              [];
+          prefs.getStringList("countdown_list") ??
+          [];
       List<CountdownItem> items = [];
       for (var jsonStr in legacyCDs) {
         try {
@@ -114,21 +127,27 @@ class LocalMigrationService {
           totalSuccess++;
         } catch (e) {
           errors.add(
-              "倒计时解析失败: ${jsonStr.substring(0, jsonStr.length > 20 ? 20 : jsonStr.length)}... ($e)");
+            "倒计时解析失败: ${jsonStr.substring(0, jsonStr.length > 20 ? 20 : jsonStr.length)}... ($e)",
+          );
         }
       }
       if (items.isNotEmpty) {
-        await StorageService.saveCountdowns(username, items,
-            sync: true, isSyncSource: false);
+        await StorageService.saveCountdowns(
+          username,
+          items,
+          sync: true,
+          isSyncSource: false,
+        );
       }
     } catch (e) {
       errors.add("倒计时迁移致命错误: $e");
     }
     yield MigrationProgress(
-        stage: '倒计时迁移完成',
-        progress: 0.5,
-        errors: errors,
-        totalSuccess: totalSuccess);
+      stage: '倒计时迁移完成',
+      progress: 0.5,
+      errors: errors,
+      totalSuccess: totalSuccess,
+    );
 
     // 3. 其他静默迁移 (保持原逻辑)
     yield MigrationProgress(stage: '正在迁移文件夹...', progress: 0.6, errors: errors);
@@ -139,7 +158,10 @@ class LocalMigrationService {
     }
 
     yield MigrationProgress(
-        stage: '正在迁移时间日志...', progress: 0.75, errors: errors);
+      stage: '正在迁移时间日志...',
+      progress: 0.75,
+      errors: errors,
+    );
     try {
       await StorageService.getTimeLogs(username);
     } catch (e) {
@@ -147,7 +169,10 @@ class LocalMigrationService {
     }
 
     yield MigrationProgress(
-        stage: '正在迁移课表与专注数据...', progress: 0.9, errors: errors);
+      stage: '正在迁移课表与专注数据...',
+      progress: 0.9,
+      errors: errors,
+    );
     try {
       await CourseService.getAllCourses(username);
     } catch (e) {
@@ -165,10 +190,11 @@ class LocalMigrationService {
       errors.add('迁移状态保存失败: $e');
     }
     yield MigrationProgress(
-        stage: errors.isEmpty ? '本地升级完成！' : '迁移结束，请处理异常后重试',
-        progress: 1.0,
-        isCompleted: true,
-        errors: errors,
-        totalSuccess: totalSuccess);
+      stage: errors.isEmpty ? '本地升级完成！' : '迁移结束，请处理异常后重试',
+      progress: 1.0,
+      isCompleted: true,
+      errors: errors,
+      totalSuccess: totalSuccess,
+    );
   }
 }

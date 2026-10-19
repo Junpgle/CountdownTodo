@@ -7,21 +7,19 @@ void main() {
       final before = StorageService.scopedDataRefreshNotifier.value.revision;
 
       StorageService.triggerRefresh(const {DataRefreshDomain.todos});
-      StorageService.triggerRefresh(
-        const {DataRefreshDomain.countdowns, DataRefreshDomain.courses},
-      );
+      StorageService.triggerRefresh(const {
+        DataRefreshDomain.countdowns,
+        DataRefreshDomain.courses,
+      });
 
       await Future<void>.delayed(const Duration(milliseconds: 150));
       final signal = StorageService.scopedDataRefreshNotifier.value;
       expect(signal.revision, before + 1);
-      expect(
-        signal.domains,
-        const {
-          DataRefreshDomain.todos,
-          DataRefreshDomain.countdowns,
-          DataRefreshDomain.courses,
-        },
-      );
+      expect(signal.domains, const {
+        DataRefreshDomain.todos,
+        DataRefreshDomain.countdowns,
+        DataRefreshDomain.courses,
+      });
       expect(signal.affects(DataRefreshDomain.todos), isTrue);
       expect(signal.affects(DataRefreshDomain.habits), isFalse);
     });
@@ -37,34 +35,23 @@ void main() {
       expect(signal.affects(DataRefreshDomain.habits), isTrue);
     });
 
-    test('pomodoro refresh stays scoped to focus-dependent consumers',
-        () async {
-      StorageService.triggerRefresh(const {DataRefreshDomain.pomodoro});
+    test(
+      'pomodoro refresh stays scoped to focus-dependent consumers',
+      () async {
+        StorageService.triggerRefresh(const {DataRefreshDomain.pomodoro});
 
-      await Future<void>.delayed(const Duration(milliseconds: 150));
-      final signal = StorageService.scopedDataRefreshNotifier.value;
-      expect(signal.domains, const {DataRefreshDomain.pomodoro});
-      expect(signal.affects(DataRefreshDomain.pomodoro), isTrue);
-      expect(signal.affects(DataRefreshDomain.todos), isFalse);
-    });
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+        final signal = StorageService.scopedDataRefreshNotifier.value;
+        expect(signal.domains, const {DataRefreshDomain.pomodoro});
+        expect(signal.affects(DataRefreshDomain.pomodoro), isTrue);
+        expect(signal.affects(DataRefreshDomain.todos), isFalse);
+      },
+    );
 
-    test('team cleanup domains refresh every affected dashboard consumer',
-        () async {
-      StorageService.triggerRefresh(const {
-        DataRefreshDomain.todos,
-        DataRefreshDomain.todoGroups,
-        DataRefreshDomain.countdowns,
-        DataRefreshDomain.fixedSchedules,
-        DataRefreshDomain.courses,
-        DataRefreshDomain.timeLogs,
-        DataRefreshDomain.planBlocks,
-      });
-
-      await Future<void>.delayed(const Duration(milliseconds: 150));
-      final signal = StorageService.scopedDataRefreshNotifier.value;
-      expect(
-        signal.domains,
-        const {
+    test(
+      'team cleanup domains refresh every affected dashboard consumer',
+      () async {
+        StorageService.triggerRefresh(const {
           DataRefreshDomain.todos,
           DataRefreshDomain.todoGroups,
           DataRefreshDomain.countdowns,
@@ -72,11 +59,23 @@ void main() {
           DataRefreshDomain.courses,
           DataRefreshDomain.timeLogs,
           DataRefreshDomain.planBlocks,
-        },
-      );
-      expect(signal.affects(DataRefreshDomain.courses), isTrue);
-      expect(signal.affects(DataRefreshDomain.timeLogs), isTrue);
-      expect(signal.affects(DataRefreshDomain.planBlocks), isTrue);
-    });
+        });
+
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+        final signal = StorageService.scopedDataRefreshNotifier.value;
+        expect(signal.domains, const {
+          DataRefreshDomain.todos,
+          DataRefreshDomain.todoGroups,
+          DataRefreshDomain.countdowns,
+          DataRefreshDomain.fixedSchedules,
+          DataRefreshDomain.courses,
+          DataRefreshDomain.timeLogs,
+          DataRefreshDomain.planBlocks,
+        });
+        expect(signal.affects(DataRefreshDomain.courses), isTrue);
+        expect(signal.affects(DataRefreshDomain.timeLogs), isTrue);
+        expect(signal.affects(DataRefreshDomain.planBlocks), isTrue);
+      },
+    );
   });
 }

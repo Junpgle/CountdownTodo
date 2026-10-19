@@ -7,17 +7,14 @@ void main() {
   final fixedNow = DateTime(2026, 8, 29, 10, 30);
 
   test('解析约定的多行记账格式', () {
-    final drafts = FinanceTextParser.parse(
-      '''#记账
+    final drafts = FinanceTextParser.parse('''#记账
 类型: 支出
 金额: 28.50
 分类: 餐饮
 商家: 午餐
 日期: 今天
 付款方式: 微信
-备注: 工作日午餐''',
-      now: fixedNow,
-    );
+备注: 工作日午餐''', now: fixedNow);
 
     expect(drafts, hasLength(1));
     expect(drafts.single.type, FinanceTransactionType.expense);
@@ -30,14 +27,11 @@ void main() {
   });
 
   test('结构化日期也支持相对星期', () {
-    final drafts = FinanceTextParser.parse(
-      '''#记账
+    final drafts = FinanceTextParser.parse('''#记账
 类型: 支出
 金额: 30
 分类: 餐饮
-日期: 上星期五''',
-      now: DateTime(2026, 8, 30),
-    );
+日期: 上星期五''', now: DateTime(2026, 8, 30));
 
     expect(drafts, hasLength(1));
     expect(drafts.single.transactionDate, '2026-08-21');
@@ -61,8 +55,7 @@ void main() {
   });
 
   test('解析多个普通多行记账块', () {
-    final drafts = FinanceTextParser.parse(
-      '''#记账
+    final drafts = FinanceTextParser.parse('''#记账
 类型: 支出
 金额: 12.50
 分类: 餐饮
@@ -70,9 +63,7 @@ void main() {
 #记账
 类型: 收入
 金额: 100
-分类: 工资''',
-      now: fixedNow,
-    );
+分类: 工资''', now: fixedNow);
 
     expect(drafts, hasLength(2));
     expect(drafts[0].amountMinor, 1250);
@@ -81,8 +72,7 @@ void main() {
   });
 
   test('结构化文本、识别结果和 AI 草稿都保留重复账单', () {
-    final structured = FinanceTextParser.parse(
-      '''#记账
+    final structured = FinanceTextParser.parse('''#记账
 类型: 支出
 金额: 20
 日期: 今天
@@ -92,9 +82,7 @@ void main() {
 类型: 支出
 金额: 20
 日期: 今天
-商家: 午餐''',
-      now: fixedNow,
-    );
+商家: 午餐''', now: fixedNow);
     expect(structured, hasLength(2));
 
     final recognized = FinanceTextParser.fromRecognitionResults([
@@ -246,14 +234,11 @@ void main() {
     });
 
     test('结构化收入记录识别到账账户字段', () {
-      final drafts = FinanceTextParser.parseQuickEntries(
-        '''#记账
+      final drafts = FinanceTextParser.parseQuickEntries('''#记账
 类型: 收入
 金额: 2,000
 日期: 2026-08-30
-到账账户: 建设银行''',
-        now: now,
-      );
+到账账户: 建设银行''', now: now);
 
       expect(drafts, hasLength(1));
       expect(drafts.single.type, FinanceTransactionType.income);
@@ -308,10 +293,7 @@ void main() {
     });
 
     test('没有金额时不生成草稿', () {
-      expect(
-        FinanceTextParser.parseOneSentence('今天午餐，微信支付'),
-        isNull,
-      );
+      expect(FinanceTextParser.parseOneSentence('今天午餐，微信支付'), isNull);
     });
 
     test('外币金额不会静默按人民币录入', () {
@@ -323,13 +305,10 @@ void main() {
         );
       }
       expect(
-        FinanceTextParser.parse(
-          '''#记账
+        FinanceTextParser.parse('''#记账
 类型: 支出
 金额: \$5
-日期: 今天''',
-          now: now,
-        ),
+日期: 今天''', now: now),
         isEmpty,
       );
     });
@@ -348,10 +327,7 @@ void main() {
     });
 
     test('识别无单位金额时不会把日期数字当成金额', () {
-      final draft = FinanceTextParser.parseOneSentence(
-        '8月29日打车12现金',
-        now: now,
-      );
+      final draft = FinanceTextParser.parseOneSentence('8月29日打车12现金', now: now);
 
       expect(draft, isNotNull);
       expect(draft!.amountMinor, 1200);
@@ -439,10 +415,7 @@ void main() {
 
     expect(drafts, hasLength(3));
     expect(drafts.map((draft) => draft.amountMinor), [800, 2500, 1500]);
-    expect(
-      drafts.map((draft) => draft.categoryName),
-      ['早餐', '午餐', '奶茶'],
-    );
+    expect(drafts.map((draft) => draft.categoryName), ['早餐', '午餐', '奶茶']);
     expect(drafts.map((draft) => draft.transactionDate), [
       '2026-08-30',
       '2026-08-30',
@@ -455,10 +428,10 @@ void main() {
     );
     expect(commaSeparated, hasLength(2));
     expect(commaSeparated.map((draft) => draft.categoryName), ['早餐', '午餐']);
-    expect(
-      commaSeparated.map((draft) => draft.paymentMethodName),
-      ['微信', '支付宝'],
-    );
+    expect(commaSeparated.map((draft) => draft.paymentMethodName), [
+      '微信',
+      '支付宝',
+    ]);
 
     final repeatedEntries = FinanceTextParser.parseQuickEntries(
       '今天午餐 20 元；今天午餐 20 元',
@@ -546,10 +519,10 @@ void main() {
     );
 
     expect(drafts, hasLength(2));
-    expect(
-      drafts.map((draft) => draft.type),
-      [FinanceTransactionType.expense, FinanceTransactionType.refund],
-    );
+    expect(drafts.map((draft) => draft.type), [
+      FinanceTransactionType.expense,
+      FinanceTransactionType.refund,
+    ]);
     expect(drafts.map((draft) => draft.amountMinor), [10000, 2000]);
 
     final returnedGoods = FinanceTextParser.parseOneSentence(

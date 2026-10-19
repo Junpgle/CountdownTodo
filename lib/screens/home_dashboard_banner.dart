@@ -52,10 +52,10 @@ final Map<(String?, String), DateFormat> _dashboardDateFormats = {};
 
 DateFormat _dashboardDateFormat(String pattern) {
   final locale = Intl.defaultLocale;
-  return _dashboardDateFormats.putIfAbsent(
-    (locale, pattern),
-    () => DateFormat(pattern, locale),
-  );
+  return _dashboardDateFormats.putIfAbsent((
+    locale,
+    pattern,
+  ), () => DateFormat(pattern, locale));
 }
 
 mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
@@ -115,12 +115,14 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
         specialType: specialType,
         localDueDate: localDueDate,
         startTime: startTime,
-        isAllDay: startTime != null &&
+        isAllDay:
+            startTime != null &&
             startTime.hour == 0 &&
             startTime.minute == 0 &&
             localDueDate.hour == 23 &&
             localDueDate.minute == 59,
-        isCrossDay: startTime != null &&
+        isCrossDay:
+            startTime != null &&
             (startTime.year != localDueDate.year ||
                 startTime.month != localDueDate.month ||
                 startTime.day != localDueDate.day),
@@ -144,8 +146,7 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
     if (identical(_dashboardBannerTodoSource, _todos) &&
         _dashboardBannerTodoRevision == _todoDataRevision &&
         _dashboardBannerTodoDay == today &&
-        timeZoneOffsetSeconds ==
-            _dashboardBannerTodoTimeZoneOffsetSeconds &&
+        timeZoneOffsetSeconds == _dashboardBannerTodoTimeZoneOffsetSeconds &&
         timeZoneName == _dashboardBannerTodoTimeZoneName) {
       return _dashboardBannerTodoCache;
     }
@@ -177,8 +178,7 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
     if (identical(_dashboardBannerCourseSource, _dashboardCourseData) &&
         _dashboardBannerCourseRevision == _dashboardCourseDataRefreshRevision &&
         _dashboardBannerCourseDay == today &&
-        timeZoneOffsetSeconds ==
-            _dashboardBannerCourseTimeZoneOffsetSeconds &&
+        timeZoneOffsetSeconds == _dashboardBannerCourseTimeZoneOffsetSeconds &&
         timeZoneName == _dashboardBannerCourseTimeZoneName) {
       return _dashboardBannerCourseCache;
     }
@@ -202,11 +202,7 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
           startTime.isBefore(today) && endTime.isAfter(today);
       if (!startsToday && !continuesIntoToday) continue;
 
-      candidates.add((
-        course: course,
-        startTime: startTime,
-        endTime: endTime,
-      ));
+      candidates.add((course: course, startTime: startTime, endTime: endTime));
     }
 
     _dashboardBannerCourseSource = _dashboardCourseData;
@@ -217,15 +213,16 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
     return _dashboardBannerCourseCache = candidates;
   }
 
-  Future<List<CourseItem>> _coursesForUpcomingNotifications(DateTime now) async {
+  Future<List<CourseItem>> _coursesForUpcomingNotifications(
+    DateTime now,
+  ) async {
     final today = DateUtils.dateOnly(now);
     final cachedCourses = _upcomingCourseCache;
     final refreshAt = _upcomingCourseRefreshAt;
     if (cachedCourses != null &&
         _upcomingCourseCacheDate == today &&
         _upcomingCourseCacheUsername == widget.username &&
-        _upcomingCourseCacheRevision ==
-            _dashboardCourseDataRefreshRevision &&
+        _upcomingCourseCacheRevision == _dashboardCourseDataRefreshRevision &&
         identical(_upcomingCourseDataSource, _dashboardCourseData) &&
         (refreshAt == null || now.isBefore(refreshAt))) {
       return cachedCourses;
@@ -263,7 +260,9 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
     DateTime? lastCourseEnd;
     for (final course in courses) {
       final day = _resolveCourseDay(course, now);
-      if (day.year != now.year || day.month != now.month || day.day != now.day) {
+      if (day.year != now.year ||
+          day.month != now.month ||
+          day.day != now.day) {
         continue;
       }
       final end = _resolveCourseTimeOnDay(course, day, course.endTime);
@@ -369,148 +368,150 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
       child: AiWaterRippleBorder(
         isLight: isLight,
         child: Material(
-        color: isLight ? Colors.white : Colors.grey[900],
-        borderRadius: BorderRadius.circular(16),
-        elevation: 2,
-        child: InkWell(
-          onTap: _openPendingRecognitionChat,
+          color: isLight ? Colors.white : Colors.grey[900],
           borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                // 图片缩略图或状态图标
-                if (isProcessing)
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        color: Colors.orange,
-                      ),
-                    ),
-                  )
-                else if (localImageExists(imagePath))
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: localImageWidget(
-                      imagePath!,
+          elevation: 2,
+          child: InkWell(
+            onTap: _openPendingRecognitionChat,
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  // 图片缩略图或状态图标
+                  if (isProcessing)
+                    Container(
                       width: 48,
                       height: 48,
-                      fit: BoxFit.cover,
-                    ),
-                  )
-                else
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: iconColor.withValues(alpha: 0.1),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.orange,
+                        ),
+                      ),
+                    )
+                  else if (localImageExists(imagePath))
+                    ClipRRect(
                       borderRadius: BorderRadius.circular(8),
+                      child: localImageWidget(
+                        imagePath!,
+                        width: 48,
+                        height: 48,
+                        fit: BoxFit.cover,
+                      ),
+                    )
+                  else
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: iconColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(statusIcon, color: iconColor),
                     ),
-                    child: Icon(statusIcon, color: iconColor),
-                  ),
-                const SizedBox(width: 12),
-                // 文字信息
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: isLight ? Colors.black87 : Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: isFailed ? Colors.red[400] : Colors.grey[600],
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                // 右侧操作按钮
-                if (isProcessing)
-                  Icon(
-                    Icons.arrow_forward_ios,
-                    size: 16,
-                    color: Colors.grey[400],
-                  )
-                else if (isFailed)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // 忽略按钮
-                      GestureDetector(
-                        onTap: _ignorePendingTodoRecognition,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
+                  const SizedBox(width: 12),
+                  // 文字信息
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: isLight ? Colors.black87 : Colors.white,
                           ),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(8),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          subtitle,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: isFailed
+                                ? Colors.red[400]
+                                : Colors.grey[600],
                           ),
-                          child: Text(
-                            '忽略',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.grey[600],
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  // 右侧操作按钮
+                  if (isProcessing)
+                    Icon(
+                      Icons.arrow_forward_ios,
+                      size: 16,
+                      color: Colors.grey[400],
+                    )
+                  else if (isFailed)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // 忽略按钮
+                        GestureDetector(
+                          onTap: _ignorePendingTodoRecognition,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              '忽略',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey[600],
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      // 重试按钮
-                      GestureDetector(
-                        onTap: _retryPendingTodoRecognition,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.red.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Text(
-                            '重试',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.red,
+                        const SizedBox(width: 8),
+                        // 重试按钮
+                        GestureDetector(
+                          onTap: _retryPendingTodoRecognition,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text(
+                              '重试',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.red,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
-                  )
-                else
-                  TextButton(
-                    onPressed: _openPendingTodoConfirm,
-                    child: const Text('去确认'),
-                  ),
-              ],
+                      ],
+                    )
+                  else
+                    TextButton(
+                      onPressed: _openPendingTodoConfirm,
+                      child: const Text('去确认'),
+                    ),
+                ],
+              ),
             ),
           ),
-        ),
         ),
       ),
     );
@@ -565,9 +566,7 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
           (block) =>
               !block.isDeleted && block.status == TodoPlanStatus.focusing,
         );
-    final events = _collectBannerEvents(
-      hasActivePlanBlock: hasActivePlanBlock,
-    );
+    final events = _collectBannerEvents(hasActivePlanBlock: hasActivePlanBlock);
     final showPomodoro = hasLocalPomodoro || _remotePomodoro != null;
     if (events.isEmpty && !showPomodoro) return const SizedBox.shrink();
 
@@ -972,10 +971,8 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
                 },
               );
             },
-            onAction: () => _startPlanBlockFocus(
-              activeBlock,
-              sourceKey: _focusBannerKey,
-            ),
+            onAction: () =>
+                _startPlanBlockFocus(activeBlock, sourceKey: _focusBannerKey),
           ),
         );
       }
@@ -1214,15 +1211,12 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
     }
 
     // Fallback for legacy records without date: infer the day from weekday.
-    return day ?? DateUtils.dateOnly(now)
-        .add(Duration(days: course.weekday - now.weekday));
+    return day ??
+        DateUtils.dateOnly(now)
+            .add(Duration(days: course.weekday - now.weekday));
   }
 
-  DateTime? _resolveCourseTimeOnDay(
-    CourseItem course,
-    DateTime day,
-    int time,
-  ) {
+  DateTime? _resolveCourseTimeOnDay(CourseItem course, DateTime day, int time) {
     final int hour = time ~/ 100;
     final int minute = time % 100;
     if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;

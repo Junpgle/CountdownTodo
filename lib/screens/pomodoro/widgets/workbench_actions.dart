@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
+
 import '../../../models.dart';
 import '../../../services/pomodoro_service.dart';
 
 /// The workbench buttons own their fill treatment, so do not inherit the
 /// app-wide glass background builder as a second surface.
 Widget _keepButtonBackground(
-    BuildContext context, Set<WidgetState> states, Widget? child) {
+  BuildContext context,
+  Set<WidgetState> states,
+  Widget? child,
+) {
   return child ?? const SizedBox.shrink();
 }
 
@@ -70,10 +74,7 @@ class _WorkbenchActionsState extends State<WorkbenchActions>
       reverseDuration: const Duration(milliseconds: 300),
     );
     _pressAnimation = Tween<double>(begin: 1.0, end: 0.92).animate(
-      CurvedAnimation(
-        parent: _pressController,
-        curve: Curves.easeInOut,
-      ),
+      CurvedAnimation(parent: _pressController, curve: Curves.easeInOut),
     );
   }
 
@@ -97,22 +98,21 @@ class _WorkbenchActionsState extends State<WorkbenchActions>
           MediaQuery.of(context).orientation == Orientation.landscape;
       return Padding(
         padding: EdgeInsets.only(
-            bottom: isLandscape ? 0 : (widget.isCompact ? 6 : 8)),
+          bottom: isLandscape ? 0 : (widget.isCompact ? 6 : 8),
+        ),
         child: Container(
           padding: EdgeInsets.symmetric(
-              horizontal: widget.isCompact ? 12 : 16,
-              vertical: widget.isCompact ? 10 : 12),
+            horizontal: widget.isCompact ? 12 : 16,
+            vertical: widget.isCompact ? 10 : 12,
+          ),
           decoration: BoxDecoration(
-            color: Theme.of(context)
-                .colorScheme
-                .surfaceContainerHighest
+            color: Theme.of(context).colorScheme.surfaceContainerHighest
                 .withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-                color: Theme.of(context)
-                    .colorScheme
-                    .outlineVariant
-                    .withValues(alpha: 0.5)),
+              color: Theme.of(context).colorScheme.outlineVariant
+                  .withValues(alpha: 0.5),
+            ),
           ),
           child: Row(
             mainAxisAlignment: isLandscape
@@ -120,12 +120,12 @@ class _WorkbenchActionsState extends State<WorkbenchActions>
                 : MainAxisAlignment.center,
             mainAxisSize: isLandscape ? MainAxisSize.max : MainAxisSize.min,
             children: [
-              Icon(Icons.devices_outlined,
-                  size: widget.isCompact ? 16 : 18,
-                  color: Theme.of(context)
-                      .colorScheme
-                      .primary
-                      .withValues(alpha: 0.7)),
+              Icon(
+                Icons.devices_outlined,
+                size: widget.isCompact ? 16 : 18,
+                color: Theme.of(context).colorScheme.primary
+                    .withValues(alpha: 0.7),
+              ),
               SizedBox(width: widget.isCompact ? 8 : 10),
               Flexible(
                 child: Text(
@@ -133,9 +133,7 @@ class _WorkbenchActionsState extends State<WorkbenchActions>
                   style: TextStyle(
                     fontSize: widget.isCompact ? 12 : 13,
                     fontWeight: FontWeight.w500,
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurfaceVariant
+                    color: Theme.of(context).colorScheme.onSurfaceVariant
                         .withValues(alpha: 0.8),
                   ),
                 ),
@@ -222,19 +220,19 @@ class _WorkbenchActionsState extends State<WorkbenchActions>
                   ),
                   style: OutlinedButton.styleFrom(
                     padding: EdgeInsets.symmetric(
-                        horizontal: widget.isCompact ? 10 : 12,
-                        vertical: widget.isCompact ? 10 : 14),
+                      horizontal: widget.isCompact ? 10 : 12,
+                      vertical: widget.isCompact ? 10 : 14,
+                    ),
                     side: BorderSide(
                       color: widget.boundTodo != null
-                          ? Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withValues(alpha: 0.6)
+                          ? Theme.of(context).colorScheme.primary
+                                .withValues(alpha: 0.6)
                           : Theme.of(context).colorScheme.outlineVariant,
                     ),
                     backgroundBuilder: _keepButtonBackground,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16)),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                   ),
                 ),
               ),
@@ -312,64 +310,77 @@ class _WorkbenchActionsState extends State<WorkbenchActions>
             TextButton.icon(
               onPressed: widget.onAbandonFocus,
               icon: Icon(Icons.stop_rounded, size: widget.isCompact ? 16 : 18),
-              label: Text('放弃',
-                  style: TextStyle(fontSize: widget.isCompact ? 13 : 14)),
+              label: Text(
+                '放弃',
+                style: TextStyle(fontSize: widget.isCompact ? 13 : 14),
+              ),
               style: TextButton.styleFrom(
-                foregroundColor: Theme.of(context)
-                    .colorScheme
-                    .onSurface
+                foregroundColor: Theme.of(context).colorScheme.onSurface
                     .withValues(alpha: 0.4),
                 padding: EdgeInsets.symmetric(
-                    horizontal: widget.isCompact ? 12 : 16, vertical: 12),
+                  horizontal: widget.isCompact ? 12 : 16,
+                  vertical: 12,
+                ),
               ),
             ),
             if (widget.isStrictMode)
               TextButton.icon(
                 onPressed: null,
-                icon: Icon(Icons.screen_rotation_alt_rounded,
-                    size: widget.isCompact ? 18 : 20),
-                label: Text('翻转控制',
-                    style: TextStyle(fontSize: widget.isCompact ? 14 : 15)),
+                icon: Icon(
+                  Icons.screen_rotation_alt_rounded,
+                  size: widget.isCompact ? 18 : 20,
+                ),
+                label: Text(
+                  '翻转控制',
+                  style: TextStyle(fontSize: widget.isCompact ? 14 : 15),
+                ),
                 style: TextButton.styleFrom(
                   padding: EdgeInsets.symmetric(
-                      horizontal: widget.isCompact ? 20 : 24, vertical: 12),
+                    horizontal: widget.isCompact ? 20 : 24,
+                    vertical: 12,
+                  ),
                 ),
               )
             else
               TextButton.icon(
                 onPressed: widget.onShowPauseDialog,
                 icon: Icon(
-                    widget.onPauseFocus == null
-                        ? Icons.play_arrow_rounded
-                        : Icons.pause_rounded,
-                    size: widget.isCompact ? 18 : 20),
-                label: Text(widget.onPauseFocus == null ? '继续' : '暂停',
-                    style: TextStyle(fontSize: widget.isCompact ? 14 : 15)),
+                  widget.onPauseFocus == null
+                      ? Icons.play_arrow_rounded
+                      : Icons.pause_rounded,
+                  size: widget.isCompact ? 18 : 20,
+                ),
+                label: Text(
+                  widget.onPauseFocus == null ? '继续' : '暂停',
+                  style: TextStyle(fontSize: widget.isCompact ? 14 : 15),
+                ),
                 style: TextButton.styleFrom(
-                  foregroundColor: Theme.of(context)
-                      .colorScheme
-                      .onSurface
+                  foregroundColor: Theme.of(context).colorScheme.onSurface
                       .withValues(alpha: 0.6),
                   backgroundColor: Theme.of(context)
                       .colorScheme
                       .surfaceContainerHighest
                       .withValues(alpha: 0.3),
                   padding: EdgeInsets.symmetric(
-                      horizontal: widget.isCompact ? 20 : 24, vertical: 12),
+                    horizontal: widget.isCompact ? 20 : 24,
+                    vertical: 12,
+                  ),
                 ),
               ),
             TextButton.icon(
               onPressed: widget.onFinishEarly,
               icon: Icon(Icons.check_rounded, size: widget.isCompact ? 16 : 18),
-              label: Text('完成',
-                  style: TextStyle(fontSize: widget.isCompact ? 13 : 14)),
+              label: Text(
+                '完成',
+                style: TextStyle(fontSize: widget.isCompact ? 13 : 14),
+              ),
               style: TextButton.styleFrom(
-                foregroundColor: Theme.of(context)
-                    .colorScheme
-                    .onSurface
+                foregroundColor: Theme.of(context).colorScheme.onSurface
                     .withValues(alpha: 0.4),
                 padding: EdgeInsets.symmetric(
-                    horizontal: widget.isCompact ? 12 : 16, vertical: 12),
+                  horizontal: widget.isCompact ? 12 : 16,
+                  vertical: 12,
+                ),
               ),
             ),
           ],
@@ -383,13 +394,16 @@ class _WorkbenchActionsState extends State<WorkbenchActions>
         key: const ValueKey('skip_break_btn'),
         onPressed: widget.onSkipBreak,
         icon: Icon(Icons.skip_next_rounded, size: widget.isCompact ? 18 : 24),
-        label: Text('跳过休息',
-            style: TextStyle(fontSize: widget.isCompact ? 14 : 16)),
+        label: Text(
+          '跳过休息',
+          style: TextStyle(fontSize: widget.isCompact ? 14 : 16),
+        ),
         style: OutlinedButton.styleFrom(
           minimumSize: const Size(double.infinity, 52),
           padding: EdgeInsets.symmetric(vertical: widget.isCompact ? 12 : 14),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
         ),
       ),
     );

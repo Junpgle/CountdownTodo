@@ -66,14 +66,10 @@ abstract final class HabitFocusLauncher {
     GlobalKey? sourceKey,
     PomodoroEntryIntent? initialEntry,
   }) async {
-    final page = PomodoroScreen(
-      username: username,
-      initialEntry: initialEntry,
-    );
+    final page = PomodoroScreen(username: username, initialEntry: initialEntry);
     if (sourceKey == null) {
-      await Navigator.of(
-        context,
-      ).push(PageTransitions.material(builder: (_) => page));
+      await Navigator.of(context)
+          .push(PageTransitions.material(builder: (_) => page));
       return;
     }
     await PageTransitions.pushFromRect<void>(

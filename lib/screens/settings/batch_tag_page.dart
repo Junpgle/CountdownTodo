@@ -45,10 +45,10 @@ class _BatchTagPageState extends State<BatchTagPage>
 
   DateFormat _cachedDateFormat(String pattern) {
     final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent(
-      (locale, pattern),
-      () => DateFormat(pattern, locale),
-    );
+    return _dateFormatters.putIfAbsent((
+      locale,
+      pattern,
+    ), () => DateFormat(pattern, locale));
   }
 
   // 待添加的标签（支持多选）
@@ -313,10 +313,7 @@ class _BatchTagPageState extends State<BatchTagPage>
         Tab(text: '时间日志', icon: Icon(Icons.schedule_outlined)),
       ],
     );
-    final topBarHeight = floatingGlassTopBarHeight(
-      context,
-      bottom: tabBar,
-    );
+    final topBarHeight = floatingGlassTopBarHeight(context, bottom: tabBar);
 
     return Scaffold(
       extendBody: useFloatingBottomBar,
@@ -552,9 +549,8 @@ class _BatchTagPageState extends State<BatchTagPage>
         Expanded(
           child: Builder(
             builder: (context) {
-              final listPadding = MediaQuery.paddingOf(
-                context,
-              ).copyWith(top: 0);
+              final listPadding = MediaQuery.paddingOf(context)
+                  .copyWith(top: 0);
               return ListView.builder(
                 padding: listPadding,
                 itemCount: filtered.length,
@@ -566,9 +562,7 @@ class _BatchTagPageState extends State<BatchTagPage>
                   );
                   final endTime = pom.endTime != null
                       ? DateTime.fromMillisecondsSinceEpoch(pom.endTime!)
-                      : startTime.add(
-                          Duration(seconds: pom.effectiveDuration),
-                        );
+                      : startTime.add(Duration(seconds: pom.effectiveDuration));
                   final duration = pom.effectiveDuration ~/ 60;
 
                   return ListTile(
@@ -597,10 +591,7 @@ class _BatchTagPageState extends State<BatchTagPage>
                         ? _buildTagChips(pom.tagUuids)
                         : const Text(
                             '无标签',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey,
-                            ),
+                            style: TextStyle(fontSize: 11, color: Colors.grey),
                           ),
                   );
                 },
@@ -629,9 +620,8 @@ class _BatchTagPageState extends State<BatchTagPage>
         Expanded(
           child: Builder(
             builder: (context) {
-              final listPadding = MediaQuery.paddingOf(
-                context,
-              ).copyWith(top: 0);
+              final listPadding = MediaQuery.paddingOf(context)
+                  .copyWith(top: 0);
               return ListView.builder(
                 padding: listPadding,
                 itemCount: filtered.length,
@@ -672,10 +662,7 @@ class _BatchTagPageState extends State<BatchTagPage>
                         ? _buildTagChips(log.tagUuids)
                         : const Text(
                             '无标签',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey,
-                            ),
+                            style: TextStyle(fontSize: 11, color: Colors.grey),
                           ),
                   );
                 },

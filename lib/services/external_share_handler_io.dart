@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
+
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
@@ -43,7 +44,7 @@ class _ExternalShareRequest {
   final Function onSuccess;
   final Function(List<Map<String, dynamic>>, String?)? onTodoRecognized;
   final FutureOr<void> Function(List<FinanceEntryDraft>, String?)?
-      onFinanceRecognized;
+  onFinanceRecognized;
   final bool fromInitial;
 }
 
@@ -66,7 +67,7 @@ class ExternalShareHandler {
     Function onCourseImported, {
     Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
     FutureOr<void> Function(List<FinanceEntryDraft>, String?)?
-        onFinanceRecognized,
+    onFinanceRecognized,
   }) {
     if (!Platform.isAndroid && !Platform.isIOS) return;
     final previousSubscription = _intentDataStreamSubscription;
@@ -74,27 +75,36 @@ class ExternalShareHandler {
       unawaited(previousSubscription.cancel());
     }
 
-    _intentDataStreamSubscription =
-        ReceiveSharingIntent.instance.getMediaStream().listen(
-      (List<SharedMediaFile> value) {
-        if (!context.mounted) return;
-        _processSharedFiles(context, value, onCourseImported,
-            onTodoRecognized: onTodoRecognized,
-            onFinanceRecognized: onFinanceRecognized,
-            fromInitial: false);
-      },
-      onError: (err) {
-        // debugPrint("获取外部意图失败: $err");
-      },
-    );
+    _intentDataStreamSubscription = ReceiveSharingIntent.instance
+        .getMediaStream()
+        .listen(
+          (List<SharedMediaFile> value) {
+            if (!context.mounted) return;
+            _processSharedFiles(
+              context,
+              value,
+              onCourseImported,
+              onTodoRecognized: onTodoRecognized,
+              onFinanceRecognized: onFinanceRecognized,
+              fromInitial: false,
+            );
+          },
+          onError: (err) {
+            // debugPrint("获取外部意图失败: $err");
+          },
+        );
 
     ReceiveSharingIntent.instance.getInitialMedia().then(
       (List<SharedMediaFile> value) {
         if (!context.mounted) return;
-        _processSharedFiles(context, value, onCourseImported,
-            onTodoRecognized: onTodoRecognized,
-            onFinanceRecognized: onFinanceRecognized,
-            fromInitial: true);
+        _processSharedFiles(
+          context,
+          value,
+          onCourseImported,
+          onTodoRecognized: onTodoRecognized,
+          onFinanceRecognized: onFinanceRecognized,
+          fromInitial: true,
+        );
       },
       onError: (Object error, StackTrace stack) {
         if (context.mounted) {
@@ -136,7 +146,7 @@ class ExternalShareHandler {
     Function onSuccess, {
     Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
     FutureOr<void> Function(List<FinanceEntryDraft>, String?)?
-        onFinanceRecognized,
+    onFinanceRecognized,
     bool fromInitial = false,
   }) async {
     if (!Platform.isAndroid && !Platform.isIOS) return;
@@ -160,14 +170,16 @@ class ExternalShareHandler {
     // item as a request also lets every course file show its own import-mode
     // dialog without overlapping navigation routes.
     for (final additionalFile in files.skip(1)) {
-      _queuedRequests.add(_ExternalShareRequest(
-        context: context,
-        files: [additionalFile],
-        onSuccess: onSuccess,
-        onTodoRecognized: onTodoRecognized,
-        onFinanceRecognized: onFinanceRecognized,
-        fromInitial: fromInitial,
-      ));
+      _queuedRequests.add(
+        _ExternalShareRequest(
+          context: context,
+          files: [additionalFile],
+          onSuccess: onSuccess,
+          onTodoRecognized: onTodoRecognized,
+          onFinanceRecognized: onFinanceRecognized,
+          fromInitial: fromInitial,
+        ),
+      );
     }
 
     await Future.delayed(const Duration(milliseconds: 500));
@@ -197,10 +209,7 @@ class ExternalShareHandler {
         final text = _sharedTextPayload(media);
         final drafts = text == null
             ? const <FinanceEntryDraft>[]
-            : FinanceTextParser.parse(
-                text,
-                source: FinanceEntrySource.import,
-              );
+            : FinanceTextParser.parse(text, source: FinanceEntrySource.import);
         if (drafts.isNotEmpty && context.mounted) {
           await onFinanceRecognized?.call(drafts, null);
         } else if (context.mounted) {
@@ -216,7 +225,8 @@ class ExternalShareHandler {
     }
 
     final hasExplicitFileMode = requestedMode != ExternalShareMode.automatic;
-    final isValidFile = firstPath.isNotEmpty &&
+    final isValidFile =
+        firstPath.isNotEmpty &&
         (hasExplicitFileMode ||
             firstPath.contains('.') ||
             media.type == SharedMediaType.image ||
@@ -248,7 +258,8 @@ class ExternalShareHandler {
       'tif',
       'tiff',
     };
-    final isImage = requestedMode == ExternalShareMode.imageRecognition ||
+    final isImage =
+        requestedMode == ExternalShareMode.imageRecognition ||
         (requestedMode == ExternalShareMode.automatic &&
             (media.type == SharedMediaType.image ||
                 imageExtensions.contains(ext) ||
@@ -275,8 +286,9 @@ class ExternalShareHandler {
           _finishCurrentRequest();
           return;
         }
-        targetSemester =
-            await CourseImportPreflight.selectTargetSemester(context);
+        targetSemester = await CourseImportPreflight.selectTargetSemester(
+          context,
+        );
         if (!context.mounted) {
           _finishCurrentRequest();
           return;
@@ -319,42 +331,44 @@ class ExternalShareHandler {
     }
 
     try {
-      unawaited(showAppDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        useRootNavigator: true,
-        builder: (ctx) {
-          dialogNavigator = Navigator.of(ctx, rootNavigator: true);
-          isDialogOpen = true;
-          if (closeRequestedBeforeBuild) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              closeDialogSafely();
-            });
-          }
-          return AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            content: Row(
-              children: [
-                const CircularProgressIndicator(),
-                const SizedBox(width: 20),
-                Expanded(
-                  child: ValueListenableBuilder<String>(
-                    valueListenable: statusNotifier,
-                    builder: (context, value, child) {
-                      return Text(
-                        value,
-                        style: const TextStyle(fontSize: 15, height: 1.4),
-                      );
-                    },
+      unawaited(
+        showAppDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          useRootNavigator: true,
+          builder: (ctx) {
+            dialogNavigator = Navigator.of(ctx, rootNavigator: true);
+            isDialogOpen = true;
+            if (closeRequestedBeforeBuild) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                closeDialogSafely();
+              });
+            }
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              content: Row(
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(width: 20),
+                  Expanded(
+                    child: ValueListenableBuilder<String>(
+                      valueListenable: statusNotifier,
+                      builder: (context, value, child) {
+                        return Text(
+                          value,
+                          style: const TextStyle(fontSize: 15, height: 1.4),
+                        );
+                      },
+                    ),
                   ),
-                ),
-              ],
-            ),
-          );
-        },
-      ));
+                ],
+              ),
+            );
+          },
+        ),
+      );
     } catch (error) {
       statusNotifier.dispose();
       _finishCurrentRequest();
@@ -373,8 +387,8 @@ class ExternalShareHandler {
       statusNotifier.value = isImage
           ? "正在准备图片..."
           : isFinanceImport
-              ? "正在准备记账内容..."
-              : "正在等待分享课表文件...";
+          ? "正在准备记账内容..."
+          : "正在等待分享课表文件...";
       await Future.delayed(const Duration(milliseconds: 400));
 
       File file = await _waitForReadableFile(filePath);
@@ -450,8 +464,9 @@ class ExternalShareHandler {
             "图片已压缩 (${(compressedSize / 1024).toStringAsFixed(0)}KB)\n正在调用大模型分析...";
 
         try {
-          recognitionHandle =
-              await AiRecognitionChatBridge.startImage(filePath);
+          recognitionHandle = await AiRecognitionChatBridge.startImage(
+            filePath,
+          );
         } catch (_) {
           // 聊天镜像失败不能影响原有的图片识别流程。
         }
@@ -493,8 +508,9 @@ class ExternalShareHandler {
           await StorageService.savePendingTodoConfirm(
             imagePath: filePath,
             results: results,
-            financeResults:
-                financeDrafts.map((draft) => draft.toJson()).toList(),
+            financeResults: financeDrafts
+                .map((draft) => draft.toJson())
+                .toList(),
             status: 'success',
             compressedPath: compressedPath,
             sourceKey: fileKey,
@@ -591,8 +607,8 @@ class ExternalShareHandler {
         }
       } else if (isFinanceImport) {
         statusNotifier.value = "正在读取记账文本...";
-        final content =
-            await _safeReadFile(file).timeout(const Duration(seconds: 20));
+        final content = await _safeReadFile(file)
+            .timeout(const Duration(seconds: 20));
         final drafts = FinanceTextParser.parse(
           content,
           source: FinanceEntrySource.import,
@@ -614,15 +630,16 @@ class ExternalShareHandler {
         // 文件处理：课表导入
         statusNotifier.value = "获取课表文件中...";
 
-        String content =
-            await _safeReadFile(file).timeout(const Duration(seconds: 20));
+        String content = await _safeReadFile(file)
+            .timeout(const Duration(seconds: 20));
         final username = courseUsername!;
 
         await Future.delayed(const Duration(milliseconds: 400));
         final targetSemesterId = targetSemester!.id;
 
         Future<List<CourseItem>?> repairMissingTimes(
-            List<CourseItem> courses) async {
+          List<CourseItem> courses,
+        ) async {
           if (!context.mounted) return null;
           statusNotifier.value = "部分课程缺少有效时间\n请补全后继续导入";
           return CourseTimeRepairDialog.show(context, courses);
@@ -647,8 +664,9 @@ class ExternalShareHandler {
             importModeCancelled = true;
             return null;
           }
-          statusNotifier.value =
-              mode == ImportMode.merge ? "正在合并课表..." : "正在替换原课表...";
+          statusNotifier.value = mode == ImportMode.merge
+              ? "正在合并课表..."
+              : "正在替换原课表...";
           return mode == ImportMode.merge;
         }
 
@@ -660,16 +678,20 @@ class ExternalShareHandler {
           statusNotifier.value = "识别到: $sourceName\n正在导入...";
 
           success = await CourseService.importXidianScheduleFromIcs(
-              username, content, targetSemester.startDate,
-              semesterId: targetSemesterId,
-              repairMissingTimes: repairMissingTimes,
-              selectImportMode: selectImportMode);
+            username,
+            content,
+            targetSemester.startDate,
+            semesterId: targetSemesterId,
+            repairMissingTimes: repairMissingTimes,
+            selectImportMode: selectImportMode,
+          );
         } else if (content.contains('timetable_con') ||
             content.contains('id="table1"') ||
             content.contains('kbgrid_table') ||
             content.toLowerCase().contains('huel')) {
-          sourceName =
-              content.toLowerCase().contains('huel') ? "河南财经政法大学" : "正方教务系统";
+          sourceName = content.toLowerCase().contains('huel')
+              ? "河南财经政法大学"
+              : "正方教务系统";
           statusNotifier.value = "识别到: $sourceName\n正在深度解析...";
 
           if (!context.mounted) {
@@ -688,11 +710,14 @@ class ExternalShareHandler {
           statusNotifier.value = "识别到: $sourceName\n正在深度解析...";
 
           success = await CourseService.importZfSoftScheduleFromHtml(
-              username, content, targetSemester.startDate,
-              customTimes: customTimes,
-              semesterId: targetSemesterId,
-              repairMissingTimes: repairMissingTimes,
-              selectImportMode: selectImportMode);
+            username,
+            content,
+            targetSemester.startDate,
+            customTimes: customTimes,
+            semesterId: targetSemesterId,
+            repairMissingTimes: repairMissingTimes,
+            selectImportMode: selectImportMode,
+          );
         } else if ((['mhtml', 'html', 'htm'].contains(ext) ||
                 content.contains('quoted-printable') ||
                 content.toLowerCase().contains('<html')) &&
@@ -703,21 +728,26 @@ class ExternalShareHandler {
           statusNotifier.value = "识别到: $sourceName\n正在深度解码导入...";
 
           success = await CourseService.importXmuScheduleFromHtml(
-              username, content, targetSemester.startDate,
-              semesterId: targetSemesterId,
-              repairMissingTimes: repairMissingTimes,
-              selectImportMode: selectImportMode);
+            username,
+            content,
+            targetSemester.startDate,
+            semesterId: targetSemesterId,
+            repairMissingTimes: repairMissingTimes,
+            selectImportMode: selectImportMode,
+          );
         } else if (['json', 'txt'].contains(ext) ||
             content.trim().startsWith('[') ||
             content.trim().startsWith('{')) {
           sourceName = "聚在工大";
           statusNotifier.value = "识别到: $sourceName\n正在导入...";
           success = await CourseService.importScheduleFromJson(
-              username, content,
-              semesterStart: targetSemester.startDate,
-              semesterId: targetSemesterId,
-              repairMissingTimes: repairMissingTimes,
-              selectImportMode: selectImportMode);
+            username,
+            content,
+            semesterStart: targetSemester.startDate,
+            semesterId: targetSemesterId,
+            repairMissingTimes: repairMissingTimes,
+            selectImportMode: selectImportMode,
+          );
         } else {
           statusNotifier.value = "❌ 未知的文件格式\n暂不支持解析该文件";
           await Future.delayed(const Duration(seconds: 2));
@@ -793,13 +823,14 @@ class ExternalShareHandler {
     ]);
 
     final todoResults = RecognizedTodoAdapter.normalizeImageResults(
-      results.first
-          .where((result) => !FinanceTextParser.isFinanceResult(result)),
+      results.first.where(
+        (result) => !FinanceTextParser.isFinanceResult(result),
+      ),
     );
-    final financeDrafts = FinanceTextParser.fromRecognitionResults(
-      [...results.first, ...results.last],
-      source: FinanceEntrySource.import,
-    );
+    final financeDrafts = FinanceTextParser.fromRecognitionResults([
+      ...results.first,
+      ...results.last,
+    ], source: FinanceEntrySource.import);
     if (todoResults.isEmpty && financeDrafts.isEmpty) {
       final detail = errors.isNotEmpty ? ': ${errors.first}' : '';
       throw Exception('图片识别未返回可识别内容$detail');
@@ -863,10 +894,9 @@ class ExternalShareHandler {
     }
 
     try {
-      final header = await file.openRead(0, 12).fold<List<int>>(
-        <int>[],
-        (bytes, chunk) => bytes..addAll(chunk),
-      );
+      final header = await file
+          .openRead(0, 12)
+          .fold<List<int>>(<int>[], (bytes, chunk) => bytes..addAll(chunk));
       if (header.length >= 3 &&
           header[0] == 0xff &&
           header[1] == 0xd8 &&
@@ -922,8 +952,15 @@ class ExternalShareHandler {
           header[6] == 0x79 &&
           header[7] == 0x70) {
         final brand = String.fromCharCodes(header.sublist(8, 12));
-        return const {'heic', 'heix', 'hevc', 'hevx', 'mif1', 'msf1', 'avif'}
-            .contains(brand);
+        return const {
+          'heic',
+          'heix',
+          'hevc',
+          'hevx',
+          'mif1',
+          'msf1',
+          'avif',
+        }.contains(brand);
       }
     } catch (_) {
       return false;
@@ -960,9 +997,7 @@ class ExternalShareHandler {
       } catch (error) {
         lastError = error;
       }
-      await Future.delayed(
-        Duration(milliseconds: attempt == 0 ? 100 : 250),
-      );
+      await Future.delayed(Duration(milliseconds: attempt == 0 ? 100 : 250));
     }
     final detail = lastError == null ? '' : ': $lastError';
     throw Exception('分享文件暂不可读取$detail');
@@ -1040,10 +1075,13 @@ class ExternalShareHandler {
     try {
       final pending = await StorageService.getPendingTodoConfirm();
       if (pending != null) {
-        final pendingStatus =
-            pending['status']?.toString().trim().toLowerCase();
-        final pendingSessionId =
-            pending['processingSessionId']?.toString().trim();
+        final pendingStatus = pending['status']
+            ?.toString()
+            .trim()
+            .toLowerCase();
+        final pendingSessionId = pending['processingSessionId']
+            ?.toString()
+            .trim();
 
         bool blocksRecognition() {
           return TodoRecognitionState.blocksDuplicate(
@@ -1171,13 +1209,11 @@ class ExternalShareHandler {
       status: 'failed',
       errorMsg: '上次图片识别已中断，请点击重试',
     );
-    final recognitionHandle =
-        AiRecognitionChatBridge.handleFromPending(pending);
+    final recognitionHandle = AiRecognitionChatBridge.handleFromPending(
+      pending,
+    );
     if (recognitionHandle != null) {
-      await AiRecognitionChatBridge.fail(
-        recognitionHandle,
-        '上次图片识别已中断，请点击重试',
-      );
+      await AiRecognitionChatBridge.fail(recognitionHandle, '上次图片识别已中断，请点击重试');
     }
     await NotificationService.cancelTodoRecognizeNotification();
     return true;
@@ -1201,7 +1237,7 @@ class ExternalShareHandler {
     required int maxRetries,
     Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
     FutureOr<void> Function(List<FinanceEntryDraft>, String?)?
-        onFinanceRecognized,
+    onFinanceRecognized,
     AiRecognitionHandle? recognitionHandle,
   }) async {
     // debugPrint("启动后台重试: filePath=$filePath, maxRetries=$maxRetries");
@@ -1314,9 +1350,7 @@ class ExternalShareHandler {
       }
 
       // 发送成功通知
-      await NotificationService.showTodoRecognizeSuccess(
-        todoCount: totalCount,
-      );
+      await NotificationService.showTodoRecognizeSuccess(todoCount: totalCount);
 
       // 通知首页刷新（成功时自动打开确认页面）
       if (financeDrafts.isNotEmpty) {
@@ -1375,7 +1409,7 @@ class ExternalShareHandler {
   static Future<void> retryTodoRecognition({
     Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
     FutureOr<void> Function(List<FinanceEntryDraft>, String?)?
-        onFinanceRecognized,
+    onFinanceRecognized,
   }) async {
     if (_isRetryingTodoRecognition) return;
     _isRetryingTodoRecognition = true;
@@ -1392,7 +1426,7 @@ class ExternalShareHandler {
   static Future<void> _retryTodoRecognition({
     Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
     FutureOr<void> Function(List<FinanceEntryDraft>, String?)?
-        onFinanceRecognized,
+    onFinanceRecognized,
   }) async {
     final pendingData = await StorageService.getPendingTodoConfirm();
     if (pendingData == null) {
@@ -1413,8 +1447,9 @@ class ExternalShareHandler {
     // 无论待确认记录来自哪个版本，重试时都重新计算当前原图指纹，
     // 让旧版路径标识也迁移到新版的跨重启去重协议。
     final sourceKey = await _generateFileKey(imagePath);
-    var recognitionHandle =
-        AiRecognitionChatBridge.handleFromPending(pendingData);
+    var recognitionHandle = AiRecognitionChatBridge.handleFromPending(
+      pendingData,
+    );
     if (recognitionHandle == null) {
       try {
         recognitionHandle = await AiRecognitionChatBridge.startImage(imagePath);
@@ -1432,10 +1467,7 @@ class ExternalShareHandler {
         errorMsg: '图片文件不存在，请重新分享',
       );
       if (recognitionHandle != null) {
-        await AiRecognitionChatBridge.fail(
-          recognitionHandle,
-          '图片文件不存在，请重新分享',
-        );
+        await AiRecognitionChatBridge.fail(recognitionHandle, '图片文件不存在，请重新分享');
       }
       if (onTodoRecognized != null) {
         onTodoRecognized([], imagePath);
@@ -1517,10 +1549,7 @@ class ExternalShareHandler {
           errorMsg: '未识别到可添加的事项',
         );
         if (recognitionHandle != null) {
-          await AiRecognitionChatBridge.fail(
-            recognitionHandle,
-            '未识别到可添加的事项',
-          );
+          await AiRecognitionChatBridge.fail(recognitionHandle, '未识别到可添加的事项');
         }
 
         await NotificationService.showTodoRecognizeFailed(
@@ -1543,9 +1572,7 @@ class ExternalShareHandler {
       }
 
       // 显示失败通知
-      await NotificationService.showTodoRecognizeFailed(
-        errorMsg: errorMsg,
-      );
+      await NotificationService.showTodoRecognizeFailed(errorMsg: errorMsg);
 
       // 不通知首页刷新，让用户点击重试按钮来手动刷新
     }

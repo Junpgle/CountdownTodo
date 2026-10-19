@@ -13,10 +13,10 @@ final Map<(String?, String), DateFormat> _homeAgendaDateFormats = {};
 
 DateFormat _homeAgendaDateFormat(String pattern) {
   final locale = Intl.defaultLocale;
-  return _homeAgendaDateFormats.putIfAbsent(
-    (locale, pattern),
-    () => DateFormat(pattern, locale),
-  );
+  return _homeAgendaDateFormats.putIfAbsent((
+    locale,
+    pattern,
+  ), () => DateFormat(pattern, locale));
 }
 
 /// The single homepage surface. Source-specific actions live in the host.
@@ -46,8 +46,7 @@ class HomeAgendaCard extends StatefulWidget {
     this.isForeground = true,
   });
   final HomeAgendaSnapshot? snapshot;
-  final bool
-      collapsed,
+  final bool collapsed,
       loading,
       enabled,
       showPlans,
@@ -115,9 +114,7 @@ class _HomeAgendaCardState extends State<HomeAgendaCard> {
     final current = item.isCurrent(widget.snapshot!.instant);
     final attention = item.needsAttention(widget.snapshot!.instant);
     final crossDay = !DateUtils.isSameDay(item.start, item.end);
-    final format = _homeAgendaDateFormat(
-      crossDay ? 'MM-dd\nHH:mm' : 'HH:mm',
-    );
+    final format = _homeAgendaDateFormat(crossDay ? 'MM-dd\nHH:mm' : 'HH:mm');
     final plan = item.plan;
     final expanded = plan != null && widget.expandedPlanId == plan.entry.id;
     final endLabel = item.fixed?.isEndTimeTbd == true

@@ -1,4 +1,5 @@
 part of 'home_dashboard.dart';
+
 // ignore_for_file: annotate_overrides
 
 mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
@@ -52,8 +53,9 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     });
     _loadSemesterSettings();
     _loadHomeTextConfig();
-    ThirtyDayChallengeRepository.activityRevision
-        .addListener(_onThirtyDayChallengeActivityChanged);
+    ThirtyDayChallengeRepository.activityRevision.addListener(
+      _onThirtyDayChallengeActivityChanged,
+    );
     unawaited(_loadThirtyDayChallengeStatus());
     _generateGreeting();
     _initManifestWallpaper();
@@ -61,11 +63,13 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     // 首页首轮加载完成后会把同一批数据直接交给灵动岛，避免冷启动时
     // 灵动岛与首页并发执行两套完整的 SQLite 查询。
     MacPomodoroStatusBarService.init(deferOngoingActivityRestore: true);
-    _macIslandCommandSub =
-        MacPomodoroStatusBarService.onCommand.listen(_handleMacIslandCommand);
+    _macIslandCommandSub = MacPomodoroStatusBarService.onCommand.listen(
+      _handleMacIslandCommand,
+    );
     if (AppPlatform.isMacOS) {
-      _macIslandActionSub =
-          MacPomodoroStatusBarService.onAction.listen(_handleMacIslandAction);
+      _macIslandActionSub = MacPomodoroStatusBarService.onAction.listen(
+        _handleMacIslandAction,
+      );
     }
     _configureBackgroundNotificationPoll();
     _initCrossDevicePomodoro(); // 首页也连接 WS
@@ -73,8 +77,9 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     // 🚀 Granular Refresh Initialization
     _todosNotifier = ValueNotifier<List<TodoItem>>(_todos);
     _groupsNotifier = ValueNotifier<List<TodoGroup>>(_todoGroups);
-    _courseDataNotifier =
-        ValueNotifier<Map<String, dynamic>>(_dashboardCourseData);
+    _courseDataNotifier = ValueNotifier<Map<String, dynamic>>(
+      _dashboardCourseData,
+    );
     _countdownsNotifier = ValueNotifier<List<CountdownItem>>(_countdowns);
     _mathStatsNotifier = ValueNotifier<Map<String, dynamic>>(_mathStats);
 
@@ -88,54 +93,70 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
 
     // 🚀 使用集中式事件分发，避免多个页面覆盖同一个 MethodChannel handler
     if (AppPlatform.isAndroid || AppPlatform.isIOS) {
-      _notifSubs.add(NotificationService.listen('markCurrentTodoDone', (call) {
-        // debugPrint("📱 收到 markCurrentTodoDone 调用: arguments=${call.arguments}");
-        final args = call.arguments;
-        int? notifId;
-        if (args is Map) {
-          notifId = args['notificationId'] as int?;
-        }
-        // debugPrint("📱 解析 notifId: $notifId");
-        _markCurrentTodoDone(notifId: notifId);
-      }));
-      _notifSubs.add(NotificationService.listen('openTodoConfirm', (call) {
-        _checkPendingTodoConfirm();
-      }));
-      _notifSubs.add(NotificationService.listen('openShortcut', (call) {
-        final shortcutType = call.arguments as String?;
-        // debugPrint("⚡ 收到 openShortcut 调用: $shortcutType");
-        if (shortcutType != null) {
-          _handleShortcut(shortcutType);
-        }
-      }));
-      _notifSubs.add(NotificationService.listen('viewAnalysisImage', (call) {
-        final imagePath = call.arguments as String?;
-        if (imagePath != null && mounted) {
-          _showAnalysisImage(imagePath);
-        }
-      }));
-      _notifSubs.add(NotificationService.listen('viewOriginalText', (call) {
-        final text = call.arguments as String?;
-        if (text != null && mounted) {
-          _showOriginalText(text);
-        }
-      }));
-      _notifSubs.add(NotificationService.listen('openPlanBlock', (call) {
-        // debugPrint("📅 收到 openPlanBlock 调用: arguments=${call.arguments}");
-        if (mounted) {
-          _handleOpenPlanBlock(call.arguments);
-        }
-      }));
-      _notifSubs.add(NotificationService.listen('openPomodoro', (call) {
-        // debugPrint("🍅 收到 openPomodoro 调用");
-        _navigateToPomodoro();
-      }));
-      _notifSubs.add(NotificationService.listen('openTodoList', (call) {
-        // debugPrint("📋 收到 openTodoList 调用");
-        if (mounted) {
-          Navigator.of(context).popUntil((route) => route.isFirst);
-        }
-      }));
+      _notifSubs.add(
+        NotificationService.listen('markCurrentTodoDone', (call) {
+          // debugPrint("📱 收到 markCurrentTodoDone 调用: arguments=${call.arguments}");
+          final args = call.arguments;
+          int? notifId;
+          if (args is Map) {
+            notifId = args['notificationId'] as int?;
+          }
+          // debugPrint("📱 解析 notifId: $notifId");
+          _markCurrentTodoDone(notifId: notifId);
+        }),
+      );
+      _notifSubs.add(
+        NotificationService.listen('openTodoConfirm', (call) {
+          _checkPendingTodoConfirm();
+        }),
+      );
+      _notifSubs.add(
+        NotificationService.listen('openShortcut', (call) {
+          final shortcutType = call.arguments as String?;
+          // debugPrint("⚡ 收到 openShortcut 调用: $shortcutType");
+          if (shortcutType != null) {
+            _handleShortcut(shortcutType);
+          }
+        }),
+      );
+      _notifSubs.add(
+        NotificationService.listen('viewAnalysisImage', (call) {
+          final imagePath = call.arguments as String?;
+          if (imagePath != null && mounted) {
+            _showAnalysisImage(imagePath);
+          }
+        }),
+      );
+      _notifSubs.add(
+        NotificationService.listen('viewOriginalText', (call) {
+          final text = call.arguments as String?;
+          if (text != null && mounted) {
+            _showOriginalText(text);
+          }
+        }),
+      );
+      _notifSubs.add(
+        NotificationService.listen('openPlanBlock', (call) {
+          // debugPrint("📅 收到 openPlanBlock 调用: arguments=${call.arguments}");
+          if (mounted) {
+            _handleOpenPlanBlock(call.arguments);
+          }
+        }),
+      );
+      _notifSubs.add(
+        NotificationService.listen('openPomodoro', (call) {
+          // debugPrint("🍅 收到 openPomodoro 调用");
+          _navigateToPomodoro();
+        }),
+      );
+      _notifSubs.add(
+        NotificationService.listen('openTodoList', (call) {
+          // debugPrint("📋 收到 openTodoList 调用");
+          if (mounted) {
+            Navigator.of(context).popUntil((route) => route.isFirst);
+          }
+        }),
+      );
       _notifSubs.add(
         NotificationService.listen('windowConfigurationChanged', (call) {
           if (!mounted) return;
@@ -151,23 +172,27 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
         }),
       );
       // 习惯目标提醒：点击打开习惯中心。
-      _notifSubs.add(NotificationService.listen('openHabitCenter', (call) {
-        if (!mounted) return;
-        Navigator.of(context).popUntil((route) => route.isFirst);
-        PageTransitions.pushFromRect(
-          context: context,
-          page: HabitCenterScreen(username: widget.username),
-          sourceKey: GlobalKey(),
-        );
-        _habitsRevision.value++;
-      }));
+      _notifSubs.add(
+        NotificationService.listen('openHabitCenter', (call) {
+          if (!mounted) return;
+          Navigator.of(context).popUntil((route) => route.isFirst);
+          PageTransitions.pushFromRect(
+            context: context,
+            page: HabitCenterScreen(username: widget.username),
+            sourceKey: GlobalKey(),
+          );
+          _habitsRevision.value++;
+        }),
+      );
       // 通知按钮事件：如果不在番茄钟页，先导航过去，
       // 并把动作随路由传给工作台，避免动作在导航期间丢失。
       for (final action in ['pomodoroFinishEarly', 'pomodoroAbandon']) {
-        _notifSubs.add(NotificationService.listen(action, (call) {
-          // debugPrint("🍅 收到 $action");
-          _navigateToPomodoro(notificationAction: action);
-        }));
+        _notifSubs.add(
+          NotificationService.listen(action, (call) {
+            // debugPrint("🍅 收到 $action");
+            _navigateToPomodoro(notificationAction: action);
+          }),
+        );
       }
     }
 
@@ -247,8 +272,13 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     }
 
     final now = DateTime.now();
-    final currentMinute =
-        DateTime(now.year, now.month, now.day, now.hour, now.minute);
+    final currentMinute = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      now.hour,
+      now.minute,
+    );
     final delay = currentMinute.add(const Duration(minutes: 1)).difference(now);
     _dashboardMinuteTimer = Timer(delay, () {
       _dashboardMinuteTimer = null;
@@ -298,14 +328,17 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     for (final sub in _notifSubs) {
       sub.cancel();
     }
-    StorageService.scopedDataRefreshNotifier
-        .removeListener(_onScopedDataRefresh);
+    StorageService.scopedDataRefreshNotifier.removeListener(
+      _onScopedDataRefresh,
+    );
     StorageService.wallpaperRefreshNotifier.removeListener(_onWallpaperRefresh);
-    ScreenTimeService.dataRefreshNotifier
-        .removeListener(_onScreenTimeDataRefresh);
+    ScreenTimeService.dataRefreshNotifier.removeListener(
+      _onScreenTimeDataRefresh,
+    );
     AiRecognitionChatBridge.changes.removeListener(_onAiRecognitionChatChanged);
-    ThirtyDayChallengeRepository.activityRevision
-        .removeListener(_onThirtyDayChallengeActivityChanged);
+    ThirtyDayChallengeRepository.activityRevision.removeListener(
+      _onThirtyDayChallengeActivityChanged,
+    );
     _todosNotifier.dispose();
     _groupsNotifier.dispose();
     _courseDataNotifier.dispose();
@@ -568,9 +601,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: const Text('开启导入的挑战？'),
-          content: Text(
-            '当前正在进行「$_thirtyDayChallengeTitle」。开始新挑战后，当前挑战会被替换。',
-          ),
+          content: Text('当前正在进行「$_thirtyDayChallengeTitle」。开始新挑战后，当前挑战会被替换。'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -646,7 +677,8 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
       AppSnackBars.showSnackBar(
         context,
         SnackBar(
-            content: Text(result['error'] ?? result['message'] ?? '加入团队失败')),
+          content: Text(result['error'] ?? result['message'] ?? '加入团队失败'),
+        ),
       );
     }
   }
@@ -710,10 +742,12 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     final habitDisplayLimit = await HomeLayoutService.loadHabitDisplayLimit();
     final selectedVisibility = isWide ? wideVisibility : mobileVisibility;
     final normalizedVisibility = HomeLayoutService.normalizeVisibility(
-      firstTarget:
-          isWide ? HomeLayoutTarget.wideLeft : HomeLayoutTarget.mobileHome,
-      secondTarget:
-          isWide ? HomeLayoutTarget.wideRight : HomeLayoutTarget.mobileFocus,
+      firstTarget: isWide
+          ? HomeLayoutTarget.wideLeft
+          : HomeLayoutTarget.mobileHome,
+      secondTarget: isWide
+          ? HomeLayoutTarget.wideRight
+          : HomeLayoutTarget.mobileFocus,
       raw: Map<String, dynamic>.from(selectedVisibility),
     );
 
@@ -804,8 +838,10 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
       if (prefs.getBool('float_window_enabled') ?? true) {
         final allTags = await PomodoroService.getTags();
         final tagNames = saved.tagUuids
-            .map((uuid) =>
-                allTags.where((t) => t.uuid == uuid).firstOrNull?.name ?? '')
+            .map(
+              (uuid) =>
+                  allTags.where((t) => t.uuid == uuid).firstOrNull?.name ?? '',
+            )
             .where((n) => n.isNotEmpty)
             .toList();
         final isCountUp = saved.mode == TimerMode.countUp;
@@ -885,19 +921,22 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
       int totalPending = 0;
 
       // 并发获取各团队待处理数
-      await Future.wait(rawTeams.map((t) async {
-        if (t['role'] == 0) {
-          // 如果是管理员
-          final reqs = await ApiService.fetchPendingRequests(t['uuid']);
-          totalPending += reqs.length;
-        }
-      }));
+      await Future.wait(
+        rawTeams.map((t) async {
+          if (t['role'] == 0) {
+            // 如果是管理员
+            final reqs = await ApiService.fetchPendingRequests(t['uuid']);
+            totalPending += reqs.length;
+          }
+        }),
+      );
 
       if (mounted) {
-        final backgroundUnread = await BackgroundNotificationService
-            .getUnreadBackgroundNotifications();
+        final backgroundUnread =
+            await BackgroundNotificationService.getUnreadBackgroundNotifications();
         setState(
-            () => _teamPendingCount = totalPending + backgroundUnread.length);
+          () => _teamPendingCount = totalPending + backgroundUnread.length,
+        );
       }
     } catch (e) {
       // debugPrint('❌ [首页] 获取团队消息计数失败: $e');
@@ -911,8 +950,9 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     if (guideNeeded) return;
 
     int interval = await StorageService.getSyncInterval();
-    DateTime? lastSync =
-        await StorageService.getLastAutoSyncTime(widget.username);
+    DateTime? lastSync = await StorageService.getLastAutoSyncTime(
+      widget.username,
+    );
     DateTime now = DateTime.now();
 
     if (force || interval == 0) {
@@ -936,8 +976,11 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
 
       List<TodoItem> activeTodos = _todos.where((t) {
         if (t.dueDate == null) return true;
-        DateTime d =
-            DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
+        DateTime d = DateTime(
+          t.dueDate!.year,
+          t.dueDate!.month,
+          t.dueDate!.day,
+        );
         return !d.isAfter(today);
       }).toList();
 
@@ -980,7 +1023,8 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
 
       // 取消特殊待办的通知
       await NotificationService.cancelSpecialTodoNotification(
-          todoToComplete.id.hashCode);
+        todoToComplete.id.hashCode,
+      );
 
       todoToComplete.isDone = true;
       todoToComplete.markAsChanged();
@@ -1019,8 +1063,9 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
         AppSnackBars.showSnackBar(
           context,
           SnackBar(
-              content: Text('已完成: ${todoToComplete.title}'),
-              duration: const Duration(seconds: 1)),
+            content: Text('已完成: ${todoToComplete.title}'),
+            duration: const Duration(seconds: 1),
+          ),
         );
       }
     } finally {

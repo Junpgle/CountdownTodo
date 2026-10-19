@@ -14,10 +14,10 @@ final Map<(String?, String), DateFormat> _planExecutionDateFormats = {};
 
 DateFormat _planExecutionDateFormat(String pattern) {
   final locale = Intl.defaultLocale;
-  return _planExecutionDateFormats.putIfAbsent(
-    (locale, pattern),
-    () => DateFormat(pattern, locale),
-  );
+  return _planExecutionDateFormats.putIfAbsent((
+    locale,
+    pattern,
+  ), () => DateFormat(pattern, locale));
 }
 
 /// Presentation only: actual records keep their identity and never become

@@ -22,29 +22,31 @@ void main() {
     expect(item.version, 3);
   });
 
-  test('timeline and fixed schedule parsers do not throw on malformed values',
-      () {
-    final event = TimelineEvent.fromMap({
-      'type': 'invalid',
-      'timestamp': 'invalid',
-      'title': 123,
-    });
-    final schedule = FixedScheduleItem.fromJson({
-      'title': '课程',
-      'date': '2026-01-02',
-      'status': 'invalid',
-      'source': 'invalid',
-      'custom_interval_days': '14',
-      'owner_user_id': '9',
-    });
+  test(
+    'timeline and fixed schedule parsers do not throw on malformed values',
+    () {
+      final event = TimelineEvent.fromMap({
+        'type': 'invalid',
+        'timestamp': 'invalid',
+        'title': 123,
+      });
+      final schedule = FixedScheduleItem.fromJson({
+        'title': '课程',
+        'date': '2026-01-02',
+        'status': 'invalid',
+        'source': 'invalid',
+        'custom_interval_days': '14',
+        'owner_user_id': '9',
+      });
 
-    expect(event.type, TimelineEventType.pomodoroStart);
-    expect(event.title, '123');
-    expect(schedule.status, FixedScheduleStatus.scheduled);
-    expect(schedule.source, FixedScheduleSource.manual);
-    expect(schedule.customIntervalDays, 14);
-    expect(schedule.ownerUserId, 9);
-  });
+      expect(event.type, TimelineEventType.pomodoroStart);
+      expect(event.title, '123');
+      expect(schedule.status, FixedScheduleStatus.scheduled);
+      expect(schedule.source, FixedScheduleSource.manual);
+      expect(schedule.customIntervalDays, 14);
+      expect(schedule.ownerUserId, 9);
+    },
+  );
 
   test('timeline supports finance events and keeps their edit metadata', () {
     final event = TimelineEvent.fromMap({

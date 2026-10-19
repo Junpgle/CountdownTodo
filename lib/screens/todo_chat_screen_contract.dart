@@ -99,6 +99,7 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
     }
     return count;
   }
+
   bool get _hasActionRailSpace {
     final width = MediaQuery.of(context).size.width;
     const actionRailWidth = 344.0;
@@ -154,9 +155,7 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
       latestUserRequest,
       cleanExtraText,
       actionContext,
-    ]
-        .where((content) => content.trim().isNotEmpty)
-        .join('\n');
+    ].where((content) => content.trim().isNotEmpty).join('\n');
   }
 
   String _suggestionCardContext({
@@ -267,6 +266,7 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
         add(value);
       }
     }
+
     for (final call in nativeToolCalls) {
       if (call.name.startsWith('query_') && call.result != null) {
         addQueryText(call.result);
@@ -275,9 +275,7 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
     return values.join('\n');
   }
 
-  List<String> _recentAssistantSuggestions(
-    Iterable<ChatMessage> messages,
-  ) {
+  List<String> _recentAssistantSuggestions(Iterable<ChatMessage> messages) {
     final assistants = messages
         .where((message) => message.role == ChatRole.assistant)
         .toList(growable: false);

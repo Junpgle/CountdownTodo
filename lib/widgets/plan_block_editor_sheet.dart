@@ -44,10 +44,10 @@ final Map<(String?, String), DateFormat> _planBlockEditorDateFormats = {};
 
 DateFormat _planBlockEditorDateFormat(String pattern) {
   final locale = Intl.defaultLocale;
-  return _planBlockEditorDateFormats.putIfAbsent(
-    (locale, pattern),
-    () => DateFormat(pattern, locale),
-  );
+  return _planBlockEditorDateFormats.putIfAbsent((
+    locale,
+    pattern,
+  ), () => DateFormat(pattern, locale));
 }
 
 Future<T?> showPlanBlockEditorPage<T>({
@@ -188,7 +188,8 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   (String?, String?) _selectedTodoMetadata = (null, null);
   int _estimateSequence = 0, _draftRevision = 0, _savedDraftRevision = -1;
   late final PlanManualCompletionService _manualCompletion =
-      widget.manualCompletionService ?? PlanManualCompletionService(clock: widget.clock);
+      widget.manualCompletionService ??
+      PlanManualCompletionService(clock: widget.clock);
   bool _busy = false, _recommendationStale = false, _focusStarted = false;
   PlanAvailabilitySelection? _recommendation;
   TodoPlanBlock? _persistedBlock;
@@ -1955,11 +1956,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
             placeholderIcon: Icons.timer_outlined,
           );
         } else {
-          navigator.push(
-            PageTransitions.material(
-              builder: (_) => page,
-            ),
-          );
+          navigator.push(PageTransitions.material(builder: (_) => page));
         }
         return;
       }
@@ -2318,15 +2315,22 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
               },
               itemBuilder: (_) => [
                 if (_canManualComplete)
-                  PopupMenuItem(enabled: !_openingReuse, value: 'manual-complete',
-                    child: Text('确认规划已完成')),
+                  PopupMenuItem(
+                    enabled: !_openingReuse,
+                    value: 'manual-complete',
+                    child: Text('确认规划已完成'),
+                  ),
                 if (_canReuse)
                   PopupMenuItem(
                     value: 'reuse',
                     enabled: !_busy && !_openingReuse && !_draftLoading,
                     child: Text(_openingReuse ? '正在读取设置…' : '照此新建'),
                   ),
-                PopupMenuItem(enabled: !_openingReuse, value: 'skip', child: const Text('跳过规划')),
+                PopupMenuItem(
+                  enabled: !_openingReuse,
+                  value: 'skip',
+                  child: const Text('跳过规划'),
+                ),
                 PopupMenuItem(
                   value: 'delete',
                   enabled: !_openingReuse,

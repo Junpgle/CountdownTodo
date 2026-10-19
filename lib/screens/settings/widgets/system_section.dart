@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../../../utils/app_platform.dart';
 import '../../../utils/theme_color_tokens.dart';
 import '../../../widgets/app_settings_widgets.dart';
@@ -67,8 +68,10 @@ class SystemSection extends StatelessWidget {
             context: context,
             targetId: 'calendar_sync',
             child: ListTile(
-              leading: Icon(Icons.event_available_outlined,
-                  color: colorScheme.secondary),
+              leading: Icon(
+                Icons.event_available_outlined,
+                color: colorScheme.secondary,
+              ),
               title: const Text('写入手机系统日历'),
               subtitle: const Text('选择待办、课程、倒数日写入或清除'),
               trailing: const Icon(Icons.chevron_right),
@@ -82,8 +85,10 @@ class SystemSection extends StatelessWidget {
             context: context,
             targetId: 'cache',
             child: ListTile(
-              leading: Icon(Icons.cleaning_services,
-                  color: Theme.of(context).colorScheme.secondary),
+              leading: Icon(
+                Icons.cleaning_services,
+                color: Theme.of(context).colorScheme.secondary,
+              ),
               title: const Text('深度清理缓存与冗余'),
               subtitle: const Text('包含更新残留包与深度图片缓存'),
               trailing: AnimatedSwitcher(
@@ -92,8 +97,9 @@ class SystemSection extends StatelessWidget {
                   cacheSizeStr,
                   key: ValueKey(cacheSizeStr),
                   style: TextStyle(
-                      color: colorScheme.onSurfaceVariant,
-                      fontWeight: FontWeight.bold),
+                    color: colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
               onTap: onClearCache,

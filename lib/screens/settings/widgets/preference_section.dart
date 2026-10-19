@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../../services/api_service.dart';
 import '../../../services/llm_service.dart';
 import '../../../utils/app_platform.dart';
@@ -171,7 +172,8 @@ class PreferenceSection extends StatelessWidget {
                       height: 24,
                       margin: const EdgeInsets.only(right: 12),
                       decoration: BoxDecoration(
-                        color: customThemeColor ??
+                        color:
+                            customThemeColor ??
                             Theme.of(context).colorScheme.primary,
                         shape: BoxShape.circle,
                         border: Border.all(color: colorScheme.outline),
@@ -184,9 +186,13 @@ class PreferenceSection extends StatelessWidget {
                   items: const [
                     DropdownMenuItem(value: 'default', child: Text('默认蓝色')),
                     DropdownMenuItem(
-                        value: 'system_wallpaper', child: Text('跟随壁纸/系统')),
+                      value: 'system_wallpaper',
+                      child: Text('跟随壁纸/系统'),
+                    ),
                     DropdownMenuItem(
-                        value: 'image_extracted', child: Text('从图片提取')),
+                      value: 'image_extracted',
+                      child: Text('从图片提取'),
+                    ),
                     DropdownMenuItem(value: 'custom', child: Text('自定义颜色')),
                   ],
                   onChanged: onThemeColorModeChanged,
@@ -236,7 +242,8 @@ class PreferenceSection extends StatelessWidget {
               Navigator.push(
                 context,
                 PageTransitions.material(
-                    builder: (context) => const WallpaperSettingsPage()),
+                  builder: (context) => const WallpaperSettingsPage(),
+                ),
               );
             },
           ),
@@ -254,7 +261,8 @@ class PreferenceSection extends StatelessWidget {
               final result = await Navigator.push<bool>(
                 context,
                 PageTransitions.material(
-                    builder: (context) => const HomeTextConfigPage()),
+                  builder: (context) => const HomeTextConfigPage(),
+                ),
               );
               if (result == true && context.mounted) {
                 (context as Element).markNeedsBuild();

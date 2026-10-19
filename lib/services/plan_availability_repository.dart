@@ -351,14 +351,7 @@ class PlanAvailabilityRepository {
           start.day != dueDate.day) {
         continue;
       }
-      add(
-        start,
-        end,
-        PlanBusySource.legacyTodo,
-        item.id,
-        item.title,
-        item,
-      );
+      add(start, end, PlanBusySource.legacyTodo, item.id, item.title, item);
     }
     return PlanAvailabilityDaySources(
       date: query.dayStart,

@@ -20,7 +20,8 @@ Future<ImageInputData> readImageInput(String imagePath) async {
     }
     return ImageInputData(
       bytes: response.bodyBytes,
-      mimeType: response.headers['content-type']?.split(';').first ??
+      mimeType:
+          response.headers['content-type']?.split(';').first ??
           _guessMimeType(imagePath),
       displayName: imagePath,
     );
@@ -34,8 +35,9 @@ ImageInputData _readDataUrl(String dataUrl) {
   if (comma <= 0) throw const FormatException('无效的 data URL');
   final meta = dataUrl.substring(5, comma);
   final payload = dataUrl.substring(comma + 1);
-  final mimeType =
-      meta.split(';').first.isEmpty ? 'image/jpeg' : meta.split(';').first;
+  final mimeType = meta.split(';').first.isEmpty
+      ? 'image/jpeg'
+      : meta.split(';').first;
   final bytes = meta.contains(';base64')
       ? base64Decode(payload)
       : Uint8List.fromList(utf8.encode(Uri.decodeComponent(payload)));

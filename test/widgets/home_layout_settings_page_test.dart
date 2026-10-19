@@ -44,8 +44,9 @@ void main() {
     expect(find.text('右栏'), findsNothing);
   });
 
-  testWidgets('moving a component between groups keeps the list tree stable',
-      (tester) async {
+  testWidgets('moving a component between groups keeps the list tree stable', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(
       const MediaQuery(
@@ -56,16 +57,25 @@ void main() {
     await tester.pumpAndSettle();
     final moveToFocus = find.byIcon(Icons.arrow_forward_rounded).first;
 
-    await tester.scrollUntilVisible(moveToFocus, 300, scrollable: find.byType(Scrollable).first);
+    await tester.scrollUntilVisible(
+      moveToFocus,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(moveToFocus);
     await tester.pumpAndSettle();
 
-    await tester.scrollUntilVisible(find.text('顶部横幅'), 400, scrollable: find.byType(Scrollable).first);
+    await tester.scrollUntilVisible(
+      find.text('顶部横幅'),
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('顶部横幅'), findsOneWidget);
   });
 
-  testWidgets('a component can be hidden without leaving the settings list',
-      (tester) async {
+  testWidgets('a component can be hidden without leaving the settings list', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(
       const MediaQuery(
@@ -75,7 +85,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.scrollUntilVisible(find.byTooltip('隐藏组件').first, 300, scrollable: find.byType(Scrollable).first);
+    await tester.scrollUntilVisible(
+      find.byTooltip('隐藏组件').first,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(find.byTooltip('隐藏组件').first);
     await tester.pumpAndSettle();
 

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+
 import 'dart:math';
+
 import '../models.dart';
 
 const _teamHeatmapColorLevels = <Color>[
@@ -60,11 +62,17 @@ class _TeamHeatmapWidgetState extends State<TeamHeatmapWidget> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
-              "全景任务热力分布 (${viewDays >= 30 ? '月视图' : viewDays >= 14 ? '双周' : '周视图'})",
-              style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey)),
+            "全景任务热力分布 (${viewDays >= 30
+                ? '月视图'
+                : viewDays >= 14
+                ? '双周'
+                : '周视图'})",
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey,
+            ),
+          ),
         ),
         const SizedBox(height: 12),
         SizedBox(
@@ -78,9 +86,12 @@ class _TeamHeatmapWidgetState extends State<TeamHeatmapWidget> {
                 padding: const EdgeInsets.only(right: 6),
                 child: Column(
                   children: List.generate(7, (dayIdx) {
-                    final date = today.subtract(Duration(
+                    final date = today.subtract(
+                      Duration(
                         days: ((weeks - 1 - weekIdx) * 7 + (6 - dayIdx))
-                            .toInt()));
+                            .toInt(),
+                      ),
+                    );
                     final count = density[_dateKey(date)] ?? 0;
                     int intensity = 0;
                     if (count > 0 && count <= 2) {
@@ -125,26 +136,34 @@ class _TeamHeatmapWidgetState extends State<TeamHeatmapWidget> {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          Text("Less",
-              style: TextStyle(
-                  fontSize: 9,
-                  color: isDark ? Colors.white38 : Colors.black38)),
+          Text(
+            "Less",
+            style: TextStyle(
+              fontSize: 9,
+              color: isDark ? Colors.white38 : Colors.black38,
+            ),
+          ),
           const SizedBox(width: 4),
           ...List.generate(
-              5,
-              (i) => Container(
-                    width: 8,
-                    height: 8,
-                    margin: const EdgeInsets.symmetric(horizontal: 1),
-                    decoration: BoxDecoration(
-                        color: _getHeatmapColor(i, isDark),
-                        borderRadius: BorderRadius.circular(1)),
-                  )),
+            5,
+            (i) => Container(
+              width: 8,
+              height: 8,
+              margin: const EdgeInsets.symmetric(horizontal: 1),
+              decoration: BoxDecoration(
+                color: _getHeatmapColor(i, isDark),
+                borderRadius: BorderRadius.circular(1),
+              ),
+            ),
+          ),
           const SizedBox(width: 4),
-          Text("More",
-              style: TextStyle(
-                  fontSize: 9,
-                  color: isDark ? Colors.white38 : Colors.black38)),
+          Text(
+            "More",
+            style: TextStyle(
+              fontSize: 9,
+              color: isDark ? Colors.white38 : Colors.black38,
+            ),
+          ),
         ],
       ),
     );

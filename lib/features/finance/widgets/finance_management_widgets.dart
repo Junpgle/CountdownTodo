@@ -25,20 +25,22 @@ class FinancePageList extends StatelessWidget {
     return SafeArea(
       top: false,
       bottom: false,
-      child: LayoutBuilder(builder: (context, constraints) {
-        final inset = math.max(16.0, (constraints.maxWidth - maxWidth) / 2);
-        return ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: EdgeInsets.fromLTRB(
-            inset,
-            topPadding + 12,
-            inset,
-            bottomPadding + MediaQuery.paddingOf(context).bottom,
-          ),
-          children: children,
-        );
-      }),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final inset = math.max(16.0, (constraints.maxWidth - maxWidth) / 2);
+          return ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.fromLTRB(
+              inset,
+              topPadding + 12,
+              inset,
+              bottomPadding + MediaQuery.paddingOf(context).bottom,
+            ),
+            children: children,
+          );
+        },
+      ),
     );
   }
 }
@@ -76,13 +78,20 @@ class FinancePageIntro extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title,
-                  style: theme.textTheme.titleLarge
-                      ?.copyWith(fontWeight: FontWeight.w700)),
+              Text(
+                title,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               const SizedBox(height: 5),
-              Text(description,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: colors.onSurfaceVariant, height: 1.5)),
+              Text(
+                description,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                  height: 1.5,
+                ),
+              ),
             ],
           ),
         ),
@@ -130,22 +139,30 @@ class FinanceSectionCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (title != null) ...[
-                Row(children: [
-                  if (icon != null) ...[
-                    Icon(icon, color: colors.primary, size: 20),
-                    const SizedBox(width: 10),
+                Row(
+                  children: [
+                    if (icon != null) ...[
+                      Icon(icon, color: colors.primary, size: 20),
+                      const SizedBox(width: 10),
+                    ],
+                    Expanded(
+                      child: Text(
+                        title!,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
                   ],
-                  Expanded(
-                    child: Text(title!,
-                        style: theme.textTheme.titleSmall
-                            ?.copyWith(fontWeight: FontWeight.w700)),
-                  ),
-                ]),
+                ),
                 if (description != null) ...[
                   const SizedBox(height: 6),
-                  Text(description!,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: colors.onSurfaceVariant)),
+                  Text(
+                    description!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
                 ],
                 const SizedBox(height: 18),
               ],
@@ -176,22 +193,28 @@ class FinanceAdaptiveFields extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (children.isEmpty) return const SizedBox.shrink();
-    return LayoutBuilder(builder: (context, constraints) {
-      final scale =
-          math.max(1.0, MediaQuery.textScalerOf(context).scale(14) / 14);
-      final columns =
-          ((constraints.maxWidth + spacing) / (minChildWidth * scale + spacing))
-              .floor()
-              .clamp(1, math.min(maxColumns, children.length));
-      final width = (constraints.maxWidth - spacing * (columns - 1)) / columns;
-      return Wrap(
-        spacing: spacing,
-        runSpacing: spacing,
-        children: [
-          for (final child in children) SizedBox(width: width, child: child)
-        ],
-      );
-    });
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final scale = math.max(
+          1.0,
+          MediaQuery.textScalerOf(context).scale(14) / 14,
+        );
+        final columns =
+            ((constraints.maxWidth + spacing) /
+                    (minChildWidth * scale + spacing))
+                .floor()
+                .clamp(1, math.min(maxColumns, children.length));
+        final width =
+            (constraints.maxWidth - spacing * (columns - 1)) / columns;
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: [
+            for (final child in children) SizedBox(width: width, child: child),
+          ],
+        );
+      },
+    );
   }
 }
 
@@ -215,33 +238,33 @@ class FinanceStatusBadge extends StatelessWidget {
     final foreground = isError
         ? colors.onErrorContainer
         : highlighted
-            ? colors.onSecondaryContainer
-            : colors.onSurfaceVariant;
+        ? colors.onSecondaryContainer
+        : colors.onSurfaceVariant;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: isError
             ? colors.errorContainer
             : highlighted
-                ? colors.secondaryContainer
-                : colors.surfaceContainerHighest,
+            ? colors.secondaryContainer
+            : colors.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Text.rich(
-        TextSpan(children: [
-          if (icon != null)
-            WidgetSpan(
-              alignment: PlaceholderAlignment.middle,
-              child: Padding(
-                padding: const EdgeInsets.only(right: 5),
-                child: Icon(icon, size: 14, color: foreground),
+        TextSpan(
+          children: [
+            if (icon != null)
+              WidgetSpan(
+                alignment: PlaceholderAlignment.middle,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 5),
+                  child: Icon(icon, size: 14, color: foreground),
+                ),
               ),
-            ),
-          TextSpan(text: label),
-        ]),
-        style: Theme.of(context)
-            .textTheme
-            .labelMedium
+            TextSpan(text: label),
+          ],
+        ),
+        style: Theme.of(context).textTheme.labelMedium
             ?.copyWith(color: foreground),
       ),
     );
@@ -273,24 +296,35 @@ class FinanceEmptyState extends StatelessWidget {
         width: double.infinity,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 18),
-          child: Column(children: [
-            Icon(icon, size: 40, color: colors.primary),
-            const SizedBox(height: 14),
-            Text(title,
+          child: Column(
+            children: [
+              Icon(icon, size: 40, color: colors.primary),
+              const SizedBox(height: 14),
+              Text(
+                title,
                 textAlign: TextAlign.center,
-                style: theme.textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            Text(description,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                description,
                 textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: colors.onSurfaceVariant, height: 1.5)),
-            if (actionLabel != null && onAction != null) ...[
-              const SizedBox(height: 18),
-              FilledButton.tonal(
-                  onPressed: onAction, child: Text(actionLabel!)),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                  height: 1.5,
+                ),
+              ),
+              if (actionLabel != null && onAction != null) ...[
+                const SizedBox(height: 18),
+                FilledButton.tonal(
+                  onPressed: onAction,
+                  child: Text(actionLabel!),
+                ),
+              ],
             ],
-          ]),
+          ),
         ),
       ),
     );
@@ -354,19 +388,19 @@ class FinanceAmountField extends StatelessWidget {
       inputFormatters: _inputFormatters,
       decoration: financeFieldDecoration(context, label: label, hint: '0.00')
           .copyWith(
-              prefixText: '¥ ',
-              prefixStyle:
-                  TextStyle(color: Theme.of(context).colorScheme.primary)),
-      style: Theme.of(context)
-          .textTheme
-          .headlineMedium
+            prefixText: '¥ ',
+            prefixStyle: TextStyle(
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+      style: Theme.of(context).textTheme.headlineMedium
           ?.copyWith(fontWeight: FontWeight.w700),
       validator: (value) =>
           parseFinanceAmount(value ?? '', allowZero: allowZero) == null
-              ? allowZero
-                  ? '请输入不小于 0、最多两位小数的金额'
-                  : '请输入大于 0、最多两位小数的金额'
-              : null,
+          ? allowZero
+                ? '请输入不小于 0、最多两位小数的金额'
+                : '请输入大于 0、最多两位小数的金额'
+          : null,
       onChanged: onChanged,
     );
   }
@@ -438,11 +472,12 @@ class FinanceFormActions extends StatelessWidget {
   final VoidCallback onSave;
   final String label;
 
-  const FinanceFormActions(
-      {super.key,
-      required this.isSaving,
-      required this.onSave,
-      required this.label});
+  const FinanceFormActions({
+    super.key,
+    required this.isSaving,
+    required this.onSave,
+    required this.label,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -451,8 +486,8 @@ class FinanceFormActions extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.surface,
         border: Border(
-            top: BorderSide(
-                color: colors.outlineVariant.withValues(alpha: 0.5))),
+          top: BorderSide(color: colors.outlineVariant.withValues(alpha: 0.5)),
+        ),
       ),
       child: SafeArea(
         top: false,
@@ -467,12 +502,16 @@ class FinanceFormActions extends StatelessWidget {
                 child: FilledButton.icon(
                   onPressed: isSaving ? null : onSave,
                   style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 14)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 14,
+                    ),
+                  ),
                   icon: isSaving
                       ? const SizedBox.square(
                           dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2))
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
                       : const Icon(Icons.check_rounded),
                   label: Text(isSaving ? '保存中…' : label),
                 ),

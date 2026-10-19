@@ -34,10 +34,10 @@ class TodoEditScreenState extends State<TodoEditScreen> {
 
   DateFormat _dateFormat(String pattern) {
     final locale = Intl.defaultLocale;
-    return _dateFormatCache.putIfAbsent(
-      (locale, pattern),
-      () => DateFormat(pattern, locale),
-    );
+    return _dateFormatCache.putIfAbsent((
+      locale,
+      pattern,
+    ), () => DateFormat(pattern, locale));
   }
 
   bool _hasEditingTodoImage() {

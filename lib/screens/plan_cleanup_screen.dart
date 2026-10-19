@@ -235,10 +235,10 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
 
   DateFormat _cachedDateFormat(String pattern) {
     final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent(
-      (locale, pattern),
-      () => DateFormat(pattern, locale),
-    );
+    return _dateFormatters.putIfAbsent((
+      locale,
+      pattern,
+    ), () => DateFormat(pattern, locale));
   }
 
   @override
@@ -808,9 +808,9 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     if (mounted) setState(() => _working = false);
   }
 
-  String _date(int ms) => _cachedDateFormat('yyyy/M/d').format(
-    DateTime.fromMillisecondsSinceEpoch(ms),
-  );
+  String _date(int ms) =>
+      _cachedDateFormat('yyyy/M/d')
+          .format(DateTime.fromMillisecondsSinceEpoch(ms));
   String _range(PlanCleanupItem item) {
     final start = DateTime.fromMillisecondsSinceEpoch(item.start),
         end = DateTime.fromMillisecondsSinceEpoch(item.end);

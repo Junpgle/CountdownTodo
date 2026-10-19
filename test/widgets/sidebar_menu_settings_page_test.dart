@@ -5,8 +5,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:countdown_todo/screens/settings/pages/sidebar_menu_settings_page.dart';
 
 void main() {
-  testWidgets('an entry can be hidden and restored in sidebar settings',
-      (tester) async {
+  testWidgets('an entry can be hidden and restored in sidebar settings', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(
       const MediaQuery(

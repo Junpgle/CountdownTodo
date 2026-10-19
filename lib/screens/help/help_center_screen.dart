@@ -33,22 +33,21 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
   final Map<String, GlobalKey> _navigationKeys = {};
 
   GlobalKey _navigationKey(String id) => _navigationKeys.putIfAbsent(
-        id,
-        () => GlobalKey(debugLabel: 'settings-help-$id'),
-      );
+    id,
+    () => GlobalKey(debugLabel: 'settings-help-$id'),
+  );
 
   Future<T?> _openSettingsPage<T>(
     String id,
     Widget page, {
     bool rootNavigator = false,
-  }) =>
-      SettingsNavigation.push<T>(
-        context: context,
-        page: page,
-        sourceKey: _navigationKey(id),
-        isEmbedded: widget.isEmbedded,
-        rootNavigator: rootNavigator,
-      );
+  }) => SettingsNavigation.push<T>(
+    context: context,
+    page: page,
+    sourceKey: _navigationKey(id),
+    isEmbedded: widget.isEmbedded,
+    rootNavigator: rootNavigator,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -121,44 +120,38 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
               _buildArticleEntries(),
             ),
             const SizedBox(height: 16),
-            _buildSection(
-              scheme,
-              Icons.settings_rounded,
-              '更多',
-              Colors.grey,
-              [
-                _HelpEntry(
-                  '查看更新日志',
-                  '查看历史版本更新内容',
-                  Icons.system_update_rounded,
-                  Colors.blueGrey,
-                  _showChangelog,
-                ),
-                _HelpEntry(
-                  '检查新版本',
-                  '手动检查应用更新',
-                  Icons.update_rounded,
-                  Colors.grey,
-                  () async {
-                    final manifest =
-                        await UpdateService.checkManifest(preferCache: false);
-                    if (!context.mounted) return;
-                    if (manifest != null) {
-                      AppSnackBars.showSnackBar(
-                        context,
-                        SnackBar(
-                            content: Text('当前版本: ${manifest.versionName}')),
-                      );
-                    } else {
-                      AppSnackBars.showSnackBar(
-                        context,
-                        const SnackBar(content: Text('当前已是最新版本')),
-                      );
-                    }
-                  },
-                ),
-              ],
-            ),
+            _buildSection(scheme, Icons.settings_rounded, '更多', Colors.grey, [
+              _HelpEntry(
+                '查看更新日志',
+                '查看历史版本更新内容',
+                Icons.system_update_rounded,
+                Colors.blueGrey,
+                _showChangelog,
+              ),
+              _HelpEntry(
+                '检查新版本',
+                '手动检查应用更新',
+                Icons.update_rounded,
+                Colors.grey,
+                () async {
+                  final manifest = await UpdateService.checkManifest(
+                    preferCache: false,
+                  );
+                  if (!context.mounted) return;
+                  if (manifest != null) {
+                    AppSnackBars.showSnackBar(
+                      context,
+                      SnackBar(content: Text('当前版本: ${manifest.versionName}')),
+                    );
+                  } else {
+                    AppSnackBars.showSnackBar(
+                      context,
+                      const SnackBar(content: Text('当前已是最新版本')),
+                    );
+                  }
+                },
+              ),
+            ]),
           ],
         ),
       ),
@@ -172,305 +165,327 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
         '记录习惯打卡，查看日历、连续记录和完成趋势',
         Icons.track_changes_rounded,
         Colors.teal,
-        () => _openArticle(HelpArticle(
-          id: 'habits',
-          title: '习惯中心',
-          summary: '把想坚持的事情变成可执行的习惯，用每天的打卡积累长期变化。',
-          icon: Icons.track_changes_rounded,
-          iconColor: Colors.teal,
-          steps: [
-            '从首页的“今日习惯”卡片，或侧边栏进入“习惯中心”。',
-            '点击“新建习惯”，设置习惯名称、打卡方式、周期和提醒。',
-            '在“今日”页面完成打卡；数量型、时长型和时间点型习惯都可以记录。',
-            '切换到“日历”查看每天的完成情况，切换到“分析”查看连续记录和趋势。',
-            '暂时不想继续的习惯可以归档，历史记录会保留；登录后还可以在设备间同步。',
-          ],
-          actionLabel: '打开习惯中心',
-          onAction: () {
-            Navigator.of(context, rootNavigator: true).push(
-              PageTransitions.slideHorizontal(
-                HabitCenterScreen(username: widget.username ?? ''),
-              ),
-            );
-          },
-        )),
+        () => _openArticle(
+          HelpArticle(
+            id: 'habits',
+            title: '习惯中心',
+            summary: '把想坚持的事情变成可执行的习惯，用每天的打卡积累长期变化。',
+            icon: Icons.track_changes_rounded,
+            iconColor: Colors.teal,
+            steps: [
+              '从首页的“今日习惯”卡片，或侧边栏进入“习惯中心”。',
+              '点击“新建习惯”，设置习惯名称、打卡方式、周期和提醒。',
+              '在“今日”页面完成打卡；数量型、时长型和时间点型习惯都可以记录。',
+              '切换到“日历”查看每天的完成情况，切换到“分析”查看连续记录和趋势。',
+              '暂时不想继续的习惯可以归档，历史记录会保留；登录后还可以在设备间同步。',
+            ],
+            actionLabel: '打开习惯中心',
+            onAction: () {
+              Navigator.of(context, rootNavigator: true).push(
+                PageTransitions.slideHorizontal(
+                  HabitCenterScreen(username: widget.username ?? ''),
+                ),
+              );
+            },
+          ),
+        ),
       ),
       _HelpEntry(
         '挑战自定义与记录',
         '导入自己的任务清单，创建并记录一场专属挑战',
         Icons.auto_awesome_rounded,
         Colors.deepOrange,
-        () => _openArticle(HelpArticle(
-          id: 'thirty_day_challenge',
-          title: '挑战自定义与记录',
-          summary: '可以直接输入或导入文本清单，按自己的节奏完成任意数量的挑战任务。',
-          icon: Icons.auto_awesome_rounded,
-          iconColor: Colors.deepOrange,
-          steps: [
-            '从设置 > 帮助与反馈 > 挑战中心进入挑战中心。',
-            '任务顺序可以自由调整，不需要连续打卡，每项任务完成一次即可。',
-            '点击“创建自己的挑战”，输入挑战名称和任务清单；文本按行拆分，也可以导入 .txt / .md / .csv / .json 文件。',
-            '新建页还可以从 GitHub 云端挑战清单获取公共挑战内容，再按自己的需要修改。',
-            '可以点击“分享挑战”复制结构化内容发给朋友；朋友打开 App 首页后会自动识别，并询问是否导入挑战或加入团队。',
-            '不知道做什么时，点击随机按钮，从未完成的任务中抽取一张卡片。',
-            '完成任务后可以在卡片下记录当下的感受，并上传一张图片作为生活记录。',
-            '完成后可以生成带有任务、感受和图片的挑战报告，导出成图片并分享给朋友。',
-            '挑战可以暂时暂停；放弃挑战会清空之前的完成状态、感受和图片记录。',
-          ],
-          actionLabel: '打开挑战中心',
-          onAction: () {
-            Navigator.of(context, rootNavigator: true).push(
-              PageTransitions.slideHorizontal(
-                const ChallengeCenterScreen(),
-              ),
-            );
-          },
-        )),
+        () => _openArticle(
+          HelpArticle(
+            id: 'thirty_day_challenge',
+            title: '挑战自定义与记录',
+            summary: '可以直接输入或导入文本清单，按自己的节奏完成任意数量的挑战任务。',
+            icon: Icons.auto_awesome_rounded,
+            iconColor: Colors.deepOrange,
+            steps: [
+              '从设置 > 帮助与反馈 > 挑战中心进入挑战中心。',
+              '任务顺序可以自由调整，不需要连续打卡，每项任务完成一次即可。',
+              '点击“创建自己的挑战”，输入挑战名称和任务清单；文本按行拆分，也可以导入 .txt / .md / .csv / .json 文件。',
+              '新建页还可以从 GitHub 云端挑战清单获取公共挑战内容，再按自己的需要修改。',
+              '可以点击“分享挑战”复制结构化内容发给朋友；朋友打开 App 首页后会自动识别，并询问是否导入挑战或加入团队。',
+              '不知道做什么时，点击随机按钮，从未完成的任务中抽取一张卡片。',
+              '完成任务后可以在卡片下记录当下的感受，并上传一张图片作为生活记录。',
+              '完成后可以生成带有任务、感受和图片的挑战报告，导出成图片并分享给朋友。',
+              '挑战可以暂时暂停；放弃挑战会清空之前的完成状态、感受和图片记录。',
+            ],
+            actionLabel: '打开挑战中心',
+            onAction: () {
+              Navigator.of(context, rootNavigator: true).push(
+                PageTransitions.slideHorizontal(const ChallengeCenterScreen()),
+              );
+            },
+          ),
+        ),
       ),
       _HelpEntry(
         '待办与倒数日',
         '创建、管理和跟踪你的待办事项和重要日期',
         Icons.task_alt_rounded,
         Colors.indigo,
-        () => _openArticle(HelpArticle(
-          id: 'todos',
-          title: '待办与倒数日',
-          summary: '创建待办事项和倒数日，设置提醒和循环，轻松掌握进度。',
-          icon: Icons.task_alt_rounded,
-          iconColor: Colors.indigo,
-          steps: [
-            '点击首页右下角的 "+" 按钮选择"待办"。',
-            '输入标题，可选择设置截止日期和提醒时间。',
-            '保存后待办会出现在首页列表中。',
-            '勾选待办左侧的圆圈即可标记完成。',
-            '创建倒数日时输入标题和目标日期，首页会显示剩余天数。',
-          ],
-          actionLabel: '前往添加待办',
-          onAction: () {
-            Navigator.of(context, rootNavigator: true).push(
-              PageTransitions.slideHorizontal(AddTodoScreen(
-                onTodoAdded: (todo) async {
-                  final username =
-                      widget.username ?? await StorageService.getLoginSession();
-                  if (username == null || username.isEmpty) {
-                    throw StateError('请先登录后再保存待办');
-                  }
-                  final todos = await StorageService.getTodos(username);
-                  await StorageService.saveTodos(username, [...todos, todo]);
-                },
-              )),
-            );
-          },
-        )),
+        () => _openArticle(
+          HelpArticle(
+            id: 'todos',
+            title: '待办与倒数日',
+            summary: '创建待办事项和倒数日，设置提醒和循环，轻松掌握进度。',
+            icon: Icons.task_alt_rounded,
+            iconColor: Colors.indigo,
+            steps: [
+              '点击首页右下角的 "+" 按钮选择"待办"。',
+              '输入标题，可选择设置截止日期和提醒时间。',
+              '保存后待办会出现在首页列表中。',
+              '勾选待办左侧的圆圈即可标记完成。',
+              '创建倒数日时输入标题和目标日期，首页会显示剩余天数。',
+            ],
+            actionLabel: '前往添加待办',
+            onAction: () {
+              Navigator.of(context, rootNavigator: true).push(
+                PageTransitions.slideHorizontal(
+                  AddTodoScreen(
+                    onTodoAdded: (todo) async {
+                      final username =
+                          widget.username ??
+                          await StorageService.getLoginSession();
+                      if (username == null || username.isEmpty) {
+                        throw StateError('请先登录后再保存待办');
+                      }
+                      final todos = await StorageService.getTodos(username);
+                      await StorageService.saveTodos(username, [
+                        ...todos,
+                        todo,
+                      ]);
+                    },
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
       ),
       _HelpEntry(
         '记账与 AI 识别',
         '手动、文本、自然语言和图片都先生成草案，再由你确认保存',
         Icons.account_balance_wallet_outlined,
         Colors.teal,
-        () => _openArticle(HelpArticle(
-          id: 'finance_and_ai',
-          title: '记账与 AI 识别',
-          summary:
-              '记账支持手动录入、固定格式文本、自然语言、图片分享和 AI 助手。所有识别结果都会先进入可编辑草案，不会未经确认写入账本。',
-          icon: Icons.account_balance_wallet_outlined,
-          iconColor: Colors.teal,
-          steps: [
-            '从首页右侧“专注”页的记账小部件，或侧边栏进入“记账”；点击“记一笔”可以手动填写金额、分类、商家、日期和付款方式。',
-            '一句话也可以识别，例如：“今天午餐花了 28.5 元，微信支付，分类餐饮”。识别后会回到普通编辑器，请核对后保存。',
-            '批量文本建议每笔使用下面的格式：#记账、类型: 支出、金额: 28.50、分类: 餐饮、商家: 午餐、日期: 2026-08-29、付款方式: 微信、备注: 工作日午餐。金额单位为元，日期省略时默认今天。',
-            '在“文本识别记账”中粘贴多笔内容，或点击“使用示例”；应用会逐笔打开编辑器，只有点击保存的账单才会写入。',
-            '在 AI 助手中可以直接说“记一笔：今天咖啡 18 元，支付宝”，助手会返回待确认记账草案；也可以问“统计本月支出”“列出本周餐饮账单”，查看汇总、分类、预算和明细。',
-            '要修改或删除已有账单，可以告诉 AI 哪一笔需要改；AI 只会引用真实账单 ID 生成操作卡，修改要打开编辑器保存，删除要再次确认，并会进入记账回收站。',
-            '如果没有配置大模型，AI 助手中的“复制提示词”可交给外部 AI；把外部 AI 的完整回复粘回“粘贴识别”，仍会按相同规则生成可编辑草案和操作卡。',
-            '从系统分享菜单把支付、订单或账单图片分享给 CountDownTodo，应用会单独识别账单和取餐/取件码；同一张图同时包含两种信息时两边都会保留，取餐码不会被当成金额。',
-            '图片识别也只生成草案。请重点核对金额小数点、日期、退款方向、商家和付款方式，再逐笔保存。',
-            '记账数据默认保存在本机；登录并开启同步后，可在支持记账的设备间同步，AI 查询只读取当前账号的本地账本上下文。',
-          ],
-          actionLabel: '打开记账',
-          onAction: () {
-            Navigator.of(context, rootNavigator: true).push(
-              PageTransitions.slideHorizontal(
-                FinanceHomeScreen(username: widget.username ?? ''),
-              ),
-            );
-          },
-        )),
+        () => _openArticle(
+          HelpArticle(
+            id: 'finance_and_ai',
+            title: '记账与 AI 识别',
+            summary:
+                '记账支持手动录入、固定格式文本、自然语言、图片分享和 AI 助手。所有识别结果都会先进入可编辑草案，不会未经确认写入账本。',
+            icon: Icons.account_balance_wallet_outlined,
+            iconColor: Colors.teal,
+            steps: [
+              '从首页右侧“专注”页的记账小部件，或侧边栏进入“记账”；点击“记一笔”可以手动填写金额、分类、商家、日期和付款方式。',
+              '一句话也可以识别，例如：“今天午餐花了 28.5 元，微信支付，分类餐饮”。识别后会回到普通编辑器，请核对后保存。',
+              '批量文本建议每笔使用下面的格式：#记账、类型: 支出、金额: 28.50、分类: 餐饮、商家: 午餐、日期: 2026-08-29、付款方式: 微信、备注: 工作日午餐。金额单位为元，日期省略时默认今天。',
+              '在“文本识别记账”中粘贴多笔内容，或点击“使用示例”；应用会逐笔打开编辑器，只有点击保存的账单才会写入。',
+              '在 AI 助手中可以直接说“记一笔：今天咖啡 18 元，支付宝”，助手会返回待确认记账草案；也可以问“统计本月支出”“列出本周餐饮账单”，查看汇总、分类、预算和明细。',
+              '要修改或删除已有账单，可以告诉 AI 哪一笔需要改；AI 只会引用真实账单 ID 生成操作卡，修改要打开编辑器保存，删除要再次确认，并会进入记账回收站。',
+              '如果没有配置大模型，AI 助手中的“复制提示词”可交给外部 AI；把外部 AI 的完整回复粘回“粘贴识别”，仍会按相同规则生成可编辑草案和操作卡。',
+              '从系统分享菜单把支付、订单或账单图片分享给 CountDownTodo，应用会单独识别账单和取餐/取件码；同一张图同时包含两种信息时两边都会保留，取餐码不会被当成金额。',
+              '图片识别也只生成草案。请重点核对金额小数点、日期、退款方向、商家和付款方式，再逐笔保存。',
+              '记账数据默认保存在本机；登录并开启同步后，可在支持记账的设备间同步，AI 查询只读取当前账号的本地账本上下文。',
+            ],
+            actionLabel: '打开记账',
+            onAction: () {
+              Navigator.of(context, rootNavigator: true).push(
+                PageTransitions.slideHorizontal(
+                  FinanceHomeScreen(username: widget.username ?? ''),
+                ),
+              );
+            },
+          ),
+        ),
       ),
       _HelpEntry(
         '课程表',
         '导入课程表，首页自动展示今日课程',
         Icons.calendar_month_rounded,
         Colors.teal,
-        () => _openArticle(HelpArticle(
-          id: 'courses',
-          title: '课程表',
-          summary: '导入或添加课程后，首页会自动展示今天和下一节课。',
-          icon: Icons.calendar_month_rounded,
-          iconColor: Colors.teal,
-          steps: [
-            '前往 设置 > 课表与学期 导入课程。',
-            '支持教务系统导入或手动添加课程。',
-            '设置学期起止日期可开启学期进度条。',
-            '首页会自动展示今日课程和即将开始的课程。',
-            '点击课程卡片可查看课程详情和上课时间。',
-          ],
-          actionLabel: '前往课程设置',
-          onAction: () {
-            Navigator.of(context, rootNavigator: true).push(
-              PageTransitions.slideHorizontal(
-                WeeklyCourseScreen(username: widget.username ?? ''),
-              ),
-            );
-          },
-        )),
+        () => _openArticle(
+          HelpArticle(
+            id: 'courses',
+            title: '课程表',
+            summary: '导入或添加课程后，首页会自动展示今天和下一节课。',
+            icon: Icons.calendar_month_rounded,
+            iconColor: Colors.teal,
+            steps: [
+              '前往 设置 > 课表与学期 导入课程。',
+              '支持教务系统导入或手动添加课程。',
+              '设置学期起止日期可开启学期进度条。',
+              '首页会自动展示今日课程和即将开始的课程。',
+              '点击课程卡片可查看课程详情和上课时间。',
+            ],
+            actionLabel: '前往课程设置',
+            onAction: () {
+              Navigator.of(context, rootNavigator: true).push(
+                PageTransitions.slideHorizontal(
+                  WeeklyCourseScreen(username: widget.username ?? ''),
+                ),
+              );
+            },
+          ),
+        ),
       ),
       _HelpEntry(
         '专注计时',
         '使用番茄钟方法保持专注，提升效率',
         Icons.timer_rounded,
         Colors.deepOrange,
-        () => _openArticle(HelpArticle(
-          id: 'pomodoro',
-          title: '专注计时',
-          summary: '使用番茄工作法保持专注，可选绑定待办任务。',
-          icon: Icons.timer_rounded,
-          iconColor: Colors.deepOrange,
-          steps: [
-            '在首页点击"开始专注"按钮或底部导航栏的专注图标。',
-            '选择专注时长（默认25分钟），可绑定一个待办任务。',
-            '专注期间请保持应用在前台，或允许后台通知。',
-            '专注结束后可查看本次统计，也可以继续下一轮。',
-            '所有专注记录都会保存在时间轴中供回顾。',
-          ],
-          actionLabel: '前往专注页面',
-          onAction: () {
-            Navigator.of(context, rootNavigator: true).push(
-              PageTransitions.slideHorizontal(
-                  PomodoroScreen(username: widget.username ?? '')),
-            );
-          },
-        )),
+        () => _openArticle(
+          HelpArticle(
+            id: 'pomodoro',
+            title: '专注计时',
+            summary: '使用番茄工作法保持专注，可选绑定待办任务。',
+            icon: Icons.timer_rounded,
+            iconColor: Colors.deepOrange,
+            steps: [
+              '在首页点击"开始专注"按钮或底部导航栏的专注图标。',
+              '选择专注时长（默认25分钟），可绑定一个待办任务。',
+              '专注期间请保持应用在前台，或允许后台通知。',
+              '专注结束后可查看本次统计，也可以继续下一轮。',
+              '所有专注记录都会保存在时间轴中供回顾。',
+            ],
+            actionLabel: '前往专注页面',
+            onAction: () {
+              Navigator.of(context, rootNavigator: true).push(
+                PageTransitions.slideHorizontal(
+                  PomodoroScreen(username: widget.username ?? ''),
+                ),
+              );
+            },
+          ),
+        ),
       ),
       _HelpEntry(
         '时间规划',
         '将待办安排到时间轴，规划你的一天',
         Icons.timeline_rounded,
         Colors.purple,
-        () => _openArticle(HelpArticle(
-          id: 'plan',
-          title: '时间规划',
-          summary: '将待办安排到时间轴，可以把"要做什么"变成"什么时候做"。',
-          icon: Icons.timeline_rounded,
-          iconColor: Colors.purple,
-          steps: [
-            '在待办详情页中选择"安排到时间轴"。',
-            '拖动选择时间段，将任务分配到具体的时间块。',
-            '可以在时间轴视图总览一天的计划。',
-            '完成规划块后会自动关联到专注计时。',
-            '支持按日、周视图查看你的时间安排。',
-          ],
-          actionLabel: '前往时间规划',
-        )),
+        () => _openArticle(
+          HelpArticle(
+            id: 'plan',
+            title: '时间规划',
+            summary: '将待办安排到时间轴，可以把"要做什么"变成"什么时候做"。',
+            icon: Icons.timeline_rounded,
+            iconColor: Colors.purple,
+            steps: [
+              '在待办详情页中选择"安排到时间轴"。',
+              '拖动选择时间段，将任务分配到具体的时间块。',
+              '可以在时间轴视图总览一天的计划。',
+              '完成规划块后会自动关联到专注计时。',
+              '支持按日、周视图查看你的时间安排。',
+            ],
+            actionLabel: '前往时间规划',
+          ),
+        ),
       ),
       _HelpEntry(
         '团队协作',
         '与团队成员共享任务，协同工作',
         Icons.groups_rounded,
         Colors.indigo,
-        () => _openArticle(HelpArticle(
-          id: 'team',
-          title: '团队协作',
-          summary: '团队成员可以共享协作内容，但个人内容不会自动共享。',
-          icon: Icons.groups_rounded,
-          iconColor: Colors.indigo,
-          steps: [
-            '在首页侧边栏选择"团队管理"。',
-            '创建或加入一个团队。',
-            '在团队中创建共享待办，所有成员可见。',
-            '团队待办支持"各自独立完成"和"共同协作"两种模式。',
-            '个人待办和团队待办在首页分开显示。',
-          ],
-          actionLabel: '前往团队管理',
-        )),
+        () => _openArticle(
+          HelpArticle(
+            id: 'team',
+            title: '团队协作',
+            summary: '团队成员可以共享协作内容，但个人内容不会自动共享。',
+            icon: Icons.groups_rounded,
+            iconColor: Colors.indigo,
+            steps: [
+              '在首页侧边栏选择"团队管理"。',
+              '创建或加入一个团队。',
+              '在团队中创建共享待办，所有成员可见。',
+              '团队待办支持"各自独立完成"和"共同协作"两种模式。',
+              '个人待办和团队待办在首页分开显示。',
+            ],
+            actionLabel: '前往团队管理',
+          ),
+        ),
       ),
       _HelpEntry(
         '跨设备同步',
         '在手机和电脑之间同步你的所有数据',
         Icons.sync_rounded,
         Colors.blue,
-        () => _openArticle(HelpArticle(
-          id: 'sync',
-          title: '跨设备同步',
-          summary: '登录同一账户即可在多个设备间自动同步数据。',
-          icon: Icons.sync_rounded,
-          iconColor: Colors.blue,
-          steps: [
-            '在每台设备上使用同一账户登录。',
-            '待办、专注记录、课程等数据会自动同步。',
-            '专注状态支持 WebSocket 实时同步。',
-            '你可以在设置中查看同步状态和手动触发同步。',
-            '局域网同步功能可用于不经过云端直连同步。',
-          ],
-          actionLabel: '前往同步设置',
-        )),
+        () => _openArticle(
+          HelpArticle(
+            id: 'sync',
+            title: '跨设备同步',
+            summary: '登录同一账户即可在多个设备间自动同步数据。',
+            icon: Icons.sync_rounded,
+            iconColor: Colors.blue,
+            steps: [
+              '在每台设备上使用同一账户登录。',
+              '待办、专注记录、课程等数据会自动同步。',
+              '专注状态支持 WebSocket 实时同步。',
+              '你可以在设置中查看同步状态和手动触发同步。',
+              '局域网同步功能可用于不经过云端直连同步。',
+            ],
+            actionLabel: '前往同步设置',
+          ),
+        ),
       ),
       _HelpEntry(
         '小组件与桌面功能',
         '桌面小组件和系统集成功能',
         Icons.widgets_rounded,
         Colors.indigo,
-        () => _openArticle(
-          _buildPlatformArticle(),
-          sourceId: '小组件与桌面功能',
-        ),
+        () => _openArticle(_buildPlatformArticle(), sourceId: '小组件与桌面功能'),
       ),
       _HelpEntry(
         '权限设置',
         '管理应用需要的各种系统权限',
         Icons.security_rounded,
         Colors.red,
-        () => _openArticle(HelpArticle(
-          id: 'permissions',
-          title: '权限设置',
-          summary: '了解为什么需要各项权限，以及如何管理它们。',
-          icon: Icons.security_rounded,
-          iconColor: Colors.red,
-          steps: [
-            '通知权限：用于发送待办提醒和专注结束通知。',
-            '精确闹钟权限：确保按时推送提醒（Android）。',
-            if (!kIsWeb && AppPlatform.isAndroid) ...[
-              '使用情况权限：用于屏幕时间统计（Android）。',
-              '电池优化：默认建议保留系统优化；仅在锁屏跨端实时控制持续异常时再手动调整（Android）。',
+        () => _openArticle(
+          HelpArticle(
+            id: 'permissions',
+            title: '权限设置',
+            summary: '了解为什么需要各项权限，以及如何管理它们。',
+            icon: Icons.security_rounded,
+            iconColor: Colors.red,
+            steps: [
+              '通知权限：用于发送待办提醒和专注结束通知。',
+              '精确闹钟权限：确保按时推送提醒（Android）。',
+              if (!kIsWeb && AppPlatform.isAndroid) ...[
+                '使用情况权限：用于屏幕时间统计（Android）。',
+                '电池优化：默认建议保留系统优化；仅在锁屏跨端实时控制持续异常时再手动调整（Android）。',
+              ],
+              if (!kIsWeb && AppPlatform.isMacOS) ...['通知权限：macOS 系统通知。'],
+              '你可以在 设置 > 权限管理 中查看和管理所有权限。',
             ],
-            if (!kIsWeb && AppPlatform.isMacOS) ...[
-              '通知权限：macOS 系统通知。',
-            ],
-            '你可以在 设置 > 权限管理 中查看和管理所有权限。',
-          ],
-          actionLabel: '前往权限设置',
-        )),
+            actionLabel: '前往权限设置',
+          ),
+        ),
       ),
       _HelpEntry(
         '常见问题',
         '常见使用问题和解决方案',
         Icons.help_outline_rounded,
         Colors.grey,
-        () => _openArticle(HelpArticle(
-          id: 'faq',
-          title: '常见问题',
-          summary: '遇到问题？先看看这里。',
-          icon: Icons.help_outline_rounded,
-          iconColor: Colors.grey,
-          steps: [
-            '数据会丢失吗？所有数据都存储在本地 SQLite 和云端服务器，登录账户即可恢复。',
-            '如何删除账户？在设置中点击"注销登录"可清除本地数据。',
-            '忘记录制专注怎么办？可在专注页面查看历史记录，手动补录暂不支持。',
-            '课程导入失败怎么办？确认教务系统课表格式正确，尝试手动添加。',
-            '同步不成功？检查网络连接，在设置中手动触发同步。',
-          ],
-          actionLabel: '知道了',
-        )),
+        () => _openArticle(
+          HelpArticle(
+            id: 'faq',
+            title: '常见问题',
+            summary: '遇到问题？先看看这里。',
+            icon: Icons.help_outline_rounded,
+            iconColor: Colors.grey,
+            steps: [
+              '数据会丢失吗？所有数据都存储在本地 SQLite 和云端服务器，登录账户即可恢复。',
+              '如何删除账户？在设置中点击"注销登录"可清除本地数据。',
+              '忘记录制专注怎么办？可在专注页面查看历史记录，手动补录暂不支持。',
+              '课程导入失败怎么办？确认教务系统课表格式正确，尝试手动添加。',
+              '同步不成功？检查网络连接，在设置中手动触发同步。',
+            ],
+            actionLabel: '知道了',
+          ),
+        ),
       ),
     ];
   }
@@ -483,10 +498,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
         summary: '浏览器通知和跨设备同步功能。',
         icon: Icons.widgets_rounded,
         iconColor: Colors.indigo,
-        steps: [
-          'Web 版支持浏览器通知（需要用户授权）。',
-          '登录后数据可与移动端和桌面端同步。',
-        ],
+        steps: ['Web 版支持浏览器通知（需要用户授权）。', '登录后数据可与移动端和桌面端同步。'],
         actionLabel: '知道了',
       );
     }
@@ -548,10 +560,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
       summary: '小组件和桌面集成功能。',
       icon: Icons.widgets_rounded,
       iconColor: Colors.indigo,
-      steps: [
-        '查看平台专属设置了解可用功能。',
-        '登录后数据可与其它设备同步。',
-      ],
+      steps: ['查看平台专属设置了解可用功能。', '登录后数据可与其它设备同步。'],
       actionLabel: '知道了',
     );
   }
@@ -639,8 +648,9 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
             side: BorderSide(color: scheme.outlineVariant),
           ),
           child: Column(
-            children:
-                entries.map((entry) => _buildEntryTile(entry, scheme)).toList(),
+            children: entries
+                .map((entry) => _buildEntryTile(entry, scheme))
+                .toList(),
           ),
         ),
       ],
@@ -654,8 +664,10 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
           Divider(height: 1, indent: 72, color: scheme.outlineVariant),
         ListTile(
           key: _navigationKey(entry.title),
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 4,
+          ),
           leading: Container(
             width: 40,
             height: 40,

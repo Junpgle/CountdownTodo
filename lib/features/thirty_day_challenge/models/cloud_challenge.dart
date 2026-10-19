@@ -34,12 +34,12 @@ class CloudChallengeTemplate {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'description': description,
-        'tags': tags,
-        'tasks': tasks,
-      };
+    'id': id,
+    'title': title,
+    'description': description,
+    'tags': tags,
+    'tasks': tasks,
+  };
 
   factory CloudChallengeTemplate.fromJson(Map<String, dynamic> json) {
     final rawId = json['id']?.toString().trim() ?? '';
@@ -50,15 +50,15 @@ class CloudChallengeTemplate {
 
     final tags = rawTags is List
         ? rawTags
-            .map((tag) => tag.toString().trim())
-            .where((tag) => tag.isNotEmpty)
-            .toList(growable: false)
+              .map((tag) => tag.toString().trim())
+              .where((tag) => tag.isNotEmpty)
+              .toList(growable: false)
         : const <String>[];
     final tasks = rawTasks is List
         ? rawTasks
-            .map((task) => task.toString().trim())
-            .where((task) => task.isNotEmpty)
-            .toList(growable: false)
+              .map((task) => task.toString().trim())
+              .where((task) => task.isNotEmpty)
+              .toList(growable: false)
         : const <String>[];
 
     if (rawId.isEmpty || rawTitle.isEmpty || tasks.isEmpty) {
@@ -74,10 +74,7 @@ class CloudChallengeTemplate {
     );
   }
 
-  ChallengeDraft toDraft() => ChallengeDraft(
-        title: title,
-        taskTitles: tasks,
-      );
+  ChallengeDraft toDraft() => ChallengeDraft(title: title, taskTitles: tasks);
 }
 
 class CloudChallengeCatalog {
@@ -92,12 +89,11 @@ class CloudChallengeCatalog {
   });
 
   Map<String, dynamic> toJson() => {
-        'format': 'countdowntodo.challenge_catalog',
-        'version': version,
-        'updated_at': updatedAt,
-        'challenges':
-            challenges.map((challenge) => challenge.toJson()).toList(),
-      };
+    'format': 'countdowntodo.challenge_catalog',
+    'version': version,
+    'updated_at': updatedAt,
+    'challenges': challenges.map((challenge) => challenge.toJson()).toList(),
+  };
 
   factory CloudChallengeCatalog.fromJson(Map<String, dynamic> json) {
     final rawChallenges = json['challenges'];
@@ -141,8 +137,6 @@ class CloudChallengeCatalog {
     if (decoded is! Map) {
       throw const FormatException('云端挑战文档不是 JSON 对象');
     }
-    return CloudChallengeCatalog.fromJson(
-      Map<String, dynamic>.from(decoded),
-    );
+    return CloudChallengeCatalog.fromJson(Map<String, dynamic>.from(decoded));
   }
 }

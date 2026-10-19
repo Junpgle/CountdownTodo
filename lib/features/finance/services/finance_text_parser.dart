@@ -32,7 +32,8 @@ abstract final class FinanceTextParser {
 
   /// Kept for callers that still use the old single-sentence wording.
   static const String oneSentenceExample = '今天午餐花了 28.5 元，微信支付，分类餐饮';
-  static const String oneSentenceHelp = '说法：时间 + 事项 + 金额 + 付款/到账账户 + 分类\n'
+  static const String oneSentenceHelp =
+      '说法：时间 + 事项 + 金额 + 付款/到账账户 + 分类\n'
       '示例：今天午餐花了 28.5 元，微信支付，分类餐饮';
 
   static const Map<String, String> _sentencePaymentAliases = {
@@ -531,8 +532,10 @@ abstract final class FinanceTextParser {
     DateTime? now,
     FinanceEntrySource source = FinanceEntrySource.manual,
   }) {
-    final normalized =
-        input.replaceAll('\r\n', '\n').replaceAll('\r', '\n').trim();
+    final normalized = input
+        .replaceAll('\r\n', '\n')
+        .replaceAll('\r', '\n')
+        .trim();
     if (normalized.isEmpty) return const [];
 
     final structuredText = normalized.replaceAll('：', ':');
@@ -540,22 +543,14 @@ abstract final class FinanceTextParser {
       structuredText,
     );
     if (_blockMarker.hasMatch(structuredText) || hasStructuredFields) {
-      final structured = parse(
-        normalized,
-        now: now,
-        source: source,
-      );
+      final structured = parse(normalized, now: now, source: source);
       if (structured.isNotEmpty) return structured;
     }
 
     final segments = _splitQuickEntrySegments(normalized);
     final drafts = <FinanceEntryDraft>[];
     for (final segment in segments) {
-      final draft = parseOneSentence(
-        segment,
-        now: now,
-        source: source,
-      );
+      final draft = parseOneSentence(segment, now: now, source: source);
       if (draft != null) drafts.add(draft);
     }
 
@@ -615,13 +610,14 @@ abstract final class FinanceTextParser {
       if (normalized['originalText'] == null && originalText != null) {
         normalized['originalText'] = originalText;
       }
-      final draft = FinanceEntryDraft.fromJson(
-        normalized,
-        now: now,
-        preserveRawDate: true,
-      )
-        ..source = source
-        ..originalText ??= originalText;
+      final draft =
+          FinanceEntryDraft.fromJson(
+              normalized,
+              now: now,
+              preserveRawDate: true,
+            )
+            ..source = source
+            ..originalText ??= originalText;
       if (draft.amountMinor > 0) {
         _normalizeDraftDate(draft, now: now);
         drafts.add(draft);
@@ -646,8 +642,7 @@ abstract final class FinanceTextParser {
           map,
           now: now,
           preserveRawDate: true,
-        )
-          ..source = FinanceEntrySource.ai;
+        )..source = FinanceEntrySource.ai;
         if (draft.amountMinor > 0) {
           _normalizeDraftDate(draft, now: now);
           drafts.add(draft);
@@ -682,7 +677,8 @@ abstract final class FinanceTextParser {
         final direct = FinanceAiAction.tryParse(map);
         if (direct != null) actions.add(direct);
 
-        final nested = map['actions'] ??
+        final nested =
+            map['actions'] ??
             map['updates'] ??
             map['queries'] ??
             map['financeActions'] ??
@@ -731,14 +727,15 @@ abstract final class FinanceTextParser {
   }
 
   static bool isFinanceResult(Map<String, dynamic> result) {
-    final kind = (result['itemKind'] ??
-            result['item_kind'] ??
-            result['eventType'] ??
-            result['event_type'] ??
-            result['kind'])
-        ?.toString()
-        .trim()
-        .toLowerCase();
+    final kind =
+        (result['itemKind'] ??
+                result['item_kind'] ??
+                result['eventType'] ??
+                result['event_type'] ??
+                result['kind'])
+            ?.toString()
+            .trim()
+            .toLowerCase();
     if (result['isFinance'] == true || result['is_finance'] == true) {
       return true;
     }
@@ -769,7 +766,8 @@ abstract final class FinanceTextParser {
     }.contains(kind)) {
       return false;
     }
-    final hasAmount = result.containsKey('amount') ||
+    final hasAmount =
+        result.containsKey('amount') ||
         result.containsKey('amount_yuan') ||
         result.containsKey('amountYuan') ||
         result.containsKey('total') ||
@@ -779,12 +777,13 @@ abstract final class FinanceTextParser {
         result.containsKey('price') ||
         result.containsKey('amount_minor') ||
         result.containsKey('amountMinor');
-    final type = (result['type'] ??
-            result['transaction_type'] ??
-            result['transactionType'])
-        ?.toString()
-        .trim()
-        .toLowerCase();
+    final type =
+        (result['type'] ??
+                result['transaction_type'] ??
+                result['transactionType'])
+            ?.toString()
+            .trim()
+            .toLowerCase();
     final hasCashFlowType = const {
       'expense',
       'income',
@@ -875,8 +874,9 @@ abstract final class FinanceTextParser {
     for (final rawLine in lines) {
       final line = rawLine.trim();
       if (line.isEmpty || line == '---') continue;
-      final separator =
-          line.contains(':') ? line.indexOf(':') : line.indexOf('=');
+      final separator = line.contains(':')
+          ? line.indexOf(':')
+          : line.indexOf('=');
       if (separator > 0) {
         final key = _normalizeKey(line.substring(0, separator));
         final value = line.substring(separator + 1).trim();
@@ -1017,8 +1017,9 @@ abstract final class FinanceTextParser {
     for (final match in _sentenceFallbackAmountPattern.allMatches(text)) {
       if (!_isLikelySentenceAmount(text, match)) continue;
       final before = text.substring(0, match.start);
-      final recentBefore =
-          before.length > 10 ? before.substring(before.length - 10) : before;
+      final recentBefore = before.length > 10
+          ? before.substring(before.length - 10)
+          : before;
       var score = match.group(1)!.contains('.') ? 2 : 0;
       if (_sentenceAmountContextPattern.hasMatch(recentBefore)) {
         score += 10;
@@ -1146,10 +1147,7 @@ abstract final class FinanceTextParser {
   /// Maps natural-language finance terms to the canonical local category name.
   /// The entry screen uses this same mapping when resolving the result to a
   /// real local category UUID, so aliases do not remain as display-only text.
-  static String? inferCategoryName(
-    String text,
-    FinanceTransactionType type,
-  ) {
+  static String? inferCategoryName(String text, FinanceTransactionType type) {
     return _inferSentenceCategory(text, type);
   }
 
@@ -1247,7 +1245,8 @@ abstract final class FinanceTextParser {
     if (chineseMonthDay != null) {
       final yearText = chineseMonthDay.group(1);
       final relativeYear = chineseMonthDay.group(2);
-      final year = int.tryParse(yearText ?? '') ??
+      final year =
+          int.tryParse(yearText ?? '') ??
           switch (relativeYear) {
             '前年' => now.year - 2,
             '去年' || '上一年' || '前一年' => now.year - 1,

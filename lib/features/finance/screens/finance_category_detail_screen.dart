@@ -21,7 +21,8 @@ class FinanceCategoryDetailScreen extends StatefulWidget {
     String categoryUuid,
     GlobalKey sourceKey,
     List<FinanceTransaction> periodTransactions,
-  )? onCategorySelected;
+  )?
+  onCategorySelected;
 
   const FinanceCategoryDetailScreen({
     super.key,
@@ -78,7 +79,8 @@ class _FinanceCategoryDetailScreenState
   @override
   void didUpdateWidget(covariant FinanceCategoryDetailScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final periodChanged = oldWidget.periodStart != widget.periodStart ||
+    final periodChanged =
+        oldWidget.periodStart != widget.periodStart ||
         oldWidget.periodEnd != widget.periodEnd;
     if (periodChanged) {
       _upcomingTransactionTimer?.cancel();
@@ -217,10 +219,8 @@ class _FinanceCategoryDetailScreenState
     }
     final displayName = _categoryLabelsByUuid.putIfAbsent(
       category.uuid,
-      () => financeCategoryReferenceDisplayName(
-        category.uuid,
-        categories.values,
-      ),
+      () =>
+          financeCategoryReferenceDisplayName(category.uuid, categories.values),
     );
     return '$displayName${category.isArchived ? '（已归档）' : ''}';
   }
@@ -238,17 +238,20 @@ class _FinanceCategoryDetailScreenState
     return category != null && _rootFor(category).uuid == root.uuid;
   }
 
-  List<FinanceCategory> _childCategories(FinanceCategory root) =>
-      categories.values
-          .where((category) =>
-              category.uuid != root.uuid &&
-              _rootFor(category).uuid == root.uuid)
-          .toList();
+  List<FinanceCategory> _childCategories(FinanceCategory root) => categories
+      .values
+      .where(
+        (category) =>
+            category.uuid != root.uuid && _rootFor(category).uuid == root.uuid,
+      )
+      .toList();
 
   List<FinanceTransaction> get _matchingTransactions => transactions
-      .where((transaction) =>
-          transaction.type != FinanceTransactionType.income &&
-          _belongsToRoot(transaction))
+      .where(
+        (transaction) =>
+            transaction.type != FinanceTransactionType.income &&
+            _belongsToRoot(transaction),
+      )
       .toList();
 
   ({List<_FinanceCategoryDetailItem> items, int total}) _itemsAndTotal(
@@ -268,8 +271,7 @@ class _FinanceCategoryDetailScreenState
       if (categoryUuid == null) continue;
       amountByCategory[categoryUuid] =
           (amountByCategory[categoryUuid] ?? 0) + contribution;
-      countByCategory[categoryUuid] =
-          (countByCategory[categoryUuid] ?? 0) + 1;
+      countByCategory[categoryUuid] = (countByCategory[categoryUuid] ?? 0) + 1;
     }
 
     final root = _rootCategory;
@@ -354,9 +356,7 @@ class _FinanceCategoryDetailScreenState
         emptyMessage = '这个分类没有可展示的历史账单';
       } else if (hasSubcategories) {
         sectionTitle = isPlanned ? '计划小类' : '小类';
-        emptyMessage = isPlanned
-            ? '这个大类下暂无可展示的计划小类账单'
-            : '这个大类下暂无可展示的小类账单';
+        emptyMessage = isPlanned ? '这个大类下暂无可展示的计划小类账单' : '这个大类下暂无可展示的小类账单';
       } else {
         sectionTitle = isPlanned ? '计划分类' : '分类';
         emptyMessage = isPlanned ? '这个分类下暂无计划账单' : '这个分类下暂无账单';
@@ -378,8 +378,9 @@ class _FinanceCategoryDetailScreenState
                 children: [
                   CircleAvatar(
                     radius: 25,
-                    backgroundColor:
-                        colorScheme.onPrimaryContainer.withValues(alpha: 0.12),
+                    backgroundColor: colorScheme.onPrimaryContainer.withValues(
+                      alpha: 0.12,
+                    ),
                     child: Text(
                       root?.icon ?? '💰',
                       style: const TextStyle(fontSize: 24),
@@ -403,8 +404,9 @@ class _FinanceCategoryDetailScreenState
                           '$periodTitle · ${matchingTransactions.length} 笔'
                           '${isPlanned ? '计划账单' : '账单'}',
                           style: TextStyle(
-                            color: colorScheme.onPrimaryContainer
-                                .withValues(alpha: 0.75),
+                            color: colorScheme.onPrimaryContainer.withValues(
+                              alpha: 0.75,
+                            ),
                           ),
                         ),
                       ],
@@ -417,8 +419,9 @@ class _FinanceCategoryDetailScreenState
                       Text(
                         isPlanned ? '计划净支出' : '净支出',
                         style: TextStyle(
-                          color: colorScheme.onPrimaryContainer
-                              .withValues(alpha: 0.75),
+                          color: colorScheme.onPrimaryContainer.withValues(
+                            alpha: 0.75,
+                          ),
                           fontSize: 12,
                         ),
                       ),
@@ -438,9 +441,8 @@ class _FinanceCategoryDetailScreenState
           const SizedBox(height: 24),
           Text(
             sectionTitle,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+            style: Theme.of(context).textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
           if (items.isEmpty)
@@ -463,7 +465,8 @@ class _FinanceCategoryDetailScreenState
                     _buildItem(
                       context,
                       items[index],
-                      expanded: !widget.categoryTapOpensLedger &&
+                      expanded:
+                          !widget.categoryTapOpensLedger &&
                           _expandedCategoryUuid == items[index].categoryUuid,
                     ),
                     if (index + 1 < items.length)
@@ -476,16 +479,13 @@ class _FinanceCategoryDetailScreenState
           Text(
             widget.categoryTapOpensLedger
                 ? isPlanned
-                    ? '点击分类即可进入计划账单筛选'
-                    : '点击分类即可进入账单筛选'
+                      ? '点击分类即可进入计划账单筛选'
+                      : '点击分类即可进入账单筛选'
                 : isPlanned
                 ? '点击分类可在当前页展开或收起计划账单'
                 : '点击分类可在当前页展开或收起对应账单',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: colorScheme.onSurfaceVariant,
-              fontSize: 12,
-            ),
+            style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12),
           ),
         ],
       ),
@@ -539,8 +539,8 @@ class _FinanceCategoryDetailScreenState
               '${widget.categoryTapOpensLedger
                   ? ' · 点击查看'
                   : expanded
-                      ? ' · 点击收起'
-                      : ' · 点击展开'}',
+                  ? ' · 点击收起'
+                  : ' · 点击展开'}',
             ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
@@ -554,8 +554,8 @@ class _FinanceCategoryDetailScreenState
                   widget.categoryTapOpensLedger
                       ? Icons.chevron_right
                       : expanded
-                          ? Icons.expand_less
-                          : Icons.expand_more,
+                      ? Icons.expand_less
+                      : Icons.expand_more,
                 ),
               ],
             ),
@@ -640,8 +640,8 @@ class _FinanceCategoryDetailScreenState
     final title = merchant?.isNotEmpty == true
         ? merchant!
         : note?.isNotEmpty == true
-            ? note!
-            : transaction.type.label;
+        ? note!
+        : transaction.type.label;
     final date = dateFromKey(transaction.transactionDate);
     final occurred = transaction.occurrenceLocalTime;
     final subtitleParts = <String>[

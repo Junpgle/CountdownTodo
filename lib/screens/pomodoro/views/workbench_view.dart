@@ -790,10 +790,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
               : (preservedFocusMinutes ?? _settings.focusMinutes) * 60;
         });
         try {
-          await _persistIdleBoundTodo(
-            preservedTodo,
-            tagUuids: preservedTags,
-          );
+          await _persistIdleBoundTodo(preservedTodo, tagUuids: preservedTags);
         } catch (_) {
           // Keep the in-memory entry binding if preferences are unavailable.
         }
@@ -852,9 +849,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _crossDeviceSub?.cancel();
     _crossDeviceSub = _syncService.onStateChanged
         .asyncMap(_handleCrossDeviceSignal)
-        .listen((_) {}, onError: (Object error) {
-      debugPrint('[PomodoroWorkbench] 处理跨端消息失败: $error');
-    });
+        .listen(
+          (_) {},
+          onError: (Object error) {
+            debugPrint('[PomodoroWorkbench] 处理跨端消息失败: $error');
+          },
+        );
 
     _connSub?.cancel();
     _connSub = _syncService.onConnectionChanged.listen((state) {

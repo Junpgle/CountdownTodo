@@ -346,10 +346,7 @@ class _AiChatComposerState extends State<AiChatComposer> {
                         child: PopupMenuButton<_ComposerAction>(
                           key: const ValueKey('ai-chat-more'),
                           tooltip: '更多输入操作',
-                          icon: const Icon(
-                            Icons.more_horiz_rounded,
-                            size: 20,
-                          ),
+                          icon: const Icon(Icons.more_horiz_rounded, size: 20),
                           style: plainStyle,
                           onSelected: _selectAction,
                           onOpened: _focusNode.unfocus,

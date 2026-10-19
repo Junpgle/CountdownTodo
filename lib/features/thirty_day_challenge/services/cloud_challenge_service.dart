@@ -25,7 +25,7 @@ class CloudChallengeService {
   final GitHubResourceService _resourceService;
 
   CloudChallengeService({http.Client? client})
-      : _resourceService = GitHubResourceService(client: client);
+    : _resourceService = GitHubResourceService(client: client);
 
   Future<CachedCloudChallengeCatalog?> readCachedCatalog() async {
     final prefs = await SharedPreferences.getInstance();
@@ -35,8 +35,9 @@ class CloudChallengeService {
     try {
       final decoded = jsonDecode(raw);
       if (decoded is! Map) return null;
-      final cachedAt =
-          DateTime.tryParse(decoded['cached_at']?.toString() ?? '');
+      final cachedAt = DateTime.tryParse(
+        decoded['cached_at']?.toString() ?? '',
+      );
       final rawCatalog = decoded['catalog'];
       if (cachedAt == null || rawCatalog is! Map) return null;
 
@@ -52,10 +53,7 @@ class CloudChallengeService {
     }
   }
 
-  bool isCacheFresh(
-    CachedCloudChallengeCatalog cached, {
-    DateTime? now,
-  }) {
+  bool isCacheFresh(CachedCloudChallengeCatalog cached, {DateTime? now}) {
     final age = (now ?? DateTime.now()).toUtc().difference(cached.cachedAt);
     return age >= Duration.zero && age < cacheLifetime;
   }
@@ -75,13 +73,15 @@ class CloudChallengeService {
   }
 
   Future<CloudChallengeCatalog> fetchCatalog() async {
-    final response = await _resourceService.get(
-      Uri.parse(catalogUrl),
-      headers: const {
-        'Accept': 'application/json',
-        'Cache-Control': 'no-cache',
-      },
-    ).timeout(const Duration(seconds: 12));
+    final response = await _resourceService
+        .get(
+          Uri.parse(catalogUrl),
+          headers: const {
+            'Accept': 'application/json',
+            'Cache-Control': 'no-cache',
+          },
+        )
+        .timeout(const Duration(seconds: 12));
     final catalog = CloudChallengeCatalog.fromResponse(response);
     try {
       await _saveCache(catalog);

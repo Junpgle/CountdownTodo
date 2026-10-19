@@ -113,9 +113,7 @@ abstract final class PlanAvailabilityService {
     return _subtractMerged(input, _mergeSortedBlocked(sorted));
   }
 
-  static List<PlanTimeSlot> _mergeSortedBlocked(
-    Iterable<PlanTimeSlot> sorted,
-  ) {
+  static List<PlanTimeSlot> _mergeSortedBlocked(Iterable<PlanTimeSlot> sorted) {
     final merged = <PlanTimeSlot>[];
     for (final b in sorted) {
       if (!b.end.isAfter(b.start)) continue;
@@ -252,10 +250,9 @@ abstract final class PlanAvailabilityService {
     }
     gaps = _subtract(gaps, query.avoidWindows.map((w) => w.onDate(query.date)));
     stage('避让后', gaps);
-    final sortedBusy = snapshot.busy
-        .where((item) => item.end.isAfter(item.start))
-        .toList()
-      ..sort((a, b) => a.start.compareTo(b.start));
+    final sortedBusy =
+        snapshot.busy.where((item) => item.end.isAfter(item.start)).toList()
+          ..sort((a, b) => a.start.compareTo(b.start));
     final unbufferedBusy = _mergeSortedBlocked([
       for (final item in sortedBusy) PlanTimeSlot(item.start, item.end),
     ]);
@@ -264,10 +261,7 @@ abstract final class PlanAvailabilityService {
     final bufferedBusy = _mergeSortedBlocked([
       for (final item in sortedBusy) query.buffered(item),
     ]);
-    gaps = _subtractMerged(
-      gaps,
-      bufferedBusy,
-    );
+    gaps = _subtractMerged(gaps, bufferedBusy);
     final minuteAlignedGaps = <PlanTimeSlot>[];
     for (final gap in gaps) {
       final minuteStart = minuteCeiling(gap.start);
@@ -394,8 +388,7 @@ abstract final class PlanAvailabilityService {
           : due;
       if (deadline.isBefore(upper)) upper = deadline;
     }
-    if (weekly?.active == true &&
-        !weeklyWindowContainsSlot) {
+    if (weekly?.active == true && !weeklyWindowContainsSlot) {
       return false;
     }
     return !slot.start.isBefore(lower) &&

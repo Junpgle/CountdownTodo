@@ -3,23 +3,25 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('SyncOplogPolicy', () {
-    test('only operations present in the request snapshot are acknowledged',
-        () {
-      const requestSnapshot = [
-        SyncOplogEntry(id: 1, table: 'todos', uuid: 'yesterday'),
-        SyncOplogEntry(id: 2, table: 'todo_groups', uuid: 'group-1'),
-      ];
+    test(
+      'only operations present in the request snapshot are acknowledged',
+      () {
+        const requestSnapshot = [
+          SyncOplogEntry(id: 1, table: 'todos', uuid: 'yesterday'),
+          SyncOplogEntry(id: 2, table: 'todo_groups', uuid: 'group-1'),
+        ];
 
-      final resolution = SyncOplogPolicy.resolveRequestSnapshot(
-        requestSnapshot: requestSnapshot,
-        blockingConflictUuids: const {},
-        acknowledgeFixedScheduleOps: true,
-        acknowledgeHabitOps: true,
-      );
+        final resolution = SyncOplogPolicy.resolveRequestSnapshot(
+          requestSnapshot: requestSnapshot,
+          blockingConflictUuids: const {},
+          acknowledgeFixedScheduleOps: true,
+          acknowledgeHabitOps: true,
+        );
 
-      expect(resolution.acknowledgedIds, {1, 2});
-      expect(resolution.acknowledgedIds, isNot(contains(3)));
-    });
+        expect(resolution.acknowledgedIds, {1, 2});
+        expect(resolution.acknowledgedIds, isNot(contains(3)));
+      },
+    );
 
     test('an operation created during sync remains pending and protected', () {
       const requestSnapshot = [
@@ -66,33 +68,38 @@ void main() {
       expect(resolution.blockedIds, {20});
     });
 
-    test('habit ops are acknowledged only when the server declares habits v1',
-        () {
-      const requestSnapshot = [
-        SyncOplogEntry(id: 30, table: 'habit_goals', uuid: 'goal-1'),
-        SyncOplogEntry(
-            id: 31, table: 'habit_goal_rule_revisions', uuid: 'rule-1'),
-        SyncOplogEntry(id: 32, table: 'habit_checkins', uuid: 'checkin-1'),
-      ];
+    test(
+      'habit ops are acknowledged only when the server declares habits v1',
+      () {
+        const requestSnapshot = [
+          SyncOplogEntry(id: 30, table: 'habit_goals', uuid: 'goal-1'),
+          SyncOplogEntry(
+            id: 31,
+            table: 'habit_goal_rule_revisions',
+            uuid: 'rule-1',
+          ),
+          SyncOplogEntry(id: 32, table: 'habit_checkins', uuid: 'checkin-1'),
+        ];
 
-      final resolution = SyncOplogPolicy.resolveRequestSnapshot(
-        requestSnapshot: requestSnapshot,
-        blockingConflictUuids: const {},
-        acknowledgeFixedScheduleOps: true,
-        acknowledgeHabitOps: true,
-      );
+        final resolution = SyncOplogPolicy.resolveRequestSnapshot(
+          requestSnapshot: requestSnapshot,
+          blockingConflictUuids: const {},
+          acknowledgeFixedScheduleOps: true,
+          acknowledgeHabitOps: true,
+        );
 
-      expect(resolution.acknowledgedIds, {30, 31, 32});
+        expect(resolution.acknowledgedIds, {30, 31, 32});
 
-      final oldServer = SyncOplogPolicy.resolveRequestSnapshot(
-        requestSnapshot: requestSnapshot,
-        blockingConflictUuids: const {},
-        acknowledgeFixedScheduleOps: true,
-        acknowledgeHabitOps: false,
-      );
+        final oldServer = SyncOplogPolicy.resolveRequestSnapshot(
+          requestSnapshot: requestSnapshot,
+          blockingConflictUuids: const {},
+          acknowledgeFixedScheduleOps: true,
+          acknowledgeHabitOps: false,
+        );
 
-      expect(oldServer.acknowledgedIds, isEmpty);
-    });
+        expect(oldServer.acknowledgedIds, isEmpty);
+      },
+    );
 
     test('sleep coaching ops stay pending without explicit server support', () {
       const requestSnapshot = [

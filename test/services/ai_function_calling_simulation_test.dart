@@ -153,8 +153,8 @@ void main() {
             compatible,
             originalText: prompt,
             existingTodoTitles: {
-              for (final todo in
-                  ((fixture['app_data'] as Map)['todos'] as List))
+              for (final todo
+                  in ((fixture['app_data'] as Map)['todos'] as List))
                 if (todo is Map && todo['id'] != null)
                   todo['id'].toString(): '${todo['title'] ?? ''}',
             },

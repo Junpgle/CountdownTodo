@@ -572,9 +572,7 @@ class _HabitCardState extends State<HabitCard> {
                   vertical: widget.compact ? 8 : 12,
                 ),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    widget.compact ? 10 : 12,
-                  ),
+                  borderRadius: BorderRadius.circular(widget.compact ? 10 : 12),
                 ),
               ),
               child: Row(
@@ -605,9 +603,7 @@ class _HabitCardState extends State<HabitCard> {
               ),
               style: IconButton.styleFrom(
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    widget.compact ? 10 : 12,
-                  ),
+                  borderRadius: BorderRadius.circular(widget.compact ? 10 : 12),
                 ),
               ),
             ),
@@ -622,9 +618,7 @@ class _HabitCardState extends State<HabitCard> {
                   vertical: widget.compact ? 8 : 12,
                 ),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    widget.compact ? 10 : 12,
-                  ),
+                  borderRadius: BorderRadius.circular(widget.compact ? 10 : 12),
                 ),
               ),
               child: const Text('记录'),
@@ -642,22 +636,15 @@ class _HabitCardState extends State<HabitCard> {
                 ? null
                 : _startFocus,
             style: FilledButton.styleFrom(
-              padding: EdgeInsets.symmetric(
-                vertical: widget.compact ? 8 : 12,
-              ),
+              padding: EdgeInsets.symmetric(vertical: widget.compact ? 8 : 12),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(
-                  widget.compact ? 10 : 12,
-                ),
+                borderRadius: BorderRadius.circular(widget.compact ? 10 : 12),
               ),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  Icons.play_arrow_rounded,
-                  size: widget.compact ? 16 : 18,
-                ),
+                Icon(Icons.play_arrow_rounded, size: widget.compact ? 16 : 18),
                 SizedBox(width: widget.compact ? 4 : 6),
                 const Text('开始专注'),
               ],
@@ -674,9 +661,7 @@ class _HabitCardState extends State<HabitCard> {
                 vertical: widget.compact ? 8 : 12,
               ),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(
-                  widget.compact ? 10 : 12,
-                ),
+                borderRadius: BorderRadius.circular(widget.compact ? 10 : 12),
               ),
             ),
             child: const Text('记录'),

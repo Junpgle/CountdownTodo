@@ -9,7 +9,7 @@ class ExternalShareHandler {
     Function onCourseImported, {
     Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
     Future<void> Function(List<FinanceEntryDraft>, String?)?
-        onFinanceRecognized,
+    onFinanceRecognized,
   }) {}
 
   static void dispose() {}
@@ -36,7 +36,7 @@ class ExternalShareHandler {
   static Future<void> retryTodoRecognition({
     Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
     Future<void> Function(List<FinanceEntryDraft>, String?)?
-        onFinanceRecognized,
+    onFinanceRecognized,
   }) async {
     await StorageService.updatePendingTodoConfirmStatus(
       status: 'failed',

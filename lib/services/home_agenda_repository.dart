@@ -51,9 +51,7 @@ class HomeAgendaItem {
       !allDay &&
       !completed &&
       (isFocusing ||
-          (!needsAttention(now) &&
-              !start.isAfter(now) &&
-              end.isAfter(now)));
+          (!needsAttention(now) && !start.isAfter(now) && end.isAfter(now)));
   bool isUpcoming(DateTime now) =>
       !allDay &&
       !completed &&
@@ -289,9 +287,10 @@ class HomeAgendaRepository {
     HomeAgendaCourseRangeLoader? courseRangeLoader,
     this.fixedLoader = StorageService.getFixedSchedulesByDay,
     this.calendarLoader = _readCalendar,
-  })  : courseLoader = courseLoader ?? CourseService.getAllCourses,
-        courseRangeLoader = courseRangeLoader ??
-            (courseLoader == null ? CourseService.getCoursesForDateRange : null);
+  }) : courseLoader = courseLoader ?? CourseService.getAllCourses,
+       courseRangeLoader =
+           courseRangeLoader ??
+           (courseLoader == null ? CourseService.getCoursesForDateRange : null);
   final PlanReviewRepository plans;
   final HomeAgendaCourseLoader courseLoader;
   final HomeAgendaCourseRangeLoader? courseRangeLoader;
@@ -425,10 +424,7 @@ class HomeAgendaRepository {
               .toList();
         }),
       if (includeSchedules) ...[
-        load(
-          HomeAgendaSource.courses,
-          () => _loadCourseItems(username, day),
-        ),
+        load(HomeAgendaSource.courses, () => _loadCourseItems(username, day)),
         load(
           HomeAgendaSource.fixed,
           () async => (await fixedLoader(username, day))

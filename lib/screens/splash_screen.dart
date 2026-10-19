@@ -1,5 +1,7 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
+
 import '../utils/local_image_provider.dart';
 import '../widgets/floating_glass_control.dart';
 
@@ -36,14 +38,17 @@ class _SplashScreenState extends State<SplashScreen>
       vsync: this,
       duration: const Duration(milliseconds: 200),
     );
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
-    );
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
 
     _controller.forward();
 
-    _completeTimer =
-        Timer(Duration(milliseconds: safeDurationMs), _completeOnce);
+    _completeTimer = Timer(
+      Duration(milliseconds: safeDurationMs),
+      _completeOnce,
+    );
   }
 
   @override

@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+
 import '../storage_service.dart';
 import '../services/course_service.dart';
 import '../services/island_slot_provider.dart';
@@ -32,8 +34,9 @@ class IslandReminderService {
     if (allReminders.isEmpty) return null;
 
     // Sort by time, most urgent first
-    allReminders.sort((a, b) =>
-        (a['minutesUntil'] as int).compareTo(b['minutesUntil'] as int));
+    allReminders.sort(
+      (a, b) => (a['minutesUntil'] as int).compareTo(b['minutesUntil'] as int),
+    );
     debugPrint('[IslandReminder] Returning most urgent: ${allReminders.first}');
     return allReminders.first;
   }
@@ -53,7 +56,8 @@ class IslandReminderService {
           final List<dynamic> decoded = jsonDecode(content);
           todoMaps = decoded.cast<Map<String, dynamic>>();
           debugPrint(
-              '[IslandReminder] Got ${todoMaps.length} todos from shared file');
+            '[IslandReminder] Got ${todoMaps.length} todos from shared file',
+          );
         }
       } catch (e) {
         debugPrint('[IslandReminder] Failed to read shared file: $e');
@@ -64,27 +68,32 @@ class IslandReminderService {
         final username = await StorageService.getLoginSession() ?? 'default';
         final todos = await StorageService.getTodos(username);
         debugPrint(
-            '[IslandReminder] Got ${todos.length} todos from StorageService');
+          '[IslandReminder] Got ${todos.length} todos from StorageService',
+        );
         todoMaps = todos
-            .map((t) => {
-                  'id': t.id,
-                  'title': t.title,
-                  'remark': t.remark,
-                  'dueDate': t.dueDate?.millisecondsSinceEpoch,
-                  'createdDate': t.createdDate,
-                  'createdAt': t.createdAt,
-                  'isDone': t.isDone,
-                  'isDeleted': t.isDeleted,
-                })
+            .map(
+              (t) => {
+                'id': t.id,
+                'title': t.title,
+                'remark': t.remark,
+                'dueDate': t.dueDate?.millisecondsSinceEpoch,
+                'createdDate': t.createdDate,
+                'createdAt': t.createdAt,
+                'isDone': t.isDone,
+                'isDeleted': t.isDeleted,
+              },
+            )
             .toList();
       }
 
       // Filter active todos
       final activeTodos = todoMaps
-          .where((t) =>
-              !(t['isDone'] as bool? ?? false) &&
-              !(t['isDeleted'] as bool? ?? false) &&
-              t['dueDate'] != null)
+          .where(
+            (t) =>
+                !(t['isDone'] as bool? ?? false) &&
+                !(t['isDeleted'] as bool? ?? false) &&
+                t['dueDate'] != null,
+          )
           .toList();
 
       for (final t in activeTodos) {
@@ -102,7 +111,9 @@ class IslandReminderService {
 
   /// Process a single todo and return a reminder if within window
   static Map<String, dynamic>? _processTodoReminder(
-      Map<String, dynamic> t, DateTime now) {
+    Map<String, dynamic> t,
+    DateTime now,
+  ) {
     final createdDate = t['createdDate'] as int?;
     final dueDateMs = t['dueDate'] as int?;
     final title = t['title']?.toString() ?? '';
@@ -119,13 +130,17 @@ class IslandReminderService {
     bool hasExplicitStartTime = false;
 
     if (createdDate != null) {
-      startTime = DateTime.fromMillisecondsSinceEpoch(createdDate, isUtc: true)
-          .toLocal();
+      startTime = DateTime.fromMillisecondsSinceEpoch(
+        createdDate,
+        isUtc: true,
+      ).toLocal();
       hasExplicitStartTime = startTime.hour != 0 || startTime.minute != 0;
     }
 
-    final dueDate =
-        DateTime.fromMillisecondsSinceEpoch(dueDateMs, isUtc: true).toLocal();
+    final dueDate = DateTime.fromMillisecondsSinceEpoch(
+      dueDateMs,
+      isUtc: true,
+    ).toLocal();
 
     // Check start time reminder
     if (hasExplicitStartTime && startTime != null) {
@@ -183,7 +198,8 @@ class IslandReminderService {
       final username = await StorageService.getLoginSession() ?? 'default';
       final courses = await CourseService.getAllCourses(username);
       debugPrint(
-          '[IslandReminder] Got ${courses.length} courses for $username');
+        '[IslandReminder] Got ${courses.length} courses for $username',
+      );
 
       final todayStr =
           '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
@@ -191,8 +207,13 @@ class IslandReminderService {
       for (final c in courses.where((c) => c.date == todayStr)) {
         final startHour = c.startTime ~/ 100;
         final startMin = c.startTime % 100;
-        final courseStart =
-            DateTime(now.year, now.month, now.day, startHour, startMin);
+        final courseStart = DateTime(
+          now.year,
+          now.month,
+          now.day,
+          startHour,
+          startMin,
+        );
         final diff = courseStart.difference(now).inMinutes;
 
         if (diff >= 0 && diff <= 20) {
@@ -232,7 +253,8 @@ class IslandReminderService {
 
     final expireDuration = Duration(minutes: minutesUntil);
     debugPrint(
-        '[IslandReminder] Setting expire timer: $itemId, ${minutesUntil}min');
+      '[IslandReminder] Setting expire timer: $itemId, ${minutesUntil}min',
+    );
 
     return Timer(expireDuration, () {
       debugPrint('[IslandReminder] Reminder expired: $itemId');

@@ -22,23 +22,26 @@ void main() {
       await db.close();
     });
     await DatabaseHelper.ensureFinanceSchema(db);
-    await FinanceStorage.saveBudget(FinanceBudget(
-      uuid: 'september-budget',
-      monthKey: '2026-09',
-      amountMinor: 50000,
-      note: '本月预算',
-    ));
-
-    final results = await GlobalSearchExtraService.searchFinance(
-      ['2026-09-25'],
-      DateTime(2026, 9, 25),
+    await FinanceStorage.saveBudget(
+      FinanceBudget(
+        uuid: 'september-budget',
+        monthKey: '2026-09',
+        amountMinor: 50000,
+        note: '本月预算',
+      ),
     );
+
+    final results = await GlobalSearchExtraService.searchFinance([
+      '2026-09-25',
+    ], DateTime(2026, 9, 25));
 
     final budgets = results
         .where((item) => item.id.startsWith('finance_budget_'))
         .toList();
     expect(budgets, hasLength(1));
-    expect((budgets.single.extraData?['record'] as FinanceBudget).monthKey,
-        '2026-09');
+    expect(
+      (budgets.single.extraData?['record'] as FinanceBudget).monthKey,
+      '2026-09',
+    );
   });
 }

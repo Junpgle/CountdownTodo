@@ -497,12 +497,10 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
                   countdowns: allCountdowns,
                 );
 
-      final Map<String, dynamic> mathStats =
-          !loadMath || results[3] == null
+      final Map<String, dynamic> mathStats = !loadMath || results[3] == null
           ? _mathStats
           : Map<String, dynamic>.from(results[3] as Map);
-      final Map<String, dynamic> courseData =
-          !loadCourses || results[4] == null
+      final Map<String, dynamic> courseData = !loadCourses || results[4] == null
           ? _dashboardCourseData
           : Map<String, dynamic>.from(results[4] as Map);
       final List<TodoPlanBlock> allPlanBlocks =

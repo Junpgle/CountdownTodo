@@ -24,7 +24,8 @@ class AiNativeToolDefinitionBuilder {
     },
     'startTime': {
       'type': ['string', 'null'],
-      'description': 'yyyy-MM-dd HH:mm；仅用于日程、规划块等对应动作。普通待办禁止使用，只使用timeMode和dueDate。',
+      'description':
+          'yyyy-MM-dd HH:mm；仅用于日程、规划块等对应动作。普通待办禁止使用，只使用timeMode和dueDate。',
     },
     'dueDate': {
       'type': ['string', 'null'],
@@ -332,15 +333,7 @@ class AiNativeToolDefinitionBuilder {
     'cancel_schedule': ['取消', '撤销'],
     'delete_schedule': ['删除', '删掉', '删', '移除', '清掉'],
     'update_plan_block': ['修改', '更新', '更改', '调整'],
-    'reschedule_plan_blocks': [
-      '改期',
-      '重排',
-      '重新安排',
-      '改到',
-      '改成',
-      '调整时间',
-      '改时间',
-    ],
+    'reschedule_plan_blocks': ['改期', '重排', '重新安排', '改到', '改成', '调整时间', '改时间'],
     'delete_plan_block': ['删除', '删掉', '删', '移除', '清掉', '取消'],
     'skip_plan_block': ['跳过', '略过'],
     'start_plan_block_pomodoro': ['开始', '启动'],
@@ -358,13 +351,7 @@ class AiNativeToolDefinitionBuilder {
       '设个',
       '设一个',
     ],
-    'update_todo_group': [
-      '修改',
-      '更新',
-      '更名',
-      '改名',
-      '重命名',
-    ],
+    'update_todo_group': ['修改', '更新', '更名', '改名', '重命名'],
     'delete_todo_group': ['删除', '删掉', '删一下', '删', '移除', '清掉'],
     'stop_pomodoro': ['停止番茄钟', '停止专注', '结束番茄钟', '结束专注'],
     'update_countdown': [
@@ -380,15 +367,7 @@ class AiNativeToolDefinitionBuilder {
       '移动到',
     ],
     'complete_countdown': ['完成倒计时', '办完倒计时', '标记完成', '做完倒计时'],
-    'delete_countdown': [
-      '删除倒计时',
-      '取消倒计时',
-      '删除',
-      '删掉',
-      '删',
-      '移除',
-      '清掉',
-    ],
+    'delete_countdown': ['删除倒计时', '取消倒计时', '删除', '删掉', '删', '移除', '清掉'],
     'create_pomodoro_tag': [
       '创建',
       '新建',
@@ -406,15 +385,7 @@ class AiNativeToolDefinitionBuilder {
     'split_todo': ['拆分待办', '拆分任务', '拆分'],
     'merge_todos': ['合并待办', '合并任务', '合并'],
     'delete_pomodoro_tag': ['删除', '删掉', '删一下', '删', '移除', '清掉'],
-    'update_habit': [
-      '修改',
-      '更新',
-      '调整',
-      '改成',
-      '改为',
-      '改名',
-      '重命名',
-    ],
+    'update_habit': ['修改', '更新', '调整', '改成', '改为', '改名', '重命名'],
     'delete_habit': ['删除', '删掉', '删', '移除', '清除', '清空'],
   };
 
@@ -629,28 +600,28 @@ class AiNativeToolDefinitionBuilder {
                     availableActions.contains,
                   ) ??
                   false)
-              field: _recordArraySchema(
-                requiredFields: field == 'todos'
-                    ? const ['title']
-                    : field == 'schedules'
-                    ? const ['title', 'date']
-                    : field == 'logs'
-                    ? const ['title', 'startTime']
-                    : field == 'habits'
-                    ? const ['name', 'sourceType', 'periodType']
-                    : field == 'countdowns'
-                    ? const ['title', 'dueDate']
-                    : field == 'updates' &&
-                          updatesContainOnlyCountdownMutations
-                    ? const ['countdownId']
-                    : field == 'groups' || field == 'tags'
-                    ? const ['name']
-                    : field == 'updates' && updatesContainOnlyTodoMutations
-                    ? const ['todoId']
-                    : field == 'updates' && updatesContainOnlyHabitMutations
-                    ? const ['habitUuid', 'title']
-                    : const [],
-              ),
+                field: _recordArraySchema(
+                  requiredFields: field == 'todos'
+                      ? const ['title']
+                      : field == 'schedules'
+                      ? const ['title', 'date']
+                      : field == 'logs'
+                      ? const ['title', 'startTime']
+                      : field == 'habits'
+                      ? const ['name', 'sourceType', 'periodType']
+                      : field == 'countdowns'
+                      ? const ['title', 'dueDate']
+                      : field == 'updates' &&
+                            updatesContainOnlyCountdownMutations
+                      ? const ['countdownId']
+                      : field == 'groups' || field == 'tags'
+                      ? const ['name']
+                      : field == 'updates' && updatesContainOnlyTodoMutations
+                      ? const ['todoId']
+                      : field == 'updates' && updatesContainOnlyHabitMutations
+                      ? const ['habitUuid', 'title']
+                      : const [],
+                ),
             'title': {'type': 'string'},
             'todoId': {'type': 'string'},
             'durationMinutes': {'type': 'integer'},
@@ -711,10 +682,7 @@ class AiNativeToolDefinitionBuilder {
                   'properties': actionProperties,
                   'required': isTodoCategorizationRequest
                       ? ['action', 'updates']
-                      : [
-                          'action',
-                          ?requiredArrayField,
-                        ],
+                      : ['action', ?requiredArrayField],
                   'additionalProperties': false,
                 },
               },
@@ -1012,9 +980,10 @@ class AiNativeToolDefinitionBuilder {
     ])) {
       return userMessage;
     }
-    final confirmation = userMessage
-        .trim()
-        .replaceAll(RegExp(r'[\s，。！？,.!?]'), '');
+    final confirmation = userMessage.trim().replaceAll(
+      RegExp(r'[\s，。！？,.!?]'),
+      '',
+    );
     if (const {
       '好',
       '好的',

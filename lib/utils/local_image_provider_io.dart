@@ -18,10 +18,5 @@ Widget localImageWidget(
   double? width,
   double? height,
 }) {
-  return Image.file(
-    File(path),
-    fit: fit,
-    width: width,
-    height: height,
-  );
+  return Image.file(File(path), fit: fit, width: width, height: height);
 }

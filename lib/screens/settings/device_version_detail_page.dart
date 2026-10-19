@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../services/api_service.dart';
 import '../../widgets/floating_glass_control.dart';
 import '../../widgets/optional_liquid_glass_surface.dart';
@@ -54,38 +55,34 @@ class _DeviceVersionDetailPageState extends State<DeviceVersionDetailPage> {
     final body = _loading
         ? const Center(child: CircularProgressIndicator())
         : _error != null
-            ? Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.error_outline,
-                        size: 48, color: Colors.red),
-                    const SizedBox(height: 16),
-                    Text('加载失败: $_error'),
-                    const SizedBox(height: 16),
-                    FilledButton(
-                      onPressed: _loadData,
-                      child: const Text('重试'),
-                    ),
-                  ],
-                ),
-              )
-            : RefreshIndicator(
-                onRefresh: _loadData,
-                child: ListView(
-                  padding: EdgeInsets.fromLTRB(
-                    16,
-                    floatingGlassSettingsContentTopInset(context),
-                    16,
-                    16,
-                  ),
-                  children: [
-                    _buildOnlineCard(),
-                    const SizedBox(height: 16),
-                    _buildVersionCard(),
-                  ],
-                ),
-              );
+        ? Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                const SizedBox(height: 16),
+                Text('加载失败: $_error'),
+                const SizedBox(height: 16),
+                FilledButton(onPressed: _loadData, child: const Text('重试')),
+              ],
+            ),
+          )
+        : RefreshIndicator(
+            onRefresh: _loadData,
+            child: ListView(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                floatingGlassSettingsContentTopInset(context),
+                16,
+                16,
+              ),
+              children: [
+                _buildOnlineCard(),
+                const SizedBox(height: 16),
+                _buildVersionCard(),
+              ],
+            ),
+          );
 
     return Scaffold(
       extendBodyBehindAppBar: !widget.isEmbedded,
@@ -122,8 +119,11 @@ class _DeviceVersionDetailPageState extends State<DeviceVersionDetailPage> {
           children: [
             Row(
               children: [
-                Icon(Icons.wifi,
-                    size: 20, color: Theme.of(context).colorScheme.primary),
+                Icon(
+                  Icons.wifi,
+                  size: 20,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   '当前在线设备',
@@ -143,12 +143,15 @@ class _DeviceVersionDetailPageState extends State<DeviceVersionDetailPage> {
             if (stats.isEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
-                child: Text('暂无在线设备',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                child: Text(
+                  '暂无在线设备',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                ),
               )
             else
-              ...stats.entries
-                  .map((e) => _buildPlatformSection(e.key, e.value)),
+              ...stats.entries.map(
+                (e) => _buildPlatformSection(e.key, e.value),
+              ),
           ],
         ),
       ),
@@ -174,8 +177,11 @@ class _DeviceVersionDetailPageState extends State<DeviceVersionDetailPage> {
           children: [
             Row(
               children: [
-                Icon(Icons.devices,
-                    size: 20, color: Theme.of(context).colorScheme.primary),
+                Icon(
+                  Icons.devices,
+                  size: 20,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   '设备历史版本分布',
@@ -195,12 +201,15 @@ class _DeviceVersionDetailPageState extends State<DeviceVersionDetailPage> {
             if (stats.isEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
-                child: Text('暂无设备记录',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                child: Text(
+                  '暂无设备记录',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                ),
               )
             else
-              ...stats.entries
-                  .map((e) => _buildPlatformSection(e.key, e.value)),
+              ...stats.entries.map(
+                (e) => _buildPlatformSection(e.key, e.value),
+              ),
           ],
         ),
       ),
@@ -229,12 +238,18 @@ class _DeviceVersionDetailPageState extends State<DeviceVersionDetailPage> {
               child: Row(
                 children: [
                   const Text('├─ ', style: TextStyle(color: Colors.grey)),
-                  Text('v$version',
-                      style: const TextStyle(
-                          fontFamily: 'monospace', fontSize: 13)),
+                  Text(
+                    'v$version',
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 13,
+                    ),
+                  ),
                   const Spacer(),
-                  Text('$count 台',
-                      style: TextStyle(color: Colors.grey[700], fontSize: 13)),
+                  Text(
+                    '$count 台',
+                    style: TextStyle(color: Colors.grey[700], fontSize: 13),
+                  ),
                 ],
               ),
             );

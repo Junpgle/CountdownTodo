@@ -8,7 +8,8 @@ import 'journal_picker_context.dart';
 const _pendingPickContextKey = 'journal.pending_image_pick_context';
 
 Future<List<XFile>> pickJournalImages() async {
-  final isDesktop = defaultTargetPlatform == TargetPlatform.windows ||
+  final isDesktop =
+      defaultTargetPlatform == TargetPlatform.windows ||
       defaultTargetPlatform == TargetPlatform.macOS ||
       defaultTargetPlatform == TargetPlatform.linux;
   if (!isDesktop) {
@@ -27,7 +28,8 @@ Future<List<XFile>> pickJournalImages() async {
 }
 
 Future<XFile?> takeJournalPhoto() async {
-  final isDesktop = defaultTargetPlatform == TargetPlatform.windows ||
+  final isDesktop =
+      defaultTargetPlatform == TargetPlatform.windows ||
       defaultTargetPlatform == TargetPlatform.macOS ||
       defaultTargetPlatform == TargetPlatform.linux;
   if (isDesktop) return null;
@@ -60,7 +62,8 @@ Future<RecoveredJournalPick?> recoverPendingJournalPick(
   if (response.exception != null) {
     return RecoveredJournalPick(context: context, error: response.exception);
   }
-  final files = response.files ??
+  final files =
+      response.files ??
       (response.file == null ? const <XFile>[] : [response.file!]);
   return RecoveredJournalPick(context: context, files: files);
 }

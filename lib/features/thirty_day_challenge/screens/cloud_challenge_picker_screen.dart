@@ -6,10 +6,7 @@ import '../../../widgets/floating_bottom_bar.dart';
 import '../../../widgets/floating_glass_control.dart';
 
 class _CloudChallengeFilterOption {
-  const _CloudChallengeFilterOption({
-    required this.key,
-    required this.label,
-  });
+  const _CloudChallengeFilterOption({required this.key, required this.label});
 
   final String key;
   final String label;
@@ -27,11 +24,7 @@ class _CloudChallengeFilterGroup {
   final List<_CloudChallengeFilterOption> options;
 }
 
-const _topicCategoryOrder = <String>[
-  '生活与整理',
-  '成长与表达',
-  '观察与连接',
-];
+const _topicCategoryOrder = <String>['生活与整理', '成长与表达', '观察与连接'];
 
 const _topicCategoryByLabel = <String, String>{
   '生活方式': '生活与整理',
@@ -185,27 +178,32 @@ class _CloudChallengePickerScreenState
       selectedFiltersByGroup.putIfAbsent(group, () => <String>{}).add(filter);
     }
 
-    return catalog.challenges.where((challenge) {
-      if (selectedFiltersByGroup.isNotEmpty) {
-        final challengeFilters = _filterKeysForChallenge(catalog, challenge);
-        for (final filters in selectedFiltersByGroup.values) {
-          if (!filters.any(challengeFilters.contains)) return false;
-        }
-      }
-      if (query.isEmpty) return true;
+    return catalog.challenges
+        .where((challenge) {
+          if (selectedFiltersByGroup.isNotEmpty) {
+            final challengeFilters = _filterKeysForChallenge(
+              catalog,
+              challenge,
+            );
+            for (final filters in selectedFiltersByGroup.values) {
+              if (!filters.any(challengeFilters.contains)) return false;
+            }
+          }
+          if (query.isEmpty) return true;
 
-      final searchableText = _searchTextByChallenge.putIfAbsent(
-        challenge,
-        () => [
-          challenge.id,
-          challenge.title,
-          challenge.description,
-          ...challenge.tags,
-          ...challenge.tasks,
-        ].join('\n').toLowerCase(),
-      );
-      return searchableText.contains(query);
-    }).toList(growable: false);
+          final searchableText = _searchTextByChallenge.putIfAbsent(
+            challenge,
+            () => [
+              challenge.id,
+              challenge.title,
+              challenge.description,
+              ...challenge.tags,
+              ...challenge.tasks,
+            ].join('\n').toLowerCase(),
+          );
+          return searchableText.contains(query);
+        })
+        .toList(growable: false);
   }
 
   List<_CloudChallengeFilterGroup> _filterGroups(
@@ -242,17 +240,18 @@ class _CloudChallengePickerScreenState
 
     final groups = <_CloudChallengeFilterGroup>[];
     if (periodLabels.isNotEmpty) {
-      final options = periodLabels
-          .map(
-            (label) => _CloudChallengeFilterOption(
-              key: _periodFilterKey(label),
-              label: label,
-            ),
-          )
-          .toList()
-        ..sort(
-          (a, b) => _periodValue(a.label).compareTo(_periodValue(b.label)),
-        );
+      final options =
+          periodLabels
+              .map(
+                (label) => _CloudChallengeFilterOption(
+                  key: _periodFilterKey(label),
+                  label: label,
+                ),
+              )
+              .toList()
+            ..sort(
+              (a, b) => _periodValue(a.label).compareTo(_periodValue(b.label)),
+            );
       groups.add(
         _CloudChallengeFilterGroup(
           key: 'period',
@@ -280,15 +279,16 @@ class _CloudChallengePickerScreenState
     String category,
     Set<String> labels,
   ) {
-    final options = labels
-        .map(
-          (label) => _CloudChallengeFilterOption(
-            key: _topicFilterKey(label),
-            label: label,
-          ),
-        )
-        .toList()
-      ..sort((a, b) => a.label.compareTo(b.label));
+    final options =
+        labels
+            .map(
+              (label) => _CloudChallengeFilterOption(
+                key: _topicFilterKey(label),
+                label: label,
+              ),
+            )
+            .toList()
+          ..sort((a, b) => a.label.compareTo(b.label));
     return _CloudChallengeFilterGroup(
       key: _topicCategoryKey(category),
       title: category,
@@ -345,9 +345,7 @@ class _CloudChallengePickerScreenState
   }
 
   String? _periodLabelFromText(String value) {
-    return _periodLabelFromMatch(
-      RegExp(r'(\d+)\s*(天|次)').firstMatch(value),
-    );
+    return _periodLabelFromMatch(RegExp(r'(\d+)\s*(天|次)').firstMatch(value));
   }
 
   String? _periodLabelFromMatch(RegExpMatch? match) {
@@ -403,8 +401,9 @@ class _CloudChallengePickerScreenState
         actions: [
           IconButton(
             tooltip: '刷新',
-            onPressed:
-                _isRefreshing ? null : () => _loadCatalog(forceRefresh: true),
+            onPressed: _isRefreshing
+                ? null
+                : () => _loadCatalog(forceRefresh: true),
             style: floatingGlassPlainIconButtonStyle(),
             icon: _isRefreshing
                 ? const SizedBox(
@@ -421,10 +420,10 @@ class _CloudChallengePickerScreenState
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-                ? _buildErrorState(scheme)
-                : catalog == null
-                    ? _buildErrorState(scheme)
-                    : _buildCatalog(catalog, scheme),
+            ? _buildErrorState(scheme)
+            : catalog == null
+            ? _buildErrorState(scheme)
+            : _buildCatalog(catalog, scheme),
       ),
       bottomNavigationBar: useFloatingBottomBar
           ? SafeArea(
@@ -432,10 +431,7 @@ class _CloudChallengePickerScreenState
               child: FloatingBottomBar(
                 height: 64,
                 margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                child: _buildExitAction(
-                  scheme,
-                  includeSafeArea: false,
-                ),
+                child: _buildExitAction(scheme, includeSafeArea: false),
               ),
             )
           : _buildExitAction(scheme),
@@ -464,9 +460,8 @@ class _CloudChallengePickerScreenState
           Expanded(
             child: Text(
               '挑一场现在就想开始的挑战',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
+              style: Theme.of(context).textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w900),
             ),
           ),
           Text(
@@ -474,9 +469,9 @@ class _CloudChallengePickerScreenState
                 ? '${challenges.length} 份'
                 : '${challenges.length}/${catalog.challenges.length} 份',
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w700,
-                ),
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ],
       ),
@@ -497,10 +492,7 @@ class _CloudChallengePickerScreenState
         if (challenges.isEmpty) return _buildEmptySearchState(query, scheme);
         final resultIndex = index - headerItems.length;
         if (resultIndex.isOdd) return const SizedBox(height: 12);
-        return _buildChallengeCard(
-          challenges[resultIndex ~/ 2],
-          scheme,
-        );
+        return _buildChallengeCard(challenges[resultIndex ~/ 2], scheme);
       },
     );
   }
@@ -528,9 +520,8 @@ class _CloudChallengePickerScreenState
             Expanded(
               child: Text(
                 '按标签筛选',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
+                style: Theme.of(context).textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w900),
               ),
             ),
             if (selectedCount > 0)
@@ -543,14 +534,15 @@ class _CloudChallengePickerScreenState
         const SizedBox(height: 4),
         Text(
           '每行一组标签，左右滑动查看更多，支持多选。',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: scheme.onSurfaceVariant,
-              ),
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(color: scheme.onSurfaceVariant),
         ),
         const SizedBox(height: 12),
-        for (var index = 0;
-            index < topicGroups.length + (period == null ? 0 : 1);
-            index++) ...[
+        for (
+          var index = 0;
+          index < topicGroups.length + (period == null ? 0 : 1);
+          index++
+        ) ...[
           _buildFilterOptions(
             period != null && index == 0
                 ? period
@@ -654,17 +646,15 @@ class _CloudChallengePickerScreenState
             const SizedBox(height: 12),
             Text(
               isTagOnly ? '这些筛选条件下还没有挑战' : '没有找到匹配的挑战',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+              style: Theme.of(context).textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 6),
             Text(
               isTagOnly ? '可以调整已选标签，或清除当前筛选继续浏览。' : '试试搜索其他标题、标签或任务关键词。',
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: scheme.onSurfaceVariant),
             ),
             const SizedBox(height: 14),
             TextButton.icon(
@@ -712,25 +702,24 @@ class _CloudChallengePickerScreenState
               children: [
                 Text(
                   '云端挑战库',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
+                  style: Theme.of(context).textTheme.titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w900),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   _catalogDescription(catalog),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: scheme.onPrimaryContainer,
-                        height: 1.45,
-                      ),
+                    color: scheme.onPrimaryContainer,
+                    height: 1.45,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Text(
                   '${catalog.challenges.length} 份挑战 · 支持编辑后开始',
                   style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: scheme.primary,
-                        fontWeight: FontWeight.w800,
-                      ),
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ],
             ),
@@ -792,9 +781,7 @@ class _CloudChallengePickerScreenState
                     children: [
                       Text(
                         challenge.title,
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleLarge
+                        style: Theme.of(context).textTheme.titleLarge
                             ?.copyWith(fontWeight: FontWeight.w900),
                       ),
                       if (challenge.description.isNotEmpty) ...[
@@ -803,11 +790,11 @@ class _CloudChallengePickerScreenState
                           challenge.description,
                           maxLines: 3,
                           overflow: TextOverflow.ellipsis,
-                          style:
-                              Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: scheme.onSurfaceVariant,
-                                    height: 1.4,
-                                  ),
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                                height: 1.4,
+                              ),
                         ),
                       ],
                     ],
@@ -833,12 +820,17 @@ class _CloudChallengePickerScreenState
             Text(
               '任务预览',
               style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: scheme.primary,
-                    fontWeight: FontWeight.w800,
-                  ),
+                color: scheme.primary,
+                fontWeight: FontWeight.w800,
+              ),
             ),
             const SizedBox(height: 8),
-            ...challenge.tasks.take(4).toList().asMap().entries.map(
+            ...challenge.tasks
+                .take(4)
+                .toList()
+                .asMap()
+                .entries
+                .map(
                   (entry) => Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Row(
@@ -869,9 +861,8 @@ class _CloudChallengePickerScreenState
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
                   '还有 ${challenge.tasks.length - 4} 项任务，开始后可以逐项完成。',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
+                  style: Theme.of(context).textTheme.bodySmall
+                      ?.copyWith(color: scheme.onSurfaceVariant),
                 ),
               ),
             const SizedBox(height: 16),
@@ -916,18 +907,11 @@ class _CloudChallengePickerScreenState
     CloudChallengeTemplate? challenge,
     CloudChallengePickerAction action,
   ) {
-    Navigator.of(context).pop(
-      CloudChallengePickerResult(
-        challenge: challenge,
-        action: action,
-      ),
-    );
+    Navigator.of(context)
+        .pop(CloudChallengePickerResult(challenge: challenge, action: action));
   }
 
-  Widget _buildExitAction(
-    ColorScheme scheme, {
-    bool includeSafeArea = true,
-  }) {
+  Widget _buildExitAction(ColorScheme scheme, {bool includeSafeArea = true}) {
     final action = Container(
       decoration: BoxDecoration(
         color: includeSafeArea
@@ -942,9 +926,7 @@ class _CloudChallengePickerScreenState
         onPressed: () => Navigator.of(context).pop(),
         icon: const Icon(Icons.schedule_outlined),
         label: const Text('暂时退出'),
-        style: TextButton.styleFrom(
-          minimumSize: const Size.fromHeight(40),
-        ),
+        style: TextButton.styleFrom(minimumSize: const Size.fromHeight(40)),
       ),
     );
     return includeSafeArea ? SafeArea(top: false, child: action) : action;
@@ -965,9 +947,9 @@ class _CloudChallengePickerScreenState
           Text(
             label,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w700,
-                ),
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ],
       ),
@@ -981,14 +963,15 @@ class _CloudChallengePickerScreenState
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.cloud_off_rounded,
-                size: 48, color: scheme.onSurfaceVariant),
+            Icon(
+              Icons.cloud_off_rounded,
+              size: 48,
+              color: scheme.onSurfaceVariant,
+            ),
             const SizedBox(height: 16),
             Text(
               '暂时无法获取云端挑战',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
+              style: Theme.of(context).textTheme.titleMedium
                   ?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),

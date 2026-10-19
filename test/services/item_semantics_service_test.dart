@@ -85,14 +85,8 @@ void main() {
         ItemSemanticsService.specialTodoTypeForTitle('京东健康减重打卡'),
         'default',
       );
-      expect(
-        ItemSemanticsService.specialTodoTypeForTitle('京东快递'),
-        'delivery',
-      );
-      expect(
-        ItemSemanticsService.specialTodoTypeForTitle('京东取件'),
-        'delivery',
-      );
+      expect(ItemSemanticsService.specialTodoTypeForTitle('京东快递'), 'delivery');
+      expect(ItemSemanticsService.specialTodoTypeForTitle('京东取件'), 'delivery');
     });
 
     test('pickup codes are masked for exposed surfaces', () {

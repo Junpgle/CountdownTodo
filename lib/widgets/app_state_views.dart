@@ -4,11 +4,7 @@ class AppLoadingIndicator extends StatelessWidget {
   final double size;
   final double strokeWidth;
 
-  const AppLoadingIndicator({
-    super.key,
-    this.size = 20,
-    this.strokeWidth = 2,
-  });
+  const AppLoadingIndicator({super.key, this.size = 20, this.strokeWidth = 2});
 
   @override
   Widget build(BuildContext context) {
@@ -94,26 +90,22 @@ class AppEmptyState extends StatelessWidget {
               title,
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: colorScheme.onSurface,
-                  ),
+                fontWeight: FontWeight.w700,
+                color: colorScheme.onSurface,
+              ),
             ),
             if (message != null) ...[
               const SizedBox(height: 8),
               Text(
                 message!,
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
+                style: Theme.of(context).textTheme.bodyMedium
+                    ?.copyWith(color: colorScheme.onSurfaceVariant),
               ),
             ],
             if (actionLabel != null && onAction != null) ...[
               const SizedBox(height: 20),
-              FilledButton(
-                onPressed: onAction,
-                child: Text(actionLabel!),
-              ),
+              FilledButton(onPressed: onAction, child: Text(actionLabel!)),
             ],
           ],
         ),

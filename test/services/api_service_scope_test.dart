@@ -37,8 +37,10 @@ void main() {
     ApiService.setServerChoice(ApiService.serverChoiceCloudflare);
     expect(ApiService.effectiveBaseUrl, ApiService.aliyunCloudflareUrl);
 
-    expect(ApiService.normalizeServerChoice('unknown'),
-        ApiService.serverChoiceAliyunDirect);
+    expect(
+      ApiService.normalizeServerChoice('unknown'),
+      ApiService.serverChoiceAliyunDirect,
+    );
   });
 
   test('isolates custom endpoints from known environments', () {
@@ -66,10 +68,7 @@ void main() {
       );
       final rejectedResult = await ApiService.fetchTeamsWithStatus(
         client: MockClient(
-          (_) async => http.Response(
-            '{"success":false,"teams":[]}',
-            200,
-          ),
+          (_) async => http.Response('{"success":false,"teams":[]}', 200),
         ),
       );
       final malformedResult = await ApiService.fetchTeamsWithStatus(

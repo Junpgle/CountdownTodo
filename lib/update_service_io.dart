@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:countdown_todo/services/band_sync_service.dart';
 import 'package:countdown_todo/services/notification_service.dart';
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'services/android_delta_service.dart';
 import 'services/api_service.dart';
 import 'services/permission_request_coordinator.dart';
@@ -29,12 +31,12 @@ class ChangelogEntry {
   });
 
   factory ChangelogEntry.fromJson(Map<String, dynamic> json) => ChangelogEntry(
-        versionName: json['version_name'] ?? '',
-        date: json['date'] ?? '',
-        items: (json['items'] as List<dynamic>? ?? [])
-            .map((e) => e.toString())
-            .toList(),
-      );
+    versionName: json['version_name'] ?? '',
+    date: json['date'] ?? '',
+    items: (json['items'] as List<dynamic>? ?? [])
+        .map((e) => e.toString())
+        .toList(),
+  );
 }
 
 class AppManifest {
@@ -66,7 +68,7 @@ class AppManifest {
           .toList();
     } else if (json['announcement'] != null) {
       announcementsList = [
-        Announcement.fromJson(json['announcement'] as Map<String, dynamic>)
+        Announcement.fromJson(json['announcement'] as Map<String, dynamic>),
       ];
     }
 
@@ -80,8 +82,9 @@ class AppManifest {
       changelogHistory: (json['changelog_history'] as List<dynamic>? ?? [])
           .map((e) => ChangelogEntry.fromJson(e as Map<String, dynamic>))
           .toList(),
-      changelogArchive:
-          ChangelogArchiveConfig.fromJson(json['changelog_archive'] ?? {}),
+      changelogArchive: ChangelogArchiveConfig.fromJson(
+        json['changelog_archive'] ?? {},
+      ),
     );
   }
 }
@@ -120,19 +123,21 @@ class UpdateInfo {
   final Map<String, List<AndroidDeltaPackage>> androidDeltaPackages;
 
   UpdateInfo.fromJson(Map<String, dynamic> json)
-      : title = json['title'] ?? '版本更新',
-        description = json['description'] ?? '',
-        fullPackageUrl = json['full_package_url'] ?? '',
-        pcPackageUrl = json['PC_package_url'] ?? '',
-        macPackageUrl = json['mac_package_url'] ?? '',
-        androidArchPackages = json['android_arch_packages'] != null
-            ? Map<String, String>.from(json['android_arch_packages'])
-            : {},
-        androidDeltaPackages =
-            _parseAndroidDeltaPackages(json['android_delta_packages']);
+    : title = json['title'] ?? '版本更新',
+      description = json['description'] ?? '',
+      fullPackageUrl = json['full_package_url'] ?? '',
+      pcPackageUrl = json['PC_package_url'] ?? '',
+      macPackageUrl = json['mac_package_url'] ?? '',
+      androidArchPackages = json['android_arch_packages'] != null
+          ? Map<String, String>.from(json['android_arch_packages'])
+          : {},
+      androidDeltaPackages = _parseAndroidDeltaPackages(
+        json['android_delta_packages'],
+      );
 
   static Map<String, List<AndroidDeltaPackage>> _parseAndroidDeltaPackages(
-      dynamic raw) {
+    dynamic raw,
+  ) {
     if (raw is! Map) return {};
 
     final result = <String, List<AndroidDeltaPackage>>{};
@@ -140,9 +145,10 @@ class UpdateInfo {
       if (value is! List) return;
       final packages = value
           .whereType<Map>()
-          .map((entry) => AndroidDeltaPackage.fromJson(
-                Map<String, dynamic>.from(entry),
-              ))
+          .map(
+            (entry) =>
+                AndroidDeltaPackage.fromJson(Map<String, dynamic>.from(entry)),
+          )
           .where((entry) => entry.isUsable)
           .toList();
       if (packages.isNotEmpty) {
@@ -162,15 +168,16 @@ class Announcement {
   final List<String> targetVersions; // 空列表=所有版本, 非空=仅指定版本可见
 
   Announcement.fromJson(Map<String, dynamic> json)
-      : show = json['show'] ?? false,
-        id = json['id'] ?? '',
-        title = json['title'] ?? '',
-        content = json['content'] ?? '',
-        remindMode = json['remind_mode'] ?? 'once',
-        targetVersions = (json['target_versions'] as List<dynamic>?)
-                ?.map((e) => e.toString())
-                .toList() ??
-            [];
+    : show = json['show'] ?? false,
+      id = json['id'] ?? '',
+      title = json['title'] ?? '',
+      content = json['content'] ?? '',
+      remindMode = json['remind_mode'] ?? 'once',
+      targetVersions =
+          (json['target_versions'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [];
 }
 
 class WallpaperConfig {
@@ -178,8 +185,8 @@ class WallpaperConfig {
   final String imageUrl;
 
   WallpaperConfig.fromJson(Map<String, dynamic> json)
-      : show = json['show'] ?? false,
-        imageUrl = json['image_url'] ?? '';
+    : show = json['show'] ?? false,
+      imageUrl = json['image_url'] ?? '';
 }
 
 class _UpdateArtifact {
@@ -295,11 +302,13 @@ class _AnnouncementCarouselDialogState
 
 class UpdateService {
   static final GitHubResourceService _resourceService = GitHubResourceService();
-  static final RegExp _announcementUnixMillisecondsPattern =
-      RegExp(r'(1\d{12})');
+  static final RegExp _announcementUnixMillisecondsPattern = RegExp(
+    r'(1\d{12})',
+  );
   static final RegExp _announcementUnixSecondsPattern = RegExp(r'(1\d{9})');
-  static final RegExp _announcementDateDigitsPattern =
-      RegExp(r'(\d{14}|\d{12}|\d{10}|\d{8})');
+  static final RegExp _announcementDateDigitsPattern = RegExp(
+    r'(\d{14}|\d{12}|\d{10}|\d{8})',
+  );
   static const String manifestUrl =
       "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json";
   static String get fallbackManifestUrl {
@@ -352,10 +361,8 @@ class UpdateService {
     await prefs.setBool(_autoDownloadOnWifiKey, enabled);
     if (Platform.isAndroid) {
       try {
-        await const MethodChannel(_updateMethodChannelName).invokeMethod<void>(
-          'setAutoDownloadOnWifi',
-          enabled,
-        );
+        await const MethodChannel(_updateMethodChannelName)
+            .invokeMethod<void>('setAutoDownloadOnWifi', enabled);
       } catch (error) {
         debugPrint('[UpdateService] 同步 Wi-Fi 自动下载设置失败: $error');
       }
@@ -404,8 +411,9 @@ class UpdateService {
   static DateTime? _lastPromptedUpdateAt;
 
   // 全局壁纸状态管理
-  static ValueNotifier<String?> wallpaperUrlNotifier =
-      ValueNotifier<String?>(null);
+  static ValueNotifier<String?> wallpaperUrlNotifier = ValueNotifier<String?>(
+    null,
+  );
   static ValueNotifier<bool> wallpaperShowNotifier = ValueNotifier<bool>(false);
   static const String _wallpaperUrlKey = 'manifest_wallpaper_url';
   static const String _wallpaperShowKey = 'manifest_wallpaper_show';
@@ -438,7 +446,9 @@ class UpdateService {
         await prefs.setString(_wallpaperUrlKey, manifest.wallpaper.imageUrl);
       }
       await prefs.setInt(
-          _wallpaperLastCheckKey, DateTime.now().millisecondsSinceEpoch);
+        _wallpaperLastCheckKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
     }
   }
 
@@ -492,7 +502,10 @@ class UpdateService {
 
   // 检查是否需要显示公告(考虑已读状态、提醒模式、目标版本)
   static bool shouldShowAnnouncement(
-      Announcement announcement, bool isRead, String currentVersion) {
+    Announcement announcement,
+    bool isRead,
+    String currentVersion,
+  ) {
     if (!announcement.show) return false;
     if (announcement.targetVersions.isNotEmpty) {
       // 如果指定了目标版本,当前版本必须在列表中(支持主版本号匹配,如"3"匹配"3.0.0")
@@ -539,7 +552,8 @@ class UpdateService {
       final ms = int.tryParse(unixMs);
       if (ms != null) {
         return _dateTimeToSortKey(
-            DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toLocal());
+          DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toLocal(),
+        );
       }
     }
 
@@ -548,8 +562,11 @@ class UpdateService {
       final sec = int.tryParse(unixSec);
       if (sec != null) {
         return _dateTimeToSortKey(
-            DateTime.fromMillisecondsSinceEpoch(sec * 1000, isUtc: true)
-                .toLocal());
+          DateTime.fromMillisecondsSinceEpoch(
+            sec * 1000,
+            isUtc: true,
+          ).toLocal(),
+        );
       }
     }
 
@@ -569,7 +586,8 @@ class UpdateService {
   }
 
   static List<Announcement> sortAnnouncementsByIdDesc(
-      List<Announcement> items) {
+    List<Announcement> items,
+  ) {
     final sorted = List<Announcement>.from(items);
     sorted.sort((a, b) {
       final keyA = parseAnnouncementSortKey(a.id);
@@ -634,10 +652,12 @@ class UpdateService {
   // 🚀 根据设备架构获取对应的下载链接
   static Future<String> getDownloadUrlForArch(AppManifest manifest) async {
     debugPrint(
-        '[UpdateService] getDownloadUrlForArch: macPackageUrl=${manifest.updateInfo.macPackageUrl}, pcPackageUrl=${manifest.updateInfo.pcPackageUrl}');
+      '[UpdateService] getDownloadUrlForArch: macPackageUrl=${manifest.updateInfo.macPackageUrl}, pcPackageUrl=${manifest.updateInfo.pcPackageUrl}',
+    );
     if (Platform.isMacOS && manifest.updateInfo.macPackageUrl.isNotEmpty) {
       debugPrint(
-          '[UpdateService] Using macPackageUrl: ${manifest.updateInfo.macPackageUrl}');
+        '[UpdateService] Using macPackageUrl: ${manifest.updateInfo.macPackageUrl}',
+      );
       return _giteePackageUrl(manifest.updateInfo.macPackageUrl);
     }
     if (Platform.isWindows && manifest.updateInfo.pcPackageUrl.isNotEmpty) {
@@ -648,13 +668,15 @@ class UpdateService {
       final architecture = await getDeviceArchitecture();
       final packageUrl = archPackages[architecture];
       debugPrint(
-          '[UpdateService] Android architecture: $architecture, package: $packageUrl');
+        '[UpdateService] Android architecture: $architecture, package: $packageUrl',
+      );
       if (packageUrl != null && packageUrl.isNotEmpty) {
         return _giteePackageUrl(packageUrl);
       }
     }
     debugPrint(
-        '[UpdateService] Using fullPackageUrl: ${manifest.updateInfo.fullPackageUrl}');
+      '[UpdateService] Using fullPackageUrl: ${manifest.updateInfo.fullPackageUrl}',
+    );
     return _giteePackageUrl(manifest.updateInfo.fullPackageUrl);
   }
 
@@ -700,7 +722,8 @@ class UpdateService {
         if (patchUrl.isEmpty) continue;
 
         debugPrint(
-            '[UpdateService] Using $architecture delta ${candidate.fromVersion} -> ${candidate.toVersion}');
+          '[UpdateService] Using $architecture delta ${candidate.fromVersion} -> ${candidate.toVersion}',
+        );
         return _UpdateArtifact(
           url: patchUrl,
           fileName:
@@ -711,7 +734,8 @@ class UpdateService {
       }
     } catch (error) {
       debugPrint(
-          '[UpdateService] Delta selection failed, using full APK: $error');
+        '[UpdateService] Delta selection failed, using full APK: $error',
+      );
     }
 
     return fullArtifact;
@@ -764,7 +788,9 @@ class UpdateService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_manifestCacheKey, rawJson);
       await prefs.setInt(
-          _manifestCacheTimeKey, DateTime.now().millisecondsSinceEpoch);
+        _manifestCacheTimeKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
     } catch (_) {}
   }
 
@@ -793,7 +819,8 @@ class UpdateService {
         final manifest = AppManifest.fromJson(jsonDecode(body));
         await _writeManifestCache(body);
         debugPrint(
-            '[UpdateService] GitHub manifest 获取成功: v${manifest.versionName}');
+          '[UpdateService] GitHub manifest 获取成功: v${manifest.versionName}',
+        );
         return manifest;
       }
     } catch (e) {
@@ -811,7 +838,8 @@ class UpdateService {
         final manifest = AppManifest.fromJson(jsonDecode(body));
         await _writeManifestCache(body);
         debugPrint(
-            '[UpdateService] 服务器 manifest 获取成功: v${manifest.versionName}');
+          '[UpdateService] 服务器 manifest 获取成功: v${manifest.versionName}',
+        );
         return manifest;
       }
     } catch (e) {
@@ -833,7 +861,8 @@ class UpdateService {
         final manifest = AppManifest.fromJson(jsonDecode(body));
         await _writeManifestCache(body);
         debugPrint(
-            '[UpdateService] 服务器 manifest 获取成功: v${manifest.versionName}');
+          '[UpdateService] 服务器 manifest 获取成功: v${manifest.versionName}',
+        );
         return manifest;
       }
     } catch (e) {
@@ -851,7 +880,8 @@ class UpdateService {
         final manifest = AppManifest.fromJson(jsonDecode(body));
         await _writeManifestCache(body);
         debugPrint(
-            '[UpdateService] GitHub manifest 获取成功: v${manifest.versionName}');
+          '[UpdateService] GitHub manifest 获取成功: v${manifest.versionName}',
+        );
         return manifest;
       }
     } catch (e) {
@@ -866,8 +896,8 @@ class UpdateService {
     final source = decoded is List
         ? decoded
         : (decoded as Map<String, dynamic>)['changelog_history']
-                as List<dynamic>? ??
-            [];
+                  as List<dynamic>? ??
+              [];
     return source
         .map((e) => ChangelogEntry.fromJson(e as Map<String, dynamic>))
         .toList();
@@ -886,8 +916,9 @@ class UpdateService {
 
   static Future<List<ChangelogEntry>> _readBundledChangelogArchive() async {
     try {
-      final rawJson =
-          await rootBundle.loadString('update_changelog_archive.json');
+      final rawJson = await rootBundle.loadString(
+        'update_changelog_archive.json',
+      );
       return _parseChangelogArchive(rawJson);
     } catch (e) {
       debugPrint('[UpdateService] bundled changelog archive unavailable: $e');
@@ -900,7 +931,9 @@ class UpdateService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_changelogArchiveCacheKey, rawJson);
       await prefs.setInt(
-          _changelogArchiveCacheTimeKey, DateTime.now().millisecondsSinceEpoch);
+        _changelogArchiveCacheTimeKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
     } catch (_) {}
   }
 
@@ -967,8 +1000,10 @@ class UpdateService {
 
   /// Manifest 读取策略：默认优先返回本地缓存，同时后台刷新网络。
   /// [preferCache] 为 false 时将优先走网络（如手动检查更新）。
-  static Future<AppManifest?> checkManifest(
-      {bool preferCache = true, bool refreshInBackground = true}) async {
+  static Future<AppManifest?> checkManifest({
+    bool preferCache = true,
+    bool refreshInBackground = true,
+  }) async {
     if (preferCache) {
       final cached = await _readManifestCache();
       if (cached != null) {
@@ -1095,7 +1130,9 @@ class UpdateService {
   }
 
   static Future<bool> prepareForDownload(
-      BuildContext context, String targetVersionName) async {
+    BuildContext context,
+    String targetVersionName,
+  ) async {
     // Windows 直接放行，跳过移动端权限申请
     if (!Platform.isAndroid) return true;
 
@@ -1104,8 +1141,9 @@ class UpdateService {
       final storage = await coordinator.request(AppPermissionKind.storage);
       if (!storage.granted) return false;
 
-      final install =
-          await coordinator.request(AppPermissionKind.requestInstall);
+      final install = await coordinator.request(
+        AppPermissionKind.requestInstall,
+      );
       if (!install.granted) return false;
     } finally {
       coordinator.dispose();
@@ -1117,8 +1155,10 @@ class UpdateService {
         if (await dir.exists()) {
           final List<FileSystemEntity> files = dir.listSync();
           for (var file in files) {
-            String name =
-                file.path.split(Platform.pathSeparator).last.toLowerCase();
+            String name = file.path
+                .split(Platform.pathSeparator)
+                .last
+                .toLowerCase();
             if (name.endsWith(".apk") ||
                 name.endsWith(".exe") ||
                 name.endsWith(".zip") ||
@@ -1197,8 +1237,9 @@ class UpdateService {
 
     await OpenFile.open(
       file.path,
-      type:
-          Platform.isAndroid ? "application/vnd.android.package-archive" : null,
+      type: Platform.isAndroid
+          ? "application/vnd.android.package-archive"
+          : null,
     );
   }
 
@@ -1264,8 +1305,10 @@ class UpdateService {
     required Function(String) onComplete,
     required Function(String) onError,
   }) async {
-    final manifest =
-        await checkManifest(preferCache: false, refreshInBackground: false);
+    final manifest = await checkManifest(
+      preferCache: false,
+      refreshInBackground: false,
+    );
     if (manifest == null) {
       onError('获取版本信息失败，请检查网络');
       return;
@@ -1333,18 +1376,15 @@ class UpdateService {
       if (!artifact.isDelta) rethrow;
 
       debugPrint(
-          '[UpdateService] Delta update failed, falling back to full APK: $error');
+        '[UpdateService] Delta update failed, falling back to full APK: $error',
+      );
       onProgress(0.0);
       final fullArtifact = await _getUpdateArtifact(
         manifest,
         preferDelta: false,
       );
       if (fullArtifact.url.isEmpty) rethrow;
-      return _downloadArtifact(
-        fullArtifact,
-        directory,
-        onProgress: onProgress,
-      );
+      return _downloadArtifact(fullArtifact, directory, onProgress: onProgress);
     }
   }
 
@@ -1429,15 +1469,14 @@ class UpdateService {
     }
   }
 
-  static Future<void> checkUpdateAndPrompt(BuildContext context,
-      {bool isManual = false}) {
+  static Future<void> checkUpdateAndPrompt(
+    BuildContext context, {
+    bool isManual = false,
+  }) {
     final running = _updateCheckFuture;
     if (running != null) return running;
 
-    final future = _checkUpdateAndPromptInternal(
-      context,
-      isManual: isManual,
-    );
+    final future = _checkUpdateAndPromptInternal(context, isManual: isManual);
     _updateCheckFuture = future;
     future.then<void>(
       (_) {
@@ -1454,8 +1493,10 @@ class UpdateService {
     return future;
   }
 
-  static Future<void> _checkUpdateAndPromptInternal(BuildContext context,
-      {bool isManual = false}) async {
+  static Future<void> _checkUpdateAndPromptInternal(
+    BuildContext context, {
+    bool isManual = false,
+  }) async {
     if (_isDialogShowing) return;
 
     AppManifest? manifest = await checkManifest(
@@ -1464,8 +1505,10 @@ class UpdateService {
     );
     if (manifest == null) {
       if (isManual && context.mounted) {
-        AppSnackBars.showSnackBar(context,
-            const SnackBar(content: Text('检查失败，请检查网络')));
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(content: Text('检查失败，请检查网络')),
+        );
       }
       return;
     }
@@ -1476,8 +1519,9 @@ class UpdateService {
     bool hasUpdate = false;
     try {
       // 🚀 核心修复：纯三位数版本号对比，不依赖任何 BuildNumber 和 versionCode
-      String cleanManifestVersion =
-          manifest.versionName.split('+')[0].split('-')[0];
+      String cleanManifestVersion = manifest.versionName
+          .split('+')[0]
+          .split('-')[0];
       String cleanLocalVersion = localVersion.split('+')[0].split('-')[0];
 
       List<int> v1 = cleanManifestVersion
@@ -1536,15 +1580,18 @@ class UpdateService {
     if (!hasUpdate && !hasNotice) {
       if (isManual && context.mounted) {
         showAppDialog(
-            context: context,
-            builder: (ctx) => AlertDialog(
-                    title: const Text("检查完成"),
-                    content: Text("当前版本 ($localVersion) 已是最新。"),
-                    actions: [
-                      TextButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          child: const Text("好"))
-                    ]));
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text("检查完成"),
+            content: Text("当前版本 ($localVersion) 已是最新。"),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text("好"),
+              ),
+            ],
+          ),
+        );
       }
       return;
     }
@@ -1562,12 +1609,24 @@ class UpdateService {
       if (hasNotice) {
         await showAnnouncementDialog(context, announcementsToShow, null);
         if (hasUpdate && context.mounted) {
-          await showUpdateDialog(context, manifest, localVersion,
-              hasUpdate: true, hasNotice: false, respectTodaySnooze: !isManual);
+          await showUpdateDialog(
+            context,
+            manifest,
+            localVersion,
+            hasUpdate: true,
+            hasNotice: false,
+            respectTodaySnooze: !isManual,
+          );
         }
       } else if (hasUpdate) {
-        await showUpdateDialog(context, manifest, localVersion,
-            hasUpdate: true, hasNotice: false, respectTodaySnooze: !isManual);
+        await showUpdateDialog(
+          context,
+          manifest,
+          localVersion,
+          hasUpdate: true,
+          hasNotice: false,
+          respectTodaySnooze: !isManual,
+        );
       }
     }
   }
@@ -1614,8 +1673,13 @@ class UpdateService {
     );
 
     if (context.mounted) {
-      showUpdateDialog(context, mockManifest, localVersion,
-          hasUpdate: true, hasNotice: false);
+      showUpdateDialog(
+        context,
+        mockManifest,
+        localVersion,
+        hasUpdate: true,
+        hasNotice: false,
+      );
     }
   }
 
@@ -1658,13 +1722,15 @@ class UpdateService {
     }
 
     if (_isDownloading || !context.mounted) return;
-    unawaited(_startForegroundDownload(
-      context,
-      manifest,
-      onProgress: onProgress,
-      onComplete: onComplete,
-      onError: onError,
-    ));
+    unawaited(
+      _startForegroundDownload(
+        context,
+        manifest,
+        onProgress: onProgress,
+        onComplete: onComplete,
+        onError: onError,
+      ),
+    );
   }
 
   // 🚀 提取出来的纯净版本号对比算法
@@ -1693,8 +1759,11 @@ class UpdateService {
     return false;
   }
 
-  static Future<void> showAnnouncementDialog(BuildContext context,
-      List<Announcement> announcements, VoidCallback? onDismissed) async {
+  static Future<void> showAnnouncementDialog(
+    BuildContext context,
+    List<Announcement> announcements,
+    VoidCallback? onDismissed,
+  ) async {
     if (_isAnnouncementDialogShowing) return;
     if (announcements.isEmpty) return;
     _isAnnouncementDialogShowing = true;
@@ -1708,9 +1777,7 @@ class UpdateService {
       context: context,
       barrierDismissible: true,
       builder: (ctx) {
-        return _AnnouncementCarouselDialog(
-          announcements: announcements,
-        );
+        return _AnnouncementCarouselDialog(announcements: announcements);
       },
     );
 
@@ -1719,10 +1786,13 @@ class UpdateService {
   }
 
   static Future<void> showUpdateDialog(
-      BuildContext context, AppManifest manifest, String currentVersion,
-      {bool hasUpdate = true,
-      bool hasNotice = false,
-      bool respectTodaySnooze = true}) async {
+    BuildContext context,
+    AppManifest manifest,
+    String currentVersion, {
+    bool hasUpdate = true,
+    bool hasNotice = false,
+    bool respectTodaySnooze = true,
+  }) async {
     if (_isDialogShowing) return;
     if (hasUpdate &&
         !manifest.forceUpdate &&
@@ -1757,8 +1827,9 @@ class UpdateService {
     NotificationService.cancelUpdateNotification();
 
     if (!_isDownloading && !_isDownloaded) {
-      String? existingPath =
-          await isPackageAlreadyDownloaded(manifest.versionName);
+      String? existingPath = await isPackageAlreadyDownloaded(
+        manifest.versionName,
+      );
       if (existingPath != null) {
         _isDownloaded = true;
         _localPackagePath = existingPath;
@@ -1781,195 +1852,230 @@ class UpdateService {
         return PopScope(
           canPop: !manifest.forceUpdate,
           child: StatefulBuilder(
-              builder: (BuildContext context, StateSetter setState) {
-            _uiProgressCallback = (p) {
-              if (context.mounted) setState(() {});
-            };
-            _uiCompleteCallback = (path) {
-              if (context.mounted) setState(() {});
-            };
-            _uiErrorCallback = (err) {
-              if (context.mounted) {
-                setState(() {});
-                AppSnackBars.showSnackBar(
-                    ctx, SnackBar(content: Text(err)));
-              }
-            };
+            builder: (BuildContext context, StateSetter setState) {
+              _uiProgressCallback = (p) {
+                if (context.mounted) setState(() {});
+              };
+              _uiCompleteCallback = (path) {
+                if (context.mounted) setState(() {});
+              };
+              _uiErrorCallback = (err) {
+                if (context.mounted) {
+                  setState(() {});
+                  AppSnackBars.showSnackBar(ctx, SnackBar(content: Text(err)));
+                }
+              };
 
-            return AlertDialog(
-              contentPadding: EdgeInsets.zero,
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (manifest.wallpaper.show &&
-                        manifest.wallpaper.imageUrl.isNotEmpty)
-                      ClipRRect(
+              return AlertDialog(
+                contentPadding: EdgeInsets.zero,
+                content: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (manifest.wallpaper.show &&
+                          manifest.wallpaper.imageUrl.isNotEmpty)
+                        ClipRRect(
                           borderRadius: const BorderRadius.vertical(
-                              top: Radius.circular(20)),
+                            top: Radius.circular(20),
+                          ),
                           child: GitHubResourceImage(
                             url: manifest.wallpaper.imageUrl,
                             height: 200,
                             fit: BoxFit.cover,
                             errorBuilder: (context, error, stackTrace) =>
                                 Container(color: Colors.grey[200]),
-                          )),
-                    Padding(
-                      padding: const EdgeInsets.all(20.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (hasUpdate) ...[
-                            Row(children: [
-                              Icon(Icons.new_releases,
-                                  color: Theme.of(context).colorScheme.primary),
-                              const SizedBox(width: 8),
-                              Text(manifest.updateInfo.title,
-                                  style: const TextStyle(
+                          ),
+                        ),
+                      Padding(
+                        padding: const EdgeInsets.all(20.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (hasUpdate) ...[
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.new_releases,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .primary,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    manifest.updateInfo.title,
+                                    style: const TextStyle(
                                       fontWeight: FontWeight.bold,
-                                      fontSize: 18))
-                            ]),
-                            const SizedBox(height: 6),
-                            Text(
+                                      fontSize: 18,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
                                 "当前: $currentVersion  →  最新: ${manifest.versionName}",
                                 style: TextStyle(
-                                    fontSize: 12,
-                                    color:
-                                        Theme.of(context).colorScheme.primary,
-                                    fontWeight: FontWeight.bold)),
-                            const SizedBox(height: 10),
-                            Text(manifest.updateInfo.description),
-                            const SizedBox(height: 20),
-                            if (manifest.updateInfo.fullPackageUrl.isNotEmpty)
-                              if (_isDownloaded)
-                                Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    // 🚀 核心防崩区域：安全地保留纯 Text，禁止外部包裹任何 Expanded/Flexible
-                                    ElevatedButton.icon(
-                                      icon: const Icon(Icons.system_update),
-                                      label: Text(
+                                  fontSize: 12,
+                                  color: Theme.of(context).colorScheme.primary,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(manifest.updateInfo.description),
+                              const SizedBox(height: 20),
+                              if (manifest.updateInfo.fullPackageUrl.isNotEmpty)
+                                if (_isDownloaded)
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      // 🚀 核心防崩区域：安全地保留纯 Text，禁止外部包裹任何 Expanded/Flexible
+                                      ElevatedButton.icon(
+                                        icon: const Icon(Icons.system_update),
+                                        label: Text(
                                           Platform.isMacOS
                                               ? "下载完成，打开下载目录"
                                               : "下载完成，立即安装",
-                                          overflow: TextOverflow.ellipsis),
-                                      style: ElevatedButton.styleFrom(
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        style: ElevatedButton.styleFrom(
                                           backgroundColor: Colors.green,
-                                          foregroundColor: Colors.white),
-                                      onPressed: () {
-                                        if (_localPackagePath != null) {
-                                          installPackage(_localPackagePath!);
-                                          NotificationService
-                                              .cancelUpdateNotification();
-                                        }
-                                      },
-                                    ),
-                                    if (Platform.isMacOS)
-                                      const Padding(
-                                        padding: EdgeInsets.only(top: 4),
-                                        child: Text(
+                                          foregroundColor: Colors.white,
+                                        ),
+                                        onPressed: () {
+                                          if (_localPackagePath != null) {
+                                            installPackage(_localPackagePath!);
+                                            NotificationService.cancelUpdateNotification();
+                                          }
+                                        },
+                                      ),
+                                      if (Platform.isMacOS)
+                                        const Padding(
+                                          padding: EdgeInsets.only(top: 4),
+                                          child: Text(
                                             "请在访达中解压 zip 文件，然后将 App 拖入「应用程序」文件夹",
                                             style: TextStyle(
-                                                color: Colors.grey,
-                                                fontSize: 12)),
-                                      ),
-                                    TextButton(
-                                      onPressed: () {
-                                        if (_isDownloading) return;
-                                        setState(() {});
-                                        _startForegroundDownload(
-                                            context, manifest);
-                                      },
-                                      child: const Text("安装失败？点击强制重新下载",
-                                          style: TextStyle(
                                               color: Colors.grey,
-                                              fontSize: 13,
-                                              decoration:
-                                                  TextDecoration.underline)),
-                                    )
-                                  ],
-                                )
-                              else if (_isDownloading)
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        const Text("正在下载更新包...",
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ),
+                                      TextButton(
+                                        onPressed: () {
+                                          if (_isDownloading) return;
+                                          setState(() {});
+                                          _startForegroundDownload(
+                                            context,
+                                            manifest,
+                                          );
+                                        },
+                                        child: const Text(
+                                          "安装失败？点击强制重新下载",
+                                          style: TextStyle(
+                                            color: Colors.grey,
+                                            fontSize: 13,
+                                            decoration:
+                                                TextDecoration.underline,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                else if (_isDownloading)
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          const Text(
+                                            "正在下载更新包...",
                                             style: TextStyle(
-                                                fontSize: 13,
-                                                color: Colors.grey)),
-                                        Text(
+                                              fontSize: 13,
+                                              color: Colors.grey,
+                                            ),
+                                          ),
+                                          Text(
                                             "${(_downloadProgress * 100).toStringAsFixed(1)}%",
                                             style: TextStyle(
-                                                fontSize: 13,
-                                                color: Theme.of(context)
-                                                    .colorScheme
-                                                    .primary,
-                                                fontWeight: FontWeight.bold)),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: LinearProgressIndicator(
-                                        value: _downloadProgress,
-                                        minHeight: 12,
-                                        backgroundColor: Colors.grey[200],
-                                        valueColor:
-                                            AlwaysStoppedAnimation<Color>(
+                                              fontSize: 13,
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .primary,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: LinearProgressIndicator(
+                                          value: _downloadProgress,
+                                          minHeight: 12,
+                                          backgroundColor: Colors.grey[200],
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
                                                 Theme.of(context)
                                                     .colorScheme
-                                                    .secondary),
+                                                    .secondary,
+                                              ),
+                                        ),
                                       ),
-                                    ),
-                                  ],
-                                )
-                              else
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: ElevatedButton.icon(
+                                    ],
+                                  )
+                                else
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: ElevatedButton.icon(
                                       icon: const Icon(Icons.download),
-                                      label: const Text("立即下载新版本",
-                                          overflow: TextOverflow.ellipsis),
+                                      label: const Text(
+                                        "立即下载新版本",
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                       onPressed: () {
                                         if (_isDownloading) return;
                                         setState(() {});
                                         _startForegroundDownload(
-                                            context, manifest);
-                                      }),
-                                ),
-                            if (hasNotice) const Divider(height: 30),
+                                          context,
+                                          manifest,
+                                        );
+                                      },
+                                    ),
+                                  ),
+                              if (hasNotice) const Divider(height: 30),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
-                    )
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              actions: [
-                if (!manifest.forceUpdate && hasUpdate && !_isDownloading)
-                  TextButton(
+                actions: [
+                  if (!manifest.forceUpdate && hasUpdate && !_isDownloading)
+                    TextButton(
                       onPressed: () async {
                         await _snoozeUpdateDialogForToday(manifest.versionName);
                         if (ctx.mounted) Navigator.pop(ctx);
                       },
-                      child: const Text("今日不再提醒")),
-                if (!manifest.forceUpdate)
-                  TextButton(
+                      child: const Text("今日不再提醒"),
+                    ),
+                  if (!manifest.forceUpdate)
+                    TextButton(
                       onPressed: () => Navigator.pop(ctx),
                       child: Text(
-                          _isDownloading
-                              ? "后台下载"
-                              : (_isDownloaded ? "关闭" : "稍后再说"),
-                          style: const TextStyle(color: Colors.grey))),
-              ],
-            );
-          }),
+                        _isDownloading
+                            ? "后台下载"
+                            : (_isDownloaded ? "关闭" : "稍后再说"),
+                        style: const TextStyle(color: Colors.grey),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
         );
       },
     );
@@ -1998,7 +2104,9 @@ class UpdateService {
   static Future<void> _snoozeUpdateDialogForToday(String versionName) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
-        _updateDialogSnoozeTodayKey, _snoozeValue(versionName));
+      _updateDialogSnoozeTodayKey,
+      _snoozeValue(versionName),
+    );
   }
 
   static Future<void> _startForegroundDownload(

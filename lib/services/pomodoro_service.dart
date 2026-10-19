@@ -1365,9 +1365,7 @@ class PomodoroService {
         final record = records[index];
         final planBlockId = record.planBlockId;
         if (planBlockId != null) {
-          (recordsByPlanBlock[planBlockId] ??= <PomodoroRecord>[]).add(
-            record,
-          );
+          (recordsByPlanBlock[planBlockId] ??= <PomodoroRecord>[]).add(record);
         }
         if (planBlockId == null || planBlockId.isEmpty) {
           legacyRecordsByUuid[record.uuid] = record;

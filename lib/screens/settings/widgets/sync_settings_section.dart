@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../../services/api_service.dart';
 import '../../../storage_service.dart';
 import '../../../utils/app_platform.dart';
@@ -80,7 +81,9 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
   Future<void> _setConflictDetectionEnabled(bool enabled) async {
     setState(() => _conflictDetectionEnabled = enabled);
     await StorageService.saveAppSetting(
-        StorageService.keyConflictDetectionEnabled, enabled);
+      StorageService.keyConflictDetectionEnabled,
+      enabled,
+    );
     if (!enabled && widget.username.isNotEmpty && widget.username != '加载中...') {
       await StorageService.clearLocalTodoScheduleConflicts(widget.username);
     }
@@ -100,8 +103,10 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
         KeyedSubtree(
           key: _itemKeys['sync_interval'],
           child: Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16.0,
+              vertical: 16.0,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -109,9 +114,13 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
                   children: [
                     Icon(Icons.sync, color: colorScheme.primary, size: 22),
                     const SizedBox(width: 12),
-                    const Text('自动同步频率',
-                        style: TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.bold)),
+                    const Text(
+                      '自动同步频率',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -150,8 +159,10 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
           key: _itemKeys['server_choice'],
           child: AppPlatform.isWeb
               ? ListTile(
-                  leading:
-                      Icon(Icons.cloud_queue, color: colorScheme.secondary),
+                  leading: Icon(
+                    Icons.cloud_queue,
+                    color: colorScheme.secondary,
+                  ),
                   title: const Text('云端数据接口线路'),
                   subtitle: const Text(
                     '网页版固定通过 Cloudflare HTTPS 中转访问 API',
@@ -159,8 +170,10 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
                   ),
                 )
               : ListTile(
-                  leading:
-                      Icon(Icons.cloud_queue, color: colorScheme.secondary),
+                  leading: Icon(
+                    Icons.cloud_queue,
+                    color: colorScheme.secondary,
+                  ),
                   title: const Text('云端数据接口线路'),
                   subtitle: Text(
                     _serverChoice == ApiService.serverChoiceCloudflare
@@ -189,27 +202,39 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
         KeyedSubtree(
           key: _itemKeys['llm_retry'],
           child: Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16.0,
+              vertical: 16.0,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    Icon(Icons.refresh_outlined,
-                        color: colorScheme.primary, size: 22),
+                    Icon(
+                      Icons.refresh_outlined,
+                      color: colorScheme.primary,
+                      size: 22,
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('图片识别重试次数',
-                              style: TextStyle(
-                                  fontSize: 15, fontWeight: FontWeight.bold)),
-                          Text('识别超时后自动重试的次数（后台异步执行）',
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  color: colorScheme.onSurfaceVariant)),
+                          const Text(
+                            '图片识别重试次数',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            '识别超时后自动重试的次数（后台异步执行）',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -247,7 +272,9 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
         onSelected: (selected) {
           setState(() => _syncInterval = selected);
           StorageService.saveAppSetting(
-              StorageService.keySyncInterval, selected);
+            StorageService.keySyncInterval,
+            selected,
+          );
         },
       ),
     );

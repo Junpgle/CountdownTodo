@@ -8,8 +8,7 @@ class TaiService {
   static Future<List<Map<String, dynamic>>> readDailyStats({
     required String dbPath,
     required String date,
-  }) async =>
-      const [];
+  }) async => const [];
 
   static Future<List<Map<String, dynamic>>> getTodayStats() async => const [];
 

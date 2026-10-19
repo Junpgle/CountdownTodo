@@ -181,7 +181,9 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
                 children: [
                   TextField(
                     controller: provider,
-                    decoration: const InputDecoration(labelText: '服务商标识，例如 zhipu'),
+                    decoration: const InputDecoration(
+                      labelText: '服务商标识，例如 zhipu',
+                    ),
                   ),
                   TextField(
                     controller: model,
@@ -201,14 +203,18 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
-                    decoration: const InputDecoration(labelText: '输入 ¥ / 百万 Token'),
+                    decoration: const InputDecoration(
+                      labelText: '输入 ¥ / 百万 Token',
+                    ),
                   ),
                   TextField(
                     controller: output,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
-                    decoration: const InputDecoration(labelText: '输出 ¥ / 百万 Token'),
+                    decoration: const InputDecoration(
+                      labelText: '输出 ¥ / 百万 Token',
+                    ),
                   ),
                   TextField(
                     controller: peakCachedInput,
@@ -251,7 +257,9 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
-                    decoration: const InputDecoration(labelText: '音频 ¥ / 小时（可选）'),
+                    decoration: const InputDecoration(
+                      labelText: '音频 ¥ / 小时（可选）',
+                    ),
                   ),
                   const SizedBox(height: 12),
                   const Text(
@@ -262,7 +270,9 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
                     const SizedBox(height: 8),
                     Text(
                       validationError!,
-                      style: TextStyle(color: Theme.of(context).colorScheme.error),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
                     ),
                   ],
                 ],
@@ -275,7 +285,8 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
               ),
               FilledButton(
                 onPressed: () {
-                  if (provider.text.trim().isEmpty || model.text.trim().isEmpty) {
+                  if (provider.text.trim().isEmpty ||
+                      model.text.trim().isEmpty) {
                     return;
                   }
                   if (_hasInvalidPriceField([
@@ -298,8 +309,12 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
                   final cachedInputValue = AiUsageCostService.yuanToMicros(
                     cachedInput.text,
                   );
-                  final inputValue = AiUsageCostService.yuanToMicros(input.text);
-                  final outputValue = AiUsageCostService.yuanToMicros(output.text);
+                  final inputValue = AiUsageCostService.yuanToMicros(
+                    input.text,
+                  );
+                  final outputValue = AiUsageCostService.yuanToMicros(
+                    output.text,
+                  );
                   final peakCachedInputValue = AiUsageCostService.yuanToMicros(
                     peakCachedInput.text,
                   );

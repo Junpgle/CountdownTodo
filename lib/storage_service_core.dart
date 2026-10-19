@@ -1,4 +1,5 @@
 part of 'storage_service.dart';
+
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 final RegExp _legacyHistoryScorePattern = RegExp(r'得分: (\d+)');
@@ -71,8 +72,10 @@ mixin _StorageCore on _StorageServiceBase {
     final elapsed = now - _lastSyncRequestAt;
     final delayMs = _isSyncing
         ? _minSyncInterval.inMilliseconds
-        : (_minSyncInterval.inMilliseconds - elapsed)
-            .clamp(0, _minSyncInterval.inMilliseconds);
+        : (_minSyncInterval.inMilliseconds - elapsed).clamp(
+            0,
+            _minSyncInterval.inMilliseconds,
+          );
 
     _scheduleQueuedSync(Duration(milliseconds: delayMs));
   }
@@ -116,28 +119,31 @@ mixin _StorageCore on _StorageServiceBase {
     String? teamUuid,
   }) async {
     final db = await DatabaseHelper.instance.database;
-    await db.insert(
-        'ignored_remote_items',
-        {
-          'uuid': uuid,
-          'team_uuid': teamUuid,
-          'table_name': table,
-          'ignored_at': DateTime.now().millisecondsSinceEpoch,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert('ignored_remote_items', {
+      'uuid': uuid,
+      'team_uuid': teamUuid,
+      'table_name': table,
+      'ignored_at': DateTime.now().millisecondsSinceEpoch,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
     debugPrint("🚫 [忽略项] 已记录 $table.$uuid 至忽略表");
   }
 
   Future<void> unignoreRemoteItem(String uuid) async {
     final db = await DatabaseHelper.instance.database;
-    await db
-        .delete('ignored_remote_items', where: 'uuid = ?', whereArgs: [uuid]);
+    await db.delete(
+      'ignored_remote_items',
+      where: 'uuid = ?',
+      whereArgs: [uuid],
+    );
   }
 
   Future<bool> isItemIgnored(String uuid) async {
     final db = await DatabaseHelper.instance.database;
-    final results = await db
-        .query('ignored_remote_items', where: 'uuid = ?', whereArgs: [uuid]);
+    final results = await db.query(
+      'ignored_remote_items',
+      where: 'uuid = ?',
+      whereArgs: [uuid],
+    );
     return results.isNotEmpty;
   }
 
@@ -171,7 +177,10 @@ mixin _StorageCore on _StorageServiceBase {
   Future<String?> getCurrentUsername() =>
       UserSessionStorage.getCurrentUsername();
   Future<bool> rollbackLocalItem(
-      String table, int logId, String username) async {
+    String table,
+    int logId,
+    String username,
+  ) async {
     try {
       // 1. 执行 SQL 层的物理回滚
       final success = await DatabaseHelper.instance.rollbackFromLocalLog(logId);
@@ -179,14 +188,18 @@ mixin _StorageCore on _StorageServiceBase {
 
       // 2. 🚀 关键：立即从 DB 重载该表的数据并刷新内存/Prefs 缓存
       if (table == 'todos') {
-        final List<TodoItem> freshTodos =
-            await DatabaseHelper.instance.getTodos();
+        final List<TodoItem> freshTodos = await DatabaseHelper.instance
+            .getTodos();
         await saveTodos(username, freshTodos, sync: false, isSyncSource: true);
       } else if (table == 'countdowns') {
-        final List<CountdownItem> freshCds =
-            await DatabaseHelper.instance.getCountdowns();
-        await saveCountdowns(username, freshCds,
-            sync: false, isSyncSource: true);
+        final List<CountdownItem> freshCds = await DatabaseHelper.instance
+            .getCountdowns();
+        await saveCountdowns(
+          username,
+          freshCds,
+          sync: false,
+          isSyncSource: true,
+        );
       }
 
       // 3. 触发 UI 刷新信号
@@ -241,7 +254,8 @@ mixin _StorageCore on _StorageServiceBase {
   }
 
   Future<void> saveWindowsScheduledReminders(
-      List<Map<String, dynamic>> reminders) async {
+    List<Map<String, dynamic>> reminders,
+  ) async {
     final prefs = await StorageService.prefs;
     await prefs.setString(keyWindowsScheduledReminders, jsonEncode(reminders));
   }
@@ -260,10 +274,15 @@ mixin _StorageCore on _StorageServiceBase {
   }
 
   Future<void> savePomodoroTags(
-          String username, List<Map<String, dynamic>> tags) =>
-      PomodoroStorage.savePomodoroTags(username, tags);
+    String username,
+    List<Map<String, dynamic>> tags,
+  ) => PomodoroStorage.savePomodoroTags(username, tags);
   Future<void> saveHistory(
-      String username, int score, int duration, String details) async {
+    String username,
+    int score,
+    int duration,
+    String details,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     String key = "history_$username";
     List<String> history = prefs.getStringList(key) ?? [];
@@ -271,7 +290,7 @@ mixin _StorageCore on _StorageServiceBase {
       'date': DateTime.now().toIso8601String(),
       'score': score,
       'duration': duration,
-      'details': details
+      'details': details,
     };
     history.insert(0, jsonEncode(recordMap));
     await prefs.setStringList(key, history);
@@ -328,17 +347,21 @@ mixin _StorageCore on _StorageServiceBase {
         }
       }
     }
-    double accuracy =
-        totalQuestions == 0 ? 0.0 : (totalCorrect / totalQuestions);
+    double accuracy = totalQuestions == 0
+        ? 0.0
+        : (totalCorrect / totalQuestions);
     return {
       'accuracy': accuracy,
       'bestTime': hasPerfectScore ? bestTime : null,
-      'todayCount': todayCount
+      'todayCount': todayCount,
     };
   }
 
   Future<void> updateLeaderboard(
-      String username, int score, int duration) async {
+    String username,
+    int score,
+    int duration,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     List<dynamic> list = [];
     String? jsonStr = prefs.getString(keyLeaderboard);
@@ -360,45 +383,54 @@ mixin _StorageCore on _StorageServiceBase {
     return List<Map<String, dynamic>>.from(jsonDecode(jsonStr));
   }
 
-  Future<void> saveCountdowns(String username, List<CountdownItem> items,
-          {bool sync = true, bool isSyncSource = false}) =>
-      CountdownStorage.saveCountdowns(
-        username,
-        items,
-        sync: sync,
-        isSyncSource: isSyncSource,
-        hasSubstantialChange: _hasSubstantialChange,
-        recordLocalAudit: (table, uuid, afterData, teamUuid, existingData) =>
-            _recordLocalAuditOptimized(
-                username, table, uuid, afterData, teamUuid, existingData),
-        requestSync: requestSync,
-        onCommitted: () {
-          _inflightTodoRequests.clear();
-          _inflightTodoSearchDateRequests.clear();
-          _inflightTimelineTodoRequests.clear();
-          triggerRefresh(const {DataRefreshDomain.countdowns});
-        },
-      );
+  Future<void> saveCountdowns(
+    String username,
+    List<CountdownItem> items, {
+    bool sync = true,
+    bool isSyncSource = false,
+  }) => CountdownStorage.saveCountdowns(
+    username,
+    items,
+    sync: sync,
+    isSyncSource: isSyncSource,
+    hasSubstantialChange: _hasSubstantialChange,
+    recordLocalAudit: (table, uuid, afterData, teamUuid, existingData) =>
+        _recordLocalAuditOptimized(
+          username,
+          table,
+          uuid,
+          afterData,
+          teamUuid,
+          existingData,
+        ),
+    requestSync: requestSync,
+    onCommitted: () {
+      _inflightTodoRequests.clear();
+      _inflightTodoSearchDateRequests.clear();
+      _inflightTimelineTodoRequests.clear();
+      triggerRefresh(const {DataRefreshDomain.countdowns});
+    },
+  );
   Future<void> _clearGhostConflictFlags(
     dynamic db, {
     Iterable<String> tables = const ['todos', 'todo_groups', 'countdowns'],
-  }) =>
-      StorageConflictCleanup.clearGhostConflictFlags(db, tables: tables);
+  }) => StorageConflictCleanup.clearGhostConflictFlags(db, tables: tables);
   Future<List<CountdownItem>> getCountdowns(
     String username, {
     bool includeDeleted = false,
     DateTime? from,
     DateTime? to,
-  }) =>
-      CountdownStorage.getCountdowns(
-        username,
-        includeDeleted: includeDeleted,
-        from: from,
-        to: to,
-        saveMigratedCountdowns: saveCountdowns,
-      );
+  }) => CountdownStorage.getCountdowns(
+    username,
+    includeDeleted: includeDeleted,
+    from: from,
+    to: to,
+    saveMigratedCountdowns: saveCountdowns,
+  );
   Future<void> deleteCountdownGlobally(
-      String username, String idToDelete) async {
+    String username,
+    String idToDelete,
+  ) async {
     List<CountdownItem> localCds = await getCountdowns(username);
     int index = localCds.indexWhere((t) => t.id == idToDelete);
     if (index != -1) {

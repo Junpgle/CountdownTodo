@@ -80,8 +80,9 @@ mixin _TodoChatQueries on _TodoChatScreenStateBase {
           for (final item in await PomodoroService.getRecords())
             {
               ...item.toJson(),
-              'duration_seconds':
-                  AiQueryToolService.durationSecondsForPomodoro(item),
+              'duration_seconds': AiQueryToolService.durationSecondsForPomodoro(
+                item,
+              ),
             },
         ];
       case 'pomodoro_tags':

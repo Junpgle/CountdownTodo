@@ -8,7 +8,9 @@ import 'package:webview_flutter_android/webview_flutter_android.dart'
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 // Import for Windows features.
 import 'package:webview_win_floating/webview_win_floating.dart';
+
 import 'dart:convert'; // 🚀 添加了 jsonDecode 必需的包
+
 import '../../storage_service.dart';
 import '../../widgets/floating_glass_control.dart';
 import '../../utils/app_dialogs.dart';
@@ -133,12 +135,13 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
 
       if (currentUrl != null && currentUrl.contains('hfut.edu.cn')) {
         debugPrint(
-            '[WebViewCapture] Detected HFUT, injecting JS to fetch datum API...');
+          '[WebViewCapture] Detected HFUT, injecting JS to fetch datum API...',
+        );
 
         // 🚀 终极方案：在 WebView 内部直接构造 fetch 请求，利用自带身份验证，并传入必需参数！
         // 使用 async IIFE (立即调用的异步函数)，webview_flutter 会等待其 Promise 返回。
-        final Object? jsResultObj =
-            await _controller?.runJavaScriptReturningResult('''
+        final Object? jsResultObj = await _controller
+            ?.runJavaScriptReturningResult('''
           (async function() {
             try {
                 // 1. 从当前页面的 HTML 源码中正则匹配出必需的请求参数
@@ -193,7 +196,8 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
         // 校验我们是否拿到了含有教师信息的真实 JSON 数据
         if (jsResult != null && jsResult.contains('lessonList')) {
           debugPrint(
-              '[WebViewCapture] Direct JS Fetch Success! Length: ${jsResult.length}');
+            '[WebViewCapture] Direct JS Fetch Success! Length: ${jsResult.length}',
+          );
           await StorageService.saveLastCourseImportUrl(currentUrl);
 
           if (mounted) {
@@ -203,7 +207,8 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
           return; // 成功截获，退出函数，不走 HTML 降级
         } else {
           debugPrint(
-              '[WebViewCapture] JS Fetch failed or returned error: $jsResult');
+            '[WebViewCapture] JS Fetch failed or returned error: $jsResult',
+          );
         }
       }
 
@@ -240,10 +245,7 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
       }
     } catch (e) {
       if (mounted) {
-        AppSnackBars.showSnackBar(
-          context,
-          SnackBar(content: Text('抓取失败: $e')),
-        );
+        AppSnackBars.showSnackBar(context, SnackBar(content: Text('抓取失败: $e')));
       }
     } finally {
       if (mounted) {
@@ -282,8 +284,10 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
             },
             decoration: InputDecoration(
               hintText: '输入教务系统网址...',
-              hintStyle:
-                  TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+              hintStyle: TextStyle(
+                fontSize: 13,
+                color: colorScheme.onSurfaceVariant,
+              ),
               prefixIcon: const Icon(Icons.language, size: 18),
               border: InputBorder.none,
               contentPadding: const EdgeInsets.symmetric(vertical: 10),
@@ -310,8 +314,9 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
               color: colorScheme.primaryContainer.withValues(alpha: 0.5),
-              border:
-                  Border(bottom: BorderSide(color: colorScheme.outlineVariant)),
+              border: Border(
+                bottom: BorderSide(color: colorScheme.outlineVariant),
+              ),
             ),
             child: Row(
               children: [
@@ -324,17 +329,20 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
                       Text(
                         '1. 请先登录并在浏览器中打开【我的课表】页面',
                         style: TextStyle(
-                            fontSize: 13,
-                            color: colorScheme.onPrimaryContainer,
-                            fontWeight: FontWeight.bold),
+                          fontSize: 13,
+                          color: colorScheme.onPrimaryContainer,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         '2. 待页面完全加载出网格或列表后，点击下方抓取',
                         style: TextStyle(
-                            fontSize: 12,
-                            color: colorScheme.onPrimaryContainer
-                                .withValues(alpha: 0.8)),
+                          fontSize: 12,
+                          color: colorScheme.onPrimaryContainer.withValues(
+                            alpha: 0.8,
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -345,8 +353,8 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
           Expanded(
             child: _isSupported
                 ? (_controller != null
-                    ? WebViewWidget(controller: _controller!)
-                    : const Center(child: CircularProgressIndicator()))
+                      ? WebViewWidget(controller: _controller!)
+                      : const Center(child: CircularProgressIndicator()))
                 : const Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -354,8 +362,10 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
                         Icon(Icons.error_outline, size: 48, color: Colors.grey),
                         SizedBox(height: 16),
                         Text('当前平台暂不支持内置浏览器'),
-                        Text('此功能主要适配 Android 和 iOS ',
-                            style: TextStyle(color: Colors.grey, fontSize: 12)),
+                        Text(
+                          '此功能主要适配 Android 和 iOS ',
+                          style: TextStyle(color: Colors.grey, fontSize: 12),
+                        ),
                       ],
                     ),
                   ),
@@ -370,7 +380,10 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
                 width: 18,
                 height: 18,
                 child: CircularProgressIndicator(
-                    strokeWidth: 2, color: Colors.white))
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
             : const Icon(Icons.auto_fix_high),
         label: Text(_isLoading ? '正处理网页内容...' : '抓取当前页面的课程表'),
         backgroundColor: colorScheme.primary,

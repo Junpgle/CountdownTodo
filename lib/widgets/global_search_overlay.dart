@@ -1264,10 +1264,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
       if (merged.isEmpty || match.start > merged.last.end) {
         merged.add(match);
       } else if (match.end > merged.last.end) {
-        merged[merged.length - 1] = _TextMatch(
-          merged.last.start,
-          match.end,
-        );
+        merged[merged.length - 1] = _TextMatch(merged.last.start, match.end);
       }
     }
     return _highlightMatchesCache[text] = merged;

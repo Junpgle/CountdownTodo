@@ -564,123 +564,125 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-        Row(
-          children: [
-            Icon(
-              isProcessing
-                  ? Icons.auto_awesome_rounded
-                  : isFailed
-                  ? Icons.error_outline_rounded
-                  : Icons.check_circle_outline_rounded,
-              size: 18,
-              color: statusColor,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              '${info.recognizer} · $statusLabel',
-              style: TextStyle(
+          Row(
+            children: [
+              Icon(
+                isProcessing
+                    ? Icons.auto_awesome_rounded
+                    : isFailed
+                    ? Icons.error_outline_rounded
+                    : Icons.check_circle_outline_rounded,
+                size: 18,
                 color: statusColor,
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
               ),
-            ),
-            if (isProcessing) ...[
-              const Spacer(),
-              SizedBox(
-                width: 14,
-                height: 14,
-                child: CircularProgressIndicator(
-                  strokeWidth: 1.8,
+              const SizedBox(width: 6),
+              Text(
+                '${info.recognizer} · $statusLabel',
+                style: TextStyle(
                   color: statusColor,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
                 ),
               ),
-            ],
-          ],
-        ),
-        if (msg.content.isNotEmpty) ...[
-          const SizedBox(height: 7),
-          AiChatMarkdown(data: AiActionParser.cleanActionContent(msg.content)),
-        ],
-        if (info.todoResults.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(9),
-            decoration: BoxDecoration(
-              color: scheme.primaryContainer.withValues(alpha: 0.45),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: info.todoResults.asMap().entries.map((entry) {
-                final result = entry.value;
-                final title = (result['title'] ?? result['content'] ?? '')
-                    .toString()
-                    .trim();
-                final detail = (result['remark'] ?? result['notes'] ?? '')
-                    .toString()
-                    .trim();
-                return Padding(
-                  padding: EdgeInsets.only(
-                    bottom: entry.key == info.todoResults.length - 1 ? 0 : 5,
+              if (isProcessing) ...[
+                const Spacer(),
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 1.8,
+                    color: statusColor,
                   ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${entry.key + 1}.',
-                        style: TextStyle(
-                          color: scheme.primary,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(width: 5),
-                      Expanded(
-                        child: Text(
-                          detail.isEmpty ? title : '$title · $detail',
+                ),
+              ],
+            ],
+          ),
+          if (msg.content.isNotEmpty) ...[
+            const SizedBox(height: 7),
+            AiChatMarkdown(
+              data: AiActionParser.cleanActionContent(msg.content),
+            ),
+          ],
+          if (info.todoResults.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                color: scheme.primaryContainer.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: info.todoResults.asMap().entries.map((entry) {
+                  final result = entry.value;
+                  final title = (result['title'] ?? result['content'] ?? '')
+                      .toString()
+                      .trim();
+                  final detail = (result['remark'] ?? result['notes'] ?? '')
+                      .toString()
+                      .trim();
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      bottom: entry.key == info.todoResults.length - 1 ? 0 : 5,
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${entry.key + 1}.',
                           style: TextStyle(
-                            color: scheme.onSurface,
-                            fontSize: 13,
-                            height: 1.35,
+                            color: scheme.primary,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                      ),
-                    ],
-                  ),
+                        const SizedBox(width: 5),
+                        Expanded(
+                          child: Text(
+                            detail.isEmpty ? title : '$title · $detail',
+                            style: TextStyle(
+                              color: scheme.onSurface,
+                              fontSize: 13,
+                              height: 1.35,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+          if (info.suggestions.isNotEmpty) ...[
+            const SizedBox(height: 9),
+            Text(
+              '建议下一步',
+              style: TextStyle(
+                color: scheme.onSurfaceVariant,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: info.suggestions.map((suggestion) {
+                return ActionChip(
+                  label: Text(suggestion),
+                  onPressed: () {
+                    _inputCtrl
+                      ..text = suggestion
+                      ..selection = TextSelection.collapsed(
+                        offset: suggestion.length,
+                      );
+                  },
+                  visualDensity: VisualDensity.compact,
                 );
               }).toList(),
             ),
-          ),
-        ],
-        if (info.suggestions.isNotEmpty) ...[
-          const SizedBox(height: 9),
-          Text(
-            '建议下一步',
-            style: TextStyle(
-              color: scheme.onSurfaceVariant,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: info.suggestions.map((suggestion) {
-              return ActionChip(
-                label: Text(suggestion),
-                onPressed: () {
-                  _inputCtrl
-                    ..text = suggestion
-                    ..selection = TextSelection.collapsed(
-                      offset: suggestion.length,
-                    );
-                },
-                visualDensity: VisualDensity.compact,
-              );
-            }).toList(),
-          ),
-        ],
+          ],
         ],
       ),
     );

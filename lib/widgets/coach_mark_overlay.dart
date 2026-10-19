@@ -128,10 +128,7 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
       final targetBottomRight = renderBox.localToGlobal(
         renderBox.size.bottomRight(Offset.zero),
       );
-      final targetRect = Rect.fromPoints(
-        targetTopLeft,
-        targetBottomRight,
-      );
+      final targetRect = Rect.fromPoints(targetTopLeft, targetBottomRight);
 
       setState(() {
         _targetRect = targetRect;
@@ -177,8 +174,9 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
         _isCalculating = true; // 🚀 标记为正在计算
         // _targetRect = null; // 不再清空，避免中间态闪烁
       });
-      WidgetsBinding.instance
-          .addPostFrameCallback((_) => _calculateTargetRect());
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _calculateTargetRect(),
+      );
     } else {
       widget.onFinish();
     }
@@ -209,8 +207,10 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
             right: 16,
             child: TextButton(
               onPressed: widget.onSkip,
-              child:
-                  const Text('跳过教程', style: TextStyle(color: Colors.white70)),
+              child: const Text(
+                '跳过教程',
+                style: TextStyle(color: Colors.white70),
+              ),
             ),
           ),
 
@@ -349,10 +349,10 @@ class _CoachMarkTooltipLayoutDelegate extends SingleChildLayoutDelegate {
     final top = bottomSpace + childSize.height <= size.height - _margin
         ? bottomSpace
         : topSpace >= _margin
-            ? topSpace
-            : (targetRect!.center.dy - childSize.height / 2)
-                .clamp(_margin, maxTop)
-                .toDouble();
+        ? topSpace
+        : (targetRect!.center.dy - childSize.height / 2)
+              .clamp(_margin, maxTop)
+              .toDouble();
     return Offset(left, top.clamp(_margin, maxTop).toDouble());
   }
 

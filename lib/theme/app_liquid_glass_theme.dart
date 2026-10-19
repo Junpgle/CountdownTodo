@@ -54,10 +54,11 @@ ButtonLayerBuilder _glassButtonBackgroundBuilder({
       configuration,
     );
     final backer = base.withValues(alpha: opacity);
-    final highlight = (isDark
-            ? colorScheme.surfaceBright
-            : colorScheme.surfaceContainerHighest)
-        .withValues(alpha: isDark ? 0.1 : 0.16);
+    final highlight =
+        (isDark
+                ? colorScheme.surfaceBright
+                : colorScheme.surfaceContainerHighest)
+            .withValues(alpha: isDark ? 0.1 : 0.16);
 
     return GlassContainer(
       shape: circular
@@ -66,8 +67,9 @@ ButtonLayerBuilder _glassButtonBackgroundBuilder({
       settings: LiquidGlassSettings(
         bodyMode: GlassBodyMode.clear,
         glassColor: tint.withValues(alpha: isDark ? 0.12 : 0.1),
-        thickness:
-            configuration.mode == LiquidGlassEffectMode.enhanced ? 20 : 16,
+        thickness: configuration.mode == LiquidGlassEffectMode.enhanced
+            ? 20
+            : 16,
         blur: configuration.mode == LiquidGlassEffectMode.enhanced ? 12 : 9,
         chromaticAberration: 0.0015,
         lightIntensity: isDark ? 0.48 : 0.58,
@@ -127,24 +129,26 @@ ThemeData applyAppLiquidGlassTheme(
       isDark ? (enhanced ? 0.8 : 0.86) : (enhanced ? 0.84 : 0.9),
     ),
   );
-  final elevatedSurface = Color.alphaBlend(
-    scheme.primary.withValues(
-      alpha: isDark ? (enhanced ? 0.13 : 0.08) : (enhanced ? 0.09 : 0.05),
-    ),
-    scheme.surface,
-  ).withValues(
-    alpha: materialOpacity(
-      isDark ? (enhanced ? 0.84 : 0.9) : (enhanced ? 0.88 : 0.93),
-    ),
-  );
-  final quietSurface = Color.alphaBlend(
-    scheme.primary.withValues(alpha: enhanced ? 0.1 : 0.05),
-    scheme.surfaceContainerLow,
-  ).withValues(
-    alpha: materialOpacity(
-      isDark ? (enhanced ? 0.7 : 0.78) : (enhanced ? 0.76 : 0.84),
-    ),
-  );
+  final elevatedSurface =
+      Color.alphaBlend(
+        scheme.primary.withValues(
+          alpha: isDark ? (enhanced ? 0.13 : 0.08) : (enhanced ? 0.09 : 0.05),
+        ),
+        scheme.surface,
+      ).withValues(
+        alpha: materialOpacity(
+          isDark ? (enhanced ? 0.84 : 0.9) : (enhanced ? 0.88 : 0.93),
+        ),
+      );
+  final quietSurface =
+      Color.alphaBlend(
+        scheme.primary.withValues(alpha: enhanced ? 0.1 : 0.05),
+        scheme.surfaceContainerLow,
+      ).withValues(
+        alpha: materialOpacity(
+          isDark ? (enhanced ? 0.7 : 0.78) : (enhanced ? 0.76 : 0.84),
+        ),
+      );
   final outline = scheme.outlineVariant.withValues(
     alpha: isDark ? (enhanced ? 0.58 : 0.46) : (enhanced ? 0.68 : 0.58),
   );
@@ -313,9 +317,9 @@ ThemeData applyAppLiquidGlassTheme(
   );
 
   RoundedRectangleBorder rounded(double radius) => RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(radius),
-        side: BorderSide(color: outline, width: 0.75),
-      );
+    borderRadius: BorderRadius.circular(radius),
+    side: BorderSide(color: outline, width: 0.75),
+  );
 
   return base.copyWith(
     // Legacy DropdownButton and DropdownButtonFormField paint their popup
@@ -398,11 +402,10 @@ ThemeData applyAppLiquidGlassTheme(
         return scheme.onSurface;
       }),
       dayBackgroundColor: WidgetStateProperty.resolveWith(
-          (states) => states.contains(WidgetState.selected)
-              ? scheme.primaryContainer.withValues(
-                  alpha: materialOpacity(0.82),
-                )
-              : null),
+        (states) => states.contains(WidgetState.selected)
+            ? scheme.primaryContainer.withValues(alpha: materialOpacity(0.82))
+            : null,
+      ),
       dayOverlayColor: WidgetStatePropertyAll(
         scheme.primary.withValues(alpha: 0.12),
       ),
@@ -436,15 +439,15 @@ ThemeData applyAppLiquidGlassTheme(
       ),
       hourMinuteTextColor: scheme.onPrimaryContainer,
       dayPeriodColor: WidgetStateColor.resolveWith(
-          (states) => states.contains(WidgetState.selected)
-              ? scheme.primaryContainer.withValues(
-                  alpha: materialOpacity(0.82),
-                )
-              : Colors.transparent),
-      dayPeriodTextColor: WidgetStateColor.resolveWith((states) =>
-          states.contains(WidgetState.selected)
-              ? scheme.onPrimaryContainer
-              : scheme.onSurfaceVariant),
+        (states) => states.contains(WidgetState.selected)
+            ? scheme.primaryContainer.withValues(alpha: materialOpacity(0.82))
+            : Colors.transparent,
+      ),
+      dayPeriodTextColor: WidgetStateColor.resolveWith(
+        (states) => states.contains(WidgetState.selected)
+            ? scheme.onPrimaryContainer
+            : scheme.onSurfaceVariant,
+      ),
       dayPeriodBorderSide: BorderSide(color: outline),
       dayPeriodShape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),

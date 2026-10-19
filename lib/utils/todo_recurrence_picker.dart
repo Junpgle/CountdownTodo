@@ -18,17 +18,13 @@ List<TodoItem> collapseRecurrenceSeriesForTodoPicker(
   }
 
   final todaySource = (now ?? DateTime.now()).toLocal();
-  final today = DateTime(
-    todaySource.year,
-    todaySource.month,
-    todaySource.day,
-  );
+  final today = DateTime(todaySource.year, todaySource.month, todaySource.day);
   final representativeIds = <String, String>{};
   for (final entry in occurrencesBySeries.entries) {
     final preferred = entry.value.cast<TodoItem?>().firstWhere(
-          (todo) => todo?.id == preferredTodoId,
-          orElse: () => null,
-        );
+      (todo) => todo?.id == preferredTodoId,
+      orElse: () => null,
+    );
     representativeIds[entry.key] =
         preferred?.id ?? _selectPickerOccurrence(entry.value, today).id;
   }
@@ -50,10 +46,7 @@ bool areSameTodoOrRecurrenceSeries(TodoItem? first, TodoItem? second) {
       firstSeriesId == secondSeriesId;
 }
 
-TodoItem _selectPickerOccurrence(
-  List<TodoItem> occurrences,
-  DateTime today,
-) {
+TodoItem _selectPickerOccurrence(List<TodoItem> occurrences, DateTime today) {
   final todayOccurrences = occurrences
       .where((todo) => _startDay(todo).isAtSameMomentAs(today))
       .toList();
@@ -73,10 +66,9 @@ TodoItem _selectPickerOccurrence(
     return _preferIncomplete(active);
   }
 
-  final pastOccurrences = occurrences
-      .where((todo) => _startDay(todo).isBefore(today))
-      .toList()
-    ..sort((a, b) => _todoStartMs(b).compareTo(_todoStartMs(a)));
+  final pastOccurrences =
+      occurrences.where((todo) => _startDay(todo).isBefore(today)).toList()
+        ..sort((a, b) => _todoStartMs(b).compareTo(_todoStartMs(a)));
   if (pastOccurrences.isNotEmpty) {
     return _preferIncompleteWithSameStart(pastOccurrences);
   }
@@ -88,9 +80,9 @@ TodoItem _selectPickerOccurrence(
 
 TodoItem _preferIncomplete(List<TodoItem> occurrences) {
   return occurrences.cast<TodoItem?>().firstWhere(
-        (todo) => todo?.isDone == false,
-        orElse: () => occurrences.first,
-      )!;
+    (todo) => todo?.isDone == false,
+    orElse: () => occurrences.first,
+  )!;
 }
 
 TodoItem _preferIncompleteWithSameStart(List<TodoItem> occurrences) {

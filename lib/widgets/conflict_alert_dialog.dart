@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../models.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/time_utils.dart';
@@ -10,7 +11,9 @@ class ConflictAlertDialog extends StatelessWidget {
 
   /// Returns true if user chose to navigate to conflict center.
   static Future<bool?> show(
-      BuildContext context, List<ConflictInfo> conflicts) {
+    BuildContext context,
+    List<ConflictInfo> conflicts,
+  ) {
     if (conflicts.isEmpty) return Future.value(null);
     return showAppDialog<bool>(
       context: context,
@@ -72,30 +75,39 @@ class ConflictAlertDialog extends StatelessWidget {
   }
 
   Widget _buildConflictDetail(String label, Map<String, dynamic> data) {
-    final title = data['content'] ??
+    final title =
+        data['content'] ??
         data['title'] ??
         data['courseName'] ??
         data['course_name'] ??
         '未命名';
-    final start = data['start_time'] ??
+    final start =
+        data['start_time'] ??
         data['startTime'] ??
         data['created_date'] ??
         data['createdDate'];
-    final end = data['end_time'] ??
+    final end =
+        data['end_time'] ??
         data['endTime'] ??
         data['due_date'] ??
         data['dueDate'];
 
     String timeStr = '时间未知';
-    final startMs =
-        start is String ? int.tryParse(start) ?? 0 : (start is int ? start : 0);
-    final endMs =
-        end is String ? int.tryParse(end) ?? 0 : (end is int ? end : 0);
+    final startMs = start is String
+        ? int.tryParse(start) ?? 0
+        : (start is int ? start : 0);
+    final endMs = end is String
+        ? int.tryParse(end) ?? 0
+        : (end is int ? end : 0);
     if (startMs > 0 && endMs > 0) {
-      final startTime =
-          DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true).toLocal();
-      final endTime =
-          DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true).toLocal();
+      final startTime = DateTime.fromMillisecondsSinceEpoch(
+        startMs,
+        isUtc: true,
+      ).toLocal();
+      final endTime = DateTime.fromMillisecondsSinceEpoch(
+        endMs,
+        isUtc: true,
+      ).toLocal();
 
       if (startTime.year == 1970 && startMs < 2400) {
         final startHH = startMs ~/ 100;
@@ -109,12 +121,16 @@ class ConflictAlertDialog extends StatelessWidget {
             '${AppTimeFormats.format(startTime, 'MM-dd HH:mm')} ~ ${AppTimeFormats.clock(endTime)}';
       }
     } else if (startMs > 0) {
-      final startTime =
-          DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true).toLocal();
+      final startTime = DateTime.fromMillisecondsSinceEpoch(
+        startMs,
+        isUtc: true,
+      ).toLocal();
       timeStr = AppTimeFormats.format(startTime, 'MM-dd HH:mm');
     } else if (endMs > 0) {
-      final endTime =
-          DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true).toLocal();
+      final endTime = DateTime.fromMillisecondsSinceEpoch(
+        endMs,
+        isUtc: true,
+      ).toLocal();
       timeStr = AppTimeFormats.format(endTime, 'MM-dd HH:mm');
     }
 

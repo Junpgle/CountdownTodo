@@ -37,17 +37,19 @@ void main() {
     expect(ApiService.currentUserId, 42);
   });
 
-  test('does not restore an orphaned user id without an active session',
-      () async {
-    SharedPreferences.setMockInitialValues({
-      'auth_session_token': 'stale-token',
-      'current_user_id': 42,
-    });
-    ApiService.currentUserId = 99;
+  test(
+    'does not restore an orphaned user id without an active session',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'auth_session_token': 'stale-token',
+        'current_user_id': 42,
+      });
+      ApiService.currentUserId = 99;
 
-    expect(await UserSessionStorage.getLoginSession(), isNull);
-    expect(ApiService.currentUserId, 0);
-  });
+      expect(await UserSessionStorage.getLoginSession(), isNull);
+      expect(ApiService.currentUserId, 0);
+    },
+  );
 
   test('clearLoginSession clears identity and auth state together', () async {
     SharedPreferences.setMockInitialValues({
@@ -70,67 +72,72 @@ void main() {
     expect(ApiService.currentUserId, 0);
   });
 
-  test('preserves an existing device id while recording install ownership',
-      () async {
-    SharedPreferences.setMockInitialValues({
-      'app_device_uuid_alice': 'device-a',
-      'current_login_user': 'alice',
-    });
-    UserSessionStorage.installationIdProviderOverride =
-        () async => 'install-a';
-    addTearDown(
-      () => UserSessionStorage.installationIdProviderOverride = null,
-    );
+  test(
+    'preserves an existing device id while recording install ownership',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'app_device_uuid_alice': 'device-a',
+        'current_login_user': 'alice',
+      });
+      UserSessionStorage.installationIdProviderOverride = () async =>
+          'install-a';
+      addTearDown(
+        () => UserSessionStorage.installationIdProviderOverride = null,
+      );
 
-    expect(await UserSessionStorage.getDeviceIdForUser('alice'), 'device-a');
+      expect(await UserSessionStorage.getDeviceIdForUser('alice'), 'device-a');
 
-    final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getString('app_device_install_id_alice'), 'install-a');
-  });
-
-  test('rotates a restored device id once when its install owner changes',
-      () async {
-    SharedPreferences.setMockInitialValues({
-      'app_device_uuid_alice': 'device-a',
-      'app_device_install_id_alice': 'install-a',
-      'current_login_user': 'alice',
-    });
-    UserSessionStorage.installationIdProviderOverride =
-        () async => 'install-b';
-    addTearDown(
-      () => UserSessionStorage.installationIdProviderOverride = null,
-    );
-
-    final ids = await Future.wait([
-      UserSessionStorage.getDeviceIdForUser('alice'),
-      UserSessionStorage.getDeviceIdForUser('alice'),
-    ]);
-    final prefs = await SharedPreferences.getInstance();
-
-    expect(ids.first, isNot('device-a'));
-    expect(ids.last, ids.first);
-    expect(prefs.getString('app_device_uuid_alice'), ids.first);
-    expect(prefs.getString('app_device_install_id_alice'), 'install-b');
-  });
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('app_device_install_id_alice'), 'install-a');
+    },
+  );
 
   test(
-      'legacy semester date is migrated once and not exposed to another account',
-      () async {
-    SharedPreferences.setMockInitialValues({
-      'current_login_user': 'alice',
-      'semester_start_date': '2026-09-07T00:00:00.000',
-    });
+    'rotates a restored device id once when its install owner changes',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'app_device_uuid_alice': 'device-a',
+        'app_device_install_id_alice': 'install-a',
+        'current_login_user': 'alice',
+      });
+      UserSessionStorage.installationIdProviderOverride = () async =>
+          'install-b';
+      addTearDown(
+        () => UserSessionStorage.installationIdProviderOverride = null,
+      );
 
-    final start = await StorageService.getSemesterStart();
+      final ids = await Future.wait([
+        UserSessionStorage.getDeviceIdForUser('alice'),
+        UserSessionStorage.getDeviceIdForUser('alice'),
+      ]);
+      final prefs = await SharedPreferences.getInstance();
 
-    final prefs = await SharedPreferences.getInstance();
-    expect(start, DateTime(2026, 9, 7));
-    expect(prefs.getString('semester_start_date_alice'), isNotNull);
-    expect(prefs.getString('semester_start_date'), isNull);
+      expect(ids.first, isNot('device-a'));
+      expect(ids.last, ids.first);
+      expect(prefs.getString('app_device_uuid_alice'), ids.first);
+      expect(prefs.getString('app_device_install_id_alice'), 'install-b');
+    },
+  );
 
-    await prefs.setString('current_login_user', 'bob');
-    expect(await StorageService.getSemesterStart(), isNull);
-  });
+  test(
+    'legacy semester date is migrated once and not exposed to another account',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'current_login_user': 'alice',
+        'semester_start_date': '2026-09-07T00:00:00.000',
+      });
+
+      final start = await StorageService.getSemesterStart();
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(start, DateTime(2026, 9, 7));
+      expect(prefs.getString('semester_start_date_alice'), isNotNull);
+      expect(prefs.getString('semester_start_date'), isNull);
+
+      await prefs.setString('current_login_user', 'bob');
+      expect(await StorageService.getSemesterStart(), isNull);
+    },
+  );
 
   test('captured session becomes invalid after an account switch', () async {
     SharedPreferences.setMockInitialValues({

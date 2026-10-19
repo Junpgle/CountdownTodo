@@ -63,8 +63,11 @@ abstract final class TodoRecurrenceDateService {
         return next;
       case RecurrenceType.monthly:
         final targetMonth = DateTime(current.year, current.month + 1);
-        final lastDay =
-            DateTime(targetMonth.year, targetMonth.month + 1, 0).day;
+        final lastDay = DateTime(
+          targetMonth.year,
+          targetMonth.month + 1,
+          0,
+        ).day;
         return DateTime(
           targetMonth.year,
           targetMonth.month,

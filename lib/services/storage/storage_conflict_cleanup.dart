@@ -29,9 +29,7 @@ class StorageConflictCleanup {
           'WHERE ($emptyConflictWhere) OR ($staleConflictDataWhere)',
         );
         if (updatedCount > 0) {
-          debugPrint(
-            '✅ 已清理 $table 的幽灵冲突: rows=$updatedCount',
-          );
+          debugPrint('✅ 已清理 $table 的幽灵冲突: rows=$updatedCount');
         }
       } catch (e) {
         debugPrint('⚠️ 清理 $table 幽灵冲突失败: $e');

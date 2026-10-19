@@ -19,14 +19,18 @@ import 'storage/habit_storage.dart';
 
 class TimelineService {
   static final TimelineService instance = TimelineService._();
-  static final RegExp _homeworkTitlePattern =
-      RegExp(r'作业|练习|刷题|homework|lab|实验|课后');
-  static final RegExp _examTitlePattern =
-      RegExp(r'考试|测验|考证|期中|期末|exam|test|背诵|复习');
-  static final RegExp _titleWordDelimiterPattern =
-      RegExp(r'[\s、，,。（）()\[\]\-—_]');
-  static final RegExp _titleWordStopPattern =
-      RegExp(r'的|了|和|是|就|都|而|及|与|着|或|个|项|次');
+  static final RegExp _homeworkTitlePattern = RegExp(
+    r'作业|练习|刷题|homework|lab|实验|课后',
+  );
+  static final RegExp _examTitlePattern = RegExp(
+    r'考试|测验|考证|期中|期末|exam|test|背诵|复习',
+  );
+  static final RegExp _titleWordDelimiterPattern = RegExp(
+    r'[\s、，,。（）()\[\]\-—_]',
+  );
+  static final RegExp _titleWordStopPattern = RegExp(
+    r'的|了|和|是|就|都|而|及|与|着|或|个|项|次',
+  );
 
   TimelineService._();
 
@@ -531,17 +535,15 @@ class TimelineService {
       var timeLogCount = 0;
       var timeLogDurationMs = 0;
       for (final row in dailyFocusRows) {
-        pomodoroFocusSecondsTotal +=
-            (row['pomodoro_seconds'] as num? ?? 0);
+        pomodoroFocusSecondsTotal += (row['pomodoro_seconds'] as num? ?? 0);
         totalSecs += (row['total_seconds'] as num? ?? 0).toInt();
         deepWork += (row['deep_work_count'] as num? ?? 0).toInt();
         totalPomos += (row['pomodoro_record_count'] as num? ?? 0).toInt();
-        interruptedPomos +=
-            (row['interrupted_pomodoro_count'] as num? ?? 0).toInt();
+        interruptedPomos += (row['interrupted_pomodoro_count'] as num? ?? 0)
+            .toInt();
         focusEntryCount += (row['entry_count'] as num? ?? 0).toInt();
         timeLogCount += (row['time_log_count'] as num? ?? 0).toInt();
-        timeLogDurationMs +=
-            (row['time_log_duration_ms'] as num? ?? 0).toInt();
+        timeLogDurationMs += (row['time_log_duration_ms'] as num? ?? 0).toInt();
       }
       final pomodoroFocusSeconds = pomodoroFocusSecondsTotal.toInt();
       final timeLogSeconds = timeLogDurationMs ~/ 1000;

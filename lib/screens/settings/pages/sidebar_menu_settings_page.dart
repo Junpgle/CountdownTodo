@@ -6,10 +6,7 @@ import '../../../widgets/floating_glass_control.dart';
 class SidebarMenuSettingsPage extends StatefulWidget {
   final bool isEmbedded;
 
-  const SidebarMenuSettingsPage({
-    super.key,
-    this.isEmbedded = false,
-  });
+  const SidebarMenuSettingsPage({super.key, this.isEmbedded = false});
 
   @override
   State<SidebarMenuSettingsPage> createState() =>
@@ -77,10 +74,7 @@ class _SidebarMenuSettingsPageState extends State<SidebarMenuSettingsPage> {
     await _saveOrder();
   }
 
-  Future<void> _move(
-    SidebarMenuTarget source,
-    String key,
-  ) async {
+  Future<void> _move(SidebarMenuTarget source, String key) async {
     final sourceOrder = source == SidebarMenuTarget.features
         ? List<String>.from(_features)
         : List<String>.from(_utilities);
@@ -281,10 +275,7 @@ class _SidebarMenuSettingsPageState extends State<SidebarMenuSettingsPage> {
               onPressed: () => Navigator.of(context).maybePop(),
               icon: const Icon(Icons.arrow_back_rounded),
             ),
-            Text(
-              '侧边栏菜单',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
+            Text('侧边栏菜单', style: Theme.of(context).textTheme.titleMedium),
             const Spacer(),
             _buildResetButton(),
           ],

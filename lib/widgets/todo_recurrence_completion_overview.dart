@@ -73,7 +73,8 @@ class TodoRecurrenceCompletionOverview extends StatelessWidget {
       }
 
       elapsedCount++;
-      final effectiveEnd = occurrence.dueDate?.toLocal() ??
+      final effectiveEnd =
+          occurrence.dueDate?.toLocal() ??
           DateTime(start.year, start.month, start.day + 1);
       if (effectiveEnd.isBefore(now)) {
         overdueCount++;
@@ -104,7 +105,8 @@ class TodoRecurrenceCompletionOverview extends StatelessWidget {
     final percentage = (summary.completionRate * 100).round();
 
     return Semantics(
-      label: '循环待办完成情况，完成率$percentage%，'
+      label:
+          '循环待办完成情况，完成率$percentage%，'
           '已完成${summary.completedCount}期，待完成${summary.pendingCount}期，'
           '已逾期${summary.overdueCount}期，未开始${summary.futureCount}期',
       child: Container(
@@ -128,10 +130,7 @@ class TodoRecurrenceCompletionOverview extends StatelessWidget {
                 const Expanded(
                   child: Text(
                     '完成情况总览',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                   ),
                 ),
                 Text(

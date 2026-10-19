@@ -724,15 +724,11 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
       var tagUuids = List<String>.from(widget.goal.sourceIds);
       if (tagUuids.isEmpty) {
         final tags = await PomodoroService.getTags();
-        final match =
-            tags.where((t) => t.name == widget.goal.name).firstOrNull;
+        final match = tags.where((t) => t.name == widget.goal.name).firstOrNull;
         if (match != null) {
           tagUuids = [match.uuid];
         } else {
-          final newTag = PomodoroTag(
-            name: widget.goal.name,
-            color: '#2196F3',
-          );
+          final newTag = PomodoroTag(name: widget.goal.name, color: '#2196F3');
           await PomodoroService.saveTags([...tags, newTag]);
           tagUuids = [newTag.uuid];
         }
@@ -745,8 +741,9 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
       final note = _noteController.text.trim();
       final record = PomodoroRecord(
         tagUuids: tagUuids,
-        startTime:
-            now.subtract(Duration(seconds: seconds)).millisecondsSinceEpoch,
+        startTime: now
+            .subtract(Duration(seconds: seconds))
+            .millisecondsSinceEpoch,
         endTime: now.millisecondsSinceEpoch,
         plannedDuration: seconds,
         actualDuration: seconds,

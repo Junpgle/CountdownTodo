@@ -1,14 +1,16 @@
 import 'package:html/parser.dart' as parser;
 import 'package:html/dom.dart';
+
 import '../../models.dart';
 import '../course_schedule_semantics.dart';
 
 class XujcScheduleParser {
-  static final RegExp _lineBreakTagPattern =
-      RegExp(r'<br\s*/?>', caseSensitive: false);
+  static final RegExp _lineBreakTagPattern = RegExp(
+    r'<br\s*/?>',
+    caseSensitive: false,
+  );
   static final RegExp _htmlTagPattern = RegExp(r'<[^>]*>');
-  static final RegExp _weekRulePattern =
-      RegExp(r"(\d+)-(\d+)周\((每周|单周|双周)\)");
+  static final RegExp _weekRulePattern = RegExp(r"(\d+)-(\d+)周\((每周|单周|双周)\)");
   static final RegExp _simpleWeekRangePattern = RegExp(r"(\d+)-(\d+)周");
 
   /// 嘉庚学院作息时间表映射
@@ -29,7 +31,9 @@ class XujcScheduleParser {
   };
 
   static List<CourseItem> parseHtml(
-      String htmlString, DateTime semesterStartDate) {
+    String htmlString,
+    DateTime semesterStartDate,
+  ) {
     List<CourseItem> courses = [];
     Document document = parser.parse(htmlString);
     // 嘉庚学院课表通常在 class="data small solid" 的 table 中
@@ -105,16 +109,18 @@ class XujcScheduleParser {
               weekday: weekday,
             );
 
-            courses.add(CourseItem(
-              courseName: courseName,
-              teacherName: teacherName,
-              date: dateStr,
-              weekday: weekday,
-              startTime: startTime,
-              endTime: endTime,
-              weekIndex: week,
-              roomName: roomName,
-            ));
+            courses.add(
+              CourseItem(
+                courseName: courseName,
+                teacherName: teacherName,
+                date: dateStr,
+                weekday: weekday,
+                startTime: startTime,
+                endTime: endTime,
+                weekIndex: week,
+                roomName: roomName,
+              ),
+            );
           }
         }
       }

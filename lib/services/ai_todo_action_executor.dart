@@ -174,11 +174,8 @@ class AiTodoActionExecutor {
           now: createdAtFallback,
         );
         if (schedules.isNotEmpty) {
-          final target = isCreate
-              ? newFixedSchedules
-              : updatedFixedSchedules;
-          final targetIndexById =
-              isCreate
+          final target = isCreate ? newFixedSchedules : updatedFixedSchedules;
+          final targetIndexById = isCreate
               ? (newFixedScheduleIndexById ??= <String, int>{})
               : (updatedFixedScheduleIndexById ??= <String, int>{});
           for (final schedule in schedules) {
@@ -344,8 +341,7 @@ class AiTodoActionExecutor {
         }
         final updates = _buildUpdatedTodos(action, existingTodos);
         if (updates.isNotEmpty) {
-          final updateIndexById =
-              updatedTodoIndexById ??= <String, int>{};
+          final updateIndexById = updatedTodoIndexById ??= <String, int>{};
           for (final updated in updates) {
             final existingIndex = updateIndexById[updated.id];
             if (existingIndex == null) {
@@ -429,8 +425,10 @@ class AiTodoActionExecutor {
         case AiTodoActionType.deleteHabit:
           final habitUuid = action.habitUuid?.trim() ?? '';
           final matches = goals
-              .where((candidate) =>
-                  candidate.uuid == habitUuid && !candidate.isDeleted)
+              .where(
+                (candidate) =>
+                    candidate.uuid == habitUuid && !candidate.isDeleted,
+              )
               .toList(growable: false);
           if (matches.length != 1) {
             throw StateError('待修改或删除的习惯已不存在，请重新查询后再试');
@@ -541,10 +539,13 @@ class AiTodoActionExecutor {
 
     final rules = await HabitRepository.getRules(habitUuid: goal.uuid);
     final now = DateTime.now();
-    final currentRule = HabitRuleResolver.effectiveRule(rules, now) ??
-        (rules.where((rule) => !rule.isDeleted).toList()
-          ..sort((a, b) => (a.effectiveFromDate ?? '')
-              .compareTo(b.effectiveFromDate ?? '')))
+    final currentRule =
+        HabitRuleResolver.effectiveRule(rules, now) ??
+        (rules.where((rule) => !rule.isDeleted).toList()..sort(
+              (a, b) => (a.effectiveFromDate ?? '').compareTo(
+                b.effectiveFromDate ?? '',
+              ),
+            ))
             .lastOrNull;
     if (currentRule == null) throw StateError('没有找到该习惯当前生效的规则');
     final pendingDayBoundary = fields.containsKey('dayBoundaryMinute')
@@ -553,18 +554,14 @@ class AiTodoActionExecutor {
     final todayKey = HabitRuleResolver.dayKey(
       HabitRuleResolver.logicalDateFor(now, pendingDayBoundary),
     );
-    final hasFutureRule = rules.any(
-      (rule) {
-        final effectiveFromDate = rule.effectiveFromDate;
-        return !rule.isDeleted &&
-            effectiveFromDate != null &&
-            effectiveFromDate.compareTo(todayKey) > 0;
-      },
-    );
+    final hasFutureRule = rules.any((rule) {
+      final effectiveFromDate = rule.effectiveFromDate;
+      return !rule.isDeleted &&
+          effectiveFromDate != null &&
+          effectiveFromDate.compareTo(todayKey) > 0;
+    });
     if (hasFutureRule && effectiveFromOption != 'all') {
-      throw StateError(
-        '该习惯已有未来生效的规则版本；为避免改写预定规则，请先在习惯编辑页核对生效范围',
-      );
+      throw StateError('该习惯已有未来生效的规则版本；为避免改写预定规则，请先在习惯编辑页核对生效范围');
     }
 
     if (fields.containsKey('targetValue') &&
@@ -610,8 +607,7 @@ class AiTodoActionExecutor {
       habitUuid: goal.uuid,
       periodType: periodType,
       weekdaysMask: fields.containsKey('weekdaysMask')
-          ? _habitInteger(fields['weekdaysMask']) ??
-                currentRule.weekdaysMask
+          ? _habitInteger(fields['weekdaysMask']) ?? currentRule.weekdaysMask
           : currentRule.weekdaysMask,
       customIntervalDays: fields.containsKey('customIntervalDays')
           ? _habitInteger(fields['customIntervalDays'])
@@ -648,11 +644,16 @@ class AiTodoActionExecutor {
           : currentRule.reminderPolicy,
     );
     final currentLogicalDay = HabitRuleResolver.dayKey(
-      HabitRuleResolver.logicalDateFor(DateTime.now(), updatedRule.dayBoundaryMinute),
+      HabitRuleResolver.logicalDateFor(
+        DateTime.now(),
+        updatedRule.dayBoundaryMinute,
+      ),
     );
     final latestRule = rules.where((rule) => !rule.isDeleted).toList()
-      ..sort((a, b) => (a.effectiveFromDate ?? '')
-          .compareTo(b.effectiveFromDate ?? ''));
+      ..sort(
+        (a, b) =>
+            (a.effectiveFromDate ?? '').compareTo(b.effectiveFromDate ?? ''),
+      );
     final ruleUpdatePersistsGoalWithoutVersionBump =
         effectiveFromOption == 'all' ||
         (effectiveFromOption != 'nextPeriod' &&
@@ -697,7 +698,8 @@ class AiTodoActionExecutor {
       'reminderPolicy',
       'effectiveFromOption',
     };
-    if (fields.isEmpty || fields.keys.any((key) => !allowedFields.contains(key))) {
+    if (fields.isEmpty ||
+        fields.keys.any((key) => !allowedFields.contains(key))) {
       return false;
     }
     if (!fields.keys.any((key) => key != 'effectiveFromOption')) return false;
@@ -738,7 +740,8 @@ class AiTodoActionExecutor {
       return false;
     }
     if (fields.containsKey('timeComparison') &&
-        _parseHabitTimeComparison(fields['timeComparison']?.toString()) == null) {
+        _parseHabitTimeComparison(fields['timeComparison']?.toString()) ==
+            null) {
       return false;
     }
     final tolerance = _habitInteger(fields['timeToleranceMinutes']);
@@ -805,9 +808,16 @@ class AiTodoActionExecutor {
         'daily_summary_reminder',
       ]) {
         final value = policy[key];
-        if (value != null && value is! bool &&
-            !const {'true', 'false', 'yes', 'no', '1', '0'}
-                .contains(value.toString().toLowerCase())) {
+        if (value != null &&
+            value is! bool &&
+            !const {
+              'true',
+              'false',
+              'yes',
+              'no',
+              '1',
+              '0',
+            }.contains(value.toString().toLowerCase())) {
           return false;
         }
       }
@@ -847,7 +857,9 @@ class AiTodoActionExecutor {
   }
 
   static double? _habitNumber(Object? value) {
-    final parsed = value is num ? value.toDouble() : double.tryParse(value?.toString() ?? '');
+    final parsed = value is num
+        ? value.toDouble()
+        : double.tryParse(value?.toString() ?? '');
     return parsed != null && parsed.isFinite ? parsed : null;
   }
 
@@ -858,32 +870,26 @@ class AiTodoActionExecutor {
     fixedTimes: _habitPolicyHas(update, 'fixedTimes', 'fixed_times')
         ? _parseHabitMinuteList(update['fixedTimes'] ?? update['fixed_times'])
         : List<int>.from(current.fixedTimes),
-    progressReminder: _habitPolicyHas(
-      update,
-      'progressReminder',
-      'progress_reminder',
-    )
+    progressReminder:
+        _habitPolicyHas(update, 'progressReminder', 'progress_reminder')
         ? _parseHabitBool(
             update['progressReminder'] ?? update['progress_reminder'],
           )
         : current.progressReminder,
-    nearEndReminder: _habitPolicyHas(
-      update,
-      'nearEndReminder',
-      'near_end_reminder',
-    )
+    nearEndReminder:
+        _habitPolicyHas(update, 'nearEndReminder', 'near_end_reminder')
         ? _parseHabitBool(
             update['nearEndReminder'] ?? update['near_end_reminder'],
           )
         : current.nearEndReminder,
-    dailySummaryReminder: _habitPolicyHas(
-      update,
-      'dailySummaryReminder',
-      'daily_summary_reminder',
-    )
+    dailySummaryReminder:
+        _habitPolicyHas(
+          update,
+          'dailySummaryReminder',
+          'daily_summary_reminder',
+        )
         ? _parseHabitBool(
-            update['dailySummaryReminder'] ??
-                update['daily_summary_reminder'],
+            update['dailySummaryReminder'] ?? update['daily_summary_reminder'],
           )
         : current.dailySummaryReminder,
   );

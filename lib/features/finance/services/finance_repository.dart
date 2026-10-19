@@ -335,8 +335,7 @@ abstract final class FinanceRepository {
           : paidAt;
       if (eventAt <= snapshotAt || eventAt > asOfAt) continue;
       repaymentChanges[paymentMethodUuid!] =
-          (repaymentChanges[paymentMethodUuid] ?? 0) +
-          repayment.paymentMinor;
+          (repaymentChanges[paymentMethodUuid] ?? 0) + repayment.paymentMinor;
     }
 
     return {

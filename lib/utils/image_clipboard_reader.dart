@@ -8,9 +8,8 @@ const MethodChannel _clipboardImageChannel = MethodChannel(
 
 Future<ImageInputData?> readClipboardImage() async {
   try {
-    final payload = await _clipboardImageChannel.invokeMapMethod<String, dynamic>(
-      'readImage',
-    );
+    final payload = await _clipboardImageChannel
+        .invokeMapMethod<String, dynamic>('readImage');
     if (payload == null) return null;
 
     final rawBytes = payload['bytes'];

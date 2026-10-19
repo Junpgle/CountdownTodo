@@ -12,7 +12,7 @@ import 'api_service.dart';
 /// 服务端负责白名单校验、热缓存、GitHub 重定向和大文件流式转发。
 class GitHubResourceService {
   GitHubResourceService({http.Client? client})
-      : _client = client ?? http.Client();
+    : _client = client ?? http.Client();
 
   static const String resourcePath = '/api/github/resource';
 
@@ -79,9 +79,9 @@ class GitHubResourceService {
     }
 
     try {
-      final response = await _client.get(uri, headers: requestHeaders).timeout(
-            _directTimeout(timeout),
-          );
+      final response = await _client
+          .get(uri, headers: requestHeaders)
+          .timeout(_directTimeout(timeout));
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return response;
       }
@@ -108,8 +108,11 @@ class GitHubResourceService {
     }
 
     try {
-      final response =
-          await _send(uri, requestHeaders, _directTimeout(timeout));
+      final response = await _send(
+        uri,
+        requestHeaders,
+        _directTimeout(timeout),
+      );
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return response;
       }

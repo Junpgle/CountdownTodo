@@ -84,13 +84,15 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       final actions = message.todoActions;
       if (message.role != ChatRole.assistant || actions == null) continue;
       var messageChanged = false;
-      final replacements = actions.map((action) {
-        if (!previousDrafts.contains(action)) return action;
-        final ignored = AiTodoAction.fromJson(action.toJson())
-          ..isIgnored = true;
-        messageChanged = true;
-        return ignored;
-      }).toList(growable: false);
+      final replacements = actions
+          .map((action) {
+            if (!previousDrafts.contains(action)) return action;
+            final ignored = AiTodoAction.fromJson(action.toJson())
+              ..isIgnored = true;
+            messageChanged = true;
+            return ignored;
+          })
+          .toList(growable: false);
       if (messageChanged) {
         _messages[index] = message.copyWith(todoActions: replacements);
         changed = true;
@@ -228,14 +230,13 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         AiTodoActionType.rescheduleTodo ||
         AiTodoActionType.bulkRescheduleTodo => 'reschedule_todo',
         AiTodoActionType.categorizeTodo => 'categorize_todo',
-        AiTodoActionType.createPlanBlock || AiTodoActionType.planTodos =>
-          'create_plan_block',
+        AiTodoActionType.createPlanBlock ||
+        AiTodoActionType.planTodos => 'create_plan_block',
         AiTodoActionType.updatePlanBlock => 'update_plan_block',
         AiTodoActionType.deletePlanBlock => 'delete_plan_block',
         AiTodoActionType.reschedulePlanBlocks => 'reschedule_plan_blocks',
         AiTodoActionType.skipPlanBlock => 'skip_plan_block',
-        AiTodoActionType.startPlanBlockPomodoro =>
-          'start_plan_block_pomodoro',
+        AiTodoActionType.startPlanBlockPomodoro => 'start_plan_block_pomodoro',
         AiTodoActionType.splitTodo => 'split_todo',
         AiTodoActionType.mergeTodos => 'merge_todos',
         AiTodoActionType.createTimeLog => 'create_time_log',
@@ -264,13 +265,14 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     return names;
   }
 
-  int _parsedTodoCreationCount(Iterable<AiTodoAction> actions) => actions
-      .where(
-        (action) =>
-            action.type == AiTodoActionType.createTodo &&
-            action.title?.trim().isNotEmpty == true,
-      )
-      .length +
+  int _parsedTodoCreationCount(Iterable<AiTodoAction> actions) =>
+      actions
+          .where(
+            (action) =>
+                action.type == AiTodoActionType.createTodo &&
+                action.title?.trim().isNotEmpty == true,
+          )
+          .length +
       actions
           .where(
             (action) =>
@@ -498,12 +500,9 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     var attachmentForMessage = attachment;
     if (attachment != null) {
       try {
-        final persistedPath = attachment.path.isNotEmpty &&
-                !attachment.path.startsWith('data:')
-            ? await persistImagePath(
-                attachment.path,
-                'chat_attachments',
-              )
+        final persistedPath =
+            attachment.path.isNotEmpty && !attachment.path.startsWith('data:')
+            ? await persistImagePath(attachment.path, 'chat_attachments')
             : attachment.bytes == null
             ? null
             : await persistImageBytes(
@@ -538,8 +537,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     );
     final requestText = userMsg.content;
     final previousUserMessage = _latestUserTextFromHistory();
-    final previousAssistantMessage =
-        _latestAssistantMessageForActionRouting();
+    final previousAssistantMessage = _latestAssistantMessageForActionRouting();
     final pendingCountdownTitleEditSuffix =
         AiTodoContextBuilder.pendingCountdownTitleSuffixForRequest(
           requestText,
@@ -549,10 +547,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     final hasRequestedCountdownTeamBinding =
         AiTeamBindingResolver.hasExplicitBindingIntent(requestText);
     final requestedCountdownTeam = hasRequestedCountdownTeamBinding
-        ? AiTeamBindingResolver.requestedTeam(
-            requestText,
-            teams: widget.teams,
-          )
+        ? AiTeamBindingResolver.requestedTeam(requestText, teams: widget.teams)
         : null;
     final requestedCountdownTeamName = hasRequestedCountdownTeamBinding
         ? AiTeamBindingResolver.requestedTeamName(
@@ -726,22 +721,18 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           nativeToolMode && needsKnownTodoReferences
           ? await _existingTodoTitleMap(allowedCdtActionNames)
           : null;
-      const actionsRequiringKnownHabitIds = {
-        'update_habit',
-        'delete_habit',
-      };
+      const actionsRequiringKnownHabitIds = {'update_habit', 'delete_habit'};
       final needsKnownHabitReferences = allowedCdtActionNames.any(
         actionsRequiringKnownHabitIds.contains,
       );
       final knownHabitIdsForToolValidation =
           nativeToolMode && needsKnownHabitReferences
-          ? (await HabitRepository.getGoals())
-                .map((goal) => goal.uuid)
-                .toSet()
+          ? (await HabitRepository.getGoals()).map((goal) => goal.uuid).toSet()
           : null;
-      final financeTransactionIds = RegExp(
-        r'\[transactionId:\s*([^\]\s]+)\]',
-      ).allMatches(financeContext).map((match) => match.group(1)!).toSet();
+      final financeTransactionIds = RegExp(r'\[transactionId:\s*([^\]\s]+)\]')
+          .allMatches(financeContext)
+          .map((match) => match.group(1)!)
+          .toSet();
       final knownFinanceTransactionIdsForToolValidation =
           nativeToolMode && financeTransactionIds.isNotEmpty
           ? financeTransactionIds
@@ -957,9 +948,11 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         String content,
         String start,
         String end,
-      ) => RegExp(
-        '${RegExp.escape(start)}[\\s\\S]*?${RegExp.escape(end)}',
-      ).allMatches(content).map((match) => match.group(0)!).toList();
+      ) =>
+          RegExp('${RegExp.escape(start)}[\\s\\S]*?${RegExp.escape(end)}')
+              .allMatches(content)
+              .map((match) => match.group(0)!)
+              .toList();
 
       String normalizeFallbackCdtActionName(Object? value) {
         final name = value?.toString() ?? '';
@@ -972,14 +965,18 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           'cancel_fixed_schedule' => 'cancel_schedule',
           'delete_fixed_schedule' => 'delete_schedule',
           'bulk_reschedule' || 'bulk_reschedule_todo' => 'reschedule_todo',
-          'plan_todos' || 'create_todo_plan_block' || 'schedule_todo_block' =>
-            'create_plan_block',
-          'create_group' || 'create_category' || 'create_folder' =>
-            'create_todo_group',
-          'update_group' || 'update_category' || 'update_folder' =>
-            'update_todo_group',
-          'delete_group' || 'delete_category' || 'delete_folder' =>
-            'delete_todo_group',
+          'plan_todos' ||
+          'create_todo_plan_block' ||
+          'schedule_todo_block' => 'create_plan_block',
+          'create_group' ||
+          'create_category' ||
+          'create_folder' => 'create_todo_group',
+          'update_group' ||
+          'update_category' ||
+          'update_folder' => 'update_todo_group',
+          'delete_group' ||
+          'delete_category' ||
+          'delete_folder' => 'delete_todo_group',
           _ => name,
         };
       }
@@ -1000,20 +997,19 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
                 .trim();
             final decoded = jsonDecode(body);
             if (decoded is! Map || decoded['actions'] is! List) continue;
-            for (final action in (decoded['actions'] as List).whereType<Map>()) {
+            for (final action
+                in (decoded['actions'] as List).whereType<Map>()) {
               final name = normalizeFallbackCdtActionName(action['action']);
               if (name.isEmpty) continue;
               names.add(name);
               final rawBlocks =
                   action['blocks'] ?? action['plans'] ?? action['todos'];
               if (name == 'create_plan_block' && rawBlocks is List) {
-                final createsTodo = rawBlocks
-                    .whereType<Map>()
-                    .any(
-                      (planned) =>
-                          planned['newTodoTitle']?.toString().trim().isNotEmpty ==
-                          true,
-                    );
+                final createsTodo = rawBlocks.whereType<Map>().any(
+                  (planned) =>
+                      planned['newTodoTitle']?.toString().trim().isNotEmpty ==
+                      true,
+                );
                 if (createsTodo) names.add('create_todo');
               }
             }
@@ -1040,7 +1036,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
                 .trim();
             final decoded = jsonDecode(body);
             if (decoded is! Map || decoded['actions'] is! List) continue;
-            for (final rawAction in (decoded['actions'] as List).whereType<Map>()) {
+            for (final rawAction
+                in (decoded['actions'] as List).whereType<Map>()) {
               final name = normalizeFallbackCdtActionName(rawAction['action']);
               if (name == 'create_todo') {
                 final rawTodos = rawAction['todos'];
@@ -1050,15 +1047,22 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
                   return rawTodo['title']?.toString().trim().isNotEmpty == true;
                 }).length;
               } else if (name == 'create_plan_block') {
-                final rawBlocks = rawAction['blocks'] ??
+                final rawBlocks =
+                    rawAction['blocks'] ??
                     rawAction['plans'] ??
                     rawAction['todos'];
                 if (rawBlocks is! List) continue;
-                count += rawBlocks.whereType<Map>().where(
-                  (planned) =>
-                      planned['newTodoTitle']?.toString().trim().isNotEmpty ==
-                      true,
-                ).length;
+                count += rawBlocks
+                    .whereType<Map>()
+                    .where(
+                      (planned) =>
+                          planned['newTodoTitle']
+                              ?.toString()
+                              .trim()
+                              .isNotEmpty ==
+                          true,
+                    )
+                    .length;
               }
             }
           } catch (_) {
@@ -1097,8 +1101,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
             final decoded = jsonDecode(body);
             final rawDrafts = switch (decoded) {
               List value => value,
-              Map value when value['drafts'] is List =>
-                value['drafts'] as List,
+              Map value when value['drafts'] is List => value['drafts'] as List,
               Map value when value['entries'] is List =>
                 value['entries'] as List,
               Map value when value['finance'] is List =>
@@ -1180,9 +1183,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
             final actions = <Map<String, dynamic>>[];
             for (final rawAction in (decoded['actions'] as List)) {
               if (rawAction is! Map) continue;
-              final name = normalizeFallbackCdtActionName(
-                rawAction['action'],
-              );
+              final name = normalizeFallbackCdtActionName(rawAction['action']);
               final action = Map<String, dynamic>.from(rawAction);
               if (name == 'create_todo' &&
                   missingActions.contains('create_todo')) {
@@ -1318,8 +1319,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           missingFallbackBeforeRetry.isNotEmpty &&
           !AiToolChatRunner.isLikelyClarification(fullContent)) {
         final missingCdtActions = missingFallbackCdtActionNames(fullContent);
-        final existingFallbackTodoCount =
-            fallbackCreatedTodoCount(fullContent);
+        final existingFallbackTodoCount = fallbackCreatedTodoCount(fullContent);
         final remainingFallbackTodoCount = requiredFallbackTodoCount == null
             ? null
             : requiredFallbackTodoCount > existingFallbackTodoCount
@@ -1399,22 +1399,19 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
               _ => ('', ''),
             };
             if (start.isNotEmpty) {
-              recoveredBlocks.addAll(
-                switch (name) {
-                  'propose_cdt_actions' => fallbackCdtBlocksForMissingActions(
-                        retryText,
-                        missingCdtActions,
-                        remainingTodoCount: remainingFallbackTodoCount,
-                      ),
-                  'propose_finance_drafts' =>
-                    fallbackFinanceBlocksForMissingCount(
-                      retryText,
-                      remainingDraftCount:
-                          remainingFallbackFinanceDraftCount,
-                    ),
-                  _ => completeFallbackBlocks(retryText, start, end),
-                },
-              );
+              recoveredBlocks.addAll(switch (name) {
+                'propose_cdt_actions' => fallbackCdtBlocksForMissingActions(
+                  retryText,
+                  missingCdtActions,
+                  remainingTodoCount: remainingFallbackTodoCount,
+                ),
+                'propose_finance_drafts' =>
+                  fallbackFinanceBlocksForMissingCount(
+                    retryText,
+                    remainingDraftCount: remainingFallbackFinanceDraftCount,
+                  ),
+                _ => completeFallbackBlocks(retryText, start, end),
+              });
             }
           }
           appendFallbackBlocks(recoveredBlocks.join('\n\n'));
@@ -1460,17 +1457,17 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
             availableTeams: widget.teams,
             allowedActionNames: allowedCdtActionNames,
           );
-          final financeDrafts = allowedProposalToolNames.contains(
-                'propose_finance_drafts',
-              )
+          final financeDrafts =
+              allowedProposalToolNames.contains('propose_finance_drafts')
               ? FinanceTextParser.extractAssistantDrafts(actionContent)
               : <FinanceEntryDraft>[];
-          final financeActions = FinanceTextParser.extractAssistantActions(
-            actionContent,
-          ).where((action) {
-            return !action.isMutation ||
-                allowedFinanceActionNames.contains(action.actionName);
-          }).toList();
+          final financeActions =
+              FinanceTextParser.extractAssistantActions(actionContent)
+                  .where((action) {
+                    return !action.isMutation ||
+                        allowedFinanceActionNames.contains(action.actionName);
+                  })
+                  .toList();
           final nativeToolCallRecords = _buildNativeToolCallRecords(
             calls: nativeToolCalls,
             todoActions: todoActions,
@@ -1559,7 +1556,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         allowedActionNames: allowedCdtActionNames,
       );
       final hasUnresolvedCountdownTeamBinding =
-          (hasRequestedCountdownTeamBinding && requestedCountdownTeam == null) ||
+          (hasRequestedCountdownTeamBinding &&
+              requestedCountdownTeam == null) ||
           parsedTodoActions.any(_hasUnresolvedCountdownTeamBinding);
       final todoActions = hasUnresolvedCountdownTeamBinding
           ? parsedTodoActions
@@ -1568,17 +1566,17 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
                 )
                 .toList(growable: false)
           : parsedTodoActions;
-      final financeDrafts = allowedProposalToolNames.contains(
-            'propose_finance_drafts',
-          )
+      final financeDrafts =
+          allowedProposalToolNames.contains('propose_finance_drafts')
           ? FinanceTextParser.extractAssistantDrafts(actionContent)
           : <FinanceEntryDraft>[];
-      final financeActions = FinanceTextParser.extractAssistantActions(
-        actionContent,
-      ).where((action) {
-        return !action.isMutation ||
-            allowedFinanceActionNames.contains(action.actionName);
-      }).toList();
+      final financeActions =
+          FinanceTextParser.extractAssistantActions(actionContent)
+              .where((action) {
+                return !action.isMutation ||
+                    allowedFinanceActionNames.contains(action.actionName);
+              })
+              .toList();
       final nativeToolCallRecords = _buildNativeToolCallRecords(
         calls: nativeToolCalls,
         todoActions: todoActions,
@@ -1613,8 +1611,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       final missingFallbackWrites = !nativeToolMode
           ? {
               ...missingFallbackProposalBlocks(fullContent),
-              if (missingFallbackCdtActions.isNotEmpty)
-                'propose_cdt_actions',
+              if (missingFallbackCdtActions.isNotEmpty) 'propose_cdt_actions',
             }
           : const <String>{};
       final hasAnyFallbackWriteCard =
@@ -1640,15 +1637,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       final fallbackWriteWarning = !fallbackWriteIncomplete
           ? null
           : hasAnyFallbackWriteCard
-          ? '已生成部分待确认操作卡，但还缺少${[
-              for (final name in missingFallbackWrites)
-                if (name != 'propose_cdt_actions' ||
-                    missingFallbackCdtActions.isEmpty)
-                  fallbackMissingProposalLabel(name, fullContent),
-              ...missingFallbackCdtActions.map(
-                (name) => fallbackMissingCdtActionLabel(name, fullContent),
-              ),
-            ].join('、')}；应用没有写入缺失操作，请核对现有卡片并重试。'
+          ? '已生成部分待确认操作卡，但还缺少${[for (final name in missingFallbackWrites)
+              if (name != 'propose_cdt_actions' || missingFallbackCdtActions.isEmpty) fallbackMissingProposalLabel(name, fullContent), ...missingFallbackCdtActions.map((name) => fallbackMissingCdtActionLabel(name, fullContent))].join('、')}；应用没有写入缺失操作，请核对现有卡片并重试。'
           : '本轮未生成有效的待确认操作卡，应用没有写入数据。请补充信息或重试。';
       final String? unresolvedCountdownTeamReply;
       if (hasUnresolvedCountdownTeamBinding &&
@@ -2109,7 +2099,9 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         AppSnackBars.showSnackBar(
           context,
           SnackBar(
-            content: Text('图片过大，请粘贴 ${(maxBytes / 1024 / 1024).round()}MB 以内的图片'),
+            content: Text(
+              '图片过大，请粘贴 ${(maxBytes / 1024 / 1024).round()}MB 以内的图片',
+            ),
           ),
         );
       }
@@ -2262,19 +2254,15 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         !hasPendingFinanceActions) {
       return content;
     }
-    if (RegExp(
-      r'待确认|尚未(?:写入|保存|入账|执行)|点击.{0,14}(?:执行|保存|确认删除)',
-    ).hasMatch(content)) {
+    if (RegExp(r'待确认|尚未(?:写入|保存|入账|执行)|点击.{0,14}(?:执行|保存|确认删除)')
+        .hasMatch(content)) {
       return content;
     }
 
     final notices = <String>[
-      if (hasPendingTodoActions)
-        '操作卡尚未写入；请核对后点击“执行所选操作”。',
-      if (financeDrafts.isNotEmpty)
-        '账单草案尚未入账；请在账单卡中点击“编辑并保存”。',
-      if (hasPendingFinanceActions)
-        '账单修改或删除尚未执行；请在对应卡片中核对并操作。',
+      if (hasPendingTodoActions) '操作卡尚未写入；请核对后点击“执行所选操作”。',
+      if (financeDrafts.isNotEmpty) '账单草案尚未入账；请在账单卡中点击“编辑并保存”。',
+      if (hasPendingFinanceActions) '账单修改或删除尚未执行；请在对应卡片中核对并操作。',
     ];
     final notice = notices.join('\n');
     return content.trim().isEmpty ? notice : '${content.trim()}\n\n$notice';
@@ -2544,8 +2532,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
               : _lastUserContent());
     final smartContext = _pendingManualSmartContext;
     final previousUserMessage = _latestUserTextFromHistory();
-    final previousAssistantMessage =
-        _latestAssistantMessageForActionRouting();
+    final previousAssistantMessage = _latestAssistantMessageForActionRouting();
     final manualProposalToolDefinitions =
         AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
           originalText,
@@ -2583,17 +2570,15 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         AiSettingsNavigationService.shouldOfferForRequest(originalText)
         ? AiSettingsNavigationService.extractTargets(fullContent)
         : const <String>[];
-    final financeDrafts = allowedManualProposalToolNames.contains(
-          'propose_finance_drafts',
-        )
+    final financeDrafts =
+        allowedManualProposalToolNames.contains('propose_finance_drafts')
         ? FinanceTextParser.extractAssistantDrafts(fullContent)
         : <FinanceEntryDraft>[];
-    final financeActions = FinanceTextParser.extractAssistantActions(
-      fullContent,
-    ).where((action) {
-      return !action.isMutation ||
-          allowedManualFinanceActions.contains(action.actionName);
-    }).toList();
+    final financeActions =
+        FinanceTextParser.extractAssistantActions(fullContent).where((action) {
+          return !action.isMutation ||
+              allowedManualFinanceActions.contains(action.actionName);
+        }).toList();
     final inlineSuggestions = _extractFreshSuggestions(
       fullContent,
       todoActions: todoActions,
@@ -2643,8 +2628,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       if (missingManualTodoCount > 0) '还缺少 $missingManualTodoCount 条待办',
       ...missingManualCdtActions
           .where(
-            (name) =>
-                name != 'create_todo' || requiredManualTodoCount == null,
+            (name) => name != 'create_todo' || requiredManualTodoCount == null,
           )
           .map(_fallbackCdtActionLabel),
       ...missingManualFinanceActions.map(
@@ -2750,8 +2734,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     };
     final titles = <String, String>{
       for (final todo in widget.todos)
-        if (todo['id'] != null)
-          todo['id'].toString(): '${todo['title'] ?? ''}',
+        if (todo['id'] != null) todo['id'].toString(): '${todo['title'] ?? ''}',
     };
     if (!allowedActionNames.any(actionsRequiringCurrentTodoIds.contains)) {
       return titles;
@@ -2828,16 +2811,17 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         'pomodoro_tags' => (await PomodoroService.getTags()).map(
           (item) => item.uuid,
         ),
-        'recurring_todo_series' => (await StorageService.getTodos(
-          widget.username,
-        ))
-            .where(
-              (todo) =>
-                  !todo.isDeleted && todo.recurrence != RecurrenceType.none,
-            )
-            .map((todo) => todo.recurrenceSeriesId?.trim().isNotEmpty == true
-                ? todo.recurrenceSeriesId!.trim()
-                : todo.id),
+        'recurring_todo_series' =>
+          (await StorageService.getTodos(widget.username))
+              .where(
+                (todo) =>
+                    !todo.isDeleted && todo.recurrence != RecurrenceType.none,
+              )
+              .map(
+                (todo) => todo.recurrenceSeriesId?.trim().isNotEmpty == true
+                    ? todo.recurrenceSeriesId!.trim()
+                    : todo.id,
+              ),
         _ => const <String>[],
       };
       result[entry.key] = ids.where((id) => id.trim().isNotEmpty).toSet();
@@ -2982,11 +2966,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           ? Colors.black
           : Colors.white,
       sourceBorderRadius: BorderRadius.circular(24),
-      placeholderBuilder: (_) => Icon(
-        Icons.tune_rounded,
-        color: colorScheme.primary,
-        size: 30,
-      ),
+      placeholderBuilder: (_) =>
+          Icon(Icons.tune_rounded, color: colorScheme.primary, size: 30),
     );
     if (!mounted) return;
     await Future.wait([_loadPromptSettings(), _loadDeepThinking()]);

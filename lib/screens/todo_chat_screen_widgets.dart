@@ -136,10 +136,7 @@ class _IridescentActionPanelState extends State<_IridescentActionPanel>
           animation: _controller,
           isDark: widget.isDark,
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(2.5),
-          child: widget.child,
-        ),
+        child: Padding(padding: const EdgeInsets.all(2.5), child: widget.child),
       ),
     );
   }

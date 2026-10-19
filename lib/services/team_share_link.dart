@@ -15,13 +15,14 @@ class TeamShareLink {
   /// links that point at the API host.
   static String normalize({String? shareUrl, String? shareCode}) {
     final rawUrl = shareUrl?.trim();
-    final parsed =
-        rawUrl == null || rawUrl.isEmpty ? null : Uri.tryParse(rawUrl);
+    final parsed = rawUrl == null || rawUrl.isEmpty
+        ? null
+        : Uri.tryParse(rawUrl);
     final code = shareCode?.trim().isNotEmpty == true
         ? shareCode!.trim()
         : parsed == null
-            ? null
-            : _extractCode(parsed);
+        ? null
+        : _extractCode(parsed);
 
     final fallback = code == null || code.isEmpty ? null : build(code);
     if (rawUrl == null || rawUrl.isEmpty) return fallback ?? '';

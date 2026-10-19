@@ -1,7 +1,9 @@
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:html/parser.dart' as parser;
 import 'package:html/dom.dart';
+
 import '../../models.dart';
 import '../course_schedule_semantics.dart';
 
@@ -10,18 +12,23 @@ class ZfSoftScheduleParser {
   static final RegExp _bracketTitlePattern = RegExp(r'^【.*?】');
   static final RegExp _dayNumberPattern = RegExp(r'\d+');
   static final RegExp _locationCluePattern = RegExp(r'[教楼室区]');
-  static final RegExp _periodPattern =
-      RegExp(r'[(\（](?:周.*?第)?(\d+)(?:-(\d+))?[节)）]');
-  static final RegExp _weekPeriodPattern =
-      RegExp(r'[(\（][^)\（]*?节[^)\（]*?[)）]');
-  static final RegExp _weekPattern =
-      RegExp(r'(\d+)(?:-(\d+))?(?:周)?(?:\((单|双)\))?');
+  static final RegExp _periodPattern = RegExp(
+    r'[(\（](?:周.*?第)?(\d+)(?:-(\d+))?[节)）]',
+  );
+  static final RegExp _weekPeriodPattern = RegExp(
+    r'[(\（][^)\（]*?节[^)\（]*?[)）]',
+  );
+  static final RegExp _weekPattern = RegExp(
+    r'(\d+)(?:-(\d+))?(?:周)?(?:\((单|双)\))?',
+  );
 
   /// 传入 正方系统导出的 MHTML/HTML 字符串以及学期开始日期
   /// [customTimes] 格式示例: { 1: {'start': 800, 'end': 845}, 2: {'start': 855, 'end': 940} }
   static List<CourseItem> parseHtml(
-      String htmlString, DateTime semesterStartDate,
-      {Map<int, Map<String, int>>? customTimes}) {
+    String htmlString,
+    DateTime semesterStartDate, {
+    Map<int, Map<String, int>>? customTimes,
+  }) {
     List<CourseItem> courses = [];
 
     // 1. 底层解码
@@ -128,17 +135,19 @@ class ZfSoftScheduleParser {
             weekday: weekday,
           );
 
-          courses.add(CourseItem(
-            courseName: title,
-            teacherName: teacher,
-            roomName: location,
-            weekday: weekday,
-            weekIndex: week,
-            date: dateStr,
-            startTime: _getStartTime(startJc, customTimes),
-            endTime: _getEndTime(endJc, customTimes),
-            lessonType: null,
-          ));
+          courses.add(
+            CourseItem(
+              courseName: title,
+              teacherName: teacher,
+              roomName: location,
+              weekday: weekday,
+              weekIndex: week,
+              date: dateStr,
+              startTime: _getStartTime(startJc, customTimes),
+              endTime: _getEndTime(endJc, customTimes),
+              lessonType: null,
+            ),
+          );
         }
       }
     }
@@ -170,7 +179,7 @@ class ZfSoftScheduleParser {
       9: 1900,
       10: 1955,
       11: 2050,
-      12: 2145
+      12: 2145,
     };
     return defaultTimes[jc] ?? 800;
   }
@@ -191,7 +200,7 @@ class ZfSoftScheduleParser {
       9: 1945,
       10: 2040,
       11: 2135,
-      12: 2230
+      12: 2230,
     };
     return defaultTimes[jc] ?? 940;
   }

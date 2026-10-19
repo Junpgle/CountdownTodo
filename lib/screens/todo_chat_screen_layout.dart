@@ -868,9 +868,8 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                             ),
                           ),
                           subtitle: Text(
-                            _todoChatDateFormat(
-                              'MM/dd HH:mm',
-                            ).format(session.updatedAt),
+                            _todoChatDateFormat('MM/dd HH:mm')
+                                .format(session.updatedAt),
                             style: TextStyle(
                               fontSize: 11,
                               color: colorScheme.onSurfaceVariant,
@@ -1340,5 +1339,4 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
       ),
     );
   }
-
 }

@@ -950,8 +950,7 @@ class _MacIslandShortcutDialog extends StatefulWidget {
 }
 
 class _MacIslandShortcutDialogState extends State<_MacIslandShortcutDialog> {
-  static final RegExp _singleCharacterKeyPattern =
-      RegExp(r'^[A-Z0-9]$');
+  static final RegExp _singleCharacterKeyPattern = RegExp(r'^[A-Z0-9]$');
   static final RegExp _functionKeyPattern = RegExp(r'^F(?:[1-9]|1[0-2])$');
 
   late final FocusNode _focusNode;

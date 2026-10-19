@@ -194,8 +194,7 @@ class _AiWaterBorderPainter extends CustomPainter {
     required this.animation,
     required this.isLight,
     required this.borderRadius,
-  })
-    : super(repaint: animation);
+  }) : super(repaint: animation);
 
   final Animation<double> animation;
   final bool isLight;
@@ -262,10 +261,7 @@ class _AiWaterBorderPainter extends CustomPainter {
         height: borderRect.height - i - wave,
       );
       final paint = _wavePaints[i]..shader = shader;
-      canvas.drawRRect(
-        _cachedWaveBorderRadii![i].toRRect(shiftedRect),
-        paint,
-      );
+      canvas.drawRRect(_cachedWaveBorderRadii![i].toRRect(shiftedRect), paint);
     }
 
     canvas.drawRRect(_cachedSheenRRect!, _sheenPaint);
@@ -281,8 +277,10 @@ class _AiWaterBorderPainter extends CustomPainter {
     _cachedRect = rect;
     _cachedBorderRect = borderRect;
     _cachedBaseRRect = borderRadius.toRRect(borderRect);
-    _cachedSheenRRect = _insetBorderRadius(borderRadius, 2)
-        .toRRect(borderRect.deflate(1.4));
+    _cachedSheenRRect = _insetBorderRadius(
+      borderRadius,
+      2,
+    ).toRRect(borderRect.deflate(1.4));
     _cachedWaveBorderRadii = List<BorderRadius>.generate(
       3,
       (index) => _insetBorderRadius(borderRadius, index.toDouble()),

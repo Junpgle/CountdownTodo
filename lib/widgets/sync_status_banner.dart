@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+
 import 'dart:async';
+
 import '../services/api_service.dart';
 import '../services/pomodoro_sync_service.dart';
 import '../services/power_save_mode_service.dart';
@@ -51,8 +53,9 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
     _isForeground =
         lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
     // 订阅 WS 状态变化流，实时响应断线/重连
-    _wsConnSub = PomodoroSyncService.instance.onConnectionChanged
-        .listen(_onWsStateChanged);
+    _wsConnSub = PomodoroSyncService.instance.onConnectionChanged.listen(
+      _onWsStateChanged,
+    );
     PowerSaveModeService.enabledListenable.addListener(_onPowerSaveModeChanged);
   }
 
@@ -63,8 +66,9 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
     _autoHideTimer?.cancel();
     _showDelayTimer?.cancel();
     _wsConnSub?.cancel();
-    PowerSaveModeService.enabledListenable
-        .removeListener(_onPowerSaveModeChanged);
+    PowerSaveModeService.enabledListenable.removeListener(
+      _onPowerSaveModeChanged,
+    );
     super.dispose();
   }
 
@@ -309,7 +313,8 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
   Widget build(BuildContext context) {
     // 🚀 核心改动：仅在非在线状态（即：连接中、断线、错误、或正在展示成功的 success 状态）时显示横幅
     bool shouldShow = _status != SyncPathStatus.online;
-    bool isUrgent = _status == SyncPathStatus.offline ||
+    bool isUrgent =
+        _status == SyncPathStatus.offline ||
         _status == SyncPathStatus.serverError;
     bool isSuccess = _status == SyncPathStatus.success;
 
@@ -326,7 +331,8 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
           ? const SizedBox.shrink()
           : RepaintBoundary(
               key: ValueKey(
-                  _status == SyncPathStatus.success ? 'success' : _status),
+                _status == SyncPathStatus.success ? 'success' : _status,
+              ),
               child: Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
@@ -343,7 +349,9 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
                     filter: AppImageFilters.blur12,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
                         color: _getStatusColor().withValues(alpha: 0.85),
                         border: Border(
@@ -360,10 +368,11 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
                           children: [
                             Row(
                               children: [
-                                Icon(_getStatusIcon(),
-                                    size: 16,
-                                    color:
-                                        Colors.white.withValues(alpha: 0.95)),
+                                Icon(
+                                  _getStatusIcon(),
+                                  size: 16,
+                                  color: Colors.white.withValues(alpha: 0.95),
+                                ),
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
@@ -390,18 +399,21 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
                                           PomodoroSyncService.instance
                                               .manualReconnect();
                                           updateStatus(
-                                              SyncPathStatus.connecting,
-                                              message: "正在尝试手动重连...");
+                                            SyncPathStatus.connecting,
+                                            message: "正在尝试手动重连...",
+                                          );
                                           AppSnackBars.showSnackBar(
                                             context,
                                             const SnackBar(
-                                                content: Text('已触发手动同步重连...'),
-                                                duration: Duration(seconds: 1)),
+                                              content: Text('已触发手动同步重连...'),
+                                              duration: Duration(seconds: 1),
+                                            ),
                                           );
                                         },
                                         style: TextButton.styleFrom(
                                           padding: const EdgeInsets.symmetric(
-                                              horizontal: 8),
+                                            horizontal: 8,
+                                          ),
                                           minimumSize: const Size(50, 24),
                                           tapTargetSize:
                                               MaterialTapTargetSize.shrinkWrap,
@@ -411,8 +423,9 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
                                           style: TextStyle(
                                             fontSize: 11,
                                             fontWeight: FontWeight.bold,
-                                            color: Colors.white
-                                                .withValues(alpha: 0.95),
+                                            color: Colors.white.withValues(
+                                              alpha: 0.95,
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -430,8 +443,9 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
                                           style: TextStyle(
                                             fontSize: 11,
                                             fontWeight: FontWeight.bold,
-                                            color: Colors.white
-                                                .withValues(alpha: 0.7),
+                                            color: Colors.white.withValues(
+                                              alpha: 0.7,
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -443,8 +457,10 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
                                 (isUrgent ||
                                     _status == SyncPathStatus.connecting))
                               Padding(
-                                padding:
-                                    const EdgeInsets.only(top: 8, bottom: 4),
+                                padding: const EdgeInsets.only(
+                                  top: 8,
+                                  bottom: 4,
+                                ),
                                 child: Text(
                                   "Uni-Sync 正在检测您的实时同步通道。若长时间处于连接中，请尝试切换网络或检查服务器防火墙设置。",
                                   style: TextStyle(
@@ -453,7 +469,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
                                     height: 1.4,
                                   ),
                                 ),
-                              )
+                              ),
                           ],
                         ),
                       ),

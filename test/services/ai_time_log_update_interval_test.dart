@@ -35,7 +35,9 @@ void main() {
       const Duration(hours: 1).inMilliseconds,
     );
     expect(
-      DateTime.fromMillisecondsSinceEpoch(result.updatedTimeLogs.single.endTime),
+      DateTime.fromMillisecondsSinceEpoch(
+        result.updatedTimeLogs.single.endTime,
+      ),
       start.add(const Duration(hours: 2)),
     );
   });
