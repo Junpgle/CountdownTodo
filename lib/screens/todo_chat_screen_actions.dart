@@ -1112,11 +1112,20 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                             height: 24,
                             child: Checkbox(
                               value: isSelected,
-                              onChanged: (val) {
-                                setState(() {
-                                  todo.isSelected = val == true;
-                                });
-                                _saveHistorySilently();
+                              onChanged: (val) async {
+                                try {
+                                  await _updateTodoActionDraft(
+                                    todo,
+                                    (draft) => draft.isSelected = val == true,
+                                  );
+                                } catch (error) {
+                                  if (mounted) {
+                                    AppSnackBars.showSnackBar(
+                                      context,
+                                      SnackBar(content: Text('保存失败：$error')),
+                                    );
+                                  }
+                                }
                               },
                             ),
                           ),
@@ -1379,12 +1388,24 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                                           ),
                                         ),
                                       ],
-                                      onChanged: (val) {
-                                        setState(() {
-                                          todo.groupId = val;
-                                          todo.hasGroupId = true;
-                                        });
-                                        _saveHistorySilently();
+                                      onChanged: (val) async {
+                                        try {
+                                          await _updateTodoActionDraft(todo, (
+                                            draft,
+                                          ) {
+                                            draft.groupId = val;
+                                            draft.hasGroupId = true;
+                                          });
+                                        } catch (error) {
+                                          if (mounted) {
+                                            AppSnackBars.showSnackBar(
+                                              context,
+                                              SnackBar(
+                                                content: Text('保存失败：$error'),
+                                              ),
+                                            );
+                                          }
+                                        }
                                       },
                                     ),
                                   ),
@@ -1671,13 +1692,21 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     );
   }
 
-  void _ignoreAction(AiTodoAction action) {
-    setState(() {
-      action.isIgnored = true;
-      action.isSelected = false;
-    });
-    _recordIgnoreFeedback(action);
-    _saveHistorySilently();
+  Future<void> _ignoreAction(AiTodoAction action) async {
+    try {
+      await _updateTodoActionDraft(action, (draft) {
+        draft.isIgnored = true;
+        draft.isSelected = false;
+      });
+      _recordIgnoreFeedback(action);
+    } catch (error) {
+      if (mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(content: Text('保存失败：$error')),
+        );
+      }
+    }
   }
 
   void _recordIgnoreFeedback(AiTodoAction action) {
@@ -1735,6 +1764,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
   }
 
   Future<void> _editAction(AiTodoAction action) async {
+    final sourceAction = action;
+    action = action.copy();
     final titleCtrl = TextEditingController(text: action.title ?? '');
     final remarkCtrl = TextEditingController(text: action.remark ?? '');
     final startCtrl = TextEditingController(text: action.startTime ?? '');
@@ -1998,7 +2029,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
               child: const Text('取消'),
             ),
             FilledButton(
-              onPressed: () {
+              onPressed: () async {
                 if (action.type == AiTodoActionType.createCountdown &&
                     teamChoice == unselectedTeamChoice) {
                   AppSnackBars.showSnackBar(
@@ -2102,8 +2133,17 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                   action.hasRecurrence =
                       action.hasRecurrence || recurrence != initialRecurrence;
                 });
-                _saveHistorySilently();
-                Navigator.pop(ctx);
+                try {
+                  await _commitTodoActionDraft(sourceAction, action);
+                  if (ctx.mounted) Navigator.pop(ctx);
+                } catch (error) {
+                  if (context.mounted) {
+                    AppSnackBars.showSnackBar(
+                      context,
+                      SnackBar(content: Text('保存失败，草稿仍保留：$error')),
+                    );
+                  }
+                }
               },
               child: const Text('保存'),
             ),
@@ -2599,6 +2639,43 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
 
   Future<void> _saveHistorySilently() async {
     await ChatStorageService.saveHistory(_messages, _activeSessionId);
+  }
+
+  Future<void> _updateTodoActionDraft(
+    AiTodoAction source,
+    void Function(AiTodoAction draft) update,
+  ) async {
+    final draft = source.copy();
+    update(draft);
+    await _commitTodoActionDraft(source, draft);
+  }
+
+  Future<void> _commitTodoActionDraft(
+    AiTodoAction source,
+    AiTodoAction draft,
+  ) async {
+    final messageIndex = _messages.indexWhere(
+      (message) =>
+          message.todoActions?.any((action) => identical(action, source)) ??
+          false,
+    );
+    if (messageIndex < 0) {
+      throw StateError('找不到待更新的操作草稿');
+    }
+    final message = _messages[messageIndex];
+    final actions = List<AiTodoAction>.from(message.todoActions!);
+    final actionIndex = actions.indexWhere(
+      (action) => identical(action, source),
+    );
+    if (actionIndex < 0) throw StateError('操作草稿已变化，请重新打开后再试');
+    actions[actionIndex] = draft;
+
+    final stagedMessages = List<ChatMessage>.from(_messages);
+    stagedMessages[messageIndex] = message.copyWith(todoActions: actions);
+    await ChatStorageService.saveHistory(stagedMessages, _activeSessionId);
+    if (!mounted) return;
+    _messages = stagedMessages;
+    setState(() {});
   }
 
   Future<void> _addTodosForMessage(ChatMessage msg) async {

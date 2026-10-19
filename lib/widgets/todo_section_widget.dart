@@ -3,6 +3,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 
 import '../screens/plan_editor_drafts_screen.dart';
 import '../screens/plan_cleanup_screen.dart';
@@ -16,6 +17,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models.dart';
+import '../models/todo_create_save_result.dart';
 import '../models/todo_editor_save_result.dart';
 import '../models/chat_message.dart';
 import '../services/api_service.dart';
@@ -87,15 +89,13 @@ class TodoSectionWidget extends StatefulWidget {
   final String username;
   final bool isLight;
   final Function(List<TodoItem>) onTodosChanged;
+  final FutureOr<TodoCreateSaveResult> Function(TodoItem)? onManualTodoSaved;
   final Future<TodoEditorSaveResult> Function(
     List<TodoItem>,
     Map<String, TodoItem>,
   )?
   onEditorSave;
-  final FutureOr<void> Function(
-    List<TodoGroup>,
-    Map<String, TodoGroup>,
-  )?
+  final FutureOr<void> Function(List<TodoGroup>, Map<String, TodoGroup>)?
   onEditorGroupsSave;
   final VoidCallback onRefreshRequested;
   final Set<String> highlightedTodoIds;
@@ -126,6 +126,7 @@ class TodoSectionWidget extends StatefulWidget {
     required this.username,
     required this.isLight,
     required this.onTodosChanged,
+    this.onManualTodoSaved,
     this.onEditorSave,
     this.onEditorGroupsSave,
     required this.onRefreshRequested,

@@ -186,10 +186,11 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
         builder: (_) => AddTodoScreen(
           todoGroups: widget.todoGroups,
           initialTeamUuid: _selectedSubTeamUuid, // 🚀 关键：穿透视口上下文，自动标记团队
-          onTodoAdded: (todo) {
+          onTodoAdded: (todo) async {
             final updatedList = List<TodoItem>.from(widget.todos)..add(todo);
-            widget.onTodosChanged(updatedList);
+            await widget.onTodosChanged(updatedList);
           },
+          onManualTodoSaved: widget.onManualTodoSaved,
           onFixedScheduleAdded: (item) async {
             await StorageService.saveFixedSchedules(widget.username, [item]);
             widget.onRefreshRequested();

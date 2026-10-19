@@ -221,7 +221,7 @@ mixin _HomeDashboardContract {
 
   void _debouncedScheduleAllReminders(bool needsSync);
 
-  Future<void> _saveTodosToSharedFile(List<TodoItem> todos);
+  Future<bool> _saveTodosToSharedFile(List<TodoItem> todos);
 
   List<TodoItem> _cloneTodosForPersistence(List<TodoItem> todos);
 

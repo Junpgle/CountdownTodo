@@ -28,6 +28,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
 
     int selectedTabIndex = 0;
     String? currentOriginalText = originalText; // 📄 保存原始文本内容
+    String? pendingQuickTodoId;
 
     // 如果有预填充的大模型数据，解析并设置
     if (llmResults != null && llmResults.isNotEmpty) {
@@ -1258,6 +1259,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                       return;
                     }
                     final newTodo = TodoItem(
+                      id: pendingQuickTodoId ??= const Uuid().v4(),
                       title: titleCtrl.text,
                       recurrence: recurrence,
                       customIntervalDays: customDays,
@@ -1274,10 +1276,34 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                       reminderMinutes: reminderMinutes,
                       isAllDay: isAllDay,
                     );
-                    List<TodoItem> updatedList = List.from(widget.todos)
+                    final updatedList = List<TodoItem>.from(widget.todos)
                       ..add(newTodo);
-                    widget.onTodosChanged(updatedList);
-                    if (mounted) Navigator.pop(ctx);
+                    try {
+                      final saveManualTodo = widget.onManualTodoSaved;
+                      if (saveManualTodo != null) {
+                        final result = await saveManualTodo(newTodo);
+                        if (result.warnings.isNotEmpty && ctx.mounted) {
+                          AppSnackBars.showSnackBar(
+                            context,
+                            SnackBar(
+                              content: Text(
+                                '待办已保存；${result.warnings.join('；')}',
+                              ),
+                            ),
+                          );
+                        }
+                      } else {
+                        await widget.onTodosChanged(updatedList);
+                      }
+                      if (ctx.mounted) Navigator.pop(ctx);
+                    } catch (error) {
+                      if (ctx.mounted) {
+                        AppSnackBars.showSnackBar(
+                          context,
+                          SnackBar(content: Text('保存失败，输入仍保留：$error')),
+                        );
+                      }
+                    }
                   }
                 },
                 child: const Text("添加"),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models.dart';
+import '../models/todo_create_save_result.dart';
 import '../models/search_scope.dart';
 import '../screens/about_screen.dart';
 import '../screens/team_management_screen.dart';
@@ -1648,6 +1649,19 @@ class SearchNavigationHandler {
               StorageService.saveTodoGroups(username, items),
           onTodosChanged: (items) async =>
               StorageService.saveTodos(username, items),
+          onManualTodoSaved: (todo) async {
+            final allTodos = await StorageService.getTodos(username);
+            final existingIndex = allTodos.indexWhere(
+              (item) => item.id == todo.id,
+            );
+            if (existingIndex < 0) {
+              allTodos.add(todo);
+            } else {
+              allTodos[existingIndex] = todo;
+            }
+            await StorageService.saveTodos(username, allTodos);
+            return const TodoCreateSaveResult();
+          },
         ),
       );
     } else {
@@ -2048,11 +2062,45 @@ class SearchNavigationHandler {
           todoGroups: groups,
           onTodoAdded: (todo) async {
             final todos = await StorageService.getTodos(username);
-            await StorageService.saveTodos(username, [...todos, todo]);
+            final existingIndex = todos.indexWhere(
+              (item) => item.id == todo.id,
+            );
+            if (existingIndex < 0) {
+              todos.add(todo);
+            } else {
+              todos[existingIndex] = todo;
+            }
+            await StorageService.saveTodos(username, todos);
+          },
+          onManualTodoSaved: (todo) async {
+            final todos = await StorageService.getTodos(username);
+            final existingIndex = todos.indexWhere(
+              (item) => item.id == todo.id,
+            );
+            if (existingIndex < 0) {
+              todos.add(todo);
+            } else {
+              todos[existingIndex] = todo;
+            }
+            await StorageService.saveTodos(username, todos);
+            return const TodoCreateSaveResult();
           },
           onTodosBatchAdded: (added) async {
             final todos = await StorageService.getTodos(username);
-            await StorageService.saveTodos(username, [...todos, ...added]);
+            final indexById = <String, int>{};
+            for (var index = 0; index < todos.length; index++) {
+              indexById.putIfAbsent(todos[index].id, () => index);
+            }
+            for (final todo in added) {
+              final index = indexById[todo.id];
+              if (index == null) {
+                indexById[todo.id] = todos.length;
+                todos.add(todo);
+              } else {
+                todos[index] = todo;
+              }
+            }
+            await StorageService.saveTodos(username, todos);
           },
           onFixedScheduleAdded: (item) =>
               StorageService.saveFixedSchedules(username, [item]),

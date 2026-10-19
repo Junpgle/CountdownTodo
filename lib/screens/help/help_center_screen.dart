@@ -6,6 +6,7 @@ import '../../features/habits/screens/habit_center_screen.dart';
 import '../../features/thirty_day_challenge/screens/challenge_center_screen.dart';
 import '../../services/feature_tip_service.dart';
 import '../../storage_service.dart';
+import '../../models/todo_create_save_result.dart';
 import '../../update_service.dart';
 import '../../utils/app_platform.dart';
 import '../../utils/page_transitions.dart';
@@ -254,10 +255,34 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
                         throw StateError('请先登录后再保存待办');
                       }
                       final todos = await StorageService.getTodos(username);
-                      await StorageService.saveTodos(username, [
-                        ...todos,
-                        todo,
-                      ]);
+                      final existingIndex = todos.indexWhere(
+                        (item) => item.id == todo.id,
+                      );
+                      if (existingIndex < 0) {
+                        todos.add(todo);
+                      } else {
+                        todos[existingIndex] = todo;
+                      }
+                      await StorageService.saveTodos(username, todos);
+                    },
+                    onManualTodoSaved: (todo) async {
+                      final username =
+                          widget.username ??
+                          await StorageService.getLoginSession();
+                      if (username == null || username.isEmpty) {
+                        throw StateError('请先登录后再保存待办');
+                      }
+                      final todos = await StorageService.getTodos(username);
+                      final existingIndex = todos.indexWhere(
+                        (item) => item.id == todo.id,
+                      );
+                      if (existingIndex < 0) {
+                        todos.add(todo);
+                      } else {
+                        todos[existingIndex] = todo;
+                      }
+                      await StorageService.saveTodos(username, todos);
+                      return const TodoCreateSaveResult();
                     },
                   ),
                 ),

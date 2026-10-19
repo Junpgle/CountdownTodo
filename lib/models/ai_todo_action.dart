@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 enum AiTodoActionType {
   createTodo,
   createHabit,
@@ -361,6 +363,11 @@ class AiTodoAction {
     'hasTagUuids': hasTagUuids,
     'metadata': metadata,
   };
+
+  /// Creates a detached draft, including nested lists and metadata.
+  AiTodoAction copy() => AiTodoAction.fromJson(
+    Map<String, dynamic>.from(jsonDecode(jsonEncode(toJson())) as Map),
+  );
 
   factory AiTodoAction.fromJson(Map<String, dynamic> json) {
     final typeName = json['actionType']?.toString();

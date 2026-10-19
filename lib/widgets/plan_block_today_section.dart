@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models.dart';
+import '../models/todo_create_save_result.dart';
 import '../storage_service.dart';
 import '../services/database_helper.dart';
 import '../services/plan_review_repository.dart';
@@ -62,6 +63,7 @@ class PlanBlockTodaySection extends StatefulWidget {
     this.todos = const [],
     this.agendaRepository,
     this.onTodoAdded,
+    this.onManualTodoSaved,
   });
   final String username;
   final bool isLight, enabled;
@@ -75,6 +77,7 @@ class PlanBlockTodaySection extends StatefulWidget {
   final List<TodoItem> todos;
   final HomeAgendaRepository? agendaRepository;
   final Future<void> Function(TodoItem)? onTodoAdded;
+  final FutureOr<TodoCreateSaveResult> Function(TodoItem)? onManualTodoSaved;
   @override
   State<PlanBlockTodaySection> createState() => _PlanBlockTodaySectionState();
 }
@@ -812,7 +815,8 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
         } else if (action == 'fixed') {
           final page = AddTodoScreen(
             initialMode: AddTodoInitialMode.fixedSchedule,
-            onTodoAdded: widget.onTodoAdded ?? (_) async {},
+            onTodoAdded: widget.onTodoAdded,
+            onManualTodoSaved: widget.onManualTodoSaved,
             onFixedScheduleAdded: (item) =>
                 StorageService.saveFixedSchedules(widget.username, [item]),
           );

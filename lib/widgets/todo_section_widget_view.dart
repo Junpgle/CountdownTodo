@@ -2051,6 +2051,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                       onGroupsChanged: widget.onGroupsChanged,
                       allTodos: widget.todos,
                       onTodosChanged: widget.onTodosChanged,
+                      onManualTodoSaved: widget.onManualTodoSaved,
                     ),
                     sourceKey: widget.folderKey ?? _folderManagementButtonKey,
                     placeholderIcon: Icons.folder_copy_outlined,

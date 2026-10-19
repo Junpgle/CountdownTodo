@@ -55,9 +55,9 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
               ExternalShareHandler.clearPendingTodoConfirm();
             }
           },
-          onConfirm: (confirmedResults) {
+          onConfirm: (confirmedResults) async {
             // 用户确认后，直接批量添加待办
-            _batchAddTodos(confirmedResults, teamUuid, teamName);
+            await _batchAddTodos(confirmedResults, teamUuid, teamName);
             // 清除待确认数据（如果有）
             if (_pendingTodoConfirm != null) {
               setState(() => _pendingTodoConfirm = null);
@@ -174,6 +174,7 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
       );
 
       return TodoItem(
+        id: data['localTodoId']?.toString(),
         title: data['title']?.toString() ?? data['content']?.toString() ?? '',
         remark: (data['remark'] ?? data['notes'] ?? data['note'])?.toString(),
         dueDate: normalizedTime.due,
@@ -204,13 +205,6 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
       );
     }).toList();
 
-    // 更新局部卡片，避免为批量添加待办重建整个首页。
-    _todos = [...newTodos, ..._todos];
-    _todoDataRevision++;
-    _todosNotifier.value = List<TodoItem>.from(_todos);
-    _timelineRevision.value++;
-    _pomodoroTickNotifier.value++;
-
     // 保存到数据库
     final allTodos = await StorageService.getTodos(widget.username);
     final todoIndicesById = <String, int>{};
@@ -231,8 +225,25 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
     }
     await StorageService.saveTodos(widget.username, allTodos);
 
+    // 只有本机事务确认成功后才把批量草稿并入首页列表。
+    final mergedById = <String, TodoItem>{};
+    for (final todo in newTodos) {
+      mergedById.putIfAbsent(todo.id, () => todo);
+    }
+    for (final todo in _todos) {
+      mergedById.putIfAbsent(todo.id, () => todo);
+    }
+    _todos = mergedById.values.toList(growable: false);
+    _todoDataRevision++;
+    _todosNotifier.value = List<TodoItem>.from(_todos);
+    _timelineRevision.value++;
+    _pomodoroTickNotifier.value++;
+
     // 将待办数据写入共享文件供 Island 读取
-    await _saveTodosToSharedFile(allTodos);
+    final warnings = <String>[];
+    if (!await _saveTodosToSharedFile(allTodos)) {
+      warnings.add('共享状态待更新');
+    }
 
     // 图片识别确认的今日快递/取件待办立即上岛；定时闹钟仍负责之后的
     // 提前提醒。只在通知服务实际发布后登记活跃 ID，完成时才能可靠撤岛。
@@ -249,22 +260,38 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
           dueDate.day != now.day) {
         continue;
       }
-      if (await NotificationService.showUpcomingTodoNotification(todo)) {
-        _activeTodoNotifIds.add(todo.id.hashCode);
+      try {
+        if (await NotificationService.showUpcomingTodoNotification(todo)) {
+          _activeTodoNotifIds.add(todo.id.hashCode);
+        }
+      } catch (_) {
+        warnings.add('部分提醒待更新');
       }
     }
 
     // 通知 Island 检查提醒并刷新槽位缓存
-    FloatWindowService.triggerReminderCheck();
-    FloatWindowService.invalidateSlotCache();
-    _syncTodoNotification();
-    await WidgetService.updateTodoWidget(_todos);
+    try {
+      FloatWindowService.triggerReminderCheck();
+      FloatWindowService.invalidateSlotCache();
+      _syncTodoNotification();
+    } catch (_) {
+      warnings.add('系统提醒待更新');
+    }
+    try {
+      await WidgetService.updateTodoWidget(_todos);
+    } catch (_) {
+      warnings.add('桌面小组件待更新');
+    }
 
     if (mounted) {
       AppSnackBars.showSnackBar(
         context,
         SnackBar(
-          content: Text('已添加 ${newTodos.length} 个待办'),
+          content: Text(
+            warnings.isEmpty
+                ? '已添加 ${newTodos.length} 个待办'
+                : '待办已保存；${warnings.join('；')}',
+          ),
           duration: const Duration(seconds: 2),
         ),
       );

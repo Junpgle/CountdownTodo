@@ -3,9 +3,11 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart';
 
 import '../models.dart';
 import '../models/chat_message.dart';
+import '../models/todo_create_save_result.dart';
 import '../storage_service.dart';
 import '../services/api_service.dart';
 import '../services/todo_parser_service.dart';
@@ -38,12 +40,15 @@ import '../utils/semester_week_context.dart';
 
 enum _CaptureSaveTarget { todo, fixedSchedule, cancel }
 
+enum _AddTodoExitAction { continueEditing, discard, save }
+
 enum _ManualCaptureKind { todo, fixedSchedule }
 
 enum AddTodoInitialMode { todo, fixedSchedule }
 
 class AddTodoScreen extends StatefulWidget {
-  final FutureOr<void> Function(TodoItem) onTodoAdded;
+  final FutureOr<void> Function(TodoItem)? onTodoAdded;
+  final FutureOr<TodoCreateSaveResult> Function(TodoItem)? onManualTodoSaved;
   final FutureOr<void> Function(List<TodoItem>)? onTodosBatchAdded;
   final Future<void> Function(FixedScheduleItem)? onFixedScheduleAdded;
   final Function(
@@ -68,7 +73,8 @@ class AddTodoScreen extends StatefulWidget {
 
   const AddTodoScreen({
     super.key,
-    required this.onTodoAdded,
+    this.onTodoAdded,
+    this.onManualTodoSaved,
     this.onTodosBatchAdded,
     this.onFixedScheduleAdded,
     this.onLLMResultsParsed,
@@ -114,7 +120,12 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   int _selectedTabIndex = 0;
   bool _isParsing = false;
   bool _isSaving = false;
+  bool _allowExit = false;
+  bool _exitPromptOpen = false;
+  late String _initialDraftSnapshot;
+  String? _pendingManualTodoId;
   List<ParsedTodoResult> _parsedResults = [];
+  List<String> _parsedDraftIds = [];
   bool _parsedWithAi = false;
   int _currentParseIndex = 0;
   String? _currentOriginalText;
@@ -177,6 +188,38 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   String? _selectedTeamUuid;
   int _collabType = 0;
 
+  String _draftSnapshot() => jsonEncode({
+    'title': _titleCtrl.text,
+    'remark': _remarkCtrl.text,
+    'aiInput': _aiInputCtrl.text,
+    'createdAt': _createdAt.toIso8601String(),
+    'dueDate': _dueDate?.toIso8601String(),
+    'recurrence': _recurrence.name,
+    'customDays': _customDays,
+    'recurrenceEndDate': _recurrenceEndDate?.toIso8601String(),
+    'allDay': _isAllDay,
+    'groupId': _selectedGroupId,
+    'reminderMinutes': _reminderMinutes,
+    'scheduleDate': _scheduleDate.toIso8601String(),
+    'scheduleStart': '${_scheduleStartTime.hour}:${_scheduleStartTime.minute}',
+    'scheduleEnd': '${_scheduleEndTime.hour}:${_scheduleEndTime.minute}',
+    'scheduleTimeTbd': _scheduleTimeTbd,
+    'scheduleEndTimeTbd': _scheduleEndTimeTbd,
+    'selectedTeam': _selectedTeamUuid,
+    'collabType': _collabType,
+    'image': _selectedImagePath,
+    'originalText': _currentOriginalText,
+    'parsedResults': _parsedResults.map((result) => result.toMap()).toList(),
+  });
+
+  bool get _hasUnsavedDraft =>
+      _titleCtrl.text.isNotEmpty ||
+      _remarkCtrl.text.isNotEmpty ||
+      _aiInputCtrl.text.isNotEmpty ||
+      _parsedResults.isNotEmpty ||
+      _selectedImagePath != null ||
+      _draftSnapshot() != _initialDraftSnapshot;
+
   late AnimationController _dotsController;
 
   // Time estimation state
@@ -230,6 +273,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     });
     _selectedGroupId = widget.initialGroupId;
     _selectedTeamUuid = widget.initialTeamUuid;
+    _initialDraftSnapshot = _draftSnapshot();
     _dotsController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
@@ -240,8 +284,12 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       if (mounted &&
           _selectedGroupId != null &&
           _categoryReminderDefaults.containsKey(_selectedGroupId)) {
+        final shouldRebaseDraft = !_hasUnsavedDraft;
         setState(() {
           _reminderMinutes = _categoryReminderDefaults[_selectedGroupId]!;
+          if (shouldRebaseDraft) {
+            _initialDraftSnapshot = _draftSnapshot();
+          }
         });
       }
     });
@@ -664,6 +712,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     }
     setState(() {
       _parsedResults = results;
+      _parsedDraftIds = List.generate(results.length, (_) => const Uuid().v4());
       _parsedWithAi = false;
       _currentParseIndex = 0;
       _isParsing = false;
@@ -825,6 +874,10 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
       setState(() {
         _parsedResults = parsedResultsList;
+        _parsedDraftIds = List.generate(
+          parsedResultsList.length,
+          (_) => const Uuid().v4(),
+        );
         _parsedWithAi = true;
         _currentParseIndex = 0;
         _isParsing = false;
@@ -880,6 +933,15 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       );
       return;
     }
+    if (next == _ManualCaptureKind.todo &&
+        widget.onManualTodoSaved == null &&
+        widget.onTodoAdded == null) {
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('当前入口暂不支持新建待办')),
+      );
+      return;
+    }
     _estimationDebounce?.cancel();
     ++_estimateSequence;
     setState(() {
@@ -891,6 +953,61 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       }
     });
     if (next == _ManualCaptureKind.todo) _onTitleChanged();
+  }
+
+  Future<void> _requestExit() async {
+    if (_allowExit || _isSaving || _exitPromptOpen || !_hasUnsavedDraft) {
+      return;
+    }
+    _exitPromptOpen = true;
+    FocusScope.of(context).unfocus();
+    try {
+      final action = await showAppDialog<_AddTodoExitAction>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('内容还没有保存'),
+          content: const Text('离开后当前填写的待办或识别结果会丢失。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(
+                dialogContext,
+                _AddTodoExitAction.continueEditing,
+              ),
+              child: const Text('继续填写'),
+            ),
+            TextButton(
+              onPressed: () =>
+                  Navigator.pop(dialogContext, _AddTodoExitAction.discard),
+              child: const Text('放弃草稿'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.pop(dialogContext, _AddTodoExitAction.save),
+              child: const Text('保存并退出'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) return;
+      switch (action) {
+        case _AddTodoExitAction.discard:
+          _allowExit = true;
+          Navigator.pop(context);
+          break;
+        case _AddTodoExitAction.save:
+          if (_selectedTabIndex == 0) {
+            await _addTodo();
+          } else {
+            await _addBatchTodos();
+          }
+          break;
+        case _AddTodoExitAction.continueEditing:
+        case null:
+          break;
+      }
+    } finally {
+      _exitPromptOpen = false;
+    }
   }
 
   DateTime _scheduleAt(TimeOfDay time) => DateTime(
@@ -994,7 +1111,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
   Future<void> _addTodo() async {
     if (_isSaving) return;
-    if (_titleCtrl.text.isEmpty) {
+    if (_titleCtrl.text.trim().isEmpty) {
       AppSnackBars.showSnackBar(
         context,
         SnackBar(
@@ -1077,6 +1194,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           : null;
 
       final todo = TodoItem(
+        id: _pendingManualTodoId ??= const Uuid().v4(),
         title: _titleCtrl.text,
         recurrence: _recurrence,
         customIntervalDays: _customDays,
@@ -1097,8 +1215,16 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         isAllDay: _isAllDay,
       );
 
-      await widget.onTodoAdded(todo);
+      final saveResult = widget.onManualTodoSaved != null
+          ? await widget.onManualTodoSaved!(todo)
+          : await _saveManualTodoWithLegacyCallback(todo);
       if (!mounted) return;
+      if (saveResult.warnings.isNotEmpty) {
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(content: Text('待办已保存；${saveResult.warnings.join('；')}')),
+        );
+      }
       Navigator.pop(context);
     } catch (error) {
       if (mounted) {
@@ -1110,6 +1236,15 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
+  }
+
+  Future<TodoCreateSaveResult> _saveManualTodoWithLegacyCallback(
+    TodoItem todo,
+  ) async {
+    final callback = widget.onTodoAdded;
+    if (callback == null) throw StateError('当前入口未连接待办保存');
+    await callback(todo);
+    return const TodoCreateSaveResult();
   }
 
   Future<_CaptureSaveTarget> _confirmCaptureIntent(
@@ -1300,6 +1435,13 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
   Future<void> _addBatchTodos() async {
     if (_isSaving || _parsedResults.isEmpty) return;
+    if (widget.onTodosBatchAdded == null && widget.onTodoAdded == null) {
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('当前入口未连接待办保存')),
+      );
+      return;
+    }
 
     setState(() => _isSaving = true);
     try {
@@ -1363,6 +1505,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             : null;
         todos.add(
           TodoItem(
+            id: _parsedDraftIdFor(r),
             title: r.title,
             recurrence: r.recurrence,
             customIntervalDays: r.customIntervalDays,
@@ -1391,8 +1534,9 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         if (widget.onTodosBatchAdded != null) {
           await widget.onTodosBatchAdded!(todos);
         } else {
+          final onTodoAdded = widget.onTodoAdded!;
           for (var t in todos) {
-            await widget.onTodoAdded(t);
+            await onTodoAdded(t);
           }
         }
       }
@@ -1408,6 +1552,15 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
+  }
+
+  String _parsedDraftIdFor(ParsedTodoResult result) {
+    final index = _parsedResults.indexOf(result);
+    if (index < 0) return const Uuid().v4();
+    while (_parsedDraftIds.length <= index) {
+      _parsedDraftIds.add(const Uuid().v4());
+    }
+    return _parsedDraftIds[index];
   }
 
   // ================= 自定义统一分段控制器 (替代容易崩溃的原生 SegmentedButton) =================
@@ -1876,64 +2029,70 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         : theme.colorScheme.surface;
     final topBarHeight = floatingGlassTopBarHeight(context);
 
-    return Scaffold(
-      extendBody: true,
-      extendBodyBehindAppBar: true,
-      backgroundColor: bgColor,
-      appBar: FloatingGlassAppBar(
-        flexibleSpace: const FloatingGlassTopBarBackground(),
+    return PopScope<Object?>(
+      canPop: _allowExit || (!_isSaving && !_hasUnsavedDraft),
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) unawaited(_requestExit());
+      },
+      child: Scaffold(
+        extendBody: true,
+        extendBodyBehindAppBar: true,
         backgroundColor: bgColor,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        centerTitle: true,
-        title: SizedBox(
-          width: 200,
-          child: KeyedSubtree(
-            key: _aiTabSwitchKey,
-            child: AiWaterRippleBorder(
-              enabled: _selectedTabIndex == 1,
-              isLight: Theme.of(context).brightness == Brightness.light,
-              borderRadius: BorderRadius.circular(18),
-              child: _buildCustomSegmentedControl(
-                labels: const ["手动创建", "AI 识别"],
-                selectedIndex: _selectedTabIndex,
-                onChanged: (idx) => setState(() => _selectedTabIndex = idx),
+        appBar: FloatingGlassAppBar(
+          flexibleSpace: const FloatingGlassTopBarBackground(),
+          backgroundColor: bgColor,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          centerTitle: true,
+          title: SizedBox(
+            width: 200,
+            child: KeyedSubtree(
+              key: _aiTabSwitchKey,
+              child: AiWaterRippleBorder(
+                enabled: _selectedTabIndex == 1,
+                isLight: Theme.of(context).brightness == Brightness.light,
+                borderRadius: BorderRadius.circular(18),
+                child: _buildCustomSegmentedControl(
+                  labels: const ["手动创建", "AI 识别"],
+                  selectedIndex: _selectedTabIndex,
+                  onChanged: (idx) => setState(() => _selectedTabIndex = idx),
+                ),
               ),
             ),
           ),
-        ),
-        actions: [
-          TextButton(
-            key: _saveButtonKey,
-            onPressed: _isSaving
-                ? null
-                : (_selectedTabIndex == 0 ? _addTodo : _addBatchTodos),
-            child: const Text(
-              "完成",
-              maxLines: 1,
-              softWrap: false,
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          actions: [
+            TextButton(
+              key: _saveButtonKey,
+              onPressed: _isSaving
+                  ? null
+                  : (_selectedTabIndex == 0 ? _addTodo : _addBatchTodos),
+              child: const Text(
+                "完成",
+                maxLines: 1,
+                softWrap: false,
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
             ),
+            const SizedBox(width: 8),
+          ],
+        ),
+        bottomNavigationBar: _selectedTabIndex == 0
+            ? _buildManualKindBottomBar()
+            : null,
+        body: FloatingGlassTopBarContentFade(
+          topBarHeight: topBarHeight,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            child: _selectedTabIndex == 0
+                ? _buildManualInputTab(
+                    key: const ValueKey('manual'),
+                    topPadding: topBarHeight,
+                  )
+                : _buildAIRecognitionTab(
+                    key: const ValueKey('ai'),
+                    topPadding: topBarHeight,
+                  ),
           ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      bottomNavigationBar: _selectedTabIndex == 0
-          ? _buildManualKindBottomBar()
-          : null,
-      body: FloatingGlassTopBarContentFade(
-        topBarHeight: topBarHeight,
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 300),
-          child: _selectedTabIndex == 0
-              ? _buildManualInputTab(
-                  key: const ValueKey('manual'),
-                  topPadding: topBarHeight,
-                )
-              : _buildAIRecognitionTab(
-                  key: const ValueKey('ai'),
-                  topPadding: topBarHeight,
-                ),
         ),
       ),
     );
@@ -2110,6 +2269,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       TextField(
+                        key: const ValueKey('manual-todo-title'),
                         controller: _titleCtrl,
                         style: const TextStyle(
                           fontSize: 18,

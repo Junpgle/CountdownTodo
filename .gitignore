@@ -114,6 +114,7 @@ todo.md
 !/test/ai_context_mode_test.dart
 !/test/pomodoro_focus_end_sync_test.dart
 !/test/ai_recognition_chat_flow_test.dart
+!/test/ai_todo_action_draft_test.dart
 !/test/llm_config_page_test.dart
 !/test/services/
 /test/services/*

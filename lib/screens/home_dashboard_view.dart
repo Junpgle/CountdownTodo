@@ -322,12 +322,15 @@ mixin _HomeDashboardViewMixin
                                             if (!mounted) return;
                                             setState(() {
                                               _todoGroups = newGroups
-                                                  .where((group) => !group.isDeleted)
+                                                  .where(
+                                                    (group) => !group.isDeleted,
+                                                  )
                                                   .toList();
                                               _todoDataRevision++;
                                             });
                                           },
                                           onTodosChanged: _handleTodosChanged,
+                                          onManualTodoSaved: _saveManualTodo,
                                           onEditorSave: _handleTodoEditorSave,
                                           onEditorGroupsSave:
                                               _handleTodoEditorGroupsSave,
@@ -533,11 +536,10 @@ mixin _HomeDashboardViewMixin
                                                             ? _mobileFocusSections
                                                             : _mobileHomeSections)
                                                         .contains('agenda')),
-                                            onTodoAdded: (todo) =>
-                                                _handleTodosChanged([
-                                                  ..._todos,
-                                                  todo,
-                                                ]),
+                                            onTodoAdded: (todo) async {
+                                              await _saveManualTodo(todo);
+                                            },
+                                            onManualTodoSaved: _saveManualTodo,
                                             onTap: ([sourceKey]) async {
                                               final page = TodoPlanScreen(
                                                 username: widget.username,
@@ -1292,6 +1294,58 @@ mixin _HomeDashboardViewMixin
     );
   }
 
+  Future<TodoCreateSaveResult> _saveManualTodo(TodoItem todo) async {
+    final allTodos = await StorageService.getTodos(widget.username);
+    final existingIndex = allTodos.indexWhere((item) => item.id == todo.id);
+    if (existingIndex < 0) {
+      allTodos.add(todo);
+    } else {
+      allTodos[existingIndex] = todo;
+    }
+    await StorageService.saveTodos(widget.username, allTodos);
+
+    final warnings = <String>[];
+    Future<void> tryUpdate(
+      String warning,
+      FutureOr<void> Function() update,
+    ) async {
+      try {
+        await update();
+      } catch (_) {
+        warnings.add(warning);
+      }
+    }
+
+    if (todo.teamUuid != null) {
+      await tryUpdate('团队状态待更新', () {
+        PomodoroSyncService.instance.sendTeamUpdateSignal(todo.teamUuid!);
+      });
+    }
+    await tryUpdate('共享状态待更新', () async {
+      if (!await _saveTodosToSharedFile(allTodos)) {
+        throw StateError('shared todo snapshot was not updated');
+      }
+    });
+    await tryUpdate('提醒待更新', () {
+      FloatWindowService.triggerReminderCheck();
+      FloatWindowService.invalidateSlotCache();
+      _syncTodoNotification();
+      _rescheduleAlarms();
+    });
+    await tryUpdate('桌面小组件待更新', () async {
+      await WidgetService.updateTodoWidget(allTodos);
+    });
+    await tryUpdate('首页列表待刷新', () async {
+      if (mounted) {
+        await _loadAllData(
+          deferred: true,
+          domains: const {DataRefreshDomain.todos},
+        );
+      }
+    });
+    return TodoCreateSaveResult(warnings: warnings);
+  }
+
   Future<void> _openHomeTodo({GlobalKey? sourceKey}) async {
     final page = AddTodoScreen(
       todoGroups: _todoGroups,
@@ -1309,45 +1363,66 @@ mixin _HomeDashboardViewMixin
         }
       },
       onTodoAdded: (todo) async {
-        final allTodos = await StorageService.getTodos(widget.username);
-        allTodos.add(todo);
-        await StorageService.saveTodos(widget.username, allTodos);
-        if (todo.teamUuid != null) {
-          PomodoroSyncService.instance.sendTeamUpdateSignal(todo.teamUuid!);
-        }
-        await _saveTodosToSharedFile(allTodos);
-        FloatWindowService.triggerReminderCheck();
-        FloatWindowService.invalidateSlotCache();
-        _syncTodoNotification();
-        _rescheduleAlarms();
-        await WidgetService.updateTodoWidget(allTodos);
-        if (mounted) {
-          await _loadAllData(
-            deferred: true,
-            domains: const {DataRefreshDomain.todos},
-          );
-        }
+        await _saveManualTodo(todo);
       },
+      onManualTodoSaved: _saveManualTodo,
       onTodosBatchAdded: (todos) async {
         final allTodos = await StorageService.getTodos(widget.username);
-        allTodos.addAll(todos);
+        final indexById = <String, int>{};
+        for (var index = 0; index < allTodos.length; index++) {
+          indexById.putIfAbsent(allTodos[index].id, () => index);
+        }
+        for (final todo in todos) {
+          final index = indexById[todo.id];
+          if (index == null) {
+            indexById[todo.id] = allTodos.length;
+            allTodos.add(todo);
+          } else {
+            allTodos[index] = todo;
+          }
+        }
         await StorageService.saveTodos(widget.username, allTodos);
+        final warnings = <String>[];
         final updatedTeamUuid = todos
             .firstWhere((t) => t.teamUuid != null, orElse: () => todos.first)
             .teamUuid;
         if (updatedTeamUuid != null) {
-          PomodoroSyncService.instance.sendTeamUpdateSignal(updatedTeamUuid);
+          try {
+            PomodoroSyncService.instance.sendTeamUpdateSignal(updatedTeamUuid);
+          } catch (_) {
+            warnings.add('团队状态待更新');
+          }
         }
-        await _saveTodosToSharedFile(allTodos);
-        FloatWindowService.triggerReminderCheck();
-        FloatWindowService.invalidateSlotCache();
-        _syncTodoNotification();
-        _rescheduleAlarms();
-        await WidgetService.updateTodoWidget(allTodos);
-        if (mounted) {
-          await _loadAllData(
-            deferred: true,
-            domains: const {DataRefreshDomain.todos},
+        if (!await _saveTodosToSharedFile(allTodos)) {
+          warnings.add('共享状态待更新');
+        }
+        try {
+          FloatWindowService.triggerReminderCheck();
+          FloatWindowService.invalidateSlotCache();
+          _syncTodoNotification();
+          _rescheduleAlarms();
+        } catch (_) {
+          warnings.add('提醒状态待更新');
+        }
+        try {
+          await WidgetService.updateTodoWidget(allTodos);
+        } catch (_) {
+          warnings.add('桌面小组件待更新');
+        }
+        try {
+          if (mounted) {
+            await _loadAllData(
+              deferred: true,
+              domains: const {DataRefreshDomain.todos},
+            );
+          }
+        } catch (_) {
+          warnings.add('首页列表待刷新');
+        }
+        if (mounted && warnings.isNotEmpty) {
+          AppSnackBars.showSnackBar(
+            context,
+            SnackBar(content: Text('待办已保存；${warnings.join('；')}')),
           );
         }
       },

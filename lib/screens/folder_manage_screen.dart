@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../storage_service.dart';
 import '../models.dart';
+import '../models/todo_create_save_result.dart';
 
 import 'package:intl/intl.dart';
 
@@ -15,10 +18,11 @@ import '../widgets/optional_liquid_glass_surface.dart';
 class FolderManageScreen extends StatefulWidget {
   final String username;
   final List<TodoGroup> todoGroups;
-  final ValueChanged<List<TodoGroup>> onGroupsChanged;
+  final FutureOr<void> Function(List<TodoGroup>) onGroupsChanged;
 
   final List<TodoItem> allTodos;
-  final ValueChanged<List<TodoItem>> onTodosChanged;
+  final FutureOr<void> Function(List<TodoItem>) onTodosChanged;
+  final FutureOr<TodoCreateSaveResult> Function(TodoItem)? onManualTodoSaved;
   final String? initialGroupId;
 
   const FolderManageScreen({
@@ -28,6 +32,7 @@ class FolderManageScreen extends StatefulWidget {
     required this.onGroupsChanged,
     required this.allTodos,
     required this.onTodosChanged,
+    this.onManualTodoSaved,
     this.initialGroupId,
   });
 
@@ -41,6 +46,46 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
   late List<TodoItem> _todos;
   final _searchController = TextEditingController();
   final Map<(String?, String), DateFormat> _dateFormatters = {};
+
+  TodoItem _copyTodo(TodoItem todo) => TodoItem.fromJson(todo.toJson());
+
+  TodoGroup _copyGroup(TodoGroup group) => TodoGroup.fromJson(group.toJson());
+
+  List<TodoItem> _copyTodos(Iterable<TodoItem> todos) =>
+      todos.map(_copyTodo).toList();
+
+  List<TodoItem> _mergeTodos(Iterable<TodoItem> todos) {
+    final byId = <String, TodoItem>{};
+    for (final todo in todos) {
+      byId[todo.id] = _copyTodo(todo);
+    }
+    return byId.values.toList(growable: false);
+  }
+
+  List<TodoGroup> _copyGroups(Iterable<TodoGroup> groups) =>
+      groups.map(_copyGroup).toList();
+
+  Future<void> _commitTodos(List<TodoItem> candidate) async {
+    final snapshot = _copyTodos(candidate);
+    await widget.onTodosChanged(snapshot);
+    if (!mounted) return;
+    setState(() => _todos = _copyTodos(snapshot));
+  }
+
+  Future<void> _commitGroups(List<TodoGroup> candidate) async {
+    final snapshot = _copyGroups(candidate);
+    await widget.onGroupsChanged(snapshot);
+    if (!mounted) return;
+    setState(() => _groups = _copyGroups(snapshot));
+  }
+
+  void _showCommitError(Object error) {
+    if (!mounted) return;
+    AppSnackBars.showSnackBar(
+      context,
+      SnackBar(content: Text('保存失败，原清单未更改：$error')),
+    );
+  }
 
   DateFormat _cachedDateFormat(String pattern) {
     final locale = Intl.defaultLocale;
@@ -59,8 +104,8 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
   @override
   void initState() {
     super.initState();
-    _groups = List.from(widget.todoGroups);
-    _todos = List.from(widget.allTodos);
+    _groups = _copyGroups(widget.todoGroups);
+    _todos = _copyTodos(widget.allTodos);
     for (final group in _groups) {
       if (group.id == widget.initialGroupId) {
         _searchController.text = group.name;
@@ -85,7 +130,7 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
     setState(() {
       _folderDisplayMode = mode;
     });
-    widget.onGroupsChanged(_groups);
+    unawaited(_commitGroups(_groups).catchError(_showCommitError));
   }
 
   String _folderModeLabel(String mode) {
@@ -124,17 +169,22 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
       builder: (_) => _FolderNameDialog(initialName: existing?.name),
     );
     if (name == null || !mounted) return;
-    setState(() {
-      if (existing == null) {
-        _groups.insert(0, TodoGroup(name: name));
-      } else {
-        existing.name = name;
-        existing.markAsChanged();
-      }
-      _searchController.clear();
-    });
-    StorageService.saveTodoGroups(widget.username, _groups);
-    widget.onGroupsChanged(_groups);
+    final candidate = _copyGroups(_groups);
+    if (existing == null) {
+      candidate.insert(0, TodoGroup(name: name));
+    } else {
+      final index = candidate.indexWhere((group) => group.id == existing.id);
+      if (index < 0) return;
+      candidate[index].name = name;
+      candidate[index].markAsChanged();
+    }
+    try {
+      await StorageService.saveTodoGroups(widget.username, candidate);
+      await _commitGroups(candidate);
+      if (mounted) _searchController.clear();
+    } catch (error) {
+      _showCommitError(error);
+    }
   }
 
   void _deleteGroup(TodoGroup g) {
@@ -151,27 +201,36 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
           TextButton(
             onPressed: () async {
               Navigator.pop(ctx);
-              setState(() {
-                final idx = _groups.indexWhere((x) => x.id == g.id);
-                if (idx != -1) {
-                  _groups[idx].isDeleted = true;
-                  _groups[idx].markAsChanged();
-                }
-                // 同时更新本地 todos 状态
-                for (var t in _todos) {
-                  if (t.groupId == g.id) {
-                    t.groupId = null;
-                    t.version += 10;
-                    t.updatedAt = DateTime.now().millisecondsSinceEpoch;
-                  }
-                }
-              });
-              await StorageService.deleteTodoGroupGlobally(
-                widget.username,
-                g.id,
+              final nextGroups = _copyGroups(_groups);
+              final groupIndex = nextGroups.indexWhere(
+                (group) => group.id == g.id,
               );
-              widget.onGroupsChanged(_groups);
-              widget.onTodosChanged(_todos);
+              if (groupIndex < 0) return;
+              nextGroups[groupIndex].isDeleted = true;
+              nextGroups[groupIndex].markAsChanged();
+              final nextTodos = _copyTodos(_todos);
+              for (final todo in nextTodos) {
+                if (todo.groupId == g.id) {
+                  todo.groupId = null;
+                  todo.version += 10;
+                  todo.updatedAt = DateTime.now().millisecondsSinceEpoch;
+                }
+              }
+              try {
+                await StorageService.deleteTodoGroupGlobally(
+                  widget.username,
+                  g.id,
+                );
+                await widget.onGroupsChanged(_copyGroups(nextGroups));
+                await widget.onTodosChanged(_copyTodos(nextTodos));
+                if (!mounted) return;
+                setState(() {
+                  _groups = _copyGroups(nextGroups);
+                  _todos = _copyTodos(nextTodos);
+                });
+              } catch (error) {
+                _showCommitError(error);
+              }
             },
             child: Text(
               '解散文件夹',
@@ -327,15 +386,22 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
                                     ),
                                   )
                                 : null,
-                            onTap: () {
-                              setState(() {
-                                t.groupId = g.id;
-                                t.version += 10;
-                                t.updatedAt =
-                                    DateTime.now().millisecondsSinceEpoch;
-                              });
-                              widget.onTodosChanged(_todos);
-                              Navigator.pop(ctx);
+                            onTap: () async {
+                              final nextTodos = _copyTodos(_todos);
+                              final todoIndex = nextTodos.indexWhere(
+                                (todo) => todo.id == t.id,
+                              );
+                              if (todoIndex < 0) return;
+                              nextTodos[todoIndex].groupId = g.id;
+                              nextTodos[todoIndex].version += 10;
+                              nextTodos[todoIndex].updatedAt =
+                                  DateTime.now().millisecondsSinceEpoch;
+                              try {
+                                await _commitTodos(nextTodos);
+                                if (ctx.mounted) Navigator.pop(ctx);
+                              } catch (error) {
+                                _showCommitError(error);
+                              }
                             },
                           ),
                         ),
@@ -359,17 +425,23 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
           initialGroupId: g.id,
           onFixedScheduleAdded: (item) =>
               StorageService.saveFixedSchedules(widget.username, [item]),
-          onTodoAdded: (todo) {
-            setState(() {
-              _todos.add(todo);
-            });
-            widget.onTodosChanged(_todos);
+          onTodoAdded: (todo) async {
+            await _commitTodos(_mergeTodos([..._todos, todo]));
           },
-          onTodosBatchAdded: (todos) {
-            setState(() {
-              _todos.addAll(todos);
-            });
-            widget.onTodosChanged(_todos);
+          onManualTodoSaved: (todo) async {
+            final save = widget.onManualTodoSaved;
+            if (save != null) {
+              final result = await save(todo);
+              if (mounted) {
+                setState(() => _todos = _mergeTodos([..._todos, todo]));
+              }
+              return result;
+            }
+            await _commitTodos(_mergeTodos([..._todos, todo]));
+            return const TodoCreateSaveResult();
+          },
+          onTodosBatchAdded: (todos) async {
+            await _commitTodos(_mergeTodos([..._todos, ...todos]));
           },
         ),
       ),
@@ -377,12 +449,13 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
   }
 
   void _removeTodoFromFolder(TodoItem t) {
-    setState(() {
-      t.groupId = null;
-      t.version += 10;
-      t.updatedAt = DateTime.now().millisecondsSinceEpoch;
-    });
-    widget.onTodosChanged(_todos);
+    final nextTodos = _copyTodos(_todos);
+    final index = nextTodos.indexWhere((todo) => todo.id == t.id);
+    if (index < 0) return;
+    nextTodos[index].groupId = null;
+    nextTodos[index].version += 10;
+    nextTodos[index].updatedAt = DateTime.now().millisecondsSinceEpoch;
+    unawaited(_commitTodos(nextTodos).catchError(_showCommitError));
   }
 
   @override
