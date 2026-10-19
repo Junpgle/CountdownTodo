@@ -951,7 +951,7 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
                 : const Color(0xFF7C4DFF),
             icon: '📋',
             priority: 1,
-            actionLabel: isInterrupted ? '重新开始' : '开始',
+            actionLabel: '打开番茄钟',
             actionIcon: Icons.play_arrow_rounded,
             onTap: () async {
               await Navigator.of(context).push(
@@ -972,7 +972,10 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
                 },
               );
             },
-            onAction: () => _startPlanBlockFocus(activeBlock),
+            onAction: () => _startPlanBlockFocus(
+              activeBlock,
+              sourceKey: _focusBannerKey,
+            ),
           ),
         );
       }

@@ -119,7 +119,10 @@ mixin _HomeDashboardContract {
 
   String _planBlockStartText(int startTimeMs, int nowMs);
 
-  Future<void> _startPlanBlockFocus(TodoPlanBlock block);
+  Future<void> _startPlanBlockFocus(
+    TodoPlanBlock block, {
+    GlobalKey? sourceKey,
+  });
 
   Future<void> _stopPlanBlockPomodoro();
 

@@ -23,6 +23,7 @@ import '../services/plan_split_service.dart';
 import '../screens/plan_split_screen.dart';
 import '../storage_service.dart';
 import '../screens/pomodoro_screen.dart';
+import '../screens/pomodoro/pomodoro_entry_intent.dart';
 import '../services/plan_availability_repository.dart';
 import '../services/plan_availability_service.dart';
 import '../services/plan_conflict_review_service.dart';
@@ -106,6 +107,7 @@ class PlanBlockEditorSheet extends StatefulWidget {
   final PlanContinuousRangeLoader? continuousRangeLoader;
   final PlanEditorSaver? saver;
   final Future<void> Function(TodoPlanBlock block, TodoItem todo)? startFocus;
+  final Future<void> Function(TodoPlanBlock block, TodoItem todo)? openPomodoro;
   final Future<TimeEstimationResult> Function(TodoItem todo)? estimate;
   final DateTime Function()? clock;
   final bool navigateOnFocus;
@@ -143,6 +145,7 @@ class PlanBlockEditorSheet extends StatefulWidget {
     this.continuousRangeLoader,
     this.saver,
     this.startFocus,
+    this.openPomodoro,
     this.estimate,
     this.clock,
     this.navigateOnFocus = true,
@@ -172,6 +175,7 @@ class PlanBlockEditorSheet extends StatefulWidget {
 
 class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     with WidgetsBindingObserver {
+  final GlobalKey _focusActionSourceKey = GlobalKey();
   String? _selectedTodoId;
   late DateTime _start, _end;
   late TextEditingController _remarkCtrl;
@@ -1925,6 +1929,40 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           throw const MissedPlanRecoveryException('规划时段已失效或被占用，请读取最新安排');
         }
       }
+      if (widget.navigateOnFocus) {
+        widget.onSaved();
+        if (!mounted) return;
+        final navigator = Navigator.of(context);
+        final sourceRect = PageTransitions.rectForKey(_focusActionSourceKey);
+        final sourceColor = Theme.of(context).colorScheme.surface;
+        await _popEditor();
+        final openPomodoro = widget.openPomodoro;
+        final page = PomodoroScreen(
+          username: widget.username,
+          initialEntry: PomodoroEntryIntent.forPlanBlock(
+            boundTodo: todo,
+            planBlock: block,
+          ),
+        );
+        if (openPomodoro != null) {
+          await openPomodoro(block, todo);
+        } else if (sourceRect != null) {
+          await PageTransitions.pushFromRectSnapshot<void>(
+            navigator: navigator,
+            page: page,
+            sourceRect: sourceRect,
+            sourceColor: sourceColor,
+            placeholderIcon: Icons.timer_outlined,
+          );
+        } else {
+          navigator.push(
+            PageTransitions.material(
+              builder: (_) => page,
+            ),
+          );
+        }
+        return;
+      }
       if (!_focusStarted) {
         if (widget.startFocus != null) {
           await widget.startFocus!(block, todo);
@@ -1972,15 +2010,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
       }
       widget.onSaved();
       if (!mounted) return;
-      final navigator = Navigator.of(context);
       await _popEditor();
-      if (widget.navigateOnFocus) {
-        navigator.push(
-          PageTransitions.material(
-            builder: (_) => PomodoroScreen(username: widget.username),
-          ),
-        );
-      }
     } catch (error) {
       _reportError(error, focus: true);
     } finally {
@@ -2039,6 +2069,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           continuousRangeLoader: widget.continuousRangeLoader,
           saver: widget.saver,
           startFocus: widget.startFocus,
+          openPomodoro: widget.openPomodoro,
           estimate: widget.estimate,
           clock: widget.clock,
           navigateOnFocus: widget.navigateOnFocus,
@@ -2782,29 +2813,34 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
             : '保存规划',
       ),
     );
-    final focus = OutlinedButton.icon(
-      key: const ValueKey('plan-save-focus'),
-      style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-      onPressed:
-          _busy ||
-              _draftLoading ||
-              _draftRestoreFailed ||
-              _autoRecommendationPending ||
-              (_selectedTodoId == null && !_focusStarted)
-          ? null
-          : _saveAndStartFocus,
-      icon: const Icon(Icons.play_arrow_rounded, size: 20),
-      label: Text(
-        _focusStarted
-            ? '重试更新专注状态'
-            : _splitPersisted
-            ? '重试开始第1段'
-            : _split != null
-            ? '保存全部并开始第1段'
-            : '保存并开始专注',
+    final focus = KeyedSubtree(
+      key: _focusActionSourceKey,
+      child: OutlinedButton.icon(
+        key: const ValueKey('plan-save-focus'),
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        onPressed:
+            _busy ||
+                _draftLoading ||
+                _draftRestoreFailed ||
+                _autoRecommendationPending ||
+                (_selectedTodoId == null && !_focusStarted)
+            ? null
+            : _saveAndStartFocus,
+        icon: const Icon(Icons.play_arrow_rounded, size: 20),
+        label: Text(
+          _focusStarted
+              ? '重试更新专注状态'
+              : _splitPersisted
+              ? '进入第1段番茄钟'
+              : _split != null
+              ? '保存全部并进入番茄钟'
+              : '保存并进入番茄钟',
+        ),
       ),
     );
     return Container(

@@ -1012,6 +1012,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
 
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
+      key: _todoActionPanelKeyFor(msg),
       padding: const EdgeInsets.only(top: 8),
       child: _IridescentActionPanel(
         isDark: isDark,
@@ -1573,7 +1574,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         break;
       case AiTodoActionType.startPlanBlockPomodoro:
         color = Colors.redAccent;
-        label = '开始规划';
+        label = '准备专注';
         break;
       case AiTodoActionType.splitTodo:
         color = Colors.indigo;
@@ -2261,7 +2262,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       case AiTodoActionType.skipPlanBlock:
         return '跳过规划块';
       case AiTodoActionType.startPlanBlockPomodoro:
-        return '开始规划番茄钟';
+        return '准备规划番茄钟';
       case AiTodoActionType.splitTodo:
         return action.sourceTodoIds.isEmpty
             ? '拆分为子任务'
@@ -2934,6 +2935,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
 
       var executedPomodoroActions = 0;
       var skippedPomodoroActions = 0;
+      _pendingPlanPomodoroEntry = null;
       for (final action in result.pomodoroActions) {
         bool executed;
         try {
@@ -2944,7 +2946,11 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         action.isAdded = executed;
         if (executed) {
           executedPomodoroActions++;
-          await _saveHistorySilently();
+          try {
+            await _saveHistorySilently();
+          } catch (error) {
+            debugPrint('AI Pomodoro action history could not be saved: $error');
+          }
         } else {
           skippedPomodoroActions++;
         }
@@ -2965,29 +2971,51 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       }
 
       if (!mounted) return;
-      setState(() {});
-      await _saveHistorySilently();
+      final pendingPlanPomodoroEntry = _pendingPlanPomodoroEntry;
+      try {
+        await _saveHistorySilently();
+      } catch (error) {
+        debugPrint('AI action history could not be saved: $error');
+      }
       if (!mounted) return;
 
       AppSnackBars.showSnackBar(
         context,
         SnackBar(
           content: Text(
-            '已执行所选操作 (新待办: ${result.newTodos.length}, 习惯操作: ${changedHabits.length}, 整理待办: ${result.updatedTodos.length}, 日程: ${result.newFixedSchedules.length + result.updatedFixedSchedules.length}, 规划: ${result.newPlanBlocks.length + result.updatedPlanBlocks.length}, 专注记录: ${result.newTimeLogs.length + result.updatedTimeLogs.length}, 倒计时: ${result.newCountdowns.length + result.updatedCountdowns.length}, 分类: ${result.newTodoGroups.length + result.updatedTodoGroups.length}, 标签: ${result.newPomodoroTags.length + result.updatedPomodoroTags.length}, 番茄钟: $executedPomodoroActions)${skippedPomodoroActions > 0 ? '；$skippedPomodoroActions 项番茄钟操作未执行，确认卡仍保留。' : ''}',
+            '已执行所选操作 (新待办: ${result.newTodos.length}, 习惯操作: ${changedHabits.length}, 整理待办: ${result.updatedTodos.length}, 日程: ${result.newFixedSchedules.length + result.updatedFixedSchedules.length}, 规划: ${result.newPlanBlocks.length + result.updatedPlanBlocks.length}, 专注记录: ${result.newTimeLogs.length + result.updatedTimeLogs.length}, 倒计时: ${result.newCountdowns.length + result.updatedCountdowns.length}, 分类: ${result.newTodoGroups.length + result.updatedTodoGroups.length}, 标签: ${result.newPomodoroTags.length + result.updatedPomodoroTags.length}, 番茄钟: $executedPomodoroActions)${pendingPlanPomodoroEntry != null ? '；规划番茄钟已准备，未开始计时' : ''}${skippedPomodoroActions > 0 ? '；$skippedPomodoroActions 项番茄钟操作未执行，确认卡仍保留。' : ''}',
           ),
         ),
       );
+      if (pendingPlanPomodoroEntry != null && mounted) {
+        try {
+          await PageTransitions.pushFromRect<void>(
+            context: context,
+            sourceKey: _todoActionPanelKeyFor(msg),
+            placeholderIcon: Icons.timer_outlined,
+            page: PomodoroScreen(
+              username: widget.username,
+              initialEntry: pendingPlanPomodoroEntry,
+            ),
+          );
+        } finally {
+          _pendingPlanPomodoroEntry = null;
+          if (mounted) setState(() {});
+        }
+      } else {
+        _pendingPlanPomodoroEntry = null;
+        setState(() {});
+      }
     }
   }
 
   Future<bool> _executePomodoroAction(AiTodoAction action) async {
     switch (action.type) {
       case AiTodoActionType.startPlanBlockPomodoro:
+        if (_pendingPlanPomodoroEntry != null) return false;
         final blockId = action.planBlockId;
         if (blockId == null || blockId.isEmpty) return false;
-        final blocks = _planBlocks.isNotEmpty
-            ? _planBlocks
-            : await StorageService.getPlanBlocks(widget.username);
+        final blocks = await StorageService.getPlanBlocks(widget.username);
         TodoPlanBlock? block;
         for (final item in blocks) {
           if (item.uuid == blockId && !item.isDeleted) {
@@ -3002,49 +3030,22 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
             existing.phase != PomodoroPhase.finished) {
           return false;
         }
-        final settings = await PomodoroService.getSettings();
+        final todos = await StorageService.getTodos(widget.username);
         TodoItem? boundTodo;
-        final match = widget.todos.where((t) => t['id'] == block!.todoId);
-        if (match.isNotEmpty) {
-          boundTodo = TodoItem(
-            id: block.todoId,
-            title:
-                match.first['title']?.toString() ??
-                block.titleSnapshot ??
-                '规划任务',
-          );
-        }
-        boundTodo ??= TodoItem(
-          id: block.todoId,
-          title: block.titleSnapshot ?? '规划任务',
-        );
-        final previousStatus = block.status;
-        block.status = TodoPlanStatus.focusing;
-        block.markAsChanged();
-        try {
-          await StorageService.savePlanBlocks(widget.username, [block]);
-          await PomodoroControlService.startFocus(
-            settings: settings,
-            boundTodo: boundTodo,
-            durationMinutes: block.pomodoroRounds > 0
-                ? block.pomodoroMinutes * block.pomodoroRounds
-                : math.max(1, block.plannedMinutes),
-            planBlockId: block.uuid,
-            ensureSyncConnection: true,
-            deferSideEffects: true,
-          );
-        } catch (_) {
-          block.status = previousStatus;
-          block.markAsChanged();
-          try {
-            await StorageService.savePlanBlocks(widget.username, [block]);
-          } catch (_) {
-            // Keep the in-memory plan state unchanged if storage is unavailable.
+        for (final todo in todos) {
+          if (todo.id == block.todoId && !todo.isDeleted && !todo.isDone) {
+            boundTodo = todo;
+            break;
           }
-          rethrow;
         }
+        if (boundTodo == null) return false;
+        _pendingPlanPomodoroEntry = PomodoroEntryIntent.forPlanBlock(
+          boundTodo: boundTodo,
+          planBlock: block,
+        );
         return true;
       case AiTodoActionType.startPomodoro:
+        if (_pendingPlanPomodoroEntry != null) return false;
         final existing = await PomodoroService.loadRunState();
         if (existing != null &&
             existing.phase != PomodoroPhase.idle &&

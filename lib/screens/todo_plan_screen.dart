@@ -18,6 +18,8 @@ import '../services/course_service.dart';
 import '../storage_service.dart';
 import '../utils/app_dialogs.dart';
 import '../services/pomodoro_service.dart';
+import 'pomodoro_screen.dart';
+import 'pomodoro/pomodoro_entry_intent.dart';
 import '../services/plan_execution_repository.dart';
 import '../widgets/plan_execution_view.dart';
 import 'course_screens.dart';
@@ -897,6 +899,8 @@ class _PlanGridView extends StatefulWidget {
 class _PlanGridViewState extends State<_PlanGridView>
     with WidgetsBindingObserver {
   final _manualHostKey = GlobalKey<PlanManualCompletionHostState>();
+  final GlobalKey _planGridPomodoroSourceKey = GlobalKey();
+  final Map<String, GlobalKey> _planBlockSourceKeys = {};
   late final _manualCompletion = PlanManualCompletionService(clock: () => widget.dragService.now);
   late Map<String, TodoItem> _todoById;
   int? _dragStartBlock;
@@ -966,6 +970,9 @@ class _PlanGridViewState extends State<_PlanGridView>
     }
     _todoById = todoById;
   }
+
+  GlobalKey _sourceKeyFor(TodoPlanBlock block) =>
+      _planBlockSourceKeys.putIfAbsent(block.id, GlobalKey.new);
 
   List<PlanExecutionEntry> _executionEntries() {
     final cachedEntries = _executionEntriesCache;
@@ -1153,6 +1160,18 @@ class _PlanGridViewState extends State<_PlanGridView>
         initialTodoId: widget.initialTodoId,
         autoFillEstimateOnTodoChange: autoFillEstimateOnTodoChange,
         onSaved: widget.onRefresh,
+        openPomodoro: (planBlock, todo) => PageTransitions.pushFromRect<void>(
+          context: context,
+          sourceKey: _planGridPomodoroSourceKey,
+          placeholderIcon: Icons.timer_outlined,
+          page: PomodoroScreen(
+            username: widget.username,
+            initialEntry: PomodoroEntryIntent.forPlanBlock(
+              boundTodo: todo,
+              planBlock: planBlock,
+            ),
+          ),
+        ),
         onManageDrafts: () => openPlanEditorDrafts(
           context,
           widget.username,
@@ -1194,6 +1213,7 @@ class _PlanGridViewState extends State<_PlanGridView>
                     // 网格
                     Expanded(
                       child: GestureDetector(
+                        key: _planGridPomodoroSourceKey,
                         onPanStart: (d) =>
                             _handleDragStart(d.localPosition, gridW, hourH),
                         onPanUpdate: (d) =>
@@ -1553,14 +1573,19 @@ class _PlanGridViewState extends State<_PlanGridView>
                   previewOnly ||
                   (_gesture != null && _gesture!.block.id != block.id),
               child: GestureDetector(
-                key: ValueKey(
-                  '${previewOnly ? 'plan-preview' : 'plan-drag-block'}-${block.id}-$hour',
-                ),
+                key: !previewOnly && isStartSegment
+                    ? _sourceKeyFor(block)
+                    : ValueKey(
+                        '${previewOnly ? 'plan-preview' : 'plan-drag-block'}-${block.id}-$hour',
+                      ),
                 onTap: widget.dragBusy || _gesture != null
                     ? null
                     : isMappedBlock
                     ? () => _openMappedBlockDetail(block)
-                    : () => _showEditBlockSheet(block),
+                    : () => _showEditBlockSheet(
+                        block,
+                        sourceKey: _sourceKeyFor(block),
+                      ),
                 onLongPressStart: canDrag
                     ? (details) => _beginGesture(
                         block,
@@ -1828,7 +1853,10 @@ class _PlanGridViewState extends State<_PlanGridView>
     }
   }
 
-  void _showEditBlockSheet(TodoPlanBlock block) {
+  void _showEditBlockSheet(
+    TodoPlanBlock block, {
+    required GlobalKey sourceKey,
+  }) {
     showPlanBlockEditorSheet(
       context: context,
       builder: (context) => PlanBlockEditorSheet(
@@ -1852,6 +1880,18 @@ class _PlanGridViewState extends State<_PlanGridView>
         username: widget.username,
         initialTodoId: block.todoId,
         onSaved: widget.onRefresh,
+        openPomodoro: (planBlock, todo) => PageTransitions.pushFromRect<void>(
+          context: context,
+          sourceKey: sourceKey,
+          placeholderIcon: Icons.timer_outlined,
+          page: PomodoroScreen(
+            username: widget.username,
+            initialEntry: PomodoroEntryIntent.forPlanBlock(
+              boundTodo: todo,
+              planBlock: planBlock,
+            ),
+          ),
+        ),
         manualCompletionService: _manualCompletion,
         onManualCompleted: (receipt) => _manualHostKey.currentState?.present(receipt),
       ),

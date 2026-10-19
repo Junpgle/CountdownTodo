@@ -7,7 +7,6 @@ import 'package:intl/intl.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../services/pomodoro_service.dart';
-import '../services/pomodoro_control_service.dart';
 import '../services/course_service.dart';
 import '../services/ai_todo_chat_launcher.dart';
 import '../services/ai_todo_action_executor.dart';
@@ -23,6 +22,7 @@ import '../widgets/app_detail_widgets.dart';
 import 'dart:ui' as ui;
 
 import 'pomodoro_screen.dart';
+import 'pomodoro/pomodoro_entry_intent.dart';
 import '../services/feature_tip_service.dart';
 import '../widgets/coach_mark_overlay.dart';
 import '../widgets/floating_glass_control.dart';

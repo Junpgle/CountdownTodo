@@ -475,7 +475,12 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
 
     if (kind == 'plan_block') {
       final block = await _findIslandPlanBlock(id);
-      if (block != null) await _startPlanBlockFocus(block);
+      if (block != null) {
+        await _startPlanBlockFocus(
+          block,
+          sourceKey: _homePomodoroActionKey,
+        );
+      }
       return;
     }
     if (kind != 'todo') return;

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../services/pomodoro_service.dart';
 import '../../../utils/app_dialogs.dart';
 import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
@@ -31,7 +30,7 @@ class HabitCard extends StatefulWidget {
   /// 数据变化后通知父级刷新。
   final VoidCallback onChanged;
 
-  /// 时长型习惯「开始专注」回调（由父级负责启动并跳转番茄钟）。
+  /// 时长型习惯「开始专注」回调（由父级打开番茄钟并预绑定习惯专注信息）。
   final Future<void> Function(HabitGoal goal)? onStartFocus;
 
   /// 时长型习惯「查看记录」回调（默认由父级跳转详情页）。
@@ -559,23 +558,7 @@ class _HabitCardState extends State<HabitCard> {
   }
 
   Widget _buildDurationAction(HabitProgress progress, HabitDayStatus status) {
-    final targetSeconds = widget.rule.targetValue;
     final currentSeconds = progress.currentValue;
-    final remainingSeconds =
-        (targetSeconds - currentSeconds).clamp(0.0, targetSeconds).round();
-
-    final int defaultCheckInMinutes;
-    if (remainingSeconds > 0) {
-      defaultCheckInMinutes = (remainingSeconds / 60).ceil();
-    } else if (widget.goal.defaultFocusMinutes != null &&
-        widget.goal.defaultFocusMinutes! > 0) {
-      defaultCheckInMinutes = widget.goal.defaultFocusMinutes!;
-    } else if (targetSeconds > 0) {
-      defaultCheckInMinutes = (targetSeconds / 60).round();
-    } else {
-      defaultCheckInMinutes = 25;
-    }
-
     final isMet = progress.goalMet;
 
     if (isMet) {
@@ -615,16 +598,7 @@ class _HabitCardState extends State<HabitCard> {
             const SizedBox(width: 8),
             IconButton.filledTonal(
               tooltip: '继续专注',
-              onPressed: _busy || widget.onStartFocus == null
-                  ? null
-                  : () async {
-                      setState(() => _busy = true);
-                      try {
-                        await widget.onStartFocus?.call(widget.goal);
-                      } finally {
-                        if (mounted) setState(() => _busy = false);
-                      }
-                    },
+              onPressed: _busy ? null : _startFocus,
               icon: Icon(
                 Icons.play_arrow_rounded,
                 size: widget.compact ? 16 : 18,
@@ -660,81 +634,36 @@ class _HabitCardState extends State<HabitCard> {
       );
     }
 
-    final checkInMinutes = defaultCheckInMinutes;
-    final checkInSeconds = checkInMinutes * 60;
-
     return Row(
       children: [
         Expanded(
-          child: HabitCelebrationTrigger(
-            enabled: !_busy,
-            burstColor: _colors.cdtSuccess,
-            borderRadius: BorderRadius.circular(widget.compact ? 10 : 12),
-            holdHint: '长按打卡 $checkInMinutes分钟',
-            onCheckIn: () => _recordDurationCheckInDirectly(
-              checkInSeconds,
-              checkInMinutes,
-            ),
-            child: IgnorePointer(
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton.tonal(
-                  onPressed: () {},
-                  style: FilledButton.styleFrom(
-                    padding: EdgeInsets.symmetric(
-                      vertical: widget.compact ? 8 : 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        widget.compact ? 10 : 12,
-                      ),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.check_rounded,
-                        size: widget.compact ? 16 : 18,
-                      ),
-                      SizedBox(width: widget.compact ? 4 : 6),
-                      Text(
-                        widget.compact ? '打卡' : '打卡 $checkInMinutes分钟',
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-        if (widget.onStartFocus != null) ...[
-          const SizedBox(width: 8),
-          IconButton.filledTonal(
-            tooltip: '开始专注',
+          child: FilledButton.tonal(
             onPressed: _busy || widget.onStartFocus == null
                 ? null
-                : () async {
-                    setState(() => _busy = true);
-                    try {
-                      await widget.onStartFocus?.call(widget.goal);
-                    } finally {
-                      if (mounted) setState(() => _busy = false);
-                    }
-                  },
-            icon: Icon(
-              Icons.play_arrow_rounded,
-              size: widget.compact ? 16 : 18,
-            ),
-            style: IconButton.styleFrom(
+                : _startFocus,
+            style: FilledButton.styleFrom(
+              padding: EdgeInsets.symmetric(
+                vertical: widget.compact ? 8 : 12,
+              ),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(
                   widget.compact ? 10 : 12,
                 ),
               ),
             ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.play_arrow_rounded,
+                  size: widget.compact ? 16 : 18,
+                ),
+                SizedBox(width: widget.compact ? 4 : 6),
+                const Text('开始专注'),
+              ],
+            ),
           ),
-        ],
+        ),
         if (widget.onViewRecords != null) ...[
           const SizedBox(width: 8),
           TextButton(
@@ -757,90 +686,12 @@ class _HabitCardState extends State<HabitCard> {
     );
   }
 
-  Future<void> _recordDurationCheckInDirectly(
-    int seconds,
-    int minutes,
-  ) async {
-    final wasGoalMet = widget.dayProgress.progress.goalMet;
+  Future<void> _startFocus() async {
+    final onStartFocus = widget.onStartFocus;
+    if (_busy || onStartFocus == null) return;
     setState(() => _busy = true);
     try {
-      // 1. 确保关联了专注标签
-      var tagUuids = List<String>.from(widget.goal.sourceIds);
-      if (tagUuids.isEmpty) {
-        final tags = await PomodoroService.getTags();
-        final match =
-            tags.where((t) => t.name == widget.goal.name).firstOrNull;
-        if (match != null) {
-          tagUuids = [match.uuid];
-        } else {
-          final newTag = PomodoroTag(
-            name: widget.goal.name,
-            color: '#2196F3',
-          );
-          await PomodoroService.saveTags([...tags, newTag]);
-          tagUuids = [newTag.uuid];
-        }
-        widget.goal.sourceIds = tagUuids;
-        await HabitRepository.updateGoal(
-          widget.goal,
-          username: widget.username,
-        );
-      }
-
-      // 2. 创建专注记录
-      final now = DateTime.now();
-      final record = PomodoroRecord(
-        tagUuids: tagUuids,
-        startTime:
-            now.subtract(Duration(seconds: seconds)).millisecondsSinceEpoch,
-        endTime: now.millisecondsSinceEpoch,
-        plannedDuration: seconds,
-        actualDuration: seconds,
-        status: PomodoroRecordStatus.completed,
-        note: '${widget.goal.name} 快捷打卡',
-      );
-      await PomodoroService.addRecord(record);
-
-      // 3. 触发印章与全屏达成动效
-      final current = widget.dayProgress.progress.currentValue;
-      final target = widget.rule.targetValue;
-      final isNowGoalMet = (current + seconds >= target);
-      if (mounted) {
-        _triggerStampAnimation();
-        if (isNowGoalMet && !wasGoalMet) {
-          _checkAndTriggerCelebration();
-        }
-      }
-
-      // 4. 通知页面静默刷新
-      widget.onChanged();
-
-      // 5. 提示已打卡并提供撤销
-      if (mounted) {
-        final messenger = ScaffoldMessenger.maybeOf(context);
-        if (messenger != null) {
-          final canUseGlassToast =
-              LiquidGlassEffectService.configuration.enabled &&
-              Overlay.maybeOf(context) != null;
-          AppSnackBars.clear(messenger);
-          AppSnackBars.showSnackBar(
-            context,
-            SnackBar(
-              behavior: canUseGlassToast
-                  ? SnackBarBehavior.floating
-                  : SnackBarBehavior.fixed,
-              content: Text('已打卡 ${widget.goal.name} $minutes 分钟'),
-              action: SnackBarAction(
-                label: '撤销',
-                onPressed: () async {
-                  await PomodoroService.deleteRecord(record.uuid);
-                  widget.onChanged();
-                },
-              ),
-            ),
-          );
-        }
-      }
+      await onStartFocus(widget.goal);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

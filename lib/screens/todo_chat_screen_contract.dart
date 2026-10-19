@@ -53,9 +53,13 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   final GlobalKey _settingsKey = GlobalKey();
   final GlobalKey _inputKey = GlobalKey();
   final GlobalKey _tutorialButtonKey = GlobalKey();
+  final Map<String, GlobalKey> _todoActionPanelKeys = {};
   bool _showCoachMarks = false;
 
   List<TodoPlanBlock> _planBlocks = [];
+  PomodoroEntryIntent? _pendingPlanPomodoroEntry;
+  GlobalKey _todoActionPanelKeyFor(ChatMessage message) =>
+      _todoActionPanelKeys.putIfAbsent(message.id, GlobalKey.new);
   List<HabitGoal> _habitGoals = [];
   List<FixedScheduleItem> _fixedSchedules = [];
   Completer<void>? _cancelGeneration;

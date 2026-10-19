@@ -89,6 +89,7 @@ class _DayView extends StatefulWidget {
 }
 
 class _DayViewState extends State<_DayView> {
+  final GlobalKey _pomodoroEntrySourceKey = GlobalKey();
   int _minutesPerBlock = 15;
   int? _dragStart, _dragEnd;
   String? _selectedTagId;
@@ -216,6 +217,23 @@ class _DayViewState extends State<_DayView> {
           username: widget.username,
           todos: widget.todos,
           todoGroups: widget.todoGroups,
+          onStartFocus: (block, todo) async {
+            await StorageService.savePlanBlocks(widget.username, [block]);
+            if (!mounted) return;
+            Navigator.of(context).pop();
+            await PageTransitions.pushFromRect<void>(
+              context: context,
+              sourceKey: _pomodoroEntrySourceKey,
+              placeholderIcon: Icons.timer_outlined,
+              page: PomodoroScreen(
+                username: widget.username,
+                initialEntry: PomodoroEntryIntent.forPlanBlock(
+                  boundTodo: todo,
+                  planBlock: block,
+                ),
+              ),
+            );
+          },
           onSave: (block) {
             Navigator.pop(context);
             widget.onSavePlanBlock(block);
@@ -718,6 +736,7 @@ class _DayViewState extends State<_DayView> {
         );
 
         return GestureDetector(
+          key: _pomodoroEntrySourceKey,
           onPanStart: (d) {
             final i = _getIndex(d.localPosition, w, hourH);
             if (i != null) {
@@ -1379,6 +1398,7 @@ class _PlanEntrySheet extends StatefulWidget {
   final List<TodoItem> todos;
   final List<TodoGroup> todoGroups;
   final void Function(TodoPlanBlock) onSave;
+  final Future<void> Function(TodoPlanBlock block, TodoItem todo) onStartFocus;
 
   const _PlanEntrySheet({
     required this.initialStart,
@@ -1387,6 +1407,7 @@ class _PlanEntrySheet extends StatefulWidget {
     required this.todos,
     required this.todoGroups,
     required this.onSave,
+    required this.onStartFocus,
   });
 
   @override
@@ -1527,23 +1548,7 @@ class _PlanEntrySheetState extends State<_PlanEntrySheet> {
       orElse: () => null,
     );
     if (todo == null) return;
-    block.status = TodoPlanStatus.focusing;
-    await StorageService.savePlanBlocks(widget.username, [block]);
-    final settings = await PomodoroService.getSettings();
-    await PomodoroControlService.startFocus(
-      settings: settings,
-      boundTodo: todo,
-      durationMinutes: max(1, block.plannedMinutes),
-      planBlockId: block.uuid,
-    );
-    if (!mounted) return;
-    Navigator.pop(context);
-    Navigator.push(
-      context,
-      PageTransitions.material(
-        builder: (_) => PomodoroScreen(username: widget.username),
-      ),
-    );
+    await widget.onStartFocus(block, todo);
   }
 
   @override
@@ -1700,7 +1705,7 @@ class _PlanEntrySheetState extends State<_PlanEntrySheet> {
                   child: OutlinedButton.icon(
                     onPressed: _saveAndStartFocus,
                     icon: const Icon(Icons.play_arrow),
-                    label: const Text('开始专注'),
+                    label: const Text('进入番茄钟'),
                   ),
                 ),
                 const SizedBox(width: 10),

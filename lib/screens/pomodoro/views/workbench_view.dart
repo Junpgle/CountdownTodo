@@ -30,6 +30,7 @@ import '../../../utils/app_color_utils.dart';
 import '../../../utils/app_platform.dart';
 import '../../../utils/page_transitions.dart';
 import '../../../utils/todo_recurrence_picker.dart';
+import '../pomodoro_entry_intent.dart';
 import '../unified_tag_manager_screen.dart';
 import '../widgets/immersive_timer.dart';
 import '../widgets/workbench_actions.dart';
@@ -37,6 +38,7 @@ import '../widgets/workbench_task_area.dart';
 
 class PomodoroWorkbench extends StatefulWidget {
   final String username;
+  final PomodoroEntryIntent? initialEntry;
   final ValueChanged<PomodoroPhase> onPhaseChanged;
   final VoidCallback? onReady;
   final VoidCallback? onRecordAdded;
@@ -47,6 +49,7 @@ class PomodoroWorkbench extends StatefulWidget {
   const PomodoroWorkbench({
     super.key,
     required this.username,
+    this.initialEntry,
     required this.onPhaseChanged,
     this.onReady,
     this.onRecordAdded,
@@ -71,6 +74,11 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   int _remainingSeconds = 0;
   int _currentCycle = 1;
   int _sessionStartMs = 0;
+  int? _activeFocusSeconds;
+  int? _preparedFocusMinutes;
+  String? _planBlockId;
+  (TodoPlanBlock, TodoPlanStatus)? _strictWaitPlanStatusReceipt;
+  bool _initialEntryApplied = false;
 
   // 🚀 暂停状态
   bool _isPaused = false;
@@ -485,12 +493,16 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _strictStartInFlight = true;
     _suppressRunStateEvents = true;
     PomodoroStartResult? pending;
+    (TodoPlanBlock, TodoPlanStatus)? planStatusReceipt;
     try {
+      planStatusReceipt = await _markPlanBlockFocusing();
       pending = await PomodoroControlService.startFocus(
         settings: _settings,
         boundTodo: _boundTodo,
         tagUuids: _selectedTagUuids,
         currentCycle: _currentCycle,
+        durationMinutes: _preparedFocusMinutes,
+        planBlockId: _planBlockId,
         deviceId: _deviceId,
         note: _currentNote.isNotEmpty ? _currentNote : null,
         notify: false,
@@ -500,7 +512,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         startPaused: true,
         strictWaitingForFlip: true,
       );
+      _strictWaitPlanStatusReceipt = planStatusReceipt;
     } catch (_) {
+      _strictWaitPlanStatusReceipt = null;
+      await _rollbackPlanBlockStatus(planStatusReceipt);
       if (mounted) {
         setState(() {
           _strictWaitingForFlip = false;
@@ -524,6 +539,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
     final waitingState = pending.state;
     _currentSessionUuid = waitingState.sessionUuid;
+    _planBlockId = waitingState.planBlockId;
+    _activeFocusSeconds = waitingState.focusSeconds;
     if (mounted) {
       setState(() {
         // Keep the workbench in its idle layout while the persisted session is
@@ -554,6 +571,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     if (_strictStartInFlight) return;
     final saved = await PomodoroService.loadRunState();
     if (saved != null && !saved.strictWaitingForFlip) {
+      _strictWaitPlanStatusReceipt = null;
       // A sensor event may have started the session while the cancel action
       // was waiting for SharedPreferences. Rehydrate the active state instead
       // of leaving this page in its idle waiting layout.
@@ -571,6 +589,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       await NotificationService.cancelNotification();
       await FloatWindowService.update(endMs: 0, isLocal: true);
     }
+    final planStatusReceipt = _strictWaitPlanStatusReceipt;
+    _strictWaitPlanStatusReceipt = null;
+    await _rollbackPlanBlockStatus(planStatusReceipt);
     if (!mounted) return;
     setState(() {
       _phase = PomodoroPhase.idle;
@@ -578,6 +599,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       _pausedAtMs = 0;
       _pauseStartMs = 0;
       _accumulatedMs = 0;
+      _activeFocusSeconds = null;
       _pauseIntervals.clear();
       _strictSensorState = StrictFocusSensorState.waitingForFaceUp;
       _remainingSeconds = 0;
@@ -629,6 +651,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       return;
     }
     _isInitProcessing = true;
+    final preserveEntryBinding =
+        _initialEntryApplied && widget.initialEntry != null;
+    final preservedTodo = _boundTodo;
+    final preservedTags = List<String>.from(_selectedTagUuids);
+    final preservedPlanBlockId = _planBlockId;
+    final preservedFocusMinutes = _preparedFocusMinutes;
     final initStart = DateTime.now();
     // debugPrint(
     //     '[PomodoroWorkbench] _init start: ${initStart.toIso8601String()}');
@@ -667,6 +695,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       _todoGroups = groupsRaw.where((g) => !g.isDeleted).toList();
 
       final saved = results[5] as PomodoroRunState?;
+      final runIsActive =
+          saved != null &&
+          saved.phase != PomodoroPhase.idle &&
+          saved.phase != PomodoroPhase.finished;
 
       try {
         final info = await PackageInfo.fromPlatform();
@@ -734,6 +766,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                     : _settings.focusMinutes * 60;
                 _boundTodo = restoredTodo;
                 _selectedTagUuids = restoredTagUuids;
+                _planBlockId = null;
+                _activeFocusSeconds = null;
+                _preparedFocusMinutes = null;
               });
               // 🚀 补擦除逻辑：初始状态为闲置
               _syncService.setLocalFocusing(false);
@@ -742,6 +777,31 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         } catch (e) {
           debugPrint('[PomodoroWorkbench] 恢复本地绑定信息失败: $e');
         }
+      }
+
+      if (preserveEntryBinding && !runIsActive && mounted) {
+        setState(() {
+          _boundTodo = preservedTodo;
+          _selectedTagUuids = preservedTags;
+          _planBlockId = preservedPlanBlockId;
+          _preparedFocusMinutes = preservedFocusMinutes;
+          _remainingSeconds = _settings.mode == TimerMode.countUp
+              ? 0
+              : (preservedFocusMinutes ?? _settings.focusMinutes) * 60;
+        });
+        try {
+          await _persistIdleBoundTodo(
+            preservedTodo,
+            tagUuids: preservedTags,
+          );
+        } catch (_) {
+          // Keep the in-memory entry binding if preferences are unavailable.
+        }
+      }
+
+      if (!_initialEntryApplied) {
+        _initialEntryApplied = true;
+        if (!runIsActive) await _applyInitialEntry();
       }
 
       if (mounted) {
@@ -1275,7 +1335,96 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     }
   }
 
+  Future<void> _applyInitialEntry() async {
+    final entry = widget.initialEntry;
+    if (entry == null) return;
+
+    TodoItem? boundTodo;
+    final requestedTodo = entry.boundTodo;
+    if (requestedTodo != null) {
+      boundTodo = _todos.cast<TodoItem?>().firstWhere(
+        (todo) => todo?.id == requestedTodo.id,
+        orElse: () => requestedTodo,
+      );
+    }
+
+    final List<String> tagUuids;
+    if (entry.tagUuids != null) {
+      tagUuids = List<String>.from(entry.tagUuids!);
+    } else if (boundTodo != null) {
+      tagUuids = await _recommendedTagUuidsForTodo(boundTodo);
+    } else {
+      tagUuids = List<String>.from(_selectedTagUuids);
+    }
+    if (!mounted) return;
+
+    final focusMinutes = entry.focusMinutes == null
+        ? null
+        : entry.focusMinutes!.clamp(1, 120).toInt();
+    setState(() {
+      _boundTodo = boundTodo;
+      _selectedTagUuids = tagUuids;
+      _planBlockId = entry.planBlockId;
+      _preparedFocusMinutes = focusMinutes;
+      _activeFocusSeconds = null;
+      _remainingSeconds = _settings.mode == TimerMode.countUp
+          ? 0
+          : (focusMinutes ?? _settings.focusMinutes) * 60;
+    });
+    try {
+      await _persistIdleBoundTodo(boundTodo, tagUuids: tagUuids);
+    } catch (error) {
+      debugPrint('[PomodoroWorkbench] 保存入口绑定失败: $error');
+    }
+  }
+
+  Future<(TodoPlanBlock, TodoPlanStatus)?> _markPlanBlockFocusing() async {
+    final planBlockId = _planBlockId;
+    if (planBlockId == null || planBlockId.isEmpty) return null;
+
+    final blocks = await StorageService.getPlanBlocks(widget.username);
+    TodoPlanBlock? block;
+    for (final candidate in blocks) {
+      if (candidate.uuid == planBlockId && !candidate.isDeleted) {
+        block = candidate;
+        break;
+      }
+    }
+    if (block == null || _boundTodo?.id != block.todoId) {
+      throw StateError('规划已变化，请重新从规划入口打开番茄钟');
+    }
+    if (block.status == TodoPlanStatus.focusing) return null;
+
+    final previousStatus = block.status;
+    final updated = await StorageService.savePlanBlockEdited(
+      widget.username,
+      block,
+      expectedVersion: block.version,
+      expectedUpdatedAt: block.updatedAt,
+      newStatus: TodoPlanStatus.focusing,
+    );
+    return (updated, previousStatus);
+  }
+
+  Future<void> _rollbackPlanBlockStatus(
+    (TodoPlanBlock, TodoPlanStatus)? receipt,
+  ) async {
+    if (receipt == null) return;
+    try {
+      await StorageService.savePlanBlockEdited(
+        widget.username,
+        receipt.$1,
+        expectedVersion: receipt.$1.version,
+        expectedUpdatedAt: receipt.$1.updatedAt,
+        newStatus: receipt.$2,
+      );
+    } catch (error) {
+      debugPrint('[PomodoroWorkbench] 恢复规划状态失败: $error');
+    }
+  }
+
   Future<void> _recoverState(PomodoroRunState saved) async {
+    if (!saved.strictWaitingForFlip) _strictWaitPlanStatusReceipt = null;
     final now = DateTime.now().millisecondsSinceEpoch;
     final bool isCountUp = saved.mode == TimerMode.countUp;
     final bool isStrictFreeFocus =
@@ -1349,6 +1498,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           _settings.doNotDisturbDuringFocus = saved.doNotDisturbDuringFocus;
           _boundTodo = boundTodo;
           _selectedTagUuids = saved.tagUuids;
+          _planBlockId = saved.planBlockId;
+          _activeFocusSeconds = saved.focusSeconds;
+          _preparedFocusMinutes = null;
           _sessionStartMs = saved.sessionStartMs;
           _strictWaitingForFlip =
               isStrictFreeFocus && saved.strictWaitingForFlip;
@@ -1508,6 +1660,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         _currentCycle = saved.currentCycle;
         _boundTodo = boundTodo;
         _selectedTagUuids = saved.tagUuids;
+        _planBlockId = saved.planBlockId;
+        _activeFocusSeconds = saved.focusSeconds;
         _remainingSeconds = _settings.focusMinutes * 60;
       });
       await _clearRunStateSilently();
@@ -1961,23 +2115,39 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
     _suppressRunStateEvents = true;
     final PomodoroStartResult startResult;
+    (TodoPlanBlock, TodoPlanStatus)? planStatusReceipt;
     try {
+      planStatusReceipt = await _markPlanBlockFocusing();
       startResult = await PomodoroControlService.startFocus(
         settings: _settings,
         boundTodo: _boundTodo,
         tagUuids: _selectedTagUuids,
         currentCycle: _currentCycle,
+        durationMinutes: _preparedFocusMinutes,
+        planBlockId: _planBlockId,
         deviceId: _deviceId,
         note: _currentNote.isNotEmpty ? _currentNote : null,
         updateFloat: false,
         deferSideEffects: true,
       );
+    } catch (error) {
+      await _rollbackPlanBlockStatus(planStatusReceipt);
+      if (mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(content: Text('启动专注失败: $error')),
+        );
+      }
+      return;
     } finally {
       _suppressRunStateEvents = false;
     }
     if (!mounted) return;
     final started = startResult.state;
     _currentSessionUuid = started.sessionUuid;
+    _planBlockId = started.planBlockId;
+    _activeFocusSeconds = started.focusSeconds;
+    _preparedFocusMinutes = null;
     setState(() {
       _phase = PomodoroPhase.focusing;
       _targetEndMs = started.targetEndMs;
@@ -2024,12 +2194,15 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
     final oldTodo = _boundTodo;
     final oldTagUuids = List<String>.from(_selectedTagUuids);
+    final oldPlanBlockId = _planBlockId;
     final recommendedTagUuids = newTodo != null
         ? await _recommendedTagUuidsForTodo(newTodo)
         : <String>[];
 
     setState(() {
       _boundTodo = newTodo;
+      _planBlockId = null;
+      _preparedFocusMinutes = null;
       if (recommendedTagUuids.isNotEmpty) {
         _selectedTagUuids = recommendedTagUuids;
       }
@@ -2050,10 +2223,13 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           tagUuids: oldTagUuids,
           startTime: now - actualSeconds * 1000,
           endTime: now,
-          plannedDuration: isCountUp ? 0 : _settings.focusMinutes * 60,
+          plannedDuration: isCountUp
+              ? 0
+              : (_activeFocusSeconds ?? _settings.focusMinutes * 60),
           actualDuration: actualSeconds,
           status: PomodoroRecordStatus.switched,
           deviceId: _deviceId.isNotEmpty ? _deviceId : null,
+          planBlockId: oldPlanBlockId,
           note: _currentNote.isNotEmpty ? _currentNote : null,
           totalPauseSeconds: pauseSecs,
           pauseIntervals: intervals,
@@ -2193,7 +2369,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                 _accumulatedMs,
                 endMs: now,
               )
-            : _settings.focusMinutes * 60,
+            : (_activeFocusSeconds ?? _settings.focusMinutes * 60),
         startMs: _sessionStartMs,
         endMs: now,
         isCountUp: isCountUp,
@@ -2335,6 +2511,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         _phase = PomodoroPhase.finished;
         _currentCycle = 1;
         _remainingSeconds = isCountUp ? 0 : _settings.focusMinutes * 60;
+        _planBlockId = null;
+        _activeFocusSeconds = null;
       });
       _syncService.setLocalFocusing(false);
       widget.onPhaseChanged(_phase);
@@ -2385,6 +2563,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         _remainingSeconds = _settings.mode == TimerMode.countUp
             ? 0
             : _settings.focusMinutes * 60;
+        _planBlockId = null;
+        _activeFocusSeconds = null;
       });
       _syncService.setLocalFocusing(false);
       widget.onPhaseChanged(_phase);
@@ -2477,6 +2657,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           _phase = PomodoroPhase.idle;
           _currentCycle = 1;
           _remainingSeconds = isCountUpMode ? 0 : _settings.focusMinutes * 60;
+          _planBlockId = null;
+          _activeFocusSeconds = null;
         });
         _syncService.setLocalFocusing(false);
         widget.onPhaseChanged(_phase);
@@ -2534,7 +2716,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   void _showSettingsDialog({String? focusLabel}) {
     final focusCtrl = TextEditingController(
-      text: _settings.focusMinutes.toString(),
+      text: (_preparedFocusMinutes ?? _settings.focusMinutes).toString(),
     );
     final breakCtrl = TextEditingController(
       text: _settings.breakMinutes.toString(),
@@ -2584,6 +2766,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                 }
                 setState(() {
                   _settings = ns;
+                  _preparedFocusMinutes = null;
                   if (_phase == PomodoroPhase.idle) {
                     _remainingSeconds = ns.mode == TimerMode.countUp
                         ? 0
@@ -2785,7 +2968,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                       if (_phase == PomodoroPhase.focusing) {
                         await _switchTask(null);
                       } else {
-                        setState(() => _boundTodo = null);
+                        final clearPlanBinding = _planBlockId != null;
+                        setState(() {
+                          _boundTodo = null;
+                          _planBlockId = null;
+                          if (clearPlanBinding) _preparedFocusMinutes = null;
+                        });
                         await _persistIdleBoundTodo(null);
                         await _saveCurrentRunState();
                       }
@@ -2902,6 +3090,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           final recommended = await _recommendedTagUuidsForTodo(t);
           if (!mounted) return;
           setState(() {
+            if (_planBlockId != null && _boundTodo?.id != t.id) {
+              _planBlockId = null;
+              _preparedFocusMinutes = null;
+            }
             _boundTodo = t;
             if (recommended.isNotEmpty) {
               _selectedTagUuids = recommended;
@@ -2937,7 +3129,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     totalCycles: _settings.cycles,
     focusSeconds: _settings.mode == TimerMode.countUp
         ? 0
-        : _settings.focusMinutes * 60,
+        : (_activeFocusSeconds ?? _settings.focusMinutes * 60),
     breakSeconds: _settings.breakMinutes * 60,
     todoUuid: _boundTodo?.id,
     todoTitle: _boundTodo?.title,
@@ -2949,7 +3141,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     sessionStartMs: _sessionStartMs,
     plannedFocusSeconds: _settings.mode == TimerMode.countUp
         ? 0
-        : _settings.focusMinutes * 60,
+        : (_activeFocusSeconds ?? _settings.focusMinutes * 60),
     mode: _settings.mode,
     strictFreeFocus: _settings.strictFreeFocus,
     strictWaitingForFlip: _strictWaitingForFlip,
@@ -2959,6 +3151,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     accumulatedMs: _accumulatedMs,
     pauseStartMs: _pauseStartMs,
     pauseIntervals: _pauseIntervals,
+    planBlockId: _planBlockId,
     note: _currentNote.isNotEmpty ? _currentNote : null,
   );
 

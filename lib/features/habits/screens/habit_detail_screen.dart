@@ -1793,6 +1793,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     context: context,
     username: widget.username,
     goal: _goal,
+    sourceKey: _detailCardKey,
     onReturned: () {
       _loadData();
     },

@@ -14,6 +14,8 @@ import '../services/pomodoro_service.dart';
 import '../services/missed_plan_recovery_service.dart';
 import '../screens/todo_plan_screen.dart';
 import '../screens/plan_block_stats_screen.dart';
+import '../screens/pomodoro_screen.dart';
+import '../screens/pomodoro/pomodoro_entry_intent.dart';
 import '../utils/page_transitions.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'missed_plan_recovery_flow.dart';
@@ -97,12 +99,16 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
   int _sequence = 0;
   final _issuesKey = GlobalKey(debugLabel: 'agenda_issues_button');
   final _unlinkedKey = GlobalKey(debugLabel: 'agenda_unlinked_button');
+  final Map<String, GlobalKey> _planEditorSourceKeys = {};
   DateTime? _expiredBoundary;
   DateTime get _now => widget.clock?.call() ?? DateTime.now();
   DateTime get _today => DateUtils.dateOnly(_now);
   bool get _active => _foreground && _visible && _ticker && widget.enabled;
   bool get _canOpen =>
       _active && !_loading && !_opening && _data != null && _error == null;
+
+  GlobalKey _editSourceKey(String id) =>
+      _planEditorSourceKeys.putIfAbsent(id, GlobalKey.new);
 
   @override
   void initState() {
@@ -570,7 +576,10 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
     );
   }
 
-  Future<void> _edit(PlanTodayRow item) => _navigate((data) async {
+  Future<void> _edit(
+    PlanTodayRow item, {
+    required GlobalKey sourceKey,
+  }) => _navigate((data) async {
     final raw = await _repository.detail(
       data.overview.identity,
       'plan',
@@ -618,6 +627,18 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
         endTime: DateTime.fromMillisecondsSinceEpoch(block.endTime),
         clock: widget.clock,
         onSaved: () => _maintenancePending = true,
+        openPomodoro: (planBlock, boundTodo) => PageTransitions.pushFromRect<void>(
+          context: context,
+          sourceKey: sourceKey,
+          placeholderIcon: Icons.timer_outlined,
+          page: PomodoroScreen(
+            username: widget.username,
+            initialEntry: PomodoroEntryIntent.forPlanBlock(
+              boundTodo: boundTodo,
+              planBlock: planBlock,
+            ),
+          ),
+        ),
         manualCompletionService: PlanManualCompletionService(
           clock: widget.clock,
         ),
@@ -944,8 +965,10 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
         spacing: 4,
         children: [
           TextButton(
-            key: ValueKey('plan-today-edit-${row.entry.id}'),
-            onPressed: _canOpen ? () => _edit(row) : null,
+            key: _editSourceKey(row.entry.id),
+            onPressed: _canOpen
+                ? () => _edit(row, sourceKey: _editSourceKey(row.entry.id))
+                : null,
             child: const Text('查看规划'),
           ),
           TextButton(
@@ -1270,8 +1293,10 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
                       spacing: 4,
                       children: [
                         TextButton(
-                          key: ValueKey('plan-today-edit-${e.id}'),
-                          onPressed: _canOpen ? () => _edit(row) : null,
+                          key: _editSourceKey(e.id),
+                          onPressed: _canOpen
+                              ? () => _edit(row, sourceKey: _editSourceKey(e.id))
+                              : null,
                           child: const Text('查看规划'),
                         ),
                         TextButton(

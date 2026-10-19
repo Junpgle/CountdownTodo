@@ -590,7 +590,10 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
     return minutes <= 1 ? '马上开始' : '$minutes 分钟后开始';
   }
 
-  Future<void> _startPlanBlockFocus(TodoPlanBlock block) async {
+  Future<void> _startPlanBlockFocus(
+    TodoPlanBlock block, {
+    GlobalKey? sourceKey,
+  }) async {
     try {
       final todos = await StorageService.getTodos(widget.username);
       TodoItem? boundTodo;
@@ -607,30 +610,17 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
             : '规划任务',
       );
 
-      final configuredPomodoroMinutes = block.pomodoroRounds > 0
-          ? block.pomodoroMinutes * block.pomodoroRounds
-          : 0;
-      final plannedMinutes = configuredPomodoroMinutes > 0
-          ? configuredPomodoroMinutes
-          : (block.plannedMinutes > 0
-              ? block.plannedMinutes
-              : ((block.endTime - block.startTime) / 60000).round());
-      block.status = TodoPlanStatus.focusing;
-      block.markAsChanged();
-      await StorageService.savePlanBlocks(widget.username, [block]);
-      final settings = await PomodoroService.getSettings();
-      await PomodoroControlService.startFocus(
-        settings: settings,
-        boundTodo: boundTodo,
-        durationMinutes: plannedMinutes < 1 ? 1 : plannedMinutes,
-        planBlockId: block.uuid,
-      );
-
       if (!mounted) return;
-      await Navigator.push(
-        context,
-        PageTransitions.material(
-          builder: (_) => PomodoroScreen(username: widget.username),
+      await PageTransitions.pushFromRect<void>(
+        context: context,
+        sourceKey: sourceKey ?? _focusBannerKey,
+        placeholderIcon: Icons.timer_outlined,
+        page: PomodoroScreen(
+          username: widget.username,
+          initialEntry: PomodoroEntryIntent.forPlanBlock(
+            boundTodo: boundTodo,
+            planBlock: block,
+          ),
         ),
       );
       if (mounted) {
@@ -642,7 +632,7 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
       if (!mounted) return;
       AppSnackBars.showSnackBar(
         context,
-        SnackBar(content: Text('启动专注失败: $e')),
+        SnackBar(content: Text('打开番茄钟失败: $e')),
       );
     }
   }

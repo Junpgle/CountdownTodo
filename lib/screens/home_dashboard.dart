@@ -116,6 +116,7 @@ import '../widgets/conflict_alert_dialog.dart';
 import '../widgets/sync_status_banner.dart'; // 🚀 引入
 import '../widgets/sticky_announcement_banner.dart'; // 🚀 引入
 import 'pomodoro_screen.dart';
+import 'pomodoro/pomodoro_entry_intent.dart';
 import 'todo_plan_screen.dart';
 // 🚀 引入
 // 🚀 引入

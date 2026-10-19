@@ -484,7 +484,7 @@ class AiTodoContextBuilder {
     if (!readOnlyRequest &&
         planningActions.contains('start_plan_block_pomodoro')) {
       add(
-        '- start_plan_block_pomodoro: 必须带真实planBlockId，只能启动用户明确指定的规划块',
+        '- start_plan_block_pomodoro: 必须带真实planBlockId，只能为用户明确指定的规划块打开番茄钟工作台并预绑定待办；等待用户在工作台手动开始计时',
       );
     }
     final focusActions = explicitFocusActionNames(userMessage);
@@ -724,7 +724,7 @@ JSON操作块必须且只能使用以下协议：
 - update_schedule: {"action":"update_schedule","updates":[{"scheduleId":"真实期次ID","recurrenceSeriesId":"可选系列ID","recurrenceScope":"occurrence|future","title":"新标题","date":"YYYY-MM-DD","startTime":"YYYY-MM-DD HH:mm或null","endTime":"YYYY-MM-DD HH:mm或null","location":null,"remark":null,"reminderMinutes":[],"recurrence":"none|daily|weekly|monthly|yearly|weekdays|customDays","customIntervalDays":null,"recurrenceEndDate":null}]}。字段缺省=保持，null=清空；修改重复规则必须使用future
 - cancel_schedule / delete_schedule: 使用scheduleId；默认occurrence，只有明确“本期及以后”才用future；日程没有待办式“完成勾选”
 - create_plan_block: {"action":"create_plan_block","blocks":[{"todoId":"已有待办ID","title":"标题快照","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","durationMinutes":60,"remark":"备注","reminderMinutes":5}]}，用于把已有待办安排到具体时间块；用户说"规划今天/明天/本周时间""安排到几点到几点"时优先使用这个动作。重要：规划中提到的每一个已有待办都必须生成对应的plan block，不要只生成一个
-- update_plan_block / reschedule_plan_blocks / delete_plan_block / skip_plan_block / start_plan_block_pomodoro: 必须使用已有规划块ID(planBlockId/blockId/id)，用于修改、重排、删除、跳过或直接开始某个规划块的番茄钟
+- update_plan_block / reschedule_plan_blocks / delete_plan_block / skip_plan_block / start_plan_block_pomodoro: 必须使用已有规划块ID(planBlockId/blockId/id)，用于修改、重排、删除、跳过或打开并预绑定某个规划块的番茄钟工作台；start_plan_block_pomodoro 不会自动开始计时
 - update_todo: {"action":"update_todo","updates":[{"todoId":"真实期次ID","recurrenceSeriesId":"可选系列ID","recurrenceScope":"occurrence|future","title":"新标题","timeMode":"unscheduled|dateOnly|deadline","dueDate":"...","groupId":"...","reminderMinutes":5}]}。字段缺省=保持，字段为null=清空
 - complete_todo: {"action":"complete_todo","updates":[{"todoId":"真实期次ID","recurrenceScope":"occurrence"}]}，循环完成状态永远属于单期
 - delete_todo: {"action":"delete_todo","updates":[{"todoId":"真实期次ID","recurrenceSeriesId":"可选系列ID","recurrenceScope":"occurrence|future"}]}

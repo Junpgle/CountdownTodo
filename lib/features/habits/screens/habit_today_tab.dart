@@ -122,6 +122,7 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
     context: context,
     username: widget.username,
     goal: goal,
+    sourceKey: _cardKeyFor(goal),
     onReturned: _handleChanged,
   );
 

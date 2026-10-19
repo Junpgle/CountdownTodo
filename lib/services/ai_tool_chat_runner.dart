@@ -2863,7 +2863,7 @@ abstract final class AiToolChatRunner {
     'reschedule_plan_blocks' => '重排规划块',
     'delete_plan_block' => '删除规划块',
     'skip_plan_block' => '跳过规划块',
-    'start_plan_block_pomodoro' => '启动规划番茄钟',
+    'start_plan_block_pomodoro' => '打开规划番茄钟',
     'create_time_log' => '创建专注记录',
     'update_time_log' => '修改专注记录',
     'delete_time_log' => '删除专注记录',

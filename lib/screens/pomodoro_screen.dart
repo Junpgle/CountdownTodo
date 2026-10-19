@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../services/notification_service.dart';
 import '../services/pomodoro_service.dart';
+import 'pomodoro/pomodoro_entry_intent.dart';
 import 'pomodoro/views/workbench_view.dart';
 import 'pomodoro/views/stats_view.dart';
 import '../widgets/coach_mark_overlay.dart';
@@ -19,6 +20,7 @@ import '../services/feature_tip_service.dart';
 class PomodoroScreen extends StatefulWidget {
   final String username;
   final String? initialSettingsTarget;
+  final PomodoroEntryIntent? initialEntry;
 
   /// Notification action received while the app was not already showing this
   /// route. The dashboard consumes the native event to bring this page to the
@@ -36,6 +38,7 @@ class PomodoroScreen extends StatefulWidget {
     super.key,
     required this.username,
     this.initialSettingsTarget,
+    this.initialEntry,
     this.initialTab = 0,
     this.initialDimension = 0,
     this.initialNotificationAction,
@@ -327,6 +330,7 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                   child: PomodoroWorkbench(
                     key: _workbenchKey,
                     username: widget.username,
+                    initialEntry: widget.initialEntry,
                     onPhaseChanged: (phase) {
                       if (!_disposed && mounted && _currentPhase != phase) {
                         setState(() => _currentPhase = phase);
@@ -431,6 +435,7 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                   PomodoroWorkbench(
                     key: _workbenchKey,
                     username: widget.username,
+                    initialEntry: widget.initialEntry,
                     onPhaseChanged: (phase) {
                       if (!_disposed && mounted && _currentPhase != phase) {
                         setState(() => _currentPhase = phase);

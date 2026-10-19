@@ -40,6 +40,8 @@ import '../services/chat_storage_service.dart';
 import '../services/ai_recognition_chat_bridge.dart';
 import '../services/pomodoro_control_service.dart';
 import '../services/pomodoro_service.dart';
+import 'pomodoro/pomodoro_entry_intent.dart';
+import 'pomodoro_screen.dart';
 import '../services/power_save_mode_service.dart';
 import '../screens/ai_assistant_tutorial_screen.dart';
 import 'settings/pages/ai_assistant_settings_page.dart';

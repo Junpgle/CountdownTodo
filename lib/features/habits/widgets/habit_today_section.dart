@@ -105,6 +105,7 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
     context: context,
     username: widget.username,
     goal: goal,
+    sourceKey: _cardKeyFor(goal),
     onReturned: () {
       _loadData();
     },
