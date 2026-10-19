@@ -2075,14 +2075,8 @@ struct MacIslandSwiftUIView: View {
     }
 
     private var showsCompactContent: Bool {
-        // 刘海两侧只在确实有音乐播放时占用空间；专注、待办和暂停后的
-        // 媒体快照仍可在展开态展示，但不再污染收起态的刘海两侧。
-        guard compactMediaIsPlaying else { return false }
+        // 有实时活动时展示两侧内容；只有空闲概览或暂停媒体时才收回原刘海尺寸。
         return !model.isIdle
-            || model.isFocusActive
-            || hasCompactPriorityActivity
-            || compactHasMedia
-            || showsCompactLyrics
     }
 
     private var focusTagSummary: String {
@@ -3886,10 +3880,8 @@ class MacPomodoroStatusBarController {
             || !todayTodos.isEmpty
         let hasDisplayContent = hasLiveContent || hasUpcomingActivity || hasNowPlaying
         // Upcoming items and paused media remain available in the expanded
-        // overview, but they must not grow the collapsed notch into two black
-        // side wings. Only live content (or actively playing media) gets the
-        // wider compact frame; an idle notched Mac keeps the physical notch
-        // width so it can still expand on hover.
+        // overview, but they must not grow the collapsed notch. Live content,
+        // including focus, and actively playing media use the side wings.
         let hasCompactContent = hasLiveContent || hasPlayingMedia
         let hasCompactLyrics = hasPlayingMedia && !nowPlayingSnapshot.lyrics.isEmpty
         guard islandEnabled, !isShortcutHidden else {
