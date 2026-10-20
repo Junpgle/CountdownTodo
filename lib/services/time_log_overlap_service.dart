@@ -3,6 +3,18 @@ import 'pomodoro_service.dart';
 
 enum TimeLogOverlapSource { manualLog, pomodoro }
 
+class TimeLogOverlapInterval {
+  const TimeLogOverlapInterval({
+    required this.startTime,
+    required this.endTime,
+  });
+
+  final int startTime;
+  final int endTime;
+
+  int get durationMilliseconds => endTime - startTime;
+}
+
 class TimeLogOverlap {
   const TimeLogOverlap({
     required this.source,
@@ -10,6 +22,7 @@ class TimeLogOverlap {
     required this.title,
     required this.startTime,
     required this.endTime,
+    required this.overlapIntervals,
     required this.overlapMilliseconds,
   });
 
@@ -18,6 +31,7 @@ class TimeLogOverlap {
   final String title;
   final int startTime;
   final int endTime;
+  final List<TimeLogOverlapInterval> overlapIntervals;
   final int overlapMilliseconds;
 
   String get sourceLabel => switch (source) {
@@ -47,13 +61,13 @@ abstract final class TimeLogOverlapService {
           log.endTime <= log.startTime) {
         continue;
       }
-      final overlap = _intersectionMilliseconds(
+      final interval = _intersectionInterval(
         startTime,
         endTime,
         log.startTime,
         log.endTime,
       );
-      if (overlap == 0) continue;
+      if (interval == null) continue;
       overlaps.add(
         TimeLogOverlap(
           source: TimeLogOverlapSource.manualLog,
@@ -61,7 +75,8 @@ abstract final class TimeLogOverlapService {
           title: log.title.trim().isEmpty ? '手动补录' : log.title.trim(),
           startTime: log.startTime,
           endTime: log.endTime,
-          overlapMilliseconds: overlap,
+          overlapIntervals: [interval],
+          overlapMilliseconds: interval.durationMilliseconds,
         ),
       );
     }
@@ -77,20 +92,39 @@ abstract final class TimeLogOverlapService {
         continue;
       }
 
-      var overlap = 0;
+      final overlapIntervals = <TimeLogOverlapInterval>[];
       for (final active in _activePomodoroIntervals(
         record.startTime,
         recordEnd,
         record.pauseIntervals,
       )) {
-        overlap += _intersectionMilliseconds(
+        final interval = _intersectionInterval(
           startTime,
           endTime,
           active.start,
           active.end,
         );
+        if (interval == null) continue;
+        if (overlapIntervals.isNotEmpty &&
+            interval.startTime <= overlapIntervals.last.endTime) {
+          final previous = overlapIntervals.removeLast();
+          overlapIntervals.add(
+            TimeLogOverlapInterval(
+              startTime: previous.startTime,
+              endTime: interval.endTime > previous.endTime
+                  ? interval.endTime
+                  : previous.endTime,
+            ),
+          );
+        } else {
+          overlapIntervals.add(interval);
+        }
       }
-      if (overlap == 0) continue;
+      if (overlapIntervals.isEmpty) continue;
+      final overlap = overlapIntervals.fold<int>(
+        0,
+        (total, interval) => total + interval.durationMilliseconds,
+      );
 
       final title = record.todoTitle?.trim().isNotEmpty == true
           ? record.todoTitle!.trim()
@@ -104,6 +138,7 @@ abstract final class TimeLogOverlapService {
           title: title,
           startTime: record.startTime,
           endTime: recordEnd,
+          overlapIntervals: overlapIntervals,
           overlapMilliseconds: overlap,
         ),
       );
@@ -119,7 +154,7 @@ abstract final class TimeLogOverlapService {
     return overlaps;
   }
 
-  static int _intersectionMilliseconds(
+  static TimeLogOverlapInterval? _intersectionInterval(
     int startA,
     int endA,
     int startB,
@@ -127,7 +162,9 @@ abstract final class TimeLogOverlapService {
   ) {
     final start = startA > startB ? startA : startB;
     final end = endA < endB ? endA : endB;
-    return end > start ? end - start : 0;
+    return end > start
+        ? TimeLogOverlapInterval(startTime: start, endTime: end)
+        : null;
   }
 
   static List<_FocusInterval> _activePomodoroIntervals(

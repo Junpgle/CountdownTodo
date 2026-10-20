@@ -74,8 +74,14 @@ void main() {
           const Duration(minutes: 20).inMilliseconds,
           const Duration(minutes: 10).inMilliseconds,
         ]);
+        expect(result[0].overlapIntervals.single.startTime, at(10, 0));
+        expect(result[0].overlapIntervals.single.endTime, at(10, 10));
         expect(result[1].source, TimeLogOverlapSource.pomodoro);
         expect(result[1].title, '复习');
+        expect(result[1].overlapIntervals.single.startTime, at(10, 5));
+        expect(result[1].overlapIntervals.single.endTime, at(10, 25));
+        expect(result[2].overlapIntervals.single.startTime, at(10, 20));
+        expect(result[2].overlapIntervals.single.endTime, at(10, 30));
       },
     );
 
@@ -132,6 +138,11 @@ void main() {
         aroundPause.single.overlapMilliseconds,
         const Duration(minutes: 10).inMilliseconds,
       );
+      expect(aroundPause.single.overlapIntervals, hasLength(2));
+      expect(aroundPause.single.overlapIntervals[0].startTime, at(9, 15));
+      expect(aroundPause.single.overlapIntervals[0].endTime, at(9, 20));
+      expect(aroundPause.single.overlapIntervals[1].startTime, at(9, 40));
+      expect(aroundPause.single.overlapIntervals[1].endTime, at(9, 45));
     });
 
     test('handles intervals crossing midnight and sub-minute overlaps', () {
@@ -147,6 +158,13 @@ void main() {
 
       expect(result.map((item) => item.id), ['cross-day', 'tiny']);
       expect(result.last.overlapMilliseconds, 30_000);
+      expect(result.first.overlapIntervals.single.startTime, at(23, 59));
+      expect(result.first.overlapIntervals.single.endTime, at(0, 2, day: 20));
+      expect(result.last.overlapIntervals.single.startTime, at(0, 9, day: 20));
+      expect(
+        result.last.overlapIntervals.single.endTime,
+        at(0, 9, day: 20) + 30_000,
+      );
     });
 
     test('returns no matches for an invalid requested interval', () {

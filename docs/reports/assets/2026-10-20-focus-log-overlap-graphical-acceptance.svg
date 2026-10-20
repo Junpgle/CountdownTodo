@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1280" viewBox="0 0 1280 1280" role="img" aria-labelledby="title description">
+  <title id="title">补录时间重叠的图形化标注验收示意</title>
+  <desc id="description">两条时间轴显示本次补录与已有记录的实际重叠。红色区间的起止处有竖线和时刻标签，番茄暂停区间不标红。</desc>
+  <defs>
+    <style>
+      text { font-family: "MiSans", "PingFang SC", "Noto Sans CJK SC", sans-serif; }
+      .muted { fill: #626474; }
+      .body { fill: #242633; }
+      .small { font-size: 16px; }
+      .axis { font-size: 15px; fill: #656778; }
+      .marker { font-size: 16px; font-weight: 700; fill: #242633; }
+    </style>
+  </defs>
+  <rect width="1280" height="1280" fill="#f1f0f7"/>
+  <g transform="translate(0 190)">
+  <rect x="48" y="36" width="1184" height="828" rx="30" fill="#fff"/>
+
+  <path d="M91 92l13-23 13 23z" fill="none" stroke="#b3261e" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M104 77v7m0 4v1" stroke="#b3261e" stroke-width="3" stroke-linecap="round"/>
+  <text x="136" y="91" font-size="31" font-weight="700" class="body">发现时间重叠</text>
+  <text x="91" y="137" font-size="18" class="body">本次补录时段：10-20 10:00 → 10-20 10:30</text>
+  <text x="91" y="169" font-size="17" class="muted">红色显示实际重叠区间；竖线和下方时刻标出重叠起止点。</text>
+
+  <!-- Manual time log -->
+  <rect x="80" y="198" width="1120" height="270" rx="20" fill="#f8f7fb"/>
+  <path d="M103 226h16v18h-16zM107 222h8" fill="none" stroke="#5665a7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="132" y="239" font-size="18" font-weight="700" fill="#5665a7">时间日志</text>
+  <text x="1155" y="239" text-anchor="end" font-size="17" font-weight="700" fill="#b3261e">10 分钟重叠</text>
+  <text x="103" y="273" font-size="19" font-weight="600" class="body">整理课程笔记</text>
+  <text x="103" y="298" font-size="15" class="muted">已有记录：10-20 09:55 → 10-20 10:10</text>
+
+  <text x="104" y="333" font-size="15" font-weight="600" class="muted">本次补录</text>
+  <text x="104" y="365" font-size="15" font-weight="600" class="muted">已有记录</text>
+  <rect x="250" y="319" width="874" height="14" rx="7" fill="#e5e3eb"/>
+  <rect x="375" y="319" width="749" height="14" rx="7" fill="#5665a7"/>
+  <rect x="375" y="319" width="250" height="14" rx="7" fill="#b3261e"/>
+  <rect x="250" y="351" width="874" height="14" rx="7" fill="#e5e3eb"/>
+  <rect x="250" y="351" width="375" height="14" rx="7" fill="#c7c5cf"/>
+  <rect x="375" y="351" width="250" height="14" rx="7" fill="#b3261e"/>
+  <path d="M375 311v62M625 311v62" stroke="#282a35" stroke-width="2"/>
+  <text x="250" y="391" class="axis">09:55</text>
+  <text x="1124" y="391" text-anchor="end" class="axis">10:30</text>
+  <text x="104" y="417" font-size="15" font-weight="600" class="muted">重叠点</text>
+  <text x="375" y="417" text-anchor="middle" class="marker">10:00</text>
+  <text x="625" y="417" text-anchor="middle" class="marker">10:10</text>
+  <circle cx="107" cy="441" r="6" fill="#5665a7"/><text x="122" y="447" class="small muted">本次补录</text>
+  <circle cx="235" cy="441" r="6" fill="#c7c5cf"/><text x="250" y="447" class="small muted">已有记录</text>
+  <circle cx="363" cy="441" r="6" fill="#b3261e"/><text x="378" y="447" class="small muted">实际重叠</text>
+  <text x="590" y="447" font-size="16" font-weight="700" fill="#b3261e">交集：10-20 10:00 → 10-20 10:10</text>
+
+  <!-- Pomodoro with an excluded pause -->
+  <rect x="80" y="488" width="1120" height="326" rx="20" fill="#f8f7fb"/>
+  <circle cx="111" cy="524" r="9" fill="none" stroke="#5665a7" stroke-width="2"/>
+  <path d="M111 515v-5m-4 0h8m-4 14v-7m0 0l4 3" fill="none" stroke="#5665a7" stroke-width="2" stroke-linecap="round"/>
+  <text x="132" y="530" font-size="18" font-weight="700" fill="#5665a7">番茄钟</text>
+  <text x="1155" y="530" text-anchor="end" font-size="17" font-weight="700" fill="#b3261e">20 分钟重叠</text>
+  <text x="103" y="564" font-size="19" font-weight="600" class="body">英语阅读</text>
+  <text x="103" y="589" font-size="15" class="muted">专注记录：10-20 09:50 → 10-20 10:40</text>
+
+  <text x="104" y="627" font-size="15" font-weight="600" class="muted">本次补录</text>
+  <text x="104" y="659" font-size="15" font-weight="600" class="muted">已有记录</text>
+  <rect x="250" y="613" width="874" height="14" rx="7" fill="#e5e3eb"/>
+  <rect x="425" y="613" width="524" height="14" rx="7" fill="#5665a7"/>
+  <rect x="425" y="613" width="87" height="14" rx="7" fill="#b3261e"/>
+  <rect x="599" y="613" width="350" height="14" rx="7" fill="#b3261e"/>
+  <rect x="250" y="645" width="874" height="14" rx="7" fill="#c7c5cf"/>
+  <rect x="425" y="645" width="87" height="14" rx="7" fill="#b3261e"/>
+  <rect x="599" y="645" width="350" height="14" rx="7" fill="#b3261e"/>
+  <path d="M425 605v62M512 605v62M599 605v62M949 605v62" stroke="#282a35" stroke-width="2"/>
+  <text x="250" y="685" class="axis">09:50</text>
+  <text x="1124" y="685" text-anchor="end" class="axis">10:40</text>
+  <text x="104" y="713" font-size="15" font-weight="600" class="muted">重叠点</text>
+  <text x="425" y="713" text-anchor="middle" class="marker">10:00</text>
+  <text x="512" y="713" text-anchor="middle" class="marker">10:05</text>
+  <text x="599" y="713" text-anchor="middle" class="marker">10:15</text>
+  <text x="949" y="713" text-anchor="middle" class="marker">10:30</text>
+  <circle cx="107" cy="741" r="6" fill="#5665a7"/><text x="122" y="747" class="small muted">本次补录</text>
+  <circle cx="235" cy="741" r="6" fill="#c7c5cf"/><text x="250" y="747" class="small muted">已有记录</text>
+  <circle cx="363" cy="741" r="6" fill="#b3261e"/><text x="378" y="747" class="small muted">实际重叠</text>
+  <text x="103" y="779" font-size="15" font-weight="700" fill="#b3261e">交集：10-20 10:00 → 10-20 10:05；10-20 10:15 → 10-20 10:30（合计 20 分钟）</text>
+  <text x="103" y="802" font-size="14" class="muted">暂停段 10:05–10:15 留白，不计入重叠。</text>
+
+  <text x="898" y="849" font-size="16" fill="#5665a7">返回修改</text>
+  <rect x="1000" y="824" width="158" height="48" rx="24" fill="#5665a7"/>
+  <text x="1079" y="854" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">仍然保存</text>
+  </g>
+</svg>
