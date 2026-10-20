@@ -2,7 +2,7 @@
 
 日期：2026-10-20（北京时间）
 
-状态：**已批准实施；功能实现与本地验收完成，待用户确认验收**
+状态：**已通过验收**
 
 验收记录：[2026-10-20-recurring-todo-trash-series-restore.md](../reports/2026-10-20-recurring-todo-trash-series-restore.md)
 
