@@ -41,6 +41,9 @@ class PomodoroControlService {
     bool strictWaitingForFlip = false,
     bool deferSideEffects = false,
   }) async {
+    if (boundTodo?.isSkipped == true) {
+      throw StateError('本期待办已跳过，请先恢复本期再开始专注');
+    }
     final isCountUp = settings.mode == TimerMode.countUp;
     final isStrictWaiting =
         startPaused &&

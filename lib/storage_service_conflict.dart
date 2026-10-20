@@ -314,6 +314,10 @@ mixin _StorageConflict on _StorageServiceBase {
     Map<String, dynamic> data,
   ) {
     final result = Map<String, dynamic>.from(data);
+    // This flag is local retry metadata. The server stores the skip state but
+    // must never persist a device's pending-ack bookkeeping.
+    result.remove('is_skipped_sync_pending');
+    result.remove('isSkippedSyncPending');
     final rawConflictData =
         result['conflict_data'] ?? result['serverVersionData'];
     Map<String, dynamic>? conflictData;

@@ -297,7 +297,7 @@ void main() {
       isFalse,
     );
   });
-  test('非法时长、倒置窗口、已完成待办均拒绝', () {
+  test('非法时长、倒置窗口、已完成或已跳过待办均拒绝', () {
     for (final q in [
       query(minutes: 0),
       query(minutes: -1),
@@ -315,6 +315,22 @@ void main() {
         snapshot(
           [],
           todo: TodoItem(id: 'todo-target', title: '完成', isDone: true),
+        ),
+        now: now,
+      ).slots,
+      isEmpty,
+    );
+    expect(
+      PlanAvailabilityService.find(
+        query(),
+        snapshot(
+          [],
+          todo: TodoItem(
+            id: 'todo-target',
+            title: '已跳过',
+            recurrenceSeriesId: 'series-1',
+            isSkipped: true,
+          ),
         ),
         now: now,
       ).slots,

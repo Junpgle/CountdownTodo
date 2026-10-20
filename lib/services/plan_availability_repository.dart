@@ -139,7 +139,8 @@ class PlanAvailabilityRepository {
     );
     final todoRows = await db.rawQuery(
       '''SELECT t.*,
-      ${PlanTodoGuard.completionSql('t', 'c')} AS member_completed
+      ${PlanTodoGuard.completionSql('t', 'c')} AS member_completed,
+      ${PlanTodoGuard.skippedSql('t', 'c')} AS member_skipped
       FROM todos t LEFT JOIN todo_completions c ON c.todo_uuid=t.uuid AND c.user_id=?
       ORDER BY t.uuid''',
       [identity.userId],
@@ -155,6 +156,7 @@ class PlanAvailabilityRepository {
           final todo = TodoItem.fromSql({
             ...row,
             'is_completed': row['member_completed'],
+            'is_skipped': row['member_skipped'],
           });
           // Preserve the storage key for legacy IDs; this read does not migrate.
           todo.id = row['uuid'].toString();
@@ -178,7 +180,7 @@ class PlanAvailabilityRepository {
     int calendarRevision = 0,
   }) {
     final todo = local.findTodo(query.todoId);
-    if (todo == null || todo.isDeleted || todo.isDone) {
+    if (todo == null || todo.isDeleted || todo.isDone || todo.isSkipped) {
       throw const PlanAvailabilityException('待办已完成或删除，请重新选择');
     }
     final sources = _daySources(query, local, external: external);
@@ -327,7 +329,7 @@ class PlanAvailabilityRepository {
       );
     }
     for (final item in local.todos) {
-      if (item.isDeleted || item.isDone) continue;
+      if (item.isDeleted || item.isDone || item.isSkipped) continue;
       final createdDate = item.createdDate;
       final dueDate = item.dueDate;
       if (createdDate == null ||

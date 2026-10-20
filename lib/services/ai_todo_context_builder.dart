@@ -369,7 +369,7 @@ class AiTodoContextBuilder {
     }
     if (requestsTodoAction && !isPlanningRequest) {
       add(
-        '- update_todo / complete_todo / delete_todo / reschedule_todo / bulk_reschedule / categorize_todo: 必须带真实期次todoId；循环期次可带recurrenceSeriesId校验系列',
+        '- update_todo / complete_todo / skip_todo / delete_todo / reschedule_todo / bulk_reschedule / categorize_todo: 必须带真实期次todoId；循环期次可带recurrenceSeriesId校验系列',
       );
       add(
         '- 循环作用域: recurrenceScope="occurrence"只操作该期（默认）；recurrenceScope="future"操作该期及以后。修改循环规则或结束循环必须用future；完成操作始终只针对一期',
@@ -725,6 +725,7 @@ JSON操作块必须且只能使用以下协议：
 - update_plan_block / reschedule_plan_blocks / delete_plan_block / skip_plan_block / start_plan_block_pomodoro: 必须使用已有规划块ID(planBlockId/blockId/id)，用于修改、重排、删除、跳过或打开并预绑定某个规划块的番茄钟工作台；start_plan_block_pomodoro 不会自动开始计时
 - update_todo: {"action":"update_todo","updates":[{"todoId":"真实期次ID","recurrenceSeriesId":"可选系列ID","recurrenceScope":"occurrence|future","title":"新标题","timeMode":"unscheduled|dateOnly|deadline","dueDate":"...","groupId":"...","reminderMinutes":5}]}。字段缺省=保持，字段为null=清空
 - complete_todo: {"action":"complete_todo","updates":[{"todoId":"真实期次ID","recurrenceScope":"occurrence"}]}，循环完成状态永远属于单期
+- skip_todo: {"action":"skip_todo","updates":[{"todoId":"真实重复期次ID"}]}，只跳过该UUID对应的一期；不得用标题猜测、不得跳过整个系列；只有用户明确说“跳过本期”或“略过本期”时提出，仍交给操作确认卡
 - delete_todo: {"action":"delete_todo","updates":[{"todoId":"真实期次ID","recurrenceSeriesId":"可选系列ID","recurrenceScope":"occurrence|future"}]}
 - reschedule_todo: {"action":"reschedule_todo","updates":[{"todoId":"真实期次ID","recurrenceScope":"occurrence|future","timeMode":"dateOnly|deadline|unscheduled","dueDate":"..."}]}
 - bulk_reschedule: 同reschedule_todo，批量改期
@@ -1952,6 +1953,7 @@ ${sections.join('\n')}
       if (requested(todoCompletionMutationKeywords)) {
         actions.add('complete_todo');
       }
+      if (requested(todoSkipMutationKeywords)) actions.add('skip_todo');
       if (requested(todoDeleteVerbs)) actions.add('delete_todo');
       if (requested(todoUpdateVerbs)) actions.add('update_todo');
       if (requested(todoScheduleVerbs)) actions.add('reschedule_todo');
@@ -2902,6 +2904,7 @@ ${sections.join('\n')}
     '以后所有周期',
     '结束循环',
   ];
+  static const todoSkipMutationKeywords = ['跳过本期', '跳过这期', '略过本期', '略过这期'];
   static const todoCompletionMutationKeywords = [
     '完成',
     '做完',
@@ -2927,6 +2930,7 @@ ${sections.join('\n')}
     '调成',
     '调为',
     ...todoCompletionMutationKeywords,
+    ...todoSkipMutationKeywords,
     '删掉',
     '删除',
     '删',
@@ -3055,6 +3059,7 @@ ${sections.join('\n')}
     '合并',
     '重排',
     ...todoCompletionMutationKeywords,
+    ...todoSkipMutationKeywords,
     '把第',
   ];
   static const focusMutationKeywords = [
@@ -3316,7 +3321,11 @@ ${sections.join('\n')}
       final recurrenceRole = t['recurrenceRole']?.toString() ?? 'standalone';
       final customIntervalDays = t['customIntervalDays'];
       final recurrenceEndDate = t['recurrenceEndDate']?.toString().trim() ?? '';
-      final status = t['isDone'] == true ? '已完成' : '未完成';
+      final status = t['isSkipped'] == true
+          ? '已跳过本期'
+          : t['isDone'] == true
+          ? '已完成'
+          : '未完成';
       final reminderMinutes = t['reminderMinutes'] ?? 5;
       final gid = t['groupId'] ?? '';
       var folderName = '';
@@ -3330,7 +3339,8 @@ ${sections.join('\n')}
         'deadline' when dueDate != null => ' | 截止: ${_formatDateTime(dueDate)}',
         _ => '',
       };
-      return '- [期次todoId: $id] 标题: $title | 状态: $status${remark.toString().isNotEmpty ? ' | 备注: $remark' : ''}${folderName.isNotEmpty ? ' | 分类: $folderName' : ''}$timeText | 时间语义: $timeMode$recurrenceText | 提醒: 提前$reminderMinutes分钟';
+      final skippedNote = t['isSkipped'] == true ? ' | 只跳过该期，后续期次继续' : '';
+      return '- [期次todoId: $id] 标题: $title | 状态: $status$skippedNote${remark.toString().isNotEmpty ? ' | 备注: $remark' : ''}${folderName.isNotEmpty ? ' | 分类: $folderName' : ''}$timeText | 时间语义: $timeMode$recurrenceText | 提醒: 提前$reminderMinutes分钟';
     }).join('\n')}';
   }
 

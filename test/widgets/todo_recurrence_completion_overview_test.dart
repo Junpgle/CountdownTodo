@@ -11,10 +11,12 @@ void main() {
     required DateTime start,
     DateTime? due,
     bool isDone = false,
+    bool isSkipped = false,
   }) => TodoItem(
     id: id,
     title: '俯卧撑30个',
     isDone: isDone,
+    isSkipped: isSkipped,
     recurrenceSeriesId: 'series-overview',
     createdDate: start.millisecondsSinceEpoch,
     dueDate: due,
@@ -61,6 +63,36 @@ void main() {
     expect(summary.pendingCount, 0);
     expect(summary.completionRate, closeTo(2 / 3, 0.001));
   });
+
+  test(
+    'skipped occurrences are separate and never increase completion rate',
+    () {
+      final occurrences = [
+        occurrence(
+          id: 'completed',
+          start: DateTime(2026, 7, 27, 19),
+          isDone: true,
+        ),
+        occurrence(
+          id: 'skipped',
+          start: DateTime(2026, 7, 28, 19),
+          isSkipped: true,
+        ),
+        occurrence(id: 'current', start: DateTime(2026, 7, 29, 8)),
+      ];
+
+      final summary = TodoRecurrenceCompletionOverview.calculateSummary(
+        occurrences: occurrences,
+        now: now,
+      );
+
+      expect(summary.completedCount, 1);
+      expect(summary.skippedCount, 1);
+      expect(summary.pendingCount, 1);
+      // A skipped period remains an elapsed period, but never counts as done.
+      expect(summary.completionRate, closeTo(1 / 3, 0.001));
+    },
+  );
 
   testWidgets('renders completion rate and all status totals', (tester) async {
     await tester.pumpWidget(

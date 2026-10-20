@@ -1613,6 +1613,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
             occurrences: occurrences,
             currentTodoId: _editingTodo.id,
             currentIsDone: _isDone,
+            currentIsSkipped: _editingTodo.isSkipped,
           ),
           if (occurrences.length > 1) ...[
             const SizedBox(height: 12),

@@ -411,6 +411,10 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                                 _invalidateTodoViewModel();
                                                 setState(() {
                                                   todo.isDone = val;
+                                                  if (val && todo.isSkipped) {
+                                                    todo.isSkipped = false;
+                                                    todo.isSkippedSyncPending = true;
+                                                  }
                                                   if (val) {
                                                     _isCompleting[todo.id] =
                                                         true;
@@ -1591,7 +1595,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
     var activeTodoCount = 0;
     var undoneCount = 0;
     for (final t in widget.todos) {
-      if (t.isDeleted || _isHistoricalTodoAt(t, today)) continue;
+      if (t.isDeleted || t.isSkipped || _isHistoricalTodoAt(t, today)) continue;
       if (_habitOnlyRecurringSeriesIds.isNotEmpty) {
         final seriesId = t.recurrenceSeriesId;
         if (seriesId != null &&
@@ -1796,6 +1800,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
             identityHashCode(todo),
             todo.isDeleted,
             todo.isDone,
+            todo.isSkipped,
             todo.version,
             todo.teamUuid,
             todo.teamName,
@@ -1846,6 +1851,10 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
             PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
           }
           todo.isDone = !todo.isDone;
+          if (todo.isDone && todo.isSkipped) {
+            todo.isSkipped = false;
+            todo.isSkippedSyncPending = true;
+          }
           todo.markAsChanged();
           if (todo.isDone && !wasDone) {
             TodoCompletionCelebrationService.playCompletionImpact();

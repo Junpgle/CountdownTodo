@@ -107,6 +107,19 @@ void main() {
       expect(SyncCapabilityService.supportsFinance(null), isFalse);
     });
 
+    test('requires an explicit todo skip state protocol capability', () {
+      expect(
+        SyncCapabilityService.supportsTodoSkipState({'todo_skip_state': 1}),
+        isTrue,
+      );
+      expect(
+        SyncCapabilityService.supportsTodoSkipState({'todo_skip_state': 0}),
+        isFalse,
+      );
+      expect(SyncCapabilityService.supportsTodoSkipState(null), isFalse);
+      expect(SyncCapabilityService.supportsTodoSkipState(const {}), isFalse);
+    });
+
     test('recognizes the finance category name override capability', () {
       expect(
         SyncCapabilityService.supportsFinanceCategoryNames({

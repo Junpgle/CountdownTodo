@@ -234,7 +234,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
         final ganttTodos = <TodoItem>[];
         var completedTodoCount = 0;
         for (final todo in todos) {
-          if (todo.isDeleted) continue;
+          if (todo.isDeleted || todo.isSkipped) continue;
           activeTodos.add(todo);
           if (todo.isDone) completedTodoCount++;
           if (todo.dueDate != null) ganttTodos.add(todo);

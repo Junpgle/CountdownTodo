@@ -982,7 +982,11 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         [
           for (final todo in widget.todos)
             if (_restoredTodo?.id == todo.id) _restoredTodo! else todo,
-        ].where((todo) => !todo.isDone || todo.id == widget.block?.todoId),
+        ].where(
+          (todo) =>
+              (!todo.isDone && !todo.isSkipped) ||
+              todo.id == widget.block?.todoId,
+        ),
         now: _start,
         preferredTodoId: _selectedTodoId,
       ),
@@ -1001,7 +1005,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         !_isReuse) {
       for (final entry in _todoEntries) {
         final todo = entry.todo;
-        if (todo != null && !todo.isDone) {
+        if (todo != null && !todo.isDone && !todo.isSkipped) {
           _selectedTodoId = todo.id;
           break;
         }
@@ -1616,8 +1620,8 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     }
     if (widget.block == null || widget.block!.todoId != _selectedTodoId) {
       final todo = _selectedTodo;
-      if (todo == null || todo.isDone || todo.isDeleted) {
-        throw const PlanAvailabilityException('待办已完成或失效，请选择未完成的待办');
+      if (todo == null || todo.isDone || todo.isDeleted || todo.isSkipped) {
+        throw const PlanAvailabilityException('待办已完成、已跳过或失效，请选择未完成的待办');
       }
     }
     if (_persistedBlock != null && _savedDraftRevision == _draftRevision) {
@@ -1808,7 +1812,8 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
             blocks.single['updated_at'] != block.updatedAt ||
             blocks.single['is_deleted'] == 1 ||
             freshTodo.isDone ||
-            freshTodo.isDeleted) {
+            freshTodo.isDeleted ||
+            freshTodo.isSkipped) {
           throw const PlanAvailabilityException('规划或待办已变化，请读取最新记录');
         }
         todo = freshTodo;

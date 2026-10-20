@@ -143,7 +143,7 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
       sendInitialMessage: sendInitialMessage,
       initialVoiceUsageSummary: initialVoiceUsageSummary,
       todos: widget.todos
-          .where((t) => !t.isDone && !_isHistoricalTodoAt(t, today))
+          .where((t) => !t.isDone && !t.isSkipped && !_isHistoricalTodoAt(t, today))
           .toList(),
       todoGroups: widget.todoGroups,
       courses: aiContext.courses,

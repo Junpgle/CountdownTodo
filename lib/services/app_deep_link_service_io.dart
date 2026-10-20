@@ -187,6 +187,7 @@ class AppDeepLinkService {
           .where(
             (todo) =>
                 !todo.isDeleted &&
+                !todo.isSkipped &&
                 todo.recurrenceSeriesId == recurrenceSeriesId,
           )
           .toList();

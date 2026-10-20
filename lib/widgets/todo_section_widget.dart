@@ -74,7 +74,7 @@ part 'todo_edit_screen.dart';
 
 enum _TodoFolderDisplayMode { inline, separate, urgentFirst, hidden }
 
-enum _RecurrenceOccurrenceAction { toggleCompletion, edit }
+enum _RecurrenceOccurrenceAction { toggleCompletion, skip, edit }
 
 enum _OccurrenceSwitchAction { cancel, discard, save }
 
@@ -252,7 +252,7 @@ List<TodoItem> _collapseRecurrenceInstancesForDisplayForTest(
       .toList();
 }
 
-({int completedCount, int totalCount, int overdueCount})
+({int completedCount, int totalCount, int overdueCount, int skippedCount})
 _calculateRecurrenceSummary({
   required List<TodoRecurrenceProgressNode> allNodes,
   required List<TodoRecurrenceProgressNode> historyNodes,
@@ -261,14 +261,17 @@ _calculateRecurrenceSummary({
   final summaryNodes = hasFixedEnd ? allNodes : historyNodes;
   var completedCount = 0;
   var overdueCount = 0;
+  var skippedCount = 0;
   for (final node in summaryNodes) {
     if (node.state == TodoRecurrenceNodeState.completed) completedCount++;
     if (node.state == TodoRecurrenceNodeState.overdue) overdueCount++;
+    if (node.state == TodoRecurrenceNodeState.skipped) skippedCount++;
   }
   return (
     completedCount: completedCount,
     totalCount: summaryNodes.length,
     overdueCount: overdueCount,
+    skippedCount: skippedCount,
   );
 }
 
@@ -343,7 +346,7 @@ class TodoSectionWidgetState extends _TodoSectionStateBase
   ) => _filterHabitOnlyRecurringTodos(todos, habitOnlySeriesIds);
 
   @visibleForTesting
-  static ({int completedCount, int totalCount, int overdueCount})
+  static ({int completedCount, int totalCount, int overdueCount, int skippedCount})
   recurrenceSummaryForTest({
     required List<TodoRecurrenceProgressNode> allNodes,
     required List<TodoRecurrenceProgressNode> historyNodes,
@@ -386,7 +389,7 @@ class _TodoSectionViewModel {
             ),
           ]
           .where(
-            (todo) => !todo.isDone && !todo.isDeleted && todo.dueDate != null,
+            (todo) => !todo.isDone && !todo.isSkipped && !todo.isDeleted && todo.dueDate != null,
           )
           .toList(growable: false);
   late final int futureUndoneCount = futureItems

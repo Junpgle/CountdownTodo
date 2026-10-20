@@ -47,7 +47,9 @@ abstract final class PlanAvailabilityService {
     void Function(DateTime start, DateTime end)? onWeeklyWindow,
   }) {
     if (todo == null || todo.id != query.todoId) return '请选择待办项目';
-    if (todo.isDeleted || todo.isDone) return '该待办已完成或删除，请重新选择';
+    if (todo.isDeleted || todo.isDone || todo.isSkipped) {
+      return '该待办已完成、已跳过或删除，请重新选择';
+    }
     if (query.windowStart < 0 ||
         query.windowEnd > 1440 ||
         query.windowEnd <= query.windowStart) {

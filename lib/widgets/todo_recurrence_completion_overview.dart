@@ -5,6 +5,7 @@ import '../models.dart';
 class TodoRecurrenceCompletionSummary {
   const TodoRecurrenceCompletionSummary({
     required this.completedCount,
+    required this.skippedCount,
     required this.pendingCount,
     required this.overdueCount,
     required this.futureCount,
@@ -13,6 +14,7 @@ class TodoRecurrenceCompletionSummary {
   });
 
   final int completedCount;
+  final int skippedCount;
   final int pendingCount;
   final int overdueCount;
   final int futureCount;
@@ -33,12 +35,14 @@ class TodoRecurrenceCompletionOverview extends StatelessWidget {
     required this.occurrences,
     this.currentTodoId,
     this.currentIsDone,
+    this.currentIsSkipped,
     this.now,
   });
 
   final List<TodoItem> occurrences;
   final String? currentTodoId;
   final bool? currentIsDone;
+  final bool? currentIsSkipped;
   final DateTime? now;
 
   static TodoRecurrenceCompletionSummary calculateSummary({
@@ -46,8 +50,10 @@ class TodoRecurrenceCompletionOverview extends StatelessWidget {
     required DateTime now,
     String? currentTodoId,
     bool? currentIsDone,
+    bool? currentIsSkipped,
   }) {
     var completedCount = 0;
+    var skippedCount = 0;
     var pendingCount = 0;
     var overdueCount = 0;
     var futureCount = 0;
@@ -61,7 +67,16 @@ class TodoRecurrenceCompletionOverview extends StatelessWidget {
       final isDone = occurrence.id == currentTodoId && currentIsDone != null
           ? currentIsDone
           : occurrence.isDone;
+      final isSkipped =
+          occurrence.id == currentTodoId && currentIsSkipped != null
+          ? currentIsSkipped
+          : occurrence.isSkipped;
 
+      if (isSkipped) {
+        skippedCount++;
+        elapsedCount++;
+        continue;
+      }
       if (isDone) {
         completedCount++;
         elapsedCount++;
@@ -85,6 +100,7 @@ class TodoRecurrenceCompletionOverview extends StatelessWidget {
 
     return TodoRecurrenceCompletionSummary(
       completedCount: completedCount,
+      skippedCount: skippedCount,
       pendingCount: pendingCount,
       overdueCount: overdueCount,
       futureCount: futureCount,
@@ -101,6 +117,7 @@ class TodoRecurrenceCompletionOverview extends StatelessWidget {
       now: now ?? DateTime.now(),
       currentTodoId: currentTodoId,
       currentIsDone: currentIsDone,
+      currentIsSkipped: currentIsSkipped,
     );
     final percentage = (summary.completionRate * 100).round();
 
@@ -108,7 +125,7 @@ class TodoRecurrenceCompletionOverview extends StatelessWidget {
       label:
           '循环待办完成情况，完成率$percentage%，'
           '已完成${summary.completedCount}期，待完成${summary.pendingCount}期，'
-          '已逾期${summary.overdueCount}期，未开始${summary.futureCount}期',
+          '已逾期${summary.overdueCount}期，已跳过${summary.skippedCount}期，未开始${summary.futureCount}期',
       child: Container(
         key: const ValueKey('recurrence_completion_overview'),
         padding: const EdgeInsets.all(12),
@@ -168,6 +185,11 @@ class TodoRecurrenceCompletionOverview extends StatelessWidget {
                   label: '已完成',
                   count: summary.completedCount,
                   color: colorScheme.primary,
+                ),
+                _Metric(
+                  label: '已跳过',
+                  count: summary.skippedCount,
+                  color: colorScheme.tertiary,
                 ),
                 _Metric(
                   label: '待完成',

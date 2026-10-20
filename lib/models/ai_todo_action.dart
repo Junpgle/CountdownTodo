@@ -7,6 +7,7 @@ enum AiTodoActionType {
   deleteHabit,
   updateTodo,
   completeTodo,
+  skipTodo,
   deleteTodo,
   createFixedSchedule,
   updateFixedSchedule,
@@ -218,6 +219,7 @@ class AiTodoAction {
       createsTodo ||
       type == AiTodoActionType.updateTodo ||
       type == AiTodoActionType.completeTodo ||
+      type == AiTodoActionType.skipTodo ||
       type == AiTodoActionType.deleteTodo ||
       type == AiTodoActionType.rescheduleTodo ||
       type == AiTodoActionType.bulkRescheduleTodo ||
@@ -270,6 +272,7 @@ class AiTodoAction {
   bool get mutatesExistingItem =>
       type == AiTodoActionType.updateTodo ||
       type == AiTodoActionType.completeTodo ||
+      type == AiTodoActionType.skipTodo ||
       type == AiTodoActionType.deleteTodo ||
       type == AiTodoActionType.updateFixedSchedule ||
       type == AiTodoActionType.cancelFixedSchedule ||
@@ -582,6 +585,8 @@ class AiTodoAction {
         return AiTodoActionType.updateTodo;
       case 'complete_todo':
         return AiTodoActionType.completeTodo;
+      case 'skip_todo':
+        return AiTodoActionType.skipTodo;
       case 'delete_todo':
         return AiTodoActionType.deleteTodo;
       case 'create_schedule':

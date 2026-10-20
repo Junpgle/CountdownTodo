@@ -1159,6 +1159,20 @@ mixin _StorageSync on _StorageServiceBase {
             .toList();
       }
 
+      // Re-send skip state until an explicitly capable server confirms it.
+      // The pending flag is local metadata and is removed by the sync payload
+      // sanitizer before this row leaves the device.
+      if (syncTodos) {
+        for (final item in allLocalTodos) {
+          if (!item.isSkippedSyncPending || item.hasConflict) continue;
+          final data = _stripClientOnlyConflictForSync(item.toJson());
+          data.remove('image_path');
+          data.remove('imagePath');
+          dedupTodos[item.id] = data;
+        }
+        dirtyTodos = dedupTodos.values.toList();
+      }
+
       // TimeLogs 暂时保持原有逻辑 (直到迁移至 SQL)
       if (syncTimeLogs) {
         dirtyTimeLogs = allLocalTimeLogs
@@ -1435,6 +1449,10 @@ mixin _StorageSync on _StorageServiceBase {
       final financeSupported = SyncCapabilityService.supportsFinance(
         response['sync_capabilities'],
       );
+      final todoSkipStateSupported =
+          SyncCapabilityService.supportsTodoSkipState(
+            response['sync_capabilities'],
+          );
 
       // 🚀 提取当前团队列表，用于孤立检测和合并防御
       final List<dynamic>? joinedTeamUuids = response['joined_team_uuids'];
@@ -1662,9 +1680,30 @@ mixin _StorageSync on _StorageServiceBase {
                 rawCompleted == true ||
                 rawCompleted?.toString() == '1' ||
                 rawCompleted?.toString().toLowerCase() == 'true';
+            final rawSkipped = ic['is_skipped'];
+            final serverIsSkipped =
+                rawSkipped == 1 ||
+                rawSkipped == true ||
+                rawSkipped?.toString() == '1' ||
+                rawSkipped?.toString().toLowerCase() == 'true';
             final serverUpdatedAt =
                 int.tryParse(ic['updated_at']?.toString() ?? '') ?? 0;
             final existing = localCompletionsByTodoUuid[todoUuid];
+            final existingIsSkipped =
+                (existing?['is_skipped'] as num?)?.toInt() == 1;
+            final existingSkipPending =
+                (existing?['is_skipped_sync_pending'] as num?)?.toInt() == 1;
+            final hasServerSkipValue = ic.containsKey('is_skipped');
+            final skipAcknowledged =
+                todoSkipStateSupported &&
+                hasServerSkipValue &&
+                (!existingSkipPending || serverIsSkipped == existingIsSkipped);
+            final useServerSkipValue =
+                todoSkipStateSupported && hasServerSkipValue &&
+                (!existingSkipPending || skipAcknowledged);
+            final mergedIsSkipped =
+                useServerSkipValue ? serverIsSkipped : existingIsSkipped;
+            final mergedSkipPending = existingSkipPending && !skipAcknowledged;
             final localUpdatedAt =
                 (existing?['updated_at'] as num?)?.toInt() ?? 0;
             // 🚀 时间戳比较修复：如果本地没有完成状态记录，判定为从未修改（localUpdatedAt=0），此时应接受服务端更新
@@ -1677,6 +1716,13 @@ mixin _StorageSync on _StorageServiceBase {
               final localIsCompleted = (existing?['is_completed'] as int?) ?? 0;
               final localTodo = localTodosById[todoUuid];
               if (localTodo != null && localTodo.collabType == 1) {
+                if (localTodo.isSkipped != existingIsSkipped ||
+                    localTodo.isSkippedSyncPending != existingSkipPending) {
+                  localTodo.isSkipped = existingIsSkipped;
+                  localTodo.isSkippedSyncPending = existingSkipPending;
+                  independentCompletionChanged = true;
+                  if (!localTodo.isDeleted) updatedTodoIds.add(todoUuid);
+                }
                 if (localTodo.isDone != (localIsCompleted == 1)) {
                   localTodo.isDone = localIsCompleted == 1;
                   independentCompletionChanged = true;
@@ -1695,12 +1741,21 @@ mixin _StorageSync on _StorageServiceBase {
               'todo_uuid': todoUuid,
               'user_id': userId,
               'is_completed': isCompleted ? 1 : 0,
+              'is_skipped': mergedIsSkipped ? 1 : 0,
+              'is_skipped_sync_pending': mergedSkipPending ? 1 : 0,
               'updated_at': serverUpdatedAt > 0
                   ? serverUpdatedAt
                   : DateTime.now().millisecondsSinceEpoch,
             }, conflictAlgorithm: ConflictAlgorithm.replace);
             final localTodo = localTodosById[todoUuid];
             if (localTodo != null && localTodo.collabType == 1) {
+              if (localTodo.isSkipped != mergedIsSkipped ||
+                  localTodo.isSkippedSyncPending != mergedSkipPending) {
+                localTodo.isSkipped = mergedIsSkipped;
+                localTodo.isSkippedSyncPending = mergedSkipPending;
+                independentCompletionChanged = true;
+                if (!localTodo.isDeleted) updatedTodoIds.add(todoUuid);
+              }
               if (localTodo.isDone != isCompleted) {
                 localTodo.isDone = isCompleted;
                 independentCompletionChanged = true;
@@ -1861,6 +1916,26 @@ mixin _StorageSync on _StorageServiceBase {
           raw: serverRaw,
           item: TodoItem.fromJson(sanitizedServerRaw),
         ));
+      }
+      for (final entry in remoteTodoEntries) {
+        final local = localTodosById[entry.item.id];
+        if (local == null || !local.isSkippedSyncPending) continue;
+        final hasServerSkipValue =
+            entry.raw.containsKey('is_skipped') ||
+            entry.raw.containsKey('isSkipped');
+        final acknowledged =
+            todoSkipStateSupported &&
+            hasServerSkipValue &&
+            entry.item.isSkipped == local.isSkipped;
+        if (acknowledged) {
+          local.isSkippedSyncPending = false;
+          entry.item.isSkippedSyncPending = false;
+        } else {
+          // An old server's missing field is not an acknowledgement and its
+          // snapshot cannot erase the user's local skip.
+          entry.item.isSkipped = local.isSkipped;
+          entry.item.isSkippedSyncPending = true;
+        }
       }
       final beforeRemoteRepair = {
         for (final todo in allLocalTodos) todo.id: todo.detachedCopy(),

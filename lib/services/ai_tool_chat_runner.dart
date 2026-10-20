@@ -1142,6 +1142,7 @@ abstract final class AiToolChatRunner {
   static const _cdtActionQueryDomains = {
     'update_todo': {'todos'},
     'complete_todo': {'todos'},
+    'skip_todo': {'todos'},
     'delete_todo': {'todos'},
     'reschedule_todo': {'todos'},
     'bulk_reschedule': {'todos'},
@@ -2606,6 +2607,7 @@ abstract final class AiToolChatRunner {
     final referenceFields = switch (actionName) {
       'update_todo' ||
       'complete_todo' ||
+      'skip_todo' ||
       'delete_todo' ||
       'reschedule_todo' ||
       'bulk_reschedule' ||
@@ -2655,6 +2657,7 @@ abstract final class AiToolChatRunner {
     const actionsWithTodoReferences = {
       'update_todo',
       'complete_todo',
+      'skip_todo',
       'delete_todo',
       'reschedule_todo',
       'bulk_reschedule',
@@ -2866,6 +2869,7 @@ abstract final class AiToolChatRunner {
     'complete_countdown' => '完成倒计时',
     'delete_countdown' => '删除倒计时',
     'complete_todo' => '完成待办',
+    'skip_todo' => '跳过本期待办',
     'delete_todo' => '删除待办',
     'update_todo' => '修改待办',
     'reschedule_todo' => '改期待办',

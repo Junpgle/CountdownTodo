@@ -1955,6 +1955,17 @@ class AiTodoActionExecutor {
     final seriesId = _nullableString(
       target['recurrenceSeriesId'] ?? target['recurrence_series_id'],
     );
+    if (action.type == AiTodoActionType.skipTodo) {
+      final isRecurring =
+          seriesId != null || _existingRecurrence(target) != RecurrenceType.none;
+      if (!isRecurring ||
+          action.appliesToFutureOccurrences ||
+          _mapBool(target, 'isDone') ||
+          _mapBool(target, 'isDeleted') ||
+          _mapBool(target, 'isSkipped')) {
+        return const [];
+      }
+    }
     if (action.recurrenceSeriesId?.trim().isNotEmpty == true &&
         action.recurrenceSeriesId!.trim() != seriesId) {
       return const [];
@@ -1968,7 +1979,8 @@ class AiTodoActionExecutor {
     // 周期批量标记完成。
     if (!action.appliesToFutureOccurrences ||
         seriesId == null ||
-        action.type == AiTodoActionType.completeTodo) {
+        action.type == AiTodoActionType.completeTodo ||
+        action.type == AiTodoActionType.skipTodo) {
       return updates;
     }
 
@@ -2178,7 +2190,20 @@ class AiTodoActionExecutor {
       groupId: nextGroupId,
       isDone: action.type == AiTodoActionType.completeTodo
           ? true
+          : action.type == AiTodoActionType.skipTodo
+          ? false
           : _mapBool(existing, 'isDone'),
+      isSkipped: action.type == AiTodoActionType.skipTodo
+          ? true
+          : action.type == AiTodoActionType.completeTodo
+          ? false
+          : _mapBool(existing, 'isSkipped'),
+      isSkippedSyncPending:
+          action.type == AiTodoActionType.skipTodo ||
+              (action.type == AiTodoActionType.completeTodo &&
+                  _mapBool(existing, 'isSkipped'))
+          ? true
+          : _mapBool(existing, 'isSkippedSyncPending'),
       isDeleted: action.type == AiTodoActionType.deleteTodo
           ? true
           : _mapBool(existing, 'isDeleted'),
@@ -2387,7 +2412,18 @@ class AiTodoActionExecutor {
   );
 
   static bool _mapBool(Map<String, dynamic> map, String key) {
-    final value = map[key];
+    final snakeKey = key.replaceAllMapped(
+      RegExp(r'[A-Z]'),
+      (match) => '_${match.group(0)!.toLowerCase()}',
+    );
+    final aliases = switch (key) {
+      'isDone' => const ['is_completed', 'isCompleted'],
+      'isSkipped' => const ['is_skipped'],
+      'isSkippedSyncPending' => const ['is_skipped_sync_pending'],
+      _ => const <String>[],
+    };
+    final value = map[key] ?? map[snakeKey] ??
+        aliases.map((alias) => map[alias]).whereType<Object>().firstOrNull;
     return value == true || value == 1 || value?.toString() == '1';
   }
 

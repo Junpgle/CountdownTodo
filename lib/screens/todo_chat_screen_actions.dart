@@ -1538,6 +1538,10 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         color = Theme.of(context).colorScheme.primary;
         label = '完成';
         break;
+      case AiTodoActionType.skipTodo:
+        color = Theme.of(context).colorScheme.tertiary;
+        label = '跳过本期';
+        break;
       case AiTodoActionType.deleteTodo:
         color = Colors.red;
         label = '删除';
@@ -2195,6 +2199,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
 
   bool _usesTitle(AiTodoAction action) =>
       action.type != AiTodoActionType.completeTodo &&
+      action.type != AiTodoActionType.skipTodo &&
       action.type != AiTodoActionType.deleteTodo &&
       action.type != AiTodoActionType.cancelFixedSchedule &&
       action.type != AiTodoActionType.deleteFixedSchedule &&
@@ -2207,19 +2212,19 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       action.type != AiTodoActionType.deleteHabit;
 
   bool _usesRemark(AiTodoAction action) =>
-      action.isTodoAction ||
+      (action.isTodoAction && action.type != AiTodoActionType.skipTodo) ||
       action.isFixedScheduleAction ||
       action.isTimeLogAction ||
       action.isPlanBlockAction;
 
   bool _usesStartTime(AiTodoAction action) =>
-      action.isTodoAction ||
+      (action.isTodoAction && action.type != AiTodoActionType.skipTodo) ||
       action.isFixedScheduleAction ||
       action.isTimeLogAction ||
       action.isPlanBlockAction;
 
   bool _usesDueTime(AiTodoAction action) =>
-      action.isTodoAction ||
+      (action.isTodoAction && action.type != AiTodoActionType.skipTodo) ||
       action.isFixedScheduleAction ||
       action.isTimeLogAction ||
       action.isCountdownAction ||
@@ -2231,7 +2236,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       action.type == AiTodoActionType.startPomodoro;
 
   bool _usesReminder(AiTodoAction action) =>
-      action.isTodoAction ||
+      (action.isTodoAction && action.type != AiTodoActionType.skipTodo) ||
       action.isFixedScheduleAction ||
       action.isPlanBlockAction;
 
@@ -2269,6 +2274,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     switch (action.type) {
       case AiTodoActionType.completeTodo:
         return '标记为已完成';
+      case AiTodoActionType.skipTodo:
+        return '仅跳过这一期，后续期次继续';
       case AiTodoActionType.deleteTodo:
         return '移动到已删除';
       case AiTodoActionType.createFixedSchedule:
@@ -2417,6 +2424,9 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     if (action.type == AiTodoActionType.completeTodo) {
       addRow('状态', existing['isDone'] == true ? '已完成' : '未完成', '已完成');
     }
+    if (action.type == AiTodoActionType.skipTodo) {
+      addRow('状态', '待处理', '已跳过本期');
+    }
     if (action.type == AiTodoActionType.deleteTodo) {
       addRow('删除', existing['isDeleted'] == true ? '已删除' : '未删除', '已删除');
     }
@@ -2558,6 +2568,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
 
   bool _isDangerousAction(AiTodoAction action) {
     return action.type == AiTodoActionType.deleteTodo ||
+        action.type == AiTodoActionType.skipTodo ||
         action.type == AiTodoActionType.deleteTimeLog ||
         action.type == AiTodoActionType.cancelFixedSchedule ||
         action.type == AiTodoActionType.deleteFixedSchedule ||
@@ -2581,6 +2592,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     switch (action.type) {
       case AiTodoActionType.deleteTodo:
         return '将删除已有待办，执行前请确认';
+      case AiTodoActionType.skipTodo:
+        return '只跳过此重复待办期次，不会完成或删除，也不会影响后续期次';
       case AiTodoActionType.cancelFixedSchedule:
         return '将取消已有日程，执行前请确认';
       case AiTodoActionType.deleteFixedSchedule:
@@ -2819,6 +2832,20 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       existingFixedSchedules: _fixedSchedules,
       categoryReminderDefaults: _categoryReminderDefaults,
     );
+
+    try {
+      await _validateTodoSkipActions(pendingActions);
+    } catch (error) {
+      if (mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(
+            content: Text(error.toString().replaceFirst('Bad state: ', '')),
+          ),
+        );
+      }
+      return;
+    }
 
     if (result.hasChanges) {
       final plannedNewTodos = result.newTodos
@@ -3089,6 +3116,54 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     }
   }
 
+  Future<void> _validateTodoSkipActions(Iterable<AiTodoAction> actions) async {
+    for (final action in actions.where(
+      (action) =>
+          action.type == AiTodoActionType.skipTodo &&
+          action.isSelected &&
+          !action.isAdded &&
+          !action.isIgnored,
+    )) {
+      if (action.recurrenceScope != 'occurrence') {
+        throw StateError('跳过操作只能针对一个具体期次');
+      }
+      final todoId = action.todoId?.trim();
+      if (todoId == null || todoId.isEmpty) {
+        throw StateError('跳过操作缺少具体待办ID，请重新查询');
+      }
+      final latest = await StorageService.getTodoByUuid(
+        widget.username,
+        todoId,
+      );
+      if (latest == null ||
+          latest.isDeleted ||
+          latest.isDone ||
+          latest.isSkipped ||
+          (latest.recurrenceSeriesId?.isNotEmpty != true &&
+              latest.recurrence == RecurrenceType.none)) {
+        throw StateError('这期待办状态已变化或已不存在，请重新查询后再操作');
+      }
+      final linkedPlans = await StorageService.getPlanBlocksByTodo(
+        widget.username,
+        todoId,
+      );
+      final run = await PomodoroService.loadRunState();
+      final runFocusesTodo =
+          run != null &&
+          {
+            PomodoroPhase.focusing,
+            PomodoroPhase.breaking,
+            PomodoroPhase.remoteWatching,
+          }.contains(run.phase) &&
+          (run.todoUuid == todoId ||
+              (run.planBlockId?.isNotEmpty == true &&
+                  linkedPlans.any((block) => block.id == run.planBlockId)));
+      if (runFocusesTodo) {
+        throw StateError('这期待办正在专注，请先结束当前专注再跳过');
+      }
+    }
+  }
+
   Future<bool> _executePomodoroAction(AiTodoAction action) async {
     switch (action.type) {
       case AiTodoActionType.startPlanBlockPomodoro:
@@ -3169,6 +3244,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       case AiTodoActionType.createTodo:
       case AiTodoActionType.updateTodo:
       case AiTodoActionType.completeTodo:
+      case AiTodoActionType.skipTodo:
       case AiTodoActionType.deleteTodo:
       case AiTodoActionType.createFixedSchedule:
       case AiTodoActionType.updateFixedSchedule:

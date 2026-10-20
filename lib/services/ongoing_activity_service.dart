@@ -129,7 +129,7 @@ class OngoingActivityService {
     final todayTodos =
         todos
             .where((todo) {
-              if (todo.isDone || todo.isDeleted || todo.dueDate == null) {
+              if (todo.isDone || todo.isDeleted || todo.isSkipped || todo.dueDate == null) {
                 return false;
               }
               return AppTimeFormats.isSameDay(
@@ -249,6 +249,7 @@ class OngoingActivityService {
     for (final todo in todos) {
       if (todo.isDone ||
           todo.isDeleted ||
+          todo.isSkipped ||
           activePlanTodoIds.contains(todo.id)) {
         continue;
       }

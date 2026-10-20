@@ -517,7 +517,7 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
     if (kind != 'todo') return;
 
     final todo = await _findIslandTodo(id);
-    if (todo == null || todo.isDone || todo.isDeleted) return;
+    if (todo == null || todo.isDone || todo.isDeleted || todo.isSkipped) return;
     try {
       final settings = await PomodoroService.getSettings();
       await PomodoroControlService.startFocus(
@@ -535,7 +535,7 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
 
   Future<void> _completeIslandTodo(String id) async {
     final todo = await _findIslandTodo(id);
-    if (todo == null || todo.isDone || todo.isDeleted) return;
+    if (todo == null || todo.isDone || todo.isDeleted || todo.isSkipped) return;
 
     final running = await PomodoroService.loadRunState();
     if (running != null &&

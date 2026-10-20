@@ -186,6 +186,40 @@ void main() {
     expect(find.textContaining('无效ID'), findsNothing);
   });
 
+  testWidgets('已跳过页标出待同步状态并可恢复本期', (tester) async {
+    final skipped = TodoItem(
+      id: 'skipped-occurrence',
+      title: '每周整理资料',
+      recurrenceSeriesId: 'series-cleanup',
+      isSkipped: true,
+      isSkippedSyncPending: true,
+    );
+    final loadedTodos = <TodoItem>[skipped];
+    TodoItem? savedTodo;
+    await pumpManagementPage(
+      tester,
+      HistoricalTodosScreen(
+        username: 'ui-test',
+        loadTodos: () async => loadedTodos,
+        loadGroups: () async => [],
+        loadTodoById: (_, _) async => skipped.detachedCopy(),
+        saveTodo: (_, todo) async {
+          savedTodo = todo;
+          loadedTodos[0] = todo;
+        },
+      ),
+    );
+
+    await tapVisible(tester, find.text('已跳过 1'));
+    expect(find.textContaining('尚未同步'), findsOneWidget);
+    await tapVisible(tester, find.text('恢复本期'));
+    await tester.pumpAndSettle();
+
+    expect(savedTodo?.isSkipped, isFalse);
+    expect(savedTodo?.isDone, isFalse);
+    expect(find.text('已跳过 0'), findsOneWidget);
+  });
+
   testWidgets('待办加载错误可重试', (tester) async {
     var attempts = 0;
     await pumpManagementPage(

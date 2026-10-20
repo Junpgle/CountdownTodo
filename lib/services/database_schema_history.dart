@@ -11,10 +11,18 @@ class DatabaseSchemaChange {
 }
 
 abstract final class DatabaseSchemaHistory {
-  static const int currentVersion = 58;
+  static const int currentVersion = 59;
 
   /// SQLite 架构版本记录，按新到旧排列。
   static const List<DatabaseSchemaChange> changes = [
+    DatabaseSchemaChange(
+      version: 59,
+      title: '重复待办跳过本期',
+      changes: [
+        '为待办期次及协作成员状态增加独立的跳过标记。',
+        '保留本机待同步标记，旧服务端不支持时不覆盖本地跳过状态。',
+      ],
+    ),
     DatabaseSchemaChange(
       version: 58,
       title: '本机规划草稿',

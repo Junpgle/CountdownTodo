@@ -14,6 +14,10 @@ List<TodoItem> _parseTodoItemsIsolate(List<Map<String, dynamic>> maps) {
           title: m['content'] ?? '',
           remark: m['remark'],
           isDone: m['is_completed'] == 1,
+          isSkipped: m['is_skipped'] == 1 || m['is_skipped'] == true,
+          isSkippedSyncPending:
+              m['is_skipped_sync_pending'] == 1 ||
+              m['is_skipped_sync_pending'] == true,
           isDeleted: m['is_deleted'] == 1,
           version: m['version'] ?? 1,
           updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
@@ -114,6 +118,8 @@ mixin _StorageTodos on _StorageServiceBase {
     'content',
     'remark',
     'is_completed',
+    'is_skipped',
+    'is_skipped_sync_pending',
     'is_deleted',
     'created_date',
     'due_date',
@@ -157,6 +163,14 @@ mixin _StorageTodos on _StorageServiceBase {
       final item = expectedTodoBaselines == null
           ? source.detachedCopy()
           : TodoItem.fromJson(source.toJson());
+      if (item.isDone && item.isSkipped) {
+        throw ArgumentError('待办不能同时处于已完成和已跳过状态');
+      }
+      if (item.isSkipped &&
+          item.recurrence == RecurrenceType.none &&
+          item.recurrenceSeriesId?.trim().isNotEmpty != true) {
+        throw ArgumentError('仅可跳过重复待办的本期');
+      }
       if (item.recurrence != RecurrenceType.none &&
           item.recurrenceSeriesId?.isNotEmpty != true) {
         item.recurrenceSeriesId = item.id;
@@ -265,6 +279,12 @@ mixin _StorageTodos on _StorageServiceBase {
         final oldData = existingById[item.id];
         final current = oldData == null ? null : TodoItem.fromSql(oldData);
         if (current != null) persistedItems[item.id] = current;
+        if (!isSyncSource &&
+            (current == null
+                ? item.isSkipped
+                : current.isSkipped != item.isSkipped)) {
+          item.isSkippedSyncPending = true;
+        }
         final baseline = recurrenceBaselines?[item.id];
         if (recurrenceBaselines != null) {
           // Missing baseline means insert-only automatic generation. Existing
@@ -370,6 +390,9 @@ mixin _StorageTodos on _StorageServiceBase {
           'creator_id': item.creatorId,
           'creator_name': item.creatorName,
           'is_completed': item.isDone ? 1 : 0,
+          'is_skipped': item.collabType == 1 || !item.isSkipped ? 0 : 1,
+          'is_skipped_sync_pending':
+              item.collabType == 1 || !item.isSkippedSyncPending ? 0 : 1,
           'is_deleted': item.isDeleted ? 1 : 0,
           'version': item.version,
           'due_date': item.dueDate?.millisecondsSinceEpoch ?? 0,
@@ -401,6 +424,8 @@ mixin _StorageTodos on _StorageServiceBase {
             'todo_uuid': item.id,
             'user_id': userId,
             'is_completed': item.isDone ? 1 : 0,
+            'is_skipped': item.isSkipped ? 1 : 0,
+            'is_skipped_sync_pending': item.isSkippedSyncPending ? 1 : 0,
             'updated_at': item.updatedAt,
           }, conflictAlgorithm: ConflictAlgorithm.replace);
         }
@@ -1754,6 +1779,10 @@ mixin _StorageTodos on _StorageServiceBase {
                   title: m['content'] ?? '',
                   remark: m['remark'],
                   isDone: m['is_completed'] == 1,
+                  isSkipped: m['is_skipped'] == 1 || m['is_skipped'] == true,
+                  isSkippedSyncPending:
+                      m['is_skipped_sync_pending'] == 1 ||
+                      m['is_skipped_sync_pending'] == true,
                   isDeleted: m['is_deleted'] == 1,
                   version: m['version'] ?? 1,
                   updatedAt:

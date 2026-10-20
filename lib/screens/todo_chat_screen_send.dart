@@ -197,6 +197,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     'complete_countdown' => '完成倒计时',
     'delete_countdown' => '删除倒计时',
     'complete_todo' => '完成待办',
+    'skip_todo' => '跳过本期待办',
     'delete_todo' => '删除待办',
     'update_todo' => '修改待办',
     'reschedule_todo' => '改期待办',
@@ -222,6 +223,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         AiTodoActionType.deleteHabit => 'delete_habit',
         AiTodoActionType.updateTodo => 'update_todo',
         AiTodoActionType.completeTodo => 'complete_todo',
+        AiTodoActionType.skipTodo => 'skip_todo',
         AiTodoActionType.deleteTodo => 'delete_todo',
         AiTodoActionType.createFixedSchedule => 'create_schedule',
         AiTodoActionType.updateFixedSchedule => 'update_schedule',
@@ -705,6 +707,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       const actionsRequiringKnownTodoIds = {
         'update_todo',
         'complete_todo',
+        'skip_todo',
         'delete_todo',
         'reschedule_todo',
         'bulk_reschedule',
@@ -2723,6 +2726,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     const actionsRequiringCurrentTodoIds = {
       'update_todo',
       'complete_todo',
+      'skip_todo',
       'delete_todo',
       'reschedule_todo',
       'bulk_reschedule',

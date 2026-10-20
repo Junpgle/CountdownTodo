@@ -17,6 +17,7 @@ enum TodoRecurrenceNodeState {
   current,
   pending,
   future,
+  skipped,
   neutral,
 }
 
@@ -47,6 +48,7 @@ class TodoRecurrenceProgress extends StatefulWidget {
     required this.completedCount,
     this.totalCount,
     this.overdueCount = 0,
+    this.skippedCount = 0,
     this.initiallyExpanded = true,
     this.onNodeTap,
     this.onManage,
@@ -58,6 +60,7 @@ class TodoRecurrenceProgress extends StatefulWidget {
   /// 有限循环的总期数。无限循环传 null，仅显示累计完成期数。
   final int? totalCount;
   final int overdueCount;
+  final int skippedCount;
   final bool initiallyExpanded;
   final ValueChanged<TodoRecurrenceProgressNode>? onNodeTap;
   final VoidCallback? onManage;
@@ -83,7 +86,8 @@ class _TodoRecurrenceProgressState extends State<TodoRecurrenceProgress> {
         : '已完成 ${widget.completedCount}/${widget.totalCount} 期';
     final summary =
         completionSummary +
-        (widget.overdueCount > 0 ? ' · ${widget.overdueCount} 逾期' : '');
+        (widget.overdueCount > 0 ? ' · ${widget.overdueCount} 逾期' : '') +
+        (widget.skippedCount > 0 ? ' · ${widget.skippedCount} 已跳过' : '');
 
     return Semantics(
       label: '循环进度，$summary',
@@ -243,6 +247,12 @@ class _TodoRecurrenceProgressState extends State<TodoRecurrenceProgress> {
         null,
         true,
       ),
+      TodoRecurrenceNodeState.skipped => (
+        colorScheme.tertiaryContainer,
+        colorScheme.onTertiaryContainer,
+        Icons.skip_next_rounded,
+        false,
+      ),
       TodoRecurrenceNodeState.neutral => (
         colorScheme.surfaceContainer,
         colorScheme.onSurfaceVariant,
@@ -327,6 +337,7 @@ class _TodoRecurrenceProgressState extends State<TodoRecurrenceProgress> {
     TodoRecurrenceNodeState.current => '当前周期',
     TodoRecurrenceNodeState.pending => '待完成',
     TodoRecurrenceNodeState.future => '未来周期',
+    TodoRecurrenceNodeState.skipped => '已跳过',
     TodoRecurrenceNodeState.neutral => '已跳过或重复结束',
   };
 }

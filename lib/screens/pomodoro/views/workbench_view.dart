@@ -689,7 +689,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       unawaited(_refreshSystemDoNotDisturbAccess());
 
       final todosRaw = results[3] as List<TodoItem>;
-      _todos = todosRaw.where((t) => !t.isDeleted && !t.isDone).toList();
+      _todos = todosRaw
+          .where((t) => !t.isDeleted && !t.isDone && !t.isSkipped)
+          .toList();
 
       final groupsRaw = results[4] as List<TodoGroup>;
       _todoGroups = groupsRaw.where((g) => !g.isDeleted).toList();

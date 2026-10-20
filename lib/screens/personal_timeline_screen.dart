@@ -149,6 +149,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
   int _recurringCompletedCount = 0;
   int _recurringScheduledCount = 0;
   int _recurringMissedCount = 0;
+  int _recurringSkippedCount = 0;
   int _recurringPendingCount = 0;
   List<TimelineRecurrenceSeriesStatistics> _recurrenceSeries = [];
   TimelineRecurrenceSeriesStatistics? _bestRecurrenceSeries;
@@ -480,6 +481,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
           _recurringCompletedCount = rangeStatistics.recurringCompletedCount;
           _recurringScheduledCount = rangeStatistics.recurringScheduledCount;
           _recurringMissedCount = rangeStatistics.recurringMissedCount;
+          _recurringSkippedCount = rangeStatistics.recurringSkippedCount;
           _recurringPendingCount = rangeStatistics.recurringPendingCount;
           _recurrenceSeries = rangeStatistics.recurrenceSeries;
           _bestRecurrenceSeries = rangeStatistics.bestRecurrenceSeries;
@@ -3174,6 +3176,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
             const SizedBox(height: 8),
             _buildRankItem(0, '按期完成', '$_recurringCompletedCount期', cs),
             _buildRankItem(0, '已逾期', '$_recurringMissedCount期', cs),
+            if (_recurringSkippedCount > 0)
+              _buildRankItem(0, '已跳过', '$_recurringSkippedCount期', cs),
             if (_recurringPendingCount > 0)
               _buildRankItem(0, '进行中', '$_recurringPendingCount期', cs),
             _buildRankItem(0, '阶段末连续完成', '$_recurringEndingStreak期', cs),

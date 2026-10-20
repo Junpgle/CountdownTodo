@@ -132,7 +132,7 @@ class ReminderScheduleService {
     // ── 待办提醒（普通 + 特殊）──────────────────────────────────────────
     for (int i = 0; i < todos.length && i < 999; i++) {
       final t = todos[i];
-      if (t.isDeleted || t.isDone) continue;
+      if (t.isDeleted || t.isDone || t.isSkipped) continue;
 
       // 日期待办没有“开始时刻”。旧数据会把它表示为当天 00:00 到
       // 23:59（或次日 00:00），不能直接拿 createdDate 做提前提醒，

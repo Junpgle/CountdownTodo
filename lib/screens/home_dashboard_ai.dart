@@ -190,7 +190,9 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
         initialMessage: initialMessage,
         sendInitialMessage: sendInitialMessage,
         initialVoiceUsageSummary: initialVoiceUsageSummary,
-        todos: _todos.where((t) => !t.isDone && !t.isDeleted).toList(),
+        todos: _todos
+            .where((t) => !t.isDone && !t.isDeleted && !t.isSkipped)
+            .toList(),
         todoGroups: _todoGroups,
         courses: courses,
         timeLogs: timeLogs,

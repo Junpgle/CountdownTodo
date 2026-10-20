@@ -99,6 +99,7 @@ class SearchService {
           (item) =>
               !item.isDeleted &&
               !item.isDone &&
+              !item.isSkipped &&
               item.isOverdueAt(before) &&
               !excludedRecurrenceSeriesIds.contains(item.recurrenceSeriesId),
         )
@@ -688,6 +689,7 @@ class SearchService {
                   'uuid': t.id,
                   'content': t.title,
                   'is_completed': t.isDone ? 1 : 0,
+                  'is_skipped': t.isSkipped ? 1 : 0,
                   'is_deleted': 0,
                   'due_date': t.dueDate?.millisecondsSinceEpoch,
                   'created_date': t.createdDate,
@@ -744,12 +746,15 @@ class SearchService {
           if (metaParts.isNotEmpty) metaParts.join(' · '),
         ].join('  |  ');
         final displaySubtitle = subtitle.isNotEmpty ? subtitle : '个人待办';
+        final isSkipped = t['is_skipped'] == 1 || t['is_skipped'] == true;
         dbItems.add(
           SearchResult(
             id: 'db_todo_${t['uuid']}',
             title: t['content'] ?? '未命名任务',
             subtitle: displaySubtitle,
-            icon: t['is_completed'] == 1
+            icon: isSkipped
+                ? Icons.skip_next_rounded
+                : t['is_completed'] == 1
                 ? Icons.check_circle
                 : Icons.radio_button_unchecked,
             type: SearchResultType.todo,
@@ -757,6 +762,7 @@ class SearchService {
               'uuid': t['uuid'],
               'table': 'todos',
               'is_completed': t['is_completed'],
+              'is_skipped': isSkipped ? 1 : 0,
               'due_date': dueDateMs,
               'team_name': t['team_name'],
               'remark': remarkStr,

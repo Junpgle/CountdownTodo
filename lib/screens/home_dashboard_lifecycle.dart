@@ -998,7 +998,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
       if (notifId == null || notifId == normalTodoNotifId) {
         // 普通待办通知：完成第一个未完成的**普通**待办（跳过特殊待办）
         for (var t in activeTodos) {
-          if (!t.isDone && !isSpecialTodo(t.title)) {
+          if (!t.isDone && !t.isSkipped && !isSpecialTodo(t.title)) {
             currentTodo = t;
             break;
           }
@@ -1007,7 +1007,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
       } else {
         // 特殊待办通知：通过 notifId 找到对应的待办
         currentTodo = activeTodos
-            .where((t) => t.id.hashCode == notifId && !t.isDone)
+            .where((t) => t.id.hashCode == notifId && !t.isDone && !t.isSkipped)
             .firstOrNull;
         // debugPrint("📱 特殊待办通知，找到待办: ${currentTodo?.title}");
       }

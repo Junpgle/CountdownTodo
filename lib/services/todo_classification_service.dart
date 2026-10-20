@@ -169,7 +169,7 @@ class TodoClassificationService {
       });
     final actions = <AiTodoAction>[];
     final eligibleTodos = sortedTodos
-        .where((todo) => !todo.isDeleted && !todo.isDone)
+        .where((todo) => !todo.isDeleted && !todo.isDone && !todo.isSkipped)
         .toList(growable: false);
     Map<String, List<TodoItem>>? historyByGroup;
     for (var offset = 0; offset < eligibleTodos.length;) {

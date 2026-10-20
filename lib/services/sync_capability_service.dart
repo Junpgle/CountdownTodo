@@ -27,6 +27,12 @@ class SyncCapabilityService {
   static const int financeCategoryIconsVersion = 1;
   static const String financeAccountBalances = 'finance_account_balances_v1';
 
+  /// Per-occurrence skip state is merged only when the server explicitly
+  /// advertises the protocol. Older servers ignore the field and must not
+  /// clear a device's pending local skip state.
+  static const String todoSkipState = 'todo_skip_state';
+  static const int todoSkipStateVersion = 1;
+
   static bool supportsFixedSchedules(dynamic rawCapabilities) =>
       capabilityVersion(rawCapabilities, fixedSchedules) >=
       fixedSchedulesVersion;
@@ -62,6 +68,10 @@ class SyncCapabilityService {
 
   static bool supportsFinanceAccountBalances(dynamic rawCapabilities) =>
       capabilityVersion(rawCapabilities, financeAccountBalances) >= 1;
+
+  static bool supportsTodoSkipState(dynamic rawCapabilities) =>
+      capabilityVersion(rawCapabilities, todoSkipState) >=
+      todoSkipStateVersion;
 
   static bool shouldAcknowledgeFinanceChanges({
     required bool syncEnabled,

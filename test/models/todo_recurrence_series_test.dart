@@ -39,6 +39,45 @@ void main() {
     expect(restored.recurrenceSeriesId, isNull);
   });
 
+  test('TodoItem round-trips skipped status and local sync-pending state', () {
+    final skipped = TodoItem(
+      id: 'skipped-occurrence',
+      title: '每周整理资料',
+      recurrenceSeriesId: 'weekly-series',
+      isSkipped: true,
+      isSkippedSyncPending: true,
+    );
+
+    final restored = TodoItem.fromJson(skipped.toJson());
+
+    expect(restored.isSkipped, isTrue);
+    expect(restored.isSkippedSyncPending, isTrue);
+    expect(restored.isDone, isFalse);
+    expect(skipped.detachedCopy().isSkipped, isTrue);
+  });
+
+  test('legacy todo JSON defaults to not skipped', () {
+    final restored = TodoItem.fromJson({
+      'uuid': '550e8400-e29b-41d4-a716-446655440002',
+      'content': '旧版待办',
+    });
+
+    expect(restored.isSkipped, isFalse);
+    expect(restored.isSkippedSyncPending, isFalse);
+  });
+
+  test('TodoItem rejects mutually exclusive completed and skipped flags', () {
+    expect(
+      () => TodoItem.fromJson({
+        'uuid': '550e8400-e29b-41d4-a716-446655440003',
+        'content': '无效待办',
+        'is_completed': 1,
+        'is_skipped': 1,
+      }),
+      throwsFormatException,
+    );
+  });
+
   test(
     'recurrence dedupe keeps newer completion over higher-version stale copy',
     () {

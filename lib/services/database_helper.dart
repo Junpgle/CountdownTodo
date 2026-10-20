@@ -31,6 +31,8 @@ class DatabaseHelper {
     'creator_id',
     'creator_name',
     'is_completed',
+    'is_skipped',
+    'is_skipped_sync_pending',
     'is_deleted',
     'version',
     'due_date',
@@ -198,6 +200,50 @@ class DatabaseHelper {
       }
     } catch (e) {
       //       debugPrint("⚠️ Database: 检查/修复 todos 本地来源字段失败: $e");
+    }
+  }
+
+  static Future<void> ensureTodoSkipStateSchema(Database db) async {
+    final todoColumns = await db.rawQuery('PRAGMA table_info(todos)');
+    if (todoColumns.isEmpty) return;
+    final todoNames = todoColumns.map((row) => row['name']).toSet();
+    if (!todoNames.contains('is_skipped')) {
+      await db.execute(
+        'ALTER TABLE todos ADD COLUMN is_skipped INTEGER NOT NULL DEFAULT 0',
+      );
+    }
+    if (!todoNames.contains('is_skipped_sync_pending')) {
+      await db.execute(
+        'ALTER TABLE todos ADD COLUMN is_skipped_sync_pending INTEGER NOT NULL DEFAULT 0',
+      );
+    }
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS todo_completions (
+        todo_uuid TEXT,
+        user_id INTEGER,
+        is_completed INTEGER,
+        is_skipped INTEGER NOT NULL DEFAULT 0,
+        is_skipped_sync_pending INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER,
+        PRIMARY KEY(todo_uuid, user_id)
+      )
+    ''');
+    final completionColumns = await db.rawQuery(
+      'PRAGMA table_info(todo_completions)',
+    );
+    final completionNames = completionColumns
+        .map((row) => row['name'])
+        .toSet();
+    if (!completionNames.contains('is_skipped')) {
+      await db.execute(
+        'ALTER TABLE todo_completions ADD COLUMN is_skipped INTEGER NOT NULL DEFAULT 0',
+      );
+    }
+    if (!completionNames.contains('is_skipped_sync_pending')) {
+      await db.execute(
+        'ALTER TABLE todo_completions ADD COLUMN is_skipped_sync_pending INTEGER NOT NULL DEFAULT 0',
+      );
     }
   }
 
@@ -1055,6 +1101,9 @@ class DatabaseHelper {
           },
           onCreate: _createDB,
           onUpgrade: (db, oldVersion, newVersion) async {
+            if (oldVersion < 59) {
+              await ensureTodoSkipStateSchema(db);
+            }
             if (oldVersion < 58) {
               await ensurePlanEditorDraftSchema(db);
             }
@@ -1639,6 +1688,7 @@ class DatabaseHelper {
             await ensurePlanEditorDraftSchema(db);
             await ensureCourseTableSchema(db);
             await ensureTodoClientLocalSchema(db);
+            await ensureTodoSkipStateSchema(db);
             await ensureTodoPlanBlockSchema(db);
             await ensureFixedScheduleSchema(db);
             await ensureSuggestionFeedbackSchema(db);
@@ -1900,6 +1950,8 @@ class DatabaseHelper {
         creator_id $jsonType,
         creator_name $jsonType,
         is_completed $boolType DEFAULT 0,
+        is_skipped $boolType DEFAULT 0,
+        is_skipped_sync_pending $boolType DEFAULT 0,
         is_deleted $boolType DEFAULT 0,
         version $integerType DEFAULT 1,
         due_date $jsonType,
@@ -1981,6 +2033,8 @@ class DatabaseHelper {
         todo_uuid TEXT,
         user_id INTEGER,
         is_completed INTEGER,
+        is_skipped INTEGER NOT NULL DEFAULT 0,
+        is_skipped_sync_pending INTEGER NOT NULL DEFAULT 0,
         updated_at INTEGER,
         PRIMARY KEY(todo_uuid, user_id)
       )
@@ -2992,6 +3046,14 @@ class DatabaseHelper {
       if (col == 'is_completed') {
         return 'CASE WHEN t.collab_type = 1 AND c.is_completed IS NOT NULL THEN c.is_completed ELSE t.is_completed END AS is_completed';
       }
+      if (col == 'is_skipped') {
+        return 'CASE WHEN t.collab_type = 1 AND c.is_skipped IS NOT NULL THEN c.is_skipped ELSE t.is_skipped END AS is_skipped';
+      }
+      if (col == 'is_skipped_sync_pending') {
+        return 'CASE WHEN t.collab_type = 1 AND c.is_skipped_sync_pending IS NOT NULL '
+            'THEN c.is_skipped_sync_pending ELSE t.is_skipped_sync_pending '
+            'END AS is_skipped_sync_pending';
+      }
       return 't.$col AS $col';
     }).toList();
 
@@ -3091,6 +3153,16 @@ class DatabaseHelper {
           THEN c.is_completed
           ELSE t.is_completed
         END AS is_completed,
+        CASE
+          WHEN t.collab_type = 1 AND c.is_skipped IS NOT NULL
+          THEN c.is_skipped
+          ELSE t.is_skipped
+        END AS is_skipped,
+        CASE
+          WHEN t.collab_type = 1 AND c.is_skipped_sync_pending IS NOT NULL
+          THEN c.is_skipped_sync_pending
+          ELSE t.is_skipped_sync_pending
+        END AS is_skipped_sync_pending,
         t.is_deleted AS is_deleted,
         t.version AS version,
         t.due_date AS due_date,

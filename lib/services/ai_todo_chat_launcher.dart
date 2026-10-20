@@ -122,7 +122,7 @@ class AiTodoChatLauncher {
 
   static List<Map<String, dynamic>> toChatTodoMaps(List<TodoItem> todos) {
     final recurrenceRuleBySeries = <String, TodoItem>{};
-    for (final todo in todos.where((todo) => !todo.isDeleted)) {
+    for (final todo in todos.where((todo) => !todo.isDeleted && !todo.isSkipped)) {
       final seriesId = todo.recurrenceSeriesId?.trim();
       if (seriesId == null || seriesId.isEmpty) continue;
       final existing = recurrenceRuleBySeries[seriesId];
@@ -154,6 +154,7 @@ class AiTodoChatLauncher {
         'timeMode': t.timeMode.name,
         'isAllDay': t.isAllDayTask,
         'isDone': t.isDone,
+        'isSkipped': t.isSkipped,
         'isDeleted': t.isDeleted,
         'recurrence': t.recurrence.name,
         'recurrenceRule': rule.recurrence.name,

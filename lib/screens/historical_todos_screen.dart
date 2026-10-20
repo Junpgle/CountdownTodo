@@ -90,6 +90,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     with SingleTickerProviderStateMixin {
   static const int _todoPageSize = 120;
   List<TodoItem> _history = [];
+  List<TodoItem> _skippedTodos = [];
   List<TodoItem> _deletedTodos = [];
   List<TodoItem> _orphanTodos = [];
   final Map<String, TodoItem> _loadedTodoById = {};
@@ -111,7 +112,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _loadData();
   }
 
@@ -154,6 +155,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
         _hasMoreTodoPages = false;
         _nextTodoOffset = 0;
         _history = [];
+        _skippedTodos = [];
         _deletedTodos = [];
         _orphanTodos = [];
       }
@@ -189,11 +191,16 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
       final historyTodos = <TodoItem>[];
+      final skippedTodos = <TodoItem>[];
       final deletedTodos = <TodoItem>[];
       final orphanTodos = <TodoItem>[];
       for (final todo in allTodos) {
         if (todo.isDeleted) {
           deletedTodos.add(todo);
+          continue;
+        }
+        if (todo.isSkipped) {
+          skippedTodos.add(todo);
           continue;
         }
         if (todo.isDone) {
@@ -207,12 +214,14 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
         }
       }
       historyTodos.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      skippedTodos.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
       deletedTodos.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
       orphanTodos.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
       setState(() {
         // 1. 历史记录：已完成、日期在今天之前、未被逻辑删除
         _history = historyTodos;
+        _skippedTodos = skippedTodos;
 
         // 2. 回收站：逻辑删除的数据
         _deletedTodos = deletedTodos;
@@ -382,6 +391,28 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     }
   }
 
+  Future<void> _restoreSkippedItem(TodoItem item) async {
+    final current =
+        await (widget.loadTodoById?.call(widget.username, item.id) ??
+            StorageService.getTodoByUuid(widget.username, item.id));
+    if (current == null || current.isDeleted || !current.isSkipped) {
+      throw StateError('本期待办状态已变化，请重新加载');
+    }
+    current.isSkipped = false;
+    current.isDone = false;
+    current.isSkippedSyncPending = true;
+    current.markAsChanged();
+    await (widget.saveTodo?.call(widget.username, current) ??
+        StorageService.updateSingleTodo(widget.username, current));
+    await _loadData();
+    if (mounted) {
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('已恢复本期待办，后续期次不变')),
+      );
+    }
+  }
+
   Future<void> _restoreDeletedItem(TodoItem item) async {
     final current =
         await (widget.loadTodoById?.call(widget.username, item.id) ??
@@ -519,16 +550,18 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     final projection = _projectList(items, section, query);
     final visibleCount = projection.visibleCount;
     final rows = projection.rows;
-    const titles = ['完成的事，值得回顾', '删除后，仍有找回的机会', '让待办回到清单'];
+    const titles = ['完成的事，值得回顾', '删除后，仍有找回的机会', '让待办回到清单', '重复待办的已跳过期次'];
     const descriptions = [
       '查看以前完成的待办，可取消完成或移至回收站。',
       '恢复误删的待办；彻底删除和清空操作无法撤销。',
       '这些待办关联的文件夹已失效。修复后将解除关联，作为独立待办显示。',
+      '这里只记录被跳过的具体期次。恢复后本期重新进入待办，后续重复规则不变。',
     ];
     const icons = [
       Icons.task_alt_rounded,
       Icons.restore_from_trash_outlined,
       Icons.folder_off_outlined,
+      Icons.skip_next_rounded,
     ];
     final headerChildren = <Widget>[
       ManagementIntro(
@@ -572,13 +605,14 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
           icon: icons[section],
           title: query.isNotEmpty
               ? '没有找到匹配的待办'
-              : ['没有历史待办', '回收站空空如也', '没有需要修复的待办'][section],
+              : ['没有历史待办', '回收站空空如也', '没有需要修复的待办', '没有已跳过期次'][section],
           description: query.isNotEmpty
               ? '试试其他关键词，或清空搜索。'
               : [
                   '以前完成的待办会出现在这里。',
                   '已删除的待办会保留在这里，供你恢复。',
                   '当前未发现文件夹关联异常。',
+                  '已跳过的重复待办期次会显示在这里。',
                 ][section],
         ),
     ];
@@ -654,7 +688,9 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                     ? Icons.check_circle_outline_rounded
                     : section == 1
                     ? Icons.delete_outline_rounded
-                    : Icons.folder_off_outlined,
+                    : section == 2
+                    ? Icons.folder_off_outlined
+                    : Icons.skip_next_rounded,
                 color: scheme.primary,
               ),
               const SizedBox(width: 12),
@@ -670,7 +706,13 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      section == 2 ? '所属文件夹已失效' : '最近更新 · $time',
+                      section == 2
+                          ? '所属文件夹已失效'
+                          : section == 3
+                          ? item.isSkippedSyncPending
+                                ? '跳过状态尚未同步；连接支持的服务端后会自动补传'
+                                : '已跳过本期 · 后续期次仍会继续'
+                          : '最近更新 · $time',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: scheme.onSurfaceVariant,
                       ),
@@ -723,13 +765,22 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                   icon: const Icon(Icons.restore_rounded, size: 18),
                   label: const Text('恢复待办'),
                 ),
-              ] else
+              ] else if (section == 2)
                 FilledButton.tonalIcon(
                   onPressed: enabled
                       ? () => _runAction(item.id, () => _fixOrphan(item))
                       : null,
                   icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
                   label: const Text('恢复到独立待办'),
+                )
+              else
+                FilledButton.tonalIcon(
+                  onPressed: enabled
+                      ? () =>
+                            _runAction(item.id, () => _restoreSkippedItem(item))
+                      : null,
+                  icon: const Icon(Icons.restore_rounded, size: 18),
+                  label: const Text('恢复本期'),
                 ),
             ],
           ),
@@ -761,6 +812,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
             Tab(text: '历史记录 ${_history.length}'),
             Tab(text: '回收站 ${_deletedTodos.length}'),
             Tab(text: '待修复 ${_orphanTodos.length}'),
+            Tab(text: '已跳过 ${_skippedTodos.length}'),
           ],
         ),
       ),
@@ -785,6 +837,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                   _buildList(_history, 0, topBarHeight),
                   _buildList(_deletedTodos, 1, topBarHeight),
                   _buildList(_orphanTodos, 2, topBarHeight),
+                  _buildList(_skippedTodos, 3, topBarHeight),
                 ],
               ),
       ),

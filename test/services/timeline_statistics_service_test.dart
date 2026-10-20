@@ -157,6 +157,52 @@ void main() {
     expect(result.recurrenceSeries.single.endingStreak, 0);
   });
 
+  test(
+    'skipped recurrence occurrences are separate from missed and completed',
+    () {
+      TodoItem occurrence(
+        int day, {
+        required bool isDone,
+        bool isSkipped = false,
+        int dueHour = 22,
+      }) => TodoItem(
+        id: 'weekly-$day',
+        title: '每周整理',
+        isDone: isDone,
+        isSkipped: isSkipped,
+        recurrence: day == 17 ? RecurrenceType.weekly : RecurrenceType.none,
+        recurrenceSeriesId: 'weekly-cleanup',
+        createdDate: DateTime(2026, 7, day, 8).millisecondsSinceEpoch,
+        dueDate: DateTime(2026, 7, day, dueHour),
+      );
+
+      final result = TimelineStatisticsService.calculate(
+        start: DateTime(2026, 7, 17),
+        end: DateTime(2026, 7, 20),
+        pomodoroRecords: const [],
+        timeLogs: const [],
+        planBlocks: const [],
+        todos: [
+          occurrence(17, isDone: true),
+          occurrence(18, isDone: false, isSkipped: true),
+          occurrence(19, isDone: false),
+        ],
+        tags: const [],
+        now: DateTime(2026, 7, 19, 10),
+      );
+
+      final series = result.recurrenceSeries.single;
+      expect(series.scheduledCount, 3);
+      expect(series.completedCount, 1);
+      expect(series.missedCount, 0);
+      expect(series.skippedCount, 1);
+      expect(series.pendingCount, 1);
+      expect(series.endingStreak, 0);
+      expect(result.recurringSkippedCount, 1);
+      expect(result.recurringCompletionRate, 1);
+    },
+  );
+
   test('recurrence statistics deduplicate a series day and track streaks', () {
     TodoItem occurrence(
       String id,

@@ -123,6 +123,7 @@ class PlanReuseRepository {
         })..id = todoId;
         if (!candidate.isDone &&
             !candidate.isDeleted &&
+            !candidate.isSkipped &&
             !ConflictVisibilityService.blocksTodoPlanning(candidate) &&
             candidate.title.trim().isNotEmpty) {
           todo = candidate;

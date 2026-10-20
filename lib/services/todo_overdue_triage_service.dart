@@ -41,7 +41,7 @@ class TodoOverdueTriageService {
   }) {
     final now = clock();
     return todos.where((item) {
-      if (item.isDeleted || item.isDone || item.dueDate == null) return false;
+      if (item.isDeleted || item.isDone || item.isSkipped || item.dueDate == null) return false;
       if (excludedRecurrenceSeriesIds.contains(item.recurrenceSeriesId)) {
         return false;
       }

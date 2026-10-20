@@ -42,6 +42,13 @@ void main() {
           dueDate: DateTime(2026, 10, 8, 10, 0),
           isDeleted: true,
         ),
+        TodoItem(
+          id: '3-skipped',
+          title: '已跳过逾期任务',
+          dueDate: DateTime(2026, 10, 8, 10, 0),
+          recurrenceSeriesId: 'series-skip',
+          isSkipped: true,
+        ),
         TodoItem(id: '4', title: '未来任务', dueDate: DateTime(2026, 10, 9, 18, 0)),
         TodoItem(id: '5', title: '无截止时间任务'),
         TodoItem(
