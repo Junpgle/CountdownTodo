@@ -46,6 +46,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   bool _allowExit = false;
   bool _exitPromptOpen = false;
   bool _loadingEditorFields = false;
+  bool _showSeriesOccurrenceDetails = false;
   late TodoItem _editingTodo;
   late List<TodoItem> _editorTodos;
   late List<TodoGroup> _editorGroups;
@@ -67,6 +68,15 @@ class TodoEditScreenState extends State<TodoEditScreen> {
 
   bool get _appliesToFutureOccurrences =>
       widget.recurrenceEditScope == TodoRecurrenceEditScope.future;
+
+  int get _wholeSeriesMemberCount {
+    final seriesId = TodoRecurrenceSeriesEditService.seriesIdFor(_editingTodo);
+    if (seriesId == null) return 0;
+    return TodoRecurrenceSeriesEditService.activeMembers(
+      _editorTodos,
+      seriesId,
+    ).length;
+  }
 
   String get _editorTitle => switch (widget.recurrenceEditScope) {
     TodoRecurrenceEditScope.occurrence => '编辑待办',
@@ -370,6 +380,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
       final confirmed = await _confirmWholeSeriesEdit(
         seriesId: seriesId,
         normalizedStart: normalizedStart,
+        normalizedDue: normalizedDue,
       );
       if (!confirmed || !mounted) return false;
     }
@@ -696,24 +707,101 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   Future<bool> _confirmWholeSeriesEdit({
     required String seriesId,
     required DateTime? normalizedStart,
+    required DateTime? normalizedDue,
   }) async {
+    final occurrences = TodoRecurrenceSeriesEditService.activeMembers(
+      _editorTodos,
+      seriesId,
+    );
     final counts = TodoRecurrenceSeriesEditService.countMembers(
       _editorTodos,
       seriesId,
       now: DateTime.now(),
     );
     if (counts.total == 0) return false;
-    final dateChanged = normalizedStart?.millisecondsSinceEpoch !=
-        _originalCreatedDate.millisecondsSinceEpoch;
+    final dateOrTimeChanged =
+        normalizedStart?.millisecondsSinceEpoch !=
+            _originalCreatedDate.millisecondsSinceEpoch ||
+        normalizedDue?.millisecondsSinceEpoch !=
+            _editingTodo.dueDate?.millisecondsSinceEpoch ||
+        _isAllDay != _editingTodo.isDateOnly ||
+        _preserveLegacyTiming != _editingTodo.hasLegacyTiming;
+    final startShift = normalizedStart == null
+        ? Duration.zero
+        : normalizedStart.difference(_originalCreatedDate);
+    final editedDuration = normalizedStart == null || normalizedDue == null
+        ? null
+        : normalizedDue.difference(normalizedStart);
+    final datePattern = _isAllDay ? 'M月d日' : 'M月d日 HH:mm';
+    String previewRange(TodoItem occurrence) {
+      final start = DateTime.fromMillisecondsSinceEpoch(
+        occurrence.createdDate ?? occurrence.createdAt,
+        isUtc: true,
+      ).toLocal();
+      final newStart = start.add(startShift);
+      final oldEnd = occurrence.dueDate?.toLocal();
+      final newEnd = editedDuration == null
+          ? null
+          : _isAllDay
+          ? DateTime(newStart.year, newStart.month, newStart.day, 23, 59)
+          : newStart.add(editedDuration);
+      final oldLabel = _dateFormat(datePattern).format(start);
+      final newLabel = _dateFormat(datePattern).format(newStart);
+      if (_isAllDay) return '$oldLabel → $newLabel';
+      final oldRange = oldEnd == null
+          ? oldLabel
+          : '$oldLabel–${_dateFormat(datePattern).format(oldEnd)}';
+      final newRange = newEnd == null
+          ? newLabel
+          : '$newLabel–${_dateFormat(datePattern).format(newEnd)}';
+      return '$oldRange → $newRange';
+    }
+
     final result = await showAppDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('确认应用到整个系列'),
-        content: Text(
-          '将统一更新 ${counts.total} 期：历史 ${counts.historical} 期、今天 ${counts.current} 期、未来 ${counts.future} 期。'
-          '其中已完成 ${counts.completed} 期、已跳过 ${counts.skipped} 期；这些状态会逐期保留。'
-          '${dateChanged ? '\n日期或时间会按当前期的偏移同步到所有期次。' : ''}'
-          '\n重复频率与结束规则保持不变；已有规划块、时间日志和专注记录保留原时间。',
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('本次修改会应用到 ${counts.total} 期。'),
+                const SizedBox(height: 10),
+                Text(
+                  '历史 ${counts.historical} · 今天 ${counts.current} · 未来 ${counts.future}',
+                ),
+                const SizedBox(height: 4),
+                Text('已完成 ${counts.completed} · 已跳过 ${counts.skipped}，状态保持不变'),
+                if (dateOrTimeChanged && occurrences.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  Text(
+                    '日期变化基准：${_dateFormat(datePattern).format(_originalCreatedDate)} 这期',
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                  const SizedBox(height: 6),
+                  _buildSeriesDatePreviewRow(
+                    '首期',
+                    previewRange(occurrences.first),
+                  ),
+                  if (occurrences.length > 1)
+                    _buildSeriesDatePreviewRow(
+                      '末期',
+                      previewRange(occurrences.last),
+                    ),
+                ],
+                const SizedBox(height: 14),
+                Text(
+                  '重复规则保持不变。已有规划块、时间日志和专注记录保留原时间。',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
         actions: [
           TextButton(
@@ -722,13 +810,31 @@ class TodoEditScreenState extends State<TodoEditScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('应用到整个系列'),
+            child: Text('应用到 ${counts.total} 期'),
           ),
         ],
       ),
     );
     return result == true;
   }
+
+  Widget _buildSeriesDatePreviewRow(String label, String value) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 3),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 42,
+          child: Text(
+            label,
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: Text(value)),
+      ],
+    ),
+  );
 
   Future<void> _deleteCurrentTodo() async {
     final confirmed = await showAppDialog<bool>(
@@ -869,7 +975,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
       backgroundColor: bgColor,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
-        title: Text(_editorTitle),
+          title: Text(_isWholeSeriesEdit ? '编辑系列' : _editorTitle),
         backgroundColor: bgColor,
         elevation: 0,
         scrolledUnderElevation: 0,
@@ -880,7 +986,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
               Icons.delete_outline_rounded,
               color: Colors.redAccent,
             ),
-            tooltip: '删除待办',
+            tooltip: _isWholeSeriesEdit ? '删除当前期' : '删除待办',
           ),
           if (_editingTodo.recurrence != RecurrenceType.none) ...[
             IconButton(
@@ -893,7 +999,11 @@ class TodoEditScreenState extends State<TodoEditScreen> {
           TextButton(
               onPressed: _saving ? null : _save,
               child: Text(
-                _saving ? '保存中…' : '保存',
+                _saving
+                    ? '保存中…'
+                    : _isWholeSeriesEdit
+                    ? '应用到 $_wholeSeriesMemberCount 期'
+                    : '保存',
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
@@ -903,11 +1013,16 @@ class TodoEditScreenState extends State<TodoEditScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: FloatingGlassTopBarContentFade(
-        topBarHeight: topBarHeight,
-        child: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(16, topBarHeight + 8, 16, 8),
-          child: Column(
+      body: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: _isWholeSeriesEdit ? 720 : double.infinity,
+          ),
+          child: FloatingGlassTopBarContentFade(
+            topBarHeight: topBarHeight,
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(16, topBarHeight + 8, 16, 8),
+              child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (widget.recurrenceEditScope !=
@@ -915,7 +1030,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                 _buildRecurrenceScopeSummary(colorScheme),
                 const SizedBox(height: 12),
               ],
-              _buildRelatedRecurrenceSection(colorScheme),
+              if (!_isWholeSeriesEdit)
+                _buildRelatedRecurrenceSection(colorScheme),
               OptionalLiquidGlassCard(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
@@ -987,30 +1103,26 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                           alpha: 0.35,
                         ),
                     ),
-                    LiquidGlassSwitchListTile(
-                      key: const ValueKey('todo_edit_completion_switch'),
-                      contentPadding: EdgeInsets.zero,
-                      value: _isDone,
-                      onChanged: _isWholeSeriesEdit
-                          ? null
-                          : (value) => setState(() => _isDone = value),
-                      secondary: Icon(
-                        _isDone
-                            ? Icons.check_circle_rounded
-                            : Icons.radio_button_unchecked_rounded,
-                        color: _isDone
-                            ? colorScheme.primary
-                            : colorScheme.onSurfaceVariant,
+                    if (!_isWholeSeriesEdit)
+                      LiquidGlassSwitchListTile(
+                        key: const ValueKey('todo_edit_completion_switch'),
+                        contentPadding: EdgeInsets.zero,
+                        value: _isDone,
+                        onChanged: (value) =>
+                            setState(() => _isDone = value),
+                        secondary: Icon(
+                          _isDone
+                              ? Icons.check_circle_rounded
+                              : Icons.radio_button_unchecked_rounded,
+                          color: _isDone
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant,
+                        ),
+                        title: const Text('完成状态'),
+                        subtitle: Text(
+                          _isDone ? '本期已完成' : '本期待完成',
+                        ),
                       ),
-                      title: const Text('完成状态'),
-                      subtitle: Text(
-                        _isWholeSeriesEdit
-                            ? '整系列编辑保留每期状态'
-                            : _isDone
-                            ? '本期已完成'
-                            : '本期待完成',
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -1289,79 +1401,57 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                           setState(() => _reminderMinutes = val),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _isWholeSeriesEdit
-                        ? Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: colorScheme.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.replay_rounded, size: 18),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      const Text('重复规则'),
-                                      Text(
-                                        _getRecurrenceLabel(_recurrence),
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodySmall,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Icon(
-                                  Icons.lock_outline_rounded,
-                                  size: 16,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ],
-                            ),
-                          )
-                        : _buildPopupSquareTile<RecurrenceType>(
-                      title: "重复",
-                      subtitle: _getRecurrenceLabel(_recurrence),
-                      icon: Icons.replay_rounded,
-                      color: Colors.teal,
-                      value: _recurrence,
-                      items:
-                          [
-                                RecurrenceType.none,
-                                RecurrenceType.daily,
-                                RecurrenceType.weekly,
-                                RecurrenceType.monthly,
-                                RecurrenceType.yearly,
-                                RecurrenceType.weekdays,
-                                RecurrenceType.customDays,
-                              ]
-                              .map(
-                                (r) => PopupMenuItem(
-                                  value: r,
-                                  child: Text(_getRecurrenceLabel(r)),
-                                ),
-                              )
-                              .toList(),
-                      onSelected: (val) => setState(() => _recurrence = val),
+                  if (!_isWholeSeriesEdit) ...[
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildPopupSquareTile<RecurrenceType>(
+                        title: '重复',
+                        subtitle: _getRecurrenceLabel(_recurrence),
+                        icon: Icons.replay_rounded,
+                        color: colorScheme.tertiary,
+                        value: _recurrence,
+                        items: [
+                          RecurrenceType.none,
+                          RecurrenceType.daily,
+                          RecurrenceType.weekly,
+                          RecurrenceType.monthly,
+                          RecurrenceType.yearly,
+                          RecurrenceType.weekdays,
+                          RecurrenceType.customDays,
+                        ].map(
+                          (recurrence) => PopupMenuItem(
+                            value: recurrence,
+                            child: Text(_getRecurrenceLabel(recurrence)),
+                          ),
+                        ).toList(),
+                        onSelected: (value) =>
+                            setState(() => _recurrence = value),
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
               if (_isWholeSeriesEdit)
                 Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    '频率、间隔和结束日期保持不变；如需调整，请选择“本期及以后”。',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.repeat_rounded,
+                        size: 18,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${_getRecurrenceLabel(_recurrence)} · 整个系列编辑不改重复规则，调整规则请选择“本期及以后”',
+                          key: const ValueKey('series_locked_recurrence_rule'),
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               if (_recurrence != RecurrenceType.none && !_isWholeSeriesEdit)
@@ -1706,8 +1796,10 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 60),
-            ],
+                const SizedBox(height: 60),
+              ],
+              ),
+            ),
           ),
         ),
       ),
@@ -1716,7 +1808,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   }
 
   Widget _buildRecurrenceScopeSummary(ColorScheme colorScheme) {
-    final isSeries = _isWholeSeriesEdit;
+    if (_isWholeSeriesEdit) {
+      return _buildWholeSeriesSummary(colorScheme);
+    }
     final seriesId = TodoRecurrenceSeriesEditService.seriesIdFor(_editingTodo);
     final counts = seriesId == null
         ? null
@@ -1725,39 +1819,185 @@ class TodoEditScreenState extends State<TodoEditScreen> {
             seriesId,
             now: DateTime.now(),
           );
-    final foreground = isSeries
-        ? colorScheme.onTertiaryContainer
-        : colorScheme.onSecondaryContainer;
-    final background = isSeries
-        ? colorScheme.tertiaryContainer
-        : colorScheme.secondaryContainer;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: background.withValues(alpha: 0.58),
+        color: colorScheme.secondaryContainer.withValues(alpha: 0.58),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            isSeries ? Icons.all_inclusive_rounded : Icons.event_repeat_rounded,
-            size: 18,
-            color: foreground,
-          ),
+          Icon(Icons.event_repeat_rounded, size: 18, color: colorScheme.secondary),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              isSeries && counts != null
-                  ? '整个系列 · ${counts.total} 期（历史 ${counts.historical}、今天 ${counts.current}、未来 ${counts.future}）；已完成 ${counts.completed}、已跳过 ${counts.skipped}。每期状态会保留。'
-                  : '本次保存会同步修改本期及之后已经生成的周期，未来周期也会沿用新规则。',
-              style: TextStyle(fontSize: 12, color: foreground),
+              counts == null
+                  ? '本次保存会修改本期及之后已经生成的周期。'
+                  : '本次会修改本期及之后 ${counts.total - counts.historical} 期；未来周期也会沿用新规则。',
+              style: TextStyle(
+                fontSize: 12,
+                color: colorScheme.onSecondaryContainer,
+              ),
             ),
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildWholeSeriesSummary(ColorScheme colorScheme) {
+    final seriesId = TodoRecurrenceSeriesEditService.seriesIdFor(_editingTodo);
+    final occurrences = seriesId == null
+        ? <TodoItem>[_editingTodo]
+        : TodoRecurrenceSeriesEditService.activeMembers(_editorTodos, seriesId);
+    final counts = seriesId == null
+        ? null
+        : TodoRecurrenceSeriesEditService.countMembers(
+            _editorTodos,
+            seriesId,
+            now: DateTime.now(),
+          );
+    final baseDateLabel = _dateFormat(
+      _isAllDay ? 'M月d日' : 'M月d日 HH:mm',
+    ).format(_originalCreatedDate);
+
+    return Container(
+      key: const ValueKey('series_scope_summary'),
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '整个系列 · ${counts?.total ?? occurrences.length} 期',
+                      key: const ValueKey('series_scope_title'),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              TextButton(
+                key: const ValueKey('series_occurrence_details_toggle'),
+                onPressed: () => setState(
+                  () => _showSeriesOccurrenceDetails =
+                      !_showSeriesOccurrenceDetails,
+                ),
+                child: Text(
+                  _showSeriesOccurrenceDetails
+                      ? '收起期次'
+                      : '查看 ${occurrences.length} 期',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (counts != null) ...[
+            Text(
+              '历史 ${counts.historical} · 今天 ${counts.current} · 未来 ${counts.future}',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '已完成 ${counts.completed} · 已跳过 ${counts.skipped} · 各期状态保留',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Text(
+            '日期变化以 $baseDateLabel 这期为基准',
+            key: const ValueKey('series_date_shift_anchor'),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: colorScheme.primary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (_showSeriesOccurrenceDetails) ...[
+            const Divider(height: 20),
+            for (final occurrence in occurrences)
+              _buildSeriesOccurrenceRow(occurrence, colorScheme),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSeriesOccurrenceRow(
+    TodoItem occurrence,
+    ColorScheme colorScheme,
+  ) {
+    final start = DateTime.fromMillisecondsSinceEpoch(
+      occurrence.createdDate ?? occurrence.createdAt,
+      isUtc: true,
+    ).toLocal();
+    final isCurrent = occurrence.id == _editingTodo.id;
+    final status = _seriesOccurrenceStatus(occurrence, start);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _dateFormat('M月d日').format(start),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+                Text(
+                  status,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (isCurrent)
+            Text(
+              '当前基准',
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: colorScheme.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            )
+          else
+            TextButton(
+              key: ValueKey('series_set_anchor_${occurrence.id}'),
+              onPressed: () => _switchToRelatedOccurrence(occurrence),
+              child: const Text('设为基准'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _seriesOccurrenceStatus(TodoItem occurrence, DateTime start) {
+    if (occurrence.isDone) return '已完成';
+    if (occurrence.isSkipped) return '已跳过';
+    if (start.isAfter(DateTime.now())) return '未开始';
+    final due = occurrence.dueDate?.toLocal() ??
+        DateTime(start.year, start.month, start.day + 1);
+    return due.isBefore(DateTime.now()) ? '已逾期' : '待完成';
   }
 
   Widget _buildRelatedRecurrenceSection(ColorScheme colorScheme) {
@@ -1768,7 +2008,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     final isRecurrenceSeries =
         _editingTodo.recurrence != RecurrenceType.none ||
         _editingTodo.recurrenceSeriesId?.isNotEmpty == true;
-    if (!isRecurrenceSeries) return const SizedBox.shrink();
+    if (!isRecurrenceSeries || _isWholeSeriesEdit) {
+      return const SizedBox.shrink();
+    }
 
     return OptionalLiquidGlassCard(
       width: double.infinity,

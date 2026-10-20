@@ -782,96 +782,143 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
 
   Future<void> _showRecurrenceManagement(TodoItem todo) async {
     final colorScheme = Theme.of(context).colorScheme;
+    final seriesId = TodoRecurrenceSeriesEditService.seriesIdFor(todo);
+    final seriesCount = seriesId == null
+        ? 0
+        : TodoRecurrenceSeriesEditService.activeMembers(
+            widget.todos,
+            seriesId,
+          ).length;
     await showAppModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: Icon(
-                Icons.edit_calendar_rounded,
-                color: colorScheme.primary,
-              ),
-              title: const Text('只修改本期'),
-              subtitle: const Text('仅编辑当前显示的这一期待办'),
-              onTap: () {
-                Navigator.pop(sheetContext);
-                _openTodoEditor(todo);
-              },
-            ),
-            ListTile(
-              leading: Icon(
-                Icons.event_repeat_rounded,
-                color: colorScheme.secondary,
-              ),
-              title: const Text('修改后续所有周期'),
-              subtitle: const Text('本期及之后的实例同步采用修改内容'),
-              onTap: () {
-                Navigator.pop(sheetContext);
-                _openTodoEditor(todo, scope: TodoRecurrenceEditScope.future);
-              },
-            ),
-            if (TodoRecurrenceSeriesEditService.seriesIdFor(todo) != null)
-              ListTile(
-                leading: Icon(
-                  Icons.all_inclusive_rounded,
-                  color: colorScheme.tertiary,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.8,
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+                  child: Text(
+                    '编辑范围',
+                    style: Theme.of(sheetContext).textTheme.titleSmall
+                        ?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
                 ),
-                title: const Text('编辑整个系列'),
-                subtitle: Text(
-                  '${TodoRecurrenceSeriesEditService.activeMembers(widget.todos, TodoRecurrenceSeriesEditService.seriesIdFor(todo)!).length} 期都会修改，保留每期完成与跳过状态',
+                ListTile(
+                  leading: Icon(
+                    Icons.edit_calendar_rounded,
+                    color: colorScheme.primary,
+                  ),
+                  title: const Text('仅本期'),
+                  subtitle: const Text('只编辑当前这一期待办'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _openTodoEditor(todo);
+                  },
                 ),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  _openTodoEditor(todo, scope: TodoRecurrenceEditScope.series);
-                },
-              ),
-            if (todo.recurrence != RecurrenceType.none)
-              ListTile(
-                leading: Icon(
-                  Icons.stop_circle_outlined,
-                  color: colorScheme.error,
-                ),
-                title: const Text('在本期结束循环'),
-                subtitle: const Text('保留已有记录，不再产生新的周期'),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  final start = DateTime.fromMillisecondsSinceEpoch(
-                    todo.createdDate ?? todo.createdAt,
-                    isUtc: true,
-                  ).toLocal();
-                  _invalidateTodoViewModel();
-                  setState(() {
-                    final currentStart = todo.createdDate ?? todo.createdAt;
-                    final seriesId = todo.recurrenceSeriesId;
-                    if (seriesId != null && seriesId.isNotEmpty) {
-                      for (final occurrence in widget.todos) {
-                        if (occurrence.id == todo.id ||
-                            occurrence.isDeleted ||
-                            occurrence.recurrenceSeriesId != seriesId ||
-                            (occurrence.createdDate ?? occurrence.createdAt) <=
-                                currentStart) {
-                          continue;
-                        }
-                        occurrence.isDeleted = true;
-                        occurrence.recurrence = RecurrenceType.none;
-                        occurrence.markAsChanged();
-                      }
-                    }
-                    todo.recurrence = RecurrenceType.none;
-                    todo.recurrenceEndDate = DateTime(
-                      start.year,
-                      start.month,
-                      start.day,
+                ListTile(
+                  leading: Icon(
+                    Icons.event_repeat_rounded,
+                    color: colorScheme.secondary,
+                  ),
+                  title: const Text('本期及以后'),
+                  subtitle: const Text('当前和后续已生成期次采用新内容'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _openTodoEditor(
+                      todo,
+                      scope: TodoRecurrenceEditScope.future,
                     );
-                    todo.markAsChanged();
-                  });
-                  widget.onTodosChanged(List<TodoItem>.from(widget.todos));
-                },
-              ),
-          ],
+                  },
+                ),
+                if (seriesId != null)
+                  ListTile(
+                    leading: Icon(
+                      Icons.all_inclusive_rounded,
+                      color: colorScheme.tertiary,
+                    ),
+                    title: const Text('整个系列'),
+                    subtitle: Text('$seriesCount 期都会修改；完成和跳过状态保留'),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      _openTodoEditor(
+                        todo,
+                        scope: TodoRecurrenceEditScope.series,
+                      );
+                    },
+                  ),
+                if (todo.recurrence != RecurrenceType.none) ...[
+                  const Divider(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+                    child: Text(
+                      '系列操作',
+                      style: Theme.of(sheetContext).textTheme.titleSmall
+                          ?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                  ),
+                  ListTile(
+                    leading: Icon(
+                      Icons.stop_circle_outlined,
+                      color: colorScheme.error,
+                    ),
+                    title: const Text('在本期结束重复'),
+                    subtitle: const Text('停止后续生成；本期之后已生成的关联期次移入回收站'),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      final start = DateTime.fromMillisecondsSinceEpoch(
+                        todo.createdDate ?? todo.createdAt,
+                        isUtc: true,
+                      ).toLocal();
+                      _invalidateTodoViewModel();
+                      setState(() {
+                        final currentStart = todo.createdDate ?? todo.createdAt;
+                        final currentSeriesId = todo.recurrenceSeriesId;
+                        if (currentSeriesId != null &&
+                            currentSeriesId.isNotEmpty) {
+                          for (final occurrence in widget.todos) {
+                            if (occurrence.id == todo.id ||
+                                occurrence.isDeleted ||
+                                occurrence.recurrenceSeriesId !=
+                                    currentSeriesId ||
+                                (occurrence.createdDate ??
+                                        occurrence.createdAt) <=
+                                    currentStart) {
+                              continue;
+                            }
+                            occurrence.isDeleted = true;
+                            occurrence.recurrence = RecurrenceType.none;
+                            occurrence.markAsChanged();
+                          }
+                        }
+                        todo.recurrence = RecurrenceType.none;
+                        todo.recurrenceEndDate = DateTime(
+                          start.year,
+                          start.month,
+                          start.day,
+                        );
+                        todo.markAsChanged();
+                      });
+                      widget.onTodosChanged(List<TodoItem>.from(widget.todos));
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );

@@ -362,20 +362,19 @@ void main() {
       bool done = false,
       bool skipped = false,
       RecurrenceType recurrence = RecurrenceType.none,
-    }) =>
-        TodoItem(
-          id: id,
-          title: '每周整理',
-          isDone: done,
-          isSkipped: skipped,
-          isSkippedSyncPending: skipped,
-          recurrence: recurrence,
-          recurrenceSeriesId: 'series-whole-edit',
-          createdDate: DateTime(2026, 10, day, 9).millisecondsSinceEpoch,
-          dueDate: DateTime(2026, 10, day, 23, 59),
-          isAllDay: true,
-          recurrenceEndDate: DateTime(2026, 11, 30),
-        );
+    }) => TodoItem(
+      id: id,
+      title: '每周整理',
+      isDone: done,
+      isSkipped: skipped,
+      isSkippedSyncPending: skipped,
+      recurrence: recurrence,
+      recurrenceSeriesId: 'series-whole-edit',
+      createdDate: DateTime(2026, 10, day, 9).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 10, day, 23, 59),
+      isAllDay: true,
+      recurrenceEndDate: DateTime(2026, 11, 30),
+    );
 
     final past = occurrence('whole-past', 19, done: true);
     final current = occurrence(
@@ -392,24 +391,34 @@ void main() {
       todo: current,
       todos: [past, current, future],
       recurrenceEditScope: TodoRecurrenceEditScope.series,
-      onEditorSave:
-          (items, readBaselines, {expectedSeriesMembership}) async {
-            submitted = items;
-            baselines = readBaselines;
-            membership = expectedSeriesMembership;
-            return const TodoEditorSaveResult();
-          },
+      onEditorSave: (items, readBaselines, {expectedSeriesMembership}) async {
+        submitted = items;
+        baselines = readBaselines;
+        membership = expectedSeriesMembership;
+        return const TodoEditorSaveResult();
+      },
     );
 
-    expect(find.textContaining('整个系列 · 3 期'), findsOneWidget);
+    expect(find.text('整个系列 · 3 期'), findsOneWidget);
+    expect(find.text('查看 3 期'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('todo_edit_completion_switch')),
+      findsNothing,
+    );
     await editTitle(tester, '每周整理并复核');
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.text('应用到 3 期').first);
     await settleEditor(tester);
     expect(find.text('确认应用到整个系列'), findsOneWidget);
-    expect(find.textContaining('历史 1 期、今天 1 期、未来 1 期'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog).last,
+        matching: find.textContaining('历史 1 · 今天 1 · 未来 1'),
+      ),
+      findsOneWidget,
+    );
     expect(submitted, isNull);
 
-    await tester.tap(find.text('应用到整个系列'));
+    await tester.tap(find.text('应用到 3 期').last);
     await settleEditor(tester);
 
     expect(submitted, hasLength(3));
@@ -520,14 +529,13 @@ void main() {
             username: PlanAvailabilityFixture.username,
             isLight: true,
             onTodosChanged: (_) {},
-            onEditorSave:
-                (items, baselines, {expectedSeriesMembership}) =>
-                    TodoEditorSaveService.save(
-              username: PlanAvailabilityFixture.username,
-              changedTodos: items,
-              baselines: baselines,
-              expectedSeriesMembership: expectedSeriesMembership,
-            ),
+            onEditorSave: (items, baselines, {expectedSeriesMembership}) =>
+                TodoEditorSaveService.save(
+                  username: PlanAvailabilityFixture.username,
+                  changedTodos: items,
+                  baselines: baselines,
+                  expectedSeriesMembership: expectedSeriesMembership,
+                ),
             onEditorGroupsSave: (items, baselines) =>
                 TodoEditorSaveService.saveGroups(
                   username: PlanAvailabilityFixture.username,
