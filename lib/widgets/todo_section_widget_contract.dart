@@ -119,6 +119,8 @@ mixin _TodoSectionContract {
 
   Future<void> _showRecurrenceManagement(TodoItem todo);
 
+  Future<void> _deleteRecurringTodoWithScope(TodoItem todo);
+
   Widget _buildTodoItemCard(
     TodoItem todo, {
     required bool isPast,

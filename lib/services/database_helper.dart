@@ -2993,6 +2993,7 @@ class DatabaseHelper {
 
   Future<List<Map<String, dynamic>>> getTodoMaps({
     bool includeDeleted = false,
+    bool deletedOnly = false,
     String? where,
     List<Object?>? whereArgs,
     List<String>? uuids,
@@ -3025,6 +3026,8 @@ class DatabaseHelper {
     }
     if (where != null && where.isNotEmpty) {
       whereParts.add(where);
+    } else if (deletedOnly) {
+      whereParts.add('t.is_deleted IS 1');
     } else if (!includeDeleted) {
       whereParts.add('t.is_deleted IS NOT 1');
     }

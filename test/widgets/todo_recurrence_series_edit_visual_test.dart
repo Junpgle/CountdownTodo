@@ -309,6 +309,27 @@ void main() {
     expect(find.text('系列操作'), findsOneWidget);
     expect(find.text('在本期结束重复'), findsOneWidget);
     expect(find.text('停止后续生成；本期之后已生成的关联期次移入回收站'), findsOneWidget);
+    expect(find.text('移至回收站'), findsOneWidget);
+    expect(find.text('按范围删除'), findsOneWidget);
+    expect(find.text('当前系列共 3 期，可删除本期、后续或整个系列'), findsOneWidget);
+    await expectLater(
+      find.byType(MaterialApp),
+      matchesGoldenFile('goldens/todo_recurrence_delete_management_phone.png'),
+    );
+
+    await tester.tap(find.text('在本期结束重复'));
+    await tester.pumpAndSettle();
+    expect(find.text('在本期结束重复？'), findsOneWidget);
+    expect(find.textContaining('当前期和此前期次会保留'), findsOneWidget);
+    await tester.tap(find.text('返回'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('按范围删除'));
+    await tester.pumpAndSettle();
+    expect(find.text('选择「每周整理资料」的删除范围'), findsOneWidget);
+    expect(find.text('仅本期 · 1期'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
 }

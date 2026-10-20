@@ -215,6 +215,81 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
     );
   }
 
+  Future<void> _deleteRecurringTodoWithScope(TodoItem todo) async {
+    if (_isDeletingRecurringTodo || !mounted) return;
+    final scope = await showTodoRecurrenceDeleteDialog(
+      context: context,
+      todo: todo,
+      todos: widget.todos,
+    );
+    if (scope == null || !mounted) return;
+
+    _isDeletingRecurringTodo = true;
+    try {
+      final plan = await StorageService.deleteRecurringTodoWithScope(
+        widget.username,
+        todo.id,
+        scope,
+      );
+      final changedById = <String, TodoItem>{
+        for (final item in widget.todos) item.id: item,
+        for (final item in plan.changedItems) item.id: item,
+      };
+      _invalidateTodoViewModel();
+      widget.onTodosChanged(
+        changedById.values.where((item) => !item.isDeleted).toList(),
+      );
+      if (mounted) setState(() {});
+
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final cacheKey = 'deleted_todos_${widget.username}';
+        final cached = prefs.getString(cacheKey);
+        final deleted = cached == null
+            ? <TodoItem>[]
+            : (jsonDecode(cached) as Iterable)
+                  .map((item) => TodoItem.fromJson(item))
+                  .toList();
+        final deletedById = <String, TodoItem>{
+          for (final item in deleted) item.id: item,
+          for (final item in plan.changedItems.where((item) => item.isDeleted))
+            item.id: item,
+        };
+        await prefs.setString(
+          cacheKey,
+          jsonEncode(deletedById.values.map((item) => item.toJson()).toList()),
+        );
+      } catch (error) {
+        debugPrint('更新回收站缓存失败: $error');
+      }
+
+      if (!mounted) return;
+      final rangeLabel = switch (scope) {
+        TodoRecurrenceDeleteScope.occurrence => '本期',
+        TodoRecurrenceDeleteScope.future => '本期及以后',
+        TodoRecurrenceDeleteScope.series => '整个系列',
+      };
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(
+          content: Text('已将$rangeLabel ${plan.preview.occurrenceCount}期移入回收站'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(
+          content: Text('移入回收站失败：$error'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      _isDeletingRecurringTodo = false;
+    }
+  }
+
   // ─────────────────────────────────────────────
   // 时间标签构建（单行，信息完整）
   // ─────────────────────────────────────────────
@@ -857,6 +932,32 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
                       );
                     },
                   ),
+                if (seriesId != null) ...[
+                  const Divider(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+                    child: Text(
+                      '移至回收站',
+                      style: Theme.of(sheetContext).textTheme.titleSmall
+                          ?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                  ),
+                  ListTile(
+                    leading: Icon(
+                      Icons.delete_outline_rounded,
+                      color: colorScheme.error,
+                    ),
+                    title: const Text('按范围删除'),
+                    subtitle: Text('当前系列共 $seriesCount 期，可删除本期、后续或整个系列'),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      _deleteRecurringTodoWithScope(todo);
+                    },
+                  ),
+                ],
                 if (todo.recurrence != RecurrenceType.none) ...[
                   const Divider(height: 12),
                   Padding(
@@ -877,7 +978,33 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
                     ),
                     title: const Text('在本期结束重复'),
                     subtitle: const Text('停止后续生成；本期之后已生成的关联期次移入回收站'),
-                    onTap: () {
+                    onTap: () async {
+                      final accepted = await showAppDialog<bool>(
+                        context: context,
+                        builder: (dialogContext) => AlertDialog(
+                          icon: Icon(
+                            Icons.stop_circle_outlined,
+                            color: Theme.of(dialogContext).colorScheme.error,
+                          ),
+                          title: const Text('在本期结束重复？'),
+                          content: const Text(
+                            '当前期和此前期次会保留，停止后续生成，并将本期之后已生成的期次移入回收站。',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.pop(dialogContext, false),
+                              child: const Text('返回'),
+                            ),
+                            FilledButton(
+                              onPressed: () =>
+                                  Navigator.pop(dialogContext, true),
+                              child: const Text('结束重复'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (accepted != true || !sheetContext.mounted) return;
                       Navigator.pop(sheetContext);
                       final start = DateTime.fromMillisecondsSinceEpoch(
                         todo.createdDate ?? todo.createdAt,

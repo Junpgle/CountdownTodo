@@ -4,6 +4,7 @@ import 'package:visibility_detector/visibility_detector.dart';
 
 import '../models.dart';
 import '../services/conflict_visibility_service.dart';
+import '../services/todo_recurrence_delete_service.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/calendar_date_math.dart';
 import 'ai_water_border.dart';
@@ -813,6 +814,10 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
         ),
       ),
       confirmDismiss: (_) async {
+        if (TodoRecurrenceDeleteService.isRecurring(todo)) {
+          await widget.onTodoDelete(todo);
+          return false;
+        }
         return await showAppDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(

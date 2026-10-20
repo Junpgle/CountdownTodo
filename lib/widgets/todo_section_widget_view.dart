@@ -132,6 +132,10 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
           ),
         ),
         confirmDismiss: (_) async {
+          if (TodoRecurrenceDeleteService.isRecurring(todo)) {
+            await _deleteRecurringTodoWithScope(todo);
+            return false;
+          }
           return await showAppDialog<bool>(
             context: context,
             builder: (ctx) => AlertDialog(
@@ -413,7 +417,8 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                                   todo.isDone = val;
                                                   if (val && todo.isSkipped) {
                                                     todo.isSkipped = false;
-                                                    todo.isSkippedSyncPending = true;
+                                                    todo.isSkippedSyncPending =
+                                                        true;
                                                   }
                                                   if (val) {
                                                     _isCompleting[todo.id] =
@@ -1906,6 +1911,10 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
         },
         onTodoTapWithContext: _editTodo,
         onTodoDelete: (todo) async {
+          if (TodoRecurrenceDeleteService.isRecurring(todo)) {
+            await _deleteRecurringTodoWithScope(todo);
+            return;
+          }
           _invalidateTodoViewModel();
           setState(() {
             PomodoroSyncService().sendStopSignal(todoUuid: todo.id);

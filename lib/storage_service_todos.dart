@@ -1768,27 +1768,44 @@ mixin _StorageTodos on _StorageServiceBase {
         offset: offset,
         includeConflictData: true,
       );
-      if (limit != null && maps.isNotEmpty) {
+      if (maps.isNotEmpty) {
         final activeSeriesIds = maps
-            .where((map) => (_parseNullableInt(map['recurrence']) ?? 0) != 0)
-            .map((map) => map['recurrence_series_id']?.toString().trim())
+            .where(
+              (map) =>
+                  map['is_deleted'] != 1 &&
+                  (_parseNullableInt(map['recurrence']) ?? 0) != 0,
+            )
+            .map((map) {
+              final seriesId = map['recurrence_series_id']?.toString().trim();
+              return seriesId == null || seriesId.isEmpty
+                  ? map['uuid']?.toString()
+                  : seriesId;
+            })
             .whereType<String>()
             .where((seriesId) => seriesId.isNotEmpty)
             .toSet();
         if (activeSeriesIds.isNotEmpty) {
-          final seriesMaps = await dbHelper.getTodoMaps(
-            includeDeleted: includeDeleted,
-            recurrenceSeriesIds: activeSeriesIds,
-            limit: limit,
-            includeConflictData: true,
-          );
-          final mapsById = <String, Map<String, dynamic>>{
-            for (final map in maps) map['uuid'].toString(): map,
-          };
-          for (final map in seriesMaps) {
-            mapsById[map['uuid'].toString()] = map;
+          final loadCompleteSeries = limit != null;
+          final shouldLoadSeries = loadCompleteSeries || !includeDeleted;
+          if (shouldLoadSeries) {
+            // Unbounded list reads already include all live rows. Add only
+            // deleted members of active series so recurrence repair can keep
+            // user-deleted dates as tombstones. Limited reads need the full
+            // series for their progress summary, including deleted rows.
+            final seriesMaps = await dbHelper.getTodoMaps(
+              includeDeleted: true,
+              deletedOnly: !loadCompleteSeries,
+              recurrenceSeriesIds: activeSeriesIds,
+              includeConflictData: true,
+            );
+            final mapsById = <String, Map<String, dynamic>>{
+              for (final map in maps) map['uuid'].toString(): map,
+            };
+            for (final map in seriesMaps) {
+              mapsById[map['uuid'].toString()] = map;
+            }
+            maps = mapsById.values.toList();
           }
-          maps = mapsById.values.toList();
         }
       }
       if (maps.isNotEmpty) {
@@ -2706,6 +2723,16 @@ mixin _StorageTodos on _StorageServiceBase {
         .where((todo) => todo.id == candidate.id)
         .firstOrNull;
     if (deletedDeterministic != null) {
+      if (!_recurrenceDedupeTombstoneIds.contains(deletedDeterministic.id)) {
+        // A durable user deletion is a period-level tombstone. Do not turn it
+        // back into an active item merely because recurrence repair visits the
+        // same deterministic date again.
+        return (
+          occurrence: deletedDeterministic,
+          isNew: false,
+          didChange: false,
+        );
+      }
       _copyRecurrenceOccurrenceData(candidate, deletedDeterministic);
       deletedDeterministic.isDeleted = false;
       deletedDeterministic.markRecurrenceMaintenanceChanged();
@@ -3222,6 +3249,37 @@ mixin _StorageTodos on _StorageServiceBase {
 
     await saveTodos(username, localTodos, sync: true);
     return true;
+  }
+
+  Future<TodoRecurrenceDeletePlan> deleteRecurringTodoWithScope(
+    String username,
+    String todoId,
+    TodoRecurrenceDeleteScope scope, {
+    bool sync = true,
+  }) async {
+    // Run normal materialization first so a rule owner has the app's usual
+    // look-ahead instances before resolving a deletion scope.
+    final snapshot = await getTodos(username, includeDeleted: true);
+    final plan = TodoRecurrenceDeleteService.plan(
+      todos: snapshot,
+      todoId: todoId,
+      scope: scope,
+    );
+    if (plan.changedItems.isEmpty) {
+      throw StateError('没有可保存的删除变更');
+    }
+
+    await saveTodos(
+      username,
+      plan.changedItems,
+      sync: sync,
+      expectedTodoBaselines: plan.baselines,
+      expectedSeriesMembership: {plan.seriesId: plan.expectedActiveMemberIds},
+    );
+    // Only duplicate repair may reactivate its own tombstones. A user deleting
+    // a logical period closes that exception for every same-day row.
+    _recurrenceDedupeTombstoneIds.removeAll(plan.revivalBarrierIds);
+    return plan;
   }
 
   Future<void> saveTodoGroups(

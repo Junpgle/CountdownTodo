@@ -533,6 +533,12 @@ abstract class _StorageServiceBase {
   TodoItem _copyForNextRecurrence(TodoItem source);
   void _rollRecurrenceDateByDays(TodoItem todo, int days);
   Future<bool> deleteTodoGlobally(String username, String idToDelete);
+  Future<TodoRecurrenceDeletePlan> deleteRecurringTodoWithScope(
+    String username,
+    String todoId,
+    TodoRecurrenceDeleteScope scope, {
+    bool sync = true,
+  });
   Future<void> saveTodoGroups(
     String username,
     List<TodoGroup> items, {

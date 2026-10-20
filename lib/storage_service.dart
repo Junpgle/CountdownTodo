@@ -21,6 +21,7 @@ import 'services/sync_capability_service.dart';
 import 'services/sync_oplog_policy.dart';
 import 'services/todo_lww_service.dart';
 import 'services/todo_recurrence_date_service.dart';
+import 'services/todo_recurrence_delete_service.dart';
 import 'services/conflict_visibility_service.dart';
 import 'services/storage/app_settings_storage.dart';
 import 'services/storage/countdown_storage.dart';
@@ -707,6 +708,18 @@ class StorageService {
 
   static Future<bool> deleteTodoGlobally(String username, String idToDelete) =>
       _storage.deleteTodoGlobally(username, idToDelete);
+
+  static Future<TodoRecurrenceDeletePlan> deleteRecurringTodoWithScope(
+    String username,
+    String todoId,
+    TodoRecurrenceDeleteScope scope, {
+    bool sync = true,
+  }) => _storage.deleteRecurringTodoWithScope(
+    username,
+    todoId,
+    scope,
+    sync: sync,
+  );
 
   static Future<void> saveTodoGroups(
     String username,
