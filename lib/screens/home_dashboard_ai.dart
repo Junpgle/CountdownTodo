@@ -235,13 +235,20 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
   Future<void> _handleAiTodosBatchAction(
     List<TodoItem> inserted,
     List<TodoItem> updated,
+    {Map<String, TodoItem>? expectedTodoBaselines,
+    Map<String, Set<String>>? expectedSeriesMembership}
   ) async {
     final nextTodos = AiTodoActionExecutor.mergeTodoUpdates(
       _todos,
       inserted,
       updated,
     );
-    await StorageService.saveTodos(widget.username, nextTodos);
+    await StorageService.saveTodos(
+      widget.username,
+      nextTodos,
+      expectedTodoBaselines: expectedTodoBaselines,
+      expectedSeriesMembership: expectedSeriesMembership,
+    );
     if (!mounted) return;
     setState(() {
       _todos = nextTodos;

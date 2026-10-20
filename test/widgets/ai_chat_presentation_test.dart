@@ -228,7 +228,8 @@ void main() {
               {'id': 'todo-target', 'title': '复习高数'},
             ],
             initialMessage: '请把行测、申论、习概小论文和复习高数规划到晚上九点半，生成规划块',
-            onTodosBatchAction: (_, _) {},
+            onTodosBatchAction:
+                (_, _, {expectedTodoBaselines, expectedSeriesMembership}) {},
           ),
         ),
       );

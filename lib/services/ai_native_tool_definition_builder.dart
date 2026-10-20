@@ -56,8 +56,8 @@ class AiNativeToolDefinitionBuilder {
     'recurrenceSeriesId': {'type': 'string'},
     'recurrenceScope': {
       'type': 'string',
-      'enum': ['occurrence', 'future'],
-      'description': '默认 occurrence；仅用户明确要求本期及以后时使用 future。',
+      'enum': ['occurrence', 'future', 'series'],
+      'description': '默认 occurrence；future 用于本期及以后；series 仅 update_todo 且用户明确要求整个系列时使用，保留各期完成/跳过状态且不修改重复规则。',
     },
     'customIntervalDays': {
       'type': ['integer', 'null'],

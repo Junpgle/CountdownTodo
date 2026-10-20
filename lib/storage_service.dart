@@ -572,6 +572,7 @@ class StorageService {
     bool recomputeScheduleConflicts = true,
     List<TodoItem>? bandSyncSnapshot,
     Map<String, TodoItem>? expectedTodoBaselines,
+    Map<String, Set<String>>? expectedSeriesMembership,
   }) => _storage.saveTodos(
     username,
     items,
@@ -580,6 +581,7 @@ class StorageService {
     recomputeScheduleConflicts: recomputeScheduleConflicts,
     bandSyncSnapshot: bandSyncSnapshot,
     expectedTodoBaselines: expectedTodoBaselines,
+    expectedSeriesMembership: expectedSeriesMembership,
   );
 
   static Future<Map<String, int>> scanAllTodoConflicts(String username) =>

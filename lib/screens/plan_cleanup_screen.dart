@@ -651,12 +651,14 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
               await _identity!.check();
               await StorageService.saveTodos(widget.username, items);
             },
-            onEditorSave: (items, baselines) async {
+            onEditorSave:
+                (items, baselines, {expectedSeriesMembership}) async {
               await _identity!.check();
               final result = await TodoEditorSaveService.save(
                 username: widget.username,
                 changedTodos: items,
                 baselines: baselines,
+                expectedSeriesMembership: expectedSeriesMembership,
               );
               await _identity!.check();
               return result;

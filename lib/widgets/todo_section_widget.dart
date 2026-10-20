@@ -47,6 +47,7 @@ import '../services/feature_tip_service.dart';
 import '../services/item_semantics_service.dart';
 import '../services/fixed_schedule_recurrence_service.dart';
 import '../services/todo_recurrence_date_service.dart';
+import '../services/todo_recurrence_series_edit_service.dart';
 import '../services/conflict_visibility_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/recognized_todo_adapter.dart';
@@ -93,6 +94,7 @@ class TodoSectionWidget extends StatefulWidget {
   final Future<TodoEditorSaveResult> Function(
     List<TodoItem>,
     Map<String, TodoItem>,
+    {Map<String, Set<String>>? expectedSeriesMembership}
   )?
   onEditorSave;
   final FutureOr<void> Function(List<TodoGroup>, Map<String, TodoGroup>)?

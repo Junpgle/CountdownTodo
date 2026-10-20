@@ -87,6 +87,7 @@ void main() {
         final action = AiActionParser.extractTodoActions(
           response,
           originalText: '从本期开始结束循环并清空日期',
+          existingTodoTitles: const {'occurrence-current': '喝水'},
         ).single;
 
         expect(action.hasDueDate, isTrue);
@@ -103,6 +104,39 @@ void main() {
         expect(restored.appliesToFutureOccurrences, isTrue);
       },
     );
+
+    test('AI 只有收到整系列明确请求才保留 series 作用范围', () {
+      const response = '''
+[ACTION_START]
+[{"action":"update_todo","updates":[{"todoId":"occurrence-current","recurrenceSeriesId":"series-water","recurrenceScope":"series","title":"补水"}]}]
+[ACTION_END]
+''';
+      final explicit = AiActionParser.extractTodoActions(
+        response,
+        originalText: '把喝水整个系列的标题改成补水',
+        existingTodoTitles: const {'occurrence-current': '喝水'},
+      ).single;
+      final vague = AiActionParser.extractTodoActions(
+        response,
+        originalText: '把喝水的标题改成补水',
+        existingTodoTitles: const {'occurrence-current': '喝水'},
+      ).single;
+      const unsafeResponse = '''
+[ACTION_START]
+[{"action":"complete_todo","updates":[{"todoId":"occurrence-current","recurrenceScope":"series"}]}]
+[ACTION_END]
+''';
+      final complete = AiActionParser.extractTodoActions(
+        unsafeResponse,
+        originalText: '完成喝水整个系列',
+        existingTodoTitles: const {'occurrence-current': '喝水'},
+      ).single;
+
+      expect(explicit.recurrenceScope, 'series');
+      expect(vague.recurrenceScope, 'occurrence');
+      expect(vague.metadata['wholeSeriesScopeDowngraded'], isTrue);
+      expect(complete.recurrenceScope, 'occurrence');
+    });
 
     test('omitted recurrence keeps active rule and full todo metadata', () {
       final current = occurrence(
@@ -183,6 +217,65 @@ void main() {
             .recurrence,
         RecurrenceType.none,
       );
+    });
+
+    test('series scope updates history and future but preserves per-period state and rules', () {
+      final past = occurrence(
+        id: 'occurrence-past',
+        day: 19,
+        recurrence: RecurrenceType.none,
+        isDone: true,
+      );
+      final current = occurrence(
+        id: 'occurrence-current',
+        day: 20,
+        recurrence: RecurrenceType.daily,
+      );
+      final future = occurrence(
+        id: 'occurrence-future',
+        day: 21,
+        recurrence: RecurrenceType.none,
+      )
+        ..isSkipped = true
+        ..isSkippedSyncPending = true;
+      final action = AiTodoAction(
+        type: AiTodoActionType.updateTodo,
+        todoId: current.id,
+        title: '补充水分',
+        recurrence: 'weekly',
+        recurrenceEndDate: '2026-12-31',
+        recurrenceSeriesId: 'series-water',
+        recurrenceScope: 'series',
+        hasRecurrence: true,
+        hasRecurrenceEndDate: true,
+      );
+
+      final result = AiTodoActionExecutor.execute(
+        actions: [action],
+        existingTodos: AiTodoChatLauncher.toChatTodoMaps([
+          past,
+          current,
+          future,
+        ]),
+      );
+      final updates = {for (final todo in result.updatedTodos) todo.id: todo};
+
+      expect(updates.keys, {
+        'occurrence-past',
+        'occurrence-current',
+        'occurrence-future',
+      });
+      expect(updates.values.map((todo) => todo.title), everyElement('补充水分'));
+      expect(updates['occurrence-past']!.isDone, isTrue);
+      expect(updates['occurrence-future']!.isSkipped, isTrue);
+      expect(updates['occurrence-future']!.isSkippedSyncPending, isTrue);
+      expect(updates['occurrence-current']!.recurrence, RecurrenceType.daily);
+      expect(updates['occurrence-future']!.recurrence, RecurrenceType.none);
+      expect(
+        updates['occurrence-current']!.recurrenceEndDate,
+        current.recurrenceEndDate,
+      );
+      expect(updates.values.every((todo) => !todo.isDeleted), isTrue);
     });
 
     test(
@@ -432,6 +525,7 @@ void main() {
 
       expect(prompt, contains('recurrenceScope="occurrence"'));
       expect(prompt, contains('recurrenceScope="future"'));
+      expect(prompt, contains('recurrenceScope="series"'));
       expect(prompt, contains('绝不能把seriesId当期次ID'));
       expect(prompt, contains('新建循环待办必须提供首次发生日期'));
     });

@@ -1791,11 +1791,13 @@ class SearchNavigationHandler {
                 );
               }
             },
-            onEditorSave: (changedTodos, baselines) async {
+            onEditorSave:
+                (changedTodos, baselines, {expectedSeriesMembership}) async {
               final result = await TodoEditorSaveService.save(
                 username: username,
                 changedTodos: changedTodos,
                 baselines: baselines,
+                expectedSeriesMembership: expectedSeriesMembership,
               );
               if (context.mounted && result.warnings.isEmpty) {
                 AppSnackBars.showSnackBar(

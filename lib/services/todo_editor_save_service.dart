@@ -14,6 +14,7 @@ class TodoEditorSaveService {
     required String username,
     required List<TodoItem> changedTodos,
     required Map<String, TodoItem> baselines,
+    Map<String, Set<String>>? expectedSeriesMembership,
   }) async {
     if (changedTodos.isEmpty) return const TodoEditorSaveResult();
     try {
@@ -21,6 +22,7 @@ class TodoEditorSaveService {
         username,
         changedTodos,
         expectedTodoBaselines: baselines,
+        expectedSeriesMembership: expectedSeriesMembership,
       );
       return const TodoEditorSaveResult();
     } catch (error) {
@@ -65,6 +67,8 @@ class TodoEditorSaveService {
       expected.id == actual.id &&
       expected.title == actual.title &&
       expected.isDone == actual.isDone &&
+      expected.isSkipped == actual.isSkipped &&
+      expected.isSkippedSyncPending == actual.isSkippedSyncPending &&
       expected.isDeleted == actual.isDeleted &&
       expected.version == actual.version &&
       expected.updatedAt == actual.updatedAt &&

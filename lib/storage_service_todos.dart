@@ -155,6 +155,7 @@ mixin _StorageTodos on _StorageServiceBase {
     Map<String, TodoItem?>? recurrenceUploadBaselines,
     List<TodoItem>? bandSyncSnapshot,
     Map<String, TodoItem>? expectedTodoBaselines,
+    Map<String, Set<String>>? expectedSeriesMembership,
   }) async {
     final dedupeMap = <String, TodoItem>{};
     if (sync && !isSyncSource) _recurrenceCheckCache.clear();
@@ -247,6 +248,30 @@ mixin _StorageTodos on _StorageServiceBase {
             whereArgs: ids,
           );
           pendingIds.addAll(ops.map((row) => row['target_uuid'].toString()));
+        }
+      }
+      if (expectedSeriesMembership != null) {
+        for (final entry in expectedSeriesMembership.entries) {
+          final seriesId = entry.key.trim();
+          if (seriesId.isEmpty) {
+            throw StateError('循环系列标识无效，请重新打开后再编辑。');
+          }
+          final rows = await txn.query(
+            'todos',
+            columns: const ['uuid'],
+            where:
+                "is_deleted = 0 AND (recurrence_series_id = ? OR "
+                "(uuid = ? AND TRIM(COALESCE(recurrence_series_id, '')) = ''))",
+            whereArgs: [seriesId, seriesId],
+          );
+          final currentMembers = rows
+              .map((row) => row['uuid']?.toString())
+              .whereType<String>()
+              .toSet();
+          if (currentMembers.length != entry.value.length ||
+              !currentMembers.containsAll(entry.value)) {
+            throw StateError('循环系列已有变化，请重新打开后再编辑。');
+          }
         }
       }
       final staleRuleSeries = <String>{};

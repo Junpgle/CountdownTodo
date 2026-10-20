@@ -96,6 +96,60 @@ void main() {
     );
   });
 
+  test('事务发现系列新增成员时拒绝局部保存', () async {
+    const username = PlanAvailabilityFixture.username;
+    final anchor = TodoItem(
+      id: 'guarded-series',
+      title: '每周复盘',
+      recurrence: RecurrenceType.weekly,
+      recurrenceSeriesId: 'guarded-series',
+      createdDate: DateTime(2026, 10, 19).millisecondsSinceEpoch,
+    );
+    final existing = TodoItem(
+      id: 'guarded-series-old',
+      title: '每周复盘',
+      recurrenceSeriesId: 'guarded-series',
+      createdDate: DateTime(2026, 10, 12).millisecondsSinceEpoch,
+    );
+    await StorageService.saveTodos(username, [anchor, existing]);
+    final baselines = {
+      for (final todo in [anchor, existing]) todo.id: todo,
+    };
+    final edited = TodoItem.fromJson(anchor.toJson())
+      ..title = '复盘周报'
+      ..markAsChanged();
+    final newlyMaterialized = TodoItem(
+      id: 'guarded-series-new',
+      title: '每周复盘',
+      recurrenceSeriesId: 'guarded-series',
+      createdDate: DateTime(2026, 10, 26).millisecondsSinceEpoch,
+    );
+    await StorageService.saveTodos(username, [newlyMaterialized]);
+
+    await expectLater(
+      StorageService.saveTodos(
+        username,
+        [edited],
+        expectedTodoBaselines: baselines,
+        expectedSeriesMembership: {
+          'guarded-series': {'guarded-series', 'guarded-series-old'},
+        },
+      ),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('循环系列已有变化'),
+        ),
+      ),
+    );
+    final storedAnchor = await StorageService.getTodoByUuid(
+      username,
+      anchor.id,
+    );
+    expect(storedAnchor?.title, '每周复盘');
+  });
+
   test('oplog 写入失败时回滚待办，读回不会误判成已保存', () async {
     const username = PlanAvailabilityFixture.username;
     final baseline = (await StorageService.getTodos(

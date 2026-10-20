@@ -87,7 +87,10 @@ mixin _TodoSectionContract {
 
   void _editTodo(TodoItem todo, BuildContext cardCtx);
 
-  void _openTodoEditor(TodoItem todo, {bool applyToFutureOccurrences = false});
+  void _openTodoEditor(
+    TodoItem todo, {
+    TodoRecurrenceEditScope scope = TodoRecurrenceEditScope.occurrence,
+  });
 
   String _buildTimeLabel(
     TodoItem todo,

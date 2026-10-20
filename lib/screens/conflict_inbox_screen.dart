@@ -782,14 +782,21 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         onFixedSchedulesChanged: (_) {
           unawaited(_loadConflicts());
         },
-        onTodosBatchAction: (inserted, updated) async {
+        onTodosBatchAction:
+            (inserted, updated,
+                {expectedTodoBaselines, expectedSeriesMembership}) async {
           final allTodos = await StorageService.getTodos(widget.username);
           final merged = AiTodoActionExecutor.mergeTodoUpdates(
             allTodos,
             inserted,
             updated,
           );
-          await StorageService.saveTodos(widget.username, merged);
+          await StorageService.saveTodos(
+            widget.username,
+            merged,
+            expectedTodoBaselines: expectedTodoBaselines,
+            expectedSeriesMembership: expectedSeriesMembership,
+          );
           try {
             await _loadConflicts();
           } catch (error) {
@@ -3328,11 +3335,13 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
           onTodosChanged: (updatedTodos) async {
             await StorageService.saveTodos(widget.username, updatedTodos);
           },
-          onEditorSave: (updatedTodos, baselines) =>
-              TodoEditorSaveService.save(
+          onEditorSave:
+              (updatedTodos, baselines, {expectedSeriesMembership}) =>
+                  TodoEditorSaveService.save(
                 username: widget.username,
                 changedTodos: updatedTodos,
                 baselines: baselines,
+                expectedSeriesMembership: expectedSeriesMembership,
               ),
           onEditorGroupsSave: (updatedGroups, baselines) =>
               TodoEditorSaveService.saveGroups(

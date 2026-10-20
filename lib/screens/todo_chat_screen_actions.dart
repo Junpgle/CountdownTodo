@@ -1571,8 +1571,10 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         label = '批改';
         break;
       case AiTodoActionType.updateTodo:
-        color = Colors.orange;
-        label = '修改';
+        color = action.recurrenceScope == 'series'
+            ? Theme.of(context).colorScheme.tertiary
+            : Colors.orange;
+        label = action.recurrenceScope == 'series' ? '改系列' : '修改';
         break;
       case AiTodoActionType.categorizeTodo:
         color = Colors.orange;
@@ -1818,6 +1820,23 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
             ? TodoTimeMode.unscheduled.name
             : TodoTimeMode.deadline.name);
     var recurrenceScope = action.recurrenceScope;
+    final scopeTarget = _findExistingTodo(action.todoId);
+    final rawTargetRecurrence = scopeTarget?['recurrence'];
+    final targetHasRecurrence = switch (rawTargetRecurrence) {
+      num value => value.toInt() != RecurrenceType.none.index,
+      String value => value.trim().isNotEmpty &&
+          value.trim() != 'none' &&
+          value.trim() != '0',
+      _ => false,
+    };
+    final targetSeriesId =
+        scopeTarget?['recurrenceSeriesId']?.toString().trim();
+    final canChooseWholeSeriesScope =
+        action.type == AiTodoActionType.updateTodo &&
+        (targetSeriesId?.isNotEmpty == true || targetHasRecurrence);
+    if (!canChooseWholeSeriesScope && recurrenceScope == 'series') {
+      recurrenceScope = 'occurrence';
+    }
     final initialRecurrence = recurrence;
     final initialIsAllDay = isAllDay;
     final initialTimeMode = timeMode;
@@ -1987,20 +2006,34 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                           isAllDay = timeMode == TodoTimeMode.dateOnly.name;
                         }),
                       ),
-                    DropdownButtonFormField<String>(
-                      initialValue: recurrence,
-                      decoration: const InputDecoration(labelText: '循环'),
-                      items: const [
-                        DropdownMenuItem(value: 'none', child: Text('不循环')),
-                        DropdownMenuItem(value: 'daily', child: Text('每天')),
-                        DropdownMenuItem(value: 'weekly', child: Text('每周')),
-                        DropdownMenuItem(value: 'monthly', child: Text('每月')),
-                        DropdownMenuItem(value: 'yearly', child: Text('每年')),
-                        DropdownMenuItem(value: 'weekdays', child: Text('工作日')),
-                      ],
-                      onChanged: (value) =>
-                          setDialogState(() => recurrence = value ?? 'none'),
-                    ),
+                    if (action.type == AiTodoActionType.updateTodo &&
+                        recurrenceScope == 'series')
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Text(
+                            '整个系列编辑会保留当前重复规则；需要修改频率时请切换到“本期及以后”。',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                      )
+                    else
+                      DropdownButtonFormField<String>(
+                        initialValue: recurrence,
+                        decoration: const InputDecoration(labelText: '循环'),
+                        items: const [
+                          DropdownMenuItem(value: 'none', child: Text('不循环')),
+                          DropdownMenuItem(value: 'daily', child: Text('每天')),
+                          DropdownMenuItem(value: 'weekly', child: Text('每周')),
+                          DropdownMenuItem(value: 'monthly', child: Text('每月')),
+                          DropdownMenuItem(value: 'yearly', child: Text('每年')),
+                          DropdownMenuItem(value: 'weekdays', child: Text('工作日')),
+                        ],
+                        onChanged: (value) => setDialogState(
+                          () => recurrence = value ?? 'none',
+                        ),
+                      ),
                     if (action.mutatesExistingItem ||
                         (action.isFixedScheduleAction &&
                             action.type !=
@@ -2008,7 +2041,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                       DropdownButtonFormField<String>(
                         initialValue: recurrenceScope,
                         decoration: const InputDecoration(labelText: '循环作用范围'),
-                        items: const [
+                        items: [
                           DropdownMenuItem(
                             value: 'occurrence',
                             child: Text('仅本期'),
@@ -2017,6 +2050,11 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                             value: 'future',
                             child: Text('本期及以后'),
                           ),
+                          if (canChooseWholeSeriesScope)
+                            const DropdownMenuItem(
+                              value: 'series',
+                              child: Text('整个系列'),
+                            ),
                         ],
                         onChanged: (value) => setDialogState(
                           () => recurrenceScope = value ?? 'occurrence',
@@ -2136,6 +2174,13 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                       timeMode != initialTimeMode;
                   action.hasRecurrence =
                       action.hasRecurrence || recurrence != initialRecurrence;
+                  if (action.type == AiTodoActionType.updateTodo &&
+                      recurrenceScope == 'series') {
+                    action
+                      ..hasRecurrence = false
+                      ..hasCustomIntervalDays = false
+                      ..hasRecurrenceEndDate = false;
+                  }
                 });
                 try {
                   await _commitTodoActionDraft(sourceAction, action);
@@ -2430,8 +2475,24 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     if (action.type == AiTodoActionType.deleteTodo) {
       addRow('删除', existing['isDeleted'] == true ? '已删除' : '未删除', '已删除');
     }
-    if (existing['recurrenceSeriesId']?.toString().isNotEmpty == true) {
-      rows.add(action.appliesToFutureOccurrences ? '范围: 本期及以后' : '范围: 仅本期');
+    final rawRecurrence = existing['recurrence'];
+    final isRecurringTodo = rawRecurrence is num
+        ? rawRecurrence.toInt() != RecurrenceType.none.index
+        : rawRecurrence?.toString().trim().isNotEmpty == true &&
+              rawRecurrence?.toString().trim() != 'none' &&
+              rawRecurrence?.toString().trim() != '0';
+    if (existing['recurrenceSeriesId']?.toString().isNotEmpty == true ||
+        isRecurringTodo) {
+      rows.add(
+        action.recurrenceScope == 'series'
+            ? '范围: 整个系列（执行前会再次确认期次数量）'
+            : action.appliesToFutureOccurrences
+            ? '范围: 本期及以后'
+            : '范围: 仅本期',
+      );
+    }
+    if (action.metadata['wholeSeriesScopeDowngraded'] == true) {
+      rows.add('范围提示: 用户请求未明确整个系列，已先限制为仅本期');
     }
 
     if (rows.isEmpty) return const SizedBox.shrink();
@@ -2807,6 +2868,60 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
               {...todo.toJson(), 'title': todo.title},
           ]
         : widget.todos;
+    final wholeSeriesActions = pendingActions
+        .where(
+          (action) =>
+              action.type == AiTodoActionType.updateTodo &&
+              action.recurrenceScope == 'series',
+        )
+        .toList(growable: false);
+    final wholeSeriesTodos = existingTodos
+        .map((todo) => TodoItem.fromJson(Map<String, dynamic>.from(todo)))
+        .toList(growable: false);
+    final expectedTodoBaselines = <String, TodoItem>{};
+    final expectedSeriesMembership = <String, Set<String>>{};
+    for (final action in wholeSeriesActions) {
+      final target = wholeSeriesTodos
+          .where((todo) => todo.id == action.todoId)
+          .firstOrNull;
+      final seriesId = target == null
+          ? null
+          : TodoRecurrenceSeriesEditService.seriesIdFor(target);
+      if (target == null ||
+          seriesId == null ||
+          (action.recurrenceSeriesId?.trim().isNotEmpty == true &&
+              action.recurrenceSeriesId!.trim() != seriesId)) {
+        if (mounted) {
+          AppSnackBars.showSnackBar(
+            context,
+            const SnackBar(content: Text('待办系列已不存在或范围不匹配，请重新查询后再操作')),
+          );
+        }
+        return;
+      }
+      final members = TodoRecurrenceSeriesEditService.activeMembers(
+        wholeSeriesTodos,
+        seriesId,
+      );
+      expectedSeriesMembership[seriesId] = members
+          .map((todo) => todo.id)
+          .toSet();
+      expectedTodoBaselines.addEntries(
+        members.map(
+          (todo) => MapEntry(
+            todo.id,
+            TodoItem.fromJson(todo.toJson()),
+          ),
+        ),
+      );
+    }
+    if (wholeSeriesActions.isNotEmpty &&
+        !await _confirmWholeSeriesAiUpdates(
+          wholeSeriesActions,
+          wholeSeriesTodos,
+        )) {
+      return;
+    }
     final needsCurrentTimeLogCatalog = pendingActions.any(
       (action) => action.isTimeLogAction && action.mutatesExistingItem,
     );
@@ -2889,6 +3004,12 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
           await widget.onTodosBatchAction!(
             result.newTodos,
             result.updatedTodos,
+            expectedTodoBaselines: expectedTodoBaselines.isEmpty
+                ? null
+                : expectedTodoBaselines,
+            expectedSeriesMembership: expectedSeriesMembership.isEmpty
+                ? null
+                : expectedSeriesMembership,
           );
           result.markWriteGroupAdded(AiTodoActionWriteGroup.newTodos);
           result.markWriteGroupAdded(AiTodoActionWriteGroup.updatedTodos);
@@ -2916,6 +3037,9 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
           await _saveHistorySilently();
         }
         if (result.updatedTodos.isNotEmpty) {
+          if (expectedSeriesMembership.isNotEmpty) {
+            throw StateError('当前入口不能对整个系列进行安全保存，请从待办列表打开 AI 助手');
+          }
           if (widget.onTodosUpdated == null) {
             throw StateError('当前页面没有待办更新回调');
           }
@@ -3114,6 +3238,60 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         setState(() {});
       }
     }
+  }
+
+  Future<bool> _confirmWholeSeriesAiUpdates(
+    List<AiTodoAction> actions,
+    List<TodoItem> todos,
+  ) async {
+    final seriesTargets = <String, TodoItem>{};
+    for (final action in actions) {
+      final target = todos
+          .where((todo) => todo.id == action.todoId && !todo.isDeleted)
+          .firstOrNull;
+      final seriesId = target == null
+          ? null
+          : TodoRecurrenceSeriesEditService.seriesIdFor(target);
+      if (target == null ||
+          seriesId == null ||
+          (action.recurrenceSeriesId?.trim().isNotEmpty == true &&
+              action.recurrenceSeriesId!.trim() != seriesId)) {
+        return false;
+      }
+      seriesTargets.putIfAbsent(seriesId, () => target);
+    }
+    final summaries = <String>[];
+    for (final entry in seriesTargets.entries) {
+      final counts = TodoRecurrenceSeriesEditService.countMembers(
+        todos,
+        entry.key,
+        now: DateTime.now(),
+      );
+      if (counts.total == 0) return false;
+      summaries.add(
+        '“${entry.value.title}”：${counts.total} 期（历史 ${counts.historical}、今天 ${counts.current}、未来 ${counts.future}）；已完成 ${counts.completed}、已跳过 ${counts.skipped}。',
+      );
+    }
+    final confirmed = await showAppDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('确认修改整个待办系列'),
+        content: Text(
+          '${summaries.join('\n\n')}\n\n只修改待办内容与时间；每期完成和跳过状态会保留。重复规则不变，已有规划块、时间日志和专注记录保留原时间。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('返回检查'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('确认修改'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
   }
 
   Future<void> _validateTodoSkipActions(Iterable<AiTodoAction> actions) async {

@@ -120,6 +120,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
   Future<TodoEditorSaveResult> _handleTodoEditorSave(
     List<TodoItem> changedTodos,
     Map<String, TodoItem> baselines,
+    {Map<String, Set<String>>? expectedSeriesMembership}
   ) async {
     if (changedTodos.isEmpty) return const TodoEditorSaveResult();
     _todoPersistDebounce?.cancel();
@@ -136,6 +137,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
           await _persistTodosSnapshot(
             changedTodos,
             expectedTodoBaselines: baselines,
+            expectedSeriesMembership: expectedSeriesMembership,
           ),
         );
       } catch (error) {
@@ -198,7 +200,10 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
 
   Future<List<String>> _persistTodosSnapshot(
     List<TodoItem> todosSnapshot,
-    {Map<String, TodoItem>? expectedTodoBaselines}
+    {
+    Map<String, TodoItem>? expectedTodoBaselines,
+    Map<String, Set<String>>? expectedSeriesMembership,
+    }
   ) async {
     _persistingTodosSnapshot = todosSnapshot;
     final warnings = <String>[];
@@ -248,6 +253,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
         todosToPersistById.values.toList(growable: false),
         bandSyncSnapshot: allTodos,
         expectedTodoBaselines: expectedTodoBaselines,
+        expectedSeriesMembership: expectedSeriesMembership,
       );
       if (!await _saveTodosToSharedFile(allTodos)) {
         warnings.add('共享文件更新失败');

@@ -26,8 +26,13 @@ Future<void> openEditor(
   WidgetTester tester, {
   required TodoItem todo,
   List<TodoItem>? todos,
-  bool applyToFutureOccurrences = false,
-  Future<TodoEditorSaveResult> Function(List<TodoItem>, Map<String, TodoItem>)?
+  TodoRecurrenceEditScope recurrenceEditScope =
+      TodoRecurrenceEditScope.occurrence,
+  Future<TodoEditorSaveResult> Function(
+    List<TodoItem>,
+    Map<String, TodoItem>, {
+    Map<String, Set<String>>? expectedSeriesMembership,
+  })?
   onEditorSave,
   void Function(List<TodoItem>)? onTodosChanged,
   void Function(String)? onTodoCompletionCommitted,
@@ -45,7 +50,7 @@ Future<void> openEditor(
                   todos: todos ?? [todo],
                   todoGroups: const [],
                   username: PlanAvailabilityFixture.username,
-                  applyToFutureOccurrences: applyToFutureOccurrences,
+                  recurrenceEditScope: recurrenceEditScope,
                   onTodoCompletionCommitted: onTodoCompletionCommitted,
                   onTodosChanged: (items) => onTodosChanged?.call(items),
                   onEditorSave: onEditorSave,
@@ -139,7 +144,7 @@ void main() {
     await openEditor(
       tester,
       todo: todo,
-      onEditorSave: (items, readBaselines) {
+      onEditorSave: (items, readBaselines, {expectedSeriesMembership}) {
         writes++;
         submitted = items;
         baselines = readBaselines;
@@ -171,7 +176,7 @@ void main() {
     await openEditor(
       tester,
       todo: todo,
-      onEditorSave: (_, _) async {
+      onEditorSave: (_, _, {expectedSeriesMembership}) async {
         writes++;
         if (writes == 1) throw StateError('模拟存储失败');
         return const TodoEditorSaveResult();
@@ -242,7 +247,7 @@ void main() {
     await openEditor(
       tester,
       todo: todo,
-      onEditorSave: (_, _) async {
+      onEditorSave: (_, _, {expectedSeriesMembership}) async {
         writes++;
         return const TodoEditorSaveResult();
       },
@@ -270,7 +275,8 @@ void main() {
       tester,
       todo: todo,
       onTodoCompletionCommitted: stoppedTodoIds.add,
-      onEditorSave: (_, _) async => throw StateError('模拟提交失败'),
+      onEditorSave: (_, _, {expectedSeriesMembership}) async =>
+          throw StateError('模拟提交失败'),
     );
 
     await tester.tap(find.byKey(const ValueKey('todo_edit_completion_switch')));
@@ -291,7 +297,7 @@ void main() {
       tester,
       todo: todo,
       onTodoCompletionCommitted: stoppedTodoIds.add,
-      onEditorSave: (_, _) => save.future,
+      onEditorSave: (_, _, {expectedSeriesMembership}) => save.future,
     );
 
     await tester.tap(find.byKey(const ValueKey('todo_edit_completion_switch')));
@@ -328,8 +334,8 @@ void main() {
       tester,
       todo: current,
       todos: [current, future],
-      applyToFutureOccurrences: true,
-      onEditorSave: (items, _) async {
+      recurrenceEditScope: TodoRecurrenceEditScope.future,
+      onEditorSave: (items, _, {expectedSeriesMembership}) async {
         submitted = items;
         return const TodoEditorSaveResult();
       },
@@ -344,6 +350,96 @@ void main() {
       submitted!.map((item) => item.id),
       containsAll([current.id, future.id]),
     );
+    expect(current.title, '每周整理');
+    expect(future.title, '每周整理');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('整系列保存复核影响数量并保留所有期次的独立状态', (tester) async {
+    TodoItem occurrence(
+      String id,
+      int day, {
+      bool done = false,
+      bool skipped = false,
+      RecurrenceType recurrence = RecurrenceType.none,
+    }) =>
+        TodoItem(
+          id: id,
+          title: '每周整理',
+          isDone: done,
+          isSkipped: skipped,
+          isSkippedSyncPending: skipped,
+          recurrence: recurrence,
+          recurrenceSeriesId: 'series-whole-edit',
+          createdDate: DateTime(2026, 10, day, 9).millisecondsSinceEpoch,
+          dueDate: DateTime(2026, 10, day, 23, 59),
+          isAllDay: true,
+          recurrenceEndDate: DateTime(2026, 11, 30),
+        );
+
+    final past = occurrence('whole-past', 19, done: true);
+    final current = occurrence(
+      'whole-current',
+      20,
+      recurrence: RecurrenceType.weekly,
+    );
+    final future = occurrence('whole-future', 22, skipped: true);
+    List<TodoItem>? submitted;
+    Map<String, TodoItem>? baselines;
+    Map<String, Set<String>>? membership;
+    await openEditor(
+      tester,
+      todo: current,
+      todos: [past, current, future],
+      recurrenceEditScope: TodoRecurrenceEditScope.series,
+      onEditorSave:
+          (items, readBaselines, {expectedSeriesMembership}) async {
+            submitted = items;
+            baselines = readBaselines;
+            membership = expectedSeriesMembership;
+            return const TodoEditorSaveResult();
+          },
+    );
+
+    expect(find.textContaining('整个系列 · 3 期'), findsOneWidget);
+    await editTitle(tester, '每周整理并复核');
+    await tester.tap(find.text('保存'));
+    await settleEditor(tester);
+    expect(find.text('确认应用到整个系列'), findsOneWidget);
+    expect(find.textContaining('历史 1 期、今天 1 期、未来 1 期'), findsOneWidget);
+    expect(submitted, isNull);
+
+    await tester.tap(find.text('应用到整个系列'));
+    await settleEditor(tester);
+
+    expect(submitted, hasLength(3));
+    expect(submitted!.map((todo) => todo.id).toSet(), {
+      'whole-past',
+      'whole-current',
+      'whole-future',
+    });
+    expect(submitted!.map((todo) => todo.title), everyElement('每周整理并复核'));
+    expect(
+      submitted!.singleWhere((todo) => todo.id == 'whole-past').isDone,
+      isTrue,
+    );
+    final savedFuture = submitted!.singleWhere(
+      (todo) => todo.id == 'whole-future',
+    );
+    expect(savedFuture.isSkipped, isTrue);
+    expect(savedFuture.isSkippedSyncPending, isTrue);
+    expect(
+      submitted!.singleWhere((todo) => todo.id == 'whole-current').recurrence,
+      RecurrenceType.weekly,
+    );
+    expect(
+      baselines!.keys,
+      containsAll(['whole-past', 'whole-current', 'whole-future']),
+    );
+    expect(membership, {
+      'series-whole-edit': {'whole-past', 'whole-current', 'whole-future'},
+    });
+    expect(past.title, '每周整理');
     expect(current.title, '每周整理');
     expect(future.title, '每周整理');
     expect(tester.takeException(), isNull);
@@ -367,7 +463,7 @@ void main() {
       tester,
       todo: current,
       todos: [current, beforeEnd, afterEnd],
-      onEditorSave: (items, _) async {
+      onEditorSave: (items, _, {expectedSeriesMembership}) async {
         submitted = items;
         return const TodoEditorSaveResult();
       },
@@ -424,10 +520,13 @@ void main() {
             username: PlanAvailabilityFixture.username,
             isLight: true,
             onTodosChanged: (_) {},
-            onEditorSave: (items, baselines) => TodoEditorSaveService.save(
+            onEditorSave:
+                (items, baselines, {expectedSeriesMembership}) =>
+                    TodoEditorSaveService.save(
               username: PlanAvailabilityFixture.username,
               changedTodos: items,
               baselines: baselines,
+              expectedSeriesMembership: expectedSeriesMembership,
             ),
             onEditorGroupsSave: (items, baselines) =>
                 TodoEditorSaveService.saveGroups(

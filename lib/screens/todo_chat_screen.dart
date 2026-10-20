@@ -32,6 +32,7 @@ import '../services/ai_multimodal_message_builder.dart';
 import '../services/ai_todo_context_builder.dart';
 import '../services/ai_team_binding_resolver.dart';
 import '../services/ai_todo_action_executor.dart';
+import '../services/todo_recurrence_series_edit_service.dart';
 import '../services/ai_plan_draft_repository.dart';
 import '../services/llm_service.dart';
 import '../services/minor_mode_policy.dart';
@@ -121,7 +122,10 @@ class TodoChatScreen extends StatefulWidget {
   final FutureOr<void> Function(List<TodoItem>)? onTodosUpdated;
   final FutureOr<void> Function(
     List<TodoItem> inserted,
-    List<TodoItem> updated,
+    List<TodoItem> updated, {
+    Map<String, TodoItem>? expectedTodoBaselines,
+    Map<String, Set<String>>? expectedSeriesMembership,
+  }
   )?
   onTodosBatchAction;
   final Function(List<TodoGroup> groups)? onTodoGroupsChanged;

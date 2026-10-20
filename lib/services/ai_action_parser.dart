@@ -230,6 +230,13 @@ class AiActionParser {
     }
 
     for (final action in actions) {
+      if (action.recurrenceScope == 'series' &&
+          (action.type != AiTodoActionType.updateTodo ||
+              !_explicitWholeTodoSeriesRequest(originalText))) {
+        action
+          ..recurrenceScope = 'occurrence'
+          ..metadata['wholeSeriesScopeDowngraded'] = true;
+      }
       // Execution state belongs to the app, never to a newly returned proposal.
       // History restoration uses AiTodoAction.fromJson directly and retains it.
       action.isAdded = false;
@@ -244,6 +251,12 @@ class AiActionParser {
     );
     return actions;
   }
+
+  static bool _explicitWholeTodoSeriesRequest(String message) =>
+      RegExp(
+        r'(整个系列|全系列|所有期次|全部期次|所有周期|全部周期|每一期|全体期次|whole series|entire series|all occurrences)',
+        caseSensitive: false,
+      ).hasMatch(message);
 
   static void _resolveCountdownTeamBindings(
     List<AiTodoAction> actions, {

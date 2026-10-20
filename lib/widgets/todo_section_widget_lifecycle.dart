@@ -153,15 +153,34 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
       teams: aiContext.teams,
       onTodoGroupsChanged: widget.onGroupsChanged,
       onFixedSchedulesChanged: (_) => widget.onRefreshRequested(),
-      onTodosBatchAction: (inserted, updated) {
-        widget.onTodosChanged(
-          AiTodoActionExecutor.mergeTodoUpdates(
-            widget.todos,
-            inserted,
-            updated,
-          ),
-        );
-      },
+      onTodosBatchAction:
+          (inserted, updated,
+              {expectedTodoBaselines, expectedSeriesMembership}) async {
+            final merged = AiTodoActionExecutor.mergeTodoUpdates(
+              widget.todos,
+              inserted,
+              updated,
+            );
+            if (expectedSeriesMembership?.isNotEmpty == true) {
+              final save = widget.onEditorSave;
+              if (save == null || expectedTodoBaselines == null) {
+                throw StateError('当前入口无法安全保存整个待办系列');
+              }
+              final result = await save(
+                [...inserted, ...updated],
+                expectedTodoBaselines,
+                expectedSeriesMembership: expectedSeriesMembership,
+              );
+              if (result.warnings.isNotEmpty && mounted) {
+                AppSnackBars.showSnackBar(
+                  context,
+                  SnackBar(content: Text(result.warnings.join('；'))),
+                );
+              }
+            } else {
+              await widget.onTodosChanged(merged);
+            }
+          },
     );
   }
 

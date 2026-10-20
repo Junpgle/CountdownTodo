@@ -174,6 +174,9 @@ enum RecurrenceType {
   weekdays,
 }
 
+/// The edit range chosen for an existing recurring todo.
+enum TodoRecurrenceEditScope { occurrence, future, series }
+
 /// 用户可理解的待办时间语义。
 ///
 /// [unscheduled] 没有完成日期；[dateOnly] 只要求在某天内完成；

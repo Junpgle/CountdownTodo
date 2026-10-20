@@ -6,6 +6,7 @@ import '../features/habits/repositories/habit_repository.dart';
 import '../features/habits/services/habit_rule_resolver.dart';
 import '../models.dart';
 import '../models/ai_todo_action.dart';
+import 'todo_recurrence_series_edit_service.dart';
 import 'fixed_schedule_recurrence_service.dart';
 import 'pomodoro_service.dart';
 import '../utils/json_value_parser.dart';
@@ -1949,12 +1950,21 @@ class AiTodoActionExecutor {
   ) {
     final id = action.todoId;
     if (id == null || id.isEmpty) return const [];
+    if (action.recurrenceScope == 'series' &&
+        action.type != AiTodoActionType.updateTodo) {
+      return const [];
+    }
     final target = existingTodos.where((todo) => todo['id'] == id).firstOrNull;
     if (target == null) return const [];
 
-    final seriesId = _nullableString(
+    final storedSeriesId = _nullableString(
       target['recurrenceSeriesId'] ?? target['recurrence_series_id'],
     );
+    final seriesId = storedSeriesId ??
+        (_existingRecurrence(target) == RecurrenceType.none ? null : id);
+    final isWholeSeriesEdit =
+        action.type == AiTodoActionType.updateTodo &&
+        action.recurrenceScope == 'series';
     if (action.type == AiTodoActionType.skipTodo) {
       final isRecurring =
           seriesId != null || _existingRecurrence(target) != RecurrenceType.none;
@@ -1971,13 +1981,23 @@ class AiTodoActionExecutor {
       return const [];
     }
 
-    final targetUpdate = _buildUpdatedTodo(action, target);
+    if (isWholeSeriesEdit && seriesId == null) return const [];
+    final effectiveAction = action.copy();
+    if (isWholeSeriesEdit) {
+      // Whole-series edits change shared todo content and timing only. The
+      // recurrence rule remains anchored to the selected occurrence.
+      effectiveAction
+        ..hasRecurrence = false
+        ..hasCustomIntervalDays = false
+        ..hasRecurrenceEndDate = false;
+    }
+    final targetUpdate = _buildUpdatedTodo(effectiveAction, target);
     if (targetUpdate == null) return const [];
     final updates = <TodoItem>[targetUpdate];
 
     // 完成只属于一个真实期次。即使模型误给 future，也不能把尚未发生的
     // 周期批量标记完成。
-    if (!action.appliesToFutureOccurrences ||
+    if ((!action.appliesToFutureOccurrences && !isWholeSeriesEdit) ||
         seriesId == null ||
         action.type == AiTodoActionType.completeTodo ||
         action.type == AiTodoActionType.skipTodo) {
@@ -1998,13 +2018,28 @@ class AiTodoActionExecutor {
         ? null
         : targetUpdate.dueDate!.difference(updatedStart);
     final hasTimePatch =
-        action.hasStartTime ||
-        action.hasDueDate ||
-        action.hasTimeMode ||
-        action.hasIsAllDay;
-    final recurrenceEnd = action.hasRecurrenceEndDate
-        ? _parseExistingDate(action.recurrenceEndDate)
+        effectiveAction.hasStartTime ||
+        effectiveAction.hasDueDate ||
+        effectiveAction.hasTimeMode ||
+        effectiveAction.hasIsAllDay;
+    final recurrenceEnd = effectiveAction.hasRecurrenceEndDate
+        ? _parseExistingDate(effectiveAction.recurrenceEndDate)
         : targetUpdate.recurrenceEndDate;
+    final calendarDayDelta = targetStart == null || updatedStart == null
+        ? 0
+        : TodoRecurrenceSeriesEditService.calendarDayDelta(
+            targetStart,
+            updatedStart,
+          );
+    if (isWholeSeriesEdit &&
+        calendarDayDelta != 0 &&
+        targetUpdate.recurrenceEndDate != null) {
+      targetUpdate.recurrenceEndDate =
+          TodoRecurrenceSeriesEditService.shiftCalendarDate(
+            targetUpdate.recurrenceEndDate!,
+            calendarDayDelta,
+          );
+    }
 
     final future = existingTodos.where((todo) {
       if (todo['id'] == id || _mapBool(todo, 'isDeleted')) return false;
@@ -2012,17 +2047,26 @@ class AiTodoActionExecutor {
         todo['recurrenceSeriesId'] ?? todo['recurrence_series_id'],
       );
       final candidateStart = _todoStart(todo);
-      return candidateSeries == seriesId &&
-          candidateStart != null &&
+      final candidateId = todo['id']?.toString();
+      final sameSeries = candidateSeries == seriesId ||
+          (candidateId == seriesId && candidateSeries == null);
+      if (!sameSeries) return false;
+      if (isWholeSeriesEdit) return true;
+      return candidateStart != null &&
           targetStart != null &&
           !candidateStart.isBefore(targetStart);
-    }).toList()..sort((a, b) => _todoStart(a)!.compareTo(_todoStart(b)!));
+    }).toList()
+      ..sort(
+        (a, b) => (_todoStart(a)?.millisecondsSinceEpoch ?? 0).compareTo(
+          _todoStart(b)?.millisecondsSinceEpoch ?? 0,
+        ),
+      );
 
     for (final candidate in future) {
-      final candidateAction = AiTodoAction.fromJson(action.toJson())
+      final candidateAction = effectiveAction.copy()
         ..todoId = candidate['id']?.toString()
         ..recurrenceScope = 'occurrence';
-      final candidateStart = _todoStart(candidate)!;
+      final candidateStart = _todoStart(candidate);
 
       if (hasTimePatch) {
         if (targetUpdate.timeMode == TodoTimeMode.unscheduled) {
@@ -2035,12 +2079,22 @@ class AiTodoActionExecutor {
             ..hasDueDate = true
             ..hasTimeMode = true
             ..hasIsAllDay = true;
-        } else {
+        } else if (candidateStart != null &&
+            targetStart != null &&
+            updatedStart != null) {
           final shiftedStart = candidateStart.add(shift);
           candidateAction
             ..startTime = shiftedStart.toIso8601String()
             ..dueDate = updatedDuration == null
                 ? shiftedStart.toIso8601String()
+                : targetUpdate.isDateOnly
+                ? DateTime(
+                    shiftedStart.year,
+                    shiftedStart.month,
+                    shiftedStart.day,
+                    23,
+                    59,
+                  ).toIso8601String()
                 : shiftedStart.add(updatedDuration).toIso8601String()
             ..timeMode = targetUpdate.timeMode.name
             ..isAllDay = targetUpdate.isDateOnly
@@ -2048,21 +2102,30 @@ class AiTodoActionExecutor {
             ..hasDueDate = true
             ..hasTimeMode = true
             ..hasIsAllDay = true;
+        } else if (isWholeSeriesEdit) {
+          candidateAction
+            ..hasStartTime = false
+            ..hasDueDate = false
+            ..hasTimeMode = false
+            ..hasIsAllDay = false;
         }
       }
 
       // 一个系列只能有一个规则锚点。新规则挂在目标期次上，之后已经生成
       // 的实例仍是 recurrence=none，但会同步其他规则元数据。
-      if (action.hasRecurrence && action.recurrence != 'none') {
+      if (!isWholeSeriesEdit &&
+          effectiveAction.hasRecurrence &&
+          effectiveAction.recurrence != 'none') {
         candidateAction
           ..recurrence = 'none'
           ..hasRecurrence =
               _existingRecurrence(candidate) != RecurrenceType.none;
       }
 
-      final shiftedCandidateDay = candidateStart.add(shift);
+      final shiftedCandidateDay = candidateStart?.add(shift);
       final isPastRecurrenceEnd =
           recurrenceEnd != null &&
+          shiftedCandidateDay != null &&
           DateTime(
             shiftedCandidateDay.year,
             shiftedCandidateDay.month,
@@ -2075,11 +2138,22 @@ class AiTodoActionExecutor {
             ),
           );
       final shouldDelete =
-          action.type == AiTodoActionType.deleteTodo ||
-          (action.hasRecurrence && action.recurrence == 'none') ||
-          isPastRecurrenceEnd;
+          !isWholeSeriesEdit &&
+          (action.type == AiTodoActionType.deleteTodo ||
+              (effectiveAction.hasRecurrence &&
+                  effectiveAction.recurrence == 'none') ||
+              isPastRecurrenceEnd);
       final updated = _buildUpdatedTodo(candidateAction, candidate);
       if (updated == null) continue;
+      if (isWholeSeriesEdit &&
+          calendarDayDelta != 0 &&
+          updated.recurrenceEndDate != null) {
+        updated.recurrenceEndDate =
+            TodoRecurrenceSeriesEditService.shiftCalendarDate(
+              updated.recurrenceEndDate!,
+              calendarDayDelta,
+            );
+      }
       if (shouldDelete) {
         updated
           ..isDeleted = true

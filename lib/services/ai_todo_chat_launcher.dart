@@ -36,7 +36,12 @@ class AiTodoChatLauncher {
     String? initialMessage,
     bool sendInitialMessage = true,
     ChatUsageSummary? initialVoiceUsageSummary,
-    FutureOr<void> Function(List<TodoItem> inserted, List<TodoItem> updated)?
+    FutureOr<void> Function(
+      List<TodoItem> inserted,
+      List<TodoItem> updated, {
+      Map<String, TodoItem>? expectedTodoBaselines,
+      Map<String, Set<String>>? expectedSeriesMembership,
+    })?
     onTodosBatchAction,
     void Function(List<TodoGroup> groups)? onTodoGroupsChanged,
     void Function(List<FixedScheduleItem> schedules)? onFixedSchedulesChanged,
@@ -155,6 +160,7 @@ class AiTodoChatLauncher {
         'isAllDay': t.isAllDayTask,
         'isDone': t.isDone,
         'isSkipped': t.isSkipped,
+        'isSkippedSyncPending': t.isSkippedSyncPending,
         'isDeleted': t.isDeleted,
         'recurrence': t.recurrence.name,
         'recurrenceRule': rule.recurrence.name,

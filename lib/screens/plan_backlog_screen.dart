@@ -233,10 +233,13 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
             username: widget.username,
             onTodosChanged: (items) =>
                 StorageService.saveTodos(widget.username, items),
-            onEditorSave: (items, baselines) => TodoEditorSaveService.save(
+            onEditorSave:
+                (items, baselines, {expectedSeriesMembership}) =>
+                    TodoEditorSaveService.save(
               username: widget.username,
               changedTodos: items,
               baselines: baselines,
+              expectedSeriesMembership: expectedSeriesMembership,
             ),
             onEditorGroupsSave: (items, baselines) =>
                 TodoEditorSaveService.saveGroups(

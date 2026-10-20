@@ -193,7 +193,10 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
     );
   }
 
-  void _openTodoEditor(TodoItem todo, {bool applyToFutureOccurrences = false}) {
+  void _openTodoEditor(
+    TodoItem todo, {
+    TodoRecurrenceEditScope scope = TodoRecurrenceEditScope.occurrence,
+  }) {
     Navigator.push(
       context,
       PageTransitions.material(
@@ -206,7 +209,7 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
           todoGroups: widget.todoGroups,
           onGroupsChanged: widget.onGroupsChanged,
           username: widget.username,
-          applyToFutureOccurrences: applyToFutureOccurrences,
+          recurrenceEditScope: scope,
         ),
       ),
     );
@@ -807,9 +810,24 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
               subtitle: const Text('本期及之后的实例同步采用修改内容'),
               onTap: () {
                 Navigator.pop(sheetContext);
-                _openTodoEditor(todo, applyToFutureOccurrences: true);
+                _openTodoEditor(todo, scope: TodoRecurrenceEditScope.future);
               },
             ),
+            if (TodoRecurrenceSeriesEditService.seriesIdFor(todo) != null)
+              ListTile(
+                leading: Icon(
+                  Icons.all_inclusive_rounded,
+                  color: colorScheme.tertiary,
+                ),
+                title: const Text('编辑整个系列'),
+                subtitle: Text(
+                  '${TodoRecurrenceSeriesEditService.activeMembers(widget.todos, TodoRecurrenceSeriesEditService.seriesIdFor(todo)!).length} 期都会修改，保留每期完成与跳过状态',
+                ),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _openTodoEditor(todo, scope: TodoRecurrenceEditScope.series);
+                },
+              ),
             if (todo.recurrence != RecurrenceType.none)
               ListTile(
                 leading: Icon(

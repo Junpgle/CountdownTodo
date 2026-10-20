@@ -146,7 +146,8 @@ class AiTodoAction {
   String recurrence;
   String? recurrenceSeriesId;
 
-  /// `occurrence` 只操作指定期次；`future` 操作该期及之后的同系列期次。
+  /// `occurrence` 只操作指定期次；`future` 操作该期及之后；`series`
+  /// 仅用于用户明确要求时的待办内容整系列编辑。
   String recurrenceScope;
   int? customIntervalDays;
   String? recurrenceEndDate;
@@ -712,7 +713,11 @@ class AiTodoAction {
 
   static String _parseRecurrenceScope(dynamic value) {
     final scope = value?.toString();
-    return scope == 'future' ? 'future' : 'occurrence';
+    return switch (scope) {
+      'future' => 'future',
+      'series' => 'series',
+      _ => 'occurrence',
+    };
   }
 
   static bool _fieldWasProvided(
