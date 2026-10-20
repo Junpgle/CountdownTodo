@@ -7,6 +7,7 @@ import '../models.dart';
 import '../storage_service.dart';
 import '../services/todo_recurrence_restore_service.dart';
 import '../services/todo_recurrence_series_edit_service.dart';
+import '../services/todo_trash_purge_service.dart';
 import '../widgets/management_page.dart';
 import '../utils/app_dialogs.dart';
 
@@ -115,6 +116,16 @@ class HistoricalTodosScreen extends StatefulWidget {
   final Future<void> Function(String username, TodoItem todo)? saveTodo;
   final Future<void> Function(String username, String seriesId)?
   restoreRecurringSeries;
+  final Future<TodoTrashPurgePlan> Function(String username, String uuid)?
+  previewTrashItemPurge;
+  final Future<TodoTrashPurgePlan> Function(String username, String seriesId)?
+  previewTrashSeriesPurge;
+  final Future<TodoTrashPurgePlan> Function(String username)? previewTrashClear;
+  final Future<TodoTrashPurgeResult> Function(
+    String username,
+    TodoTrashPurgePlan plan,
+  )?
+  purgeTrash;
   const HistoricalTodosScreen({
     super.key,
     required this.username,
@@ -123,6 +134,10 @@ class HistoricalTodosScreen extends StatefulWidget {
     this.loadTodoById,
     this.saveTodo,
     this.restoreRecurringSeries,
+    this.previewTrashItemPurge,
+    this.previewTrashSeriesPurge,
+    this.previewTrashClear,
+    this.purgeTrash,
   });
 
   @override
@@ -628,17 +643,6 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     }
   }
 
-  Future<void> _permanentlyDeleteItem(TodoItem item) async {
-    await StorageService.permanentlyDeleteTodo(widget.username, item.id);
-    await _loadData();
-    if (mounted) {
-      AppSnackBars.showSnackBar(
-        context,
-        const SnackBar(content: Text('已彻底删除')),
-      );
-    }
-  }
-
   Future<void> _fixOrphan(TodoItem item) async {
     final current = await StorageService.getTodoByUuid(
       widget.username,
@@ -657,20 +661,66 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     }
   }
 
-  Future<bool> _confirmPermanentDelete({TodoItem? item}) async {
+  Future<bool> _confirmPermanentDelete(
+    TodoTrashPurgePlan plan, {
+    String? itemTitle,
+  }) async {
     final scheme = Theme.of(context).colorScheme;
+    final preview = plan.preview;
+    final title = switch (plan.scope) {
+      TodoTrashPurgeScope.item => '彻底删除这条待办？',
+      TodoTrashPurgeScope.series =>
+        preview.hasActiveSeriesMembers ? '清理该系列回收站记录？' : '删除该系列全部现存记录？',
+      TodoTrashPurgeScope.recycleBin => '清空全部回收站？',
+    };
+    final dateFormat = _historicalTodoDateFormat(
+      Intl.defaultLocale,
+      pattern: 'yyyy/M/d',
+    );
+    final firstDate = preview.firstDate;
+    final lastDate = preview.lastDate;
+    final dateRange = firstDate == null || lastDate == null
+        ? null
+        : firstDate == lastDate
+        ? dateFormat.format(firstDate)
+        : '${dateFormat.format(firstDate)} – ${dateFormat.format(lastDate)}';
+    final description = <Widget>[
+      if (itemTitle != null) Text('“$itemTitle”'),
+      Text(
+        '将永久删除 ${preview.recordCount} 条待办，覆盖 '
+        '${preview.occurrenceCount} 期。',
+      ),
+      if (dateRange != null) Text('日期范围：$dateRange'),
+      if (preview.completedCount > 0 || preview.skippedCount > 0)
+        Text(
+          '${preview.completedCount} 期已完成 · '
+          '${preview.skippedCount} 期已跳过。',
+        ),
+      if (plan.scope == TodoTrashPurgeScope.series &&
+          preview.hasActiveSeriesMembers)
+        const Text('只清理回收站中的期次；活动期次和重复规则会保留。'),
+      if (plan.scope == TodoTrashPurgeScope.series &&
+          !preview.hasActiveSeriesMembers)
+        const Text('该系列当前所有现存期次均在回收站，将全部删除。'),
+      if (plan.scope == TodoTrashPurgeScope.recycleBin)
+        const Text('范围为整个回收站，包括搜索隐藏和未加载的待办。'),
+      const Text('删除后无法恢复。'),
+    ];
     return await showAppDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
             scrollable: true,
             icon: Icon(Icons.delete_forever_outlined, color: scheme.error),
-            title: Text(item == null ? '清空全部回收站？' : '彻底删除这条待办？'),
-            content: Text(
-              item == null
-                  ? _hasMoreTodoPages
-                        ? '将永久删除回收站中的全部待办（当前已加载 ${_deletedTodos.length} 条，仍可能有尚未加载的记录），删除后无法恢复。'
-                        : '将永久删除回收站中的全部 ${_deletedTodos.length} 条待办（包括未显示的搜索结果），删除后无法恢复。'
-                  : '“${item.title}”将被永久删除，删除后无法恢复。',
+            title: Text(title),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var index = 0; index < description.length; index++) ...[
+                  if (index > 0) const SizedBox(height: 8),
+                  description[index],
+                ],
+              ],
             ),
             actions: [
               TextButton(
@@ -711,17 +761,80 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
 
   Future<void> _clearRecycleBin() async {
     if (_busyId != null) return;
-    if (!await _confirmPermanentDelete() || !mounted) return;
-    await _runAction('clear', () async {
-      await StorageService.clearTodoRecycleBin(widget.username);
-      await _loadData();
-    });
+    await _confirmAndPurge(
+      'clear',
+      () =>
+          widget.previewTrashClear?.call(widget.username) ??
+          StorageService.previewClearTodoRecycleBin(widget.username),
+    );
   }
 
   Future<void> _confirmDeleteItem(TodoItem item) async {
     if (_busyId != null) return;
-    if (!await _confirmPermanentDelete(item: item) || !mounted) return;
-    await _runAction(item.id, () => _permanentlyDeleteItem(item));
+    await _confirmAndPurge(
+      item.id,
+      () =>
+          widget.previewTrashItemPurge?.call(widget.username, item.id) ??
+          StorageService.previewPermanentTodoDelete(widget.username, item.id),
+      itemTitle: item.title,
+    );
+  }
+
+  Future<void> _confirmPurgeSeries(_HistoricalTodoSeriesGroup group) async {
+    if (_busyId != null) return;
+    await _confirmAndPurge(
+      'purge-series:${group.seriesId}',
+      () =>
+          widget.previewTrashSeriesPurge?.call(
+            widget.username,
+            group.seriesId,
+          ) ??
+          StorageService.previewPermanentTodoSeriesDelete(
+            widget.username,
+            group.seriesId,
+          ),
+    );
+  }
+
+  Future<void> _confirmAndPurge(
+    String busyId,
+    Future<TodoTrashPurgePlan> Function() loadPlan, {
+    String? itemTitle,
+  }) async {
+    await _runAction(busyId, () async {
+      try {
+        final plan = await loadPlan();
+        if (!mounted ||
+            !await _confirmPermanentDelete(plan, itemTitle: itemTitle) ||
+            !mounted) {
+          return;
+        }
+        final result =
+            await (widget.purgeTrash?.call(widget.username, plan) ??
+                StorageService.purgeTodoTrash(widget.username, plan));
+        await _loadData();
+        if (!mounted) return;
+        final message = _resultMessage(plan, result);
+        AppSnackBars.showSnackBar(context, SnackBar(content: Text(message)));
+      } catch (_) {
+        await _loadData();
+        rethrow;
+      }
+    });
+  }
+
+  String _resultMessage(
+    TodoTrashPurgePlan plan,
+    TodoTrashPurgeResult result,
+  ) {
+    final success = switch (plan.scope) {
+      TodoTrashPurgeScope.item => '已彻底删除',
+      TodoTrashPurgeScope.series => '已清理该系列 ${result.deletedCount} 条回收站记录',
+      TodoTrashPurgeScope.recycleBin => '已清空回收站，共删除 ${result.deletedCount} 条待办',
+    };
+    if (!result.cacheCleared) return '$success；本机缓存清理失败，请刷新页面';
+    if (!result.conflictsRefreshed) return '$success；日程冲突刷新失败，请刷新页面';
+    return success;
   }
 
   Widget _buildList(List<TodoItem> items, int section, double topPadding) {
@@ -772,7 +885,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
               color: scheme.onSurfaceVariant,
             ),
           ),
-          if (section == 1 && items.isNotEmpty)
+          if (section == 1 && (items.isNotEmpty || _hasMoreTodoPages))
             TextButton.icon(
               onPressed: _busyId != null ? null : _clearRecycleBin,
               style: TextButton.styleFrom(foregroundColor: scheme.error),
@@ -867,7 +980,9 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final expanded = _expandedSeriesIds.contains(group.seriesId);
-    final busy = _busyId == 'series:${group.seriesId}';
+    final busy =
+        _busyId == 'series:${group.seriesId}' ||
+        _busyId == 'purge-series:${group.seriesId}';
     final enabled = _busyId == null;
     final countParts = <String>['${group.occurrenceCount} 期'];
     if (group.items.length != group.occurrenceCount) {
@@ -925,6 +1040,34 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                   ],
                 ),
               ),
+              if (group.seriesId.trim().isNotEmpty)
+                PopupMenuButton<String>(
+                  key: ValueKey('trash_series_more_${group.seriesId}'),
+                  enabled: enabled,
+                  tooltip: '更多系列操作',
+                  onSelected: (value) async {
+                    if (value == 'purge') await _confirmPurgeSeries(group);
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem<String>(
+                      value: 'purge',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.delete_forever_outlined,
+                            color: scheme.error,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            '清理该系列回收站记录',
+                            style: TextStyle(color: scheme.error),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
             ],
           ),
           if (busy) ...[

@@ -1226,86 +1226,170 @@ mixin _StorageTodos on _StorageServiceBase {
     return _parseTodoItemsIsolate(rows).first;
   }
 
-  Future<void> permanentlyDeleteTodo(String username, String uuid) async {
+  Future<TodoTrashPurgePlan> previewPermanentTodoDelete(
+    String username,
+    String uuid,
+  ) async {
     final db = await DatabaseHelper.instance.databaseForUser(username);
-    final existingRows = await db.query(
+    final rows = await db.query('todos', where: 'uuid = ?', whereArgs: [uuid]);
+    final todos = _parseTodoItemsIsolate(rows);
+    if (todos.isEmpty) throw StateError('待办已不存在，请刷新后再试。');
+    return TodoTrashPurgeService.forItem(todos.single);
+  }
+
+  Future<TodoTrashPurgePlan> previewPermanentTodoSeriesDelete(
+    String username,
+    String seriesId,
+  ) async {
+    final normalizedId = seriesId.trim();
+    if (normalizedId.isEmpty) throw StateError('系列标识无效，无法批量清理。');
+    final db = await DatabaseHelper.instance.databaseForUser(username);
+    final rows = await db.query(
       'todos',
-      columns: const ['created_date', 'created_at', 'due_date', 'is_all_day'],
-      where: 'uuid = ?',
-      whereArgs: [uuid],
-      limit: 1,
+      where:
+          'recurrence_series_id = ? OR '
+          "(uuid = ? AND TRIM(COALESCE(recurrence_series_id, '')) = '')",
+      whereArgs: [normalizedId, normalizedId],
     );
-    final affectedDays = existingRows.isEmpty
-        ? <String>{}
-        : _scheduleConflictDayKeysForRow(existingRows.first);
-    await db.delete('todos', where: 'uuid = ?', whereArgs: [uuid]);
+    return TodoTrashPurgeService.forSeries(
+      _parseTodoItemsIsolate(rows),
+      normalizedId,
+    );
+  }
 
-    await _clearTodoPrefsMirror(username);
+  Future<TodoTrashPurgePlan> previewClearTodoRecycleBin(String username) async {
+    final db = await DatabaseHelper.instance.databaseForUser(username);
+    final rows = await db.query('todos', where: 'is_deleted = 1');
+    return TodoTrashPurgeService.forRecycleBin(_parseTodoItemsIsolate(rows));
+  }
 
-    // 记录删除操作到 Oplog (物理删除也需要同步给其它端)
-    await db.insert('op_logs', {
-      'op_type': 'DELETE',
-      'target_table': 'todos',
-      'target_uuid': uuid,
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-      'is_synced': 0,
-      'sync_error': '',
+  Future<TodoTrashPurgeResult> purgeTodoTrash(
+    String username,
+    TodoTrashPurgePlan plan,
+  ) async {
+    if (plan.targetEntries.isEmpty ||
+        plan.targetIds.length != plan.targetEntries.length) {
+      throw StateError('删除范围无效，请刷新后重新确认。');
+    }
+    final db = await DatabaseHelper.instance.databaseForUser(username);
+    final affectedDays = <String>{};
+    final deletedIds = <String>[];
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    await db.transaction((txn) async {
+      late List<Map<String, dynamic>> currentRows;
+      late TodoTrashPurgePlan currentPlan;
+      switch (plan.scope) {
+        case TodoTrashPurgeScope.item:
+          final id = plan.targetEntries.single.uuid;
+          currentRows = await txn.query(
+            'todos',
+            where: 'uuid = ?',
+            whereArgs: [id],
+          );
+          final currentTodos = _parseTodoItemsIsolate(currentRows);
+          if (currentTodos.isEmpty) {
+            throw StateError('待办已不存在，请刷新列表后重试。');
+          }
+          currentPlan = TodoTrashPurgeService.forItem(currentTodos.single);
+        case TodoTrashPurgeScope.series:
+          final seriesId = plan.seriesId?.trim();
+          if (seriesId == null || seriesId.isEmpty) {
+            throw StateError('系列标识无效，请刷新列表后重试。');
+          }
+          currentRows = await txn.query(
+            'todos',
+            where:
+                'recurrence_series_id = ? OR '
+                "(uuid = ? AND TRIM(COALESCE(recurrence_series_id, '')) = '')",
+            whereArgs: [seriesId, seriesId],
+          );
+          currentPlan = TodoTrashPurgeService.forSeries(
+            _parseTodoItemsIsolate(currentRows),
+            seriesId,
+          );
+        case TodoTrashPurgeScope.recycleBin:
+          currentRows = await txn.query('todos', where: 'is_deleted = 1');
+          currentPlan = TodoTrashPurgeService.forRecycleBin(
+            _parseTodoItemsIsolate(currentRows),
+          );
+      }
+
+      if (!TodoTrashPurgeService.sameSnapshot(
+            currentPlan.guardEntries,
+            plan.guardEntries,
+          ) ||
+          !TodoTrashPurgeService.sameSnapshot(
+            currentPlan.targetEntries,
+            plan.targetEntries,
+          )) {
+        throw StateError('回收站内容已变化，请刷新列表后重新确认。');
+      }
+
+      final rowsById = {
+        for (final row in currentRows) row['uuid']?.toString() ?? '': row,
+      };
+      for (final entry in plan.targetEntries) {
+        final row = rowsById[entry.uuid];
+        if (row == null || row['is_deleted'] != 1) {
+          throw StateError('部分待办已不在回收站，未执行删除，请刷新后重试。');
+        }
+        affectedDays.addAll(_scheduleConflictDayKeysForRow(row));
+        final deleted = await txn.delete(
+          'todos',
+          where: 'uuid = ? AND is_deleted = 1',
+          whereArgs: [entry.uuid],
+        );
+        if (deleted != 1) {
+          throw StateError('部分待办状态已变化，未执行删除，请刷新后重试。');
+        }
+        await txn.insert('op_logs', {
+          'op_type': 'DELETE',
+          'target_table': 'todos',
+          'target_uuid': entry.uuid,
+          'timestamp': now,
+          'is_synced': 0,
+          'sync_error': '',
+        });
+        deletedIds.add(entry.uuid);
+      }
     });
 
+    _recurrenceCheckCache.remove('recurrence_instances_v4_$username');
+    var cacheCleared = true;
+    try {
+      await _clearTodoPrefsMirror(username);
+    } catch (_) {
+      cacheCleared = false;
+    }
+
+    var conflictsRefreshed = true;
     if (affectedDays.isNotEmpty) {
-      await _refreshTodoScheduleConflicts(
-        username,
-        affectedDayKeys: affectedDays,
-      );
+      try {
+        await _refreshTodoScheduleConflicts(
+          username,
+          affectedDayKeys: affectedDays,
+        );
+      } catch (_) {
+        conflictsRefreshed = false;
+      }
     }
     triggerRefresh(const {DataRefreshDomain.todos});
+    return TodoTrashPurgeResult(
+      deletedCount: deletedIds.length,
+      cacheCleared: cacheCleared,
+      conflictsRefreshed: conflictsRefreshed,
+    );
+  }
+
+  Future<void> permanentlyDeleteTodo(String username, String uuid) async {
+    final plan = await previewPermanentTodoDelete(username, uuid);
+    await purgeTodoTrash(username, plan);
   }
 
   Future<void> clearTodoRecycleBin(String username) async {
-    final db = await DatabaseHelper.instance.databaseForUser(username);
-
-    // 1. 获取所有待删除的 UUID，用于记录 Oplog
-    final List<Map<String, dynamic>> deletedItems = await db.query(
-      'todos',
-      columns: const [
-        'uuid',
-        'created_date',
-        'created_at',
-        'due_date',
-        'is_all_day',
-      ],
-      where: 'is_deleted = 1',
-    );
-    final affectedDays = <String>{};
-    for (final item in deletedItems) {
-      affectedDays.addAll(_scheduleConflictDayKeysForRow(item));
-    }
-
-    final batch = db.batch();
-    for (var item in deletedItems) {
-      final uuid = item['uuid']?.toString();
-      if (uuid == null) continue;
-      batch.delete('todos', where: 'uuid = ?', whereArgs: [uuid]);
-      batch.insert('op_logs', {
-        'op_type': 'DELETE',
-        'target_table': 'todos',
-        'target_uuid': uuid,
-        'timestamp': DateTime.now().millisecondsSinceEpoch,
-        'is_synced': 0,
-        'sync_error': '',
-      });
-    }
-    await batch.commit(noResult: true);
-
-    await _clearTodoPrefsMirror(username);
-
-    if (affectedDays.isNotEmpty) {
-      await _refreshTodoScheduleConflicts(
-        username,
-        affectedDayKeys: affectedDays,
-      );
-    }
-    triggerRefresh(const {DataRefreshDomain.todos});
+    final plan = await previewClearTodoRecycleBin(username);
+    await purgeTodoTrash(username, plan);
   }
 
   bool _isHistoricalTodo(TodoItem todo, DateTime today) {
@@ -2176,6 +2260,15 @@ mixin _StorageTodos on _StorageServiceBase {
     _isCheckingRecurrence = true;
 
     try {
+      final recurrenceDb = await DatabaseHelper.instance.databaseForUser(
+        username,
+      );
+      final permanentlyDeletedIds = (await recurrenceDb.query(
+        'op_logs',
+        columns: const ['target_uuid'],
+        where: "target_table = 'todos' AND op_type = 'DELETE'",
+      )).map((row) => row['target_uuid']?.toString() ?? '').toSet();
+      permanentlyDeletedIds.remove('');
       final baselines = {
         for (final todo in todos) todo.id: todo.detachedCopy(),
       };
@@ -2248,6 +2341,7 @@ mixin _StorageTodos on _StorageServiceBase {
             todos: todos,
             generatedOccurrences: generatedOccurrences,
             occurrenceIndex: occurrenceIndex,
+            permanentlyDeletedTodoIds: permanentlyDeletedIds,
           );
           final occurrence = result.occurrence;
           final targetRecurrence =
@@ -2273,6 +2367,7 @@ mixin _StorageTodos on _StorageServiceBase {
           todos: todos,
           generatedOccurrences: generatedOccurrences,
           occurrenceIndex: occurrenceIndex,
+          permanentlyDeletedTodoIds: permanentlyDeletedIds,
         );
         if (repairedPastOccurrences.isNotEmpty) {
           seriesChain.addAll(repairedPastOccurrences);
@@ -2311,6 +2406,7 @@ mixin _StorageTodos on _StorageServiceBase {
               todos: todos,
               generatedOccurrences: generatedOccurrences,
               occurrenceIndex: occurrenceIndex,
+              permanentlyDeletedTodoIds: permanentlyDeletedIds,
             );
             final occurrence = result.occurrence;
             if (occurrence.recurrence != RecurrenceType.none) {
@@ -2692,6 +2788,7 @@ mixin _StorageTodos on _StorageServiceBase {
     required List<TodoItem> todos,
     required List<TodoItem> generatedOccurrences,
     _TodoRecurrenceOccurrenceIndex? occurrenceIndex,
+    Set<String> permanentlyDeletedTodoIds = const {},
   }) {
     final candidate = _copyForNextRecurrence(source);
     candidate.recurrenceSeriesId = seriesId;
@@ -2744,6 +2841,13 @@ mixin _StorageTodos on _StorageServiceBase {
       return (occurrence: deletedDeterministic, isNew: false, didChange: true);
     }
 
+    if (permanentlyDeletedTodoIds.contains(candidate.id)) {
+      // A hard-deleted recurring period has no todo row left to act as its
+      // durable tombstone. Its DELETE oplog is the persisted suppression
+      // marker, so recurrence maintenance must not recreate that UUID.
+      return (occurrence: candidate, isNew: false, didChange: false);
+    }
+
     generatedOccurrences.add(candidate);
     occurrenceIndex?.add(candidate);
     return (occurrence: candidate, isNew: true, didChange: true);
@@ -2775,6 +2879,7 @@ mixin _StorageTodos on _StorageServiceBase {
     required List<TodoItem> todos,
     required List<TodoItem> generatedOccurrences,
     _TodoRecurrenceOccurrenceIndex? occurrenceIndex,
+    Set<String> permanentlyDeletedTodoIds = const {},
   }) {
     final knownByDay = <String, DateTime>{};
     final occurrences =
@@ -2827,6 +2932,7 @@ mixin _StorageTodos on _StorageServiceBase {
           todos: todos,
           generatedOccurrences: generatedOccurrences,
           occurrenceIndex: occurrenceIndex,
+          permanentlyDeletedTodoIds: permanentlyDeletedTodoIds,
         );
         if (!result.didChange) continue;
         result.occurrence.recurrence = RecurrenceType.none;

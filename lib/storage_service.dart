@@ -23,6 +23,7 @@ import 'services/todo_lww_service.dart';
 import 'services/todo_recurrence_date_service.dart';
 import 'services/todo_recurrence_delete_service.dart';
 import 'services/todo_recurrence_restore_service.dart';
+import 'services/todo_trash_purge_service.dart';
 import 'services/conflict_visibility_service.dart';
 import 'services/storage/app_settings_storage.dart';
 import 'services/storage/countdown_storage.dart';
@@ -608,6 +609,25 @@ class StorageService {
 
   static Future<TodoItem?> getTodoByUuid(String username, String uuid) =>
       _storage.getTodoByUuid(username, uuid);
+
+  static Future<TodoTrashPurgePlan> previewPermanentTodoDelete(
+    String username,
+    String uuid,
+  ) => _storage.previewPermanentTodoDelete(username, uuid);
+
+  static Future<TodoTrashPurgePlan> previewPermanentTodoSeriesDelete(
+    String username,
+    String seriesId,
+  ) => _storage.previewPermanentTodoSeriesDelete(username, seriesId);
+
+  static Future<TodoTrashPurgePlan> previewClearTodoRecycleBin(
+    String username,
+  ) => _storage.previewClearTodoRecycleBin(username);
+
+  static Future<TodoTrashPurgeResult> purgeTodoTrash(
+    String username,
+    TodoTrashPurgePlan plan,
+  ) => _storage.purgeTodoTrash(username, plan);
 
   static Future<void> permanentlyDeleteTodo(String username, String uuid) =>
       _storage.permanentlyDeleteTodo(username, uuid);

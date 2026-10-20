@@ -417,6 +417,19 @@ abstract class _StorageServiceBase {
     bool sync = true,
   });
   Future<TodoItem?> getTodoByUuid(String username, String uuid);
+  Future<TodoTrashPurgePlan> previewPermanentTodoDelete(
+    String username,
+    String uuid,
+  );
+  Future<TodoTrashPurgePlan> previewPermanentTodoSeriesDelete(
+    String username,
+    String seriesId,
+  );
+  Future<TodoTrashPurgePlan> previewClearTodoRecycleBin(String username);
+  Future<TodoTrashPurgeResult> purgeTodoTrash(
+    String username,
+    TodoTrashPurgePlan plan,
+  );
   Future<void> permanentlyDeleteTodo(String username, String uuid);
   Future<void> clearTodoRecycleBin(String username);
   bool _isHistoricalTodo(TodoItem todo, DateTime today);
