@@ -156,6 +156,7 @@ mixin _StorageTodos on _StorageServiceBase {
     List<TodoItem>? bandSyncSnapshot,
     Map<String, TodoItem>? expectedTodoBaselines,
     Map<String, Set<String>>? expectedSeriesMembership,
+    bool expectedSeriesMembershipIncludesDeleted = false,
   }) async {
     final dedupeMap = <String, TodoItem>{};
     if (sync && !isSyncSource) _recurrenceCheckCache.clear();
@@ -259,9 +260,11 @@ mixin _StorageTodos on _StorageServiceBase {
           final rows = await txn.query(
             'todos',
             columns: const ['uuid'],
-            where:
-                "is_deleted = 0 AND (recurrence_series_id = ? OR "
-                "(uuid = ? AND TRIM(COALESCE(recurrence_series_id, '')) = ''))",
+            where: expectedSeriesMembershipIncludesDeleted
+                ? "recurrence_series_id = ? OR "
+                      "(uuid = ? AND TRIM(COALESCE(recurrence_series_id, '')) = '')"
+                : "is_deleted = 0 AND (recurrence_series_id = ? OR "
+                      "(uuid = ? AND TRIM(COALESCE(recurrence_series_id, '')) = ''))",
             whereArgs: [seriesId, seriesId],
           );
           final currentMembers = rows
@@ -1769,10 +1772,10 @@ mixin _StorageTodos on _StorageServiceBase {
         includeConflictData: true,
       );
       if (maps.isNotEmpty) {
-        final activeSeriesIds = maps
+        final recurrenceSeriesIds = maps
             .where(
               (map) =>
-                  map['is_deleted'] != 1 &&
+                  (includeDeleted || map['is_deleted'] != 1) &&
                   (_parseNullableInt(map['recurrence']) ?? 0) != 0,
             )
             .map((map) {
@@ -1784,18 +1787,19 @@ mixin _StorageTodos on _StorageServiceBase {
             .whereType<String>()
             .where((seriesId) => seriesId.isNotEmpty)
             .toSet();
-        if (activeSeriesIds.isNotEmpty) {
+        if (recurrenceSeriesIds.isNotEmpty) {
           final loadCompleteSeries = limit != null;
           final shouldLoadSeries = loadCompleteSeries || !includeDeleted;
           if (shouldLoadSeries) {
-            // Unbounded list reads already include all live rows. Add only
-            // deleted members of active series so recurrence repair can keep
-            // user-deleted dates as tombstones. Limited reads need the full
-            // series for their progress summary, including deleted rows.
+            // Unbounded list reads already include every row. Limited reads
+            // need complete series for progress summaries and safe recycle-bin
+            // restore previews, including series whose rule carrier is deleted.
+            // Non-deleted-only reads also add deleted tombstones for recurrence
+            // repair.
             final seriesMaps = await dbHelper.getTodoMaps(
               includeDeleted: true,
               deletedOnly: !loadCompleteSeries,
-              recurrenceSeriesIds: activeSeriesIds,
+              recurrenceSeriesIds: recurrenceSeriesIds,
               includeConflictData: true,
             );
             final mapsById = <String, Map<String, dynamic>>{
@@ -3279,6 +3283,38 @@ mixin _StorageTodos on _StorageServiceBase {
     // Only duplicate repair may reactivate its own tombstones. A user deleting
     // a logical period closes that exception for every same-day row.
     _recurrenceDedupeTombstoneIds.removeAll(plan.revivalBarrierIds);
+    return plan;
+  }
+
+  Future<TodoRecurrenceRestorePlan> restoreRecurringTodoSeries(
+    String username,
+    String seriesId, {
+    bool sync = true,
+  }) async {
+    final snapshot = await getTodos(username, includeDeleted: true);
+    final groups = await getTodoGroups(username);
+    final activeGroupIds = groups
+        .where((group) => !group.isDeleted)
+        .map((group) => group.id)
+        .toSet();
+    final plan = TodoRecurrenceRestoreService.tryPlan(
+      todos: snapshot,
+      seriesId: seriesId,
+      activeGroupIds: activeGroupIds,
+    );
+    if (plan == null) {
+      throw StateError('系列状态已变化或无法安全整组恢复，请刷新后逐期恢复。');
+    }
+
+    await saveTodos(
+      username,
+      plan.restoredItems,
+      sync: sync,
+      expectedTodoBaselines: plan.baselines,
+      expectedSeriesMembership: {plan.seriesId: plan.expectedMemberIds},
+      expectedSeriesMembershipIncludesDeleted: true,
+    );
+    _recurrenceDedupeTombstoneIds.removeAll(plan.expectedMemberIds);
     return plan;
   }
 

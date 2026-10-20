@@ -22,6 +22,7 @@ import 'services/sync_oplog_policy.dart';
 import 'services/todo_lww_service.dart';
 import 'services/todo_recurrence_date_service.dart';
 import 'services/todo_recurrence_delete_service.dart';
+import 'services/todo_recurrence_restore_service.dart';
 import 'services/conflict_visibility_service.dart';
 import 'services/storage/app_settings_storage.dart';
 import 'services/storage/countdown_storage.dart';
@@ -574,6 +575,7 @@ class StorageService {
     List<TodoItem>? bandSyncSnapshot,
     Map<String, TodoItem>? expectedTodoBaselines,
     Map<String, Set<String>>? expectedSeriesMembership,
+    bool expectedSeriesMembershipIncludesDeleted = false,
   }) => _storage.saveTodos(
     username,
     items,
@@ -583,6 +585,8 @@ class StorageService {
     bandSyncSnapshot: bandSyncSnapshot,
     expectedTodoBaselines: expectedTodoBaselines,
     expectedSeriesMembership: expectedSeriesMembership,
+    expectedSeriesMembershipIncludesDeleted:
+        expectedSeriesMembershipIncludesDeleted,
   );
 
   static Future<Map<String, int>> scanAllTodoConflicts(String username) =>
@@ -720,6 +724,12 @@ class StorageService {
     scope,
     sync: sync,
   );
+
+  static Future<TodoRecurrenceRestorePlan> restoreRecurringTodoSeries(
+    String username,
+    String seriesId, {
+    bool sync = true,
+  }) => _storage.restoreRecurringTodoSeries(username, seriesId, sync: sync);
 
   static Future<void> saveTodoGroups(
     String username,

@@ -373,6 +373,8 @@ abstract class _StorageServiceBase {
     Map<String, TodoItem?>? recurrenceUploadBaselines,
     List<TodoItem>? bandSyncSnapshot,
     Map<String, TodoItem>? expectedTodoBaselines,
+    Map<String, Set<String>>? expectedSeriesMembership,
+    bool expectedSeriesMembershipIncludesDeleted = false,
   });
   Future<bool> _saveRecurrenceMaintenance(
     String username,
@@ -537,6 +539,11 @@ abstract class _StorageServiceBase {
     String username,
     String todoId,
     TodoRecurrenceDeleteScope scope, {
+    bool sync = true,
+  });
+  Future<TodoRecurrenceRestorePlan> restoreRecurringTodoSeries(
+    String username,
+    String seriesId, {
     bool sync = true,
   });
   Future<void> saveTodoGroups(

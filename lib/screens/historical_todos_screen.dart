@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../storage_service.dart';
+import '../services/todo_recurrence_restore_service.dart';
+import '../services/todo_recurrence_series_edit_service.dart';
 import '../widgets/management_page.dart';
 import '../utils/app_dialogs.dart';
 
@@ -13,6 +15,44 @@ class _HistoricalTodoDateHeader {
 
   final String date;
   final int count;
+}
+
+class _HistoricalTodoSectionHeader {
+  const _HistoricalTodoSectionHeader(this.title, this.count);
+
+  final String title;
+  final int count;
+}
+
+class _HistoricalTodoSeriesGroup {
+  const _HistoricalTodoSeriesGroup({
+    required this.seriesId,
+    required this.items,
+    required this.visibleItems,
+    required this.preview,
+    required this.occurrenceCount,
+    required this.completedCount,
+    required this.skippedCount,
+    required this.firstDate,
+    required this.lastDate,
+  });
+
+  final String seriesId;
+  final List<TodoItem> items;
+  final List<TodoItem> visibleItems;
+  final TodoRecurrenceRestorePreview? preview;
+  final int occurrenceCount;
+  final int completedCount;
+  final int skippedCount;
+  final DateTime firstDate;
+  final DateTime lastDate;
+}
+
+class _HistoricalTodoSeriesMemberRow {
+  const _HistoricalTodoSeriesMemberRow(this.seriesId, this.item);
+
+  final String seriesId;
+  final TodoItem item;
 }
 
 class _HistoricalTodoListProjection {
@@ -73,6 +113,8 @@ class HistoricalTodosScreen extends StatefulWidget {
   final Future<List<TodoGroup>> Function()? loadGroups;
   final Future<TodoItem?> Function(String username, String uuid)? loadTodoById;
   final Future<void> Function(String username, TodoItem todo)? saveTodo;
+  final Future<void> Function(String username, String seriesId)?
+  restoreRecurringSeries;
   const HistoricalTodosScreen({
     super.key,
     required this.username,
@@ -80,6 +122,7 @@ class HistoricalTodosScreen extends StatefulWidget {
     this.loadGroups,
     this.loadTodoById,
     this.saveTodo,
+    this.restoreRecurringSeries,
   });
 
   @override
@@ -93,6 +136,8 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
   List<TodoItem> _skippedTodos = [];
   List<TodoItem> _deletedTodos = [];
   List<TodoItem> _orphanTodos = [];
+  Set<String> _activeGroupIds = {};
+  final Set<String> _expandedSeriesIds = {};
   final Map<String, TodoItem> _loadedTodoById = {};
   bool _isLoading = true;
   bool _isLoadingMore = false;
@@ -228,6 +273,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
 
         // 3. 孤儿待办：未删除、未完成，且符合以下任一可见性异常条件的：
         _orphanTodos = orphanTodos;
+        _activeGroupIds = activeGroupIds;
 
         _nextTodoOffset = offset + _todoPageSize;
         _hasMoreTodoPages =
@@ -283,6 +329,19 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
       }
     }
 
+    if (section == 1) {
+      final rows = _buildDeletedTodoRows(matchingItems, query);
+      final projection = _HistoricalTodoListProjection(
+        source: items,
+        query: query,
+        matchingItems: matchingItems,
+        visibleCount: matchingItems.length,
+        rows: rows,
+      );
+      _listProjections[section] = projection;
+      return projection;
+    }
+
     final groups = <String, List<TodoItem>>{};
     for (final item in matchingItems) {
       final date = _dateLabelFor(item);
@@ -305,6 +364,127 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     _listProjections[section] = projection;
     return projection;
   }
+
+  List<Object> _buildDeletedTodoRows(
+    List<TodoItem> matchingItems,
+    String query,
+  ) {
+    final allSeriesMembers = <String, List<TodoItem>>{};
+    for (final todo in _loadedTodoById.values) {
+      final seriesId = TodoRecurrenceSeriesEditService.seriesIdFor(todo);
+      if (seriesId == null) continue;
+      allSeriesMembers.putIfAbsent(seriesId, () => []).add(todo);
+    }
+
+    final matchingSeries = <String, List<TodoItem>>{};
+    final singleItems = <TodoItem>[];
+    for (final todo in matchingItems) {
+      final seriesId = TodoRecurrenceSeriesEditService.seriesIdFor(todo);
+      if (seriesId == null) {
+        singleItems.add(todo);
+      } else {
+        matchingSeries.putIfAbsent(seriesId, () => []).add(todo);
+      }
+    }
+
+    final seriesGroups = <_HistoricalTodoSeriesGroup>[];
+    for (final entry in matchingSeries.entries) {
+      final members = allSeriesMembers[entry.key] ?? entry.value;
+      final deletedMembers = members.where((todo) => todo.isDeleted).toList()
+        ..sort(_compareTodoDates);
+      if (deletedMembers.isEmpty) continue;
+      final memberIds = deletedMembers.map((todo) => todo.id).toSet();
+      final visibleMembers =
+          query.isEmpty
+                ? deletedMembers
+                : entry.value
+                      .where((todo) => memberIds.contains(todo.id))
+                      .toList()
+            ..sort(_compareTodoDates);
+      final plan = TodoRecurrenceRestoreService.tryPlan(
+        todos: members,
+        seriesId: entry.key,
+        activeGroupIds: _activeGroupIds,
+      );
+      final periods = <String, List<TodoItem>>{};
+      for (final member in deletedMembers) {
+        final date = _todoLocalDate(member);
+        periods.putIfAbsent(_todoDayKey(date), () => []).add(member);
+      }
+      final dates =
+          periods.values.map((period) => _todoLocalDate(period.first)).toList()
+            ..sort();
+      seriesGroups.add(
+        _HistoricalTodoSeriesGroup(
+          seriesId: entry.key,
+          items: deletedMembers,
+          visibleItems: visibleMembers,
+          preview: plan?.preview,
+          occurrenceCount: periods.length,
+          completedCount: periods.values
+              .where((period) => period.any((todo) => todo.isDone))
+              .length,
+          skippedCount: periods.values
+              .where((period) => period.any((todo) => todo.isSkipped))
+              .length,
+          firstDate: dates.first,
+          lastDate: dates.last,
+        ),
+      );
+    }
+    seriesGroups.sort((a, b) {
+      final aUpdated = a.items
+          .map((todo) => todo.updatedAt)
+          .reduce((left, right) => left > right ? left : right);
+      final bUpdated = b.items
+          .map((todo) => todo.updatedAt)
+          .reduce((left, right) => left > right ? left : right);
+      return bUpdated.compareTo(aUpdated);
+    });
+
+    final rows = <Object>[];
+    if (seriesGroups.isNotEmpty) {
+      rows.add(_HistoricalTodoSectionHeader('重复系列', seriesGroups.length));
+      for (final group in seriesGroups) {
+        rows.add(group);
+        if (_expandedSeriesIds.contains(group.seriesId)) {
+          rows.addAll(
+            group.visibleItems.map(
+              (todo) => _HistoricalTodoSeriesMemberRow(group.seriesId, todo),
+            ),
+          );
+        }
+      }
+    }
+
+    if (singleItems.isNotEmpty) {
+      final groups = <String, List<TodoItem>>{};
+      for (final item in singleItems) {
+        final date = _dateLabelFor(item);
+        groups.putIfAbsent(date, () => []).add(item);
+      }
+      for (final group in groups.entries) {
+        rows.add(_HistoricalTodoDateHeader(group.key, group.value.length));
+        rows.addAll(group.value);
+      }
+    }
+    return rows;
+  }
+
+  int _compareTodoDates(TodoItem left, TodoItem right) =>
+      (left.createdDate ?? left.createdAt).compareTo(
+        right.createdDate ?? right.createdAt,
+      );
+
+  DateTime _todoLocalDate(TodoItem todo) {
+    final local = DateTime.fromMillisecondsSinceEpoch(
+      todo.createdDate ?? todo.createdAt,
+      isUtc: true,
+    ).toLocal();
+    return DateTime(local.year, local.month, local.day);
+  }
+
+  String _todoDayKey(DateTime date) => '${date.year}-${date.month}-${date.day}';
 
   _HistoricalTodoSearchFields _searchFieldsFor(TodoItem item) {
     final title = item.title;
@@ -516,12 +696,13 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     setState(() => _busyId = id);
     try {
       await action();
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
-        AppSnackBars.showSnackBar(
-          context,
-          const SnackBar(content: Text('操作失败，请稍后重试')),
-        );
+        final detail = error is StateError ? error.message : null;
+        final message = detail is String && detail.trim().isNotEmpty
+            ? detail
+            : '操作失败，请稍后重试';
+        AppSnackBars.showSnackBar(context, SnackBar(content: Text(message)));
       }
     } finally {
       if (mounted) setState(() => _busyId = null);
@@ -629,6 +810,23 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
           final rowIndex = index - headerChildren.length;
           if (rowIndex < rows.length) {
             final row = rows[rowIndex];
+            if (row is _HistoricalTodoSectionHeader) {
+              return Padding(
+                padding: const EdgeInsets.only(top: 16, bottom: 10),
+                child: Text(
+                  '${row.title} · ${row.count}',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              );
+            }
+            if (row is _HistoricalTodoSeriesGroup) {
+              return _buildSeriesGroupCard(row);
+            }
+            if (row is _HistoricalTodoSeriesMemberRow) {
+              return _buildCard(row.item, 1, indented: true);
+            }
             if (row is _HistoricalTodoDateHeader) {
               return Padding(
                 padding: const EdgeInsets.only(top: 16, bottom: 10),
@@ -665,7 +863,212 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     );
   }
 
-  Widget _buildCard(TodoItem item, int section) {
+  Widget _buildSeriesGroupCard(_HistoricalTodoSeriesGroup group) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final expanded = _expandedSeriesIds.contains(group.seriesId);
+    final busy = _busyId == 'series:${group.seriesId}';
+    final enabled = _busyId == null;
+    final countParts = <String>['${group.occurrenceCount} 期'];
+    if (group.items.length != group.occurrenceCount) {
+      countParts.add('${group.items.length} 条记录');
+    }
+    if (group.completedCount > 0) {
+      countParts.add('${group.completedCount} 期已完成');
+    }
+    if (group.skippedCount > 0) {
+      countParts.add('${group.skippedCount} 期已跳过');
+    }
+    final rangeFormat = _historicalTodoDateFormat(
+      Intl.defaultLocale,
+      pattern: 'yyyy/M/d',
+    );
+    final dateRange = group.firstDate == group.lastDate
+        ? rangeFormat.format(group.firstDate)
+        : '${rangeFormat.format(group.firstDate)} – ${rangeFormat.format(group.lastDate)}';
+
+    return ManagementCard(
+      key: ValueKey('trash-series-${group.seriesId}'),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.repeat_rounded, color: scheme.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      group.items.last.title,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      countParts.join(' · '),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                    Text(
+                      dateRange,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (busy) ...[
+            const SizedBox(height: 10),
+            const LinearProgressIndicator(),
+          ],
+          const SizedBox(height: 8),
+          ManagementActionBar(
+            alignment: WrapAlignment.spaceBetween,
+            children: [
+              TextButton.icon(
+                onPressed: enabled
+                    ? () {
+                        setState(() {
+                          if (expanded) {
+                            _expandedSeriesIds.remove(group.seriesId);
+                          } else {
+                            _expandedSeriesIds.add(group.seriesId);
+                          }
+                          _listProjections.remove(1);
+                        });
+                      }
+                    : null,
+                icon: Icon(
+                  expanded
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
+                  size: 18,
+                ),
+                label: Text(
+                  expanded
+                      ? '收起期次'
+                      : '展开${group.visibleItems.length == group.items.length ? '' : '匹配的'}期次',
+                ),
+              ),
+              if (group.preview != null)
+                FilledButton.tonalIcon(
+                  key: ValueKey('restore_recurrence_series_${group.seriesId}'),
+                  onPressed: enabled
+                      ? () => _confirmRestoreSeries(group)
+                      : null,
+                  icon: const Icon(Icons.restore_rounded, size: 18),
+                  label: Text('恢复整组（${group.preview!.occurrenceCount} 期）'),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmRestoreSeries(_HistoricalTodoSeriesGroup group) async {
+    if (_busyId != null) return;
+    final plan = TodoRecurrenceRestoreService.tryPlan(
+      todos: _loadedTodoById.values,
+      seriesId: group.seriesId,
+      activeGroupIds: _activeGroupIds,
+    );
+    if (plan == null) {
+      if (mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(content: Text('系列状态已变化，请重新扫描后再试')),
+        );
+      }
+      await _loadData();
+      return;
+    }
+    if (!mounted) return;
+
+    final dateFormat = _historicalTodoDateFormat(
+      Intl.defaultLocale,
+      pattern: 'yyyy/M/d',
+    );
+    final dateRange = plan.preview.firstDate == plan.preview.lastDate
+        ? dateFormat.format(plan.preview.firstDate)
+        : '${dateFormat.format(plan.preview.firstDate)} – ${dateFormat.format(plan.preview.lastDate)}';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('恢复整组重复待办？'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(group.items.last.title),
+            const SizedBox(height: 8),
+            Text(
+              '恢复回收站中的全部 ${plan.preview.recordCount} 条记录，覆盖 '
+              '$dateRange，共 ${plan.preview.occurrenceCount} 期。',
+            ),
+            if (plan.preview.completedCount > 0 ||
+                plan.preview.skippedCount > 0) ...[
+              const SizedBox(height: 6),
+              Text(
+                '${plan.preview.completedCount} 期已完成 · '
+                '${plan.preview.skippedCount} 期已跳过，状态会保留。',
+              ),
+            ],
+            const SizedBox(height: 8),
+            Text(
+              '原重复规则会继续生效；已彻底删除的期次无法恢复。',
+              style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
+                color: Theme.of(dialogContext).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            key: const ValueKey('confirm_restore_recurrence_series'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('恢复整组'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    await _runAction('series:${group.seriesId}', () async {
+      final restore = widget.restoreRecurringSeries;
+      if (restore != null) {
+        await restore(widget.username, group.seriesId);
+      } else {
+        await StorageService.restoreRecurringTodoSeries(
+          widget.username,
+          group.seriesId,
+        );
+      }
+      await _loadData();
+      if (mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(content: Text('已恢复 ${plan.preview.occurrenceCount} 个期次')),
+        );
+      }
+    });
+  }
+
+  Widget _buildCard(TodoItem item, int section, {bool indented = false}) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final busy = _busyId == item.id;
@@ -676,7 +1079,10 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     ).format(DateTime.fromMillisecondsSinceEpoch(item.updatedAt).toLocal());
     return ManagementCard(
       key: ValueKey(item.id),
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: EdgeInsets.only(
+        left: indented ? 18 : 0,
+        bottom: indented ? 8 : 10,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

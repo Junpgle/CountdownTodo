@@ -128,6 +128,8 @@ todo.md
 !/test/services/plan_availability_repository_test.dart
 !/test/services/plan_availability_preferences_test.dart
 !/test/services/time_log_overlap_service_test.dart
+!/test/services/todo_recurrence_restore_service_test.dart
+!/test/services/todo_recurrence_restore_storage_test.dart
 !/test/services/device_calendar_refresh_test.dart
 !/test/services/plan_editor_draft_repository_test.dart
 !/test/support/
@@ -189,6 +191,13 @@ todo.md
 !/test/models/json_compatibility_test.dart
 !/test/widgets/
 /test/widgets/*
+!/test/widgets/goldens/
+/test/widgets/goldens/*
+!/test/widgets/goldens/todo_recurrence_trash_series_phone.png
+!/test/widgets/goldens/todo_recurrence_trash_series_expanded_phone.png
+!/test/widgets/goldens/todo_recurrence_trash_series_restore_confirm_phone.png
+!/test/widgets/goldens/todo_recurrence_trash_series_restored_phone.png
+!/test/widgets/todo_recurrence_trash_series_restore_test.dart
 !/test/widgets/home_dashboard_scroll_section_test.dart
 !/test/widgets/todo_completion_celebration_test.dart
 !/test/widgets/todo_overdue_triage_test.dart
