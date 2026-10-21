@@ -44,6 +44,7 @@ class FinanceHomeScreen extends StatefulWidget {
   final DateTime Function() clock;
   final DateTime? initialMonth;
   final String? initialCategoryFilterUuid;
+  final DateTimeRange? initialLedgerDateRange;
   final _FinanceHomeData? _initialData;
 
   const FinanceHomeScreen({
@@ -53,12 +54,14 @@ class FinanceHomeScreen extends StatefulWidget {
     this.clock = DateTime.now,
   }) : initialMonth = null,
        initialCategoryFilterUuid = null,
+       initialLedgerDateRange = null,
        _initialData = null;
 
   const FinanceHomeScreen._categoryLedger({
     required this.username,
     required DateTime month,
     required String categoryUuid,
+    required this.initialLedgerDateRange,
     required this._initialData,
     this.clock = DateTime.now,
   }) : openQuickEntry = false,
@@ -80,9 +83,12 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   FinanceSummary _summary = const FinanceSummary();
   int _openingBalanceMinor = 0;
   String? _openingBalanceStartDate;
+  DateTimeRange? _ledgerDateRange;
+  bool _isLedgerQueryLoading = false;
+  String? _ledgerQueryError;
   String _keyword = '';
   FinanceTransactionType? _filterType;
-  String? _categoryFilterUuid;
+  Set<String> _categoryFilterUuids = <String>{};
   bool _categoryTapOpensLedger = true;
   int _selectedIndex = 0;
   bool _isLoading = true;
@@ -130,18 +136,18 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   bool _shouldClearFiltersBeforePop({
     required String keyword,
     required FinanceTransactionType? filterType,
-    required String? categoryUuid,
+    required Set<String> categoryUuids,
   }) {
     final hasManualFilters = keyword.trim().isNotEmpty || filterType != null;
     return _isCategoryLedgerRoute
         ? hasManualFilters
-        : hasManualFilters || categoryUuid != null;
+        : hasManualFilters || categoryUuids.isNotEmpty;
   }
 
   bool get _clearFiltersBeforePop => _shouldClearFiltersBeforePop(
     keyword: _keyword,
     filterType: _filterType,
-    categoryUuid: _categoryFilterUuid,
+    categoryUuids: _categoryFilterUuids,
   );
 
   bool get _handleLedgerBack =>
@@ -152,12 +158,12 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     required VoidCallback update,
     required String keyword,
     required FinanceTransactionType? filterType,
-    required String? categoryUuid,
+    required Set<String> categoryUuids,
   }) {
     final willHaveClearableFilters = _shouldClearFiltersBeforePop(
       keyword: keyword,
       filterType: filterType,
-      categoryUuid: categoryUuid,
+      categoryUuids: categoryUuids,
     );
     if (willHaveClearableFilters != _clearFiltersBeforePop) {
       setState(update);
@@ -172,7 +178,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     setState(() {
       _keyword = '';
       _filterType = null;
-      if (!_isCategoryLedgerRoute) _categoryFilterUuid = null;
+      if (!_isCategoryLedgerRoute) _categoryFilterUuids.clear();
     });
   }
 
@@ -197,10 +203,11 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     super.initState();
     _quickEntryInProgress = widget.openQuickEntry;
     FinanceStorage.revision.addListener(_onFinanceStorageChanged);
+    _ledgerDateRange = widget.initialLedgerDateRange;
     final initialMonth = widget.initialMonth ?? widget.clock();
     _month = DateTime(initialMonth.year, initialMonth.month);
     if (_isCategoryLedgerRoute) {
-      _categoryFilterUuid = widget.initialCategoryFilterUuid;
+      _categoryFilterUuids = <String>{widget.initialCategoryFilterUuid!};
       _selectedIndex = 1;
     }
     final initialData = widget._initialData;
@@ -263,10 +270,14 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     _autoGenerationTimer?.cancel();
     _autoGenerationTimer = null;
     final generation = ++_loadGeneration;
-    if (mounted && showLoading) {
+    if (mounted && (showLoading || _ledgerDateRange != null)) {
       setState(() {
-        _isLoading = true;
-        _loadError = null;
+        if (showLoading) {
+          _isLoading = true;
+          _loadError = null;
+        }
+        if (_ledgerDateRange != null) _isLedgerQueryLoading = true;
+        if (_ledgerDateRange != null) _ledgerQueryError = null;
       });
     }
     try {
@@ -284,6 +295,14 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       final categoryTapOpensLedger = values[1] as bool;
       final openingBalance =
           values[2] as ({int amountMinor, String? startDate});
+      var ledgerTransactions = data.transactions;
+      final selectedRange = _ledgerDateRange;
+      if (selectedRange != null) {
+        ledgerTransactions = await FinanceRepository.getTransactions(
+          from: selectedRange.start,
+          to: financeCalendarDayOffset(selectedRange.end, 1),
+        );
+      }
       if (!mounted || generation != _loadGeneration) return;
       final recurringRuleSignature = _recurringRuleSignature(
         data.recurringRules,
@@ -293,7 +312,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
           _lastRecurringRuleSignature != recurringRuleSignature;
       _lastRecurringRuleSignature = recurringRuleSignature;
       setState(() {
-        _transactions = data.transactions;
+        _transactions = ledgerTransactions;
         _summary = data.summary;
         _categories = data.categories;
         _paymentMethods = data.paymentMethods;
@@ -303,6 +322,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         _categoryTapOpensLedger = categoryTapOpensLedger;
         _openingBalanceMinor = openingBalance.amountMinor;
         _openingBalanceStartDate = openingBalance.startDate;
+        _isLedgerQueryLoading = false;
+        _ledgerQueryError = null;
         _isLoading = false;
       });
       _scheduleUpcomingTransactionRefresh();
@@ -316,12 +337,16 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       }
     } catch (error) {
       if (!mounted || generation != _loadGeneration) return;
-      if (showLoading) {
-        setState(() {
+      setState(() {
+        if (_isLedgerQueryLoading || _ledgerDateRange != null) {
+          _ledgerQueryError = error.toString();
+        }
+        _isLedgerQueryLoading = false;
+        if (showLoading) {
           _isLoading = false;
           _loadError = error.toString();
-        });
-      }
+        }
+      });
     }
   }
 
@@ -943,6 +968,24 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     _load(refreshCumulativeBalanceEvents: false);
   }
 
+  Future<void> _setLedgerDateRange(DateTimeRange? value) async {
+    final current = _ledgerDateRange;
+    if (current == null && value == null) return;
+    if (current != null &&
+        value != null &&
+        dateKey(current.start) == dateKey(value.start) &&
+        dateKey(current.end) == dateKey(value.end)) {
+      return;
+    }
+    setState(() {
+      _ledgerDateRange = value;
+      _isLedgerQueryLoading = true;
+      _ledgerQueryError = null;
+      _transactions = const [];
+    });
+    await _load(showLoading: false);
+  }
+
   Future<void> _editOpeningBalance() async {
     final now = widget.clock();
     final today = dateKey(now);
@@ -1000,7 +1043,26 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     String categoryUuid,
     GlobalKey sourceKey,
     List<FinanceTransaction> periodTransactions,
-  ) async {
+  ) => _openCategoryLedger(categoryUuid, sourceKey, periodTransactions);
+
+  Future<void> _pushCategoryLedgerWithRange(
+    String categoryUuid,
+    GlobalKey sourceKey,
+    List<FinanceTransaction> periodTransactions,
+    DateTimeRange periodRange,
+  ) => _openCategoryLedger(
+    categoryUuid,
+    sourceKey,
+    periodTransactions,
+    initialDateRange: periodRange,
+  );
+
+  Future<void> _openCategoryLedger(
+    String categoryUuid,
+    GlobalKey sourceKey,
+    List<FinanceTransaction> periodTransactions, {
+    DateTimeRange? initialDateRange,
+  }) async {
     final category = _categoryMap[categoryUuid];
     final colorScheme = Theme.of(context).colorScheme;
     await PageTransitions.pushFromRect<void>(
@@ -1009,6 +1071,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         username: widget.username,
         month: _month,
         categoryUuid: categoryUuid,
+        initialLedgerDateRange: initialDateRange,
         initialData: (
           transactions: periodTransactions,
           summary: _summary,
@@ -1185,6 +1248,9 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                           onRefresh: _load,
                           onMonthChanged: _setMonth,
                           onCategorySelected: _pushCategoryLedger,
+                          onCategorySelectedWithRange:
+                              _pushCategoryLedgerWithRange,
+                          onOpenTransaction: _openDetail,
                         ),
                         FinanceLedgerPanel(
                           topPadding: topBarHeight,
@@ -1195,26 +1261,32 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                           paymentMethods: _paymentMethodMap,
                           keyword: _keyword,
                           filterType: _filterType,
-                          categoryUuid: _categoryFilterUuid,
+                          categoryUuids: _categoryFilterUuids,
+                          dateRange: _ledgerDateRange,
+                          isLoading: _isLedgerQueryLoading,
+                          queryError: _ledgerQueryError,
+                          onRetry: () => unawaited(_load(showLoading: false)),
+                          onDateRangeChanged: _setLedgerDateRange,
                           onOpenDetail: _openDetail,
                           onKeywordChanged: (value) => _updateLedgerFilter(
                             update: () => _keyword = value,
                             keyword: value,
                             filterType: _filterType,
-                            categoryUuid: _categoryFilterUuid,
+                            categoryUuids: _categoryFilterUuids,
                           ),
                           onFilterChanged: (value) => _updateLedgerFilter(
                             update: () => _filterType = value,
                             keyword: _keyword,
                             filterType: value,
-                            categoryUuid: _categoryFilterUuid,
+                            categoryUuids: _categoryFilterUuids,
                           ),
-                          onCategoryChanged: (value) => _updateLedgerFilter(
-                            update: () => _categoryFilterUuid = value,
-                            keyword: _keyword,
-                            filterType: _filterType,
-                            categoryUuid: value,
-                          ),
+                          onCategoryUuidsChanged: (value) =>
+                              _updateLedgerFilter(
+                                update: () => _categoryFilterUuids = value,
+                                keyword: _keyword,
+                                filterType: _filterType,
+                                categoryUuids: value,
+                              ),
                           onEdit: (transaction) =>
                               _openEntry(transaction: transaction),
                           onDelete: _deleteTransaction,

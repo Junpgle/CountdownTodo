@@ -38,6 +38,13 @@ typedef FinanceCategorySelectionCallback = Future<void> Function(
   List<FinanceTransaction> periodTransactions,
 );
 
+typedef FinanceCategoryRangeSelectionCallback = Future<void> Function(
+  String categoryUuid,
+  GlobalKey sourceKey,
+  List<FinanceTransaction> periodTransactions,
+  DateTimeRange periodRange,
+);
+
 class FinanceOverviewPanel extends StatefulWidget {
   final double topPadding;
   final DateTime Function() clock;
@@ -55,6 +62,12 @@ class FinanceOverviewPanel extends StatefulWidget {
   final Future<void> Function() onRefresh;
   final ValueChanged<DateTime>? onMonthChanged;
   final FinanceCategorySelectionCallback? onCategorySelected;
+  final FinanceCategoryRangeSelectionCallback? onCategorySelectedWithRange;
+  final Future<void> Function(
+    FinanceTransaction transaction,
+    GlobalKey sourceKey,
+  )?
+  onOpenTransaction;
 
   const FinanceOverviewPanel({
     super.key,
@@ -74,6 +87,8 @@ class FinanceOverviewPanel extends StatefulWidget {
     required this.onRefresh,
     this.onMonthChanged,
     this.onCategorySelected,
+    this.onCategorySelectedWithRange,
+    this.onOpenTransaction,
   });
 
   @override
@@ -105,6 +120,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   ValueChanged<DateTime>? get onMonthChanged => widget.onMonthChanged;
   FinanceCategorySelectionCallback? get onCategorySelected =>
       widget.onCategorySelected;
+  FinanceCategoryRangeSelectionCallback? get onCategorySelectedWithRange =>
+      widget.onCategorySelectedWithRange;
 
   String _categoryDisplayName(String? categoryUuid) {
     if (!identical(_categoryDisplayNamesSource, categories)) {
@@ -1150,6 +1167,16 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
                   sourceKey,
                   periodTransactions,
                 ),
+      onCategorySelectedWithRange: onCategorySelectedWithRange == null
+          ? null
+          : (categoryUuid, sourceKey, periodTransactions, periodRange) =>
+                onCategorySelectedWithRange!(
+                  categoryUuid,
+                  sourceKey,
+                  periodTransactions,
+                  periodRange,
+                ),
+      onOpenTransaction: widget.onOpenTransaction,
     );
     await PageTransitions.pushFromRect<String>(
       context: context,
@@ -1451,7 +1478,9 @@ class _FinanceLedgerOrderEntry {
 
 typedef _FinanceLedgerFilterKey = ({
   FinanceTransactionType? type,
-  String? categoryUuid,
+  String categoryKey,
+  String? rangeStartKey,
+  String? rangeEndKey,
 });
 
 class FinanceLedgerPanel extends StatefulWidget {
@@ -1464,10 +1493,17 @@ class FinanceLedgerPanel extends StatefulWidget {
   final String keyword;
   final FinanceTransactionType? filterType;
   final String? categoryUuid;
+  final Set<String>? categoryUuids;
+  final DateTimeRange? dateRange;
+  final bool isLoading;
+  final String? queryError;
+  final VoidCallback? onRetry;
   final void Function(FinanceTransaction, GlobalKey) onOpenDetail;
   final ValueChanged<String> onKeywordChanged;
   final ValueChanged<FinanceTransactionType?> onFilterChanged;
   final ValueChanged<String?>? onCategoryChanged;
+  final ValueChanged<Set<String>>? onCategoryUuidsChanged;
+  final ValueChanged<DateTimeRange?>? onDateRangeChanged;
   final ValueChanged<FinanceTransaction> onEdit;
   final ValueChanged<FinanceTransaction> onDelete;
   final ValueChanged<FinanceTransaction> onRefund;
@@ -1483,10 +1519,17 @@ class FinanceLedgerPanel extends StatefulWidget {
     required this.keyword,
     required this.filterType,
     this.categoryUuid,
+    this.categoryUuids,
+    this.dateRange,
+    this.isLoading = false,
+    this.queryError,
+    this.onRetry,
     required this.onOpenDetail,
     required this.onKeywordChanged,
     required this.onFilterChanged,
     this.onCategoryChanged,
+    this.onCategoryUuidsChanged,
+    this.onDateRangeChanged,
     required this.onEdit,
     required this.onDelete,
     required this.onRefund,
@@ -1503,7 +1546,11 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
   late final TextEditingController _keywordController;
   late String _localKeyword;
   FinanceTransactionType? _localFilterType;
-  String? _localCategoryUuid;
+  Set<String> _localCategoryUuids = <String>{};
+  DateTimeRange? _localDateRange;
+  final Set<String> _selectedTransactionUuids = <String>{};
+  bool _selectionMode = false;
+  bool _hasCommittedSelection = false;
   List<FinanceTransaction>? _searchSourceTransactions;
   Map<String, FinanceCategory>? _searchSourceCategories;
   Map<String, FinancePaymentMethod>? _searchSourcePaymentMethods;
@@ -1518,7 +1565,9 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
   Map<String, FinancePaymentMethod> get paymentMethods => widget.paymentMethods;
   String get keyword => _localKeyword;
   FinanceTransactionType? get filterType => _localFilterType;
-  String? get categoryUuid => _localCategoryUuid;
+  Set<String> get categoryUuids => _localCategoryUuids;
+  DateTimeRange? get dateRange =>
+      widget.onDateRangeChanged == null ? _localDateRange : widget.dateRange;
   void Function(FinanceTransaction, GlobalKey) get onOpenDetail =>
       widget.onOpenDetail;
   ValueChanged<String> get onKeywordChanged => widget.onKeywordChanged;
@@ -1538,7 +1587,12 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
     super.initState();
     _localKeyword = widget.keyword;
     _localFilterType = widget.filterType;
-    _localCategoryUuid = widget.categoryUuid;
+    _localCategoryUuids =
+        widget.categoryUuids?.toSet() ??
+        (widget.categoryUuid == null
+            ? <String>{}
+            : <String>{widget.categoryUuid!});
+    _localDateRange = widget.dateRange;
     _keywordController = TextEditingController(text: widget.keyword);
   }
 
@@ -1555,8 +1609,21 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
     if (_localFilterType != widget.filterType) {
       _localFilterType = widget.filterType;
     }
-    if (_localCategoryUuid != widget.categoryUuid) {
-      _localCategoryUuid = widget.categoryUuid;
+    if (widget.categoryUuids != null) {
+      _localCategoryUuids = widget.categoryUuids!.toSet();
+    } else if (widget.categoryUuids == null &&
+        _localCategoryUuids.length == 1 &&
+        !_localCategoryUuids.contains(widget.categoryUuid)) {
+      _localCategoryUuids = widget.categoryUuid == null
+          ? <String>{}
+          : <String>{widget.categoryUuid!};
+    }
+    if (widget.onDateRangeChanged != null) {
+      _localDateRange = widget.dateRange;
+    }
+    if (oldWidget.dateRange != widget.dateRange) {
+      _selectedTransactionUuids.clear();
+      _hasCommittedSelection = false;
     }
   }
 
@@ -1610,10 +1677,18 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
 
   List<_FinanceLedgerOrderEntry> _ensureOrderedEntries({
     required FinanceTransactionType? filterType,
-    required String? categoryUuid,
+    required Set<String> categoryUuids,
   }) {
     _syncSearchInputs();
-    final filterKey = (type: filterType, categoryUuid: categoryUuid);
+    final selectedRange = dateRange;
+    final filterKey = (
+      type: filterType,
+      categoryKey: (categoryUuids.toList()..sort()).join('\u0000'),
+      rangeStartKey: selectedRange == null
+          ? null
+          : dateKey(selectedRange.start),
+      rangeEndKey: selectedRange == null ? null : dateKey(selectedRange.end),
+    );
     if (identical(_orderedSourceTransactions, transactions) &&
         _orderedFilterKey == filterKey) {
       return _orderedEntries;
@@ -1622,13 +1697,13 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
     final entries = <_FinanceLedgerOrderEntry>[];
     for (final transaction in transactions) {
       if (filterType != null && transaction.type != filterType) continue;
-      if (categoryUuid != null) {
-        final matchesCategory =
-            categoryUuid == financeUncategorizedCategoryFilterUuid
-            ? transaction.categoryUuid == null ||
-                  transaction.categoryUuid!.trim().isEmpty
-            : transaction.categoryUuid == categoryUuid;
-        if (!matchesCategory) continue;
+      if (!_matchesSelectedCategories(transaction)) continue;
+      if (selectedRange != null) {
+        final transactionDate = transaction.transactionDate;
+        if (transactionDate.compareTo(dateKey(selectedRange.start)) < 0 ||
+            transactionDate.compareTo(dateKey(selectedRange.end)) > 0) {
+          continue;
+        }
       }
       entries.add(
         _FinanceLedgerOrderEntry(
@@ -1701,6 +1776,8 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
   }
 
   void _updateKeyword(String value) {
+    _selectedTransactionUuids.clear();
+    _hasCommittedSelection = false;
     if (_localKeyword != value) {
       setState(() => _localKeyword = value);
     }
@@ -1708,17 +1785,180 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
   }
 
   void _updateFilterType(FinanceTransactionType? value) {
+    _selectedTransactionUuids.clear();
+    _hasCommittedSelection = false;
     if (_localFilterType != value) {
       setState(() => _localFilterType = value);
     }
     onFilterChanged(value);
   }
 
-  void _updateCategoryFilter(String? value) {
-    if (_localCategoryUuid != value) {
-      setState(() => _localCategoryUuid = value);
+  void _updateCategoryFilters(Set<String> values) {
+    _selectedTransactionUuids.clear();
+    _hasCommittedSelection = false;
+    setState(() => _localCategoryUuids = values);
+    widget.onCategoryUuidsChanged?.call(values);
+    if (widget.onCategoryUuidsChanged == null) {
+      onCategoryChanged?.call(values.length == 1 ? values.first : null);
     }
-    onCategoryChanged?.call(value);
+  }
+
+  Future<void> _pickDateRange() async {
+    final now = widget.clock();
+    final month = widget.month ?? now;
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      initialDateRange:
+          dateRange ??
+          DateTimeRange(
+            start: DateTime(month.year, month.month),
+            end: DateTime(month.year, month.month + 1, 0),
+          ),
+      helpText: '选择统计日期范围',
+      saveText: '应用',
+    );
+    if (picked == null || !mounted) return;
+    _selectedTransactionUuids.clear();
+    _hasCommittedSelection = false;
+    if (widget.onDateRangeChanged == null) {
+      setState(() => _localDateRange = picked);
+    } else {
+      widget.onDateRangeChanged!(picked);
+    }
+  }
+
+  void _resetDateRange() {
+    _selectedTransactionUuids.clear();
+    _hasCommittedSelection = false;
+    if (widget.onDateRangeChanged == null) {
+      setState(() => _localDateRange = null);
+    } else {
+      widget.onDateRangeChanged!(null);
+    }
+  }
+
+  Future<void> _pickCategories() async {
+    final selected = await showDialog<Set<String>>(
+      context: context,
+      builder: (context) => _FinanceLedgerCategoryPickerDialog(
+        categories: categories,
+        initialSelection: categoryUuids,
+        categoryCounts: widget.isLoading || widget.queryError != null
+            ? null
+            : _categoryCountsForPicker(),
+      ),
+    );
+    if (selected == null || !mounted) return;
+    _updateCategoryFilters(selected);
+  }
+
+  Map<String, int> _categoryCountsForPicker() {
+    final counts = <String, int>{};
+    final selectedRange = dateRange;
+    final query = keyword.trim().toLowerCase();
+    final dateMatches = <String, bool>{};
+
+    for (final transaction in transactions) {
+      if (filterType != null && transaction.type != filterType) continue;
+      if (selectedRange != null) {
+        final transactionDate = transaction.transactionDate;
+        if (transactionDate.compareTo(dateKey(selectedRange.start)) < 0 ||
+            transactionDate.compareTo(dateKey(selectedRange.end)) > 0) {
+          continue;
+        }
+      }
+      if (query.isNotEmpty) {
+        final matchesText = _searchableTextFor(transaction).contains(query);
+        final matchesDate = dateMatches.putIfAbsent(
+          transaction.transactionDate,
+          () => _matchesFinanceLedgerDate(transaction.transactionDate, query),
+        );
+        if (!matchesText && !matchesDate) continue;
+      }
+
+      final categoryUuid = transaction.categoryUuid?.trim();
+      if (categoryUuid == null || categoryUuid.isEmpty) {
+        counts.update(
+          financeUncategorizedCategoryFilterUuid,
+          (count) => count + 1,
+          ifAbsent: () => 1,
+        );
+        continue;
+      }
+
+      var category = categories[categoryUuid];
+      final visited = <String>{};
+      while (category != null && visited.add(category.uuid)) {
+        counts.update(category.uuid, (count) => count + 1, ifAbsent: () => 1);
+        final parentUuid = category.parentUuid?.trim();
+        if (parentUuid == null || parentUuid.isEmpty) break;
+        final parent = categories[parentUuid];
+        if (parent == null || parent.type != category.type) break;
+        category = parent;
+      }
+    }
+
+    return counts;
+  }
+
+  void _toggleSelectionMode() {
+    setState(() {
+      _selectionMode = !_selectionMode;
+      if (!_selectionMode) {
+        _hasCommittedSelection = _selectedTransactionUuids.isNotEmpty;
+      }
+    });
+  }
+
+  void _clearSelection() {
+    setState(() {
+      _selectedTransactionUuids.clear();
+      _hasCommittedSelection = false;
+    });
+  }
+
+  void _toggleTransactionSelection(FinanceTransaction transaction) {
+    setState(() {
+      if (!_selectedTransactionUuids.add(transaction.uuid)) {
+        _selectedTransactionUuids.remove(transaction.uuid);
+      }
+    });
+  }
+
+  void _toggleSelectAll(List<_FinanceLedgerOrderEntry> filtered) {
+    final visibleUuids = filtered
+        .map((entry) => entry.transaction.uuid)
+        .toSet();
+    setState(() {
+      if (visibleUuids.isNotEmpty &&
+          visibleUuids.every(_selectedTransactionUuids.contains)) {
+        _selectedTransactionUuids.removeAll(visibleUuids);
+      } else {
+        _selectedTransactionUuids.addAll(visibleUuids);
+      }
+    });
+  }
+
+  bool _matchesSelectedCategories(FinanceTransaction transaction) {
+    if (categoryUuids.isEmpty) return true;
+    final selected = categoryUuids;
+    final transactionCategoryUuid = transaction.categoryUuid?.trim();
+    if (transactionCategoryUuid == null || transactionCategoryUuid.isEmpty) {
+      return selected.contains(financeUncategorizedCategoryFilterUuid);
+    }
+    var current = categories[transactionCategoryUuid];
+    final visited = <String>{};
+    while (current != null && visited.add(current.uuid)) {
+      if (selected.contains(current.uuid)) return true;
+      final parentUuid = current.parentUuid?.trim();
+      if (parentUuid == null || parentUuid.isEmpty) break;
+      final parent = categories[parentUuid];
+      if (parent == null || parent.type != current.type) break;
+      current = parent;
+    }
+    return selected.contains(transactionCategoryUuid);
   }
 
   @override
@@ -1727,7 +1967,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
     final hasKeyword = query.isNotEmpty;
     final orderedEntries = _ensureOrderedEntries(
       filterType: filterType,
-      categoryUuid: categoryUuid,
+      categoryUuids: categoryUuids,
     );
     if (hasKeyword) _ensureSearchEntries(orderedEntries);
 
@@ -1781,8 +2021,6 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
       final cardKey = _cardKeys[transaction.uuid];
       if (cardKey != null) keyedRowIndices[cardKey] = rowIndex;
     }
-    final bottomPadding = financeBottomContentPaddingFor(context);
-
     return Column(
       children: [
         Padding(
@@ -1813,15 +2051,21 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
               _buildFilterChip(context, '全部', null),
               for (final type in FinanceTransactionType.values)
                 _buildFilterChip(context, type.label, type),
-              if (categoryUuid != null) _buildCategoryFilterChip(context),
+              if (widget.onDateRangeChanged != null)
+                _buildDateRangeFilterChip(context),
+              _buildCategoryFilterChip(context),
             ],
           ),
         ),
         Expanded(
-          child: filtered.isEmpty
+          child: widget.queryError != null
+              ? _buildQueryError(context, widget.queryError!)
+              : widget.isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : filtered.isEmpty
               ? _buildEmptyState(context)
               : ListView.builder(
-                  padding: EdgeInsets.fromLTRB(16, 4, 16, bottomPadding),
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
                   itemCount: ledgerRows.length,
                   findChildIndexCallback: (key) => keyedRowIndices[key],
                   itemBuilder: (context, index) {
@@ -1833,9 +2077,21 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
                       context,
                       row.transaction!,
                       nowAt,
+                      selectionMode: _selectionMode,
+                      selected: _selectedTransactionUuids.contains(
+                        row.transaction!.uuid,
+                      ),
+                      onToggleSelection: () =>
+                          _toggleTransactionSelection(row.transaction!),
                     );
                   },
                 ),
+        ),
+        Padding(
+          padding: EdgeInsets.only(
+            bottom: financeBottomContentPaddingFor(context),
+          ),
+          child: _buildSummaryFooter(context, filtered, nowAt),
         ),
       ],
     );
@@ -1857,24 +2113,202 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
   }
 
   Widget _buildCategoryFilterChip(BuildContext context) {
-    final isUncategorized =
-        categoryUuid == financeUncategorizedCategoryFilterUuid;
-    final category = isUncategorized ? null : categories[categoryUuid];
-    final label = isUncategorized
-        ? '分类 · 未分类'
-        : categoryUuid == null
+    final selected = categoryUuids;
+    final category =
+        selected.length == 1 &&
+            selected.first != financeUncategorizedCategoryFilterUuid
+        ? categories[selected.first]
+        : null;
+    final label = selected.isEmpty
         ? '分类筛选'
-        : '分类 · ${_categoryDisplayName(categoryUuid)}';
+        : selected.length == 1 &&
+              selected.first == financeUncategorizedCategoryFilterUuid
+        ? '分类 · 未分类'
+        : '分类 · ${selected.length} 项';
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: FilterChip(
         key: const ValueKey('finance-ledger-category-filter'),
         avatar: category == null ? null : Text(category.icon),
         label: Text(label),
-        selected: true,
-        onSelected: onCategoryChanged == null
-            ? null
-            : (_) => _updateCategoryFilter(null),
+        selected: selected.isNotEmpty,
+        onSelected: (_) {
+          if (widget.categoryUuids == null &&
+              widget.categoryUuid != null &&
+              widget.onCategoryUuidsChanged == null) {
+            _updateCategoryFilters(<String>{});
+          } else {
+            _pickCategories();
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildDateRangeFilterChip(BuildContext context) {
+    final now = widget.clock();
+    final month = widget.month ?? now;
+    final range =
+        dateRange ??
+        DateTimeRange(
+          start: DateTime(month.year, month.month),
+          end: DateTime(month.year, month.month + 1, 0),
+        );
+    final isCustomRange = dateRange != null;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: InputChip(
+        key: const ValueKey('finance-ledger-date-range-filter'),
+        avatar: const Icon(Icons.date_range_outlined, size: 18),
+        label: Text(
+          '${dateKey(range.start)} – ${dateKey(range.end)}',
+          maxLines: 1,
+        ),
+        onPressed: _pickDateRange,
+        onDeleted: isCustomRange ? _resetDateRange : null,
+        deleteButtonTooltipMessage: '恢复当前月',
+      ),
+    );
+  }
+
+  Widget _buildSummaryFooter(
+    BuildContext context,
+    List<_FinanceLedgerOrderEntry> filtered,
+    int nowAt,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final showSelectedTotals = _selectionMode || _hasCommittedSelection;
+    final selectedEntries = showSelectedTotals
+        ? filtered
+              .where(
+                (entry) =>
+                    _selectedTransactionUuids.contains(entry.transaction.uuid),
+              )
+              .toList(growable: false)
+        : filtered;
+    final totals = _FinanceLedgerTotals.fromEntries(selectedEntries, nowAt);
+    final selectedCount = selectedEntries.length;
+    final allVisibleSelected =
+        filtered.isNotEmpty &&
+        filtered.every(
+          (entry) => _selectedTransactionUuids.contains(entry.transaction.uuid),
+        );
+    final amountLabels = <String>[
+      if (totals.expenseMinor > 0)
+        '支出 ${formatFinanceAmount(totals.expenseMinor)}',
+      if (totals.refundMinor > 0)
+        '退款 ${formatFinanceAmount(totals.refundMinor)}',
+      if (totals.expenseMinor > 0 || totals.refundMinor > 0)
+        '净支出 ${formatFinanceAmount(totals.netExpenseMinor)}',
+      if (totals.incomeMinor > 0)
+        '收入 ${formatFinanceAmount(totals.incomeMinor)}',
+    ];
+    final plannedLabels = <String>[
+      if (totals.plannedExpenseMinor > 0)
+        '计划支出 ${formatFinanceAmount(totals.plannedExpenseMinor)}',
+      if (totals.plannedRefundMinor > 0)
+        '计划退款 ${formatFinanceAmount(totals.plannedRefundMinor)}',
+      if (totals.plannedIncomeMinor > 0)
+        '计划收入 ${formatFinanceAmount(totals.plannedIncomeMinor)}',
+    ];
+
+    return Card(
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    showSelectedTotals
+                        ? '${_selectionMode ? '已选' : '所选'} $selectedCount 笔 / ${filtered.length} 笔'
+                        : '筛选结果 · ${filtered.length} 笔',
+                    style: Theme.of(context).textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                if (_selectionMode)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextButton(
+                        onPressed: filtered.isEmpty
+                            ? null
+                            : () => _toggleSelectAll(filtered),
+                        child: Text(allVisibleSelected ? '取消全选' : '全选'),
+                      ),
+                      TextButton(
+                        onPressed: _toggleSelectionMode,
+                        child: const Text('完成'),
+                      ),
+                    ],
+                  )
+                else if (_hasCommittedSelection)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextButton(
+                        onPressed: _toggleSelectionMode,
+                        child: const Text('继续选择'),
+                      ),
+                      TextButton(
+                        onPressed: _clearSelection,
+                        child: const Text('清除'),
+                      ),
+                    ],
+                  )
+                else
+                  TextButton.icon(
+                    onPressed: _toggleSelectionMode,
+                    icon: const Icon(Icons.checklist_rounded, size: 18),
+                    label: const Text('选择账单'),
+                  ),
+              ],
+            ),
+            if (amountLabels.isNotEmpty)
+              Wrap(
+                spacing: 12,
+                runSpacing: 4,
+                children: [
+                  for (final label in amountLabels)
+                    Text(
+                      label,
+                      style: TextStyle(
+                        color: label.startsWith('收入')
+                            ? colorScheme.primary
+                            : label.startsWith('净支出')
+                            ? colorScheme.error
+                            : colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                ],
+              )
+            else if (selectedCount == 0)
+              Text(
+                _selectionMode ? '勾选账单后查看所选合计' : '暂无可合计的账目',
+                style: TextStyle(
+                  color: colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
+              ),
+            if (plannedLabels.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                plannedLabels.join(' · '),
+                style: TextStyle(
+                  color: colorScheme.onSurfaceVariant,
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -1962,8 +2396,11 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
   Widget _buildTransactionTile(
     BuildContext context,
     FinanceTransaction transaction,
-    int asOfAt,
-  ) {
+    int asOfAt, {
+    required bool selectionMode,
+    required bool selected,
+    required VoidCallback onToggleSelection,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     final category = categories[transaction.categoryUuid];
     final payment = paymentMethods[transaction.paymentMethodUuid];
@@ -1976,9 +2413,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
     final hasCategory =
         category != null || transaction.categoryUuid?.trim().isNotEmpty == true;
     final titleUsesCategory =
-        merchant?.isNotEmpty != true &&
-        note?.isNotEmpty != true &&
-        hasCategory;
+        merchant?.isNotEmpty != true && note?.isNotEmpty != true && hasCategory;
     final title = merchant?.isNotEmpty == true
         ? merchant!
         : note?.isNotEmpty == true
@@ -2011,14 +2446,18 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
     return Card(
       key: sourceKey,
       child: ListTile(
-        onTap: () => onOpenDetail(transaction, sourceKey),
-        leading: CircleAvatar(
-          backgroundColor: colorScheme.secondaryContainer,
-          child: Text(
-            category?.icon ?? '💰',
-            style: const TextStyle(fontSize: 20),
-          ),
-        ),
+        onTap: selectionMode
+            ? onToggleSelection
+            : () => onOpenDetail(transaction, sourceKey),
+        leading: selectionMode
+            ? Checkbox(value: selected, onChanged: (_) => onToggleSelection())
+            : CircleAvatar(
+                backgroundColor: colorScheme.secondaryContainer,
+                child: Text(
+                  category?.icon ?? '💰',
+                  style: const TextStyle(fontSize: 20),
+                ),
+              ),
         title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: Text(
           subtitleParts.isEmpty
@@ -2090,13 +2529,348 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
           ),
           const SizedBox(height: 12),
           Text(
-            keyword.trim().isEmpty && filterType == null && categoryUuid == null
+            keyword.trim().isEmpty &&
+                    filterType == null &&
+                    categoryUuids.isEmpty &&
+                    dateRange == null
                 ? '$monthLabel还没有账单'
                 : '没有匹配的账单',
             style: TextStyle(color: colorScheme.onSurfaceVariant),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildQueryError(BuildContext context, String error) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, size: 42, color: colorScheme.error),
+            const SizedBox(height: 10),
+            const Text('筛选账单加载失败'),
+            const SizedBox(height: 6),
+            Text(
+              error,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: colorScheme.onSurfaceVariant),
+            ),
+            if (widget.onRetry != null) ...[
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: widget.onRetry,
+                icon: const Icon(Icons.refresh),
+                label: const Text('重试'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FinanceLedgerCategoryPickerDialog extends StatefulWidget {
+  final Map<String, FinanceCategory> categories;
+  final Set<String> initialSelection;
+  final Map<String, int>? categoryCounts;
+
+  const _FinanceLedgerCategoryPickerDialog({
+    required this.categories,
+    required this.initialSelection,
+    required this.categoryCounts,
+  });
+
+  @override
+  State<_FinanceLedgerCategoryPickerDialog> createState() =>
+      _FinanceLedgerCategoryPickerDialogState();
+}
+
+class _FinanceLedgerCategoryPickerDialogState
+    extends State<_FinanceLedgerCategoryPickerDialog> {
+  late final Set<String> _selected = widget.initialSelection.toSet();
+  final Set<String> _expandedRootUuids = <String>{};
+
+  List<FinanceCategory> get _orderedCategories =>
+      widget.categories.values.toList()..sort((left, right) {
+        final typeOrder = left.type.index.compareTo(right.type.index);
+        if (typeOrder != 0) return typeOrder;
+        final parentOrder = (left.parentUuid ?? '').compareTo(
+          right.parentUuid ?? '',
+        );
+        if (parentOrder != 0) return parentOrder;
+        final sortOrder = left.sortOrder.compareTo(right.sortOrder);
+        return sortOrder != 0 ? sortOrder : left.uuid.compareTo(right.uuid);
+      });
+
+  List<FinanceCategory> _childrenOf(FinanceCategory parent) =>
+      _orderedCategories
+          .where((category) => category.parentUuid == parent.uuid)
+          .toList(growable: false);
+
+  bool _isRootSelected(FinanceCategory root) => _selected.contains(root.uuid);
+
+  bool _isChildSelected(FinanceCategory parent, FinanceCategory child) =>
+      _isRootSelected(parent) || _selected.contains(child.uuid);
+
+  void _toggleRoot(FinanceCategory root) {
+    final children = _childrenOf(root);
+    setState(() {
+      if (!_selected.add(root.uuid)) {
+        _selected.remove(root.uuid);
+        for (final child in children) {
+          _selected.remove(child.uuid);
+        }
+      } else {
+        for (final child in children) {
+          _selected.remove(child.uuid);
+        }
+      }
+    });
+  }
+
+  void _toggleRootExpansion(FinanceCategory root) {
+    setState(() {
+      if (!_expandedRootUuids.add(root.uuid)) {
+        _expandedRootUuids.remove(root.uuid);
+      }
+    });
+  }
+
+  void _toggleChild(FinanceCategory parent, FinanceCategory child) {
+    setState(() {
+      if (_selected.remove(parent.uuid)) {
+        for (final sibling in _childrenOf(parent)) {
+          if (sibling.uuid != child.uuid) _selected.add(sibling.uuid);
+        }
+        return;
+      }
+      if (!_selected.add(child.uuid)) _selected.remove(child.uuid);
+    });
+  }
+
+  String _categoryLabel(FinanceCategory category) {
+    final status = category.isDeleted
+        ? '（已删除）'
+        : category.isArchived
+        ? '（已归档）'
+        : '';
+    return '${category.icon} ${financeCategorySiblingDisplayName(category, _orderedCategories)}$status';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final categoryByUuid = widget.categories;
+    final roots = _orderedCategories
+        .where((category) {
+          final parentUuid = category.parentUuid?.trim();
+          if (parentUuid == null || parentUuid.isEmpty) return true;
+          final parent = categoryByUuid[parentUuid];
+          return parent == null || parent.type != category.type;
+        })
+        .toList(growable: false);
+    final expenseRoots = roots
+        .where((category) => category.type == FinanceCategoryType.expense)
+        .toList(growable: false);
+    final incomeRoots = roots
+        .where((category) => category.type == FinanceCategoryType.income)
+        .toList(growable: false);
+    return AlertDialog(
+      title: const Text('选择分类'),
+      content: SizedBox(
+        width: 420,
+        height: 480,
+        child: ListView(
+          children: [
+            CheckboxListTile(
+              value: _selected.contains(financeUncategorizedCategoryFilterUuid),
+              title: const Text('未分类'),
+              secondary: _countLabel(
+                widget.categoryCounts?[financeUncategorizedCategoryFilterUuid],
+              ),
+              onChanged: (_) => setState(() {
+                if (!_selected.add(financeUncategorizedCategoryFilterUuid)) {
+                  _selected.remove(financeUncategorizedCategoryFilterUuid);
+                }
+              }),
+              contentPadding: EdgeInsets.zero,
+            ),
+            for (final section in [
+              ('支出', expenseRoots),
+              ('收入', incomeRoots),
+            ]) ...[
+              Padding(
+                padding: const EdgeInsets.only(top: 12, bottom: 4),
+                child: Text(
+                  section.$1,
+                  style: Theme.of(context).textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
+              for (final root in section.$2) ...[
+                Builder(
+                  builder: (context) {
+                    final children = _childrenOf(root);
+                    final isExpanded = _expandedRootUuids.contains(root.uuid);
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(8),
+                                onTap: children.isEmpty
+                                    ? () => _toggleRoot(root)
+                                    : () => _toggleRootExpansion(root),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                    horizontal: 4,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(_categoryLabel(root)),
+                                      ),
+                                      if (widget.categoryCounts != null) ...[
+                                        const SizedBox(width: 8),
+                                        _countLabel(
+                                          widget.categoryCounts![root.uuid] ??
+                                              0,
+                                        )!,
+                                      ],
+                                      if (children.isNotEmpty)
+                                        Icon(
+                                          isExpanded
+                                              ? Icons.expand_less
+                                              : Icons.expand_more,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurfaceVariant,
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Checkbox(
+                              value: _isRootSelected(root),
+                              onChanged: (_) => _toggleRoot(root),
+                            ),
+                          ],
+                        ),
+                        if (isExpanded)
+                          for (final child in children)
+                            CheckboxListTile(
+                              value: _isChildSelected(root, child),
+                              title: Text(_categoryLabel(child)),
+                              secondary: _countLabel(
+                                widget.categoryCounts?[child.uuid],
+                              ),
+                              onChanged: (_) => _toggleChild(root, child),
+                              contentPadding: const EdgeInsets.only(left: 24),
+                              dense: true,
+                            ),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => setState(_selected.clear),
+          child: const Text('清空'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_selected.toSet()),
+          child: const Text('应用'),
+        ),
+      ],
+    );
+  }
+
+  Widget? _countLabel(int? count) {
+    if (count == null) return null;
+    return Text(
+      '$count笔',
+      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+    );
+  }
+}
+
+class _FinanceLedgerTotals {
+  final int expenseMinor;
+  final int refundMinor;
+  final int incomeMinor;
+  final int plannedExpenseMinor;
+  final int plannedRefundMinor;
+  final int plannedIncomeMinor;
+
+  const _FinanceLedgerTotals({
+    required this.expenseMinor,
+    required this.refundMinor,
+    required this.incomeMinor,
+    required this.plannedExpenseMinor,
+    required this.plannedRefundMinor,
+    required this.plannedIncomeMinor,
+  });
+
+  int get netExpenseMinor => expenseMinor - refundMinor;
+
+  factory _FinanceLedgerTotals.fromEntries(
+    Iterable<_FinanceLedgerOrderEntry> entries,
+    int nowAt,
+  ) {
+    var expenseMinor = 0;
+    var refundMinor = 0;
+    var incomeMinor = 0;
+    var plannedExpenseMinor = 0;
+    var plannedRefundMinor = 0;
+    var plannedIncomeMinor = 0;
+    for (final entry in entries) {
+      final isPlanned = entry.eventAt > nowAt;
+      final transaction = entry.transaction;
+      switch (transaction.type) {
+        case FinanceTransactionType.expense:
+          if (isPlanned) {
+            plannedExpenseMinor += transaction.amountMinor;
+          } else {
+            expenseMinor += transaction.amountMinor;
+          }
+        case FinanceTransactionType.refund:
+          if (isPlanned) {
+            plannedRefundMinor += transaction.amountMinor;
+          } else {
+            refundMinor += transaction.amountMinor;
+          }
+        case FinanceTransactionType.income:
+          if (isPlanned) {
+            plannedIncomeMinor += transaction.amountMinor;
+          } else {
+            incomeMinor += transaction.amountMinor;
+          }
+      }
+    }
+    return _FinanceLedgerTotals(
+      expenseMinor: expenseMinor,
+      refundMinor: refundMinor,
+      incomeMinor: incomeMinor,
+      plannedExpenseMinor: plannedExpenseMinor,
+      plannedRefundMinor: plannedRefundMinor,
+      plannedIncomeMinor: plannedIncomeMinor,
     );
   }
 }
