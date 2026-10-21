@@ -1000,7 +1000,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
   }
 
   Widget _buildTodoList() {
-    final DateTime now = DateTime.now();
+    final DateTime now = widget.clock();
     final DateTime today = DateTime(now.year, now.month, now.day);
     if (_cachedVmSignatureDate != today ||
         (_cachedVm != null && _cachedVm!.today != today)) {
@@ -1553,7 +1553,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
     final bool separateFolders =
         _folderDisplayMode == _TodoFolderDisplayMode.separate;
 
-    final DateTime now = DateTime.now();
+    final DateTime now = widget.clock();
     final DateTime today = DateTime(now.year, now.month, now.day);
 
     final seriesOccurrences = <String, List<TodoItem>>{};
@@ -1840,7 +1840,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
         onlyShowMostUrgentTodo: urgentFirstFolders,
         teamRoles: _teamRoles,
         recurrenceProgressBuilder: (todo) =>
-            _buildRecurrenceProgress(todo, DateTime.now()),
+            _buildRecurrenceProgress(todo, widget.clock()),
         onToggle: () {
           _invalidateTodoViewModel();
           setState(() {

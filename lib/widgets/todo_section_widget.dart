@@ -122,6 +122,7 @@ class TodoSectionWidget extends StatefulWidget {
 
   final GlobalKey? folderKey;
   final GlobalKey? historyKey;
+  final DateTime Function() clock;
 
   const TodoSectionWidget({
     super.key,
@@ -144,6 +145,7 @@ class TodoSectionWidget extends StatefulWidget {
     this.initialSelectedTeamUuid,
     this.folderKey,
     this.historyKey,
+    this.clock = DateTime.now,
   });
 
   final String? initialSelectedTeamUuid;

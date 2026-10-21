@@ -87,6 +87,8 @@ void main() {
     recurrenceEndDate: DateTime(2026, 11, 30),
   );
 
+  DateTime visualClock() => DateTime(2026, 10, 20, 12);
+
   Future<void> pumpEditor(
     WidgetTester tester, {
     required Size size,
@@ -123,6 +125,7 @@ void main() {
             todoGroups: const [],
             username: PlanAvailabilityFixture.username,
             recurrenceEditScope: TodoRecurrenceEditScope.series,
+            clock: visualClock,
             onTodosChanged: (_) {},
             onEditorSave: (_, _, {expectedSeriesMembership}) async =>
                 const TodoEditorSaveResult(),
@@ -281,6 +284,7 @@ void main() {
               todos: [past, current, future],
               username: PlanAvailabilityFixture.username,
               isLight: true,
+              clock: visualClock,
               onTodosChanged: (_) {},
               onRefreshRequested: () {},
               highlightedTodoIds: const {},

@@ -52,6 +52,7 @@ class TodoRecurrenceProgress extends StatefulWidget {
     this.initiallyExpanded = true,
     this.onNodeTap,
     this.onManage,
+    this.clock = DateTime.now,
   });
 
   final List<TodoRecurrenceProgressNode> nodes;
@@ -64,6 +65,7 @@ class TodoRecurrenceProgress extends StatefulWidget {
   final bool initiallyExpanded;
   final ValueChanged<TodoRecurrenceProgressNode>? onNodeTap;
   final VoidCallback? onManage;
+  final DateTime Function() clock;
 
   @override
   State<TodoRecurrenceProgress> createState() => _TodoRecurrenceProgressState();
@@ -162,7 +164,7 @@ class _TodoRecurrenceProgressState extends State<TodoRecurrenceProgress> {
   }
 
   Widget _buildTimeline(ColorScheme colorScheme) {
-    late final DateTime now = DateTime.now();
+    late final DateTime now = widget.clock();
     late final DateTime today = DateTime(now.year, now.month, now.day);
     if (widget.nodes.length <= 7) {
       return Row(

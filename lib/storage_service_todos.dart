@@ -193,13 +193,14 @@ mixin _StorageTodos on _StorageServiceBase {
         .map((item) => item.recurrenceSeriesId)
         .toSet();
     final ruleBaselines =
-        recurrenceBaselines?.values
-            .where(
-              (item) =>
-                  item.recurrence != RecurrenceType.none &&
-                  maintenanceSeries.contains(
-                    item.recurrenceSeriesId ?? item.id,
-                  ),
+        (recurrenceBaselines == null
+                ? null
+                : _recurrenceBoundaryRulesBySeries(recurrenceBaselines.values)
+                      .values)
+            ?.where(
+              (item) => maintenanceSeries.contains(
+                item.recurrenceSeriesId ?? item.id,
+              ),
             )
             .toList() ??
         const <TodoItem>[];
@@ -561,11 +562,9 @@ mixin _StorageTodos on _StorageServiceBase {
     final seriesIds = changed.map((item) => item.recurrenceSeriesId).toSet();
     final readIdSet = {
       ...changed.map((item) => item.id),
-      ...baselines.values
+      ..._recurrenceBoundaryRulesBySeries(baselines.values).values
           .where(
-            (item) =>
-                item.recurrence != RecurrenceType.none &&
-                seriesIds.contains(item.recurrenceSeriesId ?? item.id),
+            (item) => seriesIds.contains(item.recurrenceSeriesId ?? item.id),
           )
           .map((item) => item.id),
     };
@@ -2455,6 +2454,12 @@ mixin _StorageTodos on _StorageServiceBase {
         );
       }
 
+      if (_pruneRecurrenceOccurrencesAfterEndDates([
+        ...todos,
+        ...generatedOccurrences,
+      ]).isNotEmpty) {
+        needSave = true;
+      }
       if (needSave) {
         todos.addAll(generatedOccurrences);
         if (generatedRecurrenceConflictKeys.isNotEmpty) {
@@ -3088,24 +3093,43 @@ mixin _StorageTodos on _StorageServiceBase {
     return changed;
   }
 
-  Set<String> _pruneRecurrenceOccurrencesAfterEndDates(List<TodoItem> todos) {
+  Map<String, TodoItem> _recurrenceBoundaryRulesBySeries(
+    Iterable<TodoItem> todos,
+  ) {
     final activeRulesBySeries = <String, TodoItem>{};
+    final endedRulesBySeries = <String, TodoItem>{};
     for (final todo in todos) {
-      if (todo.isDeleted || todo.recurrence == RecurrenceType.none) continue;
-      final seriesId = todo.recurrenceSeriesId?.trim();
+      if (todo.isDeleted) continue;
+      final seriesId =
+          todo.recurrenceSeriesId?.trim() ??
+          (todo.recurrence != RecurrenceType.none ? todo.id : null);
       if (seriesId == null || seriesId.isEmpty) continue;
 
-      final current = activeRulesBySeries[seriesId];
+      final rules = todo.recurrence != RecurrenceType.none
+          ? activeRulesBySeries
+          : endedRulesBySeries;
+      if (todo.recurrence == RecurrenceType.none &&
+          todo.recurrenceEndDate == null) {
+        continue;
+      }
+      final current = rules[seriesId];
       if (current == null ||
           _compareRecurrenceOccurrenceLwwDescending(todo, current) < 0) {
-        activeRulesBySeries[seriesId] = todo;
+        rules[seriesId] = todo;
       }
     }
+    // Rollover clears recurrence after the final day, but the saved end date
+    // still bounds the series. An active rule (including an unlimited one)
+    // takes precedence so an explicit extension can resume the series.
+    return {...endedRulesBySeries, ...activeRulesBySeries};
+  }
 
+  Set<String> _pruneRecurrenceOccurrencesAfterEndDates(List<TodoItem> todos) {
+    final rulesBySeries = _recurrenceBoundaryRulesBySeries(todos);
     final changedIds = <String>{};
     final now = DateTime.now();
     final todayDay = DateTime(now.year, now.month, now.day);
-    final rulesToPrune = activeRulesBySeries.entries
+    final rulesToPrune = rulesBySeries.entries
         .where((entry) => entry.value.recurrenceEndDate != null)
         .toList(growable: false);
     Map<String, List<TodoItem>>? todosBySeries;

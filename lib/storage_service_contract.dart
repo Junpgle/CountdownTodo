@@ -503,6 +503,9 @@ abstract class _StorageServiceBase {
     List<TodoItem> todos,
   );
   Set<String> _pruneRecurrenceOccurrencesAfterEndDates(List<TodoItem> todos);
+  Map<String, TodoItem> _recurrenceBoundaryRulesBySeries(
+    Iterable<TodoItem> todos,
+  );
   Future<int> mergeRecurrenceSeries(
     String username, {
     required String targetSeriesId,

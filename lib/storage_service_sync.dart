@@ -2831,6 +2831,20 @@ mixin _StorageSync on _StorageServiceBase {
         final repairCandidates = allLocalTodos
             .where((todo) => repairIdsToUpload.contains(todo.id))
             .toList();
+        final boundaryRepairSeries = repairCandidates
+            .where((todo) => recurrenceBoundaryChangedIds.contains(todo.id))
+            .map((todo) => todo.recurrenceSeriesId)
+            .toSet();
+        final boundaryRules = _recurrenceBoundaryRulesBySeries(allLocalTodos)
+            .values
+            .where(
+              (rule) => boundaryRepairSeries.contains(rule.recurrenceSeriesId),
+            )
+            .toList();
+        final repairReadIds = {
+          ...repairCandidates.map((todo) => todo.id),
+          ...boundaryRules.map((rule) => rule.id),
+        }.toList();
         final repairBaselines = <String, TodoItem>{};
         final uploadBaselines = <String, TodoItem?>{};
         final repairedItems = <TodoItem>[];
@@ -2838,17 +2852,13 @@ mixin _StorageSync on _StorageServiceBase {
         const repairChunkSize = 400;
         for (
           var start = 0;
-          start < repairCandidates.length;
+          start < repairReadIds.length;
           start += repairChunkSize
         ) {
           final rows = await DatabaseHelper.instance.getTodoMaps(
             includeDeleted: true,
             includeConflictData: true,
-            uuids: repairCandidates
-                .skip(start)
-                .take(repairChunkSize)
-                .map((todo) => todo.id)
-                .toList(),
+            uuids: repairReadIds.skip(start).take(repairChunkSize).toList(),
             databaseOverride: db,
           );
           for (final row in rows) {
@@ -2857,7 +2867,27 @@ mixin _StorageSync on _StorageServiceBase {
             );
           }
         }
+        final staleBoundarySeries = <String?>{};
+        for (final rule in boundaryRules) {
+          final current = persistedRepairItems[rule.id];
+          if (current == null ||
+              _hasSubstantialChange(
+                current.toJson(),
+                rule.toJson(),
+                _StorageTodos._todoSnapshotFields,
+              )) {
+            staleBoundarySeries.add(rule.recurrenceSeriesId);
+            continue;
+          }
+          // A boundary repair depends on the rule as well as the extra row.
+          // Carry both snapshots through local/server CAS, even after expiry
+          // has cleared the rule's recurrence field.
+          repairBaselines[rule.id] = current;
+          uploadBaselines[rule.id] =
+              remoteRecurrenceBaselines[rule.id] ?? beforeRemoteRepair[rule.id];
+        }
         for (final todo in repairCandidates) {
+          if (staleBoundarySeries.contains(todo.recurrenceSeriesId)) continue;
           final current = persistedRepairItems[todo.id];
           if (current == null ||
               _hasSubstantialChange(

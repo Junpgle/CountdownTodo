@@ -17,6 +17,7 @@ class TodoEditScreen extends StatefulWidget {
   final String username;
   final TodoRecurrenceEditScope recurrenceEditScope;
   final void Function(String todoUuid)? onTodoCompletionCommitted;
+  final DateTime Function() clock;
 
   const TodoEditScreen({
     required this.todo,
@@ -29,6 +30,7 @@ class TodoEditScreen extends StatefulWidget {
     required this.username,
     this.recurrenceEditScope = TodoRecurrenceEditScope.occurrence,
     this.onTodoCompletionCommitted,
+    this.clock = DateTime.now,
     super.key,
   });
   @override
@@ -36,6 +38,7 @@ class TodoEditScreen extends StatefulWidget {
 }
 
 class TodoEditScreenState extends State<TodoEditScreen> {
+  DateTime get _now => widget.clock();
   final GlobalKey _planKey = GlobalKey();
   final GlobalKey _focusKey = GlobalKey();
   final GlobalKey _dataKey = GlobalKey();
@@ -716,7 +719,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     final counts = TodoRecurrenceSeriesEditService.countMembers(
       _editorTodos,
       seriesId,
-      now: DateTime.now(),
+      now: _now,
     );
     if (counts.total == 0) return false;
     final dateOrTimeChanged =
@@ -1186,7 +1189,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                                         59,
                                       );
                               } else if (wasDateOnlyRange) {
-                                final now = DateTime.now();
+                                final now = _now;
                                 _createdDate = DateTime(
                                   _createdDate.year,
                                   _createdDate.month,
@@ -1348,7 +1351,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                             final pickedTime = await showAppTimePicker(
                               context: context,
                               initialTime: TimeOfDay.fromDateTime(
-                                _dueDate ?? DateTime.now(),
+                                _dueDate ?? _now,
                               ),
                             );
                             if (!mounted || pickedTime == null) return;
@@ -1512,7 +1515,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                             lastDate: DateTime(2100),
                             initialDate:
                                 _recurrenceEndDate ??
-                                DateTime.now().add(const Duration(days: 30)),
+                                _now.add(const Duration(days: 30)),
                           );
                           if (picked != null) {
                             setState(() => _recurrenceEndDate = picked);
@@ -1817,7 +1820,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
         : TodoRecurrenceSeriesEditService.countMembers(
             _editorTodos,
             seriesId,
-            now: DateTime.now(),
+            now: _now,
           );
     return Container(
       width: double.infinity,
@@ -1857,7 +1860,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
         : TodoRecurrenceSeriesEditService.countMembers(
             _editorTodos,
             seriesId,
-            now: DateTime.now(),
+            now: _now,
           );
     final baseDateLabel = _dateFormat(
       _isAllDay ? 'M月d日' : 'M月d日 HH:mm',
@@ -1994,10 +1997,10 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   String _seriesOccurrenceStatus(TodoItem occurrence, DateTime start) {
     if (occurrence.isDone) return '已完成';
     if (occurrence.isSkipped) return '已跳过';
-    if (start.isAfter(DateTime.now())) return '未开始';
+    if (start.isAfter(_now)) return '未开始';
     final due = occurrence.dueDate?.toLocal() ??
         DateTime(start.year, start.month, start.day + 1);
-    return due.isBefore(DateTime.now()) ? '已逾期' : '待完成';
+    return due.isBefore(_now) ? '已逾期' : '待完成';
   }
 
   Widget _buildRelatedRecurrenceSection(ColorScheme colorScheme) {
@@ -2483,7 +2486,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   Future<void> _createPlanBlock() async {
     final todo = _editingTodo;
     if (_isDone || todo.isDone || todo.isDeleted) return;
-    final now = DateTime.now();
+    final now = _now;
     final dayStart = DateTime(now.year, now.month, now.day, 8);
     final start = PlanAvailabilityService.minuteCeiling(
       now.isAfter(dayStart) ? now : dayStart,
@@ -2549,7 +2552,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                     PageTransitions.material(
                       builder: (_) => TodoPlanScreen(
                         username: widget.username,
-                        initialDate: DateTime.now(),
+                        initialDate: _now,
                         initialTodoId: widget.todo.id,
                       ),
                     ),

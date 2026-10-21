@@ -494,6 +494,7 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
       skippedCount: skippedCount,
       onNodeTap: (node) => _handleRecurrenceNodeTap(todo, node, dateStructure!),
       onManage: () => _showRecurrenceManagement(todo),
+      clock: widget.clock,
     );
   }
 

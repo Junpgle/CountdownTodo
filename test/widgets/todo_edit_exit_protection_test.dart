@@ -356,9 +356,10 @@ void main() {
   });
 
   testWidgets('整系列保存复核影响数量并保留所有期次的独立状态', (tester) async {
+    final today = DateTime.now();
     TodoItem occurrence(
       String id,
-      int day, {
+      DateTime date, {
       bool done = false,
       bool skipped = false,
       RecurrenceType recurrence = RecurrenceType.none,
@@ -370,19 +371,32 @@ void main() {
       isSkippedSyncPending: skipped,
       recurrence: recurrence,
       recurrenceSeriesId: 'series-whole-edit',
-      createdDate: DateTime(2026, 10, day, 9).millisecondsSinceEpoch,
-      dueDate: DateTime(2026, 10, day, 23, 59),
+      createdDate: DateTime(
+        date.year,
+        date.month,
+        date.day,
+        9,
+      ).millisecondsSinceEpoch,
+      dueDate: DateTime(date.year, date.month, date.day, 23, 59),
       isAllDay: true,
-      recurrenceEndDate: DateTime(2026, 11, 30),
+      recurrenceEndDate: DateTime(today.year, today.month + 2, today.day),
     );
 
-    final past = occurrence('whole-past', 19, done: true);
+    final past = occurrence(
+      'whole-past',
+      today.subtract(const Duration(days: 1)),
+      done: true,
+    );
     final current = occurrence(
       'whole-current',
-      20,
+      today,
       recurrence: RecurrenceType.weekly,
     );
-    final future = occurrence('whole-future', 22, skipped: true);
+    final future = occurrence(
+      'whole-future',
+      today.add(const Duration(days: 2)),
+      skipped: true,
+    );
     List<TodoItem>? submitted;
     Map<String, TodoItem>? baselines;
     Map<String, Set<String>>? membership;
