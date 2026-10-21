@@ -135,7 +135,8 @@ void main() {
     final initialHeight = tester.getSize(find.byKey(_inputKey)).height;
     final longText = List.generate(30, (i) => '第$i行：分析本月账单和待办').join('\n');
     await tester.enterText(find.byKey(_inputKey), longText);
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
     final height = tester.getSize(find.byKey(_inputKey)).height;
     expect(height, greaterThan(initialHeight));
     expect(height, lessThan(180));
@@ -192,6 +193,10 @@ void main() {
 
   testWidgets('低频操作收进更多菜单，复制、粘贴与重试仍调用原有入口', (tester) async {
     final actions = <String>[];
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(_page(controller, onAction: actions.add));
     for (final (label, action) in [
       ('复制提示词', 'copy'),
@@ -202,22 +207,33 @@ void main() {
       ('清空聊天记录', 'clear'),
     ]) {
       await tester.tap(find.byKey(const ValueKey('ai-chat-more')));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump();
       await tester.tap(find.text(label));
-      await tester.pumpAndSettle();
-      expect(actions.last, action);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump();
+      expect(actions, isNotEmpty, reason: '选择菜单项「$label」后应触发原入口');
+      expect(actions.last, action, reason: '菜单项「$label」触发错误入口');
     }
     expect(tester.takeException(), isNull);
   });
 
   testWidgets('展开与收起共用草稿，保留编辑后的文本、选区和输入焦点', (tester) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     controller.value = const TextEditingValue(
       text: '查询上个月的账单，再总结本周待办',
       selection: TextSelection(baseOffset: 2, extentOffset: 6),
     );
     await tester.pumpWidget(_page(controller));
     await tester.tap(find.byTooltip('展开编辑'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump();
     expect(find.text('编辑提示词'), findsOneWidget);
     final editor = tester.widget<TextField>(find.byKey(_expandedKey));
     expect(editor.controller, same(controller));
@@ -229,7 +245,9 @@ void main() {
     controller.selection = const TextSelection(baseOffset: 3, extentOffset: 8);
     await tester.pump();
     await tester.tap(find.text('完成'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump();
     expect(controller.text, '修改后的完整提示词\n第二段说明');
     expect(
       controller.selection,
@@ -246,10 +264,12 @@ void main() {
     controller.text = '初始草稿';
     await tester.pumpWidget(_page(controller));
     await tester.tap(find.byTooltip('展开编辑'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
     await tester.enterText(find.byKey(_expandedKey), '返回时保留这段文字');
     await tester.binding.handlePopRoute();
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
     expect(controller.text, '返回时保留这段文字');
     expect(find.byKey(_inputKey), findsOneWidget);
   });
@@ -269,7 +289,8 @@ void main() {
       expect(find.text('MiMo v2.6 Flash'), findsOneWidget);
       expect(tester.takeException(), isNull);
       tester.view.viewInsets = const FakeViewPadding(bottom: 300);
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
       expect(find.text('MiMo v2.6 Flash'), findsNothing);
       expect(find.byKey(_inputKey), findsOneWidget);
       expect(find.byTooltip('智能上下文 · 原生工具调用'), findsOneWidget);

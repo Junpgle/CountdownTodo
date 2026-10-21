@@ -2792,7 +2792,7 @@
       "expected": {
         "q1.items.0.id": "sep-refund-supermarket",
         "q1.items.0.amount_minor": 500,
-        "q1.items.0.occurred_at": "2026-09-30T18:00:00.000"
+        "q1.items.0.occurred_at": "2026-09-30T10:00:00.000Z"
       },
       "reply_template": "九月最后一笔是{q1.items.0.occurred_at:datetime}的{q1.items.0.merchant}退款，{q1.items.0.amount_minor:money}元。"
     },

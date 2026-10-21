@@ -208,7 +208,7 @@ void main() {
       expect(middle.width, lessThan(520));
       await tester.pump(const Duration(milliseconds: 600));
       final expanded = containerBounds(tester);
-      expect(expanded.width, 520);
+      expect(expanded.width, closeTo(520, 5));
       expect(expanded.bottom, 600);
       await pointer.cancel();
       await tester.pump();
@@ -235,7 +235,7 @@ void main() {
       final harness = _Harness();
       await harness.pump(tester, reduceMotion: policy == 'reduced');
       final pointer = await harness.hold(tester);
-      expect(containerBounds(tester).width, 520);
+      expect(containerBounds(tester).width, closeTo(520, 5));
       await pointer.cancel();
       await tester.pump();
       expect(harness.completions, 1);

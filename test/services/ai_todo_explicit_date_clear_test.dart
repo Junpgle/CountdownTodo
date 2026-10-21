@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   const response = '''
 [ACTION_START]
-{"action":"update_todo","updates":[{"todoId":"todo-1","dueDate":null}]}
+{"protocol":"cdt.actions","version":2,"actions":[{"action":"update_todo","updates":[{"todoId":"todo-1","dueDate":null}]}]}
 [ACTION_END]
 ''';
 
@@ -18,6 +18,7 @@ void main() {
       final actions = AiActionParser.extractTodoActions(
         response,
         originalText: '清除这个待办的日期',
+        existingTodoTitles: const {'todo-1': '提交报告'},
       );
       final result = AiTodoActionExecutor.execute(
         actions: actions,
@@ -42,13 +43,14 @@ void main() {
   test('omitting dueDate leaves an existing scheduled todo unchanged', () {
     const updateResponse = '''
 [ACTION_START]
-{"action":"update_todo","updates":[{"todoId":"todo-1","title":"改好报告名称"}]}
+{"protocol":"cdt.actions","version":2,"actions":[{"action":"update_todo","updates":[{"todoId":"todo-1","title":"改好报告名称"}]}]}
 [ACTION_END]
 ''';
     final dueDate = DateTime(2026, 10, 3, 19);
     final actions = AiActionParser.extractTodoActions(
       updateResponse,
       originalText: '修改待办标题',
+      existingTodoTitles: const {'todo-1': '提交报告'},
     );
     final result = AiTodoActionExecutor.execute(
       actions: actions,

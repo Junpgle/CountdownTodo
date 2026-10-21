@@ -828,7 +828,7 @@ void main() {
       expect(injection, contains('外部时间硬约束'));
       expect(injection, contains('系列ID: series-meeting'));
       expect(
-        AiTodoContextBuilder.buildActionProtocolPrompt('明天10点开项目会议'),
+        AiTodoContextBuilder.buildActionProtocolPrompt('帮我安排明天10点开项目会议'),
         contains('create_schedule'),
       );
     });

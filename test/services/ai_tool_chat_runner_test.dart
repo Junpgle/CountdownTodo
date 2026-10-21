@@ -404,17 +404,25 @@ void main() {
   test('查询调用数量上限保留提案工具，不再执行额外读取', () async {
     var rounds = 0;
     var reads = 0;
+    const validProposal =
+        '{"actions":[{"action":"create_todo","todos":[{"title":"买牛奶","timeMode":"unscheduled"}]}]}';
+    const request = '创建一个不设日期的买牛奶待办，并查询上个月账单';
+    final planningTools =
+        AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(request);
+    expect(
+      AiNativeToolDefinitionBuilder.allowedCdtActionNames(planningTools),
+      contains('create_todo'),
+    );
     await AiToolChatRunner.run(
-      messages: messages,
+      messages: const [
+        {'role': 'user', 'content': request},
+      ],
       tools: [
         ...tools,
-        {
-          'type': 'function',
-          'function': {'name': 'propose_cdt_actions'},
-        },
+        ...AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(request),
       ],
       maxCalls: 1,
-      streamRound: (_, roundTools) async* {
+      streamRound: (history, roundTools) async* {
         if (++rounds == 1) {
           yield const AiChatStreamChunk(toolCalls: [_queryCall]);
         } else {
@@ -426,7 +434,7 @@ void main() {
               AiChatFunctionCall(
                 id: 'proposal',
                 name: 'propose_cdt_actions',
-                arguments: '{}',
+                arguments: validProposal,
               ),
             ],
           );
@@ -635,15 +643,14 @@ void main() {
 
   test('纯操作提案继续交给确认卡，不执行写入或额外调用模型', () async {
     var rounds = 0;
-    final proposalTools = [
-      {
-        'type': 'function',
-        'function': {'name': 'propose_cdt_actions'},
-      },
-    ];
+    const request = '创建一个不设日期的买牛奶待办';
+    const validProposal =
+        '{"actions":[{"action":"create_todo","todos":[{"title":"买牛奶","timeMode":"unscheduled"}]}]}';
     await AiToolChatRunner.run(
-      messages: messages,
-      tools: proposalTools,
+      messages: const [
+        {'role': 'user', 'content': request},
+      ],
+      tools: AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(request),
       streamRound: (_, _) async* {
         rounds++;
         yield const AiChatStreamChunk(
@@ -651,7 +658,7 @@ void main() {
             AiChatFunctionCall(
               id: 'proposal',
               name: 'propose_cdt_actions',
-              arguments: '{}',
+              arguments: validProposal,
             ),
           ],
         );
@@ -663,14 +670,16 @@ void main() {
 
   test('查询和提案混合时回传待确认状态，后续不重复提供提案工具', () async {
     var rounds = 0;
+    const request = '创建一个不设日期的买牛奶待办，并查询上个月账单';
+    const validProposal =
+        '{"actions":[{"action":"create_todo","todos":[{"title":"买牛奶","timeMode":"unscheduled"}]}]}';
     await AiToolChatRunner.run(
-      messages: messages,
+      messages: const [
+        {'role': 'user', 'content': request},
+      ],
       tools: [
         ...tools,
-        {
-          'type': 'function',
-          'function': {'name': 'propose_cdt_actions'},
-        },
+        ...AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(request),
       ],
       includeReasoningContent: true,
       streamRound: (history, roundTools) async* {
@@ -683,7 +692,7 @@ void main() {
               AiChatFunctionCall(
                 id: 'proposal',
                 name: 'propose_cdt_actions',
-                arguments: '{}',
+                arguments: validProposal,
               ),
             ],
           );

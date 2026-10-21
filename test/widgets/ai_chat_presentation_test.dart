@@ -157,10 +157,13 @@ void main() {
       if (requests == 1) {
         delta = {'content': '规划块草案已生成，我已创建待办，请回复确认以保存。'};
       } else {
-        expect(body['tool_choice'], {
-          'type': 'function',
-          'function': {'name': 'propose_cdt_actions'},
-        });
+        final planNow = DateTime.now();
+        String formatPlanTime(Duration offset) => planNow
+            .add(offset)
+            .toIso8601String()
+            .substring(0, 16)
+            .replaceFirst('T', ' ');
+        expect(body['tool_choice'], 'auto');
         delta = {
           'content': '已生成，回复确认保存。',
           'tool_calls': [
@@ -175,21 +178,31 @@ void main() {
                     {
                       'action': 'create_plan_block',
                       'blocks': [
-                        for (final title in ['行测', '申论', '习概小论文'])
+                        for (
+                          var index = 0;
+                          index < ['行测', '申论', '习概小论文'].length;
+                          index++
+                        )
                           {
-                            'newTodoTitle': title,
-                            'isAdded': true,
-                            'isIgnored': true,
-                            'isSelected': false,
-                            'startTime': '2026-10-10 16:20',
-                            'dueDate': '2026-10-10 17:45',
+                            'newTodoTitle': ['行测', '申论', '习概小论文'][index],
+                            'startTime': formatPlanTime(
+                              Duration(minutes: 5 + index * 25),
+                            ),
+                            'dueDate': formatPlanTime(
+                              Duration(minutes: 25 + index * 25),
+                            ),
+                            'durationMinutes': 20,
                           },
                         {
                           'todoId': 'todo-target',
                           'title': '复习高数',
-                          'isAdded': true,
-                          'startTime': '2026-10-10 20:30',
-                          'dueDate': '2026-10-10 21:30',
+                          'startTime': formatPlanTime(
+                            const Duration(minutes: 80),
+                          ),
+                          'dueDate': formatPlanTime(
+                            const Duration(minutes: 110),
+                          ),
+                          'durationMinutes': 30,
                         },
                       ],
                     },
@@ -227,9 +240,13 @@ void main() {
             todos: const [
               {'id': 'todo-target', 'title': '复习高数'},
             ],
-            initialMessage: '请把行测、申论、习概小论文和复习高数规划到晚上九点半，生成规划块',
-            onTodosBatchAction:
-                (_, _, {expectedTodoBaselines, expectedSeriesMembership}) {},
+            initialMessage: '请从现在开始安排行测、申论、习概小论文和复习高数，生成规划块',
+            onTodosBatchAction: (
+              _,
+              _, {
+              expectedTodoBaselines,
+              expectedSeriesMembership,
+            }) {},
           ),
         ),
       );

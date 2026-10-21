@@ -203,6 +203,77 @@ class DatabaseHelper {
     }
   }
 
+  /// Keeps an unscheduled todo's business start date nullable in local SQLite.
+  ///
+  /// Called from onUpgrade, which runs transactionally. Rebuilding from the
+  /// stored CREATE TABLE SQL changes only the created_date constraint while
+  /// preserving the exact columns and table constraints of older databases.
+  Future<void> _ensureTodoCreatedDateNullable(Database db) async {
+    final columns = await db.rawQuery('PRAGMA table_info(todos)');
+    if (columns.isEmpty) return;
+
+    final createdDateColumns = columns
+        .where((column) => column['name'] == 'created_date')
+        .toList(growable: false);
+    if (createdDateColumns.isEmpty ||
+        createdDateColumns.single['notnull'] != 1) {
+      return;
+    }
+
+    const temporaryTable = 'todos_created_date_nullable_migration';
+    final createRows = await db.rawQuery(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'todos'",
+    );
+    final createSql = createRows.isEmpty ? null : createRows.single['sql'];
+    if (createSql is! String) {
+      throw StateError('无法读取 todos 表结构，取消 created_date 迁移');
+    }
+
+    final renamedCreateSql = createSql.replaceFirst(
+      RegExp(
+        r'^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"todos"|`todos`|\[todos\]|todos)(?=\s*\()',
+        caseSensitive: false,
+      ),
+      'CREATE TABLE $temporaryTable',
+    );
+    if (renamedCreateSql == createSql) {
+      throw StateError('无法安全重建 todos 表，取消 created_date 迁移');
+    }
+
+    final nullableCreateSql = renamedCreateSql.replaceFirstMapped(
+      RegExp(
+        r'(\bcreated_date\b\s+INTEGER)\s+NOT\s+NULL\b',
+        caseSensitive: false,
+      ),
+      (match) => match.group(1)!,
+    );
+    if (nullableCreateSql == renamedCreateSql) {
+      throw StateError('无法移除 created_date 的 NOT NULL 约束');
+    }
+
+    final dependentObjects = await db.rawQuery('''
+      SELECT sql FROM sqlite_master
+      WHERE tbl_name = 'todos'
+        AND type IN ('index', 'trigger')
+        AND sql IS NOT NULL
+      ORDER BY type, name
+    ''');
+
+    // The onUpgrade callback is transactional, so any copy/rebuild failure
+    // rolls the schema back without discarding existing todo data.
+    await db.execute(nullableCreateSql);
+    await db.execute('INSERT INTO $temporaryTable SELECT * FROM todos');
+    await db.execute('DROP TABLE todos');
+    await db.execute('ALTER TABLE $temporaryTable RENAME TO todos');
+
+    for (final object in dependentObjects) {
+      final sql = object['sql'];
+      if (sql is String && sql.isNotEmpty) {
+        await db.execute(sql);
+      }
+    }
+  }
+
   static Future<void> ensureTodoSkipStateSchema(Database db) async {
     final todoColumns = await db.rawQuery('PRAGMA table_info(todos)');
     if (todoColumns.isEmpty) return;
@@ -1683,6 +1754,9 @@ class DatabaseHelper {
                 //                 debugPrint("⚠️ Database: 升级 V25 失败: $e");
               }
             }
+            if (oldVersion < 60) {
+              await _ensureTodoCreatedDateNullable(db);
+            }
           },
           onOpen: (db) async {
             await ensurePlanEditorDraftSchema(db);
@@ -1955,7 +2029,7 @@ class DatabaseHelper {
         is_deleted $boolType DEFAULT 0,
         version $integerType DEFAULT 1,
         due_date $jsonType,
-        created_date $integerType,
+        created_date INTEGER,
         created_at $integerType,
         updated_at $integerType,
         collab_type $integerType DEFAULT 0,

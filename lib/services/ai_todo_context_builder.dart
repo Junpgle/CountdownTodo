@@ -2486,7 +2486,23 @@ ${sections.join('\n')}
   static bool hasExplicitFinanceUpdateIntent(String text) {
     if (!_matchesAny(text, _financeKeywords)) return false;
     final commandPrefix = RegExp(r'^(?:(?:请|帮我|替我|给我)\s*)*(?:把|将)');
-    final updateVerbPrefix = RegExp(r'^(?:(?:请|帮我|替我|给我)\s*)*(?:更正|调整)');
+    final updateVerbPrefix = RegExp(
+      r'^(?:(?:请|帮我|替我|给我)\s*)*'
+      r'(?:更正|调整|修改|更新|更改|编辑|改成|改为|调成|调为)',
+    );
+    const updateVerbs = [
+      '更正',
+      '调整',
+      '修改',
+      '更新',
+      '更改',
+      '编辑',
+      '改成',
+      '改为',
+      '调成',
+      '调为',
+    ];
+    const assignmentVerbs = {'改成', '改为', '调成', '调为'};
     const readOnlyFinanceQueryKeywords = [
       '查询',
       '查看',
@@ -2513,7 +2529,7 @@ ${sections.join('\n')}
       final startsWithCommand =
           commandPrefix.hasMatch(normalizedClause) ||
           updateVerbPrefix.hasMatch(normalizedClause);
-      for (final verb in ['更正', '调整']) {
+      for (final verb in updateVerbs) {
         if (!isExplicitlyRequested(normalizedClause, verb)) continue;
         final suffix = normalizedClause.substring(
           normalizedClause.indexOf(verb) + verb.length,
@@ -2537,9 +2553,20 @@ ${sections.join('\n')}
           '分析',
           '查询',
           '统计',
+          '什么',
+          '多少',
+          '怎么',
+          '为什么',
+          '吗',
         ]);
+        final embeddedAssignment =
+            assignmentVerbs.contains(verb) &&
+            suffix.trim().isNotEmpty &&
+            suffix.trim() != '一下' &&
+            suffix.trim() != '下';
         final assignsNewValue =
-            (directAssignment || propertyAssignment) && !readOnlyTail;
+            (directAssignment || propertyAssignment || embeddedAssignment) &&
+            !readOnlyTail;
         final shortCommand =
             suffix.trim().isEmpty ||
             suffix.trim() == '一下' ||
@@ -2717,6 +2744,10 @@ ${sections.join('\n')}
   }
 
   static bool _looksLikeCountdownQuery(String text) {
+    final asksRemainingDays = RegExp(
+      r'(?:还有|还剩|剩下?|距离).{0,12}(?:几|多少|[一二三四五六七八九十\d]+).{0,3}(?:天|日)',
+    ).hasMatch(text);
+    if (asksRemainingDays) return true;
     final hasNoun =
         text.contains('倒计时') ||
         text.contains('倒数日') ||

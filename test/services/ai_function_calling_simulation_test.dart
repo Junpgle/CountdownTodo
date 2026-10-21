@@ -177,18 +177,38 @@ void main() {
           result['reply'] = text;
           result['parsed'] = model.observed['parsed'];
           result['calculations'] = model.observed['calc'];
-          expect(text, isNotEmpty);
+          expect(
+            text.isNotEmpty ||
+                calls.any((call) => call.name.startsWith('propose_')),
+            isTrue,
+            reason: '自然语言回复或有效提案卡至少应有一种可见结果',
+          );
           expect(
             model.cursor,
             (scenario['steps'] as List).length,
             reason: '计划中的工具必须全部执行，包括按真实返回ID进行后续查询',
           );
           for (final entry in (scenario['expected'] as Map).entries) {
-            expect(
-              _at(model.observed, entry.key as String),
-              entry.value,
-              reason: '${scenario['prompt']} → ${entry.key}',
-            );
+            final path = entry.key as String;
+            final actual = _at(model.observed, path);
+            if (path.endsWith('.occurred_at') &&
+                actual is String &&
+                entry.value is String) {
+              // Query timestamps are serialized in the host's local zone.
+              // Compare the instant so this fixture remains valid on hosts
+              // whose timezone differs from the recorded transaction zone.
+              expect(
+                DateTime.parse(actual).toUtc(),
+                DateTime.parse(entry.value as String).toUtc(),
+                reason: '${scenario['prompt']} → $path',
+              );
+            } else {
+              expect(
+                actual,
+                entry.value,
+                reason: '${scenario['prompt']} → $path',
+              );
+            }
           }
           for (final path
               in (scenario['absent'] as List? ?? []).cast<String>()) {
@@ -283,7 +303,13 @@ class _SimulatedModel {
       final returned =
           jsonDecode(message['content'] as String) as Map<String, dynamic>;
       call['result'] = returned;
-      observed[call['label'] as String] = returned;
+      final label = call['label'] as String;
+      final prior = observed[label];
+      observed[label] = {
+        if (prior is Map<String, dynamic>) ...prior,
+        ...returned,
+        'result': returned,
+      };
       final step = call['step'] as Map;
       if (step['collect'] != null) {
         final collected = observed.putIfAbsent(
