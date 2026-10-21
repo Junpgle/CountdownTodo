@@ -125,6 +125,7 @@ Future<Database> _seed(WidgetTester tester) async {
         amountMinor: 250000,
         dayOfMonth: 15,
         startDate: '2026-01-01',
+        autoGenerate: false,
       ).toMap(),
     );
     await db.insert(
@@ -163,14 +164,18 @@ Future<Database> _seed(WidgetTester tester) async {
   return db;
 }
 
-Future<void> _waitFor(WidgetTester tester, bool Function() ready) async {
+Future<void> _waitFor(
+  WidgetTester tester,
+  bool Function() ready, {
+  bool settleAfterReady = true,
+}) async {
   for (var i = 0; i < 250; i++) {
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 20)),
     );
     await tester.pump(const Duration(milliseconds: 20));
     if (ready()) {
-      await tester.pumpAndSettle();
+      if (settleAfterReady) await tester.pumpAndSettle();
       return;
     }
   }
@@ -2481,6 +2486,14 @@ void main() {
 
   testWidgets('记账首页保持打开时会在周期账单到期后自动生成', (tester) async {
     final db = await _seed(tester);
+    await tester.runAsync(
+      () => db.update(
+        'finance_recurring_rules',
+        {'auto_generate': 1},
+        where: 'uuid = ?',
+        whereArgs: ['test-rent'],
+      ),
+    );
     var clockNow = DateTime(2026, 9, 15, 8, 59);
     await _pump(
       tester,
@@ -5491,6 +5504,9 @@ void main() {
     await _waitFor(
       tester,
       () => find.text('该账单已关联退款，请先处理退款记录').evaluate().isNotEmpty,
+      // The glass toast continues animating while visible, so settling all
+      // scheduled frames here would wait until the test timeout.
+      settleAfterReady: false,
     );
     expect(find.text('该账单已关联退款，请先处理退款记录'), findsOneWidget);
     expect(find.text('删除账单？'), findsNothing);
