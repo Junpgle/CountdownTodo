@@ -1154,6 +1154,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       case 'STOP':
       case 'INTERRUPT':
       case 'FINISH':
+      case 'SYNC_RESET':
       case 'CLEAR_FOCUS':
       case 'FOCUS_DISCONNECTED':
         // 🚀 遵从“本地计时优先”原则：只有在远程观察模式下，才接受外部的停止信号
@@ -1366,9 +1367,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     }
     if (!mounted) return;
 
-    final focusMinutes = entry.focusMinutes == null
-        ? null
-        : entry.focusMinutes!.clamp(1, 120).toInt();
+    final focusMinutes = entry.focusMinutes?.clamp(1, 120).toInt();
     setState(() {
       _boundTodo = boundTodo;
       _selectedTagUuids = tagUuids;
