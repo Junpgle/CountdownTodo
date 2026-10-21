@@ -23,6 +23,7 @@ import 'services/todo_lww_service.dart';
 import 'services/todo_recurrence_date_service.dart';
 import 'services/todo_recurrence_delete_service.dart';
 import 'services/todo_recurrence_restore_service.dart';
+import 'services/todo_trash_multi_restore_service.dart';
 import 'services/todo_trash_purge_service.dart';
 import 'services/conflict_visibility_service.dart';
 import 'services/storage/app_settings_storage.dart';
@@ -750,6 +751,12 @@ class StorageService {
     String seriesId, {
     bool sync = true,
   }) => _storage.restoreRecurringTodoSeries(username, seriesId, sync: sync);
+
+  static Future<TodoTrashMultiRestorePlan> restoreTodoTrashSelection(
+    String username,
+    TodoTrashMultiRestorePlan plan, {
+    bool sync = true,
+  }) => _storage.restoreTodoTrashSelection(username, plan, sync: sync);
 
   static Future<void> saveTodoGroups(
     String username,

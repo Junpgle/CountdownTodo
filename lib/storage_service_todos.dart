@@ -3424,6 +3424,33 @@ mixin _StorageTodos on _StorageServiceBase {
     return plan;
   }
 
+  Future<TodoTrashMultiRestorePlan> restoreTodoTrashSelection(
+    String username,
+    TodoTrashMultiRestorePlan plan, {
+    bool sync = true,
+  }) async {
+    final restoredIds = plan.restoredItems.map((todo) => todo.id).toSet();
+    if (plan.selectedTodoIds.isEmpty ||
+        restoredIds.length != plan.restoredItems.length ||
+        restoredIds.length != plan.selectedTodoIds.length ||
+        !restoredIds.containsAll(plan.selectedTodoIds) ||
+        plan.baselines.length != plan.selectedTodoIds.length ||
+        !plan.baselines.keys.toSet().containsAll(plan.selectedTodoIds) ||
+        plan.selectedTodoIds.any((id) => !plan.baselines[id]!.isDeleted) ||
+        plan.restoredItems.any((todo) => todo.isDeleted)) {
+      throw StateError('恢复范围无效，请重新选择回收站待办。');
+    }
+
+    await saveTodos(
+      username,
+      plan.restoredItems,
+      sync: sync,
+      expectedTodoBaselines: plan.baselines,
+    );
+    _recurrenceDedupeTombstoneIds.removeAll(plan.revivalBarrierIds);
+    return plan;
+  }
+
   Future<void> saveTodoGroups(
     String username,
     List<TodoGroup> items, {

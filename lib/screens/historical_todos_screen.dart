@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../widgets/floating_glass_control.dart';
 
 import 'package:flutter/material.dart';
@@ -7,6 +9,7 @@ import '../models.dart';
 import '../storage_service.dart';
 import '../services/todo_recurrence_restore_service.dart';
 import '../services/todo_recurrence_series_edit_service.dart';
+import '../services/todo_trash_multi_restore_service.dart';
 import '../services/todo_trash_purge_service.dart';
 import '../widgets/management_page.dart';
 import '../utils/app_dialogs.dart';
@@ -114,6 +117,8 @@ class HistoricalTodosScreen extends StatefulWidget {
   final Future<List<TodoGroup>> Function()? loadGroups;
   final Future<TodoItem?> Function(String username, String uuid)? loadTodoById;
   final Future<void> Function(String username, TodoItem todo)? saveTodo;
+  final Future<void> Function(String username, TodoTrashMultiRestorePlan plan)?
+  restoreTrashSelection;
   final Future<void> Function(String username, String seriesId)?
   restoreRecurringSeries;
   final Future<TodoTrashPurgePlan> Function(String username, String uuid)?
@@ -133,6 +138,7 @@ class HistoricalTodosScreen extends StatefulWidget {
     this.loadGroups,
     this.loadTodoById,
     this.saveTodo,
+    this.restoreTrashSelection,
     this.restoreRecurringSeries,
     this.previewTrashItemPurge,
     this.previewTrashSeriesPurge,
@@ -158,9 +164,15 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
   bool _isLoadingMore = false;
   bool _hasMoreTodoPages = false;
   bool _loadFailed = false;
+  bool _isTrashSelectionMode = false;
+  bool _isLoadingSeriesSelection = false;
+  final Map<String, TodoItem> _selectedTrashTodos = {};
+  final Set<String> _fullySelectedTrashSeriesIds = {};
   String? _busyId;
   int _loadGeneration = 0;
+  int _trashSelectionGeneration = 0;
   int _nextTodoOffset = 0;
+  int _lastTabIndex = 0;
   final Map<int, _HistoricalTodoListProjection> _listProjections = {};
   final Expando<_HistoricalTodoSearchFields> _searchFields =
       Expando<_HistoricalTodoSearchFields>('historical todo search fields');
@@ -173,11 +185,29 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    _tabController.addListener(_handleTabChanged);
     _loadData();
+  }
+
+  void _handleTabChanged() {
+    final nextIndex = _tabController.index;
+    if (_lastTabIndex == nextIndex) return;
+    _lastTabIndex = nextIndex;
+    if (_isTrashSelectionMode) {
+      _trashSelectionGeneration++;
+      setState(() {
+        _isTrashSelectionMode = false;
+        _selectedTrashTodos.clear();
+        _fullySelectedTrashSeriesIds.clear();
+      });
+    } else {
+      setState(() {});
+    }
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_handleTabChanged);
     _tabController.dispose();
     _searchController.dispose();
     super.dispose();
@@ -643,6 +673,216 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     }
   }
 
+  Future<List<TodoItem>> _loadAllTodosForSelection() async =>
+      widget.loadTodos?.call() ??
+      StorageService.getTodos(widget.username, includeDeleted: true);
+
+  void _toggleTrashSelectionMode() {
+    if (_busyId != null) return;
+    if (_isTrashSelectionMode) _trashSelectionGeneration++;
+    setState(() {
+      _isTrashSelectionMode = !_isTrashSelectionMode;
+      if (!_isTrashSelectionMode) {
+        _selectedTrashTodos.clear();
+        _fullySelectedTrashSeriesIds.clear();
+      }
+    });
+  }
+
+  void _toggleSelectedTrashTodo(TodoItem todo) {
+    setState(() {
+      final seriesId = TodoRecurrenceSeriesEditService.seriesIdFor(todo);
+      if (seriesId != null) _fullySelectedTrashSeriesIds.remove(seriesId);
+      if (_selectedTrashTodos.containsKey(todo.id)) {
+        _selectedTrashTodos.remove(todo.id);
+      } else if (todo.isDeleted) {
+        _selectedTrashTodos[todo.id] = todo.detachedCopy();
+      }
+    });
+  }
+
+  Future<void> _toggleSelectedTrashSeries(
+    _HistoricalTodoSeriesGroup group,
+  ) async {
+    if (_isLoadingSeriesSelection || _busyId != null) return;
+    final selectionGeneration = _trashSelectionGeneration;
+    setState(() => _isLoadingSeriesSelection = true);
+    try {
+      final todos = await _loadAllTodosForSelection();
+      final members = todos
+          .where(
+            (todo) =>
+                todo.isDeleted &&
+                TodoRecurrenceSeriesEditService.seriesIdFor(todo) ==
+                    group.seriesId,
+          )
+          .toList(growable: false);
+      if (!mounted ||
+          !_isTrashSelectionMode ||
+          _tabController.index != 1 ||
+          selectionGeneration != _trashSelectionGeneration) {
+        return;
+      }
+      if (members.isEmpty) {
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(content: Text('该系列已变化，请刷新回收站')),
+        );
+        return;
+      }
+      final allSelected = members.every(
+        (todo) => _selectedTrashTodos.containsKey(todo.id),
+      );
+      setState(() {
+        if (allSelected) {
+          for (final member in members) {
+            _selectedTrashTodos.remove(member.id);
+          }
+          _fullySelectedTrashSeriesIds.remove(group.seriesId);
+        } else {
+          for (final member in members) {
+            _selectedTrashTodos[member.id] = member.detachedCopy();
+          }
+          _fullySelectedTrashSeriesIds.add(group.seriesId);
+        }
+      });
+    } catch (_) {
+      if (mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(content: Text('读取系列期次失败，请刷新后重试')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoadingSeriesSelection = false);
+    }
+  }
+
+  Future<bool> _confirmTrashMultiRestore(TodoTrashMultiRestorePlan plan) async {
+    final preview = plan.preview;
+    final dateFormat = _historicalTodoDateFormat(
+      Intl.defaultLocale,
+      pattern: 'yyyy/M/d',
+    );
+    final dateRange = preview.firstDate == preview.lastDate
+        ? dateFormat.format(preview.firstDate)
+        : '${dateFormat.format(preview.firstDate)} – '
+              '${dateFormat.format(preview.lastDate)}';
+    final scheme = Theme.of(context).colorScheme;
+    return await showAppDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            scrollable: true,
+            icon: const Icon(Icons.restore_rounded),
+            title: const Text('恢复选中的待办？'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '恢复 ${preview.recordCount} 条待办，涉及 ${preview.seriesCount} 个重复系列。',
+                ),
+                const SizedBox(height: 8),
+                Text('日期范围：$dateRange'),
+                if (preview.completedCount > 0 || preview.skippedCount > 0) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '${preview.completedCount} 条已完成 · '
+                    '${preview.skippedCount} 条已跳过，状态会保留。',
+                  ),
+                ],
+                const SizedBox(height: 8),
+                Text(
+                  '只恢复勾选的记录；未选期次、重复规则和规划内容保持原样。',
+                  style: Theme.of(dialogContext).textTheme.bodySmall
+                      ?.copyWith(color: scheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                key: const ValueKey('confirm_restore_selected_trash_todos'),
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('恢复所选'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Future<void> _refreshSelectedTrashSnapshots() async {
+    try {
+      final todos = await _loadAllTodosForSelection();
+      final deletedById = {
+        for (final todo in todos.where((todo) => todo.isDeleted)) todo.id: todo,
+      };
+      if (!mounted) return;
+      setState(() {
+        _fullySelectedTrashSeriesIds.clear();
+        for (final id in _selectedTrashTodos.keys.toList()) {
+          final current = deletedById[id];
+          if (current == null) {
+            _selectedTrashTodos.remove(id);
+          } else {
+            _selectedTrashTodos[id] = current.detachedCopy();
+          }
+        }
+      });
+    } catch (_) {
+      // Keep the previous selection if the latest snapshot is unavailable.
+    }
+    await _loadData();
+  }
+
+  Future<void> _restoreSelectedTrashTodos() async {
+    if (_busyId != null || _selectedTrashTodos.isEmpty) return;
+    final plan = TodoTrashMultiRestoreService.tryPlan(
+      todos: _selectedTrashTodos.values,
+      selectedTodoIds: _selectedTrashTodos.keys,
+      activeGroupIds: _activeGroupIds,
+    );
+    if (plan == null) {
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('选择内容已变化，请刷新回收站后重试')),
+      );
+      return;
+    }
+    if (!await _confirmTrashMultiRestore(plan) || !mounted) return;
+
+    await _runAction('restore-trash-selection', () async {
+      try {
+        final restore = widget.restoreTrashSelection;
+        if (restore != null) {
+          await restore(widget.username, plan);
+        } else {
+          await StorageService.restoreTodoTrashSelection(widget.username, plan);
+        }
+      } on StateError {
+        await _refreshSelectedTrashSnapshots();
+        throw StateError('选中待办已变化，整批未恢复。列表已刷新，请检查选择后重试。');
+      }
+      if (!mounted) return;
+      setState(() {
+        _isTrashSelectionMode = false;
+        _selectedTrashTodos.clear();
+        _fullySelectedTrashSeriesIds.clear();
+      });
+      await _loadData();
+      if (mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(content: Text('已恢复 ${plan.preview.recordCount} 条待办')),
+        );
+      }
+    });
+  }
+
   Future<void> _fixOrphan(TodoItem item) async {
     final current = await StorageService.getTodoByUuid(
       widget.username,
@@ -885,7 +1125,9 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
               color: scheme.onSurfaceVariant,
             ),
           ),
-          if (section == 1 && (items.isNotEmpty || _hasMoreTodoPages))
+          if (section == 1 &&
+              !_isTrashSelectionMode &&
+              (items.isNotEmpty || _hasMoreTodoPages))
             TextButton.icon(
               onPressed: _busyId != null ? null : _clearRecycleBin,
               style: TextButton.styleFrom(foregroundColor: scheme.error),
@@ -984,6 +1226,14 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
         _busyId == 'series:${group.seriesId}' ||
         _busyId == 'purge-series:${group.seriesId}';
     final enabled = _busyId == null;
+    final selectedCount = group.items
+        .where((todo) => _selectedTrashTodos.containsKey(todo.id))
+        .length;
+    final bool? seriesSelection = selectedCount == 0
+        ? false
+        : _fullySelectedTrashSeriesIds.contains(group.seriesId)
+        ? true
+        : null;
     final countParts = <String>['${group.occurrenceCount} 期'];
     if (group.items.length != group.occurrenceCount) {
       countParts.add('${group.items.length} 条记录');
@@ -1012,7 +1262,21 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.repeat_rounded, color: scheme.primary),
+              if (_isTrashSelectionMode)
+                Semantics(
+                  label:
+                      '选择“${group.items.last.title}”系列全部回收站待办，包含搜索隐藏和未加载分页的期次',
+                  child: Checkbox(
+                    key: ValueKey('select_trash_series_${group.seriesId}'),
+                    tristate: true,
+                    value: seriesSelection,
+                    onChanged: enabled && !_isLoadingSeriesSelection
+                        ? (_) => unawaited(_toggleSelectedTrashSeries(group))
+                        : null,
+                  ),
+                )
+              else
+                Icon(Icons.repeat_rounded, color: scheme.primary),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -1040,7 +1304,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                   ],
                 ),
               ),
-              if (group.seriesId.trim().isNotEmpty)
+              if (!_isTrashSelectionMode && group.seriesId.trim().isNotEmpty)
                 PopupMenuButton<String>(
                   key: ValueKey('trash_series_more_${group.seriesId}'),
                   enabled: enabled,
@@ -1103,7 +1367,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                       : '展开${group.visibleItems.length == group.items.length ? '' : '匹配的'}期次',
                 ),
               ),
-              if (group.preview != null)
+              if (!_isTrashSelectionMode && group.preview != null)
                 FilledButton.tonalIcon(
                   key: ValueKey('restore_recurrence_series_${group.seriesId}'),
                   onPressed: enabled
@@ -1232,16 +1496,28 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                section == 0
-                    ? Icons.check_circle_outline_rounded
-                    : section == 1
-                    ? Icons.delete_outline_rounded
-                    : section == 2
-                    ? Icons.folder_off_outlined
-                    : Icons.skip_next_rounded,
-                color: scheme.primary,
-              ),
+              if (section == 1 && _isTrashSelectionMode)
+                Semantics(
+                  label: '选择回收站待办：${item.title}',
+                  child: Checkbox(
+                    key: ValueKey('select_trash_todo_${item.id}'),
+                    value: _selectedTrashTodos.containsKey(item.id),
+                    onChanged: enabled
+                        ? (_) => _toggleSelectedTrashTodo(item)
+                        : null,
+                  ),
+                )
+              else
+                Icon(
+                  section == 0
+                      ? Icons.check_circle_outline_rounded
+                      : section == 1
+                      ? Icons.delete_outline_rounded
+                      : section == 2
+                      ? Icons.folder_off_outlined
+                      : Icons.skip_next_rounded,
+                  color: scheme.primary,
+                ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -1282,58 +1558,109 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
           ),
           const SizedBox(height: 12),
           if (busy) const LinearProgressIndicator(),
-          ManagementActionBar(
-            children: [
-              if (section == 0) ...[
-                TextButton.icon(
-                  onPressed: enabled
-                      ? () => _runAction(item.id, () => _deleteItem(item))
-                      : null,
-                  icon: const Icon(Icons.delete_outline_rounded, size: 18),
-                  label: const Text('移至回收站'),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: enabled
-                      ? () => _runAction(item.id, () => _uncheckItem(item))
-                      : null,
-                  icon: const Icon(Icons.undo_rounded, size: 18),
-                  label: const Text('取消完成'),
-                ),
-              ] else if (section == 1) ...[
-                TextButton.icon(
-                  onPressed: enabled ? () => _confirmDeleteItem(item) : null,
-                  style: TextButton.styleFrom(foregroundColor: scheme.error),
-                  icon: const Icon(Icons.delete_forever_outlined, size: 18),
-                  label: const Text('彻底删除'),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: enabled
-                      ? () =>
-                            _runAction(item.id, () => _restoreDeletedItem(item))
-                      : null,
-                  icon: const Icon(Icons.restore_rounded, size: 18),
-                  label: const Text('恢复待办'),
-                ),
-              ] else if (section == 2)
-                FilledButton.tonalIcon(
-                  onPressed: enabled
-                      ? () => _runAction(item.id, () => _fixOrphan(item))
-                      : null,
-                  icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
-                  label: const Text('恢复到独立待办'),
-                )
-              else
-                FilledButton.tonalIcon(
-                  onPressed: enabled
-                      ? () =>
-                            _runAction(item.id, () => _restoreSkippedItem(item))
-                      : null,
-                  icon: const Icon(Icons.restore_rounded, size: 18),
-                  label: const Text('恢复本期'),
-                ),
-            ],
-          ),
+          if (!(section == 1 && _isTrashSelectionMode))
+            ManagementActionBar(
+              children: [
+                if (section == 0) ...[
+                  TextButton.icon(
+                    onPressed: enabled
+                        ? () => _runAction(item.id, () => _deleteItem(item))
+                        : null,
+                    icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                    label: const Text('移至回收站'),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: enabled
+                        ? () => _runAction(item.id, () => _uncheckItem(item))
+                        : null,
+                    icon: const Icon(Icons.undo_rounded, size: 18),
+                    label: const Text('取消完成'),
+                  ),
+                ] else if (section == 1) ...[
+                  TextButton.icon(
+                    onPressed: enabled ? () => _confirmDeleteItem(item) : null,
+                    style: TextButton.styleFrom(foregroundColor: scheme.error),
+                    icon: const Icon(Icons.delete_forever_outlined, size: 18),
+                    label: const Text('彻底删除'),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: enabled
+                        ? () => _runAction(
+                            item.id,
+                            () => _restoreDeletedItem(item),
+                          )
+                        : null,
+                    icon: const Icon(Icons.restore_rounded, size: 18),
+                    label: const Text('恢复待办'),
+                  ),
+                ] else if (section == 2)
+                  FilledButton.tonalIcon(
+                    onPressed: enabled
+                        ? () => _runAction(item.id, () => _fixOrphan(item))
+                        : null,
+                    icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
+                    label: const Text('恢复到独立待办'),
+                  )
+                else
+                  FilledButton.tonalIcon(
+                    onPressed: enabled
+                        ? () => _runAction(
+                            item.id,
+                            () => _restoreSkippedItem(item),
+                          )
+                        : null,
+                    icon: const Icon(Icons.restore_rounded, size: 18),
+                    label: const Text('恢复本期'),
+                  ),
+              ],
+            ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildTrashSelectionBar() {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final selectedCount = _selectedTrashTodos.length;
+    return SafeArea(
+      top: false,
+      child: Container(
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainer,
+          border: Border(top: BorderSide(color: scheme.outlineVariant)),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                '已选 $selectedCount 项',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: _busyId == null && !_isLoadingSeriesSelection
+                  ? _toggleTrashSelectionMode
+                  : null,
+              child: const Text('取消'),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.icon(
+              key: const ValueKey('restore_selected_trash_todos'),
+              onPressed:
+                  selectedCount > 0 &&
+                      _busyId == null &&
+                      !_isLoadingSeriesSelection
+                  ? _restoreSelectedTrashTodos
+                  : null,
+              icon: const Icon(Icons.restore_rounded),
+              label: const Text('恢复所选'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1347,6 +1674,18 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('待办深度清理'),
         actions: [
+          if (_tabController.index == 1)
+            IconButton(
+              icon: Icon(
+                _isTrashSelectionMode
+                    ? Icons.close_rounded
+                    : Icons.checklist_rounded,
+              ),
+              tooltip: _isTrashSelectionMode ? '退出选择' : '选择待办',
+              onPressed: _busyId != null || _isLoadingSeriesSelection
+                  ? null
+                  : _toggleTrashSelectionMode,
+            ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '重新扫描',
@@ -1390,6 +1729,9 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                 ],
               ),
       ),
+      bottomNavigationBar: _tabController.index == 1 && _isTrashSelectionMode
+          ? _buildTrashSelectionBar()
+          : null,
     );
   }
 }
