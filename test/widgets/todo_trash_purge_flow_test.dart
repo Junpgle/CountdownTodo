@@ -59,7 +59,7 @@ TodoItem _todo(
   isDone: done,
   isSkipped: skipped,
   createdDate: (date ?? DateTime.utc(2026, 10, 20, 9)).millisecondsSinceEpoch,
-  updatedAt: DateTime.utc(2026, 10, 20, 12).millisecondsSinceEpoch,
+  updatedAt: DateTime(2026, 10, 20, 20).millisecondsSinceEpoch,
 );
 
 List<TodoItem> _partialSeries() => [

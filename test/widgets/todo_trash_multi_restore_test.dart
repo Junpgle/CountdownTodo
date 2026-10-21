@@ -16,7 +16,7 @@ const _fallbackFlutterRoot = '/Users/junpgle/develop/flutter';
 final _iconFontPath =
     '${Platform.environment['FLUTTER_ROOT'] ?? _fallbackFlutterRoot}/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf';
 final _hasPreviewFont = Platform.isMacOS && File(_previewFontPath).existsSync();
-final _fixedUpdatedAt = DateTime.utc(2026, 10, 20, 12).millisecondsSinceEpoch;
+final _fixedUpdatedAt = DateTime(2026, 10, 20, 20).millisecondsSinceEpoch;
 var _previewFontsLoaded = false;
 
 Future<void> _loadPreviewFonts() async {

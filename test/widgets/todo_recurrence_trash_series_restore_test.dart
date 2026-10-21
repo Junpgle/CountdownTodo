@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'management_pages_test.dart' show tapVisible;
 
 const _seriesId = '00000000-0000-4000-8000-000000000027';
+final _fixedUpdatedAt = DateTime(2026, 10, 20, 20).millisecondsSinceEpoch;
 const _previewFontFamily = 'Round27TrashRestorePreview';
 const _previewFontPath = '/System/Library/Fonts/Supplemental/Arial Unicode.ttf';
 const _fallbackFlutterRoot = '/Users/junpgle/develop/flutter';
@@ -77,7 +78,7 @@ List<TodoItem> _deletedSeries() => [
     id: _seriesId,
     title: '每日复习英语',
     remark: '已完成的旧期',
-    updatedAt: DateTime.utc(2026, 10, 20, 12).millisecondsSinceEpoch,
+    updatedAt: _fixedUpdatedAt,
     recurrence: RecurrenceType.daily,
     recurrenceSeriesId: _seriesId,
     isDeleted: true,
@@ -88,7 +89,7 @@ List<TodoItem> _deletedSeries() => [
     id: '00000000-0000-4000-8000-000000000028',
     title: '每日复习英语',
     remark: '已跳过的一期',
-    updatedAt: DateTime.utc(2026, 10, 20, 12).millisecondsSinceEpoch,
+    updatedAt: _fixedUpdatedAt,
     recurrenceSeriesId: _seriesId,
     isDeleted: true,
     isSkipped: true,
@@ -98,7 +99,7 @@ List<TodoItem> _deletedSeries() => [
     id: '00000000-0000-4000-8000-000000000029',
     title: '每日复习英语',
     remark: '普通未完成期',
-    updatedAt: DateTime.utc(2026, 10, 20, 12).millisecondsSinceEpoch,
+    updatedAt: _fixedUpdatedAt,
     recurrenceSeriesId: _seriesId,
     isDeleted: true,
     createdDate: DateTime.utc(2026, 10, 20, 9).millisecondsSinceEpoch,

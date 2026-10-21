@@ -162,7 +162,7 @@ mixin _StorageTodos on _StorageServiceBase {
     if (sync && !isSyncSource) _recurrenceCheckCache.clear();
     for (final source in items) {
       // Async reads must not share mutable UI objects with this write.
-      final item = expectedTodoBaselines == null
+      var item = expectedTodoBaselines == null
           ? source.detachedCopy()
           : TodoItem.fromJson(source.toJson());
       if (item.isDone && item.isSkipped) {
@@ -303,7 +303,7 @@ mixin _StorageTodos on _StorageServiceBase {
         }
       }
       final batch = txn.batch();
-      for (final item in candidates) {
+      for (var item in candidates) {
         final oldData = existingById[item.id];
         final current = oldData == null ? null : TodoItem.fromSql(oldData);
         if (current != null) persistedItems[item.id] = current;
@@ -345,8 +345,35 @@ mixin _StorageTodos on _StorageServiceBase {
             (pendingIds.contains(item.id) ||
                 _pendingSyncOplogUuids.contains(item.id) ||
                 _forceFlushProtectedUuids.contains(item.id))) {
-          // Protect dates, recurrence and LWW metadata as well as completion.
-          continue;
+          final hasLocalConflictChange =
+              current.hasConflict != item.hasConflict ||
+              jsonEncode(current.serverVersionData) !=
+                  jsonEncode(item.serverVersionData);
+          final nonConflictFields = _todoSnapshotFields
+              .where(
+                (field) =>
+                    field != 'has_conflict' && field != 'conflict_data',
+              )
+              .toList();
+          final hasOtherChanges = _hasSubstantialChange(
+            current.toJson(),
+            item.toJson(),
+            nonConflictFields,
+          );
+          if (!hasLocalConflictChange || hasOtherChanges) {
+            // Protect pending user edits while rejecting any stale sync data.
+            continue;
+          }
+
+          // Schedule-conflict metadata is local-only. Merge just these fields
+          // onto the protected row so pending user content and its oplog stay
+          // untouched while the conflict remains visible after a reload.
+          final merged = current.detachedCopy();
+          merged.hasConflict = item.hasConflict;
+          merged.serverVersionData = item.serverVersionData == null
+              ? null
+              : JsonValueParser.toMap(jsonEncode(item.serverVersionData));
+          item = merged;
         }
         final data = item.toJson();
         final hasChanged =
