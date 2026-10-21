@@ -340,7 +340,7 @@ class PlanCleanupRepository {
       return '待办存在冲突或内容无效，请先核对';
     }
     if ((todo.teamUuid?.trim() ?? '').isNotEmpty || todo.collabType != 0) {
-      return '团队规划请逐条核对';
+      return '关联团队待办的剩余规划暂不支持批量处理，请逐条核对';
     }
     if (rules.focusReason.isNotEmpty) return rules.focusReason;
     if (rules.focusIds.contains(todo.id)) return '此待办正在专注或已暂停，请先查看当前专注';
@@ -568,7 +568,7 @@ class _CleanupSql {
         .join(',');
     return '''CASE
       WHEN COALESCE(t.is_deleted,0)<>0 THEN '待办需核对'
-      WHEN LENGTH(TRIM(COALESCE(t.team_uuid,'')))>0 OR COALESCE(t.collab_type,0)<>0 THEN '团队规划请逐条核对'
+      WHEN LENGTH(TRIM(COALESCE(t.team_uuid,'')))>0 OR COALESCE(t.collab_type,0)<>0 THEN '关联团队待办的剩余规划暂不支持批量处理，请逐条核对'
       WHEN ${focusReason.isNotEmpty ? '1' : '0'} ${focus.isEmpty ? '' : 'OR t.uuid IN ($focus)'} THEN '专注状态需核对，请查看当前专注'
       WHEN COALESCE(p.is_deleted,0)<>0 ${planConflict ? 'OR COALESCE(p.has_conflict,0)<>0' : ''} THEN '规划删除或冲突待核对'
       WHEN LENGTH(TRIM(COALESCE(p.uuid,'')))=0 OR typeof(p.start_time)<>'integer' OR typeof(p.end_time)<>'integer' OR p.start_time<=0

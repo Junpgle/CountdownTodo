@@ -249,9 +249,11 @@ void main() {
     await show(tester);
     await tap(tester, key('review-focus'));
     expect(find.text('53项 · 1小时 12分钟'), findsOneWidget);
+    await tester.scrollUntilVisible(key('review-load-more'), 280);
     await tap(tester, key('review-load-more'));
     expect(key('review-load-more'), findsNothing);
-    await tester.ensureVisible(key('review-entry-focus-bulk-9'));
+    await tester.scrollUntilVisible(find.text('更多记录9'), 280);
+    expect(key('review-entry-focus-bulk-9'), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 300));
     final offset = tester
         .state<ScrollableState>(find.byType(Scrollable).last)

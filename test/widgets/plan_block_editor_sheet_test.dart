@@ -947,7 +947,10 @@ void main() {
     for (final action in ['plan-save', 'plan-save-focus']) {
       await tap(tester, action);
       await tester.pumpAndSettle();
-      expect(find.text('待办已完成或失效，请选择未完成的待办'), findsOneWidget);
+      expect(
+        find.text('待办已完成、已跳过或失效，请选择未完成的待办'),
+        findsOneWidget,
+      );
       expect(
         tester
             .widget<TextField>(
@@ -1044,7 +1047,10 @@ void main() {
           () async => Future<void>.delayed(const Duration(milliseconds: 100)),
         );
         await tester.pumpAndSettle();
-        expect(find.text('待办已完成或失效，请选择未完成的待办'), findsOneWidget);
+        expect(
+          find.text('待办已完成、已跳过或失效，请选择未完成的待办'),
+          findsOneWidget,
+        );
         expect(
           await tester.runAsync(() => fixture.db.query('todo_plan_blocks')),
           isEmpty,

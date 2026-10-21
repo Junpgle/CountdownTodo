@@ -149,11 +149,15 @@ void main() {
     expect(after.overview.plan('done'), before.overview.plan('done') + 1);
   });
   test(
-    'completed personal todo is eligible, deleted or conflicting todo is not',
+    'a plan linked to a team todo can be confirmed without changing the todo',
     () async {
-      await f.db.update('todos', {'is_completed': 1});
-      final request = await prepare();
-      await service.confirm(request, sync: false);
+      await f.db.update('todos', {
+        'is_completed': 1,
+        'team_uuid': 'team',
+        'collab_type': 1,
+      });
+      await service.confirm(await prepare(), sync: false);
+      expect((await row())['status'], TodoPlanStatus.finished.index);
       expect((await f.db.query('todos')).single['is_completed'], 1);
     },
   );
@@ -193,10 +197,8 @@ void main() {
   for (final change in <Map<String, Object?>>[
     {'is_deleted': 1},
     {'has_conflict': 1},
-    {'team_uuid': 'team'},
-    {'collab_type': 1},
   ]) {
-    test('ineligible personal todo $change is rejected', () async {
+    test('deleted or conflicting todo $change is rejected', () async {
       await f.db.update('todos', change);
       await expectLater(prepare(), throwsA(anything));
       expect(await logs(), 0);

@@ -2845,7 +2845,9 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           _focusStarted
               ? '重试更新专注状态'
               : _splitPersisted
-              ? '进入第1段番茄钟'
+              ? _operationError?.startsWith('规划已保存，专注未启动') == true
+                    ? '重试开始第1段'
+                    : '进入第1段番茄钟'
               : _split != null
               ? '保存全部并进入番茄钟'
               : '保存并进入番茄钟',

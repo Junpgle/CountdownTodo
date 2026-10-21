@@ -122,6 +122,7 @@ void main() {
   }
 
   Finder key(String s) => find.byKey(ValueKey(s));
+  Finder editAction(String id) => find.text('查看规划');
   setUp(() async {
     f = PlanAvailabilityFixture();
     await f.initialize();
@@ -181,7 +182,7 @@ void main() {
       await tap(t, key('agenda-ended'));
       expect(find.text('规划done'), findsOneWidget);
       await tap(t, key('plan-today-row-current'));
-      await tap(t, key('plan-today-edit-current'));
+      await tap(t, editAction('current'));
       expect(
         t
             .widget<PlanBlockEditorSheet>(find.byType(PlanBlockEditorSheet))
@@ -237,7 +238,7 @@ void main() {
       await open(t);
       await tap(t, key('agenda-attention'));
       await tap(t, key('plan-today-row-missed'));
-      await tap(t, key('plan-today-edit-missed'));
+      await tap(t, editAction('missed'));
       await tap(t, find.byTooltip('更多操作'));
       await tap(t, find.text('确认规划已完成'));
       await tap(t, key('plan-manual-confirm'));

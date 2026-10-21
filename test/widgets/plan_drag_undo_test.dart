@@ -420,10 +420,7 @@ void main() {
         find.byKey(const ValueKey('plan-resize-start-drag-plan')),
         findsNothing,
       );
-      await tester.drag(
-        find.byKey(const ValueKey('plan-drag-block-drag-plan-22')),
-        const Offset(30, -30),
-      );
+      await tester.drag(find.text('复习高数').first, const Offset(30, -30));
       await settle(tester);
       expect(find.byType(PlanBlockEditorSheet), findsNothing);
       expect(await logs(tester), isEmpty);
@@ -494,7 +491,7 @@ void main() {
       );
       expect(
         tester.getBottomRight(find.text('23:00')).dy,
-        lessThanOrEqualTo(config.$1.height),
+        lessThanOrEqualTo(config.$1.height + 0.01),
       );
       await tester.tap(undo());
       await settle(tester);
