@@ -115,15 +115,22 @@ void main() {
 
   test('部分删除系列只清理墓碑，活动期次与规则保留', () async {
     const seriesId = 'trash-partial-series';
+    final now = DateTime.now();
+    final activeRuleDate = DateTime(now.year, now.month, now.day, 9);
+    final ruleEndDate = DateTime(
+      activeRuleDate.year,
+      activeRuleDate.month,
+      activeRuleDate.day + 5,
+    );
     await seed([
       TodoItem(
         id: seriesId,
         title: '仍在进行的重复待办',
         recurrence: RecurrenceType.daily,
         recurrenceSeriesId: seriesId,
-        recurrenceEndDate: DateTime(2026, 10, 25),
+        recurrenceEndDate: ruleEndDate,
         isDeleted: false,
-        createdDate: DateTime.utc(2026, 10, 20, 9).millisecondsSinceEpoch,
+        createdDate: activeRuleDate.millisecondsSinceEpoch,
       ),
       TodoItem(
         id: 'trash-partial-old-1',
@@ -131,7 +138,12 @@ void main() {
         recurrenceSeriesId: seriesId,
         isDeleted: true,
         isDone: true,
-        createdDate: DateTime.utc(2026, 10, 18, 9).millisecondsSinceEpoch,
+        createdDate: DateTime(
+          activeRuleDate.year,
+          activeRuleDate.month,
+          activeRuleDate.day - 2,
+          9,
+        ).millisecondsSinceEpoch,
       ),
       TodoItem(
         id: 'trash-partial-old-2',
@@ -139,7 +151,12 @@ void main() {
         recurrenceSeriesId: seriesId,
         isDeleted: true,
         isSkipped: true,
-        createdDate: DateTime.utc(2026, 10, 19, 9).millisecondsSinceEpoch,
+        createdDate: DateTime(
+          activeRuleDate.year,
+          activeRuleDate.month,
+          activeRuleDate.day - 1,
+          9,
+        ).millisecondsSinceEpoch,
       ),
     ]);
 
@@ -152,10 +169,10 @@ void main() {
     expect(plan.guardEntries, hasLength(3));
 
     final result = await StorageService.purgeTodoTrash(username, plan);
-    final remaining = await StorageService.getTodos(
-      username,
-      includeDeleted: true,
-    );
+    // Purging refreshes conflicts and can run recurrence maintenance. Keep the
+    // active rule anchored on today, then inspect storage without another read.
+    final db = await DatabaseHelper.instance.databaseForUser(username);
+    final remaining = (await db.query('todos')).map(TodoItem.fromSql).toList();
     final active = remaining.singleWhere((todo) => todo.id == seriesId);
     expect(result.deletedCount, 2);
     expect(active.isDeleted, isFalse);

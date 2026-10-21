@@ -2002,7 +2002,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
         },
       if (transaction.installmentLabel != null)
         '分期 ${transaction.installmentLabel}',
-      if (note?.isNotEmpty == true && note != title) note,
+      if (note?.isNotEmpty == true && note != title) note!,
     ];
     final amountColor = transaction.type == FinanceTransactionType.expense
         ? colorScheme.error
