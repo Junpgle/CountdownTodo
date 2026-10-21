@@ -1103,27 +1103,44 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
 /// 待办的完成勾选或截止时间来代替。因此这里单独渲染 `fixed_schedules`。
 class ShareScheduleSection extends StatelessWidget {
   final List<FixedScheduleItem> schedules;
+  final DateTime now;
   final bool isLight;
 
   const ShareScheduleSection({
     super.key,
     required this.schedules,
+    required this.now,
     required this.isLight,
   });
+
+  static List<FixedScheduleItem> visibleSchedulesAt(
+    List<FixedScheduleItem> schedules,
+    DateTime now,
+  ) {
+    // 已结束日程会留在折叠分组中，因此仍属于可见内容。
+    return schedules.where((item) => !item.isDeleted).toList();
+  }
 
   @override
   Widget build(BuildContext context) {
     if (schedules.isEmpty) return const SizedBox.shrink();
 
     final colorScheme = Theme.of(context).colorScheme;
-    final now = DateTime.now();
-    final sorted = schedules.where((item) => !item.isDeleted).toList()
+    final sorted = visibleSchedulesAt(schedules, now)
       ..sort(_compareSchedules);
     final endedSchedules = sorted
-        .where((item) => item.phaseAt(now) == FixedSchedulePhase.ended)
+        .where((item) {
+          final phase = item.phaseAt(now);
+          return phase == FixedSchedulePhase.ended ||
+              phase == FixedSchedulePhase.cancelled;
+        })
         .toList();
-    final notEndedSchedules = sorted
-        .where((item) => item.phaseAt(now) != FixedSchedulePhase.ended)
+    final activeSchedules = sorted
+        .where((item) {
+          final phase = item.phaseAt(now);
+          return phase != FixedSchedulePhase.ended &&
+              phase != FixedSchedulePhase.cancelled;
+        })
         .toList();
 
     if (sorted.isEmpty) return const SizedBox.shrink();
@@ -1131,18 +1148,65 @@ class ShareScheduleSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildHeader(context, colorScheme),
+        _buildHeader(context, colorScheme, sorted.length),
         const SizedBox(height: 14),
-        ...notEndedSchedules.map((item) => _buildScheduleCard(context, item)),
+        ...activeSchedules.map((item) => _buildScheduleCard(context, item)),
         if (endedSchedules.isNotEmpty) ...[
-          _buildEndedGroupHeader(context, colorScheme, endedSchedules.length),
-          ...endedSchedules.map((item) => _buildScheduleCard(context, item)),
+          const SizedBox(height: 4),
+          _buildEndedGroup(context, colorScheme, endedSchedules),
         ],
       ],
     );
   }
 
-  Widget _buildHeader(BuildContext context, ColorScheme colorScheme) {
+  Widget _buildEndedGroup(
+    BuildContext context,
+    ColorScheme colorScheme,
+    List<FixedScheduleItem> schedules,
+  ) {
+    return ExpansionTile(
+      initiallyExpanded: false,
+      tilePadding: const EdgeInsets.symmetric(horizontal: 4),
+      childrenPadding: EdgeInsets.zero,
+      visualDensity: VisualDensity.compact,
+      shape: const Border(),
+      collapsedShape: const Border(),
+      title: Row(
+        children: [
+          Icon(
+            Icons.history_rounded,
+            size: 17,
+            color: colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 7),
+          Text(
+            '已结束',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            '${schedules.length} 项',
+            style: TextStyle(
+              fontSize: 12,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+      children: schedules
+          .map((item) => _buildScheduleCard(context, item))
+          .toList(),
+    );
+  }
+
+  Widget _buildHeader(
+    BuildContext context,
+    ColorScheme colorScheme,
+    int count,
+  ) {
     return Row(
       children: [
         Container(
@@ -1179,44 +1243,12 @@ class ShareScheduleSection extends StatelessWidget {
             ],
           ),
         ),
-        _buildCountChip(colorScheme),
+        _buildCountChip(colorScheme, count),
       ],
     );
   }
 
-  Widget _buildEndedGroupHeader(
-    BuildContext context,
-    ColorScheme colorScheme,
-    int count,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 8, bottom: 10, left: 4, right: 4),
-      child: Row(
-        children: [
-          Icon(
-            Icons.history_rounded,
-            size: 17,
-            color: colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: 7),
-          Text(
-            '已结束',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const Spacer(),
-          Text(
-            '$count 项',
-            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCountChip(ColorScheme colorScheme) {
+  Widget _buildCountChip(ColorScheme colorScheme, int count) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
@@ -1224,7 +1256,7 @@ class ShareScheduleSection extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
-        '${schedules.where((item) => !item.isDeleted).length} 项',
+        '$count 项',
         style: TextStyle(
           color: colorScheme.onSecondaryContainer,
           fontSize: 12,
@@ -1236,7 +1268,7 @@ class ShareScheduleSection extends StatelessWidget {
 
   Widget _buildScheduleCard(BuildContext context, FixedScheduleItem item) {
     final colorScheme = Theme.of(context).colorScheme;
-    final phase = item.phaseAt(DateTime.now());
+    final phase = item.phaseAt(now);
     final phaseColor = _phaseColor(colorScheme, phase);
 
     return Container(
