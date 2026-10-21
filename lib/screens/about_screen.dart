@@ -10,6 +10,7 @@ import '../utils/app_platform.dart';
 import '../utils/settings_navigation.dart';
 import '../utils/app_dialogs.dart';
 import 'settings/device_version_detail_page.dart';
+import 'settings/pages/sync_health_page.dart';
 import 'login_screen.dart';
 import '../storage_service.dart';
 import '../update_service.dart';
@@ -19,6 +20,7 @@ import 'dart:async';
 import '../services/local_migration_service.dart';
 import '../services/database_helper.dart';
 import '../services/database_schema_history.dart';
+import '../services/sync_health_service.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -64,7 +66,9 @@ class _AboutScreenState extends State<AboutScreen> {
   List<String> _migrationErrors = [];
   int _migrationSuccessCount = 0;
   StreamSubscription? _migrationSub;
-  List<Map<String, dynamic>> _syncFailures = [];
+  SyncHealthSnapshot? _syncSummary;
+  String? _syncUsername;
+  bool _syncSummaryFailed = false;
 
   static const String privacyRawUrl =
       'https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/PRIVACY_POLICY.md';
@@ -97,7 +101,7 @@ class _AboutScreenState extends State<AboutScreen> {
     _loadDeviceInfo();
     _loadDatabaseVersion();
     _checkMigration();
-    _loadSyncFailures();
+    _loadSyncSummary();
     AppPerformanceMonitor.setCurrentScreen('关于此应用');
     AppPerformanceMonitor.loadSettings();
   }
@@ -109,10 +113,31 @@ class _AboutScreenState extends State<AboutScreen> {
     }
   }
 
-  Future<void> _loadSyncFailures() async {
-    final failures = await StorageService.getSyncFailures();
-    if (mounted) {
-      setState(() => _syncFailures = failures);
+  Future<void> _loadSyncSummary() async {
+    final prefs = await SharedPreferences.getInstance();
+    final username = prefs.getString(StorageService.keyCurrentUser)?.trim();
+    if (!mounted) return;
+    if (username == null || username.isEmpty) {
+      setState(() {
+        _syncUsername = null;
+        _syncSummaryFailed = false;
+      });
+      return;
+    }
+    try {
+      final summary = await SyncHealthService.load(username);
+      if (!mounted) return;
+      setState(() {
+        _syncUsername = username;
+        _syncSummary = summary;
+        _syncSummaryFailed = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _syncUsername = username;
+        _syncSummaryFailed = true;
+      });
     }
   }
 
@@ -579,7 +604,7 @@ class _AboutScreenState extends State<AboutScreen> {
                           _isMigrating ||
                           _migrationCompleted)
                         _buildMigrationPanel(context),
-                      if (_syncFailures.isNotEmpty)
+                      if (_shouldShowSyncSummary)
                         _buildSyncIssueCenter(context),
                       const SizedBox(height: 32),
                     ],
@@ -705,7 +730,7 @@ class _AboutScreenState extends State<AboutScreen> {
           ),
           if (_needsMigration || _isMigrating || _migrationCompleted)
             _buildMigrationPanel(context),
-          if (_syncFailures.isNotEmpty) _buildSyncIssueCenter(context),
+          if (_shouldShowSyncSummary) _buildSyncIssueCenter(context),
           const SizedBox(height: 32),
         ],
       ),
@@ -713,95 +738,49 @@ class _AboutScreenState extends State<AboutScreen> {
   }
 
   Widget _buildSyncIssueCenter(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final summary = _syncSummary;
+    final subtitle = _syncSummaryFailed
+        ? '暂时无法读取同步状态，点击查看并重试读取'
+        : summary == null
+        ? '查看各模块的数据同步状态'
+        : summary.totalConflictCount > 0
+        ? '${summary.totalPendingCount} 项待处理 · ${summary.totalConflictCount} 项冲突需核对'
+        : summary.totalPendingCount > 0
+        ? '${summary.totalPendingCount} 项数据待处理 · 点击查看安全重试选项'
+        : '当前没有待处理项目';
 
     return Padding(
       padding: const EdgeInsets.only(left: 16, right: 16, top: 16),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: colorScheme.errorContainer.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: colorScheme.error.withValues(alpha: 0.2)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.sync_problem_rounded,
-                  color: colorScheme.error,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '同步异常中心 (${_syncFailures.length})',
-                  style: TextStyle(
-                    color: colorScheme.error,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const Spacer(),
-                TextButton(
-                  onPressed: () async {
-                    final prefs = await SharedPreferences.getInstance();
-                    final username =
-                        prefs.getString(StorageService.keyCurrentUser) ?? '';
-                    if (!context.mounted || username.trim().isEmpty) return;
-                    await StorageService.syncData(
-                      username,
-                      forceFullSync: true,
-                    );
-                    _loadSyncFailures();
-                  },
-                  child: const Text('重试全部'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 200),
-              child: ListView.separated(
-                shrinkWrap: true,
-                padding: EdgeInsets.zero,
-                itemCount: _syncFailures.length > 5 ? 5 : _syncFailures.length,
-                separatorBuilder: (_, _) => const Divider(height: 1),
-                itemBuilder: (context, index) {
-                  final failure = _syncFailures[index];
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                    title: Text(
-                      '${failure['target_table']} | ${failure['op_type']}',
-                      style: const TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                    subtitle: Text(
-                      failure['sync_error'] ?? '原因未知',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: const Icon(Icons.chevron_right, size: 16),
-                  );
-                },
-              ),
-            ),
-            if (_syncFailures.length > 5)
-              Padding(
-                padding: const EdgeInsets.only(top: 8.0),
-                child: Center(
-                  child: Text(
-                    '还有 ${_syncFailures.length - 5} 条异常未列出',
-                    style: TextStyle(fontSize: 11, color: colorScheme.outline),
-                  ),
-                ),
-              ),
-          ],
+      child: Card(
+        margin: EdgeInsets.zero,
+        color: (summary?.totalConflictCount ?? 0) > 0
+            ? colorScheme.errorContainer.withValues(alpha: 0.35)
+            : null,
+        child: ListTile(
+          leading: Icon(
+            _syncSummaryFailed
+                ? Icons.sync_problem_rounded
+                : Icons.cloud_sync_outlined,
+            color: _syncSummaryFailed ? colorScheme.error : colorScheme.primary,
+          ),
+          title: const Text('同步状态'),
+          subtitle: Text(subtitle),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () {
+            _openSettingsPage(
+              'sync_health',
+              SyncHealthPage(username: _syncUsername ?? ''),
+              settings: const RouteSettings(name: '同步状态'),
+            );
+          },
         ),
       ),
     );
   }
+
+  bool get _shouldShowSyncSummary =>
+      _syncSummaryFailed || (_syncSummary?.hasAttention ?? false);
 
   Widget _buildPerformanceCard(BuildContext context) {
     if (!AppPerformanceMonitor.isAvailable) {

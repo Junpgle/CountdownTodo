@@ -614,7 +614,8 @@ mixin _StorageSync on _StorageServiceBase {
         !syncPlanBlocks &&
         !syncFixedSchedules &&
         !syncHabits &&
-        !syncFinance) {
+        !syncFinance &&
+        !syncScreenTime) {
       return {'success': false, 'hasChanges': false};
     }
     if (_isSyncing) {
@@ -1408,6 +1409,13 @@ mixin _StorageSync on _StorageServiceBase {
         if (isDebounceIgnored(response) && hasPendingUploadForResponse) {
           throw Exception('同步被服务端防抖延迟，已保留本地待同步记录');
         }
+      }
+
+      if (response['success'] != true) {
+        final error = response['error']?.toString().trim().isNotEmpty == true
+            ? response['error'].toString().trim()
+            : response['message']?.toString().trim();
+        throw Exception(error?.isNotEmpty == true ? error : '服务端未确认同步请求');
       }
 
       // /api/sync 是待办、习惯和记账共用的请求。用户在请求期间关闭

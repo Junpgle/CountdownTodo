@@ -8,6 +8,7 @@ import '../../../widgets/app_settings_widgets.dart';
 import '../../../widgets/app_state_views.dart';
 import '../../../widgets/settings_toggle_card.dart';
 import '../server_choice_page.dart';
+import '../pages/sync_health_page.dart';
 
 class SyncSettingsSection extends StatefulWidget {
   final String username;
@@ -27,6 +28,7 @@ class SyncSettingsSection extends StatefulWidget {
 class _SyncSettingsSectionState extends State<SyncSettingsSection> {
   final Map<String, GlobalKey> _itemKeys = {
     'sync_interval': GlobalKey(),
+    'sync_health': GlobalKey(),
     'conflict_detection': GlobalKey(),
     'server_choice': GlobalKey(),
     'llm_retry': GlobalKey(),
@@ -100,6 +102,31 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
       title: '同步与数据策略',
       headerPadding: const EdgeInsets.only(left: 8, bottom: 8, top: 24),
       children: [
+        KeyedSubtree(
+          key: _itemKeys['sync_health'],
+          child: ListTile(
+            leading: Icon(
+              Icons.cloud_sync_outlined,
+              color: colorScheme.primary,
+            ),
+            title: const Text('同步状态'),
+            subtitle: const Text('查看各模块待上传数据、失败原因并安全重试'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              SettingsNavigation.push(
+                context: context,
+                page: SyncHealthPage(
+                  username: widget.username,
+                  isEmbedded: widget.isEmbedded,
+                ),
+                sourceKey: _itemKeys['sync_health']!,
+                isEmbedded: widget.isEmbedded,
+                settings: const RouteSettings(name: '同步状态'),
+              );
+            },
+          ),
+        ),
+        const AppSettingsDivider(),
         KeyedSubtree(
           key: _itemKeys['sync_interval'],
           child: Padding(
