@@ -1971,18 +1971,27 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
         ? null
         : _paymentMethodDisplayName(payment);
     final categoryName = _categoryDisplayName(transaction.categoryUuid);
-    final title = transaction.merchant?.isNotEmpty == true
-        ? transaction.merchant!
-        : category == null &&
-              (transaction.categoryUuid == null ||
-                  transaction.categoryUuid!.trim().isEmpty)
-        ? transaction.type.label
-        : categoryName;
+    final merchant = transaction.merchant?.trim();
+    final note = transaction.note?.trim();
+    final hasCategory =
+        category != null || transaction.categoryUuid?.trim().isNotEmpty == true;
+    final titleUsesCategory =
+        merchant?.isNotEmpty != true &&
+        note?.isNotEmpty != true &&
+        hasCategory;
+    final title = merchant?.isNotEmpty == true
+        ? merchant!
+        : note?.isNotEmpty == true
+        ? note!
+        : titleUsesCategory
+        ? categoryName
+        : transaction.type.label;
     final subtitleParts = <String>[
       if (transaction.balanceEventAt() > asOfAt) '待发生',
-      category == null
-          ? categoryName
-          : '${category.icon} $categoryName${category.isArchived ? '（已归档）' : ''}',
+      if (!titleUsesCategory)
+        category == null
+            ? categoryName
+            : '${category.icon} $categoryName${category.isArchived ? '（已归档）' : ''}',
       if (payment != null)
         '${payment.icon} $paymentName${payment.isArchived ? '（已归档）' : ''}'
       else if (transaction.paymentMethodUuid?.trim().isNotEmpty == true)
@@ -1993,7 +2002,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
         },
       if (transaction.installmentLabel != null)
         '分期 ${transaction.installmentLabel}',
-      if (transaction.note?.isNotEmpty == true) transaction.note!,
+      if (note?.isNotEmpty == true && note != title) note,
     ];
     final amountColor = transaction.type == FinanceTransactionType.expense
         ? colorScheme.error
