@@ -2411,12 +2411,17 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                                     _createdAt,
                                     _dueDate!,
                                   );
+                              // When changing a deadline into a date-only
+                              // todo, the selected due date becomes the
+                              // target date. Using _createdAt here would
+                              // silently replace it with the creation day.
+                              final targetDate = _dueDate ?? _createdAt;
                               _isAllDay = val;
                               if (_isAllDay) {
                                 _createdAt = DateTime(
-                                  _createdAt.year,
-                                  _createdAt.month,
-                                  _createdAt.day,
+                                  targetDate.year,
+                                  targetDate.month,
+                                  targetDate.day,
                                   0,
                                   0,
                                 );
