@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 import '../services/api_service.dart';
 import '../services/course_service.dart';
+import '../services/fixed_schedule_edit_service.dart';
 import '../services/fixed_schedule_recurrence_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/schedule_conflict_service.dart';
@@ -23,6 +24,7 @@ class FixedScheduleEditorScreen extends StatefulWidget {
     this.onSave,
     this.onSaveAll,
     this.onSaved,
+    this.loadTeams,
   });
 
   final String username;
@@ -31,6 +33,7 @@ class FixedScheduleEditorScreen extends StatefulWidget {
   final Future<void> Function(FixedScheduleItem)? onSave;
   final Future<void> Function(List<FixedScheduleItem>)? onSaveAll;
   final ValueChanged<FixedScheduleItem>? onSaved;
+  final Future<List<dynamic>> Function()? loadTeams;
 
   @override
   State<FixedScheduleEditorScreen> createState() =>
@@ -61,16 +64,146 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
   late bool _cancelled;
   late RecurrenceType _recurrence;
   late DateTime _recurrenceEndDate;
+  late FixedScheduleEditScope _editScope;
+  DateTime? _seriesStartDate;
+  DateTime? _seriesEndDate;
   String? _selectedTeamUuid;
   List<Team> _teams = [];
   List<FixedScheduleItem> _seriesItems = [];
   bool _loadingContext = true;
   bool _saving = false;
   bool _canChangeTeam = true;
+  bool _supportsRangeEdit = false;
   int? _currentUserId;
   SemesterWeekContext? _semesterWeekContext;
 
   bool get _editing => widget.item != null;
+
+  FixedScheduleItem? get _selectedOccurrence {
+    final item = widget.item;
+    if (item == null) return null;
+    for (final loaded in _seriesItems) {
+      if (loaded.id == item.id) return loaded;
+    }
+    return item;
+  }
+
+  DateTime get _selectedOccurrenceDate =>
+      DateTime.tryParse(_selectedOccurrence?.date ?? '')?.toLocal() ?? _date;
+
+  bool get _hasExternalScheduleIdentity {
+    final item = _selectedOccurrence;
+    return item != null &&
+        (item.source == FixedScheduleSource.imported ||
+            item.source == FixedScheduleSource.calendar ||
+            item.externalSource?.trim().isNotEmpty == true ||
+            item.externalId?.trim().isNotEmpty == true);
+  }
+
+  bool get _forcedOccurrenceEdit =>
+      _editing &&
+      _selectedOccurrence!.recurrence != RecurrenceType.none &&
+      _hasExternalScheduleIdentity;
+
+  FixedScheduleEditScope get _effectiveEditScope => _forcedOccurrenceEdit
+      ? FixedScheduleEditScope.occurrence
+      : (_supportsRangeEdit ? _editScope : FixedScheduleEditScope.series);
+
+  bool get _isOccurrenceScope =>
+      _effectiveEditScope == FixedScheduleEditScope.occurrence;
+
+  bool get _canEditRecurrence => !_isOccurrenceScope;
+
+  String _scopeLabel(FixedScheduleEditScope scope) => switch (scope) {
+    FixedScheduleEditScope.occurrence => '仅本次',
+    FixedScheduleEditScope.future => '本次及以后',
+    FixedScheduleEditScope.series => '整个系列',
+  };
+
+  String _scopeDescription(FixedScheduleEditScope scope) {
+    final selected = _selectedOccurrence;
+    final selectedDate = selected == null
+        ? _selectedOccurrenceDate
+        : DateTime.tryParse(selected.date)?.toLocal() ??
+              _selectedOccurrenceDate;
+    final active = _seriesItems.where((item) => !item.isDeleted).toList()
+      ..sort((left, right) => left.date.compareTo(right.date));
+    final previousCount = active.where((item) {
+      final date = DateTime.tryParse(item.date);
+      return date != null && date.isBefore(selectedDate);
+    }).length;
+    final currentCount = switch (scope) {
+      FixedScheduleEditScope.occurrence => 1,
+      FixedScheduleEditScope.future => active.length - previousCount,
+      FixedScheduleEditScope.series => active.length,
+    };
+    final start = scope == FixedScheduleEditScope.series
+        ? (_seriesStartDate ?? selectedDate)
+        : selectedDate;
+    final end = scope == FixedScheduleEditScope.occurrence
+        ? selectedDate
+        : (_seriesEndDate ?? selectedDate);
+    final dates = start == end
+        ? AppTimeFormats.date(start)
+        : '${AppTimeFormats.date(start)} – ${AppTimeFormats.date(end)}';
+    if (scope == FixedScheduleEditScope.future) {
+      return '此前 $previousCount 场保持不变 · 当前范围 $currentCount 场 · $dates';
+    }
+    if (scope == FixedScheduleEditScope.occurrence) {
+      return '只修改当前场次 · $dates';
+    }
+    return '当前 $currentCount 场 · $dates';
+  }
+
+  Future<void> _chooseEditScope() async {
+    final scope = await showAppDialog<FixedScheduleEditScope>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('修改范围'),
+        content: RadioGroup<FixedScheduleEditScope>(
+          groupValue: _editScope,
+          onChanged: (value) => Navigator.pop(dialogContext, value),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final scope in FixedScheduleEditScope.values)
+                RadioListTile<FixedScheduleEditScope>(
+                  value: scope,
+                  title: Text(_scopeLabel(scope)),
+                  subtitle: Text(_scopeDescription(scope)),
+                  contentPadding: EdgeInsets.zero,
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
+    if (scope != null && mounted) _selectEditScope(scope);
+  }
+
+  void _selectEditScope(FixedScheduleEditScope? scope) {
+    if (scope == null || scope == _editScope) return;
+    setState(() {
+      _editScope = scope;
+      _date = scope == FixedScheduleEditScope.series
+          ? (_seriesStartDate ?? _selectedOccurrenceDate)
+          : _selectedOccurrenceDate;
+      if (_recurrenceEndDate.isBefore(_date)) {
+        _recurrenceEndDate = FixedScheduleRecurrenceService.defaultEndDate(
+          startDate: _date,
+          recurrence: _recurrence,
+          customIntervalDays:
+              int.tryParse(_customIntervalController.text.trim()) ?? 1,
+        );
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -101,6 +234,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
     }
     _cancelled = item?.status == FixedScheduleStatus.cancelled;
     _recurrence = item?.recurrence ?? RecurrenceType.none;
+    _editScope = FixedScheduleEditScope.series;
     _recurrenceEndDate = FixedScheduleRecurrenceService.defaultEndDate(
       startDate: _date,
       recurrence: _recurrence,
@@ -188,7 +322,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
 
   Future<void> _loadEditorContext() async {
     final results = await Future.wait<dynamic>([
-      ApiService.fetchTeams(),
+      widget.loadTeams?.call() ?? ApiService.fetchTeams(),
       SharedPreferences.getInstance(),
       if (_editing)
         StorageService.getFixedSchedules(widget.username, includeDeleted: true),
@@ -201,9 +335,16 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
         .where((team) => team.uuid.isNotEmpty)
         .toList();
     var seriesItems = _seriesItems;
+    DateTime? seriesStartDate;
+    DateTime? seriesEndDate;
+    var supportsRangeEdit = false;
     if (_editing && results.length > 2) {
       final allItems = results[2] as List<FixedScheduleItem>;
-      final current = widget.item!;
+      final passedItem = widget.item!;
+      final current = allItems.lastWhere(
+        (item) => item.id == passedItem.id,
+        orElse: () => passedItem,
+      );
       final seriesId = current.recurrenceSeriesId;
       seriesItems = allItems.where((item) {
         if (item.id == current.id) return true;
@@ -218,30 +359,84 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
               .whereType<DateTime>()
               .toList()
             ..sort();
-      if (_recurrence != RecurrenceType.none && activeDates.isNotEmpty) {
-        _date = activeDates.first;
-        _recurrenceEndDate = activeDates.last;
+      if (activeDates.isNotEmpty) {
+        seriesStartDate = activeDates.first;
+        seriesEndDate = activeDates.last;
       }
-      if (_recurrence == RecurrenceType.customDays &&
-          current.customIntervalDays == null) {
-        final inferredInterval =
-            FixedScheduleRecurrenceService.inferCustomIntervalDays(activeDates);
-        if (inferredInterval != null) {
-          _customIntervalController.text = inferredInterval.toString();
-        }
-      }
+      final sourceIsAppManaged =
+          current.source == FixedScheduleSource.manual ||
+          current.source == FixedScheduleSource.ai;
+      supportsRangeEdit =
+          current.recurrence != RecurrenceType.none &&
+          activeDates.length > 1 &&
+          sourceIsAppManaged &&
+          current.externalSource?.trim().isNotEmpty != true &&
+          current.externalId?.trim().isNotEmpty != true;
+      _loadLatestEditorValues(
+        current,
+        seriesStartDate: seriesStartDate,
+        seriesEndDate: seriesEndDate,
+        activeDates: activeDates,
+        supportsRangeEdit: supportsRangeEdit,
+      );
     }
 
     setState(() {
       _teams = teams;
       _seriesItems = seriesItems;
+      _seriesStartDate = seriesStartDate;
+      _seriesEndDate = seriesEndDate;
+      _supportsRangeEdit = supportsRangeEdit;
       _currentUserId = (results[1] as SharedPreferences).getInt(
         'current_user_id',
       );
-      final item = widget.item;
+      final item = _selectedOccurrence;
       _canChangeTeam = item == null || item.canChangeTeamFor(_currentUserId);
       _loadingContext = false;
     });
+  }
+
+  void _loadLatestEditorValues(
+    FixedScheduleItem item, {
+    required DateTime? seriesStartDate,
+    required DateTime? seriesEndDate,
+    required List<DateTime> activeDates,
+    required bool supportsRangeEdit,
+  }) {
+    _titleController.text = item.title;
+    _locationController.text = item.location ?? '';
+    _remarkController.text = item.remark ?? '';
+    final selectedDate = DateTime.tryParse(item.date)?.toLocal() ?? _date;
+    _date = item.recurrence != RecurrenceType.none && supportsRangeEdit
+        ? (seriesStartDate ?? selectedDate)
+        : selectedDate;
+    final start = item.startTime == null
+        ? DateTime(_date.year, _date.month, _date.day, 9)
+        : DateTime.fromMillisecondsSinceEpoch(item.startTime!).toLocal();
+    final end = item.endTime == null
+        ? DateTime(_date.year, _date.month, _date.day, 10)
+        : DateTime.fromMillisecondsSinceEpoch(item.endTime!).toLocal();
+    _timeTbd = item.startTime == null;
+    _startTime = TimeOfDay(hour: start.hour, minute: start.minute);
+    _endTimeTbd = item.startTime != null && item.endTime == null;
+    _endTime = TimeOfDay(hour: end.hour, minute: end.minute);
+    _reminderMinutes = item.reminderMinutes.toSet();
+    if (_reminderMinutes.isEmpty) _reminderMinutes.add(15);
+    _cancelled = item.status == FixedScheduleStatus.cancelled;
+    _recurrence = item.recurrence;
+    final inferredInterval = item.recurrence == RecurrenceType.customDays
+        ? FixedScheduleRecurrenceService.inferCustomIntervalDays(activeDates)
+        : null;
+    final interval = item.customIntervalDays ?? inferredInterval ?? 2;
+    _customIntervalController.text = interval.toString();
+    _recurrenceEndDate =
+        seriesEndDate ??
+        FixedScheduleRecurrenceService.defaultEndDate(
+          startDate: _date,
+          recurrence: _recurrence,
+          customIntervalDays: interval,
+        );
+    _selectedTeamUuid = item.teamUuid ?? widget.initialTeamUuid;
   }
 
   DateTime _atTime(TimeOfDay time) =>
@@ -266,7 +461,25 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
       );
       return;
     }
-    if (_recurrence != RecurrenceType.none &&
+    final existing = _selectedOccurrence;
+    if (_forcedOccurrenceEdit &&
+        existing != null &&
+        AppTimeFormats.date(_date) != existing.date) {
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('该重复日程由外部日历管理，请在来源日历中移动场次')),
+      );
+      return;
+    }
+    final scope = existing == null
+        ? FixedScheduleEditScope.series
+        : _effectiveEditScope;
+    final recurrence =
+        scope == FixedScheduleEditScope.occurrence && existing != null
+        ? existing.recurrence
+        : _recurrence;
+    if (scope != FixedScheduleEditScope.occurrence &&
+        recurrence != RecurrenceType.none &&
         _recurrenceEndDate.isBefore(_date)) {
       AppSnackBars.showSnackBar(
         context,
@@ -277,7 +490,8 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
     final customIntervalDays = int.tryParse(
       _customIntervalController.text.trim(),
     );
-    if (_recurrence == RecurrenceType.customDays &&
+    if (scope != FixedScheduleEditScope.occurrence &&
+        recurrence == RecurrenceType.customDays &&
         (customIntervalDays == null || customIntervalDays < 1)) {
       AppSnackBars.showSnackBar(
         context,
@@ -288,7 +502,6 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
 
     setState(() => _saving = true);
     final dateText = AppTimeFormats.date(_date);
-    final existing = widget.item;
     final item = existing == null
         ? FixedScheduleItem(title: title, date: dateText)
         : FixedScheduleItem.fromJson(existing.toJson());
@@ -306,7 +519,8 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
       ..reminderMinutes = (_reminderMinutes.toList()
         ..sort((left, right) => right.compareTo(left)))
       ..timezone = DateTime.now().timeZoneName
-      ..customIntervalDays = _recurrence == RecurrenceType.customDays
+      ..recurrence = recurrence
+      ..customIntervalDays = recurrence == RecurrenceType.customDays
           ? customIntervalDays
           : null
       ..teamUuid = _selectedTeamUuid
@@ -320,18 +534,45 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
     late final ({
       List<FixedScheduleItem> active,
       List<FixedScheduleItem> changes,
+      FixedScheduleItem refreshItem,
     })
-    series;
+    plan;
     try {
-      series = FixedScheduleRecurrenceService.rebuildSeries(
-        template: item,
-        existingSeries: _seriesItems,
-        recurrence: _recurrence,
-        recurrenceEndDate: _recurrence == RecurrenceType.none
-            ? _date
-            : _recurrenceEndDate,
-        customIntervalDays: customIntervalDays ?? 1,
-      );
+      if (existing == null) {
+        final created = FixedScheduleRecurrenceService.rebuildSeries(
+          template: item,
+          existingSeries: const [],
+          recurrence: recurrence,
+          recurrenceEndDate: recurrence == RecurrenceType.none
+              ? _date
+              : _recurrenceEndDate,
+          customIntervalDays: customIntervalDays ?? 1,
+          applyTeamUuid: true,
+        );
+        plan = (
+          active: created.active,
+          changes: created.changes,
+          refreshItem: created.active.first,
+        );
+      } else {
+        final edited = FixedScheduleEditService.buildChanges(
+          scope: scope,
+          selectedOccurrence: existing,
+          existingSeries: _seriesItems,
+          editedTemplate: item,
+          recurrence: recurrence,
+          recurrenceEndDate: scope == FixedScheduleEditScope.occurrence
+              ? DateTime.tryParse(existing.date) ?? _date
+              : _recurrenceEndDate,
+          customIntervalDays: customIntervalDays ?? 1,
+          applyTeamUuid: _selectedTeamUuid != existing.teamUuid,
+        );
+        plan = (
+          active: edited.affected,
+          changes: edited.changes,
+          refreshItem: edited.refreshItem,
+        );
+      }
     } on FixedScheduleRecurrenceLimitException catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -342,17 +583,181 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
       return;
     }
 
-    final conflicts = await _conflictsFor(series.active);
+    if (existing != null &&
+        _supportsRangeEdit &&
+        !await _confirmEditScope(scope, plan, existing)) {
+      if (mounted) setState(() => _saving = false);
+      return;
+    }
+
+    final conflicts = await _conflictsFor(plan.changes);
     if (!mounted) return;
     if (conflicts.isNotEmpty && !await _confirmConflicts(conflicts)) {
       if (mounted) setState(() => _saving = false);
       return;
     }
 
-    await _saveItems(series.changes, refreshItem: series.active.first);
-    widget.onSaved?.call(series.active.first);
+    final saved = await _saveEditedItems(
+      plan.changes,
+      refreshItem: plan.refreshItem,
+    );
+    if (!saved) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('固定日程系列已有变化，请重新打开后再保存')),
+      );
+      return;
+    }
+    widget.onSaved?.call(plan.refreshItem);
     if (!mounted) return;
-    Navigator.pop(context, series.active.first);
+    Navigator.pop(context, plan.refreshItem);
+  }
+
+  Future<bool> _confirmEditScope(
+    FixedScheduleEditScope scope,
+    ({
+      List<FixedScheduleItem> active,
+      List<FixedScheduleItem> changes,
+      FixedScheduleItem refreshItem,
+    })
+    plan,
+    FixedScheduleItem selected,
+  ) async {
+    final activeSeries = _seriesItems.where((item) => !item.isDeleted).toList();
+    final selectedDate = DateTime.tryParse(selected.date)?.toLocal();
+    final keptEarlier =
+        scope == FixedScheduleEditScope.future && selectedDate != null
+        ? activeSeries.where((item) {
+            final date = DateTime.tryParse(item.date)?.toLocal();
+            return date != null && date.isBefore(selectedDate);
+          }).length
+        : 0;
+    final removedCount = plan.changes.where((item) => item.isDeleted).length;
+    final movedOccurrence =
+        scope == FixedScheduleEditScope.occurrence &&
+        plan.refreshItem.date != selected.date;
+    final content = <Widget>[
+      Text(_confirmedScopeSummary(scope, plan, selected)),
+      if (keptEarlier > 0) Text('此前 $keptEarlier 场保持原样。'),
+      if (movedOccurrence) const Text('原日期场次将标记为已取消，并在新日期创建一条独立日程。'),
+      if (removedCount > 0) Text('按新规则将有 $removedCount 场不再保留，写入逻辑删除。'),
+      if (scope == FixedScheduleEditScope.occurrence)
+        const Text('重复规则和其他场次不变；取消状态只作用于当前场次。'),
+      if (scope != FixedScheduleEditScope.occurrence)
+        Text(
+          '本次保存会更新 ${plan.active.length} 场，重复规则从${scope == FixedScheduleEditScope.future ? '当前场次' : '系列首次日期'}起生效。',
+        ),
+    ];
+    return await showAppDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text('确认${_scopeLabel(scope)}'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var index = 0; index < content.length; index++) ...[
+                  if (index > 0) const SizedBox(height: 8),
+                  content[index],
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('返回修改'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text('应用到${_scopeLabel(scope)}'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  String _confirmedScopeSummary(
+    FixedScheduleEditScope scope,
+    ({
+      List<FixedScheduleItem> active,
+      List<FixedScheduleItem> changes,
+      FixedScheduleItem refreshItem,
+    })
+    plan,
+    FixedScheduleItem selected,
+  ) {
+    final actualDates =
+        plan.active
+            .map((item) => DateTime.tryParse(item.date))
+            .whereType<DateTime>()
+            .toList()
+          ..sort();
+    final resultRange = actualDates.isEmpty
+        ? selected.date
+        : (actualDates.first == actualDates.last
+              ? AppTimeFormats.date(actualDates.first)
+              : '${AppTimeFormats.date(actualDates.first)} – ${AppTimeFormats.date(actualDates.last)}');
+    if (scope == FixedScheduleEditScope.occurrence) {
+      return plan.refreshItem.date == selected.date
+          ? '只修改当前场次 · ${selected.date}'
+          : '只修改当前场次 · ${selected.date} → ${plan.refreshItem.date}';
+    }
+
+    final currentCount = _seriesItems.where((item) => !item.isDeleted).length;
+    if (scope == FixedScheduleEditScope.future) {
+      final selectedDate = DateTime.tryParse(selected.date);
+      final previousCount = selectedDate == null
+          ? 0
+          : _seriesItems.where((item) {
+              final date = DateTime.tryParse(item.date);
+              return !item.isDeleted &&
+                  date != null &&
+                  date.isBefore(selectedDate);
+            }).length;
+      return '此前 $previousCount 场保持不变 · 本次及以后形成 ${plan.active.length} 场 · $resultRange';
+    }
+
+    final oldRange = _seriesStartDate == null || _seriesEndDate == null
+        ? '当前 $currentCount 场'
+        : '${AppTimeFormats.date(_seriesStartDate!)} – ${AppTimeFormats.date(_seriesEndDate!)}';
+    final newEndDate = AppTimeFormats.date(_recurrenceEndDate);
+    final oldEndDate = _seriesEndDate == null
+        ? ''
+        : AppTimeFormats.date(_seriesEndDate!);
+    final endDateSummary =
+        _recurrence != RecurrenceType.none &&
+            oldEndDate.isNotEmpty &&
+            oldEndDate != newEndDate
+        ? ' · 结束日期 $oldEndDate → $newEndDate'
+        : '';
+    return '整个系列：$oldRange → ${plan.active.length} 场 · $resultRange$endDateSummary';
+  }
+
+  Future<bool> _saveEditedItems(
+    List<FixedScheduleItem> items, {
+    required FixedScheduleItem refreshItem,
+  }) async {
+    final saveAllHandler = widget.onSaveAll;
+    if (saveAllHandler != null) {
+      await saveAllHandler(items);
+    } else {
+      final saved = await StorageService.saveFixedSchedulesIfUnchanged(
+        widget.username,
+        baseline: _seriesItems,
+        items: items,
+      );
+      if (!saved) return false;
+      final saveHandler = widget.onSave;
+      if (saveHandler != null) await saveHandler(refreshItem);
+    }
+    await ReminderScheduleService.scheduleFromStorage(
+      widget.username,
+      force: true,
+    );
+    return true;
   }
 
   Future<List<ScheduleConflict>> _conflictsFor(
@@ -449,7 +854,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
   }
 
   Future<void> _delete() async {
-    final item = widget.item;
+    final item = _selectedOccurrence;
     if (item == null) return;
     final confirmed = await showAppDialog<bool>(
       context: context,
@@ -515,9 +920,13 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text(
-          _editing && _seriesItems.where((entry) => !entry.isDeleted).length > 1
-              ? '编辑重复日程系列'
-              : (_editing ? '编辑固定日程' : '新增固定日程'),
+          _forcedOccurrenceEdit
+              ? '编辑当前场次'
+              : (_editing &&
+                        _seriesItems.where((entry) => !entry.isDeleted).length >
+                            1
+                    ? '编辑重复日程系列'
+                    : (_editing ? '编辑固定日程' : '新增固定日程')),
         ),
         actions: [
           if (_editing)
@@ -541,229 +950,281 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
       ),
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
-        child: ListView(
-          padding: EdgeInsets.fromLTRB(16, topBarHeight + 16, 16, 16),
-          children: [
-            TextField(
-              controller: _titleController,
-              decoration: const InputDecoration(
-                labelText: '日程名称',
-                hintText: '例如：高等数学考试',
-                border: OutlineInputBorder(),
+        child: AbsorbPointer(
+          absorbing: _loadingContext,
+          child: ListView(
+            padding: EdgeInsets.fromLTRB(16, topBarHeight + 16, 16, 16),
+            children: [
+              if (_loadingContext)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 12),
+                  child: LinearProgressIndicator(minHeight: 2),
+                ),
+              TextField(
+                controller: _titleController,
+                decoration: const InputDecoration(
+                  labelText: '日程名称',
+                  hintText: '例如：高等数学考试',
+                  border: OutlineInputBorder(),
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            Card(
-              color: colors.surfaceContainerLow,
-              child: Column(
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.calendar_today_rounded),
-                    title: Text(
-                      _recurrence == RecurrenceType.none ? '日期' : '首次日期',
+              if (_supportsRangeEdit) ...[
+                const SizedBox(height: 12),
+                Card(
+                  color: colors.surfaceContainerLow,
+                  child: ListTile(
+                    leading: const Icon(Icons.repeat_on_rounded),
+                    title: const Text('修改范围'),
+                    subtitle: Text(
+                      '${_scopeLabel(_editScope)} · ${_scopeDescription(_editScope)}',
                     ),
-                    subtitle: Text(_dateWithSemesterWeek(_date, dateText)),
-                    onTap: _pickDate,
+                    trailing: const Icon(Icons.expand_more_rounded),
+                    onTap: _saving ? null : _chooseEditScope,
                   ),
-                  LiquidGlassSwitchListTile(
-                    secondary: const Icon(Icons.schedule_rounded),
-                    title: const Text('时间待定'),
-                    subtitle: const Text('日期已确定，但主办方尚未公布具体时刻'),
-                    value: _timeTbd,
-                    onChanged: (value) => setState(() => _timeTbd = value),
-                  ),
-                  if (!_timeTbd) ...[
-                    ListTile(
-                      leading: const Icon(Icons.play_circle_outline_rounded),
-                      title: const Text('开始时间'),
-                      subtitle: Text(_startTime.format(context)),
-                      onTap: _pickStartTime,
-                    ),
-                    LiquidGlassSwitchListTile(
-                      secondary: const Icon(Icons.more_time_rounded),
-                      title: const Text('结束时间待定'),
-                      value: _endTimeTbd,
-                      onChanged: (value) => setState(() => _endTimeTbd = value),
-                    ),
-                    if (!_endTimeTbd)
-                      ListTile(
-                        leading: const Icon(Icons.stop_circle_outlined),
-                        title: const Text('结束时间'),
-                        subtitle: Text(_endTime.format(context)),
-                        onTap: _pickEndTime,
-                      ),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Card(
-              color: colors.surfaceContainerLow,
-              child: Column(
-                children: [
-                  DropdownButtonFormField<RecurrenceType>(
-                    initialValue: _recurrence,
-                    decoration: const InputDecoration(
-                      labelText: '重复规则',
-                      prefixIcon: Icon(Icons.repeat_rounded),
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                    ),
-                    items: _supportedRecurrences
-                        .map(
-                          (type) => DropdownMenuItem(
-                            value: type,
-                            child: Text(_recurrenceLabel(type)),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setState(() {
-                        _recurrence = value;
-                        if (value != RecurrenceType.none &&
-                            !_recurrenceEndDate.isAfter(_date)) {
-                          _recurrenceEndDate =
-                              FixedScheduleRecurrenceService.defaultEndDate(
-                                startDate: _date,
-                                recurrence: value,
-                                customIntervalDays:
-                                    int.tryParse(
-                                      _customIntervalController.text.trim(),
-                                    ) ??
-                                    1,
-                              );
-                        }
-                      });
-                    },
-                  ),
-                  if (_recurrence != RecurrenceType.none)
-                    ListTile(
-                      leading: const Icon(Icons.event_repeat_rounded),
-                      title: const Text('重复结束日期'),
-                      subtitle: Text(
-                        _dateWithSemesterWeek(
-                          _recurrenceEndDate,
-                          recurrenceEndDateText,
-                        ),
-                      ),
-                      onTap: _pickRecurrenceEndDate,
-                    ),
-                  if (_recurrence == RecurrenceType.customDays)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                      child: TextField(
-                        controller: _customIntervalController,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: '每隔多少天',
-                          suffixText: '天',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              initialValue: _selectedTeamUuid ?? '',
-              decoration: const InputDecoration(
-                labelText: '团队归属',
-                prefixIcon: Icon(Icons.groups_rounded),
-                border: OutlineInputBorder(),
-                helperText: '关联团队后，团队成员可同步看到该日程系列',
-              ),
-              items: [
-                const DropdownMenuItem(value: '', child: Text('个人私有（仅自己可见）')),
-                if (_selectedTeamUuid != null &&
-                    !_teams.any((team) => team.uuid == _selectedTeamUuid))
-                  DropdownMenuItem(
-                    value: _selectedTeamUuid,
-                    child: const Text('当前团队'),
-                  ),
-                ..._teams.map(
-                  (team) => DropdownMenuItem(
-                    value: team.uuid,
-                    child: Text(team.name),
+                ),
+              ] else if (_forcedOccurrenceEdit) ...[
+                const SizedBox(height: 12),
+                Card(
+                  color: colors.surfaceContainerLow,
+                  child: const ListTile(
+                    leading: Icon(Icons.info_outline_rounded),
+                    title: Text('只编辑当前场次'),
+                    subtitle: Text('重复范围由外部日历管理，请在来源日历中修改系列规则。'),
                   ),
                 ),
               ],
-              onChanged: _canChangeTeam
-                  ? (value) => setState(() {
-                      _selectedTeamUuid = value == null || value.isEmpty
+              const SizedBox(height: 16),
+              Card(
+                color: colors.surfaceContainerLow,
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.calendar_today_rounded),
+                      title: Text(
+                        _recurrence == RecurrenceType.none
+                            ? '日期'
+                            : (_effectiveEditScope ==
+                                      FixedScheduleEditScope.series
+                                  ? '首次日期'
+                                  : '本次日期'),
+                      ),
+                      subtitle: Text(_dateWithSemesterWeek(_date, dateText)),
+                      onTap: _forcedOccurrenceEdit ? null : _pickDate,
+                    ),
+                    LiquidGlassSwitchListTile(
+                      secondary: const Icon(Icons.schedule_rounded),
+                      title: const Text('时间待定'),
+                      subtitle: const Text('日期已确定，但主办方尚未公布具体时刻'),
+                      value: _timeTbd,
+                      onChanged: (value) => setState(() => _timeTbd = value),
+                    ),
+                    if (!_timeTbd) ...[
+                      ListTile(
+                        leading: const Icon(Icons.play_circle_outline_rounded),
+                        title: const Text('开始时间'),
+                        subtitle: Text(_startTime.format(context)),
+                        onTap: _pickStartTime,
+                      ),
+                      LiquidGlassSwitchListTile(
+                        secondary: const Icon(Icons.more_time_rounded),
+                        title: const Text('结束时间待定'),
+                        value: _endTimeTbd,
+                        onChanged: (value) =>
+                            setState(() => _endTimeTbd = value),
+                      ),
+                      if (!_endTimeTbd)
+                        ListTile(
+                          leading: const Icon(Icons.stop_circle_outlined),
+                          title: const Text('结束时间'),
+                          subtitle: Text(_endTime.format(context)),
+                          onTap: _pickEndTime,
+                        ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Card(
+                color: colors.surfaceContainerLow,
+                child: Column(
+                  children: [
+                    DropdownButtonFormField<RecurrenceType>(
+                      initialValue: _recurrence,
+                      decoration: const InputDecoration(
+                        labelText: '重复规则',
+                        prefixIcon: Icon(Icons.repeat_rounded),
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                      ),
+                      items: _supportedRecurrences
+                          .map(
+                            (type) => DropdownMenuItem(
+                              value: type,
+                              child: Text(_recurrenceLabel(type)),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: !_canEditRecurrence
                           ? null
-                          : value;
-                    })
-                  : null,
-            ),
-            if (!_canChangeTeam)
-              const Padding(
-                padding: EdgeInsets.only(top: 6, left: 12, right: 12),
-                child: Text('只有日程创建者可以更改团队归属；其他内容仍可协作编辑。'),
-              ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _locationController,
-              decoration: const InputDecoration(
-                labelText: '地点（可选）',
-                prefixIcon: Icon(Icons.location_on_outlined),
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            InputDecorator(
-              decoration: InputDecoration(
-                labelText: '提醒（可多选）',
-                prefixIcon: const Icon(Icons.notifications_outlined),
-                border: const OutlineInputBorder(),
-                helperText: _timeTbd ? '时间确定后生效；全部取消即关闭提醒' : '全部取消即关闭提醒',
-              ),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                children:
-                    ({15, 30, 60, 1440, ..._reminderMinutes}.toList()..sort())
-                        .map(
-                          (minutes) => FilterChip(
-                            label: Text(_reminderLabel(minutes)),
-                            selected: _reminderMinutes.contains(minutes),
-                            onSelected: (selected) => setState(() {
-                              if (selected) {
-                                _reminderMinutes.add(minutes);
-                              } else {
-                                _reminderMinutes.remove(minutes);
-                              }
-                            }),
+                          : (value) {
+                              if (value == null) return;
+                              setState(() {
+                                _recurrence = value;
+                                if (value != RecurrenceType.none &&
+                                    !_recurrenceEndDate.isAfter(_date)) {
+                                  _recurrenceEndDate =
+                                      FixedScheduleRecurrenceService.defaultEndDate(
+                                        startDate: _date,
+                                        recurrence: value,
+                                        customIntervalDays:
+                                            int.tryParse(
+                                              _customIntervalController.text
+                                                  .trim(),
+                                            ) ??
+                                            1,
+                                      );
+                                }
+                              });
+                            },
+                    ),
+                    if (!_canEditRecurrence)
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text('仅修改当前场次，重复规则和其他日期保持不变。'),
+                        ),
+                      ),
+                    if (_recurrence != RecurrenceType.none &&
+                        _canEditRecurrence)
+                      ListTile(
+                        leading: const Icon(Icons.event_repeat_rounded),
+                        title: const Text('重复结束日期'),
+                        subtitle: Text(
+                          _dateWithSemesterWeek(
+                            _recurrenceEndDate,
+                            recurrenceEndDateText,
                           ),
-                        )
-                        .toList(),
+                        ),
+                        onTap: _pickRecurrenceEndDate,
+                      ),
+                    if (_recurrence == RecurrenceType.customDays &&
+                        _canEditRecurrence)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                        child: TextField(
+                          controller: _customIntervalController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: '每隔多少天',
+                            suffixText: '天',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _remarkController,
-              minLines: 2,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: '备注（可选）',
-                border: OutlineInputBorder(),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: _selectedTeamUuid ?? '',
+                decoration: const InputDecoration(
+                  labelText: '团队归属',
+                  prefixIcon: Icon(Icons.groups_rounded),
+                  border: OutlineInputBorder(),
+                  helperText: '关联团队后，团队成员可同步看到该日程系列',
+                ),
+                items: [
+                  const DropdownMenuItem(value: '', child: Text('个人私有（仅自己可见）')),
+                  if (_selectedTeamUuid != null &&
+                      !_teams.any((team) => team.uuid == _selectedTeamUuid))
+                    DropdownMenuItem(
+                      value: _selectedTeamUuid,
+                      child: const Text('当前团队'),
+                    ),
+                  ..._teams.map(
+                    (team) => DropdownMenuItem(
+                      value: team.uuid,
+                      child: Text(team.name),
+                    ),
+                  ),
+                ],
+                onChanged: _canChangeTeam
+                    ? (value) => setState(() {
+                        _selectedTeamUuid = value == null || value.isEmpty
+                            ? null
+                            : value;
+                      })
+                    : null,
               ),
-            ),
-            if (_editing) ...[
-              const SizedBox(height: 8),
-              LiquidGlassSwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('日程已取消'),
-                subtitle: const Text('取消后不再参与冲突、进行中状态和日历导出'),
-                value: _cancelled,
-                onChanged: (value) => setState(() => _cancelled = value),
+              if (!_canChangeTeam)
+                const Padding(
+                  padding: EdgeInsets.only(top: 6, left: 12, right: 12),
+                  child: Text('只有日程创建者可以更改团队归属；其他内容仍可协作编辑。'),
+                ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _locationController,
+                decoration: const InputDecoration(
+                  labelText: '地点（可选）',
+                  prefixIcon: Icon(Icons.location_on_outlined),
+                  border: OutlineInputBorder(),
+                ),
               ),
+              const SizedBox(height: 12),
+              InputDecorator(
+                decoration: InputDecoration(
+                  labelText: '提醒（可多选）',
+                  prefixIcon: const Icon(Icons.notifications_outlined),
+                  border: const OutlineInputBorder(),
+                  helperText: _timeTbd ? '时间确定后生效；全部取消即关闭提醒' : '全部取消即关闭提醒',
+                ),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children:
+                      ({15, 30, 60, 1440, ..._reminderMinutes}.toList()..sort())
+                          .map(
+                            (minutes) => FilterChip(
+                              label: Text(_reminderLabel(minutes)),
+                              selected: _reminderMinutes.contains(minutes),
+                              onSelected: (selected) => setState(() {
+                                if (selected) {
+                                  _reminderMinutes.add(minutes);
+                                } else {
+                                  _reminderMinutes.remove(minutes);
+                                }
+                              }),
+                            ),
+                          )
+                          .toList(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _remarkController,
+                minLines: 2,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  labelText: '备注（可选）',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              if (_editing) ...[
+                const SizedBox(height: 8),
+                LiquidGlassSwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('日程已取消'),
+                  subtitle: const Text('取消状态只属于当前场次，不受上方修改范围影响'),
+                  value: _cancelled,
+                  onChanged: (value) => setState(() => _cancelled = value),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

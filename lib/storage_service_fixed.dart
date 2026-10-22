@@ -126,6 +126,161 @@ mixin _StorageFixed on _StorageServiceBase {
     }
   }
 
+  /// Atomically validates the loaded series snapshot and writes its edits.
+  /// Returns false when another local or sync writer changed a row or the
+  /// series membership while the editor was open.
+  Future<bool> saveFixedSchedulesIfUnchanged(
+    String username, {
+    required List<FixedScheduleItem> baseline,
+    required List<FixedScheduleItem> items,
+    bool sync = true,
+  }) async {
+    if (items.isEmpty) return true;
+
+    final deduped = <String, FixedScheduleItem>{};
+    for (final item in items) {
+      final existing = deduped[item.id];
+      if (existing == null ||
+          TodoLwwService.isIncomingWinner(
+            incomingUpdatedAt: item.updatedAt,
+            incomingVersion: item.version,
+            currentUpdatedAt: existing.updatedAt,
+            currentVersion: existing.version,
+          )) {
+        deduped[item.id] = item;
+      }
+    }
+
+    final db = await DatabaseHelper.instance.databaseForUser(username);
+    var wroteAny = false;
+    final accepted = await db.transaction<bool>((txn) async {
+      final baselineById = {for (final item in baseline) item.id: item};
+      if (baselineById.length != baseline.length) return false;
+
+      final baselineIds = baselineById.keys.toList();
+      final currentById = <String, Map<String, Object?>>{};
+      if (baselineIds.isNotEmpty) {
+        final placeholders = List.filled(baselineIds.length, '?').join(',');
+        final rows = await txn.query(
+          'fixed_schedules',
+          where: 'uuid IN ($placeholders)',
+          whereArgs: baselineIds,
+        );
+        for (final row in rows) {
+          currentById[row['uuid'].toString()] = row;
+        }
+      }
+
+      for (final expected in baseline) {
+        final raw = currentById[expected.id];
+        if (raw == null) return false;
+        final current = FixedScheduleItem.fromJson(raw);
+        if (jsonEncode(current.toJson()) != jsonEncode(expected.toJson())) {
+          return false;
+        }
+      }
+
+      final expectedIdsBySeries = <String, Set<String>>{};
+      for (final item in baseline) {
+        final seriesId = item.recurrenceSeriesId?.trim();
+        if (seriesId == null || seriesId.isEmpty) continue;
+        expectedIdsBySeries
+            .putIfAbsent(seriesId, () => <String>{})
+            .add(item.id);
+      }
+      for (final entry in expectedIdsBySeries.entries) {
+        final rows = await txn.query(
+          'fixed_schedules',
+          columns: ['uuid'],
+          where: 'recurrence_series_id = ?',
+          whereArgs: [entry.key],
+        );
+        final currentIds = rows.map((row) => row['uuid'].toString()).toSet();
+        if (currentIds.length != entry.value.length ||
+            !currentIds.containsAll(entry.value)) {
+          return false;
+        }
+      }
+
+      final changedRowsById = <String, Map<String, Object?>>{};
+      final changeIds = deduped.keys.toList();
+      if (changeIds.isNotEmpty) {
+        final placeholders = List.filled(changeIds.length, '?').join(',');
+        final rows = await txn.query(
+          'fixed_schedules',
+          where: 'uuid IN ($placeholders)',
+          whereArgs: changeIds,
+        );
+        for (final row in rows) {
+          changedRowsById[row['uuid'].toString()] = row;
+        }
+      }
+
+      if (deduped.keys.any(
+        (id) =>
+            !baselineById.containsKey(id) && changedRowsById.containsKey(id),
+      )) {
+        return false;
+      }
+
+      final batch = txn.batch();
+      for (final item in deduped.values) {
+        final data = item.toJson();
+        final existing = changedRowsById[item.id];
+        final hasChanged =
+            existing == null ||
+            _hasSubstantialChange(existing, data, [
+              'title',
+              'date',
+              'start_time',
+              'end_time',
+              'status',
+              'source',
+              'location',
+              'remark',
+              'reminder_minutes',
+              'timezone',
+              'recurrence',
+              'custom_interval_days',
+              'recurrence_series_id',
+              'related_todo_ids',
+              'external_source',
+              'external_id',
+              'team_uuid',
+              'owner_user_id',
+              'device_id',
+              'is_deleted',
+              'version',
+              'created_at',
+              'updated_at',
+            ]);
+        if (!hasChanged) continue;
+        wroteAny = true;
+        batch.insert('op_logs', {
+          'op_type': 'UPSERT',
+          'target_table': 'fixed_schedules',
+          'target_uuid': item.id,
+          'data_json': jsonEncode(data),
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'is_synced': 0,
+          'sync_error': '',
+        });
+        batch.insert(
+          'fixed_schedules',
+          data,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      if (wroteAny) await batch.commit(noResult: true);
+      return true;
+    });
+
+    if (!accepted) return false;
+    if (wroteAny && sync) requestSync(username);
+    if (wroteAny) triggerRefresh(const {DataRefreshDomain.fixedSchedules});
+    return true;
+  }
+
   Future<List<FixedScheduleItem>> getFixedSchedules(
     String username, {
     bool includeDeleted = false,

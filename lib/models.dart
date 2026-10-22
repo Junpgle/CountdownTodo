@@ -174,6 +174,9 @@ enum RecurrenceType {
   weekdays,
 }
 
+/// The scope applied when editing a materialized fixed-schedule series.
+enum FixedScheduleEditScope { occurrence, future, series }
+
 /// The edit range chosen for an existing recurring todo.
 enum TodoRecurrenceEditScope { occurrence, future, series }
 

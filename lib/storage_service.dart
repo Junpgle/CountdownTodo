@@ -306,6 +306,18 @@ class StorageService {
     isSyncSource: isSyncSource,
   );
 
+  static Future<bool> saveFixedSchedulesIfUnchanged(
+    String username, {
+    required List<FixedScheduleItem> baseline,
+    required List<FixedScheduleItem> items,
+    bool sync = true,
+  }) => _storage.saveFixedSchedulesIfUnchanged(
+    username,
+    baseline: baseline,
+    items: items,
+    sync: sync,
+  );
+
   static Future<List<FixedScheduleItem>> getFixedSchedules(
     String username, {
     bool includeDeleted = false,
