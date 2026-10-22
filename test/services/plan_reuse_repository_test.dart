@@ -102,9 +102,6 @@ void main() {
     {'source': TodoPlanSource.calendar.index},
     {'start_time': 0},
     {'end_time': 0},
-    {'reminder_minutes': 7},
-    {'pomodoro_minutes': 35},
-    {'pomodoro_rounds': 7},
     {'todo_uuid': ''},
   ]) {
     test(
@@ -118,6 +115,53 @@ void main() {
       },
     );
   }
+
+  test(
+    'repairs unsupported settings individually without writing the source',
+    () async {
+      await f.db.update('todo_plan_blocks', {
+        'reminder_minutes': 7,
+        'pomodoro_minutes': 45,
+        'pomodoro_rounds': 7,
+      });
+      final blocksBefore = await f.db.query('todo_plan_blocks');
+      final logsBefore = await f.db.query('op_logs');
+
+      final seed = await repo.read(identity.username, source.id);
+
+      expect(
+        [seed.settings.reminder, seed.settings.pomodoro, seed.settings.rounds],
+        [5, 45, 0],
+      );
+      expect(seed.settings.corrections.map((item) => item.summary).toList(), [
+        '提前提醒：7 分钟前 → 5 分钟前',
+        '番茄轮数：7 轮 → 按规划时长',
+      ]);
+      expect(await f.db.query('todo_plan_blocks'), blocksBefore);
+      expect(await f.db.query('op_logs'), logsBefore);
+    },
+  );
+
+  test(
+    'unreadable settings use defaults and identify only the affected fields',
+    () async {
+      await f.db.update('todo_plan_blocks', {
+        'reminder_minutes': 'legacy-value',
+        'pomodoro_minutes': 30,
+        'pomodoro_rounds': 2,
+      });
+
+      final seed = await repo.read(identity.username, source.id);
+
+      expect(seed.settings.reminder, 5);
+      expect(seed.settings.pomodoro, 30);
+      expect(seed.settings.rounds, 2);
+      expect(seed.settings.corrections.map((item) => item.summary).toList(), [
+        '提前提醒：无法识别 → 5 分钟前',
+      ]);
+    },
+  );
+
   test('rejects non-minute and oversized duration', () async {
     for (final delta in [60001, 1441 * 60000]) {
       await f.db.update('todo_plan_blocks', {

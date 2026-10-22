@@ -2,6 +2,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/models/plan_availability.dart';
@@ -15,6 +16,7 @@ import 'package:countdown_todo/widgets/plan_block_editor_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../support/plan_availability_fixture.dart';
@@ -30,6 +32,36 @@ class _DelayedReuseRepository extends PlanReuseRepository {
   }
 }
 
+const _previewFontFamily = 'Round31PlanReusePreview';
+const _previewFontPath = '/System/Library/Fonts/Supplemental/Arial Unicode.ttf';
+final _iconFontPath =
+    '${Platform.environment['FLUTTER_ROOT'] ?? '/Users/junpgle/develop/flutter'}/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf';
+final _hasPreviewFont = Platform.isMacOS && File(_previewFontPath).existsSync();
+var _previewFontsLoaded = false;
+
+Future<void> _loadPreviewFonts() async {
+  if (_previewFontsLoaded) return;
+  if (_hasPreviewFont) {
+    final font = FontLoader(_previewFontFamily)
+      ..addFont(
+        Future<ByteData>.value(
+          ByteData.sublistView(await File(_previewFontPath).readAsBytes()),
+        ),
+      );
+    await font.load();
+  }
+  if (File(_iconFontPath).existsSync()) {
+    final font = FontLoader('MaterialIcons')
+      ..addFont(
+        Future<ByteData>.value(
+          ByteData.sublistView(await File(_iconFontPath).readAsBytes()),
+        ),
+      );
+    await font.load();
+  }
+  _previewFontsLoaded = true;
+}
+
 void main() {
   late PlanAvailabilityFixture f;
   late TodoPlanBlock source;
@@ -39,6 +71,7 @@ void main() {
   final day = PlanAvailabilityFixture.day, now = PlanAvailabilityFixture.now;
   const identity = PlanTodoIdentity(PlanAvailabilityFixture.username, 0);
   Finder key(String s) => find.byKey(ValueKey(s));
+  setUpAll(_loadPreviewFonts);
   Future<void> action(WidgetTester tester, Finder finder) async {
     await tester.ensureVisible(finder);
     await tester.tap(finder);
@@ -73,6 +106,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: ThemeData(
+          fontFamily: _hasPreviewFont ? _previewFontFamily : null,
           colorScheme: ColorScheme.fromSeed(
             seedColor: Colors.teal,
             brightness: brightness,
@@ -218,6 +252,130 @@ void main() {
     expect(await f.db.query('todo_plan_blocks'), before);
   });
 
+  testWidgets('不受支持的设置先逐项确认，取消时没有新写入', (tester) async {
+    await f.db.update(
+      'todo_plan_blocks',
+      {'reminder_minutes': 7, 'pomodoro_minutes': 35, 'pomodoro_rounds': 7},
+      where: 'uuid = ?',
+      whereArgs: [source.id],
+    );
+    final before = await f.db.query('todo_plan_blocks');
+
+    await open(tester);
+    await reuse(tester);
+
+    expect(find.text('部分设置需要调整'), findsOneWidget);
+    expect(find.text('7 分钟前 → 5 分钟前'), findsOneWidget);
+    expect(find.text('35 分钟 → 25 分钟'), findsOneWidget);
+    expect(find.text('7 轮 → 按规划时长'), findsOneWidget);
+    await expectLater(
+      find.byType(MaterialApp),
+      matchesGoldenFile('goldens/plan_reuse_settings_adjustment_phone.png'),
+    );
+    await action(tester, find.text('取消'));
+
+    expect(find.text('部分设置需要调整'), findsNothing);
+    expect(key('plan-reuse-notice'), findsNothing);
+    expect(await f.db.query('todo_plan_blocks'), before);
+    expect(await f.db.query('op_logs'), isEmpty);
+  });
+
+  testWidgets('设置修复确认桌面截图', (tester) async {
+    await f.db.update(
+      'todo_plan_blocks',
+      {'reminder_minutes': 7, 'pomodoro_minutes': 35, 'pomodoro_rounds': 7},
+      where: 'uuid = ?',
+      whereArgs: [source.id],
+    );
+
+    await open(tester, size: const Size(1080, 800));
+    await reuse(tester);
+    expect(find.text('部分设置需要调整'), findsOneWidget);
+    await expectLater(
+      find.byType(MaterialApp),
+      matchesGoldenFile('goldens/plan_reuse_settings_adjustment_desktop.png'),
+    );
+  });
+
+  testWidgets('深色大字号下设置修复确认可读', (tester) async {
+    await f.db.update(
+      'todo_plan_blocks',
+      {'reminder_minutes': 7, 'pomodoro_minutes': 35, 'pomodoro_rounds': 7},
+      where: 'uuid = ?',
+      whereArgs: [source.id],
+    );
+
+    await open(
+      tester,
+      size: const Size(320, 700),
+      scale: 1.6,
+      brightness: Brightness.dark,
+    );
+    await reuse(tester);
+    expect(find.text('部分设置需要调整'), findsOneWidget);
+    expect(find.text('按建议继续'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await expectLater(
+      find.byType(MaterialApp),
+      matchesGoldenFile(
+        'goldens/plan_reuse_settings_adjustment_dark_large.png',
+      ),
+    );
+  });
+
+  testWidgets('确认安全默认值后可编辑并保存新规划，来源保持不变', (tester) async {
+    await f.db.update(
+      'todo_plan_blocks',
+      {'reminder_minutes': 7, 'pomodoro_minutes': 35, 'pomodoro_rounds': 7},
+      where: 'uuid = ?',
+      whereArgs: [source.id],
+    );
+    final sourceBefore = (await f.db.query(
+      'todo_plan_blocks',
+      where: 'uuid = ?',
+      whereArgs: [source.id],
+    )).single;
+
+    await open(tester);
+    await reuse(tester);
+    await action(tester, find.text('按建议继续'));
+
+    expect(find.text('部分设置需要调整'), findsNothing);
+    expect(key('plan-reuse-notice'), findsOneWidget);
+    expect(find.textContaining('提前提醒：7 分钟前 → 5 分钟前'), findsOneWidget);
+    await action(tester, key('plan-save'));
+
+    final saved = saves.single;
+    expect(
+      [saved.reminderMinutes, saved.pomodoroMinutes, saved.pomodoroRounds],
+      [5, 25, 0],
+    );
+    final sourceAfter = (await f.db.query(
+      'todo_plan_blocks',
+      where: 'uuid = ?',
+      whereArgs: [source.id],
+    )).single;
+    expect(sourceAfter, sourceBefore);
+  });
+
+  testWidgets('修复确认在窄屏大字号下可滚动并继续', (tester) async {
+    await f.db.update(
+      'todo_plan_blocks',
+      {'reminder_minutes': 7, 'pomodoro_minutes': 35, 'pomodoro_rounds': 7},
+      where: 'uuid = ?',
+      whereArgs: [source.id],
+    );
+
+    await open(tester, size: const Size(320, 700), scale: 1.6);
+    await reuse(tester);
+    expect(find.text('部分设置需要调整'), findsOneWidget);
+    await tester.ensureVisible(find.text('按建议继续'));
+    await action(tester, find.text('按建议继续'));
+
+    expect(key('plan-reuse-notice'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('首次带入不触摸也保护退出，取消没有业务写入', (tester) async {
     await open(tester);
     await reuse(tester);
@@ -273,18 +431,28 @@ void main() {
   });
 
   testWidgets('未触摸的复用草稿可暂存恢复，源删除不影响字段或UUID', (tester) async {
+    await f.db.update(
+      'todo_plan_blocks',
+      {'reminder_minutes': 7, 'pomodoro_minutes': 35, 'pomodoro_rounds': 7},
+      where: 'uuid = ?',
+      whereArgs: [source.id],
+    );
     await open(tester);
     await reuse(tester);
+    expect(find.text('部分设置需要调整'), findsOneWidget);
+    await action(tester, find.text('按建议继续'));
     await action(tester, find.byType(BackButton));
     await action(tester, find.text('保留草稿并离开'));
     final repo = PlanEditorDraftRepository(database: f.db, clock: () => now);
     final rows = await repo.list(identity);
     final draft = await repo.read(identity, rows.single.id);
     expect(draft.fields.origin, 'reuse');
-    expect(draft.fields.pomodoro, 45);
+    expect(draft.fields.pomodoro, 25);
+    expect(draft.fields.settingsAdjustments, contains('提前提醒：7 分钟前 → 5 分钟前'));
     await f.db.update('todo_plan_blocks', {'is_deleted': 1});
     await open(tester, draft: draft);
     expect(key('plan-reuse-notice'), findsOneWidget);
+    expect(find.textContaining('提前提醒：7 分钟前 → 5 分钟前'), findsOneWidget);
     await action(tester, key('plan-save'));
     expect(saves.single.id, draft.targetId);
     expect(saves.single.remark, source.remark);

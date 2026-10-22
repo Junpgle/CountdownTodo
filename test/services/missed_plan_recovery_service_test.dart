@@ -378,11 +378,42 @@ void main() {
     );
     context = await service.read(context.username, source.id);
     expect(context.minutes, 45);
-    expect(context.notices, hasLength(2));
+    expect(context.notices, hasLength(4));
+    expect(context.notices.skip(1), [
+      '提前提醒：7 分钟前 → 5 分钟前（仅应用于新规划）',
+      '单轮番茄：17 分钟 → 25 分钟（仅应用于新规划）',
+      '番茄轮数：20 轮 → 按规划时长（仅应用于新规划）',
+    ]);
     final saved = await save();
     expect(saved.reminderMinutes, 5);
     expect(saved.pomodoroMinutes, 25);
     expect(saved.pomodoroRounds, 0);
+  });
+
+  test('恢复只修复不受支持的单项，保留有效设置且不改来源', () async {
+    await fixture.db.update(
+      'todo_plan_blocks',
+      {'reminder_minutes': 7, 'pomodoro_minutes': 30, 'pomodoro_rounds': 2},
+      where: 'uuid = ?',
+      whereArgs: [source.id],
+    );
+    context = await service.read(context.username, source.id);
+
+    expect(context.notices, ['提前提醒：7 分钟前 → 5 分钟前（仅应用于新规划）']);
+    final saved = await save();
+    expect(
+      [saved.reminderMinutes, saved.pomodoroMinutes, saved.pomodoroRounds],
+      [5, 30, 2],
+    );
+    final original = (await fixture.db.query(
+      'todo_plan_blocks',
+      where: 'uuid = ?',
+      whereArgs: [source.id],
+    )).single;
+    expect(original['status'], TodoPlanStatus.missed.index);
+    expect(original['reminder_minutes'], 7);
+    expect(original['pomodoro_minutes'], 30);
+    expect(original['pomodoro_rounds'], 2);
   });
   test('手机日历读取失败阻止推荐和手动保存，显式应用内模式才放行', () async {
     DeviceCalendarReadService.debugIsSupportedOverride = true;

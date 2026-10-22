@@ -71,6 +71,42 @@ void main() {
     );
   });
 
+  test(
+    'round-trips validated settings adjustment notes with local drafts',
+    () async {
+      final adjusted = PlanDraftFields(
+        todoId: 'todo-1',
+        title: '准备考试',
+        start: DateTime.utc(2026, 10, 12, 9).millisecondsSinceEpoch,
+        end: DateTime.utc(2026, 10, 12, 10).millisecondsSinceEpoch,
+        remark: '复习',
+        reminder: 5,
+        pomodoro: 25,
+        rounds: 0,
+        origin: 'reuse',
+        offsetMinutes: 480,
+        settingsAdjustments: const ['提前提醒：7 分钟前 → 5 分钟前', '番茄轮数：7 轮 → 按规划时长'],
+      );
+      final kept = await repository.keep(
+        identity,
+        adjusted,
+        targetId: 'reserved-block-1',
+      );
+
+      expect(
+        (await repository.read(identity, kept.id)).fields.settingsAdjustments,
+        adjusted.settingsAdjustments,
+      );
+      expect(
+        () => PlanDraftFields.fromJson({
+          ...adjusted.toJson(),
+          'settingsAdjustments': ['有效', 7],
+        }),
+        throwsFormatException,
+      );
+    },
+  );
+
   test('uses revision checks when updating and deleting a draft', () async {
     final first = await repository.keep(
       identity,

@@ -238,6 +238,13 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           widget.restoredDraft?.fields.origin ??
           (widget.reuse == null ? null : 'reuse')) ==
       'reuse';
+  List<String> get _reuseSettingsAdjustments =>
+      _localDraft?.fields.settingsAdjustments ??
+      widget.restoredDraft?.fields.settingsAdjustments ??
+      widget.reuse?.settings.corrections
+          .map((correction) => correction.summary)
+          .toList() ??
+      const [];
   PlanReuseRepository get _reuseRepository =>
       widget.reuseRepository ?? PlanReuseRepository(clock: widget.clock);
   bool get _supportsDraft =>
@@ -260,6 +267,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
             : _backlog != null
             ? 'backlog'
             : widget.draftOrigin),
+    settingsAdjustments: _reuseSettingsAdjustments,
     offsetMinutes: _start.timeZoneOffset.inMinutes,
     split: _split == null
         ? null
@@ -2049,6 +2057,11 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
       await seed.identity.check();
       await _saveIdentity!.check();
       if (!mounted) return;
+      if (!await _confirmReuseSettingsCorrections(seed)) return;
+      if (!mounted) return;
+      await seed.identity.check();
+      await _saveIdentity!.check();
+      if (!mounted) return;
       if (_dirty) throw StateError('请先保存修改，或放弃修改后重新打开');
       final todos = [
         for (final t in widget.todos)
@@ -2085,6 +2098,73 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     } finally {
       if (mounted) setState(() => _openingReuse = false);
     }
+  }
+
+  Future<bool> _confirmReuseSettingsCorrections(PlanReuseSeed seed) async {
+    final corrections = seed.settings.corrections;
+    if (corrections.isEmpty) return true;
+
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final colors = Theme.of(dialogContext).colorScheme;
+        return AlertDialog(
+          title: const Text('部分设置需要调整'),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420, maxHeight: 360),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('这些设置不在当前可选范围内。继续后只调整新规划，原规划保持不变。'),
+                  const SizedBox(height: 14),
+                  for (final correction in corrections)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: colors.secondaryContainer,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            correction.label,
+                            style: Theme.of(dialogContext).textTheme.labelLarge
+                                ?.copyWith(color: colors.onSecondaryContainer),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            '${correction.originalValue} → ${correction.replacementValue}',
+                            style: Theme.of(dialogContext).textTheme.bodyMedium
+                                ?.copyWith(color: colors.onSecondaryContainer),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('按建议继续'),
+            ),
+          ],
+        );
+      },
+    );
+    return accepted == true;
   }
 
   bool get _canManualComplete =>
@@ -2372,6 +2452,69 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     );
   }
 
+  Widget _buildReuseNotice(ThemeData theme, ColorScheme colors) {
+    final duration = _split?.query.total ?? _end.difference(_start).inMinutes;
+    final unverified =
+        _recommendation == null && _split == null && _persistedBlock == null;
+    final corrections = _reuseSettingsAdjustments;
+    if (corrections.isEmpty) {
+      return Text(
+        unverified
+            ? '沿用已有规划设置 · $duration分钟\n时段尚未核实，请选择推荐或调整'
+            : '沿用已有规划设置 · $duration分钟',
+        key: const ValueKey('plan-reuse-notice'),
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: colors.onSurfaceVariant,
+        ),
+      );
+    }
+
+    return Container(
+      key: const ValueKey('plan-reuse-notice'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colors.secondaryContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '沿用已有规划设置 · $duration分钟',
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: colors.onSecondaryContainer,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (unverified) ...[
+            const SizedBox(height: 4),
+            Text(
+              '时段尚未核实，请选择推荐或调整',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colors.onSecondaryContainer,
+              ),
+            ),
+          ],
+          const SizedBox(height: 6),
+          for (final correction in corrections)
+            Text(
+              correction,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colors.onSecondaryContainer,
+              ),
+            ),
+          const SizedBox(height: 4),
+          Text(
+            '调整仅应用于新规划，原规划保持不变。',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.onSecondaryContainer,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _form(double width, double scale, EdgeInsets padding) {
     if (_draftRestoreFailed) {
       return Padding(padding: padding, child: _draftNotice());
@@ -2388,17 +2531,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           if (_isReuse)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: Text(
-                _recommendation == null &&
-                        _split == null &&
-                        _persistedBlock == null
-                    ? '沿用已有规划设置 · ${_end.difference(_start).inMinutes}分钟\n时段尚未核实，请选择推荐或调整'
-                    : '沿用已有规划设置 · ${_split?.query.total ?? _end.difference(_start).inMinutes}分钟',
-                key: const ValueKey('plan-reuse-notice'),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colors.onSurfaceVariant,
-                ),
-              ),
+              child: _buildReuseNotice(theme, colors),
             ),
           if (widget.recovery != null) ...[
             Text(
@@ -2408,7 +2541,35 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
             for (final notice in widget.recovery!.notices)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
-                child: Text(notice),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colors.tertiaryContainer,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.info_outline_rounded,
+                        size: 17,
+                        color: colors.onTertiaryContainer,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          notice,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colors.onTertiaryContainer,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             const SizedBox(height: 12),
           ],

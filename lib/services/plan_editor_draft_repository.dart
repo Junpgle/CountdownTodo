@@ -26,10 +26,12 @@ class PlanDraftFields {
     this.scheduleOrigin = 'legacy',
     this.weeklyKey,
     this.weeklyIgnored = false,
+    this.settingsAdjustments = const [],
   });
   final String scheduleOrigin;
   final String? weeklyKey;
   final bool weeklyIgnored;
+  final List<String> settingsAdjustments;
   final PlanSplitDraft? split;
   final String todoId, title, remark, origin;
   final int start, end, reminder, pomodoro, rounds, offsetMinutes;
@@ -49,6 +51,8 @@ class PlanDraftFields {
     if (scheduleOrigin != 'legacy') 'scheduleOrigin': scheduleOrigin,
     'weeklyKey': ?weeklyKey,
     if (weeklyIgnored) 'weeklyIgnored': true,
+    if (settingsAdjustments.isNotEmpty)
+      'settingsAdjustments': settingsAdjustments,
   };
   String get fingerprint => jsonEncode(toJson());
 
@@ -80,7 +84,13 @@ class PlanDraftFields {
             value['weeklyIgnored'] is! bool) ||
         (value.containsKey('weeklyKey') &&
             (value['weeklyKey'] is! String ||
-                (value['weeklyKey'] as String).length > 8192))) {
+                (value['weeklyKey'] as String).length > 8192)) ||
+        (value.containsKey('settingsAdjustments') &&
+            (value['settingsAdjustments'] is! List ||
+                (value['settingsAdjustments'] as List).length > 3 ||
+                (value['settingsAdjustments'] as List).any(
+                  (item) => item is! String || item.length > 240,
+                )))) {
       throw const FormatException('草稿推荐来源无效');
     }
     if (value['weeklyKey'] != null) {
@@ -90,6 +100,9 @@ class PlanDraftFields {
       scheduleOrigin: value['scheduleOrigin'] ?? 'legacy',
       weeklyKey: value['weeklyKey'],
       weeklyIgnored: value['weeklyIgnored'] ?? false,
+      settingsAdjustments: value.containsKey('settingsAdjustments')
+          ? List<String>.from(value['settingsAdjustments'] as List)
+          : const [],
       todoId: value['todo'],
       title: value['title'],
       start: value['start'],
