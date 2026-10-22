@@ -59,7 +59,7 @@ class _HabitCelebrationSettingsDialogState
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('长按蓄力打卡'),
-              subtitle: const Text('长按约 0.6 秒蓄力盖章，防止误触，仪式感满满；关闭时为轻触即发。'),
+              subtitle: const Text('按住约 0.6 秒才打卡；轻触会取消蓄力。关闭时轻触即发。'),
               value: _holdToCheckin,
               onChanged: (val) async {
                 setState(() => _holdToCheckin = val);
@@ -116,6 +116,7 @@ class _HabitCelebrationSettingsDialogState
                     enableHoldToCheckin: _holdToCheckin,
                     burstColor: const Color(0xFFFFB300),
                     holdHint: '请长按蓄力盖章打卡',
+                    semanticLabel: '打卡手感与动效试玩',
                     onCheckIn: () async {
                       setState(() => _testCount++);
                     },
