@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../services/pomodoro_service.dart';
 import '../../../utils/app_dialogs.dart';
 import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../repositories/habit_repository.dart';
 import '../services/habit_adaptation_service.dart';
+import '../services/habit_focus_launcher.dart';
 import '../services/habit_rule_resolver.dart';
 import 'habit_format.dart';
 import 'habit_adaptation_panel.dart';
@@ -26,6 +26,7 @@ class HabitQuickCheckInSheet {
     required BuildContext context,
     required HabitGoal goal,
     required HabitGoalRuleRevision rule,
+    String username = '',
     DateTime? logicalDate,
     required VoidCallback onChanged,
   }) {
@@ -36,6 +37,7 @@ class HabitQuickCheckInSheet {
       builder: (context) => _QuickCheckInSheet(
         goal: goal,
         rule: rule,
+        username: username,
         logicalDate: logicalDate,
         onChanged: onChanged,
       ),
@@ -46,12 +48,14 @@ class HabitQuickCheckInSheet {
 class _QuickCheckInSheet extends StatefulWidget {
   final HabitGoal goal;
   final HabitGoalRuleRevision rule;
+  final String username;
   final DateTime? logicalDate;
   final VoidCallback onChanged;
 
   const _QuickCheckInSheet({
     required this.goal,
     required this.rule,
+    this.username = '',
     this.logicalDate,
     required this.onChanged,
   });
@@ -73,9 +77,6 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
       final targetMinutes = (widget.rule.targetValue / 60).round();
       _controller.text = (targetMinutes ~/ 60).toString();
       _durationMinutesController.text = (targetMinutes % 60).toString();
-    } else if (widget.goal.sourceType == HabitSourceType.pomodoroTag) {
-      final targetMinutes = (widget.rule.targetValue / 60).round();
-      _controller.text = targetMinutes > 0 ? targetMinutes.toString() : '25';
     }
   }
 
@@ -670,7 +671,7 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
           const SizedBox(height: 10),
         ],
         Text(
-          '时长型习惯通过在专注中累计时长达标，也可在此直接补录打卡：',
+          '通过番茄钟实际专注来累计时长。打开番茄钟后，请在那里开始计时。',
           style: TextStyle(
             fontSize: 13,
             height: 1.5,
@@ -678,93 +679,29 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
           ),
         ),
         const SizedBox(height: 14),
-        TextField(
-          controller: _controller,
-          keyboardType: TextInputType.number,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          decoration: const InputDecoration(
-            labelText: '打卡时长（分钟）',
-            suffixText: '分钟',
-            border: OutlineInputBorder(),
-            isDense: true,
-          ),
-        ),
-        const SizedBox(height: 10),
-        TextField(
-          controller: _noteController,
-          decoration: const InputDecoration(
-            labelText: '备注（可选）',
-            border: OutlineInputBorder(),
-            isDense: true,
-          ),
-        ),
-        const SizedBox(height: 16),
         SizedBox(
           width: double.infinity,
-          child: FilledButton(
-            onPressed: _busy ? null : _submitPomodoroDuration,
-            child: const Text('记录时长并打卡'),
+          child: FilledButton.icon(
+            onPressed: _busy ? null : _startPomodoroFocus,
+            icon: const Icon(Icons.play_arrow_rounded),
+            label: const Text('开始专注'),
           ),
         ),
       ],
     );
   }
 
-  Future<void> _submitPomodoroDuration() async {
-    final minutes = int.tryParse(_controller.text.trim()) ?? 0;
-    if (minutes <= 0) {
-      AppSnackBars.showSnackBar(
-        context,
-        const SnackBar(content: Text('请输入大于 0 的有效专注时长')),
-      );
-      return;
-    }
+  Future<void> _startPomodoroFocus() async {
     setState(() => _busy = true);
     try {
-      var tagUuids = List<String>.from(widget.goal.sourceIds);
-      if (tagUuids.isEmpty) {
-        final tags = await PomodoroService.getTags();
-        final match = tags.where((t) => t.name == widget.goal.name).firstOrNull;
-        if (match != null) {
-          tagUuids = [match.uuid];
-        } else {
-          final newTag = PomodoroTag(name: widget.goal.name, color: '#2196F3');
-          await PomodoroService.saveTags([...tags, newTag]);
-          tagUuids = [newTag.uuid];
-        }
-        widget.goal.sourceIds = tagUuids;
-        await HabitRepository.updateGoal(widget.goal);
-      }
-
-      final seconds = minutes * 60;
-      final now = DateTime.now();
-      final note = _noteController.text.trim();
-      final record = PomodoroRecord(
-        tagUuids: tagUuids,
-        startTime: now
-            .subtract(Duration(seconds: seconds))
-            .millisecondsSinceEpoch,
-        endTime: now.millisecondsSinceEpoch,
-        plannedDuration: seconds,
-        actualDuration: seconds,
-        status: PomodoroRecordStatus.completed,
-        note: note.isEmpty ? '${widget.goal.name} 快捷打卡' : note,
+      await HabitFocusLauncher.open(
+        context: context,
+        username: widget.username,
+        goal: widget.goal,
       );
-      await PomodoroService.addRecord(record);
-      HabitCelebrationService.playCheckinImpact();
       if (!mounted) return;
       Navigator.of(context).pop();
       widget.onChanged();
-      AppSnackBars.showSnackBar(
-        context,
-        SnackBar(
-          content: Text('已记录 ${widget.goal.name} $minutes 分钟'),
-          action: SnackBarAction(
-            label: '撤销',
-            onPressed: () => PomodoroService.deleteRecord(record.uuid),
-          ),
-        ),
-      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
