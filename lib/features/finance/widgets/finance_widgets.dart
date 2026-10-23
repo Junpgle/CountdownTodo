@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -46,6 +47,11 @@ typedef FinanceCategoryRangeSelectionCallback = Future<void> Function(
   DateTimeRange periodRange,
 );
 
+typedef FinanceMonthLedgerCallback = Future<void> Function(
+  DateTime month,
+  GlobalKey sourceKey,
+);
+
 class FinanceOverviewPanel extends StatefulWidget {
   final double topPadding;
   final DateTime Function() clock;
@@ -64,6 +70,7 @@ class FinanceOverviewPanel extends StatefulWidget {
   final ValueChanged<DateTime>? onMonthChanged;
   final FinanceCategorySelectionCallback? onCategorySelected;
   final FinanceCategoryRangeSelectionCallback? onCategorySelectedWithRange;
+  final FinanceMonthLedgerCallback? onOpenMonthLedger;
   final Future<void> Function(
     FinanceTransaction transaction,
     GlobalKey sourceKey,
@@ -89,6 +96,7 @@ class FinanceOverviewPanel extends StatefulWidget {
     this.onMonthChanged,
     this.onCategorySelected,
     this.onCategorySelectedWithRange,
+    this.onOpenMonthLedger,
     this.onOpenTransaction,
   });
 
@@ -101,6 +109,9 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   late DateTime _focusedDate;
   int? _cumulativeBalanceMinor;
   String? _selectedCumulativeTrendMonthKey;
+  final GlobalKey _selectedTrendLedgerActionKey = GlobalKey(
+    debugLabel: 'finance-cumulative-trend-open-ledger',
+  );
   final Map<String, GlobalKey> _categorySourceKeys = {};
   Map<String, FinanceCategory>? _categoryDisplayNamesSource;
   final Map<String, String> _categoryDisplayNames = {};
@@ -741,6 +752,25 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
                   ],
                 ),
               ),
+              if (widget.onOpenMonthLedger != null)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    key: _selectedTrendLedgerActionKey,
+                    onPressed: () => unawaited(
+                      widget.onOpenMonthLedger!(
+                        selectedPoint.month,
+                        _selectedTrendLedgerActionKey,
+                      ),
+                    ),
+                    icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                    label: const Text('查看当月账单'),
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                  ),
+                ),
               const SizedBox(height: 4),
               SizedBox(
                 height: 148,

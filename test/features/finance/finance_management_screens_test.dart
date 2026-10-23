@@ -2447,6 +2447,122 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('月度结余趋势直达选中月份账单且保留概览月份', (tester) async {
+    final db = await _seed(tester);
+    final expenseAt = DateTime(2026, 9, 8, 10);
+    final incomeAt = DateTime(2026, 9, 18, 16);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'trend-september-expense',
+          amountMinor: 1250,
+          categoryUuid: 'test-food',
+          transactionDate: dateKey(expenseAt),
+          occurredAt: expenseAt.millisecondsSinceEpoch,
+          createdAt: expenseAt.millisecondsSinceEpoch,
+          merchant: '九月支出',
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'trend-september-income',
+          type: FinanceTransactionType.income,
+          amountMinor: 5000,
+          transactionDate: dateKey(incomeAt),
+          occurredAt: incomeAt.millisecondsSinceEpoch,
+          createdAt: incomeAt.millisecondsSinceEpoch,
+          merchant: '九月收入',
+        ).toMap(),
+      );
+    });
+    final clockNow = DateTime(2026, 10, 23, 12);
+    await _pump(
+      tester,
+      FinanceHomeScreen(username: 'default', clock: () => clockNow),
+    );
+
+    await _tap(tester, _key('finance-overview-period-previous'));
+    await _waitFor(tester, () => find.text('2026年9月').evaluate().isNotEmpty);
+    await tester.scrollUntilVisible(
+      find.text('查看当月账单'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pump();
+    expect(find.text('2026年9月 · 月末'), findsOneWidget);
+    await _tap(tester, find.text('查看当月账单'));
+    await _waitFor(
+      tester,
+      () =>
+          find.text('九月支出').evaluate().isNotEmpty &&
+          find.text('九月收入').evaluate().isNotEmpty,
+    );
+    expect(find.text('2026-09-01 – 2026-09-30'), findsOneWidget);
+    final monthLedger = tester.widget<FinanceLedgerPanel>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is FinanceLedgerPanel && widget.month == DateTime(2026, 9),
+      ),
+    );
+    expect(monthLedger.categoryUuids, isEmpty);
+    expect(monthLedger.filterType, isNull);
+    expect(find.text('九月支出'), findsOneWidget);
+    expect(find.text('九月收入'), findsOneWidget);
+
+    await _tap(tester, find.byTooltip('返回结余趋势'));
+    await tester.pumpAndSettle();
+    expect(find.text('2026年9月 · 月末'), findsOneWidget);
+
+    await _top(tester);
+    await _tap(tester, _key('finance-overview-period-previous'));
+    await _waitFor(tester, () => find.text('2026年8月').evaluate().isNotEmpty);
+    await tester.scrollUntilVisible(
+      find.text('查看当月账单'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pump();
+    expect(find.text('2026年8月 · 月末'), findsOneWidget);
+    await _tap(tester, find.text('查看当月账单'));
+    await _waitFor(tester, () => find.text('没有匹配的账单').evaluate().isNotEmpty);
+    expect(find.text('2026-08-01 – 2026-08-31'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('当前月趋势账单范围截止今天并保留待发生标记', (tester) async {
+    final db = await _seed(tester);
+    final clockNow = DateTime(2026, 10, 23, 12);
+    final plannedAt = DateTime(2026, 10, 23, 23, 59);
+    await tester.runAsync(
+      () => db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'trend-today-planned-expense',
+          amountMinor: 9000,
+          categoryUuid: 'test-food',
+          transactionDate: dateKey(plannedAt),
+          occurredAt: plannedAt.millisecondsSinceEpoch,
+          timezoneOffsetMinutes: plannedAt.timeZoneOffset.inMinutes,
+          createdAt: clockNow.millisecondsSinceEpoch,
+          merchant: '今天稍后发生',
+        ).toMap(),
+      ),
+    );
+    await _pump(
+      tester,
+      FinanceHomeScreen(username: 'default', clock: () => clockNow),
+    );
+
+    await _tap(tester, find.text('查看当月账单'));
+    await _waitFor(tester, () => find.text('今天稍后发生').evaluate().isNotEmpty);
+    expect(find.text('2026-10-01 – 2026-10-23'), findsOneWidget);
+    expect(find.text('今天稍后发生'), findsOneWidget);
+    expect(find.textContaining('待发生'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('记账概览不提前统计本月未来发生的账单', (tester) async {
     final db = await _seed(tester);
     final now = DateTime.now();

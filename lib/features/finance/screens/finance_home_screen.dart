@@ -46,6 +46,7 @@ class FinanceHomeScreen extends StatefulWidget {
   final String? initialCategoryFilterUuid;
   final DateTimeRange? initialLedgerDateRange;
   final _FinanceHomeData? _initialData;
+  final bool _isMonthLedgerRoute;
 
   const FinanceHomeScreen({
     super.key,
@@ -55,7 +56,8 @@ class FinanceHomeScreen extends StatefulWidget {
   }) : initialMonth = null,
        initialCategoryFilterUuid = null,
        initialLedgerDateRange = null,
-       _initialData = null;
+       _initialData = null,
+       _isMonthLedgerRoute = false;
 
   const FinanceHomeScreen._categoryLedger({
     required this.username,
@@ -66,7 +68,19 @@ class FinanceHomeScreen extends StatefulWidget {
     this.clock = DateTime.now,
   }) : openQuickEntry = false,
        initialMonth = month,
-       initialCategoryFilterUuid = categoryUuid;
+       initialCategoryFilterUuid = categoryUuid,
+       _isMonthLedgerRoute = false;
+
+  const FinanceHomeScreen._monthLedger({
+    required this.username,
+    required DateTime month,
+    required this.initialLedgerDateRange,
+    required this._initialData,
+    this.clock = DateTime.now,
+  }) : openQuickEntry = false,
+       initialMonth = month,
+       initialCategoryFilterUuid = null,
+       _isMonthLedgerRoute = true;
 
   @override
   State<FinanceHomeScreen> createState() => _FinanceHomeScreenState();
@@ -133,6 +147,9 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
 
   bool get _isCategoryLedgerRoute => widget.initialCategoryFilterUuid != null;
 
+  bool get _isLedgerDrilldownRoute =>
+      _isCategoryLedgerRoute || widget._isMonthLedgerRoute;
+
   bool _shouldClearFiltersBeforePop({
     required String keyword,
     required FinanceTransactionType? filterType,
@@ -152,7 +169,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
 
   bool get _handleLedgerBack =>
       _selectedIndex == 1 &&
-      (!_isCategoryLedgerRoute || _clearFiltersBeforePop);
+      (!_isLedgerDrilldownRoute || _clearFiltersBeforePop);
 
   void _updateLedgerFilter({
     required VoidCallback update,
@@ -191,7 +208,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   void _handleBack() {
     if (_clearFiltersBeforePop) {
       _clearLedgerFilters();
-    } else if (_isCategoryLedgerRoute) {
+    } else if (_isLedgerDrilldownRoute) {
       unawaited(Navigator.of(context).maybePop());
     } else {
       _returnToOverview();
@@ -204,11 +221,12 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     _quickEntryInProgress = widget.openQuickEntry;
     FinanceStorage.revision.addListener(_onFinanceStorageChanged);
     _ledgerDateRange = widget.initialLedgerDateRange;
+    _isLedgerQueryLoading = widget._isMonthLedgerRoute;
     final initialMonth = widget.initialMonth ?? widget.clock();
     _month = DateTime(initialMonth.year, initialMonth.month);
+    if (_isLedgerDrilldownRoute) _selectedIndex = 1;
     if (_isCategoryLedgerRoute) {
       _categoryFilterUuids = <String>{widget.initialCategoryFilterUuid!};
-      _selectedIndex = 1;
     }
     final initialData = widget._initialData;
     if (initialData == null) {
@@ -229,6 +247,9 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         if (!mounted) return;
         _scheduleUpcomingTransactionRefresh();
         _scheduleNextAutoGeneration();
+        if (widget._isMonthLedgerRoute) {
+          unawaited(_loadMonthLedgerRange());
+        }
       });
     }
     if (widget.openQuickEntry) {
@@ -328,7 +349,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       });
       _scheduleUpcomingTransactionRefresh();
       _scheduleNextAutoGeneration();
-      if (!_isCategoryLedgerRoute) {
+      if (!_isLedgerDrilldownRoute) {
         _scheduleIntroGuide();
         _startBackgroundMaintenance(generation);
         if (shouldReconcileRecurringRules) {
@@ -354,7 +375,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     if (_guideScheduled ||
         _guideAttempted ||
         _quickEntryInProgress ||
-        _isCategoryLedgerRoute ||
+        _isLedgerDrilldownRoute ||
         _isLoading ||
         _loadError != null ||
         _selectedIndex != 0) {
@@ -380,7 +401,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         _isLoading ||
         _loadError != null ||
         _quickEntryInProgress ||
-        _isCategoryLedgerRoute ||
+        _isLedgerDrilldownRoute ||
         (!force && _selectedIndex != 0)) {
       return;
     }
@@ -1094,6 +1115,73 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     if (mounted) await _load(showLoading: false);
   }
 
+  Future<void> _openMonthLedger(
+    DateTime selectedMonth,
+    GlobalKey sourceKey,
+  ) async {
+    final now = widget.clock();
+    final currentMonth = DateTime(now.year, now.month);
+    final requestedMonth = DateTime(selectedMonth.year, selectedMonth.month);
+    final month = requestedMonth.isAfter(currentMonth)
+        ? currentMonth
+        : requestedMonth;
+    final start = DateTime(month.year, month.month);
+    final end = month.year == now.year && month.month == now.month
+        ? DateTime(now.year, now.month, now.day)
+        : DateTime(month.year, month.month + 1, 0);
+    final colorScheme = Theme.of(context).colorScheme;
+    await PageTransitions.pushFromRect<void>(
+      context: context,
+      page: FinanceHomeScreen._monthLedger(
+        username: widget.username,
+        month: month,
+        initialLedgerDateRange: DateTimeRange(start: start, end: end),
+        initialData: (
+          transactions: const <FinanceTransaction>[],
+          summary: _summary,
+          categories: _categories,
+          paymentMethods: _paymentMethods,
+          overviewTransactions: _overviewTransactions,
+          cumulativeBalanceEvents: _cumulativeBalanceEvents,
+          recurringRules: _recurringRules,
+        ),
+        clock: widget.clock,
+      ),
+      sourceKey: sourceKey,
+      sourceColor: colorScheme.brightness == Brightness.dark
+          ? Colors.black
+          : Colors.white,
+      placeholderBuilder: (_) =>
+          const Icon(Icons.receipt_long_outlined, size: 30),
+      sourceBorderRadius: BorderRadius.circular(12),
+    );
+    if (mounted) await _load(showLoading: false);
+  }
+
+  Future<void> _loadMonthLedgerRange() async {
+    final selectedRange = _ledgerDateRange;
+    if (selectedRange == null) return;
+    final generation = ++_loadGeneration;
+    try {
+      final transactions = await FinanceRepository.getTransactions(
+        from: selectedRange.start,
+        to: financeCalendarDayOffset(selectedRange.end, 1),
+      );
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _transactions = transactions;
+        _isLedgerQueryLoading = false;
+        _ledgerQueryError = null;
+      });
+    } catch (error) {
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _isLedgerQueryLoading = false;
+        _ledgerQueryError = error.toString();
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -1110,9 +1198,13 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                 tooltip: _clearFiltersBeforePop
                     ? _isCategoryLedgerRoute
                           ? '取消附加筛选'
+                          : _isLedgerDrilldownRoute
+                          ? '清除附加筛选'
                           : '返回全部账单'
                     : _isCategoryLedgerRoute
                     ? '返回支出分类'
+                    : widget._isMonthLedgerRoute
+                    ? '返回结余趋势'
                     : '返回概览',
                 onPressed: _handleBack,
                 icon: const Icon(Icons.arrow_back_ios_new_rounded),
@@ -1197,7 +1289,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                   title: Text('记账设置'),
                 ),
               ),
-              if (!_isCategoryLedgerRoute)
+              if (!_isLedgerDrilldownRoute)
                 const PopupMenuItem(
                   value: 'guide',
                   child: ListTile(
@@ -1250,6 +1342,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                           onCategorySelected: _pushCategoryLedger,
                           onCategorySelectedWithRange:
                               _pushCategoryLedgerWithRange,
+                          onOpenMonthLedger: _openMonthLedger,
                           onOpenTransaction: _openDetail,
                         ),
                         FinanceLedgerPanel(

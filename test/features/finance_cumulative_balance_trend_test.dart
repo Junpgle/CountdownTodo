@@ -165,6 +165,8 @@ void main() {
       tester,
     ) async {
       final now = DateTime(2026, 10, 15, 12);
+      DateTime? openedMonth;
+      GlobalKey? openedSourceKey;
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
@@ -195,6 +197,10 @@ void main() {
               onEditOpeningBalance: () {},
               addActionKey: GlobalKey(),
               onRefresh: () async {},
+              onOpenMonthLedger: (month, sourceKey) async {
+                openedMonth = month;
+                openedSourceKey = sourceKey;
+              },
             ),
           ),
         ),
@@ -218,6 +224,11 @@ void main() {
       expect(find.text('2025年11月 · 月末'), findsOneWidget);
       expect(find.text(formatFinanceAmount(10000)), findsOneWidget);
       expect(find.text('累计结余'), findsOneWidget);
+      await tester.ensureVisible(find.text('查看当月账单'));
+      await tester.tap(find.text('查看当月账单'));
+      await tester.pump();
+      expect(openedMonth, DateTime(2025, 11));
+      expect(openedSourceKey?.currentContext, isNotNull);
       expect(tester.takeException(), isNull);
     });
 
