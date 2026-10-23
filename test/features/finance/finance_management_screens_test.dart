@@ -3656,7 +3656,135 @@ void main() {
     expect(find.text('未来房租'), findsOneWidget);
     expect(find.text('净支出 ¥15.00'), findsOneWidget);
     expect(find.text('计划净支出 ¥30.00'), findsOneWidget);
-    expect(find.text('计划收入 ¥72.00'), findsOneWidget);
+    final summaryFooter = find
+        .ancestor(
+          of: find.textContaining('计划收入 ¥72.00'),
+          matching: find.byType(Card),
+        )
+        .first;
+    expect(
+      find.descendant(
+        of: summaryFooter,
+        matching: find.textContaining('计划收入 ¥72.00'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('3 笔账单'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('多日账单列表同时显示筛选总计与每日小计', (tester) async {
+    final now = DateTime(2026, 10, 3, 12);
+    final yesterday = DateTime(2026, 10, 2, 18);
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'ledger-multi-day-today',
+        amountMinor: 1000,
+        transactionDate: dateKey(now),
+        occurredAt: now
+            .subtract(const Duration(hours: 1))
+            .millisecondsSinceEpoch,
+        createdAt: now
+            .subtract(const Duration(hours: 1))
+            .millisecondsSinceEpoch,
+        merchant: '今天支出',
+      ),
+      FinanceTransaction(
+        uuid: 'ledger-multi-day-yesterday',
+        amountMinor: 500,
+        transactionDate: dateKey(yesterday),
+        occurredAt: yesterday.millisecondsSinceEpoch,
+        createdAt: yesterday.millisecondsSinceEpoch,
+        merchant: '昨天支出',
+      ),
+    ];
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceLedgerPanel(
+          clock: () => now,
+          transactions: transactions,
+          categories: const {},
+          paymentMethods: const {},
+          keyword: '',
+          filterType: null,
+          onOpenDetail: (_, _) {},
+          onKeywordChanged: (_) {},
+          onFilterChanged: (_) {},
+          onEdit: (_) {},
+          onDelete: (_) {},
+          onRefund: (_) {},
+        ),
+      ),
+    );
+
+    expect(find.text('净支出 ¥15.00'), findsOneWidget);
+    expect(find.text('净支出 ¥10.00'), findsOneWidget);
+    expect(find.text('净支出 ¥5.00'), findsOneWidget);
+    expect(find.textContaining('10月3日'), findsOneWidget);
+    expect(find.textContaining('10月2日'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('单日选择账单时区分整日小计和已选总计', (tester) async {
+    final now = DateTime(2026, 10, 3, 12);
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'ledger-selection-first',
+        amountMinor: 1000,
+        transactionDate: dateKey(now),
+        occurredAt: now
+            .subtract(const Duration(hours: 2))
+            .millisecondsSinceEpoch,
+        createdAt: now
+            .subtract(const Duration(hours: 2))
+            .millisecondsSinceEpoch,
+        merchant: '已选账单',
+      ),
+      FinanceTransaction(
+        uuid: 'ledger-selection-second',
+        amountMinor: 500,
+        transactionDate: dateKey(now),
+        occurredAt: now
+            .subtract(const Duration(hours: 1))
+            .millisecondsSinceEpoch,
+        createdAt: now
+            .subtract(const Duration(hours: 1))
+            .millisecondsSinceEpoch,
+        merchant: '未选账单',
+      ),
+    ];
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceLedgerPanel(
+          clock: () => now,
+          transactions: transactions,
+          categories: const {},
+          paymentMethods: const {},
+          keyword: '',
+          filterType: null,
+          onOpenDetail: (_, _) {},
+          onKeywordChanged: (_) {},
+          onFilterChanged: (_) {},
+          onEdit: (_) {},
+          onDelete: (_) {},
+          onRefund: (_) {},
+        ),
+      ),
+    );
+
+    await _tap(tester, find.text('选择账单'));
+    await _tap(tester, find.text('已选账单'));
+    expect(find.text('已选 1 笔 / 2 笔'), findsOneWidget);
+    expect(find.text('净支出 ¥15.00'), findsOneWidget);
+    expect(find.text('净支出 ¥10.00'), findsOneWidget);
+    await _tap(tester, find.text('完成'));
+    expect(find.text('所选 1 笔 / 2 笔'), findsOneWidget);
+    expect(find.text('净支出 ¥15.00'), findsOneWidget);
+    expect(find.text('净支出 ¥10.00'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -4256,7 +4384,12 @@ void main() {
 
     expect(find.text('删除分类后的历史账单'), findsOneWidget);
     expect(find.text('分类已删除或不可用'), findsOneWidget);
-    expect(find.text('分类 · 分类已删除或不可用'), findsOneWidget);
+    expect(find.text('未分类'), findsNothing);
+    await _pump(
+      tester,
+      FinanceTransactionDetailScreen(transaction: transaction),
+    );
+    expect(find.text('分类已删除或不可用'), findsOneWidget);
     expect(find.text('未分类'), findsNothing);
     expect(tester.takeException(), isNull);
   });

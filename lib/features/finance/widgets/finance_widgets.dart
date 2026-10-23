@@ -2072,7 +2072,16 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
                     final row = ledgerRows[index];
                     if (row.isSpacer) return const SizedBox(height: 8);
                     final group = row.group;
-                    if (group != null) return _buildDayHeader(context, group);
+                    if (group != null) {
+                      return _buildDayHeader(
+                        context,
+                        group,
+                        hideAmountsDuplicatedByFooter:
+                            dayGroups.length == 1 &&
+                            !_selectionMode &&
+                            !_hasCommittedSelection,
+                      );
+                    }
                     return _buildTransactionTile(
                       context,
                       row.transaction!,
@@ -2313,20 +2322,26 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
     );
   }
 
-  Widget _buildDayHeader(BuildContext context, _FinanceDayGroup group) {
+  Widget _buildDayHeader(
+    BuildContext context,
+    _FinanceDayGroup group, {
+    required bool hideAmountsDuplicatedByFooter,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     final hasExpenseFlow = group.expenseMinor > 0 || group.refundMinor > 0;
     final hasPlannedExpenseFlow =
         group.plannedExpenseMinor > 0 || group.plannedRefundMinor > 0;
     final amountLabels = <String>[
-      if (hasExpenseFlow) '净支出 ${formatFinanceAmount(group.netExpenseMinor)}',
+      if (hasExpenseFlow && !hideAmountsDuplicatedByFooter)
+        '净支出 ${formatFinanceAmount(group.netExpenseMinor)}',
       if (hasPlannedExpenseFlow)
         '计划净支出 ${formatFinanceAmount(group.plannedNetExpenseMinor)}',
-      if (group.incomeMinor > 0) '收入 ${formatFinanceAmount(group.incomeMinor)}',
-      if (group.plannedIncomeMinor > 0)
+      if (group.incomeMinor > 0 && !hideAmountsDuplicatedByFooter)
+        '收入 ${formatFinanceAmount(group.incomeMinor)}',
+      if (group.plannedIncomeMinor > 0 && !hideAmountsDuplicatedByFooter)
         '计划收入 ${formatFinanceAmount(group.plannedIncomeMinor)}',
     ];
-    if (amountLabels.isEmpty) {
+    if (amountLabels.isEmpty && !hideAmountsDuplicatedByFooter) {
       amountLabels.add('${group.transactions.length} 笔');
     }
     Color labelColor(String label) {
