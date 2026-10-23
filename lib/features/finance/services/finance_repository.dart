@@ -174,6 +174,78 @@ abstract final class FinanceRepository {
     return balanceMinor;
   }
 
+  /// Builds at most twelve month-end snapshots from already loaded balance
+  /// events, ordered by [FinanceCumulativeBalanceEvent.eventAt]. The selected
+  /// month is the trend endpoint, clamped to the current month so future
+  /// periods never appear as actual balance data.
+  static List<FinanceCumulativeBalancePoint> cumulativeBalanceTrend({
+    required Iterable<FinanceCumulativeBalanceEvent> events,
+    required DateTime selectedMonth,
+    required int nowAt,
+    required int openingBalanceMinor,
+    String? openingBalanceStartDate,
+  }) {
+    final now = DateTime.fromMillisecondsSinceEpoch(nowAt);
+    final currentMonth = DateTime(now.year, now.month);
+    final requestedEndMonth = DateTime(selectedMonth.year, selectedMonth.month);
+    final endMonth = requestedEndMonth.isAfter(currentMonth)
+        ? currentMonth
+        : requestedEndMonth;
+    final startDate = openingBalanceStartDate;
+    if (startDate != null && !isFinanceDateKey(startDate)) {
+      return const [];
+    }
+
+    var firstMonth = DateTime(endMonth.year, endMonth.month - 11);
+    if (startDate != null) {
+      final startDateValue = dateFromKey(startDate);
+      final openingMonth = DateTime(startDateValue.year, startDateValue.month);
+      if (openingMonth.isAfter(endMonth)) return const [];
+      if (openingMonth.isAfter(firstMonth)) firstMonth = openingMonth;
+    }
+
+    final orderedEvents = events is List<FinanceCumulativeBalanceEvent>
+        ? events
+        : events.toList(growable: false);
+    if (orderedEvents.isEmpty &&
+        openingBalanceMinor == 0 &&
+        startDate == null) {
+      return const [];
+    }
+
+    var eventIndex = 0;
+    var balanceMinor = openingBalanceMinor;
+    var month = firstMonth;
+    final points = <FinanceCumulativeBalancePoint>[];
+    while (!month.isAfter(endMonth)) {
+      final isCurrentMonth =
+          month.year == currentMonth.year && month.month == currentMonth.month;
+      final asOfAt = isCurrentMonth
+          ? nowAt
+          : DateTime(month.year, month.month + 1).millisecondsSinceEpoch - 1;
+      final asOfDate = dateKey(DateTime.fromMillisecondsSinceEpoch(asOfAt));
+      if (startDate == null || asOfDate.compareTo(startDate) >= 0) {
+        while (eventIndex < orderedEvents.length &&
+            orderedEvents[eventIndex].eventAt <= asOfAt) {
+          final event = orderedEvents[eventIndex++];
+          if (startDate == null ||
+              event.transactionDate.compareTo(startDate) >= 0) {
+            balanceMinor += event.changeMinor;
+          }
+        }
+        points.add(
+          FinanceCumulativeBalancePoint(
+            month: month,
+            balanceMinor: balanceMinor,
+            isCurrentMonth: isCurrentMonth,
+          ),
+        );
+      }
+      month = DateTime(month.year, month.month + 1);
+    }
+    return points;
+  }
+
   /// Picks the earliest recorded ledger date that has already occurred.
   /// Future scheduled bills must not become an opening date users can save.
   static String defaultCumulativeBalanceStartDate({

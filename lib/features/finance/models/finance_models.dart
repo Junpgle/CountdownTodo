@@ -2640,6 +2640,18 @@ class FinanceCumulativeBalanceEvent {
   });
 }
 
+class FinanceCumulativeBalancePoint {
+  final DateTime month;
+  final int balanceMinor;
+  final bool isCurrentMonth;
+
+  const FinanceCumulativeBalancePoint({
+    required this.month,
+    required this.balanceMinor,
+    required this.isCurrentMonth,
+  });
+}
+
 class FinanceSummary {
   final int incomeMinor;
   final int expenseMinor;

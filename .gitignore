@@ -257,6 +257,7 @@ todo.md
 !/test/utils/time_utils_test.dart
 !/test/features/
 /test/features/*
+!/test/features/finance_cumulative_balance_trend_test.dart
 !/test/features/thirty_day_challenge/
 /test/features/thirty_day_challenge/*
 !/test/features/thirty_day_challenge/challenge_center_screen_test.dart
@@ -274,6 +275,7 @@ todo.md
 !/test/features/habits/habit_time_point_chart_test.dart
 !/test/features/finance/
 /test/features/finance/*
+!/test/features/finance/finance_cumulative_balance_test.dart
 !/test/features/finance/finance_models_test.dart
 !/test/features/finance/finance_schema_test.dart
 !/test/features/finance/finance_sync_test.dart

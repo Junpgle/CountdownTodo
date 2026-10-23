@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../utils/page_transitions.dart';
@@ -99,6 +100,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   _FinanceOverviewView _view = _FinanceOverviewView.month;
   late DateTime _focusedDate;
   int? _cumulativeBalanceMinor;
+  String? _selectedCumulativeTrendMonthKey;
   final Map<String, GlobalKey> _categorySourceKeys = {};
   Map<String, FinanceCategory>? _categoryDisplayNamesSource;
   final Map<String, String> _categoryDisplayNames = {};
@@ -151,6 +153,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     if (oldWidget.month.year != month.year ||
         oldWidget.month.month != month.month) {
       _focusedDate = _initialFocusDate(month);
+      _selectedCumulativeTrendMonthKey = null;
       refreshBalance = true;
     }
     if (!identical(
@@ -280,6 +283,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
             period,
           ),
           const SizedBox(height: 24),
+          _buildCumulativeBalanceTrendCard(context, colorScheme),
+          const SizedBox(height: 12),
           _buildCumulativeBalanceCard(context, colorScheme),
         ],
       ),
@@ -648,6 +653,195 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     );
     if (!mounted) return;
     setState(() => _cumulativeBalanceMinor = balance);
+  }
+
+  Widget _buildCumulativeBalanceTrendCard(
+    BuildContext context,
+    ColorScheme colorScheme,
+  ) {
+    final now = clock();
+    final points = FinanceRepository.cumulativeBalanceTrend(
+      events: widget.cumulativeBalanceEvents,
+      selectedMonth: month,
+      nowAt: now.millisecondsSinceEpoch,
+      openingBalanceMinor: widget.openingBalanceMinor,
+      openingBalanceStartDate: widget.openingBalanceStartDate,
+    );
+    final matchingIndex = points.indexWhere(
+      (point) => dateKey(point.month) == _selectedCumulativeTrendMonthKey,
+    );
+    final selectedIndex = matchingIndex >= 0
+        ? matchingIndex
+        : points.length - 1;
+    final selectedPoint = selectedIndex >= 0 ? points[selectedIndex] : null;
+    final rangeLabel = points.isEmpty
+        ? '最多显示近 12 个月'
+        : '${points.first.month.year}年${points.first.month.month}月'
+              ' — ${points.last.month.year}年${points.last.month.month}月';
+    final effectiveEndMonth =
+        DateTime(month.year, month.month).isAfter(DateTime(now.year, now.month))
+        ? DateTime(now.year, now.month)
+        : DateTime(month.year, month.month);
+    final rangeEndDate =
+        effectiveEndMonth.year == now.year &&
+            effectiveEndMonth.month == now.month
+        ? dateKey(now)
+        : dateKey(
+            DateTime(effectiveEndMonth.year, effectiveEndMonth.month + 1, 0),
+          );
+    final isBeforeOpeningDate =
+        widget.openingBalanceStartDate != null &&
+        rangeEndDate.compareTo(widget.openingBalanceStartDate!) < 0;
+    final hasNoBalanceHistory =
+        widget.cumulativeBalanceEvents.isEmpty &&
+        widget.openingBalanceMinor == 0 &&
+        widget.openingBalanceStartDate == null;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '月度累计结余趋势',
+              style: Theme.of(context).textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              rangeLabel,
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: colorScheme.onSurfaceVariant),
+            ),
+            if (selectedPoint case final point?) ...[
+              const SizedBox(height: 12),
+              Semantics(
+                liveRegion: true,
+                label:
+                    '${point.month.year}年${point.month.month}月，'
+                    '${point.isCurrentMonth ? '截至今天' : '月末'}累计结余'
+                    ' ${formatFinanceAmount(point.balanceMinor)}',
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${point.month.year}年${point.month.month}月 · '
+                        '${point.isCurrentMonth ? '截至今天' : '月末'}',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ),
+                    Text(
+                      formatFinanceAmount(point.balanceMinor),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: colorScheme.primary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 4),
+              SizedBox(
+                height: 148,
+                width: double.infinity,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final semanticPoints = points
+                        .map(
+                          (item) =>
+                              '${item.month.year}年${item.month.month}月'
+                              '${item.isCurrentMonth ? '截至今天' : '月末'}'
+                              '${formatFinanceAmount(item.balanceMinor)}',
+                        )
+                        .join('；');
+                    return Semantics(
+                      button: true,
+                      label: '月度累计结余趋势。$semanticPoints。点击图表选择月份。',
+                      customSemanticsActions: {
+                        if (selectedIndex > 0)
+                          const CustomSemanticsAction(label: '前一个月'): () =>
+                              _selectCumulativeTrendPoint(
+                                points,
+                                selectedIndex - 1,
+                              ),
+                        if (selectedIndex < points.length - 1)
+                          const CustomSemanticsAction(label: '后一个月'): () =>
+                              _selectCumulativeTrendPoint(
+                                points,
+                                selectedIndex + 1,
+                              ),
+                      },
+                      child: GestureDetector(
+                        key: const ValueKey(
+                          'finance-cumulative-balance-trend-chart',
+                        ),
+                        behavior: HitTestBehavior.opaque,
+                        onTapUp: (details) {
+                          final index = _cumulativeTrendIndexForPosition(
+                            details.localPosition.dx,
+                            constraints.maxWidth,
+                            points.length,
+                          );
+                          _selectCumulativeTrendPoint(points, index);
+                        },
+                        child: CustomPaint(
+                          size: Size(constraints.maxWidth, 148),
+                          painter: _FinanceCumulativeBalanceTrendPainter(
+                            points: points,
+                            selectedIndex: selectedIndex,
+                            colorScheme: colorScheme,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ] else ...[
+              const SizedBox(height: 16),
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  child: Text(
+                    isBeforeOpeningDate
+                        ? '尚未到期初结余起算日期'
+                        : hasNoBalanceHistory
+                        ? '暂无可展示的结余趋势'
+                        : '所选月份没有可用的累计结余',
+                    style: Theme.of(context).textTheme.bodyMedium
+                        ?.copyWith(color: colorScheme.onSurfaceVariant),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  int _cumulativeTrendIndexForPosition(
+    double position,
+    double width,
+    int pointCount,
+  ) {
+    if (pointCount < 2) return 0;
+    const horizontalInset = 18.0;
+    final plotWidth = math.max(1.0, width - horizontalInset * 2);
+    final fraction = ((position - horizontalInset) / plotWidth).clamp(0.0, 1.0);
+    return (fraction * (pointCount - 1)).round();
+  }
+
+  void _selectCumulativeTrendPoint(
+    List<FinanceCumulativeBalancePoint> points,
+    int index,
+  ) {
+    if (index < 0 || index >= points.length) return;
+    setState(() {
+      _selectedCumulativeTrendMonthKey = dateKey(points[index].month);
+    });
   }
 
   Widget _buildCumulativeBalanceCard(
@@ -2948,6 +3142,150 @@ class _FinancePieSlice {
   final Color color;
 
   const _FinancePieSlice({required this.value, required this.color});
+}
+
+class _FinanceCumulativeBalanceTrendPainter extends CustomPainter {
+  final List<FinanceCumulativeBalancePoint> points;
+  final int selectedIndex;
+  final ColorScheme colorScheme;
+
+  const _FinanceCumulativeBalanceTrendPainter({
+    required this.points,
+    required this.selectedIndex,
+    required this.colorScheme,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (points.isEmpty || size.width <= 0 || size.height <= 0) return;
+
+    const leftInset = 18.0;
+    const rightInset = 18.0;
+    const topInset = 10.0;
+    const bottomInset = 28.0;
+    final plot = Rect.fromLTRB(
+      leftInset,
+      topInset,
+      size.width - rightInset,
+      size.height - bottomInset,
+    );
+    if (plot.width <= 0 || plot.height <= 0) return;
+
+    var minimum = points.first.balanceMinor;
+    var maximum = minimum;
+    for (final point in points.skip(1)) {
+      minimum = math.min(minimum, point.balanceMinor);
+      maximum = math.max(maximum, point.balanceMinor);
+    }
+    minimum = math.min(minimum, 0);
+    maximum = math.max(maximum, 0);
+
+    double xFor(int index) => points.length == 1
+        ? plot.center.dx
+        : plot.left + plot.width * index / (points.length - 1);
+
+    double yFor(int value) {
+      if (minimum == maximum) return plot.center.dy;
+      return plot.top + (maximum - value) / (maximum - minimum) * plot.height;
+    }
+
+    final gridPaint = Paint()
+      ..color = colorScheme.outlineVariant.withValues(alpha: 0.45)
+      ..strokeWidth = 1;
+    canvas.drawLine(plot.topLeft, plot.topRight, gridPaint);
+    canvas.drawLine(plot.bottomLeft, plot.bottomRight, gridPaint);
+    if (minimum <= 0 && maximum >= 0) {
+      final zeroY = yFor(0);
+      canvas.drawLine(
+        Offset(plot.left, zeroY),
+        Offset(plot.right, zeroY),
+        gridPaint,
+      );
+    }
+
+    const baselineValue = 0;
+    final fillPath = Path()..moveTo(xFor(0), yFor(baselineValue));
+    final linePath = Path()..moveTo(xFor(0), yFor(points.first.balanceMinor));
+    for (var index = 1; index < points.length; index++) {
+      final point = points[index];
+      final x = xFor(index);
+      final y = yFor(point.balanceMinor);
+      linePath.lineTo(x, y);
+      fillPath.lineTo(x, y);
+    }
+    fillPath
+      ..lineTo(xFor(points.length - 1), yFor(baselineValue))
+      ..close();
+    canvas.drawPath(
+      fillPath,
+      Paint()
+        ..color = colorScheme.primary.withValues(alpha: 0.09)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawPath(
+      linePath,
+      Paint()
+        ..color = colorScheme.primary
+        ..strokeWidth = 2.5
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..style = PaintingStyle.stroke,
+    );
+
+    for (var index = 0; index < points.length; index++) {
+      final center = Offset(xFor(index), yFor(points[index].balanceMinor));
+      if (index == selectedIndex) {
+        canvas.drawCircle(
+          center,
+          6,
+          Paint()
+            ..color = colorScheme.surface
+            ..style = PaintingStyle.fill,
+        );
+        canvas.drawCircle(
+          center,
+          5,
+          Paint()
+            ..color = colorScheme.primary
+            ..style = PaintingStyle.fill,
+        );
+      } else {
+        canvas.drawCircle(
+          center,
+          3.25,
+          Paint()
+            ..color = colorScheme.primary
+            ..style = PaintingStyle.fill,
+        );
+      }
+
+      final showLabel =
+          index.isEven || index == points.length - 1 || index == selectedIndex;
+      if (!showLabel) continue;
+      final label = TextPainter(
+        text: TextSpan(
+          text: '${points[index].month.month}月',
+          style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant),
+        ),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+      )..layout(maxWidth: 34);
+      final labelX = (center.dx - label.width / 2).clamp(
+        0.0,
+        size.width - label.width,
+      );
+      label.paint(canvas, Offset(labelX, size.height - label.height));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _FinanceCumulativeBalanceTrendPainter old) =>
+      old.points != points ||
+      old.selectedIndex != selectedIndex ||
+      old.colorScheme.primary != colorScheme.primary ||
+      old.colorScheme.surface != colorScheme.surface ||
+      old.colorScheme.outlineVariant != colorScheme.outlineVariant ||
+      old.colorScheme.onSurfaceVariant != colorScheme.onSurfaceVariant;
 }
 
 class _FinancePiePainter extends CustomPainter {
