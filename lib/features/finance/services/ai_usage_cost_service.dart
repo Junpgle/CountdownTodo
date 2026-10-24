@@ -1131,6 +1131,14 @@ abstract final class AiUsageCostService {
         0;
     final amountMinor = (totalMicros + (_microsPerFen ~/ 2)) ~/ _microsPerFen;
     if (amountMinor <= 0) return false;
+    var deviceName = 'Unknown Device';
+    try {
+      deviceName = await UserSessionStorage.getDeviceFriendlyName();
+    } catch (_) {
+      // Device labeling must not prevent a valid AI expense from being saved.
+    }
+    final transactionNote =
+        'AI 调用费用自动汇总（$monthKey；设备：$deviceName）';
 
     final links = await db.query(
       'ai_usage_ledger_links',
@@ -1178,15 +1186,19 @@ abstract final class AiUsageCostService {
           paymentMethodUuid: _otherPaymentMethodUuid,
           transactionDate: dateKey(monthStart),
           merchant: '$provider · $model',
-          note: 'AI 调用费用自动汇总（$monthKey）',
+          note: transactionNote,
           source: FinanceEntrySource.ai,
           deviceId: deviceId,
         );
+    final amountChanged =
+        existing != null && existing.amountMinor != amountMinor;
+    final noteChanged = existing != null && existing.note != transactionNote;
     final shouldSaveTransaction =
-        existing == null || existing.amountMinor != amountMinor;
+        existing == null || amountChanged || noteChanged;
     var changed = shouldSaveTransaction;
-    if (existing != null && shouldSaveTransaction) {
-      transaction.amountMinor = amountMinor;
+    if (existing != null && (amountChanged || noteChanged)) {
+      if (amountChanged) transaction.amountMinor = amountMinor;
+      if (noteChanged) transaction.note = transactionNote;
       transaction.markAsChanged();
     }
     if (shouldSaveTransaction) {
