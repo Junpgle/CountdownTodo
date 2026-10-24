@@ -1713,17 +1713,29 @@ mixin _StorageTodos on _StorageServiceBase {
     }
   }
 
-  /// Reads complete todo snapshots for fixed-schedule relationship screens.
-  /// Legacy preference data is migrated through the normal read path first;
-  /// the final database query deliberately remains strict and can throw.
-  Future<List<TodoItem>> getTodosForFixedScheduleRelations(
-    String username,
-  ) async {
+  /// Preserve the legacy preference migration performed by the normal read
+  /// path before strict fixed-schedule relationship reads.
+  Future<void> _ensureFixedScheduleRelationMigration(
+    String username, {
+    bool boundedRead = false,
+  }) async {
     final migrationKey = 'migration_marker_${username}_v4';
     final sharedPrefs = await prefs;
     if (!(sharedPrefs.getBool(migrationKey) ?? false)) {
-      await getTodos(username, includeDeleted: true);
+      await getTodos(
+        username,
+        includeDeleted: true,
+        limit: boundedRead ? 1 : null,
+      );
     }
+  }
+
+  /// Reads complete todo snapshots for compatibility with relationship callers.
+  /// The final database query deliberately remains strict and can throw.
+  Future<List<TodoItem>> getTodosForFixedScheduleRelations(
+    String username,
+  ) async {
+    await _ensureFixedScheduleRelationMigration(username);
 
     final db = await DatabaseHelper.instance.databaseForUser(username);
     final maps = await DatabaseHelper.instance.getTodoMaps(
@@ -1732,6 +1744,90 @@ mixin _StorageTodos on _StorageServiceBase {
       databaseOverride: db,
     );
     return _parseTodoItemsIsolate(maps);
+  }
+
+  Future<({List<TodoItem> todos, bool hasMore})>
+  getTodosForFixedScheduleRelationPage(
+    String username, {
+    required String? teamUuid,
+    required String query,
+    required int limit,
+    required int offset,
+  }) async {
+    await _ensureFixedScheduleRelationMigration(
+      username,
+      boundedRead: true,
+    );
+
+    final safeLimit = limit.clamp(1, 100).toInt();
+    final safeOffset = offset < 0 ? 0 : offset;
+    final normalizedTeamUuid = teamUuid?.trim();
+    final teamValue = normalizedTeamUuid == null || normalizedTeamUuid.isEmpty
+        ? ''
+        : normalizedTeamUuid;
+    final whereParts = <String>[
+      't.is_deleted IS NOT 1',
+      "COALESCE(TRIM(t.team_uuid), '') = ?",
+    ];
+    final whereArgs = <Object?>[teamValue];
+    final normalizedQuery = query.trim().toLowerCase();
+    if (normalizedQuery.isNotEmpty) {
+      final escapedQuery = normalizedQuery
+          .replaceAll('!', '!!')
+          .replaceAll('%', '!%')
+          .replaceAll('_', '!_');
+      whereParts.add("LOWER(COALESCE(t.content, '')) LIKE ? ESCAPE '!'");
+      whereArgs.add('%$escapedQuery%');
+    }
+
+    final db = await DatabaseHelper.instance.databaseForUser(username);
+    final maps = await DatabaseHelper.instance.getTodoMaps(
+      where: whereParts.join(' AND '),
+      whereArgs: whereArgs,
+      limit: safeLimit + 1,
+      offset: safeOffset,
+      ordering: TodoMapsOrdering.fixedScheduleRelations,
+      includeConflictData: true,
+      databaseOverride: db,
+    );
+    final hasMore = maps.length > safeLimit;
+    final pageMaps = hasMore ? maps.take(safeLimit).toList() : maps;
+    return (todos: _parseTodoItemsIsolate(pageMaps), hasMore: hasMore);
+  }
+
+  Future<List<TodoItem>> getTodosForFixedScheduleRelationIds(
+    String username,
+    Set<String> todoIds,
+  ) async {
+    final normalizedIds = todoIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    if (normalizedIds.isEmpty) return const [];
+
+    await _ensureFixedScheduleRelationMigration(
+      username,
+      boundedRead: true,
+    );
+
+    final db = await DatabaseHelper.instance.databaseForUser(username);
+    final ids = normalizedIds.toList(growable: false);
+    final rowsById = <String, Map<String, dynamic>>{};
+    const chunkSize = 400;
+    for (var offset = 0; offset < ids.length; offset += chunkSize) {
+      final chunk = ids.skip(offset).take(chunkSize).toList(growable: false);
+      final maps = await DatabaseHelper.instance.getTodoMaps(
+        includeDeleted: true,
+        uuids: chunk,
+        includeConflictData: true,
+        databaseOverride: db,
+      );
+      for (final map in maps) {
+        final id = map['uuid']?.toString();
+        if (id != null && id.isNotEmpty) rowsById[id] = map;
+      }
+    }
+    return _parseTodoItemsIsolate(rowsById.values.toList(growable: false));
   }
 
   Future<List<TodoItem>> getTodosForWidget(String username) async {

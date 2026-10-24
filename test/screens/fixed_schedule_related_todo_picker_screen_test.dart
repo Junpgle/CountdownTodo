@@ -53,6 +53,61 @@ void main() {
     ),
   ];
 
+  String? normalizeTeam(String? value) {
+    final normalized = value?.trim();
+    return normalized == null || normalized.isEmpty ? null : normalized;
+  }
+
+  FixedScheduleRelatedTodoPageLoader pageLoaderFor(List<TodoItem> source) =>
+      (
+        String _, {
+        required String? teamUuid,
+        required String query,
+        required int limit,
+        required int offset,
+      }) async {
+        final normalizedQuery = query.trim().toLowerCase();
+        final normalizedTeamUuid = normalizeTeam(teamUuid);
+        final filtered =
+            source.where((todo) {
+              final sameTeam =
+                  normalizeTeam(todo.teamUuid) == normalizedTeamUuid;
+              final status = todo.isDone
+                  ? '已完成'
+                  : todo.isSkipped
+                  ? '已跳过'
+                  : '待完成';
+              return !todo.isDeleted &&
+                  sameTeam &&
+                  (normalizedQuery.isEmpty ||
+                      todo.title.toLowerCase().contains(normalizedQuery) ||
+                      status.contains(normalizedQuery));
+            }).toList()..sort((left, right) {
+              int statusOrder(TodoItem todo) =>
+                  todo.isDone || todo.isSkipped ? 1 : 0;
+
+              final statusCompare = statusOrder(left)
+                  .compareTo(statusOrder(right));
+              if (statusCompare != 0) return statusCompare;
+              final leftDue = left.dueDate?.millisecondsSinceEpoch;
+              final rightDue = right.dueDate?.millisecondsSinceEpoch;
+              if (leftDue == null && rightDue != null) return 1;
+              if (leftDue != null && rightDue == null) return -1;
+              if (leftDue != null && rightDue != null && leftDue != rightDue) {
+                return leftDue.compareTo(rightDue);
+              }
+              return left.title.toLowerCase().compareTo(
+                right.title.toLowerCase(),
+              );
+            });
+        final page = filtered.skip(offset).take(limit).toList();
+        return (todos: page, hasMore: offset + page.length < filtered.length);
+      };
+
+  FixedScheduleRelatedTodoIdsLoader selectedLoaderFor(List<TodoItem> source) =>
+      (String _, Set<String> ids) async =>
+          source.where((todo) => ids.contains(todo.id)).toList();
+
   testWidgets('选择页修改先隔离，取消丢弃，应用才返回新集合', (tester) async {
     Set<String>? result;
     var returned = false;
@@ -69,7 +124,8 @@ void main() {
                       username: 'tester',
                       teamUuid: null,
                       initialSelectedIds: const {},
-                      loadTodos: (_) async => todos,
+                      loadTodoPage: pageLoaderFor(todos),
+                      loadSelectedTodos: selectedLoaderFor(todos),
                     ),
                   ),
                 );
@@ -89,10 +145,12 @@ void main() {
     expect(find.textContaining('已完成'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField), '打印');
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
     expect(find.text('复习考试范围'), findsNothing);
     expect(find.text('打印准考证'), findsOneWidget);
     await tester.enterText(find.byType(TextField), '');
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('打印准考证'));
@@ -117,22 +175,24 @@ void main() {
   });
 
   testWidgets('团队日程只显示同团队待办，并允许关联已完成事项', (tester) async {
+    final teamTodos = [
+      TodoItem(id: 'team-task', title: '团队准备任务', teamUuid: 'team-a'),
+      TodoItem(id: 'private-task', title: '个人私有任务'),
+      TodoItem(
+        id: 'team-done',
+        title: '团队材料已办完',
+        isDone: true,
+        teamUuid: 'team-a',
+      ),
+    ];
     await tester.pumpWidget(
       MaterialApp(
         home: FixedScheduleRelatedTodoPickerScreen(
           username: 'tester',
           teamUuid: 'team-a',
           initialSelectedIds: const {},
-          loadTodos: (_) async => [
-            TodoItem(id: 'team-task', title: '团队准备任务', teamUuid: 'team-a'),
-            TodoItem(id: 'private-task', title: '个人私有任务'),
-            TodoItem(
-              id: 'team-done',
-              title: '团队材料已办完',
-              isDone: true,
-              teamUuid: 'team-a',
-            ),
-          ],
+          loadTodoPage: pageLoaderFor(teamTodos),
+          loadSelectedTodos: selectedLoaderFor(teamTodos),
         ),
       ),
     );
@@ -168,7 +228,8 @@ void main() {
           username: 'tester',
           teamUuid: null,
           initialSelectedIds: const {'review-exam'},
-          loadTodos: (_) async => todos,
+          loadTodoPage: pageLoaderFor(todos),
+          loadSelectedTodos: selectedLoaderFor(todos),
         ),
       ),
     );
@@ -197,7 +258,8 @@ void main() {
           username: 'tester',
           teamUuid: null,
           initialSelectedIds: const {'review-exam'},
-          loadTodos: (_) async => todos,
+          loadTodoPage: pageLoaderFor(todos),
+          loadSelectedTodos: selectedLoaderFor(todos),
         ),
       ),
     );

@@ -94,11 +94,12 @@ class _FixedScheduleDetailScreenState extends State<FixedScheduleDetailScreen> {
       _relatedTodoLoadFailed = false;
     });
     try {
-      final todos =
-          await (widget.loadRelatedTodos ??
-              StorageService.getTodosForFixedScheduleRelations)(
-            widget.username,
-          );
+      final todos = widget.loadRelatedTodos == null
+          ? await StorageService.getTodosForFixedScheduleRelationIds(
+              widget.username,
+              ids,
+            )
+          : await widget.loadRelatedTodos!(widget.username);
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _todos = todos;

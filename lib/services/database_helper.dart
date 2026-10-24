@@ -14,6 +14,8 @@ import '../utils/json_value_parser.dart';
 import 'database_path_resolver.dart';
 import 'database_schema_history.dart';
 
+enum TodoMapsOrdering { updatedAtDescending, fixedScheduleRelations }
+
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;
@@ -3074,6 +3076,7 @@ class DatabaseHelper {
     Set<String>? recurrenceSeriesIds,
     int? limit,
     int offset = 0,
+    TodoMapsOrdering ordering = TodoMapsOrdering.updatedAtDescending,
     bool inlineTextColumns = false,
     bool includeConflictData = false,
     DatabaseExecutor? databaseOverride,
@@ -3171,7 +3174,26 @@ class DatabaseHelper {
     if (whereParts.isNotEmpty) {
       sql.write(' WHERE ${whereParts.join(' AND ')}');
     }
-    sql.write(' ORDER BY t.updated_at DESC');
+    switch (ordering) {
+      case TodoMapsOrdering.updatedAtDescending:
+        sql.write(' ORDER BY t.updated_at DESC');
+        break;
+      case TodoMapsOrdering.fixedScheduleRelations:
+        sql.write(
+          ' ORDER BY '
+          'CASE WHEN '
+          '(CASE WHEN t.collab_type = 1 AND c.is_completed IS NOT NULL '
+          'THEN c.is_completed ELSE t.is_completed END) = 0 AND '
+          '(CASE WHEN t.collab_type = 1 AND c.is_skipped IS NOT NULL '
+          'THEN c.is_skipped ELSE t.is_skipped END) = 0 '
+          'THEN 0 ELSE 1 END ASC, '
+          'CASE WHEN due_date IS NULL OR CAST(due_date AS INTEGER) = 0 THEN 1 ELSE 0 END ASC, '
+          'CAST(due_date AS INTEGER) ASC, '
+          "CASE WHEN TRIM(COALESCE(t.content, '')) = '' "
+          "THEN '未命名待办' ELSE LOWER(t.content) END ASC, t.uuid ASC",
+        );
+        break;
+    }
     if (limit != null) {
       sql.write(' LIMIT $limit');
       if (offset > 0) sql.write(' OFFSET $offset');

@@ -748,6 +748,26 @@ class StorageService {
     String username,
   ) => _storage.getTodosForFixedScheduleRelations(username);
 
+  static Future<({List<TodoItem> todos, bool hasMore})>
+  getTodosForFixedScheduleRelationPage(
+    String username, {
+    required String? teamUuid,
+    required String query,
+    required int limit,
+    required int offset,
+  }) => _storage.getTodosForFixedScheduleRelationPage(
+    username,
+    teamUuid: teamUuid,
+    query: query,
+    limit: limit,
+    offset: offset,
+  );
+
+  static Future<List<TodoItem>> getTodosForFixedScheduleRelationIds(
+    String username,
+    Set<String> todoIds,
+  ) => _storage.getTodosForFixedScheduleRelationIds(username, todoIds);
+
   static Future<List<TodoItem>> getTodosForWidget(String username) =>
       _storage.getTodosForWidget(username);
 

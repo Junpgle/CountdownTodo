@@ -486,8 +486,9 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
 
   Future<String?> _invalidRelatedTodoMessage() async {
     if (_relatedTodoIds.isEmpty) return null;
-    final todos = await StorageService.getTodosForFixedScheduleRelations(
+    final todos = await StorageService.getTodosForFixedScheduleRelationIds(
       widget.username,
+      _relatedTodoIds,
     );
     final todosById = {for (final todo in todos) todo.id: todo};
     final targetTeamUuid = _normalizeTeamUuid(_selectedTeamUuid);
@@ -1020,7 +1021,10 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
     );
     final reads = await Future.wait<dynamic>([
       if (empty.relatedTodoIds.isNotEmpty)
-        StorageService.getTodosForFixedScheduleRelations(widget.username)
+        StorageService.getTodosForFixedScheduleRelationIds(
+          widget.username,
+          empty.relatedTodoIds,
+        )
       else
         Future.value(const <TodoItem>[]),
       if (empty.newTimedSchedules.isNotEmpty)
