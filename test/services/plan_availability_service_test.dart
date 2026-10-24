@@ -382,4 +382,39 @@ void main() {
       isFalse,
     );
   });
+  test('固定日程开始时刻是独立硬边界，复制到跨日查询并阻止越界保存', () {
+    final boundary = at(9, 0).add(const Duration(seconds: 30));
+    final q = PlanAvailabilityQuery(
+      username: 'fixture',
+      todoId: 'todo-target',
+      date: day,
+      minutes: 45,
+      windowStart: 480,
+      windowEnd: 1440,
+      preparationEnd: boundary,
+    );
+    final snapshot = PlanAvailabilitySnapshot(
+      todo: TodoItem(id: 'todo-target', title: '复习高数'),
+      busy: const [],
+      coverage: '合成来源',
+    );
+
+    final suggestions = PlanAvailabilityService.find(q, snapshot, now: now);
+    expect(suggestions.slots, isNotEmpty);
+    expect(
+      suggestions.slots.every((slot) => !slot.end.isAfter(boundary)),
+      isTrue,
+    );
+    expect(q.onDate(DateTime(2026, 10, 9)).preparationEnd, boundary);
+
+    final overBoundary = PlanAvailabilitySelection(
+      q,
+      PlanTimeSlot(at(8, 30), at(9, 15)),
+      snapshot,
+    );
+    expect(
+      PlanAvailabilityService.accepts(overBoundary, snapshot, now: now),
+      isFalse,
+    );
+  });
 }

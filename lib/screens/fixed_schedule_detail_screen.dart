@@ -12,6 +12,7 @@ import '../widgets/floating_glass_control.dart';
 import 'add_todo_screen.dart';
 import 'course_screens.dart';
 import 'fixed_schedule_editor_screen.dart';
+import 'plan_preparation_screen.dart';
 
 class FixedScheduleDetailScreen extends StatefulWidget {
   const FixedScheduleDetailScreen({
@@ -128,6 +129,10 @@ class _FixedScheduleDetailScreenState extends State<FixedScheduleDetailScreen> {
       widget.onCreateRelatedTodo != null &&
       item.phaseAt(DateTime.now()) != FixedSchedulePhase.cancelled;
 
+  bool get _canRecommendPreparation =>
+      item.startTime != null &&
+      item.phaseAt(DateTime.now()) == FixedSchedulePhase.upcoming;
+
   String _todoStatusLabel(TodoItem todo) {
     if (todo.isDeleted) return '已删除';
     if (todo.isDone) return '已完成';
@@ -155,6 +160,26 @@ class _FixedScheduleDetailScreenState extends State<FixedScheduleDetailScreen> {
           getCurrentUsername: widget.getCurrentUsername,
           loadFocusRecords: widget.loadTodoFocusRecords,
           onCreateRelatedTodo: widget.onCreateRelatedTodo,
+        ),
+      ),
+    );
+    if (mounted) await _loadRelatedTodos();
+  }
+
+  Future<void> _openPreparation(TodoItem todo) async {
+    if (!_canRecommendPreparation ||
+        todo.isDone ||
+        todo.isSkipped ||
+        todo.isDeleted ||
+        todo.hasConflict) {
+      return;
+    }
+    await Navigator.of(context).push<void>(
+      PageTransitions.material(
+        builder: (_) => PlanPreparationScreen(
+          username: username,
+          schedule: item,
+          todo: todo,
         ),
       ),
     );
@@ -284,33 +309,60 @@ class _FixedScheduleDetailScreenState extends State<FixedScheduleDetailScreen> {
                   : todo?.isDeleted == true && sameVisibility
                   ? '已删除'
                   : '已删除或当前日程不可见';
+              final canPrepare =
+                  accessibleTodo != null &&
+                  _canRecommendPreparation &&
+                  !accessibleTodo.isDone &&
+                  !accessibleTodo.isSkipped &&
+                  !accessibleTodo.hasConflict;
               return Card(
                 key: ValueKey('fixed-schedule-related-todo-$id'),
                 color: scheme.surfaceContainerLow,
                 clipBehavior: Clip.antiAlias,
-                child: ListTile(
-                  leading: Icon(
-                    accessibleTodo?.isDone == true
-                        ? Icons.task_alt_rounded
-                        : accessibleTodo?.isSkipped == true
-                        ? Icons.skip_next_rounded
-                        : canOpen
-                        ? Icons.checklist_rounded
-                        : Icons.link_off_rounded,
-                    color: canOpen ? scheme.primary : scheme.onSurfaceVariant,
-                  ),
-                  title: Text(
-                    title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(subtitle),
-                  trailing: canOpen
-                      ? const Icon(Icons.open_in_new_rounded)
-                      : null,
-                  onTap: accessibleTodo == null
-                      ? null
-                      : () => _openRelatedTodo(accessibleTodo),
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: Icon(
+                        accessibleTodo?.isDone == true
+                            ? Icons.task_alt_rounded
+                            : accessibleTodo?.isSkipped == true
+                            ? Icons.skip_next_rounded
+                            : canOpen
+                            ? Icons.checklist_rounded
+                            : Icons.link_off_rounded,
+                        color: canOpen
+                            ? scheme.primary
+                            : scheme.onSurfaceVariant,
+                      ),
+                      title: Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(subtitle),
+                      trailing: canOpen
+                          ? const Icon(Icons.open_in_new_rounded)
+                          : null,
+                      onTap: accessibleTodo == null
+                          ? null
+                          : () => _openRelatedTodo(accessibleTodo),
+                    ),
+                    if (canPrepare)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 12, bottom: 8),
+                          child: TextButton.icon(
+                            key: ValueKey(
+                              'fixed-schedule-prepare-related-todo-$id',
+                            ),
+                            onPressed: () => _openPreparation(accessibleTodo),
+                            icon: const Icon(Icons.schedule_rounded),
+                            label: const Text('安排准备时间'),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               );
             },

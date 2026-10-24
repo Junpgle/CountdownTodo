@@ -26,6 +26,7 @@ import '../screens/pomodoro_screen.dart';
 import '../screens/pomodoro/pomodoro_entry_intent.dart';
 import '../services/plan_availability_repository.dart';
 import '../services/plan_availability_service.dart';
+import '../services/fixed_schedule_preparation_guard.dart';
 import '../services/plan_conflict_review_service.dart';
 import '../services/missed_plan_recovery_service.dart';
 import '../services/time_estimation_service.dart';
@@ -129,6 +130,8 @@ class PlanBlockEditorSheet extends StatefulWidget {
   final PlanReuseRepository? reuseRepository;
   final PlanManualCompletionService? manualCompletionService;
   final ValueChanged<PlanManualCompletionReceipt>? onManualCompleted;
+  final FixedSchedulePreparationContext? preparationContext;
+  final PlanAvailabilitySelection? preparationSelection;
 
   const PlanBlockEditorSheet({
     super.key,
@@ -167,6 +170,8 @@ class PlanBlockEditorSheet extends StatefulWidget {
     this.reuseRepository,
     this.manualCompletionService,
     this.onManualCompleted,
+    this.preparationContext,
+    this.preparationSelection,
   });
 
   @override
@@ -202,7 +207,10 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   PlanAvailabilityQuery? _singleQuery;
   bool _splitAdjusted = false, _splitStale = false;
   bool get _canSplit =>
-      widget.fullPage && _supportsDraft && _selectedTodo != null;
+      widget.fullPage &&
+      _supportsDraft &&
+      _selectedTodo != null &&
+      _preparationContext == null;
   bool get _splitPersisted => _split != null && _savedSplitBlocks.isNotEmpty;
 
   bool _autoRecommendationPending = false;
@@ -216,6 +224,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   PlanEditorDraft? _localDraft;
   PlanDraftSummary? _draftOffer;
   PlanBacklogSaveContext? _restoredBacklog;
+  FixedSchedulePreparationContext? _preparationContext;
   TodoItem? _restoredTodo;
   late String _targetPlanId, _baseline;
   bool _userTouched = false, _allowExit = false, _exitPrompt = false;
@@ -286,6 +295,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         : (_split?.query.base.weekly ?? _recommendation?.query.weekly)
                   ?.ignored ??
               false,
+    preparationContext: _preparationContext ?? widget.preparationContext,
   );
   bool get _dirty =>
       _reuseNeedsRetention ||
@@ -373,6 +383,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         _restoredTodo = prepared.todo;
         _selectedTodoId = f.todoId;
         _restoredBacklog = prepared.backlog;
+        _preparationContext = widget.preparationContext ?? f.preparationContext;
         _approvedArrangements = prepared.backlog == null ? null : '[]';
         _start = DateTime.fromMillisecondsSinceEpoch(f.start);
         _end = DateTime.fromMillisecondsSinceEpoch(f.end);
@@ -922,6 +933,8 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     );
     _start = widget.startTime;
     _end = widget.endTime;
+    _preparationContext = widget.preparationContext;
+    _recommendation = widget.preparationSelection;
     _persistedBlock = widget.block == null
         ? null
         : TodoPlanBlock.fromJson(widget.block!.toJson());
@@ -962,6 +975,74 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         if (mounted) unawaited(_prepareInitialEstimate());
       });
     }
+  }
+
+  Future<void> _checkPreparationSchedule(
+    DatabaseExecutor executor,
+    String todoId,
+  ) async {
+    final context = _preparationContext ?? widget.preparationContext;
+    if (context == null) return;
+    await FixedSchedulePreparationGuard.validate(
+      executor,
+      context,
+      todoId,
+      now: widget.clock?.call() ?? DateTime.now(),
+    );
+  }
+
+  Future<PlanAvailabilitySelection> _verifyPreparationTime() async {
+    final context = _preparationContext ?? widget.preparationContext;
+    final todo = _selectedTodo;
+    if (context == null || todo == null || _selectedTodoId == null) {
+      throw const PlanAvailabilityException('准备安排上下文已失效，请重新打开固定日程');
+    }
+    final preferences = await PlanAvailabilityPreferences.load(widget.username);
+    if (preferences.bufferError != null) {
+      throw PlanAvailabilityException(preferences.bufferError!);
+    }
+    final weekly = await PlanWeeklyAvailabilityPreferences.load(
+      widget.username,
+    );
+    if (weekly.error != null || weekly.rules == null) {
+      throw PlanAvailabilityException(weekly.error ?? '每周可安排时间无法读取，请修复规则后重试');
+    }
+    final query = PlanAvailabilityQuery(
+      username: widget.username,
+      todoId: todo.id,
+      date: _start,
+      minutes: _end.difference(_start).inMinutes,
+      windowStart: 0,
+      windowEnd: 1440,
+      appOnly: context.appOnly,
+      bufferBefore: preferences.bufferBefore,
+      bufferAfter: preferences.bufferAfter,
+      bufferDefaultsKey: preferences.bufferKey,
+      avoidanceDefaultsKey: preferences.avoidanceKey,
+      avoidWindows: [
+        for (final index in preferences.selectedIndices)
+          preferences.options[index],
+      ],
+      preparationEnd: DateTime.fromMillisecondsSinceEpoch(context.startTime)
+          .toLocal(),
+      weekly: PlanWeeklyContext(weekly.rules),
+    );
+    final repository = PlanAvailabilityRepository(clock: widget.clock);
+    await PlanAvailabilityPreferences.validateQueryDefaults(query);
+    final fresh = await repository.read(query, forceRefresh: true);
+    final selection = PlanAvailabilitySelection(
+      query,
+      PlanTimeSlot(_start, _end),
+      fresh,
+    );
+    if (!PlanAvailabilityService.accepts(
+      selection,
+      fresh,
+      now: widget.clock?.call() ?? DateTime.now(),
+    )) {
+      throw const PlanAvailabilityException('准备时段已过期、被占用或越过固定日程开始时间，请重新查找');
+    }
+    return selection;
   }
 
   Future<void> _prepareInitialEstimate() async {
@@ -1307,6 +1388,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           if (existing == null || existing.todoId != draft.todoId) {
             await _checkLinkedTodo(executor, draft);
           }
+          await _checkPreparationSchedule(executor, draft.todoId);
         },
       );
     }
@@ -1324,6 +1406,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         if (existing == null || existing.todoId != draft.todoId) {
           await _checkLinkedTodo(executor, draft);
         }
+        await _checkPreparationSchedule(executor, draft.todoId);
       },
     );
   }
@@ -1647,6 +1730,9 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
       }
     }
     final TodoPlanBlock saved;
+    final preparationSelection = _preparationContext == null
+        ? null
+        : await _verifyPreparationTime();
     if (_split != null) {
       if (_restored) {
         final weekly = await _restoredWeeklyContext();
@@ -1719,7 +1805,10 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         saved = committed;
       } else {
         await _confirmNewArrangements(draft.todoId);
-        saved = await _persist(draft, _recommendation);
+        saved = await _persist(
+          draft,
+          _preparationContext == null ? _recommendation : preparationSelection,
+        );
       }
     }
     _persistedBlock = saved;

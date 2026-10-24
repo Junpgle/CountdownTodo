@@ -49,6 +49,7 @@ void main() {
     String? exclude,
     PlanWeeklyContext? weekly,
     bool appOnly = false,
+    DateTime? preparationEnd,
   }) => PlanAvailabilityQuery(
     username: PlanAvailabilityFixture.username,
     todoId: 'todo-target',
@@ -61,6 +62,7 @@ void main() {
     excludeBlockId: exclude,
     weekly: weekly,
     appOnly: appOnly,
+    preparationEnd: preparationEnd,
   );
   setUp(() async {
     f = PlanAvailabilityFixture();
@@ -86,6 +88,36 @@ void main() {
       await noWrites();
     },
   );
+  test(
+    'preparation search includes today and clips the final day to the event',
+    () async {
+      final boundary = date(2, 10, 0);
+      final r = await repo.readPreparationWindow(q(preparationEnd: boundary));
+      expect(r.start, date(0));
+      expect(r.end, date(3));
+      expect(r.selections, isNotEmpty);
+      expect(
+        r.selections.every((choice) => !choice.slot.end.isAfter(boundary)),
+        isTrue,
+      );
+      expect(
+        r.selections.every((choice) => choice.query.preparationEnd == boundary),
+        isTrue,
+      );
+      expect(await f.db.query('todo_plan_blocks'), isEmpty);
+      await noWrites();
+    },
+  );
+  test('preparation page ends at the fixed schedule day when it starts at midnight', () async {
+    final boundary = date(2);
+    final r = await repo.readPreparationWindow(q(preparationEnd: boundary));
+    expect(r.end, date(2));
+    expect(
+      r.selections.every((choice) => choice.slot.end.isBefore(boundary)),
+      isTrue,
+    );
+    await noWrites();
+  });
   test('local calendar construction crosses month and year', () async {
     final r = await repo.readFollowingDays(q().onDate(DateTime(2026, 12, 31)));
     expect(r.start, DateTime(2027, 1, 1));

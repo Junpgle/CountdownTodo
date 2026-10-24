@@ -198,16 +198,24 @@ abstract final class PlanAvailabilityService {
     stage('本次窗口', [PlanTimeSlot(start, end)]);
     final current = minuteCeiling(now), due = deadline(snapshot.todo);
     if (current.isAfter(start)) start = current;
-    final deadlineLimited = due != null && due.isBefore(end);
-    if (due != null && !due.isAfter(start)) {
+    DateTime? hardEnd = due;
+    final preparationEnd = query.preparationEnd;
+    if (preparationEnd != null &&
+        (hardEnd == null || preparationEnd.isBefore(hardEnd))) {
+      hardEnd = preparationEnd;
+    }
+    final deadlineLimited = hardEnd != null && hardEnd.isBefore(end);
+    if (hardEnd != null && !hardEnd.isAfter(start)) {
       stage('当前时刻与截止裁剪后', []);
       return PlanAvailabilityDiagnostics(
         PlanAvailabilityReason.deadline,
-        '截止前已无可用时段',
+        preparationEnd != null && hardEnd == preparationEnd
+            ? '固定日程开始前已无可用时段'
+            : '截止前已无可用时段',
         stages: stages,
       );
     }
-    if (deadlineLimited) end = due;
+    if (deadlineLimited) end = hardEnd;
     if (!end.isAfter(start)) {
       stage('当前时刻与截止裁剪后', []);
       return PlanAvailabilityDiagnostics(
@@ -274,9 +282,25 @@ abstract final class PlanAvailabilityService {
     gaps = minuteAlignedGaps..sort((a, b) => a.start.compareTo(b.start));
     stage('缓冲与整分钟裁剪后', gaps);
     final enough = gaps.any((g) => g.minutes >= query.minutes);
+    final preparationLimited =
+        preparationEnd != null &&
+        preparationEnd.isBefore(
+          DateTime(
+            query.date.year,
+            query.date.month,
+            query.date.day,
+            query.windowEnd ~/ 60,
+            query.windowEnd % 60,
+          ),
+        ) &&
+        (due == null || !due.isBefore(preparationEnd));
     final message = enough
         ? null
-        : '${deadlineLimited ? '截止前' : '当天'}没有连续 ${query.minutes} 分钟的可用时段${query.hasBuffers ? '（开始前${query.bufferBefore}分钟、结束后${query.bufferAfter}分钟缓冲）' : ''}';
+        : '${preparationLimited
+              ? '固定日程开始前'
+              : deadlineLimited
+              ? '截止前'
+              : '当天'}没有连续 ${query.minutes} 分钟的可用时段${query.hasBuffers ? '（开始前${query.bufferBefore}分钟、结束后${query.bufferAfter}分钟缓冲）' : ''}';
     return PlanAvailabilityDiagnostics(
       enough
           ? PlanAvailabilityReason.available
@@ -389,6 +413,10 @@ abstract final class PlanAvailabilityService {
           ? DateTime(due.year, due.month, due.day + 1)
           : due;
       if (deadline.isBefore(upper)) upper = deadline;
+    }
+    final preparationEnd = query.preparationEnd;
+    if (preparationEnd != null && preparationEnd.isBefore(upper)) {
+      upper = preparationEnd;
     }
     if (weekly?.active == true && !weeklyWindowContainsSlot) {
       return false;

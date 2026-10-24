@@ -4,6 +4,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models.dart';
+import '../models/plan_availability.dart';
 import '../models/plan_weekly_availability.dart';
 import '../models/plan_split.dart';
 import 'database_helper.dart';
@@ -27,11 +28,13 @@ class PlanDraftFields {
     this.weeklyKey,
     this.weeklyIgnored = false,
     this.settingsAdjustments = const [],
+    this.preparationContext,
   });
   final String scheduleOrigin;
   final String? weeklyKey;
   final bool weeklyIgnored;
   final List<String> settingsAdjustments;
+  final FixedSchedulePreparationContext? preparationContext;
   final PlanSplitDraft? split;
   final String todoId, title, remark, origin;
   final int start, end, reminder, pomodoro, rounds, offsetMinutes;
@@ -53,6 +56,8 @@ class PlanDraftFields {
     if (weeklyIgnored) 'weeklyIgnored': true,
     if (settingsAdjustments.isNotEmpty)
       'settingsAdjustments': settingsAdjustments,
+    if (preparationContext != null)
+      'preparationContext': preparationContext!.toJson(),
   };
   String get fingerprint => jsonEncode(toJson());
 
@@ -93,6 +98,9 @@ class PlanDraftFields {
                 )))) {
       throw const FormatException('草稿推荐来源无效');
     }
+    final preparationContext = value.containsKey('preparationContext')
+        ? FixedSchedulePreparationContext.fromJson(value['preparationContext'])
+        : null;
     if (value['weeklyKey'] != null) {
       PlanWeeklyRules.fromJson(jsonDecode(value['weeklyKey']));
     }
@@ -116,6 +124,7 @@ class PlanDraftFields {
       split: value.containsKey('split')
           ? PlanSplitDraft.fromJson(value['split'], '', value['todo'])
           : null,
+      preparationContext: preparationContext,
     );
     if (f.todoId.trim().isEmpty ||
         f.title.trim().isEmpty ||

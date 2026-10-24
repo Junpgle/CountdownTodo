@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:countdown_todo/models.dart';
+import 'package:countdown_todo/models/plan_availability.dart';
 import 'package:countdown_todo/services/database_helper.dart';
 import 'package:countdown_todo/services/database_schema_history.dart';
 import 'package:countdown_todo/services/plan_editor_draft_repository.dart';
@@ -31,6 +32,7 @@ void main() {
     String origin = 'timeline',
     String remark = '完整保留',
     String todoId = 'todo-target',
+    FixedSchedulePreparationContext? preparationContext,
   }) => PlanDraftFields(
     todoId: todoId,
     title: '复习高数',
@@ -46,6 +48,7 @@ void main() {
     rounds: 3,
     origin: origin,
     offsetMinutes: 480,
+    preparationContext: preparationContext,
   );
   Future<PlanEditorDraft> keep({
     String id = 'reserved',
@@ -194,6 +197,25 @@ void main() {
       expect(await businessCounts(), before);
     },
   );
+  test('固定日程准备上下文可随本机草稿恢复且不写入业务表', () async {
+    final before = await businessCounts();
+    final context = FixedSchedulePreparationContext(
+      scheduleId: 'schedule-occurrence',
+      startTime: PlanAvailabilityFixture.day
+          .add(const Duration(days: 1, hours: 12))
+          .millisecondsSinceEpoch,
+      appOnly: true,
+    );
+    final draft = await repo.keep(
+      identity,
+      fields(preparationContext: context),
+      targetId: 'prep-plan',
+    );
+    repo = PlanEditorDraftRepository(database: f.db);
+    final restored = await repo.read(identity, draft.id);
+    expect(restored.fields.preparationContext?.toJson(), context.toJson());
+    expect(await businessCounts(), before);
+  });
   test(
     'six concurrent inserts admit exactly five and never overwrite',
     () async {

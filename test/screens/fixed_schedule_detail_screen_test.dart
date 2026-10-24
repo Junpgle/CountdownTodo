@@ -150,6 +150,12 @@ void main() {
     expect(find.text('关联待办 · 1'), findsOneWidget);
     expect(find.text('复习考试范围'), findsOneWidget);
     expect(find.text('待完成 · 2026年12月3日 20:00'), findsOneWidget);
+    expect(
+      find.byKey(
+        const ValueKey('fixed-schedule-prepare-related-todo-review-exam'),
+      ),
+      findsOneWidget,
+    );
 
     await tester.ensureVisible(find.text('复习考试范围'));
     await tester.pumpAndSettle();
@@ -170,6 +176,38 @@ void main() {
     Navigator.of(tester.element(find.byType(TodoDetailScreen))).pop();
     await tester.pumpAndSettle();
     expect(find.text('已完成 · 2026年12月3日 20:00'), findsOneWidget);
+    expect(
+      find.byKey(
+        const ValueKey('fixed-schedule-prepare-related-todo-review-exam'),
+      ),
+      findsNothing,
+    );
+  });
+
+  testWidgets('时间待定日程不显示准备时段推荐入口', (tester) async {
+    final item = FixedScheduleItem(
+      id: 'time-tbd',
+      title: '待定面试',
+      date: '2026-12-04',
+      relatedTodoIds: const ['prepare'],
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FixedScheduleDetailScreen(
+          username: 'tester',
+          item: item,
+          loadRelatedTodos: (_) async => [
+            TodoItem(id: 'prepare', title: '准备材料'),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('fixed-schedule-prepare-related-todo-prepare')),
+      findsNothing,
+    );
   });
 
   testWidgets('已有关联待办时仍可新建准备待办', (tester) async {

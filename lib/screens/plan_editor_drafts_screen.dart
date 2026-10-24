@@ -196,6 +196,7 @@ class _PlanEditorDraftsScreenState extends State<PlanEditorDraftsScreen>
           backlogContext: prepared.backlog,
           clock: _repository.clock,
           onSaved: () => widget.onSaved?.call(),
+          preparationContext: prepared.draft.fields.preparationContext,
         ),
       );
     } catch (error) {
