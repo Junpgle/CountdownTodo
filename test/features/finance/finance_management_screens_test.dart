@@ -3904,6 +3904,77 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('账单列表筛选合计浮窗支持展开与收起双向动画切换', (tester) async {
+    final now = DateTime(2026, 10, 3, 12);
+    final transaction = FinanceTransaction(
+      uuid: 'ledger-collapse-expand',
+      amountMinor: 1000,
+      transactionDate: dateKey(now),
+      merchant: '测试账单',
+    );
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceLedgerPanel(
+          clock: () => now,
+          transactions: [transaction],
+          categories: const {},
+          paymentMethods: const {},
+          keyword: '',
+          filterType: null,
+          onOpenDetail: (_, _) {},
+          onKeywordChanged: (_) {},
+          onFilterChanged: (_) {},
+          onEdit: (_) {},
+          onDelete: (_) {},
+          onRefund: (_) {},
+        ),
+      ),
+    );
+
+    // 默认展示统计浮窗
+    expect(
+      find.byKey(const ValueKey('finance-ledger-summary-panel')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('finance-ledger-summary-button')),
+      findsNothing,
+    );
+
+    // 点击收起，平滑过渡到悬浮计算器按钮
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('finance-ledger-summary-collapse')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('finance-ledger-summary-panel')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('finance-ledger-summary-button')),
+      findsOneWidget,
+    );
+
+    // 点击按钮，重新展开统计浮窗
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('finance-ledger-summary-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('finance-ledger-summary-panel')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('finance-ledger-summary-button')),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('账单搜索支持列表显示的中文日期', (tester) async {
     final now = DateTime(2026, 9, 5, 12);
     final transactions = [
