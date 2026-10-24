@@ -1792,24 +1792,33 @@ class SearchNavigationHandler {
               }
             },
             onEditorSave:
-                (changedTodos, baselines, {expectedSeriesMembership}) async {
-              final result = await TodoEditorSaveService.save(
-                username: username,
-                changedTodos: changedTodos,
-                baselines: baselines,
-                expectedSeriesMembership: expectedSeriesMembership,
-              );
-              if (context.mounted && result.warnings.isEmpty) {
-                AppSnackBars.showSnackBar(
-                  context,
-                  const SnackBar(
-                    content: Text('待办已更新'),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              }
-              return result;
-            },
+                (
+                  changedTodos,
+                  baselines, {
+                  expectedSeriesMembership,
+                  expectedFixedScheduleTodoIds,
+                  expectedFixedScheduleBaselines,
+                }) async {
+                  final result = await TodoEditorSaveService.save(
+                    username: username,
+                    changedTodos: changedTodos,
+                    baselines: baselines,
+                    expectedSeriesMembership: expectedSeriesMembership,
+                    expectedFixedScheduleTodoIds: expectedFixedScheduleTodoIds,
+                    expectedFixedScheduleBaselines:
+                        expectedFixedScheduleBaselines,
+                  );
+                  if (context.mounted && result.warnings.isEmpty) {
+                    AppSnackBars.showSnackBar(
+                      context,
+                      const SnackBar(
+                        content: Text('待办已更新'),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                  return result;
+                },
             onEditorGroupsSave: (changedGroups, baselines) =>
                 TodoEditorSaveService.saveGroups(
                   username: username,

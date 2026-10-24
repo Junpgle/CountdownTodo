@@ -334,6 +334,11 @@ class StorageService {
     String todoId,
   ) => _storage.getFixedSchedulesByRelatedTodo(username, todoId);
 
+  static Future<List<FixedScheduleItem>> getFixedSchedulesByRelatedTodos(
+    String username,
+    Set<String> todoIds,
+  ) => _storage.getFixedSchedulesByRelatedTodos(username, todoIds);
+
   static Future<List<FixedScheduleItem>> getFixedSchedulesByDay(
     String username,
     DateTime day,
@@ -606,6 +611,8 @@ class StorageService {
     Map<String, TodoItem>? expectedTodoBaselines,
     Map<String, Set<String>>? expectedSeriesMembership,
     bool expectedSeriesMembershipIncludesDeleted = false,
+    Set<String>? expectedFixedScheduleTodoIds,
+    List<FixedScheduleItem>? expectedFixedScheduleBaselines,
   }) => _storage.saveTodos(
     username,
     items,
@@ -617,6 +624,8 @@ class StorageService {
     expectedSeriesMembership: expectedSeriesMembership,
     expectedSeriesMembershipIncludesDeleted:
         expectedSeriesMembershipIncludesDeleted,
+    expectedFixedScheduleTodoIds: expectedFixedScheduleTodoIds,
+    expectedFixedScheduleBaselines: expectedFixedScheduleBaselines,
   );
 
   static Future<Map<String, int>> scanAllTodoConflicts(String username) =>

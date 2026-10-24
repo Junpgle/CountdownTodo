@@ -2,6 +2,54 @@ part of 'storage_service.dart';
 
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
+Future<List<FixedScheduleItem>> _queryFixedSchedulesLinkedToTodoIds(
+  DatabaseExecutor executor,
+  Set<String> todoIds,
+) async {
+  final normalizedIds = todoIds
+      .map((id) => id.trim())
+      .where((id) => id.isNotEmpty)
+      .toSet();
+  if (normalizedIds.isEmpty) return const [];
+
+  final byId = <String, FixedScheduleItem>{};
+  final values = normalizedIds.toList(growable: false);
+  for (var offset = 0; offset < values.length; offset += 80) {
+    final chunk = values.skip(offset).take(80).toList(growable: false);
+    final predicates = List.filled(
+      chunk.length,
+      "instr(COALESCE(related_todo_ids, ''), ?) > 0",
+    ).join(' OR ');
+    final rows = await executor.query(
+      'fixed_schedules',
+      where: 'is_deleted = 0 AND ($predicates)',
+      whereArgs: chunk.map(jsonEncode).toList(growable: false),
+      orderBy: 'date ASC, start_time ASC, updated_at DESC',
+    );
+    for (final row in rows) {
+      final item = FixedScheduleItem.fromJson(row);
+      if (item.isDeleted ||
+          !item.relatedTodoIds.any(
+            (id) => normalizedIds.contains(id.trim()),
+          )) {
+        continue;
+      }
+      byId[item.id] = item;
+    }
+  }
+
+  final result = byId.values.toList(growable: false)
+    ..sort((a, b) {
+      final dateCompare = a.date.compareTo(b.date);
+      if (dateCompare != 0) return dateCompare;
+      final startCompare = (a.startTime ?? 0).compareTo(b.startTime ?? 0);
+      if (startCompare != 0) return startCompare;
+      final updatedCompare = b.updatedAt.compareTo(a.updatedAt);
+      return updatedCompare != 0 ? updatedCompare : a.id.compareTo(b.id);
+    });
+  return result;
+}
+
 List<TodoPlanBlock> _parsePlanBlockItemsIsolate(
   List<Map<String, dynamic>> maps,
 ) {
@@ -506,6 +554,19 @@ mixin _StorageFixed on _StorageServiceBase {
         .map(FixedScheduleItem.fromJson)
         .where((item) => item.relatedTodoIds.contains(normalizedId))
         .toList(growable: false);
+  }
+
+  /// Reads active fixed schedules linked to any of [todoIds] in one batched
+  /// account-scoped lookup. Query matches are verified against decoded IDs so
+  /// a UUID that is merely a substring of another relationship is excluded.
+  /// Database and decoding errors intentionally propagate to the caller.
+  Future<List<FixedScheduleItem>> getFixedSchedulesByRelatedTodos(
+    String username,
+    Set<String> todoIds,
+  ) async {
+    if (todoIds.every((id) => id.trim().isEmpty)) return const [];
+    final db = await DatabaseHelper.instance.databaseForUser(username);
+    return _queryFixedSchedulesLinkedToTodoIds(db, todoIds);
   }
 
   Future<List<FixedScheduleItem>> getFixedSchedulesByDay(

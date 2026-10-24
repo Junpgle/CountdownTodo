@@ -1,14 +1,26 @@
 part of 'todo_section_widget.dart';
 
+class _TodoFixedScheduleReviewGuard {
+  const _TodoFixedScheduleReviewGuard({
+    required this.todoIds,
+    required this.schedules,
+  });
+
+  final Set<String> todoIds;
+  final List<FixedScheduleItem> schedules;
+}
+
 class TodoEditScreen extends StatefulWidget {
   final TodoItem todo;
   final List<TodoItem> todos;
   final FutureOr<void> Function(List<TodoItem>) onTodosChanged;
   final Future<TodoEditorSaveResult> Function(
     List<TodoItem>,
-    Map<String, TodoItem>,
-    {Map<String, Set<String>>? expectedSeriesMembership}
-  )?
+    Map<String, TodoItem>, {
+    Map<String, Set<String>>? expectedSeriesMembership,
+    Set<String>? expectedFixedScheduleTodoIds,
+    List<FixedScheduleItem>? expectedFixedScheduleBaselines,
+  })?
   onEditorSave;
   final FutureOr<void> Function(List<TodoGroup>, Map<String, TodoGroup>)?
   onEditorGroupsSave;
@@ -369,9 +381,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     }
     final normalizedStart = normalizedTime.start;
     final normalizedDue = normalizedTime.due;
-    final seriesId = TodoRecurrenceSeriesEditService.seriesIdFor(
-      _editingTodo,
-    );
+    final seriesId = TodoRecurrenceSeriesEditService.seriesIdFor(_editingTodo);
     if (_isWholeSeriesEdit) {
       if (seriesId == null || widget.onEditorSave == null) {
         AppSnackBars.showSnackBar(
@@ -538,24 +548,73 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     todo.isAllDay = _isAllDay;
     todo.markAsChanged();
 
+    final changedTodos = stagedTodos
+        .where(
+          (item) =>
+              item.version !=
+              _editorTodos
+                  .firstWhere((previous) => previous.id == item.id)
+                  .version,
+        )
+        .toList(growable: false);
+    final saveBaselines = <String, TodoItem>{
+      for (final item in changedTodos) item.id: baselinesById[item.id]!,
+    };
+    final expectedSeriesMembership = <String, Set<String>>{};
+    if (_isWholeSeriesEdit && seriesId != null) {
+      final members = TodoRecurrenceSeriesEditService.activeMembers(
+        _editorTodos,
+        seriesId,
+      );
+      saveBaselines.addEntries(
+        members.map((member) => MapEntry(member.id, baselinesById[member.id]!)),
+      );
+      expectedSeriesMembership[seriesId] = members
+          .map((member) => member.id)
+          .toSet();
+    }
+
     var folderSyncCommitted = false;
     setState(() => _saving = true);
     try {
-    if (_syncFolderToTeam &&
-        _selectedGroupId != null &&
-        _selectedTeamUuid != null) {
+      final reviewGuard = await _reviewFixedScheduleDeadlines(
+        changedTodos: changedTodos,
+        baselines: baselinesById,
+      );
+      if (!mounted ||
+          (changedTodos.any((after) {
+                final before = baselinesById[after.id];
+                return before != null &&
+                    TodoDeadlineFixedScheduleReviewService.deadlineChanged(
+                      before,
+                      after,
+                    ) &&
+                    !after.isDeleted &&
+                    !after.isDone &&
+                    !after.isSkipped;
+              }) &&
+              reviewGuard == null)) {
+        return false;
+      }
+      if (reviewGuard != null && widget.onEditorSave == null) {
+        throw StateError('当前入口无法安全校验关联固定日程，请从待办列表重新打开后保存。');
+      }
+
+      if (_syncFolderToTeam &&
+          _selectedGroupId != null &&
+          _selectedTeamUuid != null) {
         final groups = _editorGroups.map(_copyGroup).toList();
-      final idx = groups.indexWhere((g) => g.id == _selectedGroupId);
-      if (idx != -1) {
+        final idx = groups.indexWhere((g) => g.id == _selectedGroupId);
+        if (idx != -1) {
           final groupBaseline = _copyGroup(groups[idx]);
-        groups[idx].teamUuid = _selectedTeamUuid;
-        final team = _teams
-            .where((t) => t.uuid == _selectedTeamUuid)
-            .firstOrNull;
-        if (team != null) groups[idx].teamName = team.name;
-        groups[idx].markAsChanged();
+          groups[idx].teamUuid = _selectedTeamUuid;
+          final team = _teams
+              .where((t) => t.uuid == _selectedTeamUuid)
+              .firstOrNull;
+          if (team != null) groups[idx].teamName = team.name;
+          groups[idx].markAsChanged();
           if (widget.onEditorGroupsSave == null) {
-        await widget.onGroupsChanged(groups);
+            await widget.onGroupsChanged(groups);
           } else {
             await widget.onEditorGroupsSave!(
               [groups[idx]],
@@ -566,33 +625,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
           _rebuildAvailableGroupIndex();
           folderSyncCommitted = true;
           _syncFolderToTeam = false;
-      }
-    }
-
-      final changedTodos = stagedTodos
-          .where(
-            (item) =>
-                item.version !=
-                _editorTodos
-                    .firstWhere((previous) => previous.id == item.id)
-                    .version,
-          )
-          .toList(growable: false);
-      final saveBaselines = <String, TodoItem>{
-        for (final item in changedTodos) item.id: baselinesById[item.id]!,
-      };
-      final expectedSeriesMembership = <String, Set<String>>{};
-      if (_isWholeSeriesEdit && seriesId != null) {
-        final members = TodoRecurrenceSeriesEditService.activeMembers(
-          _editorTodos,
-          seriesId,
-        );
-        saveBaselines.addEntries(
-          members.map((member) => MapEntry(member.id, baselinesById[member.id]!)),
-        );
-        expectedSeriesMembership[seriesId] = members
-            .map((member) => member.id)
-            .toSet();
+        }
       }
       final TodoEditorSaveResult result;
       if (widget.onEditorSave == null) {
@@ -608,6 +641,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
           expectedSeriesMembership: expectedSeriesMembership.isEmpty
               ? null
               : expectedSeriesMembership,
+          expectedFixedScheduleTodoIds: reviewGuard?.todoIds,
+          expectedFixedScheduleBaselines: reviewGuard?.schedules,
         );
       }
       if (!mounted) return false;
@@ -631,7 +666,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
       if (closeAfterSave && result.warnings.isEmpty) {
         Navigator.pop(context, true);
       }
-    return true;
+      return true;
     } catch (error) {
       if (mounted) {
         final details = error is StateError ? error.message : error;
@@ -648,6 +683,83 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  Future<bool> _ensureEditorAccountCurrent() async {
+    final username = widget.username.trim();
+    final currentUsername = (await StorageService.getCurrentUsername())?.trim();
+    final switched = username == 'default'
+        ? currentUsername != null &&
+              currentUsername.isNotEmpty &&
+              currentUsername != 'default'
+        : currentUsername != username;
+    if (username.isEmpty || switched) {
+      throw StateError('账户已切换，无法复核关联固定日程；请重新打开待办。');
+    }
+    return true;
+  }
+
+  Future<_TodoFixedScheduleReviewGuard?> _reviewFixedScheduleDeadlines({
+    required List<TodoItem> changedTodos,
+    required Map<String, TodoItem> baselines,
+  }) async {
+    final changedIds = changedTodos
+        .where((after) {
+          final before = baselines[after.id];
+          return before != null &&
+              TodoDeadlineFixedScheduleReviewService.deadlineChanged(
+                before,
+                after,
+              ) &&
+              !after.isDeleted &&
+              !after.isDone &&
+              !after.isSkipped;
+        })
+        .map((todo) => todo.id)
+        .toSet();
+    if (changedIds.isEmpty) return null;
+
+    for (var attempt = 0; attempt < 3; attempt++) {
+      await _ensureEditorAccountCurrent();
+      final schedules = await StorageService.getFixedSchedulesByRelatedTodos(
+        widget.username.trim(),
+        changedIds,
+      );
+      await _ensureEditorAccountCurrent();
+      final review = TodoDeadlineFixedScheduleReviewService.build(
+        changedTodos: changedTodos,
+        baselines: baselines,
+        schedules: schedules,
+        now: _now,
+      );
+      if (review.needsReview) {
+        if (!mounted) return null;
+        final confirmed = await showTodoDeadlineFixedScheduleReviewDialog(
+          context,
+          review,
+        );
+        if (!mounted || confirmed != true) return null;
+      }
+
+      await _ensureEditorAccountCurrent();
+      final freshSchedules =
+          await StorageService.getFixedSchedulesByRelatedTodos(
+            widget.username.trim(),
+            changedIds,
+          );
+      await _ensureEditorAccountCurrent();
+      if (TodoDeadlineFixedScheduleReviewService.sameScheduleSnapshot(
+        schedules,
+        freshSchedules,
+      )) {
+        return _TodoFixedScheduleReviewGuard(
+          todoIds: changedIds,
+          schedules: freshSchedules,
+        );
+      }
+    }
+
+    throw StateError('关联固定日程连续发生变化，暂未保存；请重试复核。');
   }
 
   /// 设计文档 4.3：将当前循环待办加入习惯追踪。

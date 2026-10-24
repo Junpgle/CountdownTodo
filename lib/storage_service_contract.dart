@@ -219,6 +219,10 @@ abstract class _StorageServiceBase {
     String username,
     String todoId,
   );
+  Future<List<FixedScheduleItem>> getFixedSchedulesByRelatedTodos(
+    String username,
+    Set<String> todoIds,
+  );
   Future<List<FixedScheduleItem>> getFixedSchedulesByDay(
     String username,
     DateTime day,
@@ -383,6 +387,8 @@ abstract class _StorageServiceBase {
     Map<String, TodoItem>? expectedTodoBaselines,
     Map<String, Set<String>>? expectedSeriesMembership,
     bool expectedSeriesMembershipIncludesDeleted = false,
+    Set<String>? expectedFixedScheduleTodoIds,
+    List<FixedScheduleItem>? expectedFixedScheduleBaselines,
   });
   Future<bool> _saveRecurrenceMaintenance(
     String username,

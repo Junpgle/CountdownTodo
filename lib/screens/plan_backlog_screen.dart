@@ -234,13 +234,21 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
             onTodosChanged: (items) =>
                 StorageService.saveTodos(widget.username, items),
             onEditorSave:
-                (items, baselines, {expectedSeriesMembership}) =>
-                    TodoEditorSaveService.save(
-              username: widget.username,
-              changedTodos: items,
-              baselines: baselines,
-              expectedSeriesMembership: expectedSeriesMembership,
-            ),
+                (
+                  items,
+                  baselines, {
+                  expectedSeriesMembership,
+                  expectedFixedScheduleTodoIds,
+                  expectedFixedScheduleBaselines,
+                }) => TodoEditorSaveService.save(
+                  username: widget.username,
+                  changedTodos: items,
+                  baselines: baselines,
+                  expectedSeriesMembership: expectedSeriesMembership,
+                  expectedFixedScheduleTodoIds: expectedFixedScheduleTodoIds,
+                  expectedFixedScheduleBaselines:
+                      expectedFixedScheduleBaselines,
+                ),
             onEditorGroupsSave: (items, baselines) =>
                 TodoEditorSaveService.saveGroups(
                   username: widget.username,

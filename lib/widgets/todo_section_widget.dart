@@ -30,6 +30,7 @@ import '../services/course_service.dart';
 import '../services/ai_todo_action_executor.dart';
 import '../services/ai_todo_chat_launcher.dart';
 import '../services/pomodoro_service.dart';
+import '../services/todo_deadline_fixed_schedule_review_service.dart';
 import '../screens/course_screens.dart';
 import '../screens/home_settings_screen.dart';
 import '../screens/add_todo_screen.dart';
@@ -39,6 +40,7 @@ import 'todo_group_widget.dart';
 import 'todo_recurrence_progress.dart';
 import 'todo_recurrence_occurrence_picker.dart';
 import 'todo_recurrence_completion_overview.dart';
+import 'todo_deadline_fixed_schedule_review_dialog.dart';
 import '../utils/local_image_provider.dart';
 import '../utils/page_transitions.dart';
 import '../screens/folder_manage_screen.dart';
@@ -97,6 +99,8 @@ class TodoSectionWidget extends StatefulWidget {
     List<TodoItem>,
     Map<String, TodoItem>, {
     Map<String, Set<String>>? expectedSeriesMembership,
+    Set<String>? expectedFixedScheduleTodoIds,
+    List<FixedScheduleItem>? expectedFixedScheduleBaselines,
   })?
   onEditorSave;
   final FutureOr<void> Function(List<TodoGroup>, Map<String, TodoGroup>)?

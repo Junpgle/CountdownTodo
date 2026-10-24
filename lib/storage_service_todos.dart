@@ -6,6 +6,42 @@ int? _parseNullableIntForIsolate(dynamic raw) {
   return JsonValueParser.toNullableInt(raw);
 }
 
+Future<bool> _fixedScheduleTodoSnapshotsMatch(
+  DatabaseExecutor executor, {
+  required Set<String> todoIds,
+  required List<FixedScheduleItem> expectedSchedules,
+}) async {
+  final normalizedIds = todoIds
+      .map((id) => id.trim())
+      .where((id) => id.isNotEmpty)
+      .toSet();
+  final expectedById = <String, FixedScheduleItem>{};
+  for (final schedule in expectedSchedules) {
+    if (schedule.isDeleted ||
+        !schedule.relatedTodoIds.any(
+          (id) => normalizedIds.contains(id.trim()),
+        ) ||
+        expectedById.containsKey(schedule.id)) {
+      return false;
+    }
+    expectedById[schedule.id] = schedule;
+  }
+
+  final currentSchedules = await _queryFixedSchedulesLinkedToTodoIds(
+    executor,
+    normalizedIds,
+  );
+  if (currentSchedules.length != expectedById.length) return false;
+  for (final current in currentSchedules) {
+    final expected = expectedById[current.id];
+    if (expected == null ||
+        jsonEncode(current.toJson()) != jsonEncode(expected.toJson())) {
+      return false;
+    }
+  }
+  return true;
+}
+
 List<TodoItem> _parseTodoItemsIsolate(List<Map<String, dynamic>> maps) {
   return maps
       .map(
@@ -157,7 +193,13 @@ mixin _StorageTodos on _StorageServiceBase {
     Map<String, TodoItem>? expectedTodoBaselines,
     Map<String, Set<String>>? expectedSeriesMembership,
     bool expectedSeriesMembershipIncludesDeleted = false,
+    Set<String>? expectedFixedScheduleTodoIds,
+    List<FixedScheduleItem>? expectedFixedScheduleBaselines,
   }) async {
+    if ((expectedFixedScheduleTodoIds == null) !=
+        (expectedFixedScheduleBaselines == null)) {
+      throw ArgumentError('关联固定日程复核需要同时提供待办范围和日程快照');
+    }
     final dedupeMap = <String, TodoItem>{};
     if (sync && !isSyncSource) _recurrenceCheckCache.clear();
     for (final source in items) {
@@ -214,6 +256,9 @@ mixin _StorageTodos on _StorageServiceBase {
       ...?expectedTodoBaselines?.keys,
     }.toList();
     final db = await DatabaseHelper.instance.databaseForUser(username);
+    if (expectedFixedScheduleTodoIds != null && username.trim() != 'default') {
+      await UserSessionStorage.ensureCurrentUsername(username);
+    }
     final localPrefs = await prefs;
     final userId = localPrefs.getInt('current_user_id') ?? 0;
     final affectedDays = <String>{};
@@ -226,6 +271,19 @@ mixin _StorageTodos on _StorageServiceBase {
     // The current row, pending operations, row write and oplog must share the
     // same transaction. A pre-transaction check leaves a second rollback race.
     await db.transaction((txn) async {
+      if (expectedFixedScheduleTodoIds != null) {
+        if (username.trim() != 'default') {
+          await UserSessionStorage.ensureCurrentUsername(username);
+        }
+        final snapshotsMatch = await _fixedScheduleTodoSnapshotsMatch(
+          txn,
+          todoIds: expectedFixedScheduleTodoIds,
+          expectedSchedules: expectedFixedScheduleBaselines!,
+        );
+        if (!snapshotsMatch) {
+          throw StateError('关联固定日程已有变化，请重新核对后保存。');
+        }
+      }
       final existingById = <String, Map<String, dynamic>>{};
       final pendingIds = <String>{};
       const chunkSize = 400;

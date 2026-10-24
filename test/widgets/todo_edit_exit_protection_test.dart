@@ -32,6 +32,8 @@ Future<void> openEditor(
     List<TodoItem>,
     Map<String, TodoItem>, {
     Map<String, Set<String>>? expectedSeriesMembership,
+    Set<String>? expectedFixedScheduleTodoIds,
+    List<FixedScheduleItem>? expectedFixedScheduleBaselines,
   })?
   onEditorSave,
   void Function(List<TodoItem>)? onTodosChanged,
@@ -144,12 +146,19 @@ void main() {
     await openEditor(
       tester,
       todo: todo,
-      onEditorSave: (items, readBaselines, {expectedSeriesMembership}) {
-        writes++;
-        submitted = items;
-        baselines = readBaselines;
-        return save.future;
-      },
+      onEditorSave:
+          (
+            items,
+            readBaselines, {
+            expectedSeriesMembership,
+            expectedFixedScheduleTodoIds,
+            expectedFixedScheduleBaselines,
+          }) {
+            writes++;
+            submitted = items;
+            baselines = readBaselines;
+            return save.future;
+          },
     );
     await editTitle(tester, '新标题');
     await requestEditorBack(tester);
@@ -176,11 +185,18 @@ void main() {
     await openEditor(
       tester,
       todo: todo,
-      onEditorSave: (_, _, {expectedSeriesMembership}) async {
-        writes++;
-        if (writes == 1) throw StateError('模拟存储失败');
-        return const TodoEditorSaveResult();
-      },
+      onEditorSave:
+          (
+            _,
+            _, {
+            expectedSeriesMembership,
+            expectedFixedScheduleTodoIds,
+            expectedFixedScheduleBaselines,
+          }) async {
+            writes++;
+            if (writes == 1) throw StateError('模拟存储失败');
+            return const TodoEditorSaveResult();
+          },
     );
     await editTitle(tester, '保留的输入');
     await requestEditorBack(tester);
@@ -247,10 +263,17 @@ void main() {
     await openEditor(
       tester,
       todo: todo,
-      onEditorSave: (_, _, {expectedSeriesMembership}) async {
-        writes++;
-        return const TodoEditorSaveResult();
-      },
+      onEditorSave:
+          (
+            _,
+            _, {
+            expectedSeriesMembership,
+            expectedFixedScheduleTodoIds,
+            expectedFixedScheduleBaselines,
+          }) async {
+            writes++;
+            return const TodoEditorSaveResult();
+          },
     );
     await editTitle(tester, '   ');
     await requestEditorBack(tester);
@@ -275,8 +298,13 @@ void main() {
       tester,
       todo: todo,
       onTodoCompletionCommitted: stoppedTodoIds.add,
-      onEditorSave: (_, _, {expectedSeriesMembership}) async =>
-          throw StateError('模拟提交失败'),
+      onEditorSave: (
+        _,
+        _, {
+        expectedSeriesMembership,
+        expectedFixedScheduleTodoIds,
+        expectedFixedScheduleBaselines,
+      }) async => throw StateError('模拟提交失败'),
     );
 
     await tester.tap(find.byKey(const ValueKey('todo_edit_completion_switch')));
@@ -297,7 +325,13 @@ void main() {
       tester,
       todo: todo,
       onTodoCompletionCommitted: stoppedTodoIds.add,
-      onEditorSave: (_, _, {expectedSeriesMembership}) => save.future,
+      onEditorSave: (
+        _,
+        _, {
+        expectedSeriesMembership,
+        expectedFixedScheduleTodoIds,
+        expectedFixedScheduleBaselines,
+      }) => save.future,
     );
 
     await tester.tap(find.byKey(const ValueKey('todo_edit_completion_switch')));
@@ -335,10 +369,17 @@ void main() {
       todo: current,
       todos: [current, future],
       recurrenceEditScope: TodoRecurrenceEditScope.future,
-      onEditorSave: (items, _, {expectedSeriesMembership}) async {
-        submitted = items;
-        return const TodoEditorSaveResult();
-      },
+      onEditorSave:
+          (
+            items,
+            _, {
+            expectedSeriesMembership,
+            expectedFixedScheduleTodoIds,
+            expectedFixedScheduleBaselines,
+          }) async {
+            submitted = items;
+            return const TodoEditorSaveResult();
+          },
     );
     await editTitle(tester, '每周整理并复核');
     await tester.tap(find.text('保存'));
@@ -405,12 +446,19 @@ void main() {
       todo: current,
       todos: [past, current, future],
       recurrenceEditScope: TodoRecurrenceEditScope.series,
-      onEditorSave: (items, readBaselines, {expectedSeriesMembership}) async {
-        submitted = items;
-        baselines = readBaselines;
-        membership = expectedSeriesMembership;
-        return const TodoEditorSaveResult();
-      },
+      onEditorSave:
+          (
+            items,
+            readBaselines, {
+            expectedSeriesMembership,
+            expectedFixedScheduleTodoIds,
+            expectedFixedScheduleBaselines,
+          }) async {
+            submitted = items;
+            baselines = readBaselines;
+            membership = expectedSeriesMembership;
+            return const TodoEditorSaveResult();
+          },
     );
 
     expect(find.text('整个系列 · 3 期'), findsOneWidget);
@@ -486,10 +534,17 @@ void main() {
       tester,
       todo: current,
       todos: [current, beforeEnd, afterEnd],
-      onEditorSave: (items, _, {expectedSeriesMembership}) async {
-        submitted = items;
-        return const TodoEditorSaveResult();
-      },
+      onEditorSave:
+          (
+            items,
+            _, {
+            expectedSeriesMembership,
+            expectedFixedScheduleTodoIds,
+            expectedFixedScheduleBaselines,
+          }) async {
+            submitted = items;
+            return const TodoEditorSaveResult();
+          },
     );
 
     final endDateRow = find.text('重复结束日期');
@@ -543,12 +598,21 @@ void main() {
             username: PlanAvailabilityFixture.username,
             isLight: true,
             onTodosChanged: (_) {},
-            onEditorSave: (items, baselines, {expectedSeriesMembership}) =>
-                TodoEditorSaveService.save(
+            onEditorSave:
+                (
+                  items,
+                  baselines, {
+                  expectedSeriesMembership,
+                  expectedFixedScheduleTodoIds,
+                  expectedFixedScheduleBaselines,
+                }) => TodoEditorSaveService.save(
                   username: PlanAvailabilityFixture.username,
                   changedTodos: items,
                   baselines: baselines,
                   expectedSeriesMembership: expectedSeriesMembership,
+                  expectedFixedScheduleTodoIds: expectedFixedScheduleTodoIds,
+                  expectedFixedScheduleBaselines:
+                      expectedFixedScheduleBaselines,
                 ),
             onEditorGroupsSave: (items, baselines) =>
                 TodoEditorSaveService.saveGroups(

@@ -119,9 +119,11 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
 
   Future<TodoEditorSaveResult> _handleTodoEditorSave(
     List<TodoItem> changedTodos,
-    Map<String, TodoItem> baselines,
-    {Map<String, Set<String>>? expectedSeriesMembership}
-  ) async {
+    Map<String, TodoItem> baselines, {
+    Map<String, Set<String>>? expectedSeriesMembership,
+    Set<String>? expectedFixedScheduleTodoIds,
+    List<FixedScheduleItem>? expectedFixedScheduleBaselines,
+  }) async {
     if (changedTodos.isEmpty) return const TodoEditorSaveResult();
     _todoPersistDebounce?.cancel();
     final waiter = _todoPersistDebounceCompleter;
@@ -138,6 +140,8 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
             changedTodos,
             expectedTodoBaselines: baselines,
             expectedSeriesMembership: expectedSeriesMembership,
+            expectedFixedScheduleTodoIds: expectedFixedScheduleTodoIds,
+            expectedFixedScheduleBaselines: expectedFixedScheduleBaselines,
           ),
         );
       } catch (error) {
@@ -199,12 +203,12 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
   }
 
   Future<List<String>> _persistTodosSnapshot(
-    List<TodoItem> todosSnapshot,
-    {
+    List<TodoItem> todosSnapshot, {
     Map<String, TodoItem>? expectedTodoBaselines,
     Map<String, Set<String>>? expectedSeriesMembership,
-    }
-  ) async {
+    Set<String>? expectedFixedScheduleTodoIds,
+    List<FixedScheduleItem>? expectedFixedScheduleBaselines,
+  }) async {
     _persistingTodosSnapshot = todosSnapshot;
     final warnings = <String>[];
     try {
@@ -254,6 +258,8 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
         bandSyncSnapshot: allTodos,
         expectedTodoBaselines: expectedTodoBaselines,
         expectedSeriesMembership: expectedSeriesMembership,
+        expectedFixedScheduleTodoIds: expectedFixedScheduleTodoIds,
+        expectedFixedScheduleBaselines: expectedFixedScheduleBaselines,
       );
       if (!await _saveTodosToSharedFile(allTodos)) {
         warnings.add('共享文件更新失败');
@@ -305,16 +311,16 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
       // 防止 syncData 的 saveTodos(isSyncSource=true) 覆盖用户意图。
       final flushedTodoIds = <String>{};
       _todoPersistDebounce?.cancel();
-      final flushPendingTask = _todoPersistChain
-          .catchError((Object _) {})
-          .then((_) async {
-            while (_pendingTodosToPersist != null) {
-              final pending = _pendingTodosToPersist!;
-              _pendingTodosToPersist = null;
-              flushedTodoIds.addAll(pending.map((todo) => todo.id));
-              await _persistTodosSnapshot(pending);
-            }
-          });
+      final flushPendingTask = _todoPersistChain.catchError((Object _) {}).then(
+        (_) async {
+          while (_pendingTodosToPersist != null) {
+            final pending = _pendingTodosToPersist!;
+            _pendingTodosToPersist = null;
+            flushedTodoIds.addAll(pending.map((todo) => todo.id));
+            await _persistTodosSnapshot(pending);
+          }
+        },
+      );
       _todoPersistChain = flushPendingTask
           .then<void>((_) {})
           .catchError((Object _) {});

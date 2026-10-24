@@ -24,10 +24,10 @@ mixin _HomeDashboardContract {
 
   Future<void> _handleAiTodosBatchAction(
     List<TodoItem> inserted,
-    List<TodoItem> updated,
-    {Map<String, TodoItem>? expectedTodoBaselines,
-    Map<String, Set<String>>? expectedSeriesMembership}
-  );
+    List<TodoItem> updated, {
+    Map<String, TodoItem>? expectedTodoBaselines,
+    Map<String, Set<String>>? expectedSeriesMembership,
+  });
 
   Future<void> _configureBackgroundNotificationPoll();
 
@@ -233,9 +233,11 @@ mixin _HomeDashboardContract {
 
   Future<TodoEditorSaveResult> _handleTodoEditorSave(
     List<TodoItem> changedTodos,
-    Map<String, TodoItem> baselines,
-    {Map<String, Set<String>>? expectedSeriesMembership}
-  );
+    Map<String, TodoItem> baselines, {
+    Map<String, Set<String>>? expectedSeriesMembership,
+    Set<String>? expectedFixedScheduleTodoIds,
+    List<FixedScheduleItem>? expectedFixedScheduleBaselines,
+  });
 
   Future<void> _handleTodoEditorGroupsSave(
     List<TodoGroup> changedGroups,

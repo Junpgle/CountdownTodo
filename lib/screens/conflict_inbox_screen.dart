@@ -783,26 +783,32 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
           unawaited(_loadConflicts());
         },
         onTodosBatchAction:
-            (inserted, updated,
-                {expectedTodoBaselines, expectedSeriesMembership}) async {
-          final allTodos = await StorageService.getTodos(widget.username);
-          final merged = AiTodoActionExecutor.mergeTodoUpdates(
-            allTodos,
-            inserted,
-            updated,
-          );
-          await StorageService.saveTodos(
-            widget.username,
-            merged,
-            expectedTodoBaselines: expectedTodoBaselines,
-            expectedSeriesMembership: expectedSeriesMembership,
-          );
-          try {
-            await _loadConflicts();
-          } catch (error) {
-            debugPrint('AI todo conflict refresh failed after save: $error');
-          }
-        },
+            (
+              inserted,
+              updated, {
+              expectedTodoBaselines,
+              expectedSeriesMembership,
+            }) async {
+              final allTodos = await StorageService.getTodos(widget.username);
+              final merged = AiTodoActionExecutor.mergeTodoUpdates(
+                allTodos,
+                inserted,
+                updated,
+              );
+              await StorageService.saveTodos(
+                widget.username,
+                merged,
+                expectedTodoBaselines: expectedTodoBaselines,
+                expectedSeriesMembership: expectedSeriesMembership,
+              );
+              try {
+                await _loadConflicts();
+              } catch (error) {
+                debugPrint(
+                  'AI todo conflict refresh failed after save: $error',
+                );
+              }
+            },
       );
     } catch (e) {
       if (mounted) {
@@ -3336,12 +3342,19 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             await StorageService.saveTodos(widget.username, updatedTodos);
           },
           onEditorSave:
-              (updatedTodos, baselines, {expectedSeriesMembership}) =>
-                  TodoEditorSaveService.save(
+              (
+                updatedTodos,
+                baselines, {
+                expectedSeriesMembership,
+                expectedFixedScheduleTodoIds,
+                expectedFixedScheduleBaselines,
+              }) => TodoEditorSaveService.save(
                 username: widget.username,
                 changedTodos: updatedTodos,
                 baselines: baselines,
                 expectedSeriesMembership: expectedSeriesMembership,
+                expectedFixedScheduleTodoIds: expectedFixedScheduleTodoIds,
+                expectedFixedScheduleBaselines: expectedFixedScheduleBaselines,
               ),
           onEditorGroupsSave: (updatedGroups, baselines) =>
               TodoEditorSaveService.saveGroups(
