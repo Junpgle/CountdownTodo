@@ -1156,15 +1156,6 @@ abstract final class AppSettingsCatalog {
       platforms: {},
     ),
     AiSettingsDestination(
-      id: 'no_course_behavior',
-      title: '无课时板块行为',
-      path: '设置 > 课表与学期 > 无课时板块行为',
-      description: '首页无课程时显示 无课安排',
-      page: SettingsPageId.course,
-      labels: ['保持原位'],
-      platforms: {},
-    ),
-    AiSettingsDestination(
       id: 'course_adapt',
       title: '申请教务适配',
       path: '设置 > 课表与学期 > 申请教务适配',
