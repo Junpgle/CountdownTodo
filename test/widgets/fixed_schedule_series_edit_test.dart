@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/screens/fixed_schedule_editor_screen.dart';
+import 'package:countdown_todo/screens/fixed_schedule_related_todo_picker_screen.dart';
 import 'package:countdown_todo/services/database_helper.dart';
 import 'package:countdown_todo/storage_service.dart';
 import 'package:flutter/material.dart';
@@ -283,6 +284,127 @@ void main() {
     await expectLater(
       find.byType(MaterialApp),
       matchesGoldenFile('goldens/fixed_schedule_external_edit_phone.png'),
+    );
+  });
+
+  testWidgets('applying related todos updates the editor draft, not storage', (
+    tester,
+  ) async {
+    final seeded = await tester.runAsync(_seedEditorData);
+    final username = seeded!.$1;
+    final selectedOccurrence = seeded.$2;
+    await tester.runAsync(
+      () => StorageService.saveTodos(
+        username,
+        [TodoItem(id: 'review-task', title: '复习项目内容')],
+        sync: false,
+        isSyncSource: true,
+      ),
+    );
+
+    await _pumpEditor(tester, username, selectedOccurrence);
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('fixed-schedule-related-todos')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('fixed-schedule-related-todos')),
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 250)),
+    );
+    for (var attempt = 0; attempt < 12; attempt++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      if (find.text('复习项目内容').evaluate().isNotEmpty) break;
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 25)),
+      );
+    }
+
+    expect(find.text('复习项目内容'), findsOneWidget);
+    await tester.tap(find.text('复习项目内容'));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.byKey(const ValueKey('apply-related-todos')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('已关联 1 项'), findsOneWidget);
+    final storedSeries = await tester.runAsync(
+      () => StorageService.getFixedSchedules(username),
+    );
+    expect(
+      storedSeries!
+          .where((item) => item.recurrenceSeriesId == 'ui-series-0')
+          .every((item) => item.relatedTodoIds.isEmpty),
+      isTrue,
+    );
+  });
+
+  testWidgets('a relationship read failure keeps the editor draft unsaved', (
+    tester,
+  ) async {
+    final seeded = await tester.runAsync(_seedEditorData);
+    final username = seeded!.$1;
+    await tester.runAsync(
+      () => StorageService.saveTodos(
+        username,
+        [TodoItem(id: 'review-task', title: '复习项目内容')],
+        sync: false,
+        isSyncSource: true,
+      ),
+    );
+
+    await _pumpEditor(tester, username, seeded.$2);
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('fixed-schedule-related-todos')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('fixed-schedule-related-todos')),
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 250)),
+    );
+    for (var attempt = 0; attempt < 12; attempt++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      if (find.text('复习项目内容').evaluate().isNotEmpty) break;
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 25)),
+      );
+    }
+    expect(find.text('复习项目内容'), findsOneWidget);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('复习项目内容'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('apply-related-todos')));
+    await tester.pumpAndSettle();
+
+    await tester.runAsync(() async {
+      final db = await DatabaseHelper.instance.databaseForUser(username);
+      await db.execute('DROP TABLE todos');
+    });
+    expect(find.byType(FixedScheduleRelatedTodoPickerScreen), findsNothing);
+    expect(find.byType(FixedScheduleEditorScreen), findsOneWidget);
+    expect(find.textContaining('已关联 1 项'), findsOneWidget);
+    await tester.tap(find.text('保存'));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 250)),
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('读取关联待办失败，关系改动未保存，请重试'), findsOneWidget);
+    expect(find.textContaining('已关联 1 项'), findsOneWidget);
+    expect(find.text('确认整个系列'), findsNothing);
+    final storedSeries = await tester.runAsync(
+      () => StorageService.getFixedSchedules(username),
+    );
+    expect(
+      storedSeries!
+          .where((item) => item.recurrenceSeriesId == 'ui-series-0')
+          .every((item) => item.relatedTodoIds.isEmpty),
+      isTrue,
     );
   });
 }

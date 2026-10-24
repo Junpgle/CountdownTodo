@@ -231,13 +231,14 @@ void main() {
         day: 20,
         recurrence: RecurrenceType.daily,
       );
-      final future = occurrence(
-        id: 'occurrence-future',
-        day: 21,
-        recurrence: RecurrenceType.none,
-      )
-        ..isSkipped = true
-        ..isSkippedSyncPending = true;
+      final future =
+          occurrence(
+              id: 'occurrence-future',
+              day: 21,
+              recurrence: RecurrenceType.none,
+            )
+            ..isSkipped = true
+            ..isSkippedSyncPending = true;
       final action = AiTodoAction(
         type: AiTodoActionType.updateTodo,
         todoId: current.id,
@@ -696,6 +697,7 @@ void main() {
         'endTime': null,
         'location': '第一会议室',
         'reminderMinutes': [15, 60],
+        'sourceTodoIds': ['review-exam'],
       });
 
       final result = AiTodoActionExecutor.execute(
@@ -714,6 +716,7 @@ void main() {
       expect(created.source, FixedScheduleSource.ai);
       expect(created.location, '第一会议室');
       expect(created.reminderMinutes, [15, 60]);
+      expect(created.relatedTodoIds, ['review-exam']);
     });
 
     test(

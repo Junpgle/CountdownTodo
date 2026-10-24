@@ -19,12 +19,14 @@ class FixedScheduleEditService {
     required DateTime recurrenceEndDate,
     int customIntervalDays = 1,
     bool applyTeamUuid = false,
+    bool applyRelatedTodoIds = false,
   }) {
     return switch (scope) {
       FixedScheduleEditScope.occurrence => _editOccurrence(
         selectedOccurrence: selectedOccurrence,
         editedTemplate: editedTemplate,
         applyTeamUuid: applyTeamUuid,
+        applyRelatedTodoIds: applyRelatedTodoIds,
       ),
       FixedScheduleEditScope.future => _editFuture(
         selectedOccurrence: selectedOccurrence,
@@ -34,6 +36,7 @@ class FixedScheduleEditService {
         recurrenceEndDate: recurrenceEndDate,
         customIntervalDays: customIntervalDays,
         applyTeamUuid: applyTeamUuid,
+        applyRelatedTodoIds: applyRelatedTodoIds,
       ),
       FixedScheduleEditScope.series => _editSeries(
         selectedOccurrence: selectedOccurrence,
@@ -43,6 +46,7 @@ class FixedScheduleEditService {
         recurrenceEndDate: recurrenceEndDate,
         customIntervalDays: customIntervalDays,
         applyTeamUuid: applyTeamUuid,
+        applyRelatedTodoIds: applyRelatedTodoIds,
       ),
     };
   }
@@ -56,6 +60,7 @@ class FixedScheduleEditService {
     required FixedScheduleItem selectedOccurrence,
     required FixedScheduleItem editedTemplate,
     required bool applyTeamUuid,
+    required bool applyRelatedTodoIds,
   }) {
     if (editedTemplate.date == selectedOccurrence.date) {
       final updated = FixedScheduleItem.fromJson(selectedOccurrence.toJson());
@@ -63,6 +68,7 @@ class FixedScheduleEditService {
         updated,
         editedTemplate,
         applyTeamUuid: applyTeamUuid,
+        applyRelatedTodoIds: applyRelatedTodoIds,
       );
       updated.markAsChanged();
       return (affected: [updated], changes: [updated], refreshItem: updated);
@@ -89,7 +95,9 @@ class FixedScheduleEditService {
       remark: editedTemplate.remark,
       reminderMinutes: editedTemplate.reminderMinutes,
       timezone: editedTemplate.timezone,
-      relatedTodoIds: selectedOccurrence.relatedTodoIds,
+      relatedTodoIds: applyRelatedTodoIds
+          ? editedTemplate.relatedTodoIds
+          : selectedOccurrence.relatedTodoIds,
       teamUuid: applyTeamUuid
           ? editedTemplate.teamUuid
           : selectedOccurrence.teamUuid,
@@ -117,6 +125,7 @@ class FixedScheduleEditService {
     required DateTime recurrenceEndDate,
     required int customIntervalDays,
     required bool applyTeamUuid,
+    required bool applyRelatedTodoIds,
   }) {
     final selectedDate = DateTime.tryParse(selectedOccurrence.date);
     if (selectedDate == null) {
@@ -124,6 +133,7 @@ class FixedScheduleEditService {
         selectedOccurrence: selectedOccurrence,
         editedTemplate: editedTemplate,
         applyTeamUuid: applyTeamUuid,
+        applyRelatedTodoIds: applyRelatedTodoIds,
       );
     }
     final affectedSeries = existingSeries.where((item) {
@@ -148,6 +158,7 @@ class FixedScheduleEditService {
           : recurrenceEndDate,
       customIntervalDays: customIntervalDays,
       applyTeamUuid: applyTeamUuid,
+      applyRelatedTodoIds: applyRelatedTodoIds,
     );
     final affected = _applySelectedStatus(
       rebuilt.active,
@@ -175,6 +186,7 @@ class FixedScheduleEditService {
     required DateTime recurrenceEndDate,
     required int customIntervalDays,
     required bool applyTeamUuid,
+    required bool applyRelatedTodoIds,
   }) {
     final rootId = selectedOccurrence.recurrenceSeriesId?.trim();
     final template = FixedScheduleItem.fromJson(editedTemplate.toJson())
@@ -199,6 +211,7 @@ class FixedScheduleEditService {
           : recurrenceEndDate,
       customIntervalDays: customIntervalDays,
       applyTeamUuid: applyTeamUuid,
+      applyRelatedTodoIds: applyRelatedTodoIds,
     );
     final affected = _applySelectedStatus(
       rebuilt.active,
@@ -249,6 +262,7 @@ class FixedScheduleEditService {
     FixedScheduleItem target,
     FixedScheduleItem template, {
     required bool applyTeamUuid,
+    required bool applyRelatedTodoIds,
   }) {
     target
       ..title = template.title
@@ -260,6 +274,9 @@ class FixedScheduleEditService {
       ..reminderMinutes = List<int>.from(template.reminderMinutes)
       ..timezone = template.timezone;
     if (applyTeamUuid) target.teamUuid = template.teamUuid;
+    if (applyRelatedTodoIds) {
+      target.relatedTodoIds = List<String>.from(template.relatedTodoIds);
+    }
     target.status = template.status;
   }
 }

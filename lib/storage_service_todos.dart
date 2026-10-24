@@ -352,8 +352,7 @@ mixin _StorageTodos on _StorageServiceBase {
                   jsonEncode(item.serverVersionData);
           final nonConflictFields = _todoSnapshotFields
               .where(
-                (field) =>
-                    field != 'has_conflict' && field != 'conflict_data',
+                (field) => field != 'has_conflict' && field != 'conflict_data',
               )
               .toList();
           final hasOtherChanges = _hasSubstantialChange(
@@ -1539,6 +1538,27 @@ mixin _StorageTodos on _StorageServiceBase {
         _inflightTodoRequests.remove(requestKey);
       }
     }
+  }
+
+  /// Reads complete todo snapshots for fixed-schedule relationship screens.
+  /// Legacy preference data is migrated through the normal read path first;
+  /// the final database query deliberately remains strict and can throw.
+  Future<List<TodoItem>> getTodosForFixedScheduleRelations(
+    String username,
+  ) async {
+    final migrationKey = 'migration_marker_${username}_v4';
+    final sharedPrefs = await prefs;
+    if (!(sharedPrefs.getBool(migrationKey) ?? false)) {
+      await getTodos(username, includeDeleted: true);
+    }
+
+    final db = await DatabaseHelper.instance.databaseForUser(username);
+    final maps = await DatabaseHelper.instance.getTodoMaps(
+      includeDeleted: true,
+      includeConflictData: true,
+      databaseOverride: db,
+    );
+    return _parseTodoItemsIsolate(maps);
   }
 
   Future<List<TodoItem>> getTodosForWidget(String username) async {

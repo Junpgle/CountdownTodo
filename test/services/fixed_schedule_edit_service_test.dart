@@ -55,6 +55,7 @@ void main() {
       expect(result.affected.single.title, '周会改期');
       expect(result.affected.single.status, FixedScheduleStatus.scheduled);
       expect(result.affected.single.recurrenceSeriesId, 'weekly-root');
+      expect(result.affected.single.relatedTodoIds, ['agenda-second']);
       expect(series[0].status, FixedScheduleStatus.finished);
       expect(series[0].title, '周会');
       expect(series[2].status, FixedScheduleStatus.scheduled);
@@ -119,6 +120,11 @@ void main() {
         expect(result.affected.map((item) => item.recurrenceSeriesId).toSet(), {
           selected.id,
         });
+        expect(result.affected.map((item) => item.relatedTodoIds), [
+          ['agenda-second'],
+          ['agenda-third'],
+          ['agenda-second'],
+        ]);
         expect(
           result.changes.map((item) => item.id),
           isNot(contains(series[0].id)),
@@ -163,6 +169,81 @@ void main() {
           ['agenda-second'],
           ['agenda-third'],
         ]);
+      },
+    );
+
+    test('applying related todos changes only the selected occurrence', () {
+      final selected = series[1];
+      final edited = FixedScheduleItem.fromJson(selected.toJson())
+        ..relatedTodoIds = ['exam-review', 'bring-id'];
+
+      final result = FixedScheduleEditService.buildChanges(
+        scope: FixedScheduleEditScope.occurrence,
+        selectedOccurrence: selected,
+        existingSeries: series,
+        editedTemplate: edited,
+        recurrence: RecurrenceType.weekly,
+        recurrenceEndDate: DateTime(2026, 11, 2),
+        applyRelatedTodoIds: true,
+      );
+
+      expect(result.affected.single.relatedTodoIds, [
+        'exam-review',
+        'bring-id',
+      ]);
+      expect(series[0].relatedTodoIds, ['agenda-root']);
+      expect(series[2].relatedTodoIds, ['agenda-third']);
+    });
+
+    test(
+      'applying related todos to this and future preserves earlier links',
+      () {
+        final selected = series[1];
+        final edited = FixedScheduleItem.fromJson(selected.toJson())
+          ..relatedTodoIds = ['exam-review'];
+
+        final result = FixedScheduleEditService.buildChanges(
+          scope: FixedScheduleEditScope.future,
+          selectedOccurrence: selected,
+          existingSeries: series,
+          editedTemplate: edited,
+          recurrence: RecurrenceType.weekly,
+          recurrenceEndDate: DateTime(2026, 11, 9),
+          applyRelatedTodoIds: true,
+        );
+
+        expect(result.affected, hasLength(3));
+        expect(
+          result.affected.map((item) => item.relatedTodoIds),
+          everyElement(['exam-review']),
+        );
+        expect(series[0].relatedTodoIds, ['agenda-root']);
+      },
+    );
+
+    test(
+      'applying related todos to the whole series replaces every link list',
+      () {
+        final selected = series[1];
+        final edited = FixedScheduleItem.fromJson(selected.toJson())
+          ..date = series.first.date
+          ..relatedTodoIds = ['exam-review', 'bring-id'];
+
+        final result = FixedScheduleEditService.buildChanges(
+          scope: FixedScheduleEditScope.series,
+          selectedOccurrence: selected,
+          existingSeries: series,
+          editedTemplate: edited,
+          recurrence: RecurrenceType.weekly,
+          recurrenceEndDate: DateTime(2026, 11, 2),
+          applyRelatedTodoIds: true,
+        );
+
+        expect(result.affected, hasLength(3));
+        expect(
+          result.affected.map((item) => item.relatedTodoIds),
+          everyElement(['exam-review', 'bring-id']),
+        );
       },
     );
   });

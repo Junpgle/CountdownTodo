@@ -668,6 +668,13 @@ class StorageService {
     offset: offset,
   );
 
+  /// Strict relationship lookup for fixed-schedule details and editors.
+  /// Unlike the general todo list's legacy fallback, database errors propagate
+  /// so a failed lookup is not presented as an empty relationship list.
+  static Future<List<TodoItem>> getTodosForFixedScheduleRelations(
+    String username,
+  ) => _storage.getTodosForFixedScheduleRelations(username);
+
   static Future<List<TodoItem>> getTodosForWidget(String username) =>
       _storage.getTodosForWidget(username);
 

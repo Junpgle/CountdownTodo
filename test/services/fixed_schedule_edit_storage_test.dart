@@ -192,6 +192,45 @@ void main() {
   );
 
   test(
+    'persists association ID edits with each affected fixed-schedule op log',
+    () async {
+      final schedules = seedSeries()
+        ..[0].relatedTodoIds = ['root-task']
+        ..[1].relatedTodoIds = ['next-task'];
+      await StorageService.saveFixedSchedules(
+        username,
+        schedules,
+        sync: false,
+        isSyncSource: true,
+      );
+      final baseline = await loadSeries();
+      final proposed = baseline.map((item) {
+        final copy = FixedScheduleItem.fromJson(item.toJson())
+          ..relatedTodoIds = ['shared-preparation'];
+        copy.markAsChanged();
+        return copy;
+      }).toList();
+
+      final saved = await StorageService.saveFixedSchedulesIfUnchanged(
+        username,
+        baseline: baseline,
+        items: proposed,
+        sync: false,
+      );
+
+      expect(saved, isTrue);
+      expect(
+        (await loadSeries()).map((item) => item.relatedTodoIds),
+        everyElement(['shared-preparation']),
+      );
+      expect((await operationRows()).map((row) => row['target_uuid']), [
+        'series-root',
+        'series-next',
+      ]);
+    },
+  );
+
+  test(
     'does not replace an unrelated row when a new UUID already exists',
     () async {
       await StorageService.saveFixedSchedules(

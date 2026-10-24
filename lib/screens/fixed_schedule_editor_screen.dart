@@ -12,8 +12,10 @@ import '../services/reminder_schedule_service.dart';
 import '../services/schedule_conflict_service.dart';
 import '../storage_service.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/page_transitions.dart';
 import '../utils/semester_week_context.dart';
 import '../utils/time_utils.dart';
+import 'fixed_schedule_related_todo_picker_screen.dart';
 
 class FixedScheduleEditorScreen extends StatefulWidget {
   const FixedScheduleEditorScreen({
@@ -61,6 +63,9 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
   late TimeOfDay _startTime;
   late TimeOfDay _endTime;
   late Set<int> _reminderMinutes;
+  late Set<String> _relatedTodoIds;
+  Set<String> _baselineRelatedTodoIds = {};
+  String? _baselineTeamUuid;
   late bool _cancelled;
   late RecurrenceType _recurrence;
   late DateTime _recurrenceEndDate;
@@ -113,6 +118,15 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
       _effectiveEditScope == FixedScheduleEditScope.occurrence;
 
   bool get _canEditRecurrence => !_isOccurrenceScope;
+
+  bool get _relatedTodoIdsChanged =>
+      _relatedTodoIds.length != _baselineRelatedTodoIds.length ||
+      !_relatedTodoIds.containsAll(_baselineRelatedTodoIds);
+
+  String? _normalizeTeamUuid(String? value) {
+    final normalized = value?.trim();
+    return normalized == null || normalized.isEmpty ? null : normalized;
+  }
 
   String _scopeLabel(FixedScheduleEditScope scope) => switch (scope) {
     FixedScheduleEditScope.occurrence => '仅本次',
@@ -229,6 +243,11 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
     _reminderMinutes = {
       ...?item?.reminderMinutes.where((minutes) => minutes >= 0),
     };
+    _relatedTodoIds = {...?item?.relatedTodoIds};
+    _baselineRelatedTodoIds = Set<String>.from(_relatedTodoIds);
+    _baselineTeamUuid = _normalizeTeamUuid(
+      item?.teamUuid ?? widget.initialTeamUuid,
+    );
     if (item == null && _reminderMinutes.isEmpty) {
       _reminderMinutes.add(15);
     }
@@ -437,6 +456,65 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
           customIntervalDays: interval,
         );
     _selectedTeamUuid = item.teamUuid ?? widget.initialTeamUuid;
+    _relatedTodoIds = item.relatedTodoIds.toSet();
+    _baselineRelatedTodoIds = Set<String>.from(_relatedTodoIds);
+    _baselineTeamUuid = _normalizeTeamUuid(item.teamUuid);
+  }
+
+  Future<void> _chooseRelatedTodos() async {
+    final selected = await Navigator.of(context).push<Set<String>>(
+      PageTransitions.material(
+        builder: (_) => FixedScheduleRelatedTodoPickerScreen(
+          username: widget.username,
+          teamUuid: _selectedTeamUuid,
+          initialSelectedIds: Set<String>.from(_relatedTodoIds),
+        ),
+      ),
+    );
+    if (selected == null || !mounted) return;
+    setState(() => _relatedTodoIds = Set<String>.from(selected));
+  }
+
+  Future<String?> _invalidRelatedTodoMessage() async {
+    if (_relatedTodoIds.isEmpty) return null;
+    final todos = await StorageService.getTodosForFixedScheduleRelations(
+      widget.username,
+    );
+    final todosById = {for (final todo in todos) todo.id: todo};
+    final targetTeamUuid = _normalizeTeamUuid(_selectedTeamUuid);
+    final invalidIds = _relatedTodoIds.where((id) {
+      final todo = todosById[id];
+      return todo == null ||
+          todo.isDeleted ||
+          _normalizeTeamUuid(todo.teamUuid) != targetTeamUuid;
+    });
+    if (invalidIds.isEmpty) return null;
+    return '请在“关联待办”中移除已删除或当前日程不可见的项目后再保存';
+  }
+
+  String _relatedTodoReviewText(
+    FixedScheduleEditScope scope,
+    ({
+      List<FixedScheduleItem> active,
+      List<FixedScheduleItem> changes,
+      FixedScheduleItem refreshItem,
+    })
+    plan,
+    int keptEarlier,
+  ) {
+    final added = _relatedTodoIds.difference(_baselineRelatedTodoIds).length;
+    final removed = _baselineRelatedTodoIds.difference(_relatedTodoIds).length;
+    final changes = [
+      if (added > 0) '新增 $added 项',
+      if (removed > 0) '移除 $removed 项',
+    ].join('，');
+    if (scope == FixedScheduleEditScope.occurrence) {
+      return '关联待办：$changes，仅影响当前场次。';
+    }
+    if (scope == FixedScheduleEditScope.future) {
+      return '关联待办：$changes，应用于本次及以后 ${plan.active.length} 场；此前 $keptEarlier 场不变。';
+    }
+    return '关联待办：$changes，应用于整个系列 ${plan.active.length} 场。';
   }
 
   DateTime _atTime(TimeOfDay time) =>
@@ -501,6 +579,30 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
     }
 
     setState(() => _saving = true);
+    final teamScopeChanged =
+        _normalizeTeamUuid(_selectedTeamUuid) != _baselineTeamUuid;
+    if (_relatedTodoIdsChanged || teamScopeChanged) {
+      try {
+        final invalidMessage = await _invalidRelatedTodoMessage();
+        if (!mounted) return;
+        if (invalidMessage != null) {
+          setState(() => _saving = false);
+          AppSnackBars.showSnackBar(
+            context,
+            SnackBar(content: Text(invalidMessage)),
+          );
+          return;
+        }
+      } catch (_) {
+        if (!mounted) return;
+        setState(() => _saving = false);
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(content: Text('读取关联待办失败，关系改动未保存，请重试')),
+        );
+        return;
+      }
+    }
     final dateText = AppTimeFormats.date(_date);
     final item = existing == null
         ? FixedScheduleItem(title: title, date: dateText)
@@ -524,6 +626,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
           ? customIntervalDays
           : null
       ..teamUuid = _selectedTeamUuid
+      ..relatedTodoIds = _relatedTodoIds.toList()
       ..ownerUserId = existing?.ownerUserId ?? _currentUserId
       ..status = _cancelled
           ? FixedScheduleStatus.cancelled
@@ -566,6 +669,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
               : _recurrenceEndDate,
           customIntervalDays: customIntervalDays ?? 1,
           applyTeamUuid: _selectedTeamUuid != existing.teamUuid,
+          applyRelatedTodoIds: _relatedTodoIdsChanged,
         );
         plan = (
           active: edited.affected,
@@ -641,6 +745,8 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
     final content = <Widget>[
       Text(_confirmedScopeSummary(scope, plan, selected)),
       if (keptEarlier > 0) Text('此前 $keptEarlier 场保持原样。'),
+      if (_relatedTodoIdsChanged)
+        Text(_relatedTodoReviewText(scope, plan, keptEarlier)),
       if (movedOccurrence) const Text('原日期场次将标记为已取消，并在新日期创建一条独立日程。'),
       if (removedCount > 0) Text('按新规则将有 $removedCount 场不再保留，写入逻辑删除。'),
       if (scope == FixedScheduleEditScope.occurrence)
@@ -1165,6 +1271,24 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
                   padding: EdgeInsets.only(top: 6, left: 12, right: 12),
                   child: Text('只有日程创建者可以更改团队归属；其他内容仍可协作编辑。'),
                 ),
+              const SizedBox(height: 12),
+              Card(
+                color: colors.surfaceContainerLow,
+                child: ListTile(
+                  key: const ValueKey('fixed-schedule-related-todos'),
+                  leading: const Icon(Icons.link_rounded),
+                  title: const Text('关联待办'),
+                  subtitle: Text(
+                    _relatedTodoIds.isEmpty
+                        ? '未关联 · 可添加复习、材料准备等待办'
+                        : '已关联 ${_relatedTodoIds.length} 项 · 修改后按${_scopeLabel(_effectiveEditScope)}应用',
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: _saving || _loadingContext
+                      ? null
+                      : _chooseRelatedTodos,
+                ),
+              ),
               const SizedBox(height: 12),
               TextField(
                 controller: _locationController,

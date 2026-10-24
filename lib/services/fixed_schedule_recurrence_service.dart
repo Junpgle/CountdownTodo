@@ -101,6 +101,7 @@ class FixedScheduleRecurrenceService {
     required DateTime recurrenceEndDate,
     int customIntervalDays = 1,
     bool applyTeamUuid = false,
+    bool applyRelatedTodoIds = false,
   }) {
     final templateDate = DateTime.tryParse(template.date)?.toLocal();
     if (templateDate == null) {
@@ -159,6 +160,7 @@ class FixedScheduleRecurrenceService {
         isNew: existing == null,
         preserveTemplateExternalIdentity: index == 0 && item.id == template.id,
         applyTeamUuid: applyTeamUuid,
+        applyRelatedTodoIds: applyRelatedTodoIds,
       );
       if (existing != null) item.markAsChanged();
       if (existing != null) usedExistingIds.add(existing.id);
@@ -203,6 +205,7 @@ class FixedScheduleRecurrenceService {
     required bool isNew,
     required bool preserveTemplateExternalIdentity,
     required bool applyTeamUuid,
+    required bool applyRelatedTodoIds,
   }) {
     item
       ..title = template.title
@@ -238,6 +241,9 @@ class FixedScheduleRecurrenceService {
       }
     } else if (applyTeamUuid) {
       item.teamUuid = template.teamUuid;
+    }
+    if (!isNew && applyRelatedTodoIds) {
+      item.relatedTodoIds = List<String>.from(template.relatedTodoIds);
     }
   }
 
