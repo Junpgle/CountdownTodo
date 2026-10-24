@@ -30,6 +30,11 @@ import '../screens/add_todo_screen.dart';
 import '../screens/fixed_schedule_editor_screen.dart';
 import '../screens/folder_manage_screen.dart';
 import '../screens/todo_plan_screen.dart';
+import '../screens/help/feature_explorer_screen.dart';
+import '../screens/historical_todos_screen.dart';
+import '../screens/ai_assistant_tutorial_screen.dart';
+import '../screens/conflict_inbox_screen.dart';
+import '../screens/math_menu_screen.dart';
 import '../utils/calendar_date_math.dart';
 import '../features/finance/models/finance_models.dart';
 import '../features/finance/screens/finance_transaction_detail_screen.dart';
@@ -267,6 +272,46 @@ class SearchService {
       icon: Icons.more_time,
       type: SearchResultType.log,
       extraData: {'route': '/time_log/manual'},
+    ),
+    SearchResult(
+      id: 'feature_explorer_hub',
+      title: '功能探索百宝箱 / 功能大全 / 隐藏技巧 / 新手教程',
+      subtitle: '一图总览所有功能位置、30秒快速上手与版本更新亮点',
+      icon: Icons.explore_rounded,
+      type: SearchResultType.action,
+      extraData: {'route': '/feature_explorer'},
+    ),
+    SearchResult(
+      id: 'feature_historical_todos',
+      title: '历史待办 / 回收站 / 误删恢复 / 已完成归档',
+      subtitle: '查看已完成的待办或从回收站批量恢复误删任务',
+      icon: Icons.restore_from_trash_rounded,
+      type: SearchResultType.todo,
+      extraData: {'route': '/historical_todos'},
+    ),
+    SearchResult(
+      id: 'feature_ai_tutorial',
+      title: 'AI 助手教程 / 语音速记 / 截图识图 / 取件码识别',
+      subtitle: '了解如何按住 + 号说话速记、从相册分享截图识别待办与账单',
+      icon: Icons.smart_toy_outlined,
+      type: SearchResultType.chat,
+      extraData: {'route': '/ai_tutorial'},
+    ),
+    SearchResult(
+      id: 'feature_conflict_inbox',
+      title: '冲突收件箱 / 同步冲突处理 / 时间重叠检测',
+      subtitle: '查看并解决多设备同步冲突或日程时间重叠',
+      icon: Icons.sync_problem_rounded,
+      type: SearchResultType.action,
+      extraData: {'route': '/conflicts'},
+    ),
+    SearchResult(
+      id: 'feature_math_quiz',
+      title: '数学测验 / 心算口算 / 专注唤醒',
+      subtitle: '开始专注前用快速四则运算激活大脑状态',
+      icon: Icons.functions_rounded,
+      type: SearchResultType.action,
+      extraData: {'route': '/math_quiz'},
     ),
   ];
 
@@ -1475,6 +1520,18 @@ class SearchService {
       ),
     );
 
+    // 6. 探索维度：功能探索百宝箱
+    suggestions.add(
+      SearchResult(
+        id: 'guess_feature_explorer',
+        title: '功能探索百宝箱 · 隐藏技巧与新功能',
+        subtitle: '🧭 不知道某个功能在哪里？点击查看全景功能地图与操作指南',
+        icon: Icons.explore_rounded,
+        type: SearchResultType.recommend,
+        extraData: {'action': 'navigate', 'route': '/feature_explorer'},
+      ),
+    );
+
     return suggestions;
   }
 }
@@ -2055,6 +2112,21 @@ class SearchNavigationHandler {
         break;
       case '/challenge':
         page = const ChallengeCenterScreen();
+        break;
+      case '/feature_explorer':
+        page = FeatureExplorerScreen(username: username);
+        break;
+      case '/historical_todos':
+        page = HistoricalTodosScreen(username: username);
+        break;
+      case '/ai_tutorial':
+        page = const AiAssistantTutorialScreen();
+        break;
+      case '/conflicts':
+        page = ConflictInboxScreen(username: username);
+        break;
+      case '/math_quiz':
+        page = MathMenuScreen(username: username);
         break;
     }
 
