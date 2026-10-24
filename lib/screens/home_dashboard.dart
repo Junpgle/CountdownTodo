@@ -130,11 +130,14 @@ import '../widgets/coach_mark_overlay.dart';
 import '../widgets/home_bottom_navigation_content.dart';
 import '../widgets/app_status_toast.dart';
 import '../services/feature_tip_service.dart';
+import '../services/onboarding_checklist_service.dart';
 import '../services/device_calendar_read_service.dart';
 import '../services/home_layout_service.dart';
 import '../widgets/floating_bottom_bar.dart';
+import '../widgets/onboarding_checklist_card.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 import '../utils/app_dialogs.dart';
+import 'help/feature_explorer_screen.dart';
 
 part 'home_dashboard_ai.dart';
 part 'home_dashboard_contract.dart';

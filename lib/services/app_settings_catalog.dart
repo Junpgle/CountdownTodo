@@ -2092,6 +2092,15 @@ abstract final class AppSettingsCatalog {
       platforms: {},
     ),
     AiSettingsDestination(
+      id: 'feature_explorer',
+      title: '功能探索百宝箱',
+      path: '设置 > 帮助与反馈 > 功能探索百宝箱',
+      description: '功能大全 全景功能地图 隐藏技巧 新手教程 功能在哪里 更新亮点',
+      page: SettingsPageId.help,
+      labels: ['功能探索百宝箱'],
+      platforms: {},
+    ),
+    AiSettingsDestination(
       id: 'feature_guide',
       title: '版本引导',
       path: '设置 > 版本引导',

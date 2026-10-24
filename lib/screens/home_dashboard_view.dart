@@ -712,6 +712,14 @@ mixin _HomeDashboardViewMixin
                                         final sectionKeys = focusPage
                                             ? tab3SectionKeys
                                             : tab1SectionKeys;
+                                        final hasOnboarding = !focusPage;
+                                        final onboardingIndex = hasOnboarding
+                                            ? sectionKeys.length
+                                            : -1;
+                                        final copyrightIndex = hasCopyright
+                                            ? sectionKeys.length +
+                                                  (hasOnboarding ? 1 : 0)
+                                            : -1;
                                         return RepaintBoundary(
                                           key: ValueKey<String>(
                                             focusPage
@@ -733,11 +741,17 @@ mixin _HomeDashboardViewMixin
                                               ),
                                               itemCount:
                                                   sectionKeys.length +
+                                                  (hasOnboarding ? 1 : 0) +
                                                   (hasCopyright ? 1 : 0) +
                                                   1,
                                               findChildIndexCallback: (key) {
                                                 if (key is! ValueKey<String>) {
                                                   return null;
+                                                }
+                                                if (hasOnboarding &&
+                                                    key.value ==
+                                                        'onboarding_checklist') {
+                                                  return onboardingIndex;
                                                 }
                                                 final index = sectionKeys
                                                     .indexOf(key.value);
@@ -750,9 +764,26 @@ mixin _HomeDashboardViewMixin
                                                     sectionKeys[index],
                                                   );
                                                 }
-                                                if (hasCopyright &&
-                                                    index ==
-                                                        sectionKeys.length) {
+                                                if (index == onboardingIndex) {
+                                                  return HomeDashboardScrollSection(
+                                                    key: const ValueKey<String>(
+                                                      'onboarding_checklist',
+                                                    ),
+                                                    child: AppSystemUiRegion(
+                                                      backgroundBrightness:
+                                                          cardBackgroundBrightness,
+                                                      child: AnimatedBuilder(
+                                                        animation:
+                                                            _bannerSectionListenable,
+                                                        builder: (_, _) =>
+                                                            _buildOnboardingChecklistSection(
+                                                              isLight,
+                                                            ),
+                                                      ),
+                                                    ),
+                                                  );
+                                                }
+                                                if (index == copyrightIndex) {
                                                   return _buildWallpaperCopyright(
                                                     isLight,
                                                   );
@@ -973,6 +1004,18 @@ mixin _HomeDashboardViewMixin
                                                           ...rightWidgets,
                                                         ],
                                                       ),
+                                                AppSystemUiRegion(
+                                                  backgroundBrightness:
+                                                      cardBackgroundBrightness,
+                                                  child: AnimatedBuilder(
+                                                    animation:
+                                                        _bannerSectionListenable,
+                                                    builder: (_, _) =>
+                                                        _buildOnboardingChecklistSection(
+                                                          isLight,
+                                                        ),
+                                                  ),
+                                                ),
                                                 if (_wallpaperCopyright !=
                                                         null &&
                                                     _wallpaperCopyright!
@@ -1128,6 +1171,14 @@ mixin _HomeDashboardViewMixin
           checkUpdatesOnOpen: true,
           placeholderIcon: Icons.system_update_rounded,
         ),
+        onFeatureExplorer: (sourceKey) async {
+          await PageTransitions.pushFromRect(
+            context: Navigator.of(context, rootNavigator: true).context,
+            page: FeatureExplorerScreen(username: widget.username),
+            sourceKey: sourceKey,
+            placeholderIcon: Icons.explore_rounded,
+          );
+        },
       ),
       mainScreen: AppSystemUiRegion(
         backgroundBrightness: showWallpaper || isDarkMode
@@ -1818,6 +1869,170 @@ mixin _HomeDashboardViewMixin
 
   bool _isMapEqual(Map a, Map b) {
     return _isDeepValueEqual(a, b);
+  }
+
+  Widget _buildOnboardingChecklistSection(bool isLight) {
+    final courses = _safeListResult<CourseItem>(
+      _dashboardCourseData['courses'],
+    );
+    final hasTodosOrCountdowns =
+        _todos.any((t) => !t.isDeleted) || _countdowns.any((c) => !c.isDeleted);
+    final hasCoursesOrSchedules = courses.any((c) => !c.isDeleted);
+    final hasPlanBlocks = _planBlocks.any((b) => !b.isDeleted);
+
+    return OnboardingChecklistCard(
+      isLight: isLight,
+      hasTodosOrCountdowns: hasTodosOrCountdowns,
+      hasCoursesOrSchedules: hasCoursesOrSchedules,
+      hasPlanBlocks: hasPlanBlocks,
+      onLaunchTask: _handleOnboardingTaskLaunch,
+      onSpotlightTask: _handleOnboardingTaskSpotlight,
+      onOpenFeatureExplorer: () {
+        Navigator.of(context, rootNavigator: true).push(
+          PageTransitions.slideHorizontal(
+            FeatureExplorerScreen(username: widget.username),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _handleOnboardingTaskLaunch(String taskId) async {
+    await OnboardingChecklistService.markTaskCompleted(taskId);
+    if (!mounted) return;
+    switch (taskId) {
+      case OnboardingChecklistService.taskCreateTodoOrCountdown:
+        await _openHomeAddMenu();
+      case OnboardingChecklistService.taskCourseOrSchedule:
+        await PageTransitions.pushFromRect(
+          context: context,
+          page: WeeklyCourseScreen(
+            username: widget.username,
+            onCreateRelatedTodo: _saveTodoLinkedToFixedSchedule,
+          ),
+          sourceKey: _courseCenterKey,
+        );
+      case OnboardingChecklistService.taskPlanBlock:
+        await Navigator.of(context).push(
+          PageTransitions.material(
+            builder: (_) => TodoPlanScreen(username: widget.username),
+          ),
+        );
+        if (mounted) {
+          _scheduleRevision.value++;
+          _loadAllData(
+            domains: const {
+              DataRefreshDomain.todos,
+              DataRefreshDomain.planBlocks,
+              DataRefreshDomain.fixedSchedules,
+            },
+          );
+        }
+      case OnboardingChecklistService.taskPomodoroFocus:
+        await _openHomePomodoro(sourceKey: _homePomodoroActionKey);
+      case OnboardingChecklistService.taskAiOrQuickVoice:
+        await _openAiAssistantFromAppBar();
+      case OnboardingChecklistService.taskExploreFeatureHub:
+        await Navigator.of(context, rootNavigator: true).push(
+          PageTransitions.slideHorizontal(
+            FeatureExplorerScreen(username: widget.username),
+          ),
+        );
+    }
+  }
+
+  Future<void> _handleOnboardingTaskSpotlight(String taskId) async {
+    if (_showCoachMarks || !mounted) return;
+    final CoachMarkStep? step = switch (taskId) {
+      OnboardingChecklistService.taskCreateTodoOrCountdown => CoachMarkStep(
+        targetKey: _homeAddActionKey,
+        title: '新建待办 / 倒计时 / 记账',
+        description: '点这里可快速创建待办事项、重要日倒计时或记一笔账；长按还能直接语音速记！',
+        buttonLabel: '立即打开',
+        finishOnButtonTap: true,
+        onButtonTap: () {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _handleOnboardingTaskLaunch(taskId);
+          });
+        },
+      ),
+      OnboardingChecklistService.taskCourseOrSchedule => CoachMarkStep(
+        targetKey: _courseCenterKey,
+        title: '周视图与课程表/固定日程',
+        description: '在这里查看整周课程表、创建每周重复的固定日程，并支持将待办关联到固定日程。',
+        buttonLabel: '进入周视图',
+        finishOnButtonTap: true,
+        onButtonTap: () {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _handleOnboardingTaskLaunch(taskId);
+          });
+        },
+      ),
+      OnboardingChecklistService.taskPlanBlock => CoachMarkStep(
+        targetKey: _todayPlanChartKey,
+        title: '今日日程与规划中心',
+        description: '点击这里可将待办安排到具体时间块，把“要做什么”变成“什么时候做”。',
+        buttonLabel: '去规划',
+        finishOnButtonTap: true,
+        onButtonTap: () {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _handleOnboardingTaskLaunch(taskId);
+          });
+        },
+      ),
+      OnboardingChecklistService.taskPomodoroFocus => CoachMarkStep(
+        targetKey: _homePomodoroActionKey,
+        title: '番茄钟专注工作台',
+        description: '点击这里开启番茄钟倒计时或正计时专注，支持绑定待办并跨设备实时同步专注状态。',
+        buttonLabel: '去专注',
+        finishOnButtonTap: true,
+        onButtonTap: () {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _handleOnboardingTaskLaunch(taskId);
+          });
+        },
+      ),
+      OnboardingChecklistService.taskAiOrQuickVoice => CoachMarkStep(
+        targetKey: _aiButtonKey,
+        title: 'AI 智能助手',
+        description: '点击顶部机器人图标进入 AI 对话，或长按底部「+」按钮语音速记，一句话搞定排期与记账。',
+        buttonLabel: '打开 AI 助手',
+        finishOnButtonTap: true,
+        onButtonTap: () {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _handleOnboardingTaskLaunch(taskId);
+          });
+        },
+      ),
+      OnboardingChecklistService.taskExploreFeatureHub => CoachMarkStep(
+        targetKey: _menuKey,
+        title: '侧边栏与功能百宝箱',
+        description: '点击左上角打开侧边栏，可随时进入「功能百宝箱」、记账、习惯中心、挑战中心、私密日记与设置中心。',
+        buttonLabel: '打开百宝箱',
+        finishOnButtonTap: true,
+        onButtonTap: () {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _handleOnboardingTaskLaunch(taskId);
+          });
+        },
+      ),
+      _ => null,
+    };
+    if (step == null || step.targetKey.currentContext == null) {
+      await _handleOnboardingTaskLaunch(taskId);
+      return;
+    }
+    _showCoachMarks = true;
+    try {
+      await CoachMarkOverlay.show(
+        context: context,
+        steps: [step],
+        onFinish: () => _showCoachMarks = false,
+        onSkip: () => _showCoachMarks = false,
+      );
+    } finally {
+      _showCoachMarks = false;
+    }
   }
 
   Widget _buildDashboardSkeleton(bool isLight, {double topPadding = 16}) {

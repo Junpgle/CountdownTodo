@@ -10,6 +10,7 @@ import '../screens/band_sync_screen.dart';
 import '../screens/course_calendar_adjustment_screen.dart';
 import '../course_import/widgets/course_adaptation_screen.dart';
 import '../screens/feature_guide_screen.dart';
+import '../screens/help/feature_explorer_screen.dart';
 import '../screens/help/help_center_screen.dart';
 import '../screens/home_settings_screen.dart';
 import '../screens/pomodoro_screen.dart';
@@ -141,7 +142,10 @@ abstract final class AiSettingsNavigation {
       SettingsPageId.platform => const PlatformSpecificSettingsPage(),
       SettingsPageId.about => const AboutScreen(),
       SettingsPageId.deviceVersions => const DeviceVersionDetailPage(),
-      SettingsPageId.help => const HelpCenterScreen(),
+      SettingsPageId.help =>
+        id == 'feature_explorer'
+            ? FeatureExplorerScreen(username: username)
+            : const HelpCenterScreen(),
       SettingsPageId.guide => FeatureGuideScreen(
         mode: FeatureGuideMode.guide,
         loggedInUser: username,
@@ -174,6 +178,7 @@ abstract final class AiSettingsNavigation {
     // These destinations already reveal an exact control, or open their own
     // editor/dialog. Every other labelled control uses the shared locator.
     if (destination.labels.isEmpty ||
+        id == 'feature_explorer' ||
         id == 'liquid_glass' ||
         id == 'liquid_glass_transparency' ||
         id == 'course_calendar_adjustment' ||

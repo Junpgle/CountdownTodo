@@ -42,6 +42,11 @@ import 'animation_settings_page.dart';
 import '../services/device_calendar_read_service.dart';
 import 'settings/device_calendar_read_page.dart';
 import '../utils/app_dialogs.dart';
+import 'ai_assistant_tutorial_screen.dart';
+import 'help/feature_explorer_screen.dart';
+import 'historical_todos_screen.dart';
+import 'pomodoro_screen.dart';
+import 'todo_plan_screen.dart';
 
 /// 控制功能页的入口展示范围。
 enum FeatureGuideMode { automatic, changelog, guide }
@@ -107,151 +112,6 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   String? _changelogNotice;
   final Set<String> _expandedVersions = {};
 
-  // 🚀 最近更新功能数据 —— 每次发版只改这里
-  List<_RecentFeature> get _recentFeatures {
-    final scheme = Theme.of(context).colorScheme;
-    if (AppPlatform.isWeb) {
-      return [
-        _RecentFeature(
-          Icons.account_balance_wallet_outlined,
-          scheme.tertiary,
-          '记账',
-          'AI草案·文本·图片双识别·预算·本地同步',
-          destinationBuilder: () =>
-              FinanceHomeScreen(username: widget.loggedInUser ?? ''),
-        ),
-        _RecentFeature(
-          Icons.blur_on_rounded,
-          scheme.primary,
-          'Liquid Glass 视觉升级',
-          '设置->动画设置->Liquid Glass',
-          destinationBuilder: () => const AnimationSettingsPage(),
-        ),
-        _RecentFeature(
-          Icons.animation_rounded,
-          scheme.secondary,
-          '动效性能与速度预设',
-          '设置->动画设置->性能预设 / 动画速度',
-          destinationBuilder: () => const AnimationSettingsPage(),
-        ),
-        _RecentFeature(
-          Icons.auto_awesome_rounded,
-          scheme.primary,
-          '30天找到全新自我',
-          '设置->帮助与反馈->30天找到全新自我',
-          destinationBuilder: () => const ChallengeCenterScreen(),
-        ),
-        _RecentFeature(
-          Icons.track_changes_rounded,
-          scheme.tertiary,
-          '习惯中心',
-          '打卡·历史·统计·归档·同步',
-          destinationBuilder: () =>
-              HabitCenterScreen(username: widget.loggedInUser ?? ''),
-        ),
-        _RecentFeature(
-          Icons.install_desktop_rounded,
-          scheme.primary,
-          'PWA 网页应用',
-          '浏览器->安装应用',
-        ),
-        _RecentFeature(
-          Icons.view_week_rounded,
-          scheme.secondary,
-          '周视图午休折叠',
-          '课程->周视图',
-          destinationBuilder: () =>
-              WeeklyCourseScreen(username: widget.loggedInUser ?? ''),
-        ),
-        _RecentFeature(
-          Icons.timeline_rounded,
-          scheme.tertiary,
-          '个人时间轴报表',
-          '专注->个人时间轴',
-          destinationBuilder: () =>
-              PersonalTimelineScreen(username: widget.loggedInUser ?? ''),
-        ),
-        _RecentFeature(
-          Icons.search_rounded,
-          Colors.teal,
-          '全局搜索',
-          '首页->右上角搜索',
-          destinationBuilder: () => const GlobalSearchOverlay(),
-        ),
-      ];
-    }
-
-    return [
-      _RecentFeature(
-        Icons.account_balance_wallet_outlined,
-        scheme.tertiary,
-        '记账',
-        'AI草案·文本·图片双识别·预算·本地同步',
-        destinationBuilder: () =>
-            FinanceHomeScreen(username: widget.loggedInUser ?? ''),
-      ),
-      _RecentFeature(
-        Icons.blur_on_rounded,
-        scheme.primary,
-        'Liquid Glass 视觉升级',
-        '设置->动画设置->Liquid Glass',
-        destinationBuilder: () => const AnimationSettingsPage(),
-      ),
-      _RecentFeature(
-        Icons.animation_rounded,
-        scheme.secondary,
-        '动效性能与速度预设',
-        '设置->动画设置->性能预设 / 动画速度',
-        destinationBuilder: () => const AnimationSettingsPage(),
-      ),
-      _RecentFeature(
-        Icons.auto_awesome_rounded,
-        scheme.primary,
-        '30天找到全新自我',
-        '设置->帮助与反馈->30天找到全新自我',
-        destinationBuilder: () => const ChallengeCenterScreen(),
-      ),
-      _RecentFeature(
-        Icons.track_changes_rounded,
-        scheme.tertiary,
-        '习惯中心',
-        '打卡·历史·统计·归档·同步',
-        destinationBuilder: () =>
-            HabitCenterScreen(username: widget.loggedInUser ?? ''),
-      ),
-      _RecentFeature(
-        Icons.view_week_rounded,
-        scheme.primary,
-        '周视图午休折叠',
-        '课程->周视图',
-        destinationBuilder: () =>
-            WeeklyCourseScreen(username: widget.loggedInUser ?? ''),
-      ),
-      _RecentFeature(
-        Icons.format_paint_rounded,
-        Colors.indigo,
-        '全局动态主题色彩',
-        '设置->偏好设置',
-        destinationBuilder: () =>
-            const PreferenceSettingsPage(initialTarget: 'theme_color'),
-      ),
-      _RecentFeature(
-        Icons.timeline_rounded,
-        Colors.purple,
-        '个人时间轴报表',
-        '专注->个人时间轴',
-        destinationBuilder: () =>
-            PersonalTimelineScreen(username: widget.loggedInUser ?? ''),
-      ),
-      _RecentFeature(
-        Icons.search_rounded,
-        Colors.teal,
-        '全局搜索',
-        '首页->右上角搜索',
-        destinationBuilder: () => const GlobalSearchOverlay(),
-      ),
-    ];
-  }
 
   // 权限状态
   PermissionStatus? _notificationStatus;
@@ -1206,8 +1066,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          // 🚀 最近更新功能
-          _buildRecentFeaturesSection(scheme),
+          // 🧭 功能探索百宝箱入口
+          _buildFeatureExplorerBanner(scheme),
           const SizedBox(height: 24),
           // 历史版本
           if (history.isNotEmpty) ...[
@@ -1237,6 +1097,81 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     );
   }
 
+  ({String label, Widget Function() builder})? _resolveChangelogItemDestination(
+    String item,
+  ) {
+    if (_isFirstLaunch) return null;
+    final username = widget.loggedInUser ?? '';
+    if (item.contains('固定日程') || item.contains('课表') || item.contains('周视图')) {
+      return (
+        label: '去周视图',
+        builder: () => WeeklyCourseScreen(username: username),
+      );
+    }
+    if (item.contains('记账') ||
+        item.contains('账单') ||
+        item.contains('结余') ||
+        item.contains('财务')) {
+      return (
+        label: '去记账',
+        builder: () => FinanceHomeScreen(username: username),
+      );
+    }
+    if (item.contains('习惯')) {
+      return (
+        label: '去习惯',
+        builder: () => HabitCenterScreen(username: username),
+      );
+    }
+    if (item.contains('规划') || item.contains('时间块')) {
+      return (label: '去规划', builder: () => TodoPlanScreen(username: username));
+    }
+    if (item.contains('回收站') || item.contains('历史待办')) {
+      return (
+        label: '去回收站',
+        builder: () => HistoricalTodosScreen(username: username),
+      );
+    }
+    if (item.contains('番茄') || item.contains('专注会话')) {
+      return (label: '去专注', builder: () => PomodoroScreen(username: username));
+    }
+    if (item.contains('AI') || item.contains('智能识别')) {
+      return (label: '看教程', builder: () => const AiAssistantTutorialScreen());
+    }
+    if (item.contains('挑战')) {
+      return (
+        label: '去挑战',
+        builder: () => const ChallengeCenterScreen(),
+      );
+    }
+    if (item.contains('时间轴') || item.contains('个人报告')) {
+      return (
+        label: '看报告',
+        builder: () => PersonalTimelineScreen(username: username),
+      );
+    }
+    if (item.contains('搜索')) {
+      return (
+        label: '去搜索',
+        builder: () => const GlobalSearchOverlay(),
+      );
+    }
+    if (item.contains('动画') || item.contains('液态玻璃') || item.contains('Liquid Glass')) {
+      return (
+        label: '动效设置',
+        builder: () => const AnimationSettingsPage(),
+      );
+    }
+    if (item.contains('主题') || item.contains('色彩') || item.contains('外观')) {
+      return (
+        label: '外观设置',
+        builder: () =>
+            const PreferenceSettingsPage(initialTarget: 'theme_color'),
+      );
+    }
+    return null;
+  }
+
   Widget _buildBulletItem(
     String item,
     ColorScheme scheme, {
@@ -1255,6 +1190,10 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     } else if (item.startsWith('⚠️')) {
       dotColor = Colors.red;
     }
+
+    final destination = item.startsWith('【新增】') || item.startsWith('【优化】')
+        ? _resolveChangelogItemDestination(item)
+        : null;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 7),
@@ -1283,6 +1222,34 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
               ),
             ),
           ),
+          if (destination != null) ...[
+            const SizedBox(width: 8),
+            InkWell(
+              borderRadius: BorderRadius.circular(999),
+              onTap: () {
+                Navigator.of(context, rootNavigator: true).push(
+                  PageTransitions.material(
+                    builder: (_) => destination.builder(),
+                  ),
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: scheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '${destination.label} →',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: scheme.primary,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1395,87 +1362,49 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     );
   }
 
-  Widget _buildRecentFeaturesSection(ColorScheme scheme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(
-              Icons.auto_awesome_rounded,
-              size: 16,
-              color: scheme.onSurface.withValues(alpha: 0.45),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              '最近更新功能',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: scheme.onSurface.withValues(alpha: 0.45),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Column(
-          children: _recentFeatures
-              .map(
-                (feature) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _buildRecentFeatureCard(feature, scheme),
-                ),
-              )
-              .toList(),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRecentFeatureCard(_RecentFeature feature, ColorScheme scheme) {
-    final canNavigate = !_isFirstLaunch && feature.destinationBuilder != null;
+  Widget _buildFeatureExplorerBanner(ColorScheme scheme) {
+    if (_isFirstLaunch) return const SizedBox.shrink();
     return InkWell(
+      key: const ValueKey<String>('changelog-open-feature-explorer-card'),
+      borderRadius: BorderRadius.circular(16),
       onTap: () {
-        if (canNavigate) {
-          // 更新后查看：直接跳转
-          Navigator.of(context, rootNavigator: true).push(
-            PageTransitions.material(
-              builder: (_) => feature.destinationBuilder!(),
-            ),
-          );
-        } else {
-          // 首次使用：仅提示位置
-          AppSnackBars.showSnackBar(
-            context,
-            SnackBar(
-              content: Text('📍 ${feature.title}：${feature.subtitle}'),
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
+        Navigator.of(context, rootNavigator: true).push(
+          PageTransitions.slideHorizontal(
+            FeatureExplorerScreen(username: widget.loggedInUser),
+          ),
+        );
       },
-      borderRadius: BorderRadius.circular(14),
       child: OptionalLiquidGlassCard(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        borderRadius: 14,
+        padding: const EdgeInsets.all(14),
+        borderRadius: 16,
         highContrast: true,
-        tint: feature.color.withValues(alpha: 0.16),
+        tint: scheme.primary.withValues(alpha: 0.18),
         fallbackDecoration: BoxDecoration(
-          color: feature.color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: feature.color.withValues(alpha: 0.2)),
+          gradient: LinearGradient(
+            colors: [
+              scheme.primaryContainer.withValues(alpha: 0.7),
+              scheme.tertiaryContainer.withValues(alpha: 0.5),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: scheme.primary.withValues(alpha: 0.35),
+          ),
         ),
         child: Row(
           children: [
             Container(
               width: 44,
               height: 44,
-              alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: feature.color.withValues(alpha: 0.12),
+                color: scheme.primary,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(feature.icon, size: 25, color: feature.color),
+              child: Icon(
+                Icons.explore_rounded,
+                color: scheme.onPrimary,
+                size: 24,
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -1483,37 +1412,30 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    feature.title,
+                    '打开「功能探索百宝箱」',
                     style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: scheme.onSurface.withValues(alpha: 0.85),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: scheme.onSurface,
                     ),
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    feature.subtitle,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                    '不知道软件有哪些功能、入口藏在哪里？一图总览全部模块与隐藏神技',
                     style: TextStyle(
                       fontSize: 12,
-                      color: scheme.onSurface.withValues(alpha: 0.5),
+                      color: scheme.onSurfaceVariant,
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 10),
-            Text(
-              '立即体验',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: feature.color,
-              ),
+            const SizedBox(width: 8),
+            Icon(
+              Icons.arrow_forward_ios_rounded,
+              size: 16,
+              color: scheme.primary,
             ),
-            const SizedBox(width: 4),
-            Icon(Icons.chevron_right_rounded, size: 20, color: feature.color),
           ],
         ),
       ),
@@ -3021,20 +2943,6 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   }
 }
 
-class _RecentFeature {
-  final IconData icon;
-  final Color color;
-  final String title;
-  final String subtitle;
-  final Widget Function()? destinationBuilder; // null = 不支持跳转（首次引导）
-  const _RecentFeature(
-    this.icon,
-    this.color,
-    this.title,
-    this.subtitle, {
-    this.destinationBuilder,
-  });
-}
 
 class AssetVideoPlayer extends StatefulWidget {
   final String assetPath;
