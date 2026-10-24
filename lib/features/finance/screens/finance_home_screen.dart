@@ -21,6 +21,7 @@ import 'finance_automation_screen.dart';
 import 'ai_usage_cost_screen.dart';
 import 'finance_budget_screen.dart';
 import 'finance_entry_screen.dart';
+import 'finance_future_commitments_screen.dart';
 import 'finance_loan_screen.dart';
 import 'finance_settings_screen.dart';
 import 'finance_text_recognition_screen.dart';
@@ -743,6 +744,15 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     if (mounted) await _load();
   }
 
+  Future<void> _openFutureCommitments() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => FinanceFutureCommitmentsScreen(clock: widget.clock),
+      ),
+    );
+    if (mounted) await _load();
+  }
+
   Future<void> _openAutomation() async {
     await Navigator.of(
       context,
@@ -1228,6 +1238,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
               if (value == 'text') _openTextRecognition();
               if (value == 'automation') _openAutomation();
               if (value == 'loans') _openLoans();
+              if (value == 'future_commitments') _openFutureCommitments();
               if (value == 'ai_cost') {
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const AiUsageCostScreen()),
@@ -1271,6 +1282,14 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.account_balance_outlined),
                   title: Text('贷款'),
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'future_commitments',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.event_repeat_outlined),
+                  title: Text('未来固定收支'),
                 ),
               ),
               const PopupMenuItem(

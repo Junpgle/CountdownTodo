@@ -67,6 +67,12 @@ abstract final class FinanceRepository {
     return FinanceStorage.getTransaction(uuid);
   }
 
+  static Future<Set<String>> getExistingTransactionUuids(
+    Iterable<String> uuids,
+  ) {
+    return FinanceStorage.getExistingTransactionUuids(uuids);
+  }
+
   static Future<List<FinanceTransaction>> getRefundsForTransaction(
     String transactionUuid, {
     bool includeDeleted = false,

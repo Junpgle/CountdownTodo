@@ -2219,6 +2219,13 @@ class FinanceBudget {
 /// 自动账单；规则暂停、删除或切换为手动记账时也会推进进度，避免重新启用后
 /// 补出暂停期间的账单。
 class FinanceRecurringRule {
+  static String transactionUuidForPeriod(String ruleUuid, String periodKey) {
+    return const Uuid().v5(
+      '6ba7b810-9dad-11d1-80b4-00c04fd430c8',
+      'countdown-todo/finance-recurring/v1/$ruleUuid/$periodKey',
+    );
+  }
+
   String uuid;
   String name;
   FinanceTransactionType type;

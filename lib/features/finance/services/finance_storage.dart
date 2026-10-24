@@ -264,6 +264,37 @@ abstract final class FinanceStorage {
     return FinanceTransaction.fromMap(rows.first);
   }
 
+  /// Reads only the requested transaction identities, including trash rows, so
+  /// generated recurring bills are not shown twice in future commitments.
+  static Future<Set<String>> getExistingTransactionUuids(
+    Iterable<String> uuids,
+  ) async {
+    final values = uuids
+        .map((uuid) => uuid.trim())
+        .where((uuid) => uuid.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    if (values.isEmpty) return const <String>{};
+
+    await ensureReady();
+    final db = await _database;
+    const batchSize = 400;
+    final existing = <String>{};
+    for (var offset = 0; offset < values.length; offset += batchSize) {
+      final nextOffset = offset + batchSize;
+      final end = nextOffset < values.length ? nextOffset : values.length;
+      final batch = values.sublist(offset, end);
+      final rows = await db.query(
+        'finance_transactions',
+        columns: ['uuid'],
+        where: 'uuid IN (${List.filled(batch.length, '?').join(',')})',
+        whereArgs: batch,
+      );
+      existing.addAll(rows.map((row) => row['uuid'] as String));
+    }
+    return existing;
+  }
+
   static Future<List<FinanceTransaction>> getRefundsForTransaction(
     String transactionUuid, {
     bool includeDeleted = false,
@@ -2386,10 +2417,7 @@ abstract final class FinanceStorage {
   }
 
   static String _recurringTransactionUuid(String ruleUuid, String periodKey) {
-    return const Uuid().v5(
-      '6ba7b810-9dad-11d1-80b4-00c04fd430c8',
-      'countdown-todo/finance-recurring/v1/$ruleUuid/$periodKey',
-    );
+    return FinanceRecurringRule.transactionUuidForPeriod(ruleUuid, periodKey);
   }
 
   static String? _latestGeneratedPeriod(String? current, String? incoming) {

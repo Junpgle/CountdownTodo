@@ -7,6 +7,7 @@ import 'package:countdown_todo/features/finance/screens/finance_budget_entry_scr
 import 'package:countdown_todo/features/finance/screens/finance_budget_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_category_detail_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_entry_screen.dart';
+import 'package:countdown_todo/features/finance/screens/finance_future_commitments_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_home_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_loan_entry_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_loan_screen.dart';
@@ -2853,6 +2854,24 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('导出本月 CSV'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('记账首页更多操作可打开未来固定收支', (tester) async {
+    await _seed(tester);
+    await _pump(tester, const FinanceHomeScreen(username: 'default'));
+
+    await _tap(tester, find.byTooltip('更多操作'));
+    await _tap(tester, find.text('未来固定收支'));
+
+    expect(
+      find.byType(FinanceFutureCommitmentsScreen, skipOffstage: false),
+      findsOneWidget,
+    );
+    await _waitFor(
+      tester,
+      () => find.text('未来3个月合计', skipOffstage: false).evaluate().isNotEmpty,
+    );
     expect(tester.takeException(), isNull);
   });
 
