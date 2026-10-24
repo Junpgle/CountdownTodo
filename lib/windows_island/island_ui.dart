@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
 import 'dart:async';
-import 'dart:ui';
 
 import 'island_config.dart';
 import 'island_state_stack.dart';
