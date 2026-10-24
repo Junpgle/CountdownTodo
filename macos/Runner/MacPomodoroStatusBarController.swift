@@ -229,6 +229,7 @@ private final class MacNowPlayingMonitor {
     private var registerNotifications: RegisterFunction?
     private var sendCommandFunction: SendCommandFunction?
     private var observers: [NSObjectProtocol] = []
+    private var didRegisterMediaRemoteNotifications = false
     private var onChange: ((MacNowPlayingSnapshot) -> Void)?
     private var currentSnapshot = MacNowPlayingSnapshot()
     private var optimisticPlaybackState: (
@@ -236,10 +237,12 @@ private final class MacNowPlayingMonitor {
         isPlaying: Bool,
         expiresAt: Date
     )?
+    private let lifecycleLock = NSLock()
     private var started = false
     private var refreshSequence = 0
     private var lastRefreshStartedAt: TimeInterval = 0
     private var pollingTimer: Timer?
+    private var activeURLTasks: [UUID: URLSessionDataTask] = [:]
     #if DEBUG
     private var lastLoggedFallbackTitle = ""
     private var didLogSystemPlaybackPosition = false
@@ -251,19 +254,24 @@ private final class MacNowPlayingMonitor {
     )
     private let artworkCache = NSCache<NSURL, NSImage>()
     private var lyricCache: [String: [MacLyricLine]] = [:]
-    private var lyricRequestsInFlight: Set<String> = []
+    private var lyricRequestsInFlight: [String: Int] = [:]
     private var lyricRetryAfter: [String: Date] = [:]
 
     func start(onChange: @escaping (MacNowPlayingSnapshot) -> Void) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in
+                self?.start(onChange: onChange)
+            }
+            return
+        }
         self.onChange = onChange
-        guard !started else {
+        guard activateMonitoring() else {
             refresh()
             return
         }
-        started = true
 
         let path = "/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote"
-        if let handle = dlopen(path, RTLD_NOW) {
+        if frameworkHandle == nil, let handle = dlopen(path, RTLD_NOW) {
             frameworkHandle = handle
             getInfo = loadSymbol("MRMediaRemoteGetNowPlayingInfo", from: handle)
             getPlaying = loadSymbol(
@@ -278,7 +286,10 @@ private final class MacNowPlayingMonitor {
         }
 
         if getInfo != nil {
-            registerNotifications?(.main)
+            if !didRegisterMediaRemoteNotifications {
+                registerNotifications?(.main)
+                didRegisterMediaRemoteNotifications = true
+            }
             let names = [
                 "kMRMediaRemoteNowPlayingInfoDidChangeNotification",
                 "kMRMediaRemoteNowPlayingApplicationDidChangeNotification",
@@ -302,7 +313,103 @@ private final class MacNowPlayingMonitor {
         }
         pollingTimer = timer
         RunLoop.main.add(timer, forMode: .common)
-        refresh()
+        refresh(force: true)
+    }
+
+    func stop() {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in self?.stop() }
+            return
+        }
+        guard deactivateMonitoring() else { return }
+
+        pollingTimer?.invalidate()
+        pollingTimer = nil
+        observers.forEach(NotificationCenter.default.removeObserver)
+        observers.removeAll()
+        onChange = nil
+        currentSnapshot = MacNowPlayingSnapshot()
+        optimisticPlaybackState = nil
+        lyricCache.removeAll()
+        lyricRetryAfter.removeAll()
+        lyricRequestsInFlight.removeAll()
+        artworkCache.removeAllObjects()
+
+        let requests = Array(activeURLTasks.values)
+        activeURLTasks.removeAll()
+        requests.forEach { $0.cancel() }
+    }
+
+    private func activateMonitoring() -> Bool {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+        guard !started else { return false }
+        started = true
+        refreshSequence += 1
+        return true
+    }
+
+    private func deactivateMonitoring() -> Bool {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+        guard started else { return false }
+        started = false
+        refreshSequence += 1
+        return true
+    }
+
+    private func nextRefreshSequence() -> Int? {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+        guard started else { return nil }
+        refreshSequence += 1
+        return refreshSequence
+    }
+
+    private func invalidateCurrentRefreshes() {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+        guard started else { return }
+        refreshSequence += 1
+    }
+
+    private func isMonitoring() -> Bool {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+        return started
+    }
+
+    private func isCurrent(sequence: Int) -> Bool {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+        return started && refreshSequence == sequence
+    }
+
+    private func startURLTask(_ task: URLSessionDataTask, id: UUID) {
+        assert(Thread.isMainThread)
+        guard isMonitoring() else {
+            task.cancel()
+            return
+        }
+        activeURLTasks[id] = task
+        task.resume()
+    }
+
+    private func finishURLTask(id: UUID) {
+        let removeTask: () -> Void = { [weak self] in
+            _ = self?.activeURLTasks.removeValue(forKey: id)
+        }
+        if Thread.isMainThread {
+            removeTask()
+        } else {
+            DispatchQueue.main.async(execute: removeTask)
+        }
+    }
+
+    private func finishLyricRequest(_ key: String, sequence: Int) {
+        assert(Thread.isMainThread)
+        guard lyricRequestsInFlight[key] == sequence else { return }
+        lyricRequestsInFlight.removeValue(forKey: key)
     }
 
     func refresh(force: Bool = false) {
@@ -310,17 +417,17 @@ private final class MacNowPlayingMonitor {
             DispatchQueue.main.async { [weak self] in self?.refresh() }
             return
         }
+        guard isMonitoring() else { return }
         let now = Date().timeIntervalSinceReferenceDate
         guard force || now - lastRefreshStartedAt >= 0.5 else { return }
         lastRefreshStartedAt = now
-        refreshSequence += 1
-        let sequence = refreshSequence
+        guard let sequence = nextRefreshSequence() else { return }
         guard let getInfo = getInfo else {
             refreshSystemPlaybackOrNetease(sequence: sequence)
             return
         }
         let callback: InfoCallback = { [weak self] rawInfo in
-            guard let self = self else { return }
+            guard let self = self, self.isCurrent(sequence: sequence) else { return }
             let info = (rawInfo as NSDictionary?) as? [String: Any] ?? [:]
             let title = self.stringValue(info["kMRMediaRemoteNowPlayingInfoTitle"])
             guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -338,23 +445,31 @@ private final class MacNowPlayingMonitor {
             let artwork = artworkData.flatMap(NSImage.init(data:))
 
             let deliver: (Bool) -> Void = { [weak self] isPlaying in
-                let snapshot = MacNowPlayingSnapshot(
-                    trackIdentifier: "\(title)\u{001F}\(artist)",
-                    title: title,
-                    artist: artist,
-                    album: album,
-                    artwork: artwork,
-                    duration: max(0, duration),
-                    elapsedTime: max(0, elapsed),
-                    playbackRate: rate,
-                    updatedAt: timestamp,
-                    isPlaying: isPlaying
-                )
-                self?.publish(snapshot, sequence: sequence)
-                self?.loadAppleMusicLyricsIfNeeded(
-                    for: snapshot,
-                    sequence: sequence
-                )
+                let applySnapshot = { [weak self] in
+                    guard let self = self, self.isCurrent(sequence: sequence) else { return }
+                    let snapshot = MacNowPlayingSnapshot(
+                        trackIdentifier: "\(title)\u{001F}\(artist)",
+                        title: title,
+                        artist: artist,
+                        album: album,
+                        artwork: artwork,
+                        duration: max(0, duration),
+                        elapsedTime: max(0, elapsed),
+                        playbackRate: rate,
+                        updatedAt: timestamp,
+                        isPlaying: isPlaying
+                    )
+                    self.publish(snapshot, sequence: sequence)
+                    self.loadAppleMusicLyricsIfNeeded(
+                        for: snapshot,
+                        sequence: sequence
+                    )
+                }
+                if Thread.isMainThread {
+                    applySnapshot()
+                } else {
+                    DispatchQueue.main.async(execute: applySnapshot)
+                }
             }
 
             if let getPlaying = self.getPlaying {
@@ -373,8 +488,9 @@ private final class MacNowPlayingMonitor {
     /// 再尝试 Apple Music 的公开 AppleScript 接口，最后才进入网易云兼容层。
     private func refreshSystemPlaybackOrNetease(sequence: Int) {
         fallbackQueue.async { [weak self] in
-            guard let self = self else { return }
+            guard let self = self, self.isCurrent(sequence: sequence) else { return }
             let systemPlayback = self.readSystemPlaybackState()
+            guard self.isCurrent(sequence: sequence) else { return }
             if let systemPlayback = systemPlayback {
                 if systemPlayback.bundleIdentifier != "com.netease.163music" {
                     self.publishSystemPlaybackState(systemPlayback, sequence: sequence)
@@ -387,7 +503,9 @@ private final class MacNowPlayingMonitor {
                 return
             }
 
-            if let appleMusicPlayback = self.readAppleMusicState() {
+            let appleMusicPlayback = self.readAppleMusicState()
+            guard self.isCurrent(sequence: sequence) else { return }
+            if let appleMusicPlayback = appleMusicPlayback {
                 self.publishSystemPlaybackState(
                     appleMusicPlayback,
                     sequence: sequence
@@ -405,6 +523,16 @@ private final class MacNowPlayingMonitor {
         sequence: Int,
         systemPlayback: SystemPlaybackState? = nil
     ) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in
+                self?.refreshNeteaseFallback(
+                    sequence: sequence,
+                    systemPlayback: systemPlayback
+                )
+            }
+            return
+        }
+        guard isCurrent(sequence: sequence) else { return }
         guard let app = NSRunningApplication.runningApplications(
             withBundleIdentifier: "com.netease.163music"
         ).first(where: { !$0.isTerminated }) else {
@@ -417,8 +545,9 @@ private final class MacNowPlayingMonitor {
         let providedSystemPlayback = systemPlayback
 
         fallbackQueue.async { [weak self] in
-            guard let self = self else { return }
+            guard let self = self, self.isCurrent(sequence: sequence) else { return }
             let systemPlayback = providedSystemPlayback ?? self.readSystemPlaybackState()
+            guard self.isCurrent(sequence: sequence) else { return }
             if let systemPlayback = systemPlayback,
                systemPlayback.bundleIdentifier != "com.netease.163music" {
                 self.publishSystemPlaybackState(systemPlayback, sequence: sequence)
@@ -428,6 +557,7 @@ private final class MacNowPlayingMonitor {
             let record = systemPlayback.flatMap {
                 self.readNeteaseTrack(matching: $0)
             } ?? self.readLatestNeteaseTrack()
+            guard self.isCurrent(sequence: sequence) else { return }
             guard let record = record else {
                 if let systemPlayback = systemPlayback {
                     self.publishSystemPlaybackState(systemPlayback, sequence: sequence)
@@ -537,7 +667,7 @@ private final class MacNowPlayingMonitor {
             let artworkURL = self.neteaseArtworkURL(for: record.track)
 
             DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
+                guard let self = self, self.isCurrent(sequence: sequence) else { return }
                 if let artworkURL = artworkURL,
                    let cached = self.artworkCache.object(forKey: artworkURL as NSURL) {
                     snapshot.artwork = cached
@@ -714,7 +844,7 @@ private final class MacNowPlayingMonitor {
             isPlaying: state.playbackRate > 0
         )
         DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
+            guard let self = self, self.isCurrent(sequence: sequence) else { return }
             var snapshotWithLyrics = snapshot
             if state.bundleIdentifier == "com.apple.Music" {
                 let cacheKey = self.appleMusicLyricCacheKey(for: snapshot)
@@ -963,17 +1093,23 @@ private final class MacNowPlayingMonitor {
         for snapshot: MacNowPlayingSnapshot,
         sequence: Int
     ) {
-        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-            guard let self = self,
+        guard isCurrent(sequence: sequence) else { return }
+        let taskID = UUID()
+        let task = URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            guard let self = self else { return }
+            self.finishURLTask(id: taskID)
+            guard self.isMonitoring(),
                   let data = data,
                   let artwork = NSImage(data: data) else { return }
             self.artworkCache.setObject(artwork, forKey: url as NSURL)
             var snapshotWithArtwork = snapshot
             snapshotWithArtwork.artwork = artwork
             DispatchQueue.main.async { [weak self] in
-                self?.publish(snapshotWithArtwork, sequence: sequence)
+                guard let self = self, self.isCurrent(sequence: sequence) else { return }
+                self.publish(snapshotWithArtwork, sequence: sequence)
             }
-        }.resume()
+        }
+        startURLTask(task, id: taskID)
     }
 
     private func appleMusicLyricCacheKey(
@@ -999,7 +1135,7 @@ private final class MacNowPlayingMonitor {
         for snapshot: MacNowPlayingSnapshot,
         sequence: Int
     ) {
-        guard snapshot.isAvailable else { return }
+        guard isCurrent(sequence: sequence), snapshot.isAvailable else { return }
         if snapshot.sourceBundleIdentifier == "com.apple.Music" {
             let cacheKey = appleMusicLyricCacheKey(for: snapshot)
             guard lyricCache[cacheKey] == nil,
@@ -1016,8 +1152,10 @@ private final class MacNowPlayingMonitor {
         guard snapshot.sourceBundleIdentifier.isEmpty else { return }
 
         fallbackQueue.async { [weak self] in
-            guard let self = self,
-                  let appleMusicState = self.readAppleMusicState(),
+            guard let self = self, self.isCurrent(sequence: sequence) else { return }
+            let appleMusicState = self.readAppleMusicState()
+            guard self.isCurrent(sequence: sequence),
+                  let appleMusicState = appleMusicState,
                   self.mediaTitlesMatch(appleMusicState.title, snapshot.title),
                   (snapshot.artist.isEmpty
                       || self.mediaTitlesMatch(appleMusicState.artist, snapshot.artist)) else {
@@ -1025,7 +1163,7 @@ private final class MacNowPlayingMonitor {
             }
             DispatchQueue.main.async { [weak self] in
                 guard let self = self,
-                      sequence == self.refreshSequence,
+                      self.isCurrent(sequence: sequence),
                       self.currentSnapshot.trackIdentifier == snapshot.trackIdentifier else {
                     return
                 }
@@ -1052,8 +1190,9 @@ private final class MacNowPlayingMonitor {
         cacheKey: String,
         sequence: Int
     ) {
+        guard isCurrent(sequence: sequence) else { return }
         guard !cacheKey.isEmpty,
-              !lyricRequestsInFlight.contains(cacheKey) else { return }
+              lyricRequestsInFlight[cacheKey] == nil else { return }
         let title = snapshot.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let artist = snapshot.artist.trimmingCharacters(in: .whitespacesAndNewlines)
         let album = snapshot.album.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1062,7 +1201,7 @@ private final class MacNowPlayingMonitor {
             return
         }
 
-        lyricRequestsInFlight.insert(cacheKey)
+        lyricRequestsInFlight[cacheKey] = sequence
         lyricRetryAfter[cacheKey] = Date().addingTimeInterval(60)
 
         var components = URLComponents()
@@ -1076,7 +1215,7 @@ private final class MacNowPlayingMonitor {
             URLQueryItem(name: "duration", value: String(duration)),
         ]
         guard let url = components.url else {
-            lyricRequestsInFlight.remove(cacheKey)
+            finishLyricRequest(cacheKey, sequence: sequence)
             return
         }
 
@@ -1087,8 +1226,11 @@ private final class MacNowPlayingMonitor {
             forHTTPHeaderField: "User-Agent"
         )
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
+        let taskID = UUID()
+        let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
             guard let self = self else { return }
+            self.finishURLTask(id: taskID)
+            guard self.isMonitoring() else { return }
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             let decodedResponse = data.flatMap {
                 try? JSONDecoder().decode(LrclibLyricResponse.self, from: $0)
@@ -1099,7 +1241,8 @@ private final class MacNowPlayingMonitor {
 
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
-                self.lyricRequestsInFlight.remove(cacheKey)
+                self.finishLyricRequest(cacheKey, sequence: sequence)
+                guard self.isMonitoring() else { return }
                 guard statusCode == 200,
                       decodedResponse != nil,
                       !lines.isEmpty else {
@@ -1112,7 +1255,7 @@ private final class MacNowPlayingMonitor {
                    }) {
                     self.lyricCache.removeValue(forKey: oldestKey)
                 }
-                guard sequence == self.refreshSequence,
+                guard self.isCurrent(sequence: sequence),
                       self.currentSnapshot.trackIdentifier == snapshot.trackIdentifier else {
                     return
                 }
@@ -1123,7 +1266,8 @@ private final class MacNowPlayingMonitor {
                 NSLog("[MacIsland] Apple Music 歌词已加载：%d 行", lines.count)
                 #endif
             }
-        }.resume()
+        }
+        startURLTask(task, id: taskID)
     }
 
     private func loadLyrics(
@@ -1131,9 +1275,10 @@ private final class MacNowPlayingMonitor {
         for snapshot: MacNowPlayingSnapshot,
         sequence: Int
     ) {
+        guard isCurrent(sequence: sequence) else { return }
         guard !trackIdentifier.isEmpty,
-              !lyricRequestsInFlight.contains(trackIdentifier) else { return }
-        lyricRequestsInFlight.insert(trackIdentifier)
+              lyricRequestsInFlight[trackIdentifier] == nil else { return }
+        lyricRequestsInFlight[trackIdentifier] = sequence
         lyricRetryAfter[trackIdentifier] = Date().addingTimeInterval(60)
 
         var components = URLComponents()
@@ -1147,15 +1292,18 @@ private final class MacNowPlayingMonitor {
             URLQueryItem(name: "tv", value: "-1"),
         ]
         guard let url = components.url else {
-            lyricRequestsInFlight.remove(trackIdentifier)
+            finishLyricRequest(trackIdentifier, sequence: sequence)
             return
         }
 
         var request = URLRequest(url: url)
         request.timeoutInterval = 8
         request.setValue("https://music.163.com/", forHTTPHeaderField: "Referer")
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
+        let taskID = UUID()
+        let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
             guard let self = self else { return }
+            self.finishURLTask(id: taskID)
+            guard self.isMonitoring() else { return }
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             let decodedResponse = data.flatMap {
                 try? JSONDecoder().decode(NeteaseLyricResponse.self, from: $0)
@@ -1169,7 +1317,8 @@ private final class MacNowPlayingMonitor {
 
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
-                self.lyricRequestsInFlight.remove(trackIdentifier)
+                self.finishLyricRequest(trackIdentifier, sequence: sequence)
+                guard self.isMonitoring() else { return }
                 guard statusCode == 200, decodedResponse != nil else { return }
                 self.lyricCache[trackIdentifier] = lines
                 #if DEBUG
@@ -1181,7 +1330,7 @@ private final class MacNowPlayingMonitor {
                    }) {
                     self.lyricCache.removeValue(forKey: oldestKey)
                 }
-                guard sequence == self.refreshSequence,
+                guard self.isCurrent(sequence: sequence),
                       self.currentSnapshot.trackIdentifier == trackIdentifier else {
                     return
                 }
@@ -1191,7 +1340,8 @@ private final class MacNowPlayingMonitor {
                 // 同一首歌的这些较新字段。
                 self.publish(snapshotWithLyrics, sequence: sequence)
             }
-        }.resume()
+        }
+        startURLTask(task, id: taskID)
     }
 
     private func parseLyrics(
@@ -1262,7 +1412,13 @@ private final class MacNowPlayingMonitor {
     }
 
     private func publish(_ snapshot: MacNowPlayingSnapshot, sequence: Int) {
-        guard sequence == refreshSequence else { return }
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in
+                self?.publish(snapshot, sequence: sequence)
+            }
+            return
+        }
+        guard isCurrent(sequence: sequence) else { return }
         var mergedSnapshot = snapshot
         if snapshot.trackIdentifier == currentSnapshot.trackIdentifier {
             if mergedSnapshot.artwork == nil {
@@ -1277,6 +1433,7 @@ private final class MacNowPlayingMonitor {
     }
 
     func previous() {
+        guard isMonitoring() else { return }
         if currentSnapshot.sourceBundleIdentifier == "com.apple.Music" {
             sendAppleMusicCommand("previous track")
             scheduleCommandRefreshes()
@@ -1290,7 +1447,8 @@ private final class MacNowPlayingMonitor {
             DispatchQueue.main.async { [weak self] in self?.togglePlayPause() }
             return
         }
-        refreshSequence += 1
+        guard isMonitoring() else { return }
+        invalidateCurrentRefreshes()
         if currentSnapshot.isAvailable {
             let now = Date()
             var optimisticSnapshot = currentSnapshot
@@ -1318,6 +1476,7 @@ private final class MacNowPlayingMonitor {
     }
 
     func next() {
+        guard isMonitoring() else { return }
         if currentSnapshot.sourceBundleIdentifier == "com.apple.Music" {
             sendAppleMusicCommand("next track")
             scheduleCommandRefreshes()
@@ -1327,6 +1486,7 @@ private final class MacNowPlayingMonitor {
     }
 
     private func send(command: UInt32) {
+        guard isMonitoring() else { return }
         sendCommandFunction?(command, nil)
         scheduleCommandRefreshes()
     }
@@ -1386,6 +1546,7 @@ private final class MacNowPlayingMonitor {
     deinit {
         pollingTimer?.invalidate()
         observers.forEach(NotificationCenter.default.removeObserver)
+        activeURLTasks.values.forEach { $0.cancel() }
         if let frameworkHandle = frameworkHandle {
             dlclose(frameworkHandle)
         }
@@ -3550,7 +3711,8 @@ class MacPomodoroStatusBarController {
     ) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            if enabled && !self.islandEnabled {
+            let wasEnabled = self.islandEnabled
+            if enabled && !wasEnabled {
                 self.isShortcutHidden = false
             }
             self.islandEnabled = enabled
@@ -3559,6 +3721,12 @@ class MacPomodoroStatusBarController {
             self.clipboardLinksEnabled = clipboardLinksEnabled
             if !remindersEnabled {
                 self.clearIslandReminders()
+            }
+            if enabled && !wasEnabled {
+                self.ensureNowPlayingMonitoring()
+            } else if !enabled {
+                self.nowPlayingMonitor.stop()
+                self.clearNowPlayingDisplayState()
             }
             if enabled && clipboardLinksEnabled {
                 self.startClipboardMonitoring()
@@ -4330,25 +4498,40 @@ class MacPomodoroStatusBarController {
     }
 
     private func ensureNowPlayingMonitoring() {
+        guard islandEnabled else { return }
         nowPlayingMonitor.start { [weak self] snapshot in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                let hadNowPlaying = self.nowPlayingSnapshot.isAvailable
-                self.nowPlayingSnapshot = snapshot
-                // 收起态也显示媒体信息和当前歌词；切歌、停止或歌词异步加载
-                // 后都要立即更新窗口高度和内容。
-                if self.isExpanded
-                    || self.isPointerInsideIsland
-                    || self.isPomodoroActive
-                    || self.isOngoingActivityActive
-                    || self.currentReminder != nil
-                    || self.clipboardURL != nil
-                    || snapshot.isAvailable
-                    || hadNowPlaying {
-                    self.refreshDisplay()
-                }
+            guard let self = self, self.islandEnabled else { return }
+            let hadNowPlaying = self.nowPlayingSnapshot.isAvailable
+            self.nowPlayingSnapshot = snapshot
+            // 收起态也显示媒体信息和当前歌词；切歌、停止或歌词异步加载
+            // 后都要立即更新窗口高度和内容。
+            if self.isExpanded
+                || self.isPointerInsideIsland
+                || self.isPomodoroActive
+                || self.isOngoingActivityActive
+                || self.currentReminder != nil
+                || self.clipboardURL != nil
+                || snapshot.isAvailable
+                || hadNowPlaying {
+                self.refreshDisplay()
             }
         }
+    }
+
+    private func clearNowPlayingDisplayState() {
+        nowPlayingSnapshot = MacNowPlayingSnapshot()
+        guard let view = islandModel else { return }
+        view.nowPlayingActive = false
+        view.nowPlayingTitle = ""
+        view.nowPlayingArtist = ""
+        view.nowPlayingAlbum = ""
+        view.nowPlayingArtwork = nil
+        view.nowPlayingDuration = 0
+        view.nowPlayingElapsedTime = 0
+        view.nowPlayingPlaybackRate = 0
+        view.nowPlayingUpdatedAt = Date()
+        view.nowPlayingIsPlaying = false
+        view.nowPlayingLyrics = []
     }
 
     private func handleCurrentReminder(snoozeMinutes: Int?) {
