@@ -64,6 +64,7 @@ class AddTodoScreen extends StatefulWidget {
   final String? initialTeamUuid;
   final String? initialTeamName;
   final AddTodoInitialMode initialMode;
+  final FixedScheduleItem? relatedFixedScheduleContext;
   final Future<TimeEstimationResult> Function(
     String title,
     String? groupId,
@@ -83,6 +84,7 @@ class AddTodoScreen extends StatefulWidget {
     this.initialTeamUuid,
     this.initialTeamName,
     this.initialMode = AddTodoInitialMode.todo,
+    this.relatedFixedScheduleContext,
     this.estimate,
   });
 
@@ -232,6 +234,11 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   DateTime? _suggestedDueDate;
   List<TodoGroup> _localTodoGroups = [];
 
+  String? get _relatedScheduleTeamUuid {
+    final value = widget.relatedFixedScheduleContext?.teamUuid?.trim();
+    return value == null || value.isEmpty ? null : value;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -253,6 +260,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     }
     _loadSemesterWeekContext();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.relatedFixedScheduleContext != null) return;
       final route = ModalRoute.of(context);
       if (route != null && route.animation != null) {
         if (route.animation!.isCompleted) {
@@ -272,7 +280,11 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       }
     });
     _selectedGroupId = widget.initialGroupId;
-    _selectedTeamUuid = widget.initialTeamUuid;
+    _selectedTeamUuid =
+        _relatedScheduleTeamUuid ??
+        (widget.relatedFixedScheduleContext == null
+            ? widget.initialTeamUuid
+            : null);
     _initialDraftSnapshot = _draftSnapshot();
     _dotsController = AnimationController(
       vsync: this,
@@ -293,8 +305,10 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         });
       }
     });
-    _loadTeams();
-    _loadPendingTodoConfirm();
+    if (widget.relatedFixedScheduleContext == null) {
+      _loadTeams();
+      _loadPendingTodoConfirm();
+    }
   }
 
   Future<void> _loadTodoGroups() async {
@@ -311,6 +325,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   }
 
   Future<void> _loadPendingTodoConfirm() async {
+    if (widget.relatedFixedScheduleContext != null) return;
     final data = await StorageService.getPendingTodoConfirm();
     if (mounted && data != null) {
       final results = data['results'] as List<dynamic>?;
@@ -321,6 +336,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   }
 
   Future<void> _loadTeams() async {
+    if (widget.relatedFixedScheduleContext != null) return;
     final rawTeams = await ApiService.fetchTeams();
     if (mounted) {
       setState(() {
@@ -459,6 +475,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       });
     }
     if (_estimateAccountInvalid ||
+        widget.relatedFixedScheduleContext != null ||
         _manualCaptureKind == _ManualCaptureKind.fixedSchedule) {
       return;
     }
@@ -1135,11 +1152,13 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       final currentParsed = _parsedResults.isEmpty
           ? null
           : _parsedResults[_currentParseIndex];
-      final saveTarget = await _confirmCaptureIntent(
-        sourceText,
-        declaredKind: currentParsed?.itemKind,
-        semanticText: '${_titleCtrl.text} ${_remarkCtrl.text}',
-      );
+      final saveTarget = widget.relatedFixedScheduleContext == null
+          ? await _confirmCaptureIntent(
+              sourceText,
+              declaredKind: currentParsed?.itemKind,
+              semanticText: '${_titleCtrl.text} ${_remarkCtrl.text}',
+            )
+          : _CaptureSaveTarget.todo;
       if (saveTarget == _CaptureSaveTarget.cancel) return;
       if (saveTarget == _CaptureSaveTarget.fixedSchedule) {
         final hasParsedDate =
@@ -1196,9 +1215,15 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       final todo = TodoItem(
         id: _pendingManualTodoId ??= const Uuid().v4(),
         title: _titleCtrl.text,
-        recurrence: _recurrence,
-        customIntervalDays: _customDays,
-        recurrenceEndDate: _recurrenceEndDate,
+        recurrence: widget.relatedFixedScheduleContext == null
+            ? _recurrence
+            : RecurrenceType.none,
+        customIntervalDays: widget.relatedFixedScheduleContext == null
+            ? _customDays
+            : null,
+        recurrenceEndDate: widget.relatedFixedScheduleContext == null
+            ? _recurrenceEndDate
+            : null,
         dueDate: normalizedTime.due,
         createdDate: normalizedTime.start?.millisecondsSinceEpoch,
         remark: _remarkCtrl.text.trim().isEmpty
@@ -1208,7 +1233,9 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         imagePath: persistentImagePath,
         groupId: _selectedGroupId,
         reminderMinutes: _reminderMinutes,
-        teamUuid: _selectedTeamUuid,
+        teamUuid: widget.relatedFixedScheduleContext == null
+            ? _selectedTeamUuid
+            : _relatedScheduleTeamUuid,
         teamName: selectedTeam?.name,
         creatorName: _username,
         collabType: _collabType,
@@ -2023,6 +2050,11 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
   @override
   Widget build(BuildContext context) {
+    final isRelatedScheduleTodo = widget.relatedFixedScheduleContext != null;
+    final useCompactRelatedTodoTitle =
+        isRelatedScheduleTodo &&
+        (MediaQuery.sizeOf(context).width < 360 ||
+            MediaQuery.textScalerOf(context).scale(16) >= 24);
     final theme = Theme.of(context);
     final bgColor = theme.brightness == Brightness.light
         ? const Color(0xFFF2F2F7)
@@ -2044,22 +2076,25 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           elevation: 0,
           scrolledUnderElevation: 0,
           centerTitle: true,
-          title: SizedBox(
-            width: 200,
-            child: KeyedSubtree(
-              key: _aiTabSwitchKey,
-              child: AiWaterRippleBorder(
-                enabled: _selectedTabIndex == 1,
-                isLight: Theme.of(context).brightness == Brightness.light,
-                borderRadius: BorderRadius.circular(18),
-                child: _buildCustomSegmentedControl(
-                  labels: const ["手动创建", "AI 识别"],
-                  selectedIndex: _selectedTabIndex,
-                  onChanged: (idx) => setState(() => _selectedTabIndex = idx),
+          title: isRelatedScheduleTodo
+              ? Text(useCompactRelatedTodoTitle ? '新建待办' : '新建准备待办')
+              : SizedBox(
+                  width: 200,
+                  child: KeyedSubtree(
+                    key: _aiTabSwitchKey,
+                    child: AiWaterRippleBorder(
+                      enabled: _selectedTabIndex == 1,
+                      isLight: Theme.of(context).brightness == Brightness.light,
+                      borderRadius: BorderRadius.circular(18),
+                      child: _buildCustomSegmentedControl(
+                        labels: const ["手动创建", "AI 识别"],
+                        selectedIndex: _selectedTabIndex,
+                        onChanged: (idx) =>
+                            setState(() => _selectedTabIndex = idx),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          ),
           actions: [
             TextButton(
               key: _saveButtonKey,
@@ -2076,7 +2111,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             const SizedBox(width: 8),
           ],
         ),
-        bottomNavigationBar: _selectedTabIndex == 0
+        bottomNavigationBar:
+            _selectedTabIndex == 0 && widget.relatedFixedScheduleContext == null
             ? _buildManualKindBottomBar()
             : null,
         body: FloatingGlassTopBarContentFade(
@@ -2239,6 +2275,88 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     );
   }
 
+  Widget _buildRelatedFixedScheduleContext(FixedScheduleItem schedule) {
+    final colors = Theme.of(context).colorScheme;
+    final parsedDate = DateTime.tryParse(schedule.date)?.toLocal();
+    final dateLabel = parsedDate == null
+        ? schedule.date
+        : DateFormat('yyyy年M月d日').format(parsedDate);
+    final start = schedule.startTime == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(schedule.startTime!).toLocal();
+    final end = schedule.endTime == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(schedule.endTime!).toLocal();
+    final timeLabel = start == null
+        ? '时间待定'
+        : end == null
+        ? '${DateFormat('HH:mm').format(start)} · 结束待定'
+        : '${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)}';
+
+    return Container(
+      key: const ValueKey('related-fixed-schedule-context'),
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colors.secondaryContainer.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: colors.outlineVariant.withValues(alpha: 0.65),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.event_available_rounded, color: colors.secondary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  schedule.title.trim().isEmpty ? '固定日程' : schedule.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: colors.onSecondaryContainer,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$dateLabel · $timeLabel',
+                  style: Theme.of(context).textTheme.bodySmall
+                      ?.copyWith(color: colors.onSecondaryContainer),
+                ),
+                const SizedBox(height: 8),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: colors.surface.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 4,
+                    ),
+                    child: Text(
+                      '仅关联当前场次',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildManualInputTab({Key? key, double topPadding = 0}) {
     final colors = Theme.of(context).colorScheme;
     return LayoutBuilder(
@@ -2250,6 +2368,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (widget.relatedFixedScheduleContext case final schedule?)
+                _buildRelatedFixedScheduleContext(schedule),
               // Input Section
               OptionalLiquidGlassCard(
                 borderRadius: 24,
@@ -2292,7 +2412,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                           ),
                         ),
                       ),
-                      if (_manualCaptureKind == _ManualCaptureKind.todo)
+                      if (_manualCaptureKind == _ManualCaptureKind.todo &&
+                          widget.relatedFixedScheduleContext == null)
                         _buildAISuggestionCard(),
                       const Divider(height: 24),
                       TextField(
@@ -2578,43 +2699,45 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                           }
                         },
                       ),
-                      ListTile(
-                        leading: const Icon(Icons.repeat),
-                        title: const Text("重复规则"),
-                        subtitle: Text(_getRecurrenceLabel(_recurrence)),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () async {
-                          final val = await showMenu<RecurrenceType>(
-                            context: context,
-                            position: const RelativeRect.fromLTRB(
-                              100,
-                              500,
-                              0,
-                              0,
-                            ),
-                            items:
-                                [
-                                      RecurrenceType.none,
-                                      RecurrenceType.daily,
-                                      RecurrenceType.weekly,
-                                      RecurrenceType.monthly,
-                                      RecurrenceType.yearly,
-                                      RecurrenceType.weekdays,
-                                      RecurrenceType.customDays,
-                                    ]
-                                    .map(
-                                      (r) => PopupMenuItem(
-                                        value: r,
-                                        child: Text(_getRecurrenceLabel(r)),
-                                      ),
-                                    )
-                                    .toList(),
-                          );
-                          if (val != null) setState(() => _recurrence = val);
-                        },
-                      ),
-                      if (_recurrence == RecurrenceType.customDays ||
-                          _recurrence != RecurrenceType.none)
+                      if (widget.relatedFixedScheduleContext == null)
+                        ListTile(
+                          leading: const Icon(Icons.repeat),
+                          title: const Text("重复规则"),
+                          subtitle: Text(_getRecurrenceLabel(_recurrence)),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () async {
+                            final val = await showMenu<RecurrenceType>(
+                              context: context,
+                              position: const RelativeRect.fromLTRB(
+                                100,
+                                500,
+                                0,
+                                0,
+                              ),
+                              items:
+                                  [
+                                        RecurrenceType.none,
+                                        RecurrenceType.daily,
+                                        RecurrenceType.weekly,
+                                        RecurrenceType.monthly,
+                                        RecurrenceType.yearly,
+                                        RecurrenceType.weekdays,
+                                        RecurrenceType.customDays,
+                                      ]
+                                      .map(
+                                        (r) => PopupMenuItem(
+                                          value: r,
+                                          child: Text(_getRecurrenceLabel(r)),
+                                        ),
+                                      )
+                                      .toList(),
+                            );
+                            if (val != null) setState(() => _recurrence = val);
+                          },
+                        ),
+                      if (widget.relatedFixedScheduleContext == null &&
+                          (_recurrence == RecurrenceType.customDays ||
+                              _recurrence != RecurrenceType.none))
                         Padding(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 16,
@@ -2720,7 +2843,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
               // Group and Team
               if ((_manualCaptureKind == _ManualCaptureKind.todo &&
                       _localTodoGroups.isNotEmpty) ||
-                  _teams.isNotEmpty) ...[
+                  _teams.isNotEmpty ||
+                  widget.relatedFixedScheduleContext != null) ...[
                 const Padding(
                   padding: EdgeInsets.only(left: 4, bottom: 8),
                   child: Text(
@@ -2810,7 +2934,28 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                             }
                           },
                         ),
-                      if (_teams.isNotEmpty)
+                      if (widget.relatedFixedScheduleContext != null)
+                        ListTile(
+                          leading: Icon(
+                            Icons.lock_outline_rounded,
+                            color: colors.secondary,
+                          ),
+                          title: const Text("团队归属"),
+                          subtitle: Text(
+                            _relatedScheduleTeamUuid == null
+                                ? "个人私有 · 与固定日程保持一致"
+                                : (_teams
+                                          .where(
+                                            (team) =>
+                                                team.uuid ==
+                                                _relatedScheduleTeamUuid,
+                                          )
+                                          .firstOrNull
+                                          ?.name ??
+                                      "与固定日程保持一致"),
+                          ),
+                        )
+                      else if (_teams.isNotEmpty)
                         ListTile(
                           leading: Icon(
                             Icons.groups_outlined,

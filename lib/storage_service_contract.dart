@@ -389,6 +389,8 @@ abstract class _StorageServiceBase {
     bool expectedSeriesMembershipIncludesDeleted = false,
     Set<String>? expectedFixedScheduleTodoIds,
     List<FixedScheduleItem>? expectedFixedScheduleBaselines,
+    FixedScheduleItem? linkedFixedScheduleBaseline,
+    FixedScheduleItem? linkedFixedScheduleUpdate,
   });
   Future<bool> _saveRecurrenceMaintenance(
     String username,

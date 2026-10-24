@@ -58,6 +58,7 @@ class CourseSectionWidget extends StatelessWidget {
   final Future<void> Function(TodoItem todo)? onTodoAdded;
   final FutureOr<TodoCreateSaveResult> Function(TodoItem todo)?
   onManualTodoSaved;
+  final FixedScheduleTodoLinkSaver? onCreateRelatedTodo;
 
   const CourseSectionWidget({
     super.key,
@@ -69,6 +70,7 @@ class CourseSectionWidget extends StatelessWidget {
     this.actionKey,
     this.onTodoAdded,
     this.onManualTodoSaved,
+    this.onCreateRelatedTodo,
   });
 
   void _showCourseDetail(
@@ -108,6 +110,7 @@ class CourseSectionWidget extends StatelessWidget {
         actionKey: actionKey,
         onTodoAdded: onTodoAdded,
         onManualTodoSaved: onManualTodoSaved,
+        onCreateRelatedTodo: onCreateRelatedTodo,
         onCourseTap: (course, cardKey) =>
             _showCourseDetail(context, course, cardKey),
       );
@@ -263,6 +266,7 @@ class _TodayScheduleList extends StatefulWidget {
     this.actionKey,
     this.onTodoAdded,
     this.onManualTodoSaved,
+    this.onCreateRelatedTodo,
   });
 
   final String username;
@@ -275,6 +279,7 @@ class _TodayScheduleList extends StatefulWidget {
   final Future<void> Function(TodoItem todo)? onTodoAdded;
   final FutureOr<TodoCreateSaveResult> Function(TodoItem todo)?
   onManualTodoSaved;
+  final FixedScheduleTodoLinkSaver? onCreateRelatedTodo;
 
   @override
   State<_TodayScheduleList> createState() => _TodayScheduleListState();
@@ -595,6 +600,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
             page: FixedScheduleDetailScreen(
               username: widget.username,
               item: fixedSchedule,
+              onCreateRelatedTodo: widget.onCreateRelatedTodo,
             ),
             sourceKey: cardKey,
             sourceColor:
@@ -615,7 +621,10 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
         isLight: widget.isLight,
         onTap: (cardKey) => PageTransitions.pushFromRect(
           context: context,
-          page: TodoDetailScreen(todo: todo),
+          page: TodoDetailScreen(
+            todo: todo,
+            onCreateRelatedTodo: widget.onCreateRelatedTodo,
+          ),
           sourceKey: cardKey,
           sourceBorderRadius: const BorderRadius.all(Radius.circular(14)),
         ),

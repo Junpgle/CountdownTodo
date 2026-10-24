@@ -128,6 +128,7 @@ mixin _HomeDashboardViewMixin
                   if (_selectedTabIndex != _homeFocusTabIndex || isTablet)
                     HomeAppBar(
                       username: widget.username,
+                      onCreateRelatedTodo: _saveTodoLinkedToFixedSchedule,
                       timeSalutation: _timeSalutation,
                       currentGreeting: _currentGreeting,
                       semesterWeek: _currentSemesterWeek,
@@ -540,6 +541,8 @@ mixin _HomeDashboardViewMixin
                                               await _saveManualTodo(todo);
                                             },
                                             onManualTodoSaved: _saveManualTodo,
+                                            onCreateRelatedTodo:
+                                                _saveTodoLinkedToFixedSchedule,
                                             onTap: ([sourceKey]) async {
                                               final page = TodoPlanScreen(
                                                 username: widget.username,
@@ -1304,7 +1307,56 @@ mixin _HomeDashboardViewMixin
     }
     await StorageService.saveTodos(widget.username, allTodos);
 
-    final warnings = <String>[];
+    return _finishManualTodoSave(todo, allTodos);
+  }
+
+  Future<FixedScheduleTodoSaveResult> _saveTodoLinkedToFixedSchedule(
+    TodoItem todo,
+    FixedScheduleItem baseline,
+  ) async {
+    final updatedSchedule = await StorageService.saveTodoLinkedToFixedSchedule(
+      widget.username,
+      todo,
+      baseline,
+    );
+    var snapshotReady = true;
+    List<TodoItem> allTodos;
+    try {
+      allTodos = await StorageService.getTodos(widget.username);
+    } catch (_) {
+      snapshotReady = false;
+      allTodos = _todos.map((item) => item.detachedCopy()).toList();
+      final index = allTodos.indexWhere((item) => item.id == todo.id);
+      if (index < 0) {
+        allTodos.add(todo);
+      } else {
+        allTodos[index] = todo;
+      }
+    }
+    final saveResult = await _finishManualTodoSave(
+      todo,
+      allTodos,
+      refreshDomains: const {
+        DataRefreshDomain.todos,
+        DataRefreshDomain.fixedSchedules,
+      },
+      updateSharedSnapshots: snapshotReady,
+      extraWarnings: snapshotReady ? const [] : const ['待办列表刷新失败'],
+    );
+    return FixedScheduleTodoSaveResult(
+      schedule: updatedSchedule,
+      warnings: saveResult.warnings,
+    );
+  }
+
+  Future<TodoCreateSaveResult> _finishManualTodoSave(
+    TodoItem todo,
+    List<TodoItem> allTodos, {
+    Set<DataRefreshDomain> refreshDomains = const {DataRefreshDomain.todos},
+    bool updateSharedSnapshots = true,
+    List<String> extraWarnings = const [],
+  }) async {
+    final warnings = <String>[...extraWarnings];
     Future<void> tryUpdate(
       String warning,
       FutureOr<void> Function() update,
@@ -1321,26 +1373,33 @@ mixin _HomeDashboardViewMixin
         PomodoroSyncService.instance.sendTeamUpdateSignal(todo.teamUuid!);
       });
     }
-    await tryUpdate('共享状态待更新', () async {
-      if (!await _saveTodosToSharedFile(allTodos)) {
-        throw StateError('shared todo snapshot was not updated');
-      }
-    });
+    if (updateSharedSnapshots) {
+      await tryUpdate('共享状态待更新', () async {
+        if (!await _saveTodosToSharedFile(allTodos)) {
+          throw StateError('shared todo snapshot was not updated');
+        }
+      });
+    } else {
+      warnings.add('共享状态与桌面小组件待更新');
+    }
     await tryUpdate('提醒待更新', () {
       FloatWindowService.triggerReminderCheck();
       FloatWindowService.invalidateSlotCache();
       _syncTodoNotification();
       _rescheduleAlarms();
     });
-    await tryUpdate('桌面小组件待更新', () async {
-      await WidgetService.updateTodoWidget(allTodos);
-    });
+    if (updateSharedSnapshots) {
+      await tryUpdate('桌面小组件待更新', () async {
+        await WidgetService.updateTodoWidget(allTodos);
+      });
+    }
     await tryUpdate('首页列表待刷新', () async {
       if (mounted) {
-        await _loadAllData(
-          deferred: true,
-          domains: const {DataRefreshDomain.todos},
-        );
+        await _loadAllData(deferred: true, domains: refreshDomains);
+        if (refreshDomains.contains(DataRefreshDomain.fixedSchedules)) {
+          _scheduleRevision.value++;
+          _timelineRevision.value++;
+        }
       }
     });
     return TodoCreateSaveResult(warnings: warnings);
@@ -1660,7 +1719,10 @@ mixin _HomeDashboardViewMixin
       onWeeklyPressed: () {
         PageTransitions.pushFromRect(
           context: context,
-          page: WeeklyCourseScreen(username: widget.username),
+          page: WeeklyCourseScreen(
+            username: widget.username,
+            onCreateRelatedTodo: _saveTodoLinkedToFixedSchedule,
+          ),
           sourceKey: _courseCenterKey,
         );
       },

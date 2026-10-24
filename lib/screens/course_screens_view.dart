@@ -136,7 +136,11 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                             Navigator.push(
                               context,
                               PageTransitions.slideHorizontal(
-                                TodoDetailScreen(todo: todo),
+                                TodoDetailScreen(
+                                  todo: todo,
+                                  onCreateRelatedTodo:
+                                      widget.onCreateRelatedTodo,
+                                ),
                               ),
                             );
                           },

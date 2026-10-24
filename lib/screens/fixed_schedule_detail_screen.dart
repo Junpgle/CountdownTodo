@@ -1,11 +1,15 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../models.dart';
+import '../models/todo_create_save_result.dart';
 import '../storage_service.dart';
 import '../services/pomodoro_service.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/app_detail_widgets.dart';
 import '../widgets/floating_glass_control.dart';
+import 'add_todo_screen.dart';
 import 'course_screens.dart';
 import 'fixed_schedule_editor_screen.dart';
 
@@ -18,6 +22,7 @@ class FixedScheduleDetailScreen extends StatefulWidget {
     this.loadRelatedFixedSchedules,
     this.getCurrentUsername,
     this.loadTodoFocusRecords,
+    this.onCreateRelatedTodo,
   });
 
   final String username;
@@ -31,6 +36,7 @@ class FixedScheduleDetailScreen extends StatefulWidget {
   final Future<String?> Function()? getCurrentUsername;
   final Future<List<PomodoroRecord>> Function(String todoId)?
   loadTodoFocusRecords;
+  final FixedScheduleTodoLinkSaver? onCreateRelatedTodo;
 
   @override
   State<FixedScheduleDetailScreen> createState() =>
@@ -42,31 +48,30 @@ class _FixedScheduleDetailScreenState extends State<FixedScheduleDetailScreen> {
   bool _loadingRelatedTodos = false;
   bool _relatedTodoLoadFailed = false;
   int _loadGeneration = 0;
+  late FixedScheduleItem _activeItem;
 
-  FixedScheduleItem get item => widget.item;
+  FixedScheduleItem get item => _activeItem;
   String get username => widget.username;
 
   @override
   void initState() {
     super.initState();
+    _activeItem = FixedScheduleItem.fromJson(widget.item.toJson());
     _loadRelatedTodos();
   }
 
   @override
   void didUpdateWidget(covariant FixedScheduleDetailScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.username != widget.username ||
-        oldWidget.item.id != widget.item.id ||
-        oldWidget.item.teamUuid != widget.item.teamUuid ||
-        !_sameIds(oldWidget.item.relatedTodoIds, widget.item.relatedTodoIds)) {
+    final scheduleChanged =
+        jsonEncode(oldWidget.item.toJson()) != jsonEncode(widget.item.toJson());
+    if (scheduleChanged) {
+      _activeItem = FixedScheduleItem.fromJson(widget.item.toJson());
+    }
+    if (oldWidget.username != widget.username || scheduleChanged) {
       _loadRelatedTodos();
     }
   }
-
-  bool _sameIds(List<String> left, List<String> right) =>
-      left.length == right.length &&
-      left.toSet().length == right.toSet().length &&
-      left.toSet().containsAll(right);
 
   Future<void> _loadRelatedTodos() async {
     final generation = ++_loadGeneration;
@@ -118,6 +123,10 @@ class _FixedScheduleDetailScreenState extends State<FixedScheduleDetailScreen> {
   bool _hasSameVisibility(TodoItem todo) =>
       _normalizedTeamUuid(todo.teamUuid) == _normalizedTeamUuid(item.teamUuid);
 
+  bool get _canCreateRelatedTodo =>
+      widget.onCreateRelatedTodo != null &&
+      item.phaseAt(DateTime.now()) != FixedSchedulePhase.cancelled;
+
   String _todoStatusLabel(TodoItem todo) {
     if (todo.isDeleted) return '已删除';
     if (todo.isDone) return '已完成';
@@ -144,10 +153,32 @@ class _FixedScheduleDetailScreenState extends State<FixedScheduleDetailScreen> {
           loadRelatedFixedSchedules: widget.loadRelatedFixedSchedules,
           getCurrentUsername: widget.getCurrentUsername,
           loadFocusRecords: widget.loadTodoFocusRecords,
+          onCreateRelatedTodo: widget.onCreateRelatedTodo,
         ),
       ),
     );
     if (mounted) await _loadRelatedTodos();
+  }
+
+  Future<void> _openCreateRelatedTodo() async {
+    final saveLinkedTodo = widget.onCreateRelatedTodo;
+    if (saveLinkedTodo == null || !_canCreateRelatedTodo) return;
+    await Navigator.of(context).push<void>(
+      PageTransitions.material(
+        builder: (_) => AddTodoScreen(
+          initialTeamUuid: item.teamUuid,
+          relatedFixedScheduleContext: item,
+          onManualTodoSaved: (todo) async {
+            final result = await saveLinkedTodo(todo, item);
+            if (mounted) {
+              setState(() => _activeItem = result.schedule);
+              await _loadRelatedTodos();
+            }
+            return TodoCreateSaveResult(warnings: result.warnings);
+          },
+        ),
+      ),
+    );
   }
 
   Widget _buildRelatedTodosSection(BuildContext context) {
@@ -194,16 +225,26 @@ class _FixedScheduleDetailScreenState extends State<FixedScheduleDetailScreen> {
         title: '关联待办',
         children: [
           Text(
-            '暂无关联待办，可在编辑固定日程时添加准备事项。',
+            '暂无关联待办，可以关联已有待办。',
             style: TextStyle(color: scheme.onSurfaceVariant),
           ),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: () => _openEditor(context),
-              icon: const Icon(Icons.add_link_rounded),
-              label: const Text('添加关联待办'),
-            ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              if (_canCreateRelatedTodo)
+                FilledButton.tonalIcon(
+                  key: const ValueKey('fixed-schedule-create-related-todo'),
+                  onPressed: _openCreateRelatedTodo,
+                  icon: const Icon(Icons.add_task_rounded),
+                  label: const Text('新建准备待办'),
+                ),
+              OutlinedButton.icon(
+                onPressed: () => _openEditor(context),
+                icon: const Icon(Icons.add_link_rounded),
+                label: const Text('关联已有待办'),
+              ),
+            ],
           ),
         ],
       );
@@ -212,6 +253,16 @@ class _FixedScheduleDetailScreenState extends State<FixedScheduleDetailScreen> {
     return AppDetailSection(
       title: '关联待办 · ${ids.length}',
       children: [
+        if (_canCreateRelatedTodo)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const ValueKey('fixed-schedule-create-related-todo'),
+              onPressed: _openCreateRelatedTodo,
+              icon: const Icon(Icons.add_task_rounded),
+              label: const Text('新建准备待办'),
+            ),
+          ),
         for (final id in ids)
           Builder(
             builder: (context) {

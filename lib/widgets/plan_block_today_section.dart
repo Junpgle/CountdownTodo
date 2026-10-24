@@ -64,6 +64,7 @@ class PlanBlockTodaySection extends StatefulWidget {
     this.agendaRepository,
     this.onTodoAdded,
     this.onManualTodoSaved,
+    this.onCreateRelatedTodo,
   });
   final String username;
   final bool isLight, enabled;
@@ -78,6 +79,7 @@ class PlanBlockTodaySection extends StatefulWidget {
   final HomeAgendaRepository? agendaRepository;
   final Future<void> Function(TodoItem)? onTodoAdded;
   final FutureOr<TodoCreateSaveResult> Function(TodoItem)? onManualTodoSaved;
+  final FixedScheduleTodoLinkSaver? onCreateRelatedTodo;
   @override
   State<PlanBlockTodaySection> createState() => _PlanBlockTodaySectionState();
 }
@@ -740,13 +742,17 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
           page = FixedScheduleDetailScreen(
             username: widget.username,
             item: item.fixed!,
+            onCreateRelatedTodo: widget.onCreateRelatedTodo,
           );
           placeholder = Icons.event_available_rounded;
         } else if (item.calendar != null) {
           page = DeviceCalendarEventDetailScreen(event: item.calendar!);
           placeholder = Icons.event_note_rounded;
         } else {
-          page = TodoDetailScreen(todo: item.todo!);
+          page = TodoDetailScreen(
+            todo: item.todo!,
+            onCreateRelatedTodo: widget.onCreateRelatedTodo,
+          );
           placeholder = Icons.check_circle_outline_rounded;
         }
         if (cardKey != null) {

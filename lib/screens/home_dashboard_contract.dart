@@ -213,6 +213,11 @@ mixin _HomeDashboardContract {
 
   void _syncTodoNotification();
 
+  Future<FixedScheduleTodoSaveResult> _saveTodoLinkedToFixedSchedule(
+    TodoItem todo,
+    FixedScheduleItem baseline,
+  );
+
   void _debouncedSyncTodoNotification(bool needsSync);
 
   void _debouncedFetchTeamPending();

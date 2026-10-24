@@ -614,7 +614,10 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         onTap: () => _openSidebarDetailFromRect(
           context,
           sourceKey: sourceKey,
-          page: TodoDetailScreen(todo: item),
+          page: TodoDetailScreen(
+            todo: item,
+            onCreateRelatedTodo: widget.onCreateRelatedTodo,
+          ),
           placeholderIcon: Icons.task_alt_rounded,
         ),
       );

@@ -613,6 +613,8 @@ class StorageService {
     bool expectedSeriesMembershipIncludesDeleted = false,
     Set<String>? expectedFixedScheduleTodoIds,
     List<FixedScheduleItem>? expectedFixedScheduleBaselines,
+    FixedScheduleItem? linkedFixedScheduleBaseline,
+    FixedScheduleItem? linkedFixedScheduleUpdate,
   }) => _storage.saveTodos(
     username,
     items,
@@ -626,7 +628,53 @@ class StorageService {
         expectedSeriesMembershipIncludesDeleted,
     expectedFixedScheduleTodoIds: expectedFixedScheduleTodoIds,
     expectedFixedScheduleBaselines: expectedFixedScheduleBaselines,
+    linkedFixedScheduleBaseline: linkedFixedScheduleBaseline,
+    linkedFixedScheduleUpdate: linkedFixedScheduleUpdate,
   );
+
+  /// Creates a manual todo and links it to exactly one fixed-schedule
+  /// occurrence in the same SQLite transaction.
+  static Future<FixedScheduleItem> saveTodoLinkedToFixedSchedule(
+    String username,
+    TodoItem todo,
+    FixedScheduleItem baseline, {
+    bool sync = true,
+  }) async {
+    String? normalizeTeam(String? value) {
+      final normalized = value?.trim();
+      return normalized == null || normalized.isEmpty ? null : normalized;
+    }
+
+    if (todo.id.trim().isEmpty ||
+        todo.isDone ||
+        todo.isSkipped ||
+        todo.isDeleted ||
+        todo.recurrence != RecurrenceType.none) {
+      throw ArgumentError('关联待办必须是新的单次未完成待办');
+    }
+    if (baseline.isDeleted ||
+        baseline.status == FixedScheduleStatus.cancelled) {
+      throw StateError('当前固定日程已取消或删除，不能新建关联待办。');
+    }
+    if (normalizeTeam(todo.teamUuid) != normalizeTeam(baseline.teamUuid)) {
+      throw StateError('待办与固定日程必须属于同一团队范围。');
+    }
+
+    final updated = FixedScheduleItem.fromJson(baseline.toJson());
+    if (!updated.relatedTodoIds.any((id) => id.trim() == todo.id.trim())) {
+      updated.relatedTodoIds.add(todo.id.trim());
+      updated.markAsChanged();
+    }
+    await _storage.saveTodos(
+      username,
+      [todo],
+      sync: sync,
+      recomputeScheduleConflicts: false,
+      linkedFixedScheduleBaseline: baseline,
+      linkedFixedScheduleUpdate: updated,
+    );
+    return updated;
+  }
 
   static Future<Map<String, int>> scanAllTodoConflicts(String username) =>
       _storage.scanAllTodoConflicts(username);

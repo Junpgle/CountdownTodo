@@ -195,10 +195,20 @@ mixin _StorageTodos on _StorageServiceBase {
     bool expectedSeriesMembershipIncludesDeleted = false,
     Set<String>? expectedFixedScheduleTodoIds,
     List<FixedScheduleItem>? expectedFixedScheduleBaselines,
+    FixedScheduleItem? linkedFixedScheduleBaseline,
+    FixedScheduleItem? linkedFixedScheduleUpdate,
   }) async {
     if ((expectedFixedScheduleTodoIds == null) !=
         (expectedFixedScheduleBaselines == null)) {
       throw ArgumentError('关联固定日程复核需要同时提供待办范围和日程快照');
+    }
+    if ((linkedFixedScheduleBaseline == null) !=
+        (linkedFixedScheduleUpdate == null)) {
+      throw ArgumentError('创建关联待办需要同时提供固定日程原快照与更新快照');
+    }
+    if (linkedFixedScheduleBaseline != null &&
+        (isSyncSource || expectedFixedScheduleTodoIds != null)) {
+      throw ArgumentError('当前写入模式不能与关联固定日程创建同时使用');
     }
     final dedupeMap = <String, TodoItem>{};
     if (sync && !isSyncSource) _recurrenceCheckCache.clear();
@@ -231,6 +241,47 @@ mixin _StorageTodos on _StorageServiceBase {
       }
     }
     final candidates = dedupeMap.values.toList();
+    if (linkedFixedScheduleBaseline != null) {
+      final baseline = linkedFixedScheduleBaseline;
+      final update = linkedFixedScheduleUpdate!;
+      if (candidates.length != 1 ||
+          candidates.single.isDone ||
+          candidates.single.isSkipped ||
+          candidates.single.isDeleted ||
+          candidates.single.recurrence != RecurrenceType.none) {
+        throw ArgumentError('关联固定日程只支持保存一个单次未完成待办');
+      }
+      String? normalizeTeam(String? value) {
+        final normalized = value?.trim();
+        return normalized == null || normalized.isEmpty ? null : normalized;
+      }
+
+      final todo = candidates.single;
+      final relatedId = todo.id.trim();
+      final expectedSchedule = FixedScheduleItem.fromJson(baseline.toJson());
+      if (relatedId.isEmpty ||
+          baseline.isDeleted ||
+          baseline.status == FixedScheduleStatus.cancelled ||
+          normalizeTeam(todo.teamUuid) != normalizeTeam(baseline.teamUuid)) {
+        throw StateError('固定日程或待办范围已变化，请重新打开后再保存。');
+      }
+      if (!expectedSchedule.relatedTodoIds.any(
+        (id) => id.trim() == relatedId,
+      )) {
+        expectedSchedule.relatedTodoIds.add(relatedId);
+        if (update.version != baseline.version + 1 ||
+            update.updatedAt <= baseline.updatedAt) {
+          throw ArgumentError('固定日程关系版本无效');
+        }
+        expectedSchedule.version = update.version;
+        expectedSchedule.updatedAt = update.updatedAt;
+      }
+      if (update.id != baseline.id ||
+          jsonEncode(expectedSchedule.toJson()) !=
+              jsonEncode(update.toJson())) {
+        throw ArgumentError('固定日程关系更新只能加入当前新待办');
+      }
+    }
     final maintenanceSeries = candidates
         .map((item) => item.recurrenceSeriesId)
         .toSet();
@@ -264,6 +315,14 @@ mixin _StorageTodos on _StorageServiceBase {
     final affectedDays = <String>{};
     final writtenIds = <String>{};
     final persistedItems = <String, TodoItem>{};
+    UserSessionSnapshot? linkedScheduleSession;
+    if (linkedFixedScheduleBaseline != null) {
+      await UserSessionStorage.ensureCurrentUsername(username);
+      linkedScheduleSession = await UserSessionStorage.captureSession(username);
+      if (linkedScheduleSession == null) {
+        throw StateError('账户状态已变化，请重新打开固定日程后再保存。');
+      }
+    }
     if (username.trim() != 'default') {
       await UserSessionStorage.ensureCurrentUsername(username);
     }
@@ -271,6 +330,21 @@ mixin _StorageTodos on _StorageServiceBase {
     // The current row, pending operations, row write and oplog must share the
     // same transaction. A pre-transaction check leaves a second rollback race.
     await db.transaction((txn) async {
+      final linkBaseline = linkedFixedScheduleBaseline;
+      if (linkBaseline != null) {
+        await UserSessionStorage.ensureCurrentSession(linkedScheduleSession!);
+        final rows = await txn.query(
+          'fixed_schedules',
+          where: 'uuid = ?',
+          whereArgs: [linkBaseline.id],
+          limit: 1,
+        );
+        if (rows.length != 1 ||
+            jsonEncode(FixedScheduleItem.fromJson(rows.single).toJson()) !=
+                jsonEncode(linkBaseline.toJson())) {
+          throw StateError('固定日程已变化，请重新核对后再保存。');
+        }
+      }
       if (expectedFixedScheduleTodoIds != null) {
         if (username.trim() != 'default') {
           await UserSessionStorage.ensureCurrentUsername(username);
@@ -308,6 +382,17 @@ mixin _StorageTodos on _StorageServiceBase {
             whereArgs: ids,
           );
           pendingIds.addAll(ops.map((row) => row['target_uuid'].toString()));
+        }
+      }
+      final linkBaselineForTodoId = linkedFixedScheduleBaseline;
+      if (linkBaselineForTodoId != null) {
+        final todo = candidates.single;
+        final currentRow = existingById[todo.id];
+        final alreadyLinked = linkBaselineForTodoId.relatedTodoIds.any(
+          (id) => id.trim() == todo.id.trim(),
+        );
+        if (currentRow != null && !alreadyLinked) {
+          throw StateError('待办标识已存在，请重新创建准备待办。');
         }
       }
       if (expectedSeriesMembership != null) {
@@ -545,8 +630,32 @@ mixin _StorageTodos on _StorageServiceBase {
         writtenIds.add(item.id);
         persistedItems[item.id] = item;
       }
+      final linkedUpdate = linkedFixedScheduleUpdate;
+      if (linkedUpdate != null &&
+          jsonEncode(linkedUpdate.toJson()) !=
+              jsonEncode(linkedFixedScheduleBaseline!.toJson())) {
+        final data = linkedUpdate.toJson();
+        batch.insert('op_logs', {
+          'op_type': 'UPSERT',
+          'target_table': 'fixed_schedules',
+          'target_uuid': linkedUpdate.id,
+          'data_json': jsonEncode(data),
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'is_synced': 0,
+          'sync_error': '',
+        });
+        batch.insert(
+          'fixed_schedules',
+          data,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
       if (username.trim() != 'default') {
-        await UserSessionStorage.ensureCurrentUsername(username);
+        if (linkedScheduleSession != null) {
+          await UserSessionStorage.ensureCurrentSession(linkedScheduleSession);
+        } else {
+          await UserSessionStorage.ensureCurrentUsername(username);
+        }
       }
       await batch.commit(noResult: true);
     });
@@ -572,7 +681,13 @@ mixin _StorageTodos on _StorageServiceBase {
                 .toList();
       Future.microtask(() => _syncTodosToBand(bandItems));
     }
-    triggerRefresh(const {DataRefreshDomain.todos});
+    triggerRefresh({
+      DataRefreshDomain.todos,
+      if (linkedFixedScheduleUpdate != null &&
+          jsonEncode(linkedFixedScheduleUpdate.toJson()) !=
+              jsonEncode(linkedFixedScheduleBaseline!.toJson()))
+        DataRefreshDomain.fixedSchedules,
+    });
   }
 
   Future<bool> _saveRecurrenceMaintenance(

@@ -449,8 +449,14 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
     if (kind == 'todo') {
       final todo = await _findIslandTodo(id);
       if (todo == null || !mounted) return;
-      await Navigator.of(context)
-          .push(PageTransitions.slideHorizontal(TodoDetailScreen(todo: todo)));
+      await Navigator.of(context).push(
+        PageTransitions.slideHorizontal(
+          TodoDetailScreen(
+            todo: todo,
+            onCreateRelatedTodo: _saveTodoLinkedToFixedSchedule,
+          ),
+        ),
+      );
       return;
     }
 
@@ -664,7 +670,10 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
       case 'schedule':
         await Navigator.of(context).push(
           PageTransitions.slideHorizontal(
-            WeeklyCourseScreen(username: widget.username),
+            WeeklyCourseScreen(
+              username: widget.username,
+              onCreateRelatedTodo: _saveTodoLinkedToFixedSchedule,
+            ),
           ),
         );
         break;

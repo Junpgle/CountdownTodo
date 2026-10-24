@@ -469,6 +469,7 @@ class TodoDetailScreen extends StatefulWidget {
   final CurrentUsernameLoader? getCurrentUsername;
   final RelatedFixedScheduleOpener? openRelatedFixedSchedule;
   final Future<List<PomodoroRecord>> Function(String todoId)? loadFocusRecords;
+  final FixedScheduleTodoLinkSaver? onCreateRelatedTodo;
 
   const TodoDetailScreen({
     super.key,
@@ -477,6 +478,7 @@ class TodoDetailScreen extends StatefulWidget {
     this.getCurrentUsername,
     this.openRelatedFixedSchedule,
     this.loadFocusRecords,
+    this.onCreateRelatedTodo,
   });
 
   @override
@@ -511,8 +513,11 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
   ) async {
     await Navigator.of(context).push<void>(
       PageTransitions.material(
-        builder: (_) =>
-            FixedScheduleDetailScreen(username: username, item: item),
+        builder: (_) => FixedScheduleDetailScreen(
+          username: username,
+          item: item,
+          onCreateRelatedTodo: widget.onCreateRelatedTodo,
+        ),
       ),
     );
   }
