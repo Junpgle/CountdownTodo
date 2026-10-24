@@ -276,4 +276,175 @@ void main() {
       expect(collision.title, '其他已有日程');
     },
   );
+
+  test('rejects a reviewed reschedule when its linked todo changes', () async {
+    const todoId = '1c516f9c-55ba-4db6-bc63-09a020f80001';
+    final original = FixedScheduleItem(
+      id: 'reviewed-schedule',
+      title: '考试',
+      date: '2026-11-10',
+      startTime: DateTime(2026, 11, 10, 9).millisecondsSinceEpoch,
+      endTime: DateTime(2026, 11, 10, 10).millisecondsSinceEpoch,
+      relatedTodoIds: const [todoId],
+      reminderMinutes: const [15],
+    );
+    await StorageService.saveFixedSchedules(
+      username,
+      [original],
+      sync: false,
+      isSyncSource: true,
+    );
+    final baseline = await StorageService.getFixedSchedules(username);
+    final todo = TodoItem(id: todoId, title: '复习资料');
+    await StorageService.saveTodos(
+      username,
+      [todo],
+      sync: false,
+      isSyncSource: true,
+    );
+    final reviewedTodos =
+        await StorageService.getTodosForFixedScheduleRelations(username);
+    final candidate = FixedScheduleItem.fromJson(original.toJson())
+      ..date = '2026-11-11'
+      ..startTime = DateTime(2026, 11, 11, 11).millisecondsSinceEpoch
+      ..endTime = DateTime(2026, 11, 11, 12).millisecondsSinceEpoch;
+    candidate.markAsChanged();
+    final noPlans = await StorageService.getPlanBlocksOverlappingFixedSchedules(
+      username,
+      [candidate],
+    );
+
+    final concurrentTodo = TodoItem.fromJson(reviewedTodos.single.toJson())
+      ..title = '另一处更新的复习资料';
+    concurrentTodo.markAsChanged();
+    await StorageService.saveTodos(username, [concurrentTodo], sync: false);
+    final saved = await StorageService.saveFixedSchedulesIfUnchanged(
+      username,
+      baseline: baseline,
+      items: [candidate],
+      reviewedTodoIds: [todoId],
+      reviewedTodos: reviewedTodos.where((item) => item.id == todoId).toList(),
+      reviewedPlanBlocks: noPlans,
+      sync: false,
+    );
+
+    expect(saved, isFalse);
+    final stored = (await StorageService.getFixedSchedules(username)).single;
+    expect(stored.startTime, original.startTime);
+    expect(stored.date, original.date);
+  });
+
+  test(
+    'accepts an unchanged linked todo with the SQL default reminder sentinel',
+    () async {
+      const todoId = '1c516f9c-55ba-4db6-bc63-09a020f80004';
+      final original = FixedScheduleItem(
+        id: 'reviewed-default-reminder-schedule',
+        title: '面试',
+        date: '2026-11-10',
+        startTime: DateTime(2026, 11, 10, 9).millisecondsSinceEpoch,
+        endTime: DateTime(2026, 11, 10, 10).millisecondsSinceEpoch,
+        relatedTodoIds: const [todoId],
+        reminderMinutes: const [15],
+      );
+      await StorageService.saveFixedSchedules(
+        username,
+        [original],
+        sync: false,
+        isSyncSource: true,
+      );
+      final baseline = await StorageService.getFixedSchedules(username);
+      await StorageService.saveTodos(
+        username,
+        [TodoItem(id: todoId, title: '准备材料')],
+        sync: false,
+        isSyncSource: true,
+      );
+      final reviewedTodos =
+          await StorageService.getTodosForFixedScheduleRelations(username);
+      final candidate = FixedScheduleItem.fromJson(original.toJson())
+        ..date = '2026-11-11'
+        ..startTime = DateTime(2026, 11, 11, 11).millisecondsSinceEpoch
+        ..endTime = DateTime(2026, 11, 11, 12).millisecondsSinceEpoch;
+      candidate.markAsChanged();
+      final noPlans =
+          await StorageService.getPlanBlocksOverlappingFixedSchedules(
+            username,
+            [candidate],
+          );
+
+      final saved = await StorageService.saveFixedSchedulesIfUnchanged(
+        username,
+        baseline: baseline,
+        items: [candidate],
+        reviewedTodoIds: [todoId],
+        reviewedTodos: reviewedTodos
+            .where((item) => item.id == todoId)
+            .toList(),
+        reviewedPlanBlocks: noPlans,
+        sync: false,
+      );
+
+      expect(saved, isTrue);
+      expect(
+        (await StorageService.getFixedSchedules(username)).single.date,
+        '2026-11-11',
+      );
+    },
+  );
+
+  test(
+    'rejects a reviewed reschedule when a new overlapping plan is added',
+    () async {
+      final original = FixedScheduleItem(
+        id: 'reviewed-plan-schedule',
+        title: '面试',
+        date: '2026-11-10',
+        startTime: DateTime(2026, 11, 10, 9).millisecondsSinceEpoch,
+        endTime: DateTime(2026, 11, 10, 10).millisecondsSinceEpoch,
+      );
+      await StorageService.saveFixedSchedules(
+        username,
+        [original],
+        sync: false,
+        isSyncSource: true,
+      );
+      final baseline = await StorageService.getFixedSchedules(username);
+      final candidate = FixedScheduleItem.fromJson(original.toJson())
+        ..startTime = DateTime(2026, 11, 10, 11).millisecondsSinceEpoch
+        ..endTime = DateTime(2026, 11, 10, 12).millisecondsSinceEpoch;
+      candidate.markAsChanged();
+      final reviewedPlans =
+          await StorageService.getPlanBlocksOverlappingFixedSchedules(
+            username,
+            [candidate],
+          );
+      await StorageService.savePlanBlocks(
+        username,
+        [
+          TodoPlanBlock(
+            id: '1c516f9c-55ba-4db6-bc63-09a020f80002',
+            todoId: '1c516f9c-55ba-4db6-bc63-09a020f80003',
+            titleSnapshot: '临时新规划',
+            startTime: DateTime(2026, 11, 10, 11, 30).millisecondsSinceEpoch,
+            endTime: DateTime(2026, 11, 10, 12, 30).millisecondsSinceEpoch,
+          ),
+        ],
+        sync: false,
+        isSyncSource: true,
+      );
+
+      final saved = await StorageService.saveFixedSchedulesIfUnchanged(
+        username,
+        baseline: baseline,
+        items: [candidate],
+        reviewedPlanBlocks: reviewedPlans,
+        sync: false,
+      );
+
+      expect(saved, isFalse);
+      final stored = (await StorageService.getFixedSchedules(username)).single;
+      expect(stored.startTime, original.startTime);
+    },
+  );
 }

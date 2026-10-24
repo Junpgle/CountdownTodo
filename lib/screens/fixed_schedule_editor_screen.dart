@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../widgets/floating_glass_control.dart';
 
 import 'package:flutter/material.dart';
@@ -8,6 +10,7 @@ import '../services/api_service.dart';
 import '../services/course_service.dart';
 import '../services/fixed_schedule_edit_service.dart';
 import '../services/fixed_schedule_recurrence_service.dart';
+import '../services/fixed_schedule_reschedule_impact_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/schedule_conflict_service.dart';
 import '../storage_service.dart';
@@ -15,7 +18,9 @@ import '../utils/app_dialogs.dart';
 import '../utils/page_transitions.dart';
 import '../utils/semester_week_context.dart';
 import '../utils/time_utils.dart';
+import '../widgets/fixed_schedule_reschedule_impact_dialog.dart';
 import 'fixed_schedule_related_todo_picker_screen.dart';
+import 'course_screens.dart';
 
 class FixedScheduleEditorScreen extends StatefulWidget {
   const FixedScheduleEditorScreen({
@@ -26,6 +31,8 @@ class FixedScheduleEditorScreen extends StatefulWidget {
     this.onSave,
     this.onSaveAll,
     this.onSaved,
+    this.rescheduleReminders,
+    this.syncOnSave = true,
     this.loadTeams,
   });
 
@@ -35,6 +42,8 @@ class FixedScheduleEditorScreen extends StatefulWidget {
   final Future<void> Function(FixedScheduleItem)? onSave;
   final Future<void> Function(List<FixedScheduleItem>)? onSaveAll;
   final ValueChanged<FixedScheduleItem>? onSaved;
+  final Future<void> Function()? rescheduleReminders;
+  final bool syncOnSave;
   final Future<List<dynamic>> Function()? loadTeams;
 
   @override
@@ -694,23 +703,61 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
       return;
     }
 
-    final conflicts = await _conflictsFor(plan.changes);
-    if (!mounted) return;
-    if (conflicts.isNotEmpty && !await _confirmConflicts(conflicts)) {
+    FixedScheduleRescheduleImpact? reviewedImpact;
+    try {
+      reviewedImpact = await _reviewRescheduleImpact(plan, scope, existing);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('读取改期影响失败，未保存；请重试或返回修改')),
+      );
+      return;
+    }
+    if (reviewedImpact == null) {
       if (mounted) setState(() => _saving = false);
       return;
     }
 
-    final saved = await _saveEditedItems(
-      plan.changes,
-      refreshItem: plan.refreshItem,
-    );
+    final conflicts = await _conflictsFor(plan.changes);
+    if (!mounted) return;
+    final remainingConflicts = reviewedImpact.hasImpact
+        ? conflicts
+              .where(
+                (conflict) =>
+                    conflict.severity == ScheduleConflictSeverity.hard,
+              )
+              .toList(growable: false)
+        : conflicts;
+    if (remainingConflicts.isNotEmpty &&
+        !await _confirmConflicts(remainingConflicts)) {
+      if (mounted) setState(() => _saving = false);
+      return;
+    }
+
+    late final bool saved;
+    try {
+      saved = await _saveEditedItems(
+        plan.changes,
+        refreshItem: plan.refreshItem,
+        reviewedImpact: reviewedImpact,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('保存失败，改期内容仍保留在编辑页，请重试')),
+      );
+      return;
+    }
     if (!saved) {
       if (!mounted) return;
       setState(() => _saving = false);
       AppSnackBars.showSnackBar(
         context,
-        const SnackBar(content: Text('固定日程系列已有变化，请重新打开后再保存')),
+        const SnackBar(content: Text('日程或关联内容已变化，请重新复核后再保存')),
       );
       return;
     }
@@ -845,6 +892,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
   Future<bool> _saveEditedItems(
     List<FixedScheduleItem> items, {
     required FixedScheduleItem refreshItem,
+    FixedScheduleRescheduleImpact? reviewedImpact,
   }) async {
     final saveAllHandler = widget.onSaveAll;
     if (saveAllHandler != null) {
@@ -854,16 +902,172 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
         widget.username,
         baseline: _seriesItems,
         items: items,
+        reviewedTodoIds: reviewedImpact?.shouldReview == true
+            ? reviewedImpact!.relatedTodoIds.toList()
+            : const [],
+        reviewedTodos: reviewedImpact?.shouldReview == true
+            ? reviewedImpact!.sourceTodos
+            : const [],
+        reviewedPlanBlocks: reviewedImpact?.shouldReview == true
+            ? reviewedImpact!.planBlockSnapshots
+            : null,
+        sync: widget.syncOnSave,
       );
       if (!saved) return false;
       final saveHandler = widget.onSave;
       if (saveHandler != null) await saveHandler(refreshItem);
     }
-    await ReminderScheduleService.scheduleFromStorage(
-      widget.username,
-      force: true,
+    final reminderRefresh =
+        widget.rescheduleReminders?.call() ??
+        ReminderScheduleService.scheduleFromStorage(
+          widget.username,
+          force: true,
+        );
+    unawaited(
+      reminderRefresh.catchError((Object error, StackTrace stackTrace) {
+        debugPrint('Fixed schedule reminder refresh failed: $error');
+      }),
     );
     return true;
+  }
+
+  Future<FixedScheduleRescheduleImpact?> _reviewRescheduleImpact(
+    ({
+      List<FixedScheduleItem> active,
+      List<FixedScheduleItem> changes,
+      FixedScheduleItem refreshItem,
+    })
+    plan,
+    FixedScheduleEditScope scope,
+    FixedScheduleItem? selected,
+  ) async {
+    if (selected == null) {
+      return FixedScheduleRescheduleImpactService.build(
+        baseline: const [],
+        active: const [],
+        changes: const [],
+        scope: scope,
+        selectedOccurrence: plan.refreshItem,
+        refreshItem: plan.refreshItem,
+        todos: const [],
+        planBlocks: const [],
+        now: DateTime.now(),
+      );
+    }
+    final occurrence = selected;
+    var impact = await _loadRescheduleImpact(plan, scope, occurrence);
+    var hasPresentedReview = false;
+    while (true) {
+      if (impact.hasImpact || hasPresentedReview) {
+        hasPresentedReview = true;
+        if (!mounted) return null;
+        final accepted = await showDialog<FixedScheduleRescheduleImpact>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) => FixedScheduleRescheduleImpactDialog(
+            impact: impact,
+            reload: () => _loadRescheduleImpact(plan, scope, occurrence),
+            openTodo: _openImpactTodo,
+            openPlan: _openImpactPlan,
+          ),
+        );
+        if (!mounted || accepted == null) return null;
+        final latest = await _loadRescheduleImpact(plan, scope, occurrence);
+        if (latest.snapshotSignature == accepted.snapshotSignature) {
+          return latest;
+        }
+        impact = latest;
+        continue;
+      }
+
+      // Even an empty review result is guarded at commit time. Re-read once
+      // here so a plan or relationship added during the first query cannot
+      // silently turn an empty result into an unreviewed impact.
+      final latest = await _loadRescheduleImpact(plan, scope, occurrence);
+      if (latest.snapshotSignature == impact.snapshotSignature) return latest;
+      impact = latest;
+    }
+  }
+
+  Future<FixedScheduleRescheduleImpact> _loadRescheduleImpact(
+    ({
+      List<FixedScheduleItem> active,
+      List<FixedScheduleItem> changes,
+      FixedScheduleItem refreshItem,
+    })
+    plan,
+    FixedScheduleEditScope scope,
+    FixedScheduleItem selected,
+  ) async {
+    Future<void> ensureSameAccount() async {
+      if ((await StorageService.getLoginSession() ?? 'default') !=
+          widget.username) {
+        throw StateError('账户已切换，请重新打开固定日程');
+      }
+    }
+
+    await ensureSameAccount();
+    final empty = FixedScheduleRescheduleImpactService.build(
+      baseline: _seriesItems,
+      active: plan.active,
+      changes: plan.changes,
+      scope: scope,
+      selectedOccurrence: selected,
+      refreshItem: plan.refreshItem,
+      todos: const [],
+      planBlocks: const [],
+      now: DateTime.now(),
+    );
+    final reads = await Future.wait<dynamic>([
+      if (empty.relatedTodoIds.isNotEmpty)
+        StorageService.getTodosForFixedScheduleRelations(widget.username)
+      else
+        Future.value(const <TodoItem>[]),
+      if (empty.newTimedSchedules.isNotEmpty)
+        StorageService.getPlanBlocksOverlappingFixedSchedules(
+          widget.username,
+          empty.newTimedSchedules,
+        )
+      else
+        Future.value(const <TodoPlanBlock>[]),
+    ]);
+    await ensureSameAccount();
+    return FixedScheduleRescheduleImpactService.build(
+      baseline: _seriesItems,
+      active: plan.active,
+      changes: plan.changes,
+      scope: scope,
+      selectedOccurrence: selected,
+      refreshItem: plan.refreshItem,
+      todos: reads[0] as List<TodoItem>,
+      planBlocks: reads[1] as List<TodoPlanBlock>,
+      now: DateTime.now(),
+    );
+  }
+
+  Future<void> _openImpactTodo(TodoItem todo) async {
+    if ((await StorageService.getLoginSession() ?? 'default') !=
+        widget.username) {
+      throw StateError('账户已切换，请返回后重新打开日程');
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      PageTransitions.material(builder: (_) => TodoDetailScreen(todo: todo)),
+    );
+  }
+
+  Future<void> _openImpactPlan(TodoPlanBlock block) async {
+    if ((await StorageService.getLoginSession() ?? 'default') !=
+        widget.username) {
+      throw StateError('账户已切换，请返回后重新打开日程');
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      PageTransitions.material(
+        builder: (_) =>
+            PlanBlockDetailScreen(block: block, username: widget.username),
+      ),
+    );
   }
 
   Future<List<ScheduleConflict>> _conflictsFor(
@@ -1019,21 +1223,26 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final topBarHeight = floatingGlassTopBarHeight(context);
+    final compactSaveAction =
+        MediaQuery.sizeOf(context).width < 390 ||
+        MediaQuery.textScalerOf(context).scale(14) > 16;
     final dateText = AppTimeFormats.date(_date);
     final recurrenceEndDateText = AppTimeFormats.date(_recurrenceEndDate);
+    final appBarTitle = compactSaveAction
+        ? _forcedOccurrenceEdit
+              ? '编辑场次'
+              : (_editing ? '编辑日程' : '新建日程')
+        : _forcedOccurrenceEdit
+        ? '编辑当前场次'
+        : (_editing &&
+                  _seriesItems.where((entry) => !entry.isDeleted).length > 1
+              ? '编辑重复日程系列'
+              : (_editing ? '编辑固定日程' : '新增固定日程'));
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
-        title: Text(
-          _forcedOccurrenceEdit
-              ? '编辑当前场次'
-              : (_editing &&
-                        _seriesItems.where((entry) => !entry.isDeleted).length >
-                            1
-                    ? '编辑重复日程系列'
-                    : (_editing ? '编辑固定日程' : '新增固定日程')),
-        ),
+        title: Text(appBarTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
           if (_editing)
             IconButton(
@@ -1042,16 +1251,32 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
               icon: const Icon(Icons.delete_outline_rounded),
               tooltip: '删除固定日程',
             ),
-          TextButton(
-            onPressed: _saving || _loadingContext ? null : _save,
-            child: _saving
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('保存'),
-          ),
+          if (compactSaveAction)
+            IconButton(
+              key: const ValueKey('fixed-schedule-save'),
+              onPressed: _saving || _loadingContext ? null : _save,
+              style: floatingGlassPlainIconButtonStyle(),
+              tooltip: '保存',
+              icon: _saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.save_outlined),
+            )
+          else
+            TextButton(
+              key: const ValueKey('fixed-schedule-save'),
+              onPressed: _saving || _loadingContext ? null : _save,
+              child: _saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('保存'),
+            ),
         ],
       ),
       body: FloatingGlassTopBarContentFade(
@@ -1105,6 +1330,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
                 child: Column(
                   children: [
                     ListTile(
+                      key: const ValueKey('fixed-schedule-date'),
                       leading: const Icon(Icons.calendar_today_rounded),
                       title: Text(
                         _recurrence == RecurrenceType.none
@@ -1126,6 +1352,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
                     ),
                     if (!_timeTbd) ...[
                       ListTile(
+                        key: const ValueKey('fixed-schedule-start-time'),
                         leading: const Icon(Icons.play_circle_outline_rounded),
                         title: const Text('开始时间'),
                         subtitle: Text(_startTime.format(context)),
@@ -1140,6 +1367,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
                       ),
                       if (!_endTimeTbd)
                         ListTile(
+                          key: const ValueKey('fixed-schedule-end-time'),
                           leading: const Icon(Icons.stop_circle_outlined),
                           title: const Text('结束时间'),
                           subtitle: Text(_endTime.format(context)),
@@ -1155,6 +1383,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
                 child: Column(
                   children: [
                     DropdownButtonFormField<RecurrenceType>(
+                      isExpanded: true,
                       initialValue: _recurrence,
                       decoration: const InputDecoration(
                         labelText: '重复规则',
@@ -1236,6 +1465,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
+                isExpanded: true,
                 initialValue: _selectedTeamUuid ?? '',
                 decoration: const InputDecoration(
                   labelText: '团队归属',

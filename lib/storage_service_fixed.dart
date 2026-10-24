@@ -133,9 +133,21 @@ mixin _StorageFixed on _StorageServiceBase {
     String username, {
     required List<FixedScheduleItem> baseline,
     required List<FixedScheduleItem> items,
+    List<String> reviewedTodoIds = const [],
+    List<TodoItem> reviewedTodos = const [],
+    List<TodoPlanBlock>? reviewedPlanBlocks,
     bool sync = true,
   }) async {
     if (items.isEmpty) return true;
+    final reviewGuardEnabled =
+        reviewedTodoIds.isNotEmpty ||
+        reviewedTodos.isNotEmpty ||
+        reviewedPlanBlocks != null;
+    UserSessionSnapshot? reviewSession;
+    if (reviewGuardEnabled) {
+      await UserSessionStorage.ensureCurrentUsername(username);
+      reviewSession = await UserSessionStorage.captureSession(username);
+    }
 
     final deduped = <String, FixedScheduleItem>{};
     for (final item in items) {
@@ -154,6 +166,13 @@ mixin _StorageFixed on _StorageServiceBase {
     final db = await DatabaseHelper.instance.databaseForUser(username);
     var wroteAny = false;
     final accepted = await db.transaction<bool>((txn) async {
+      if (reviewGuardEnabled) {
+        await UserSessionStorage.ensureCurrentUsername(username);
+        final session = reviewSession;
+        if (session != null) {
+          await UserSessionStorage.ensureCurrentSession(session);
+        }
+      }
       final baselineById = {for (final item in baseline) item.id: item};
       if (baselineById.length != baseline.length) return false;
 
@@ -179,7 +198,6 @@ mixin _StorageFixed on _StorageServiceBase {
           return false;
         }
       }
-
       final expectedIdsBySeries = <String, Set<String>>{};
       for (final item in baseline) {
         final seriesId = item.recurrenceSeriesId?.trim();
@@ -199,6 +217,32 @@ mixin _StorageFixed on _StorageServiceBase {
         if (currentIds.length != entry.value.length ||
             !currentIds.containsAll(entry.value)) {
           return false;
+        }
+      }
+
+      if (reviewedTodoIds.isNotEmpty || reviewedTodos.isNotEmpty) {
+        final acceptedTodos = await _fixedScheduleReviewTodosMatch(
+          txn,
+          reviewedTodoIds,
+          reviewedTodos,
+        );
+        if (!acceptedTodos) return false;
+      }
+      if (reviewedPlanBlocks != null) {
+        final currentPlans = await _fixedScheduleReviewPlans(
+          txn,
+          deduped.values,
+        );
+        if (!_sameFixedScheduleReviewPlans(currentPlans, reviewedPlanBlocks)) {
+          return false;
+        }
+      }
+
+      if (reviewGuardEnabled) {
+        await UserSessionStorage.ensureCurrentUsername(username);
+        final session = reviewSession;
+        if (session != null) {
+          await UserSessionStorage.ensureCurrentSession(session);
         }
       }
 
@@ -278,6 +322,146 @@ mixin _StorageFixed on _StorageServiceBase {
     if (!accepted) return false;
     if (wroteAny && sync) requestSync(username);
     if (wroteAny) triggerRefresh(const {DataRefreshDomain.fixedSchedules});
+    return true;
+  }
+
+  Future<List<TodoPlanBlock>> getPlanBlocksOverlappingFixedSchedules(
+    String username,
+    List<FixedScheduleItem> schedules,
+  ) async {
+    final db = await DatabaseHelper.instance.databaseForUser(username);
+    return _fixedScheduleReviewPlans(db, schedules);
+  }
+
+  Future<bool> _fixedScheduleReviewTodosMatch(
+    DatabaseExecutor executor,
+    List<String> reviewedTodoIds,
+    List<TodoItem> reviewedTodos,
+  ) async {
+    final ids = reviewedTodoIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    final expectedById = {for (final todo in reviewedTodos) todo.id: todo};
+    if (expectedById.length != reviewedTodos.length ||
+        !ids.containsAll(expectedById.keys)) {
+      return false;
+    }
+    if (ids.isEmpty) return expectedById.isEmpty;
+
+    final currentById = <String, TodoItem>{};
+    final values = ids.toList(growable: false);
+    for (var offset = 0; offset < values.length; offset += 400) {
+      final chunk = values.skip(offset).take(400).toList(growable: false);
+      final rows = await executor.query(
+        'todos',
+        where: 'uuid IN (${List.filled(chunk.length, '?').join(',')})',
+        whereArgs: chunk,
+      );
+      for (final row in rows) {
+        final todo = TodoItem.fromSql(Map<String, dynamic>.from(row));
+        currentById[todo.id] = todo;
+      }
+    }
+    if (currentById.length != expectedById.length) return false;
+    for (final entry in expectedById.entries) {
+      final current = currentById[entry.key];
+      if (current == null ||
+          jsonEncode(_fixedScheduleTodoSnapshot(current)) !=
+              jsonEncode(_fixedScheduleTodoSnapshot(entry.value))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Map<String, dynamic> _fixedScheduleTodoSnapshot(TodoItem todo) {
+    final json = todo.toJson();
+    if (json['reminder_minutes'] == -1) {
+      json['reminder_minutes'] = null;
+    }
+    return json;
+  }
+
+  Future<List<TodoPlanBlock>> _fixedScheduleReviewPlans(
+    DatabaseExecutor executor,
+    Iterable<FixedScheduleItem> schedules,
+  ) async {
+    final intervals = <(int, int)>{};
+    for (final item in schedules) {
+      final start = item.startTime;
+      final end = item.endTime;
+      if (item.isDeleted ||
+          item.status == FixedScheduleStatus.cancelled ||
+          start == null ||
+          end == null ||
+          end <= start) {
+        continue;
+      }
+      intervals.add((start, end));
+    }
+    if (intervals.isEmpty) return const [];
+
+    final rowsById = <String, Map<String, dynamic>>{};
+    final values = intervals.toList(growable: false);
+    for (var offset = 0; offset < values.length; offset += 400) {
+      final chunk = values.skip(offset).take(400).toList(growable: false);
+      final predicates = List.filled(
+        chunk.length,
+        '(end_time > ? AND start_time < ?)',
+      ).join(' OR ');
+      final whereArgs = <Object?>[];
+      for (final (start, end) in chunk) {
+        whereArgs
+          ..add(start)
+          ..add(end);
+      }
+      final rows = await executor.query(
+        'todo_plan_blocks',
+        where: 'is_deleted = 0 AND ($predicates)',
+        whereArgs: whereArgs,
+      );
+      for (final row in rows) {
+        final map = Map<String, dynamic>.from(row);
+        final id = (map['uuid'] ?? map['id'])?.toString();
+        if (id != null && id.isNotEmpty) rowsById[id] = map;
+      }
+    }
+    final blocks =
+        rowsById.values
+            .map(TodoPlanBlock.fromJson)
+            .where(
+              (block) =>
+                  !block.isDeleted &&
+                  block.endTime > block.startTime &&
+                  block.status != TodoPlanStatus.finished &&
+                  block.status != TodoPlanStatus.cancelled &&
+                  block.status != TodoPlanStatus.missed &&
+                  block.status != TodoPlanStatus.skipped,
+            )
+            .toList(growable: false)
+          ..sort((left, right) => left.startTime.compareTo(right.startTime));
+    return blocks;
+  }
+
+  bool _sameFixedScheduleReviewPlans(
+    List<TodoPlanBlock> current,
+    List<TodoPlanBlock> expected,
+  ) {
+    final currentById = {for (final block in current) block.id: block};
+    final expectedById = {for (final block in expected) block.id: block};
+    if (currentById.length != current.length ||
+        expectedById.length != expected.length ||
+        currentById.length != expectedById.length) {
+      return false;
+    }
+    for (final entry in expectedById.entries) {
+      final actual = currentById[entry.key];
+      if (actual == null ||
+          jsonEncode(actual.toJson()) != jsonEncode(entry.value.toJson())) {
+        return false;
+      }
+    }
     return true;
   }
 

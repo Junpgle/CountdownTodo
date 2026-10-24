@@ -310,11 +310,17 @@ class StorageService {
     String username, {
     required List<FixedScheduleItem> baseline,
     required List<FixedScheduleItem> items,
+    List<String> reviewedTodoIds = const [],
+    List<TodoItem> reviewedTodos = const [],
+    List<TodoPlanBlock>? reviewedPlanBlocks,
     bool sync = true,
   }) => _storage.saveFixedSchedulesIfUnchanged(
     username,
     baseline: baseline,
     items: items,
+    reviewedTodoIds: reviewedTodoIds,
+    reviewedTodos: reviewedTodos,
+    reviewedPlanBlocks: reviewedPlanBlocks,
     sync: sync,
   );
 
@@ -436,6 +442,11 @@ class StorageService {
     from: from,
     to: to,
   );
+
+  static Future<List<TodoPlanBlock>> getPlanBlocksOverlappingFixedSchedules(
+    String username,
+    List<FixedScheduleItem> schedules,
+  ) => _storage.getPlanBlocksOverlappingFixedSchedules(username, schedules);
 
   static Future<List<TodoPlanBlock>> getPlanBlocksForReminderWindow(
     String username, {

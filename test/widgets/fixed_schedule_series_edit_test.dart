@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:countdown_todo/models.dart';
@@ -48,6 +49,9 @@ Future<void> _pumpEditor(
   Size size = const Size(390, 844),
   Brightness brightness = Brightness.light,
   double textScale = 1,
+  ValueChanged<FixedScheduleItem>? onSaved,
+  Future<void> Function()? rescheduleReminders,
+  bool syncOnSave = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -72,6 +76,9 @@ Future<void> _pumpEditor(
       home: FixedScheduleEditorScreen(
         username: username,
         item: item,
+        onSaved: onSaved,
+        rescheduleReminders: rescheduleReminders ?? () async {},
+        syncOnSave: syncOnSave,
         loadTeams: () async => [],
       ),
     ),
@@ -149,6 +156,48 @@ Future<(String, FixedScheduleItem)> _seedEditorData({
     isSyncSource: true,
   );
   return (username, series[1]);
+}
+
+Future<(String, FixedScheduleItem)> _seedRescheduleImpactData() async {
+  final seeded = await _seedEditorData();
+  final username = seeded.$1;
+  final occurrence = FixedScheduleItem.fromJson(seeded.$2.toJson())
+    ..relatedTodoIds = const ['1c516f9c-55ba-4db6-bc63-09a020f80001']
+    ..reminderMinutes = const [15];
+  await StorageService.saveFixedSchedules(
+    username,
+    [occurrence],
+    sync: false,
+    isSyncSource: true,
+  );
+  await StorageService.saveTodos(
+    username,
+    [
+      TodoItem(
+        id: '1c516f9c-55ba-4db6-bc63-09a020f80001',
+        title: '准备面试材料',
+        dueDate: DateTime(2026, 10, 28, 12),
+      ),
+    ],
+    sync: false,
+    isSyncSource: true,
+  );
+  await StorageService.savePlanBlocks(
+    username,
+    [
+      TodoPlanBlock(
+        id: '1c516f9c-55ba-4db6-bc63-09a020f80002',
+        todoId: '1c516f9c-55ba-4db6-bc63-09a020f80003',
+        titleSnapshot: '整理面试材料',
+        startTime: DateTime(2026, 10, 27, 9, 30).millisecondsSinceEpoch,
+        endTime: DateTime(2026, 10, 27, 10, 30).millisecondsSinceEpoch,
+        status: TodoPlanStatus.planned,
+      ),
+    ],
+    sync: false,
+    isSyncSource: true,
+  );
+  return (username, occurrence);
 }
 
 void main() {
@@ -240,6 +289,33 @@ void main() {
     );
   });
 
+  testWidgets(
+    'editor header keeps save reachable on a narrow dark large-text phone',
+    (tester) async {
+      final seeded = await tester.runAsync(_seedEditorData);
+      await _pumpEditor(
+        tester,
+        seeded!.$1,
+        seeded.$2,
+        size: const Size(360, 800),
+        brightness: Brightness.dark,
+        textScale: 1.35,
+      );
+
+      final save = tester.widget<IconButton>(
+        find.byKey(const ValueKey('fixed-schedule-save')),
+      );
+      expect(save.onPressed, isNotNull);
+      expect(tester.takeException(), isNull);
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile(
+          'goldens/round_39_editor_header_phone_dark_large.png',
+        ),
+      );
+    },
+  );
+
   testWidgets('refreshes a stale route item from the current stored row', (
     tester,
   ) async {
@@ -286,6 +362,134 @@ void main() {
       matchesGoldenFile('goldens/fixed_schedule_external_edit_phone.png'),
     );
   });
+
+  testWidgets(
+    'reschedule review shows affected data, cancel keeps storage, and confirm saves',
+    (tester) async {
+      final saveCompleted = Completer<FixedScheduleItem>();
+      var reminderRefreshCount = 0;
+      final seeded = await tester.runAsync(_seedRescheduleImpactData);
+      final username = seeded!.$1;
+      final occurrence = seeded.$2;
+      await _pumpEditor(
+        tester,
+        username,
+        occurrence,
+        size: const Size(390, 844),
+        brightness: Brightness.dark,
+        onSaved: (item) {
+          if (!saveCompleted.isCompleted) saveCompleted.complete(item);
+        },
+        rescheduleReminders: () async {
+          reminderRefreshCount++;
+        },
+      );
+
+      await tester.tap(find.text('修改范围'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('仅本次'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('fixed-schedule-date')));
+      await tester.pumpAndSettle();
+      expect(find.byType(DatePickerDialog), findsOneWidget);
+      await tester.tap(find.text('27').last);
+      await tester.pumpAndSettle();
+      expect(find.byType(DatePickerDialog), findsOneWidget);
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(find.byType(DatePickerDialog), findsNothing);
+
+      Future<void> waitFor(Finder finder) async {
+        for (var attempt = 0; attempt < 20; attempt++) {
+          if (finder.evaluate().isNotEmpty) return;
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 30)),
+          );
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        expect(finder, findsOneWidget);
+      }
+
+      Future<void> openReview() async {
+        await tester.tap(find.byKey(const ValueKey('fixed-schedule-save')));
+        await waitFor(find.text('确认仅本次'));
+        expect(find.text('确认仅本次'), findsOneWidget);
+        await tester.tap(find.text('应用到仅本次'));
+        await waitFor(find.text('复核改期影响'));
+        expect(find.text('复核改期影响'), findsOneWidget);
+      }
+
+      await openReview();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('准备面试材料'), findsOneWidget);
+      expect(find.text('整理面试材料'), findsOneWidget);
+      expect(find.textContaining('保存后提醒'), findsOneWidget);
+      expect(find.textContaining('截止时间晚于其中一场日程开始'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('goldens/round_39_reschedule_impact_phone_dark.png'),
+      );
+
+      await tester.tap(find.text('返回修改'));
+      await tester.pumpAndSettle();
+      final beforeSave = await tester.runAsync(
+        () => StorageService.getFixedSchedules(username),
+      );
+      expect(
+        beforeSave!.singleWhere((item) => item.id == occurrence.id).date,
+        occurrence.date,
+      );
+
+      await openReview();
+      final confirmButton = tester.widget<FilledButton>(
+        find.byKey(const ValueKey('confirm-reschedule-impact')),
+      );
+      expect(confirmButton.onPressed, isNotNull);
+      await tester.tap(find.byKey(const ValueKey('confirm-reschedule-impact')));
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('fixed-schedule-reschedule-impact-dialog')),
+        findsNothing,
+      );
+      for (var attempt = 0; attempt < 60; attempt++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 25)),
+        );
+        await tester.pump(const Duration(milliseconds: 50));
+        if (saveCompleted.isCompleted) break;
+      }
+      expect(
+        saveCompleted.isCompleted,
+        isTrue,
+        reason: tester
+            .widgetList<Text>(find.byType(Text))
+            .map((text) => text.data)
+            .whereType<String>()
+            .join(' / '),
+      );
+      final savedItem = saveCompleted.future.then((item) => item);
+      expect((await savedItem).date, '2026-10-27');
+      expect(reminderRefreshCount, 1);
+      await tester.pumpAndSettle();
+      final afterSave = await tester.runAsync(
+        () => StorageService.getFixedSchedules(username, includeDeleted: true),
+      );
+      expect(afterSave, isNotEmpty);
+      expect(
+        afterSave!.any((item) => item.date == '2026-10-27'),
+        isTrue,
+        reason: afterSave
+            .map((item) => '${item.id}:${item.date}:${item.status.name}')
+            .join(', '),
+      );
+      expect(
+        afterSave.singleWhere((item) => item.id == occurrence.id).status,
+        FixedScheduleStatus.cancelled,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('applying related todos updates the editor draft, not storage', (
     tester,

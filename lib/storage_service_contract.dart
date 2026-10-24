@@ -273,6 +273,10 @@ abstract class _StorageServiceBase {
     DateTime? from,
     DateTime? to,
   });
+  Future<List<TodoPlanBlock>> getPlanBlocksOverlappingFixedSchedules(
+    String username,
+    List<FixedScheduleItem> schedules,
+  );
   Future<List<TodoPlanBlock>> getPlanBlocksForReminderWindow(
     String username, {
     required DateTime now,
