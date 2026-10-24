@@ -27,6 +27,9 @@ Countdown Todo is a Flutter productivity app combining todos, recurring todo ser
 - **iOS**：Flutter host 工程存在，发布前需核实功能对齐。
 - 配套项目：React 介绍页 `webpage/web/`、小米手环伴侣应用 `CountDownTodo-band/`。
 
+## 高阶功能使用教程
+【腾讯文档】[CountDownTodo 高阶使用教程](https://docs.qq.com/aio/DRmZzZHBsdkVBdENi)
+
 ## 主要功能
 
 - **待办管理**：分组、提醒、循环待办（习惯另有独立打卡模型）、固定日程（独立 `fixed_schedules` 模型）、版本历史、冲突处理、回收站、AI 辅助操作。

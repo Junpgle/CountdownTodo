@@ -1,18 +1,13 @@
 class CountdownTodoTutorialLinks {
   CountdownTodoTutorialLinks._();
 
-  static final Uri aiAssistantAdvanced = _advancedSectionUri(
-    '771etiUxQ9HCYWxCMpm5v3',
-  );
-  static final Uri widgetFeatures = _advancedSectionUri(
-    'D7GJYrENNitsfFS6xlrI6O',
-  );
+  static final Uri aiAssistantAdvanced = _tutorialUri('tZ1HN7edMEsGOQqotd3dvB');
+  static final Uri widgetFeatures = _tutorialUri('TJFZqAVdsLn8sI2ZIF6FVe');
 
-  static Uri _advancedSectionUri(String sectionId) => Uri(
+  static Uri _tutorialUri(String pageId) => Uri(
     scheme: 'https',
     host: 'docs.qq.com',
     path: '/aio/DRmZzZHBsdkVBdENi',
-    queryParameters: const {'p': '5jdVvuhqQKhirVUWKABWZx', 'client_hint': '0'},
-    fragment: sectionId,
+    queryParameters: {'p': pageId, 'client_hint': '0'},
   );
 }
