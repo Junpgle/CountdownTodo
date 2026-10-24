@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/feature_tip_service.dart';
 import 'app_performance_monitor.dart';
 
 const _pageLayerCurve = Cubic(0.4, 0.65, 0.25, 1.0);
@@ -271,6 +272,7 @@ class PageTransitions {
     AppPerformanceMonitor.setCurrentScreen(
       AppPerformanceMonitor.screenNameForWidget(page),
     );
+    unawaited(FeatureTipService.recordWidgetOpened(page));
     await _AnimSettings.load();
     if (!context.mounted) {
       return null;
@@ -336,6 +338,7 @@ class PageTransitions {
     AppPerformanceMonitor.setCurrentScreen(
       AppPerformanceMonitor.screenNameForWidget(page),
     );
+    unawaited(FeatureTipService.recordWidgetOpened(page));
     await _AnimSettings.load();
     if (!_AnimSettings.animationsEnabled || sourceRect.isEmpty) {
       return navigator.push<T>(
@@ -378,6 +381,7 @@ class PageTransitions {
         AppPerformanceMonitor.setCurrentScreen(
           AppPerformanceMonitor.screenNameForWidget(page),
         );
+        unawaited(FeatureTipService.recordWidgetOpened(page));
         return page;
       },
       settings: settings,
@@ -391,6 +395,7 @@ class PageTransitions {
     AppPerformanceMonitor.setCurrentScreen(
       AppPerformanceMonitor.screenNameForWidget(page),
     );
+    unawaited(FeatureTipService.recordWidgetOpened(page));
     return _SlideRoute<T>(
       page: page,
       mode: _PageLayerRouteMode.slideEnd,
@@ -402,6 +407,7 @@ class PageTransitions {
     AppPerformanceMonitor.setCurrentScreen(
       AppPerformanceMonitor.screenNameForWidget(page),
     );
+    unawaited(FeatureTipService.recordWidgetOpened(page));
     return _SlideRoute<T>(
       page: page,
       mode: _PageLayerRouteMode.slideBottom,
@@ -413,6 +419,7 @@ class PageTransitions {
     AppPerformanceMonitor.setCurrentScreen(
       AppPerformanceMonitor.screenNameForWidget(page),
     );
+    unawaited(FeatureTipService.recordWidgetOpened(page));
     return _FadeRoute<T>(page: page, settings: settings);
   }
 }

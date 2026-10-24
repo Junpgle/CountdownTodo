@@ -7,6 +7,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import '../services/api_service.dart';
+import '../services/feature_tip_service.dart';
 import '../storage_service.dart';
 import '../update_service.dart';
 import '../utils/app_platform.dart';
@@ -221,7 +222,6 @@ class _SettingsPageState extends State<SettingsPage> {
     ];
     final minorModeTargets = ['minor_mode', 'minor_mode_status'];
     final courseTargets = [
-      'no_course_behavior',
       'webview_import',
       'smart_import',
       'course_sync',
@@ -1350,6 +1350,7 @@ class _SettingsPageState extends State<SettingsPage> {
           borderRadius: BorderRadius.circular(8),
           onTap: () {
             if (_selectedPaneId != id) {
+              unawaited(FeatureTipService.recordWidgetOpened(widgetBuilder()));
               setState(() {
                 _selectedPaneId = id;
                 _selectedRightPaneBuilder = widgetBuilder;
