@@ -10,22 +10,26 @@ import '../services/finance_storage.dart';
 import '../widgets/finance_management_widgets.dart';
 import 'finance_automation_screen.dart';
 import 'finance_loan_screen.dart';
+import 'finance_transaction_detail_screen.dart';
 
 typedef FinanceFutureCommitmentLoader =
     Future<FinanceFutureCommitmentForecast> Function(DateTime now, int months);
 typedef FinancePaymentMethodsLoader =
     Future<List<FinancePaymentMethod>> Function();
+typedef FinanceCategoriesLoader = Future<List<FinanceCategory>> Function();
 
 class FinanceFutureCommitmentsScreen extends StatefulWidget {
   final DateTime Function() clock;
   final FinanceFutureCommitmentLoader? loader;
   final FinancePaymentMethodsLoader? paymentMethodsLoader;
+  final FinanceCategoriesLoader? categoriesLoader;
 
   const FinanceFutureCommitmentsScreen({
     super.key,
     this.clock = DateTime.now,
     this.loader,
     this.paymentMethodsLoader,
+    this.categoriesLoader,
   });
 
   @override
@@ -40,6 +44,7 @@ class _FinanceFutureCommitmentsScreenState
   int _loadGeneration = 0;
   FinanceFutureCommitmentForecast? _forecast;
   List<FinancePaymentMethod> _paymentMethods = const [];
+  List<FinanceCategory> _categories = const [];
   bool _isLoading = true;
   String? _loadError;
   Timer? _revisionRefreshTimer;
@@ -97,10 +102,22 @@ class _FinanceFutureCommitmentsScreenState
       } catch (_) {
         // Payment method names are supplementary; keep the forecast usable.
       }
+      List<FinanceCategory> categories = const [];
+      try {
+        categories =
+            await (widget.categoriesLoader?.call() ??
+                FinanceRepository.getCategories(
+                  includeArchived: true,
+                  includeDeleted: true,
+                ));
+      } catch (_) {
+        // Category names are supplementary; keep the forecast usable.
+      }
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _forecast = forecast;
         _paymentMethods = methods;
+        _categories = categories;
         _isLoading = false;
         _loadError = null;
       });
@@ -152,12 +169,36 @@ class _FinanceFutureCommitmentsScreenState
     if (mounted) await _load(showLoading: false);
   }
 
+  Future<void> _openTransaction(FinanceTransaction transaction) async {
+    final category = _categories
+        .where((item) => item.uuid == transaction.categoryUuid)
+        .firstOrNull;
+    final paymentMethod = _paymentMethods
+        .where((item) => item.uuid == transaction.paymentMethodUuid)
+        .firstOrNull;
+    await Navigator.of(context).push<FinanceTransaction>(
+      MaterialPageRoute(
+        builder: (_) => FinanceTransactionDetailScreen(
+          transaction: transaction,
+          category: category,
+          categoryDisplayName: financeCategoryReferenceDisplayName(
+            transaction.categoryUuid,
+            _categories,
+          ),
+          paymentMethod: paymentMethod,
+          paymentMethods: _paymentMethods,
+        ),
+      ),
+    );
+    if (mounted) await _load(showLoading: false);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
-        title: const Text('未来固定收支'),
+        title: const Text('未来收支'),
         actions: [
           IconButton(
             tooltip: '刷新',
@@ -196,8 +237,8 @@ class _FinanceFutureCommitmentsScreenState
       children: [
         const FinancePageIntro(
           icon: Icons.event_repeat_outlined,
-          title: '已登记的固定安排',
-          description: '汇总周期账单和未还贷款计划；这是预计收支，不代表账户余额。',
+          title: '已登记的未来安排',
+          description: '汇总未来账单、周期规则和未还贷款计划；这是预计收支，不代表账户余额。',
         ),
         const SizedBox(height: 18),
         _buildHorizonSelector(),
@@ -213,7 +254,7 @@ class _FinanceFutureCommitmentsScreenState
         ],
         const SizedBox(height: 10),
         Text(
-          '手工录入的未来账单不在此汇总中。不同币种分别计算。',
+          '不同币种分别计算。标记“可能重复”的项目仍会分别计入合计，请核对后编辑账单或计划。',
           style: Theme.of(context).textTheme.bodySmall
               ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
           textAlign: TextAlign.center,
@@ -403,17 +444,24 @@ class _FinanceFutureCommitmentsScreenState
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final isInflow = item.inflowMinor > 0;
-    final title = item.recurringRule?.name ?? item.loan?.name ?? '未命名安排';
+    final transaction = item.transaction;
+    final title = transaction != null
+        ? _transactionTitle(transaction)
+        : item.recurringRule?.name ?? item.loan?.name ?? '未命名安排';
     final amount = item.isLoanInstallment
         ? item.installment!.paymentMinor
         : item.amountMinor;
-    final detail = item.installment == null
+    final detail = transaction != null
+        ? _transactionDetail(transaction)
+        : item.installment == null
         ? _recurringDetail(item.recurringRule!)
         : _installmentDetail(item.installment!, item.currencyCode);
     return InkWell(
       key: ValueKey('future-commitment-${item.id}'),
       borderRadius: BorderRadius.circular(12),
-      onTap: item.isLoanInstallment
+      onTap: transaction != null
+          ? () => _openTransaction(transaction)
+          : item.isLoanInstallment
           ? () => _openLoan(item.loan!)
           : _openRecurringRule,
       child: Padding(
@@ -435,6 +483,8 @@ class _FinanceFutureCommitmentsScreenState
               child: Icon(
                 item.isLoanInstallment
                     ? Icons.account_balance_outlined
+                    : item.isTransaction
+                    ? Icons.receipt_long_outlined
                     : isInflow
                     ? Icons.south_west_rounded
                     : Icons.north_east_rounded,
@@ -468,6 +518,28 @@ class _FinanceFutureCommitmentsScreenState
                       height: 1.4,
                     ),
                   ),
+                  if (item.possibleOverlapLabels.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.info_outline_rounded,
+                          size: 14,
+                          color: colors.tertiary,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            '可能与${item.possibleOverlapLabels.join('、')}重叠；两项均计入合计',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: colors.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -512,6 +584,37 @@ class _FinanceFutureCommitmentsScreenState
     String currencyCode,
   ) =>
       '第 ${installment.installmentIndex} 期 · 本金 ${_money(installment.principalMinor, currencyCode)} · 利息 ${_money(installment.interestMinor, currencyCode)}';
+
+  String _transactionTitle(FinanceTransaction transaction) {
+    final merchant = transaction.merchant?.trim();
+    if (merchant != null && merchant.isNotEmpty) return merchant;
+    final category = financeCategoryReferenceDisplayName(
+      transaction.categoryUuid,
+      _categories,
+    );
+    return category == '未分类' ? transaction.type.label : category;
+  }
+
+  String _transactionDetail(FinanceTransaction transaction) {
+    final parts = <String>[
+      '已录入账单 · ${_transactionSourceLabel(transaction.source)}',
+      if (transaction.categoryUuid?.trim().isNotEmpty == true)
+        financeCategoryReferenceDisplayName(
+          transaction.categoryUuid,
+          _categories,
+        ),
+      if (transaction.note?.trim().isNotEmpty == true)
+        '备注：${transaction.note!.trim()}',
+    ];
+    return parts.join(' · ');
+  }
+
+  String _transactionSourceLabel(FinanceEntrySource source) => switch (source) {
+    FinanceEntrySource.manual => '手工录入',
+    FinanceEntrySource.import => '导入',
+    FinanceEntrySource.ai => 'AI录入',
+    FinanceEntrySource.automation => '自动记账',
+  };
 
   String _money(int minor, String currencyCode) {
     final sign = minor < 0 ? '−' : '';

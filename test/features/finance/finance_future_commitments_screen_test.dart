@@ -55,6 +55,17 @@ FinanceFutureCommitmentForecast _forecast(DateTime now, int months) {
     interestMinor: 1000,
     remainingPrincipalMinor: 57000,
   );
+  final oneOffBill = FinanceTransaction(
+    uuid: 'screen-one-off-bill',
+    type: FinanceTransactionType.expense,
+    amountMinor: 12345,
+    transactionDate: '2026-10-25',
+    occurredAt: DateTime(2026, 10, 25, 18).millisecondsSinceEpoch,
+    timezoneOffsetMinutes: now.timeZoneOffset.inMinutes,
+    createdAt: DateTime(2026, 10, 24, 12).millisecondsSinceEpoch,
+    merchant: '临时房租',
+    note: '一次性未来账单',
+  );
   return FinanceFutureCommitmentsService.project(
     now: now,
     horizonMonths: months,
@@ -63,6 +74,7 @@ FinanceFutureCommitmentForecast _forecast(DateTime now, int months) {
     installmentsByLoan: {
       loan.uuid: [installment, overdue],
     },
+    transactions: [oneOffBill],
   );
 }
 
@@ -72,6 +84,7 @@ Future<void> _pumpScreen(
   double textScale = 1,
   Brightness brightness = Brightness.light,
   FinanceFutureCommitmentLoader? loader,
+  FinanceCategoriesLoader? categoriesLoader,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -94,6 +107,7 @@ Future<void> _pumpScreen(
         clock: () => _now,
         loader: loader ?? (now, months) async => _forecast(now, months),
         paymentMethodsLoader: () async => const [],
+        categoriesLoader: categoriesLoader ?? () async => const [],
       ),
     ),
   );
@@ -109,7 +123,11 @@ void main() {
     expect(find.text('USD'), findsOneWidget);
     expect(find.text('逾期待还'), findsOneWidget);
     expect(find.text('2026年10月'), findsOneWidget);
-    await tester.drag(find.byType(ListView), const Offset(0, -420));
+    await tester.scrollUntilVisible(
+      find.text('2026年11月'),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.pumpAndSettle();
     expect(find.text('2026年11月'), findsOneWidget);
     expect(find.text('月度房租'), findsWidgets);
@@ -186,6 +204,47 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('未来手工账单展示来源与重叠提示，并能直达账单详情后刷新', (tester) async {
+    var loadCount = 0;
+    await _pumpScreen(
+      tester,
+      loader: (now, months) async {
+        loadCount++;
+        return _forecast(now, months);
+      },
+    );
+
+    final bill = find.byKey(
+      const ValueKey('future-commitment-transaction:screen-one-off-bill'),
+    );
+    await Scrollable.ensureVisible(
+      tester.element(bill),
+      alignment: 0.5,
+      duration: Duration.zero,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('临时房租'), findsOneWidget);
+    expect(find.textContaining('已录入账单 · 手工录入'), findsOneWidget);
+    expect(find.textContaining('可能与周期计划“月度房租”重叠'), findsOneWidget);
+
+    await tester.tap(bill);
+    await tester.pumpAndSettle();
+    expect(find.text('账单详情'), findsOneWidget);
+    expect(find.text('临时房租'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('finance-transaction-detail-edit')),
+      findsOneWidget,
+    );
+
+    Navigator.of(tester.element(find.text('账单详情'))).pop();
+    await tester.pumpAndSettle();
+    expect(loadCount, 2);
+    await tester.drag(find.byType(ListView), const Offset(0, 900));
+    await tester.pumpAndSettle();
+    expect(find.text('未来3个月合计'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('加载失败可重试，失败状态不会显示成空数据', (tester) async {
     var attempts = 0;
     await _pumpScreen(
@@ -214,7 +273,7 @@ void main() {
       brightness: Brightness.dark,
     );
 
-    expect(find.text('未来固定收支'), findsOneWidget);
+    expect(find.text('未来收支'), findsOneWidget);
     expect(find.byType(SegmentedButton<int>), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

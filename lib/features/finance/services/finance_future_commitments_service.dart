@@ -13,6 +13,8 @@ class FinanceFutureCommitment {
     this.periodKey,
     this.loan,
     this.installment,
+    this.transaction,
+    this.possibleOverlapLabels = const [],
   });
 
   factory FinanceFutureCommitment.recurring(FinanceRecurringDue due) =>
@@ -38,6 +40,16 @@ class FinanceFutureCommitment {
     installment: installment,
   );
 
+  factory FinanceFutureCommitment.transaction(FinanceTransaction transaction) =>
+      FinanceFutureCommitment._(
+        id: 'transaction:${transaction.uuid}',
+        dueAt: dateFromKey(transaction.transactionDate),
+        currencyCode: transaction.currencyCode,
+        amountMinor: transaction.amountMinor,
+        transactionType: transaction.type,
+        transaction: transaction,
+      );
+
   final String id;
   final DateTime dueAt;
   final String currencyCode;
@@ -47,8 +59,11 @@ class FinanceFutureCommitment {
   final String? periodKey;
   final FinanceLoan? loan;
   final FinanceLoanInstallment? installment;
+  final FinanceTransaction? transaction;
+  final List<String> possibleOverlapLabels;
 
   bool get isLoanInstallment => installment != null;
+  bool get isTransaction => transaction != null;
   int get inflowMinor =>
       !isLoanInstallment && transactionType != FinanceTransactionType.expense
       ? amountMinor
@@ -57,6 +72,21 @@ class FinanceFutureCommitment {
       isLoanInstallment || transactionType == FinanceTransactionType.expense
       ? amountMinor
       : 0;
+
+  FinanceFutureCommitment withPossibleOverlapLabels(Iterable<String> labels) =>
+      FinanceFutureCommitment._(
+        id: id,
+        dueAt: dueAt,
+        currencyCode: currencyCode,
+        amountMinor: amountMinor,
+        transactionType: transactionType,
+        recurringRule: recurringRule,
+        periodKey: periodKey,
+        loan: loan,
+        installment: installment,
+        transaction: transaction,
+        possibleOverlapLabels: List.unmodifiable(labels),
+      );
 }
 
 class FinanceFutureCommitmentTotals {
@@ -117,6 +147,7 @@ abstract final class FinanceFutureCommitmentsService {
       FinanceRepository.getLoanInstallmentsForActiveLoans(
         toDueDate: dateKey(endExclusive),
       ),
+      FinanceRepository.getTransactions(from: today, to: endExclusive),
     ]);
     final rules = values[0] as List<FinanceRecurringRule>;
     final upcoming = FinanceAutomationService.upcoming(
@@ -139,6 +170,7 @@ abstract final class FinanceFutureCommitmentsService {
       loans: values[1] as List<FinanceLoan>,
       installmentsByLoan:
           values[2] as Map<String, List<FinanceLoanInstallment>>,
+      transactions: values[3] as List<FinanceTransaction>,
       materializedRecurringTransactionUuids: materializedUuids,
     );
   }
@@ -149,6 +181,7 @@ abstract final class FinanceFutureCommitmentsService {
     required Iterable<FinanceRecurringRule> recurringRules,
     required Iterable<FinanceLoan> loans,
     required Map<String, List<FinanceLoanInstallment>> installmentsByLoan,
+    Iterable<FinanceTransaction> transactions = const [],
     Set<String> materializedRecurringTransactionUuids = const {},
   }) {
     final endExclusive = endExclusiveFor(now, horizonMonths);
@@ -168,6 +201,9 @@ abstract final class FinanceFutureCommitmentsService {
           ),
         ))
           FinanceFutureCommitment.recurring(due),
+      for (final transaction in transactions)
+        if (_isFutureTransaction(transaction, now, today, endExclusive))
+          FinanceFutureCommitment.transaction(transaction),
     ];
     final loansByUuid = {
       for (final loan in loans)
@@ -201,10 +237,20 @@ abstract final class FinanceFutureCommitmentsService {
     commitments.sort(_compareCommitments);
     overdue.sort(_compareCommitments);
 
+    final commitmentsWithOverlapHints = [
+      for (final item in commitments)
+        if (item.isTransaction)
+          item.withPossibleOverlapLabels(
+            _possibleOverlapLabels(item, commitments),
+          )
+        else
+          item,
+    ];
+
     final totalsByCurrency = <String, FinanceFutureCommitmentTotals>{};
     final monthlyTotalsByCurrency =
         <String, Map<String, FinanceFutureCommitmentTotals>>{};
-    for (final item in commitments) {
+    for (final item in commitmentsWithOverlapHints) {
       final currency = item.currencyCode;
       totalsByCurrency[currency] =
           (totalsByCurrency[currency] ?? const FinanceFutureCommitmentTotals())
@@ -223,7 +269,7 @@ abstract final class FinanceFutureCommitmentsService {
       now: now,
       horizonMonths: horizonMonths,
       endExclusive: endExclusive,
-      commitments: List.unmodifiable(commitments),
+      commitments: List.unmodifiable(commitmentsWithOverlapHints),
       overdueLoanInstallments: List.unmodifiable(overdue),
       totalsByCurrency: Map.unmodifiable(totalsByCurrency),
       monthlyTotalsByCurrency: Map.unmodifiable({
@@ -233,6 +279,52 @@ abstract final class FinanceFutureCommitmentsService {
           ),
       }),
     );
+  }
+
+  static bool _isFutureTransaction(
+    FinanceTransaction transaction,
+    DateTime now,
+    DateTime today,
+    DateTime endExclusive,
+  ) {
+    if (transaction.isDeleted ||
+        !isFinanceDateKey(transaction.transactionDate)) {
+      return false;
+    }
+    final ledgerDay = dateFromKey(transaction.transactionDate);
+    final day = DateTime(ledgerDay.year, ledgerDay.month, ledgerDay.day);
+    if (day.isBefore(today) || !day.isBefore(endExclusive)) return false;
+    if (dateKey(day) == dateKey(today)) {
+      return transaction.balanceEventAt() > now.millisecondsSinceEpoch;
+    }
+    return true;
+  }
+
+  static List<String> _possibleOverlapLabels(
+    FinanceFutureCommitment transaction,
+    List<FinanceFutureCommitment> allCommitments,
+  ) {
+    final labels = <String>{};
+    for (final planned in allCommitments) {
+      if (planned.isTransaction ||
+          dateKey(planned.dueAt) != dateKey(transaction.dueAt) ||
+          planned.currencyCode.toUpperCase() !=
+              transaction.currencyCode.toUpperCase() ||
+          planned.amountMinor != transaction.amountMinor ||
+          (planned.inflowMinor > 0) != (transaction.inflowMinor > 0)) {
+        continue;
+      }
+      final ruleName = planned.recurringRule?.name.trim();
+      if (ruleName != null && ruleName.isNotEmpty) {
+        labels.add('周期计划“$ruleName”');
+        continue;
+      }
+      final loanName = planned.loan?.name.trim();
+      if (loanName != null && loanName.isNotEmpty) {
+        labels.add('贷款计划“$loanName”');
+      }
+    }
+    return labels.toList()..sort();
   }
 
   static int _compareCommitments(

@@ -66,6 +66,40 @@ FinanceLoanInstallment _installment({
   isDeleted: deleted,
 );
 
+FinanceTransaction _transaction({
+  required String uuid,
+  required String transactionDate,
+  int amountMinor = 10000,
+  String currencyCode = 'CNY',
+  FinanceTransactionType type = FinanceTransactionType.expense,
+  int? occurredAt,
+  int? createdAt,
+  int? timezoneOffsetMinutes,
+  bool deleted = false,
+}) => FinanceTransaction(
+  uuid: uuid,
+  type: type,
+  amountMinor: amountMinor,
+  currencyCode: currencyCode,
+  transactionDate: transactionDate,
+  occurredAt: occurredAt,
+  createdAt: createdAt,
+  timezoneOffsetMinutes: timezoneOffsetMinutes,
+  isDeleted: deleted,
+);
+
+int _localEpoch(String date, int hour, int minute, int offsetMinutes) {
+  final day = dateFromKey(date);
+  return DateTime.utc(
+        day.year,
+        day.month,
+        day.day,
+        hour,
+        minute,
+      ).millisecondsSinceEpoch -
+      offsetMinutes * 60000;
+}
+
 void main() {
   group('FinanceFutureCommitmentsService', () {
     test('自然月范围包含今天并严格排除结束月', () {
@@ -259,6 +293,197 @@ void main() {
         ),
         throwsArgumentError,
       );
+    });
+
+    test('纳入范围内未来手工账单，排除今天已发生、软删除和窗口外账单', () {
+      final now = DateTime(2026, 10, 24, 14);
+      final offset = now.timeZoneOffset.inMinutes;
+      final todayUnknownTime = _transaction(
+        uuid: 'today-unknown-time',
+        transactionDate: '2026-10-24',
+        createdAt: now.millisecondsSinceEpoch - 60000,
+        timezoneOffsetMinutes: offset,
+      )..occurredAt = null;
+      final forecast = FinanceFutureCommitmentsService.project(
+        now: now,
+        horizonMonths: 3,
+        recurringRules: const [],
+        loans: const [],
+        installmentsByLoan: const {},
+        transactions: [
+          _transaction(
+            uuid: 'today-upcoming',
+            transactionDate: '2026-10-24',
+            occurredAt: now.millisecondsSinceEpoch + 3600000,
+            createdAt: now.millisecondsSinceEpoch - 60000,
+            timezoneOffsetMinutes: offset + 120,
+          ),
+          _transaction(
+            uuid: 'today-past',
+            transactionDate: '2026-10-24',
+            occurredAt: _localEpoch('2026-10-24', 13, 0, offset),
+            createdAt: now.millisecondsSinceEpoch - 60000,
+            timezoneOffsetMinutes: offset,
+          ),
+          _transaction(
+            uuid: 'tomorrow',
+            transactionDate: '2026-10-25',
+            occurredAt: now.millisecondsSinceEpoch - 3600000,
+            createdAt: now.millisecondsSinceEpoch - 3600000,
+            timezoneOffsetMinutes: offset,
+          ),
+          _transaction(
+            uuid: 'deleted',
+            transactionDate: '2026-10-26',
+            deleted: true,
+          ),
+          _transaction(uuid: 'outside-window', transactionDate: '2027-01-01'),
+          _transaction(uuid: 'yesterday', transactionDate: '2026-10-23'),
+          todayUnknownTime,
+        ],
+      );
+
+      expect(forecast.commitments.map((item) => item.id).toSet(), {
+        'transaction:today-upcoming',
+        'transaction:tomorrow',
+      });
+      expect(forecast.totalsByCurrency['CNY']!.outflowMinor, 20000);
+    });
+
+    test('收入与退款按流入统计，可能重叠只提示而不静默去重', () {
+      final now = DateTime(2026, 10, 24, 10);
+      final rent = _rule(
+        uuid: 'overlap-rent',
+        name: '房租规则',
+        startDate: '2026-01-01',
+        day: 25,
+        amountMinor: 10000,
+      );
+      final loan = _loan(uuid: 'overlap-loan');
+      final installment = _installment(
+        uuid: 'overlap-installment',
+        loanUuid: loan.uuid,
+        dueDate: '2026-10-25',
+        paymentMinor: 10000,
+      );
+      final matchingExpense = _transaction(
+        uuid: 'matching-expense',
+        transactionDate: '2026-10-25',
+      );
+      final nearMatch = _transaction(
+        uuid: 'near-match',
+        transactionDate: '2026-10-25',
+        amountMinor: 10001,
+      );
+      final income = _transaction(
+        uuid: 'future-income',
+        transactionDate: '2026-10-27',
+        type: FinanceTransactionType.income,
+        amountMinor: 2500,
+      );
+      final refund = _transaction(
+        uuid: 'future-refund',
+        transactionDate: '2026-10-28',
+        type: FinanceTransactionType.refund,
+        amountMinor: 500,
+      );
+      final wrongCurrency = _transaction(
+        uuid: 'wrong-currency',
+        transactionDate: '2026-10-25',
+        amountMinor: 10000,
+        currencyCode: 'USD',
+      );
+      final wrongDirection = _transaction(
+        uuid: 'wrong-direction',
+        transactionDate: '2026-10-25',
+        amountMinor: 10000,
+        type: FinanceTransactionType.income,
+      );
+      final wrongDate = _transaction(
+        uuid: 'wrong-date',
+        transactionDate: '2026-10-26',
+        amountMinor: 10000,
+      );
+
+      final forecast = FinanceFutureCommitmentsService.project(
+        now: now,
+        horizonMonths: 3,
+        recurringRules: [rent],
+        loans: [loan],
+        installmentsByLoan: {
+          loan.uuid: [installment],
+        },
+        transactions: [
+          matchingExpense,
+          nearMatch,
+          income,
+          refund,
+          wrongCurrency,
+          wrongDirection,
+          wrongDate,
+        ],
+      );
+
+      final matching = forecast.commitments.singleWhere(
+        (item) => item.id == 'transaction:matching-expense',
+      );
+      expect(matching.possibleOverlapLabels, [
+        '周期计划“房租规则”',
+        '贷款计划“测试贷款 overlap-loan”',
+      ]);
+      expect(
+        forecast.commitments
+            .singleWhere((item) => item.id == 'transaction:near-match')
+            .possibleOverlapLabels,
+        isEmpty,
+      );
+      expect(forecast.totalsByCurrency['CNY']!.inflowMinor, 13000);
+      expect(forecast.totalsByCurrency['CNY']!.outflowMinor, 70001);
+      expect(forecast.totalsByCurrency['USD']!.outflowMinor, 10000);
+      for (final id in [
+        'transaction:wrong-currency',
+        'transaction:wrong-direction',
+        'transaction:wrong-date',
+      ]) {
+        expect(
+          forecast.commitments
+              .singleWhere((item) => item.id == id)
+              .possibleOverlapLabels,
+          isEmpty,
+        );
+      }
+    });
+
+    test('已生成的周期账单以真实账单行显示且只计一次', () {
+      final rent = _rule(
+        uuid: 'materialized-rent',
+        name: '已生成房租',
+        startDate: '2026-01-01',
+        day: 25,
+      );
+      final uuid = FinanceRecurringRule.transactionUuidForPeriod(
+        rent.uuid,
+        '2026-10',
+      );
+      final forecast = FinanceFutureCommitmentsService.project(
+        now: DateTime(2026, 10, 24, 10),
+        horizonMonths: 3,
+        recurringRules: [rent],
+        loans: const [],
+        installmentsByLoan: const {},
+        transactions: [_transaction(uuid: uuid, transactionDate: '2026-10-25')],
+        materializedRecurringTransactionUuids: {uuid},
+      );
+
+      expect(forecast.commitments, hasLength(3));
+      expect(
+        forecast.commitments.where(
+          (item) => dateKey(item.dueAt) == '2026-10-25',
+        ),
+        hasLength(1),
+      );
+      expect(forecast.commitments.first.id, 'transaction:$uuid');
+      expect(forecast.totalsByCurrency['CNY']!.outflowMinor, 30000);
     });
   });
 }

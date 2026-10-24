@@ -2857,12 +2857,12 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('记账首页更多操作可打开未来固定收支', (tester) async {
+  testWidgets('记账首页更多操作可打开未来收支', (tester) async {
     await _seed(tester);
     await _pump(tester, const FinanceHomeScreen(username: 'default'));
 
     await _tap(tester, find.byTooltip('更多操作'));
-    await _tap(tester, find.text('未来固定收支'));
+    await _tap(tester, find.text('未来收支'));
 
     expect(
       find.byType(FinanceFutureCommitmentsScreen, skipOffstage: false),

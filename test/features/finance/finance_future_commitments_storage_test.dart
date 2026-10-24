@@ -59,6 +59,25 @@ void main() {
         source: FinanceEntrySource.automation,
       ).toMap(),
     );
+    await db.insert(
+      'finance_transactions',
+      FinanceTransaction(
+        uuid: 'future-storage-manual',
+        amountMinor: 1234,
+        merchant: '水电账单',
+        transactionDate: '2026-11-05',
+        source: FinanceEntrySource.manual,
+      ).toMap(),
+    );
+    await db.insert(
+      'finance_transactions',
+      FinanceTransaction(
+        uuid: 'future-storage-deleted',
+        amountMinor: 9999,
+        transactionDate: '2026-11-06',
+        isDeleted: true,
+      ).toMap(),
+    );
 
     final loan = FinanceLoan(
       uuid: 'future-storage-loan',
@@ -120,6 +139,18 @@ void main() {
         (item) => item.id == 'loan:future-storage-upcoming',
       ),
       isTrue,
+    );
+    expect(
+      forecast.commitments.any(
+        (item) => item.id == 'transaction:future-storage-manual',
+      ),
+      isTrue,
+    );
+    expect(
+      forecast.commitments.any(
+        (item) => item.id == 'transaction:future-storage-deleted',
+      ),
+      isFalse,
     );
     expect(
       forecast.overdueLoanInstallments.single.id,

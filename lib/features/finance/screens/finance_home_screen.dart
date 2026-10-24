@@ -1289,7 +1289,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.event_repeat_outlined),
-                  title: Text('未来固定收支'),
+                  title: Text('未来收支'),
                 ),
               ),
               const PopupMenuItem(
