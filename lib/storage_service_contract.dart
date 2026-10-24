@@ -215,6 +215,10 @@ abstract class _StorageServiceBase {
     String username, {
     bool includeDeleted = false,
   });
+  Future<List<FixedScheduleItem>> getFixedSchedulesByRelatedTodo(
+    String username,
+    String todoId,
+  );
   Future<List<FixedScheduleItem>> getFixedSchedulesByDay(
     String username,
     DateTime day,

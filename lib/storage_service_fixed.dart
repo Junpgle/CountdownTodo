@@ -299,6 +299,31 @@ mixin _StorageFixed on _StorageServiceBase {
     }
   }
 
+  /// Reads non-deleted fixed schedules that may reference [todoId].
+  ///
+  /// Unlike the broad list methods, this relation-specific lookup deliberately
+  /// lets database and decoding failures propagate so callers can distinguish
+  /// an unavailable result from a genuinely empty relationship.
+  Future<List<FixedScheduleItem>> getFixedSchedulesByRelatedTodo(
+    String username,
+    String todoId,
+  ) async {
+    final normalizedId = todoId.trim();
+    if (normalizedId.isEmpty) return const [];
+    final db = await DatabaseHelper.instance.databaseForUser(username);
+    final encodedId = jsonEncode(normalizedId);
+    final maps = await db.query(
+      'fixed_schedules',
+      where: 'is_deleted = 0 AND instr(related_todo_ids, ?) > 0',
+      whereArgs: [encodedId],
+      orderBy: 'date ASC, start_time ASC, updated_at DESC',
+    );
+    return maps
+        .map(FixedScheduleItem.fromJson)
+        .where((item) => item.relatedTodoIds.contains(normalizedId))
+        .toList(growable: false);
+  }
+
   Future<List<FixedScheduleItem>> getFixedSchedulesByDay(
     String username,
     DateTime day,

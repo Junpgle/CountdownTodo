@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../storage_service.dart';
+import '../services/pomodoro_service.dart';
 import '../utils/page_transitions.dart';
-import '../utils/time_utils.dart';
 import '../widgets/app_detail_widgets.dart';
 import '../widgets/floating_glass_control.dart';
 import 'course_screens.dart';
@@ -15,11 +15,22 @@ class FixedScheduleDetailScreen extends StatefulWidget {
     required this.username,
     required this.item,
     this.loadRelatedTodos,
+    this.loadRelatedFixedSchedules,
+    this.getCurrentUsername,
+    this.loadTodoFocusRecords,
   });
 
   final String username;
   final FixedScheduleItem item;
   final Future<List<TodoItem>> Function(String username)? loadRelatedTodos;
+  final Future<List<FixedScheduleItem>> Function(
+    String username,
+    String todoId,
+  )?
+  loadRelatedFixedSchedules;
+  final Future<String?> Function()? getCurrentUsername;
+  final Future<List<PomodoroRecord>> Function(String todoId)?
+  loadTodoFocusRecords;
 
   @override
   State<FixedScheduleDetailScreen> createState() =>
@@ -127,7 +138,14 @@ class _FixedScheduleDetailScreenState extends State<FixedScheduleDetailScreen> {
 
   Future<void> _openRelatedTodo(TodoItem todo) async {
     await Navigator.of(context).push<void>(
-      PageTransitions.material(builder: (_) => TodoDetailScreen(todo: todo)),
+      PageTransitions.material(
+        builder: (_) => TodoDetailScreen(
+          todo: todo,
+          loadRelatedFixedSchedules: widget.loadRelatedFixedSchedules,
+          getCurrentUsername: widget.getCurrentUsername,
+          loadFocusRecords: widget.loadTodoFocusRecords,
+        ),
+      ),
     );
     if (mounted) await _loadRelatedTodos();
   }

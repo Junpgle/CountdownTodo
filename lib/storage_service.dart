@@ -323,6 +323,11 @@ class StorageService {
     bool includeDeleted = false,
   }) => _storage.getFixedSchedules(username, includeDeleted: includeDeleted);
 
+  static Future<List<FixedScheduleItem>> getFixedSchedulesByRelatedTodo(
+    String username,
+    String todoId,
+  ) => _storage.getFixedSchedulesByRelatedTodo(username, todoId);
+
   static Future<List<FixedScheduleItem>> getFixedSchedulesByDay(
     String username,
     DateTime day,

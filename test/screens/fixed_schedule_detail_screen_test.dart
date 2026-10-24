@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/screens/course_screens.dart';
 import 'package:countdown_todo/screens/fixed_schedule_detail_screen.dart';
+import 'package:countdown_todo/services/pomodoro_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -117,6 +118,9 @@ void main() {
           username: 'tester',
           item: item,
           loadRelatedTodos: loadRelatedTodos,
+          loadRelatedFixedSchedules: (_, _) async => [item],
+          getCurrentUsername: () async => 'tester',
+          loadTodoFocusRecords: (_) async => const <PomodoroRecord>[],
         ),
       ),
     );
@@ -139,6 +143,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(TodoDetailScreen), findsOneWidget);
     expect(find.text('复习考试范围'), findsOneWidget);
+    expect(find.text('高等数学考试'), findsOneWidget);
 
     isDone = true;
     Navigator.of(tester.element(find.byType(TodoDetailScreen))).pop();

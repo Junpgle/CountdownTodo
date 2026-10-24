@@ -465,7 +465,19 @@ class _PlanBlockDetailScreenState extends State<PlanBlockDetailScreen> {
 
 class TodoDetailScreen extends StatefulWidget {
   final TodoItem todo;
-  const TodoDetailScreen({super.key, required this.todo});
+  final RelatedFixedScheduleLoader? loadRelatedFixedSchedules;
+  final CurrentUsernameLoader? getCurrentUsername;
+  final RelatedFixedScheduleOpener? openRelatedFixedSchedule;
+  final Future<List<PomodoroRecord>> Function(String todoId)? loadFocusRecords;
+
+  const TodoDetailScreen({
+    super.key,
+    required this.todo,
+    this.loadRelatedFixedSchedules,
+    this.getCurrentUsername,
+    this.openRelatedFixedSchedule,
+    this.loadFocusRecords,
+  });
 
   @override
   State<TodoDetailScreen> createState() => _TodoDetailScreenState();
@@ -482,13 +494,27 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
   }
 
   Future<void> _loadFocusRecords() async {
-    final records = await PomodoroService.getRecordsByTodoUuid(widget.todo.id);
+    final records =
+        await (widget.loadFocusRecords?.call(widget.todo.id) ??
+            PomodoroService.getRecordsByTodoUuid(widget.todo.id));
     if (mounted) {
       setState(() {
         _focusRecords = records;
         _loadingRecords = false;
       });
     }
+  }
+
+  Future<void> _openRelatedFixedSchedule(
+    String username,
+    FixedScheduleItem item,
+  ) async {
+    await Navigator.of(context).push<void>(
+      PageTransitions.material(
+        builder: (_) =>
+            FixedScheduleDetailScreen(username: username, item: item),
+      ),
+    );
   }
 
   String _getRecurrenceText() {
@@ -690,6 +716,16 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
               ),
             ),
           ],
+        ),
+        TodoRelatedFixedSchedulesSection(
+          todo: todo,
+          loadSchedules:
+              widget.loadRelatedFixedSchedules ??
+              StorageService.getFixedSchedulesByRelatedTodo,
+          getCurrentUsername:
+              widget.getCurrentUsername ?? StorageService.getCurrentUsername,
+          onOpenSchedule:
+              widget.openRelatedFixedSchedule ?? _openRelatedFixedSchedule,
         ),
         if (todo.originalText != null && todo.originalText!.isNotEmpty)
           AppDetailSection(
