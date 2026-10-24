@@ -127,8 +127,14 @@ void main() {
             recurrenceEditScope: TodoRecurrenceEditScope.series,
             clock: visualClock,
             onTodosChanged: (_) {},
-            onEditorSave: (_, _, {expectedSeriesMembership}) async =>
-                const TodoEditorSaveResult(),
+            onEditorSave:
+                (
+                  _,
+                  _, {
+                  expectedSeriesMembership,
+                  expectedFixedScheduleTodoIds,
+                  expectedFixedScheduleBaselines,
+                }) async => const TodoEditorSaveResult(),
             onGroupsChanged: (_) {},
           ),
         ),
