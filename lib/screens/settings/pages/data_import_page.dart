@@ -14,6 +14,7 @@ import '../../../utils/text_file_reader.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
 import '../../../utils/app_dialogs.dart';
+import '../widgets/import_scope_selector.dart';
 
 class DataImportPage extends StatefulWidget {
   final bool isEmbedded;
@@ -33,6 +34,7 @@ class _DataImportPageState extends State<DataImportPage> {
   bool _isImporting = false;
   ImportResult? _result;
   bool? _isSameAccount;
+  Set<ImportDataScope> _selectedScopes = {};
 
   // 导入选项
   TeamDataStrategy _teamStrategy = TeamDataStrategy.skip;
@@ -66,6 +68,7 @@ class _DataImportPageState extends State<DataImportPage> {
       _result = null;
       _isParsing = true;
       _isSameAccount = null;
+      _selectedScopes = {};
     });
 
     try {
@@ -96,6 +99,7 @@ class _DataImportPageState extends State<DataImportPage> {
           _preview = preview;
           _isParsing = false;
           _isSameAccount = isSameAccount;
+          _selectedScopes = preview.scopes.map((scope) => scope.scope).toSet();
         });
 
         // 如果是不同账号，显示提示
@@ -141,6 +145,7 @@ class _DataImportPageState extends State<DataImportPage> {
                 _fileContent = null;
                 _preview = null;
                 _isSameAccount = null;
+                _selectedScopes = {};
               });
             },
             child: const Text('取消'),
@@ -155,7 +160,11 @@ class _DataImportPageState extends State<DataImportPage> {
   }
 
   Future<void> _import() async {
-    if (_filePath == null && _fileContent == null) return;
+    if ((_filePath == null && _fileContent == null) ||
+        _preview == null ||
+        _selectedScopes.isEmpty) {
+      return;
+    }
 
     final authorized = await MinorModeService.instance.authorizeAction(
       MinorModeAction.dataImport,
@@ -196,6 +205,7 @@ class _DataImportPageState extends State<DataImportPage> {
     final importOptions = ImportOptions(
       teamStrategy: _teamStrategy,
       uuidStrategy: uuidStrategy,
+      selectedScopes: Set.unmodifiable(_selectedScopes),
     );
     final result = _fileContent != null
         ? await DataImportService.importDataFromJsonString(
@@ -299,7 +309,7 @@ class _DataImportPageState extends State<DataImportPage> {
               ),
             ),
           ] else if (_preview != null) ...[
-            _buildPreviewSection(colorScheme),
+            _buildPreviewSection(),
             const SizedBox(height: 16),
             _buildImportOptionsCard(colorScheme),
             const SizedBox(height: 16),
@@ -337,7 +347,7 @@ class _DataImportPageState extends State<DataImportPage> {
                     ),
                   ),
                 ] else if (_preview != null) ...[
-                  _buildPreviewSection(colorScheme),
+                  _buildPreviewSection(),
                 ],
                 if (_result != null) ...[
                   const SizedBox(height: 16),
@@ -442,8 +452,9 @@ class _DataImportPageState extends State<DataImportPage> {
     );
   }
 
-  Widget _buildPreviewSection(ColorScheme colorScheme) {
+  Widget _buildPreviewSection() {
     final preview = _preview!;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Card(
       child: Padding(
@@ -469,27 +480,12 @@ class _DataImportPageState extends State<DataImportPage> {
             if (preview.appVersion != null)
               _buildInfoRow('应用版本', preview.appVersion!),
             const Divider(height: 24),
-            const Text('包含数据:', style: TextStyle(fontWeight: FontWeight.w500)),
-            const SizedBox(height: 8),
-            ...preview.types.map(
-              (type) => Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  children: [
-                    const Icon(Icons.circle, size: 6),
-                    const SizedBox(width: 8),
-                    Text(type.label),
-                    const Spacer(),
-                    Text(
-                      '${type.count} 条',
-                      style: TextStyle(
-                        color: colorScheme.onSurfaceVariant,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            ImportScopeSelector(
+              preview: preview,
+              selectedScopes: _selectedScopes,
+              onSelectionChanged: (scopes) => setState(() {
+                _selectedScopes = scopes;
+              }),
             ),
           ],
         ),
@@ -663,7 +659,7 @@ class _DataImportPageState extends State<DataImportPage> {
     return SizedBox(
       width: double.infinity,
       child: FilledButton.icon(
-        onPressed: _isImporting ? null : _import,
+        onPressed: _isImporting || _selectedScopes.isEmpty ? null : _import,
         icon: _isImporting
             ? const SizedBox(
                 width: 18,
@@ -674,7 +670,13 @@ class _DataImportPageState extends State<DataImportPage> {
                 ),
               )
             : const Icon(Icons.download),
-        label: Text(_isImporting ? '导入中...' : '开始导入'),
+        label: Text(
+          _isImporting
+              ? '导入中...'
+              : _selectedScopes.isEmpty
+              ? '先选择恢复范围'
+              : '开始导入',
+        ),
       ),
     );
   }

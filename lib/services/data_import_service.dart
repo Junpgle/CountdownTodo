@@ -28,6 +28,26 @@ import 'storage/habit_storage.dart';
 import 'storage/storage_key_scope.dart';
 
 class DataImportService {
+  static const Set<String> _listDataKeys = {
+    'todo_groups',
+    'todos',
+    'countdowns',
+    'time_logs',
+    'todo_plan_blocks',
+    'fixed_schedules',
+    'courses',
+    'pomodoro_tags',
+    'pomodoro_records',
+  };
+
+  static const Set<String> _knownDataKeys = {
+    ..._listDataKeys,
+    'settings',
+    'thirty_day_challenge',
+    'habits',
+    'finance',
+  };
+
   static const Map<String, String> _typeLabels = {
     'todos': '待办事项',
     'countdowns': '倒计时',
@@ -72,17 +92,6 @@ class DataImportService {
   }
 
   static void _validateImportPayload(Map<String, dynamic> data) {
-    const listKeys = {
-      'todo_groups',
-      'todos',
-      'countdowns',
-      'time_logs',
-      'todo_plan_blocks',
-      'fixed_schedules',
-      'courses',
-      'pomodoro_tags',
-      'pomodoro_records',
-    };
     for (final entry in data.entries) {
       if (entry.key == 'settings' || entry.key == 'finance') {
         if (entry.value is! Map) {
@@ -132,7 +141,7 @@ class DataImportService {
         }
         continue;
       }
-      if (listKeys.contains(entry.key)) {
+      if (_listDataKeys.contains(entry.key)) {
         if (entry.value is! List) {
           throw FormatException('${entry.key} 必须是数组');
         }
@@ -178,11 +187,19 @@ class DataImportService {
     _validateImportPayload(data);
 
     final types = <ImportTypePreview>[];
+    final unsupportedKeys = <String>[];
     for (final entry in data.entries) {
       final key = entry.key;
+      if (!_knownDataKeys.contains(key)) {
+        unsupportedKeys.add(key);
+        continue;
+      }
       // settings 是 Map 类型，单独处理
       if (key == 'settings') {
-        types.add(ImportTypePreview(key: key, label: '偏好设置', count: 1));
+        final settings = Map<String, dynamic>.from(entry.value as Map);
+        types.add(
+          ImportTypePreview(key: key, label: '偏好设置', count: settings.length),
+        );
         continue;
       }
       if (key == 'thirty_day_challenge' && entry.value is Map) {
@@ -194,6 +211,7 @@ class DataImportService {
             key: key,
             label: _typeLabels[key] ?? key,
             count: tasks is List ? tasks.length : 0,
+            deletedCount: tasks is List ? _deletedCount(tasks) : 0,
           ),
         );
         continue;
@@ -201,22 +219,29 @@ class DataImportService {
       if (key == 'finance' && entry.value is Map) {
         final finance = Map<String, dynamic>.from(entry.value as Map);
         final transactions = finance['transactions'];
+        final categories = finance['categories'];
+        final paymentMethods = finance['payment_methods'];
         final budgets = finance['budgets'];
         final recurringRules = finance['recurring_rules'];
         final templates = finance['templates'];
         final loans = finance['loans'];
         final loanInstallments = finance['loan_installments'];
+        final financeLists = [
+          transactions,
+          categories,
+          paymentMethods,
+          budgets,
+          recurringRules,
+          templates,
+          loans,
+          loanInstallments,
+        ];
         types.add(
           ImportTypePreview(
             key: key,
             label: _typeLabels[key] ?? key,
-            count:
-                (transactions is List ? transactions.length : 0) +
-                (budgets is List ? budgets.length : 0) +
-                (recurringRules is List ? recurringRules.length : 0) +
-                (templates is List ? templates.length : 0) +
-                (loans is List ? loans.length : 0) +
-                (loanInstallments is List ? loanInstallments.length : 0),
+            count: _listCount(financeLists),
+            deletedCount: _deletedCountFromLists(financeLists),
           ),
         );
         continue;
@@ -227,39 +252,43 @@ class DataImportService {
         final rules = habits['rules'];
         final checkIns = habits['check_ins'];
         final sleepPlans = habits['sleep_coaching_plans'];
+        final habitLists = [goals, rules, checkIns, sleepPlans];
         types.add(
           ImportTypePreview(
             key: key,
             label: _typeLabels[key] ?? key,
-            count:
-                (goals is List ? goals.length : 0) +
-                (rules is List ? rules.length : 0) +
-                (checkIns is List ? checkIns.length : 0) +
-                (sleepPlans is List ? sleepPlans.length : 0),
+            count: _listCount(habitLists),
+            deletedCount: _deletedCountFromLists(habitLists),
           ),
         );
         continue;
       }
-      // 其他数据类型应该是 List
-      if (entry.value is List) {
+      if (_listDataKeys.contains(key)) {
         final items = entry.value as List<dynamic>;
-        int teamCount = 0;
-        for (final item in items) {
-          if (item is Map<String, dynamic>) {
-            final teamUuid = item['team_uuid'] ?? item['teamUuid'];
-            if (teamUuid != null && teamUuid.toString().isNotEmpty) {
-              teamCount++;
-            }
-          }
-        }
+        final teamCount = items.where((item) {
+          if (item is! Map) return false;
+          final teamUuid = item['team_uuid'] ?? item['teamUuid'];
+          return teamUuid != null && teamUuid.toString().isNotEmpty;
+        }).length;
         types.add(
           ImportTypePreview(
             key: key,
             label: _typeLabels[key] ?? key,
             count: items.length,
+            deletedCount: _deletedCount(items),
             teamCount: teamCount,
           ),
         );
+      }
+    }
+
+    final scopes = <ImportScopePreview>[];
+    for (final scope in ImportDataScope.values) {
+      final scopeTypes = types
+          .where((type) => scope.dataKeys.contains(type.key))
+          .toList(growable: false);
+      if (scopeTypes.isNotEmpty) {
+        scopes.add(ImportScopePreview(scope: scope, types: scopeTypes));
       }
     }
 
@@ -267,8 +296,55 @@ class DataImportService {
       fileVersion: version,
       exportedAt: exportedAt,
       types: types,
+      scopes: scopes,
+      unsupportedKeys: unsupportedKeys,
     );
   }
+
+  static int _listCount(Iterable<Object?> values) => values.fold<int>(
+    0,
+    (count, value) => count + (value is List ? value.length : 0),
+  );
+
+  static int _deletedCountFromLists(Iterable<Object?> values) =>
+      values.fold<int>(
+        0,
+        (count, value) => count + (value is List ? _deletedCount(value) : 0),
+      );
+
+  static int _deletedCount(Iterable<Object?> values) => values.where((value) {
+    if (value is! Map) return false;
+    final deleted = value['is_deleted'] ?? value['isDeleted'];
+    return deleted == true ||
+        deleted == 1 ||
+        deleted == '1' ||
+        deleted == 'true';
+  }).length;
+
+  @visibleForTesting
+  static Map<String, dynamic> filterDataByScopes(
+    Map<String, dynamic> data,
+    Set<ImportDataScope>? selectedScopes,
+  ) {
+    final selectedKeys = selectedScopes == null
+        ? _knownDataKeys
+        : selectedScopes.expand((scope) => scope.dataKeys).toSet();
+    return Map<String, dynamic>.fromEntries(
+      data.entries.where((entry) => selectedKeys.contains(entry.key)),
+    );
+  }
+
+  static bool _containsTeamScopedData(Map<String, dynamic> data) =>
+      data.keys.any(
+        const {
+          'todo_groups',
+          'todos',
+          'countdowns',
+          'time_logs',
+          'fixed_schedules',
+          'courses',
+        }.contains,
+      );
 
   static Future<ImportResult> importData({
     required String username,
@@ -288,6 +364,16 @@ class DataImportService {
     required String jsonString,
     ImportOptions options = const ImportOptions(),
   }) async {
+    if (options.selectedScopes?.isEmpty == true) {
+      return const ImportResult(
+        success: false,
+        errorMessage: '请至少选择一个要导入的数据域',
+        importedCount: 0,
+        skippedCount: 0,
+        updatedCount: 0,
+      );
+    }
+
     final authorized = await MinorModeService.instance.authorizeAction(
       MinorModeAction.dataImport,
     );
@@ -310,11 +396,24 @@ class DataImportService {
       _uuidNamespaceSalt = '${ApiService.currentUserId}_$username';
 
       final json = jsonDecode(jsonString) as Map<String, dynamic>;
-      final data = json['data'] as Map<String, dynamic>? ?? {};
-      _validateImportPayload(data);
+      final sourceData = json['data'] as Map<String, dynamic>? ?? {};
+      _validateImportPayload(sourceData);
+      final data = filterDataByScopes(sourceData, options.selectedScopes);
+      if (data.isEmpty) {
+        return const ImportResult(
+          success: false,
+          errorMessage: '所选数据域没有可导入的受支持数据',
+          importedCount: 0,
+          skippedCount: 0,
+          updatedCount: 0,
+        );
+      }
 
-      // 获取用户当前加入的团队列表
-      final joinedTeamUuids = await _getJoinedTeamUuids();
+      // Only team-aware sections need the current team list. A finance-only or
+      // settings-only restore must remain local and avoid an unrelated request.
+      final joinedTeamUuids = _containsTeamScopedData(data)
+          ? await _getJoinedTeamUuids()
+          : <String>{};
       //       debugPrint('📋 用户已加入的团队: $joinedTeamUuids');
 
       // 如果调用方没有显式指定 uuidStrategy，则自动检测
@@ -517,8 +616,22 @@ class DataImportService {
       // keep notification failures from turning a successful data import into
       // a rollback-worthy error.
       try {
-        await ReminderScheduleService.scheduleCurrentUser();
-        await HabitReminderService.rescheduleAll();
+        if (data.keys.any(
+          const {
+            'todo_groups',
+            'todos',
+            'countdowns',
+            'todo_plan_blocks',
+            'courses',
+            'fixed_schedules',
+            'finance',
+          }.contains,
+        )) {
+          await ReminderScheduleService.scheduleCurrentUser();
+        }
+        if (data.containsKey('habits')) {
+          await HabitReminderService.rescheduleAll();
+        }
       } catch (error) {
         debugPrint('⚠️ 数据导入后刷新提醒失败: $error');
       }
