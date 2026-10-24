@@ -28,7 +28,7 @@ void main() {
               {'uuid': 'tag-a'},
             ],
             'pomodoro_records': [
-              {'uuid': 'record-a'},
+              {'uuid': 'record-a', 'team_uuid': 'not-team-strategy-aware'},
             ],
             'courses': <Object?>[],
             'finance': {
@@ -84,6 +84,11 @@ void main() {
         expect(productivity.count, 5);
         expect(productivity.deletedCount, 1);
         expect(productivity.teamCount, 1);
+        expect(
+          teamScopedImportCount(preview, {ImportDataScope.productivity}),
+          1,
+        );
+        expect(teamScopedImportCount(preview, {ImportDataScope.finance}), 0);
         expect(
           productivity.types.map((type) => type.key),
           containsAll([

@@ -41,6 +41,11 @@ counts where available. The finance total includes categories and payment
 methods as well as ledger and plan rows. Counts describe entries in the file;
 they are not a row-by-row prediction of local conflicts.
 
+The team-handling option and its count are limited to the selected scopes and
+the sections whose importers apply a team strategy. Plan blocks and Pomodoro
+records do not contribute to that count, even if an older backup happens to
+contain team-related fields for them.
+
 ## Restore and identity behavior
 
 Each selected scope is filtered into the existing domain importers, which retain
@@ -57,6 +62,13 @@ them. Cross-account import uses the existing UUID remapping strategy. Team-bound
 records continue to follow the selected “skip” or “convert to personal”
 strategy. Soft-deleted entries remain part of selected scopes and follow their
 domain importer's existing behavior.
+
+Before writing, the import page asks the user to review the selected scopes and
+their backup-file counts, UUID behavior, and any applicable team strategy or
+challenge/preferences warning. Canceling this review does not start the import.
+After a successful restore, the result card reports record changes by scope,
+counts applied preference keys separately, and describes challenge state and
+its task count without labeling those tasks as newly created records.
 
 The existing import rollback snapshot and reminder refresh paths remain in
 place. Restore selection only filters the JSON sections before the domain

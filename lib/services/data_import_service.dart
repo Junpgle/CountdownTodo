@@ -335,16 +335,7 @@ class DataImportService {
   }
 
   static bool _containsTeamScopedData(Map<String, dynamic> data) =>
-      data.keys.any(
-        const {
-          'todo_groups',
-          'todos',
-          'countdowns',
-          'time_logs',
-          'fixed_schedules',
-          'courses',
-        }.contains,
-      );
+      data.keys.any(teamScopedImportDataKeys.contains);
 
   static Future<ImportResult> importData({
     required String username,
@@ -457,6 +448,27 @@ class DataImportService {
       int importedCount = 0;
       int skippedCount = 0;
       int updatedCount = 0;
+      final scopeResultBuilders =
+          <ImportDataScope, _ImportScopeRestoreSummaryBuilder>{
+            for (final scope in ImportDataScope.values)
+              if (scope.dataKeys.any(data.containsKey))
+                scope: _ImportScopeRestoreSummaryBuilder(scope),
+          };
+
+      void collectRecordResult(ImportDataScope scope, Map<String, int> result) {
+        final imported = result['imported'] ?? 0;
+        final skipped = result['skipped'] ?? 0;
+        final updated = result['updated'] ?? 0;
+        importedCount += imported;
+        skippedCount += skipped;
+        updatedCount += updated;
+        scopeResultBuilders[scope]?.addRecordCounts(
+          imported: imported,
+          updated: updated,
+          skipped: skipped,
+        );
+      }
+
       rollbackSnapshot = await _DataImportRollbackSnapshot.capture();
 
       if (data.containsKey('todo_groups') && data['todo_groups'] is List) {
@@ -467,9 +479,7 @@ class DataImportService {
           options.teamStrategy,
           uuidStrategy,
         );
-        importedCount += result['imported']!;
-        skippedCount += result['skipped']!;
-        updatedCount += result['updated']!;
+        collectRecordResult(ImportDataScope.productivity, result);
       }
 
       if (data.containsKey('todos') && data['todos'] is List) {
@@ -480,9 +490,7 @@ class DataImportService {
           options.teamStrategy,
           uuidStrategy,
         );
-        importedCount += result['imported']!;
-        skippedCount += result['skipped']!;
-        updatedCount += result['updated']!;
+        collectRecordResult(ImportDataScope.productivity, result);
       }
 
       if (data.containsKey('countdowns') && data['countdowns'] is List) {
@@ -493,9 +501,7 @@ class DataImportService {
           options.teamStrategy,
           uuidStrategy,
         );
-        importedCount += result['imported']!;
-        skippedCount += result['skipped']!;
-        updatedCount += result['updated']!;
+        collectRecordResult(ImportDataScope.productivity, result);
       }
 
       // pomodoro_tags 必须在 time_logs 和 pomodoro_records 之前导入，
@@ -505,9 +511,7 @@ class DataImportService {
           data['pomodoro_tags'] as List<dynamic>,
           uuidStrategy,
         );
-        importedCount += result['imported']!;
-        skippedCount += result['skipped']!;
-        updatedCount += result['updated']!;
+        collectRecordResult(ImportDataScope.productivity, result);
       }
 
       if (data.containsKey('time_logs') && data['time_logs'] is List) {
@@ -518,9 +522,7 @@ class DataImportService {
           options.teamStrategy,
           uuidStrategy,
         );
-        importedCount += result['imported']!;
-        skippedCount += result['skipped']!;
-        updatedCount += result['updated']!;
+        collectRecordResult(ImportDataScope.productivity, result);
       }
 
       if (data.containsKey('todo_plan_blocks') &&
@@ -530,9 +532,7 @@ class DataImportService {
           data['todo_plan_blocks'] as List<dynamic>,
           uuidStrategy,
         );
-        importedCount += result['imported']!;
-        skippedCount += result['skipped']!;
-        updatedCount += result['updated']!;
+        collectRecordResult(ImportDataScope.productivity, result);
       }
 
       if (data.containsKey('fixed_schedules') &&
@@ -544,9 +544,7 @@ class DataImportService {
           options.teamStrategy,
           uuidStrategy,
         );
-        importedCount += result['imported']!;
-        skippedCount += result['skipped']!;
-        updatedCount += result['updated']!;
+        collectRecordResult(ImportDataScope.productivity, result);
       }
 
       if (data.containsKey('courses') && data['courses'] is List) {
@@ -557,9 +555,7 @@ class DataImportService {
           options.teamStrategy,
           uuidStrategy,
         );
-        importedCount += result['imported']!;
-        skippedCount += result['skipped']!;
-        updatedCount += result['updated']!;
+        collectRecordResult(ImportDataScope.courses, result);
       }
 
       if (data.containsKey('pomodoro_records') &&
@@ -568,9 +564,7 @@ class DataImportService {
           data['pomodoro_records'] as List<dynamic>,
           uuidStrategy,
         );
-        importedCount += result['imported']!;
-        skippedCount += result['skipped']!;
-        updatedCount += result['updated']!;
+        collectRecordResult(ImportDataScope.productivity, result);
       }
 
       if (data['habits'] is Map) {
@@ -578,9 +572,7 @@ class DataImportService {
           Map<String, dynamic>.from(data['habits'] as Map),
           uuidStrategy,
         );
-        importedCount += result['imported']!;
-        skippedCount += result['skipped']!;
-        updatedCount += result['updated']!;
+        collectRecordResult(ImportDataScope.habits, result);
       }
 
       if (data['finance'] is Map) {
@@ -591,24 +583,28 @@ class DataImportService {
             shouldRegenerate: uuidStrategy == UuidStrategy.regenerate,
           ),
         );
-        importedCount += result['imported'] ?? 0;
-        skippedCount += result['skipped'] ?? 0;
-        updatedCount += result['updated'] ?? 0;
+        collectRecordResult(ImportDataScope.finance, result);
       }
 
       if (data.containsKey('settings') && data['settings'] is Map) {
-        await _importSettings(
+        final appliedSettingCount = await _importSettings(
           data['settings'] as Map<String, dynamic>,
           username: username,
         );
+        scopeResultBuilders[ImportDataScope.settings]?.detailCount =
+            appliedSettingCount;
         importedCount += 1;
       }
 
       if (data['thirty_day_challenge'] is Map) {
-        importedCount += await ThirtyDayChallengeRepository.importBackup(
-          Map<String, dynamic>.from(data['thirty_day_challenge'] as Map),
-          username: username,
-        );
+        final restoredTaskCount =
+            await ThirtyDayChallengeRepository.importBackup(
+              Map<String, dynamic>.from(data['thirty_day_challenge'] as Map),
+              username: username,
+            );
+        scopeResultBuilders[ImportDataScope.challenge]?.detailCount =
+            restoredTaskCount;
+        importedCount += restoredTaskCount;
       }
 
       // Imported todos, courses, fixed schedules, finance rules and habits
@@ -643,6 +639,9 @@ class DataImportService {
         importedCount: importedCount,
         skippedCount: skippedCount,
         updatedCount: updatedCount,
+        scopeSummaries: scopeResultBuilders.values
+            .map((builder) => builder.build())
+            .toList(growable: false),
       );
     } catch (e) {
       //       debugPrint('❌ DataImportService: importData error: $e');
@@ -1531,11 +1530,12 @@ class DataImportService {
     }
   }
 
-  static Future<void> _importSettings(
+  static Future<int> _importSettings(
     Map<String, dynamic> settings, {
     required String username,
   }) async {
     final prefs = await SharedPreferences.getInstance();
+    var appliedCount = 0;
 
     for (final entry in settings.entries) {
       final key = entry.key;
@@ -1560,25 +1560,31 @@ class DataImportService {
 
       // 根据值类型保存
       if (value is bool) {
-        await prefs.setBool(targetKey, value);
+        if (await prefs.setBool(targetKey, value)) appliedCount++;
       } else if (value is int) {
-        await prefs.setInt(targetKey, value);
+        if (await prefs.setInt(targetKey, value)) appliedCount++;
       } else if (value is double) {
-        await prefs.setDouble(targetKey, value);
+        if (await prefs.setDouble(targetKey, value)) appliedCount++;
       } else if (value is String) {
-        await prefs.setString(targetKey, value);
+        if (await prefs.setString(targetKey, value)) appliedCount++;
       } else if (value is List) {
         // 尝试作为字符串列表保存
         try {
           final stringList = value.map((e) => e.toString()).toList();
-          await prefs.setStringList(targetKey, stringList);
+          if (await prefs.setStringList(targetKey, stringList)) {
+            appliedCount++;
+          }
         } catch (_) {
           // 如果失败，序列化为 JSON 字符串
-          await prefs.setString(targetKey, jsonEncode(value));
+          if (await prefs.setString(targetKey, jsonEncode(value))) {
+            appliedCount++;
+          }
         }
       } else if (value is Map) {
         // 序列化为 JSON 字符串
-        await prefs.setString(targetKey, jsonEncode(value));
+        if (await prefs.setString(targetKey, jsonEncode(value))) {
+          appliedCount++;
+        }
       }
     }
 
@@ -1587,6 +1593,8 @@ class DataImportService {
 
     // 触发壁纸刷新
     StorageService.triggerWallpaperRefresh();
+
+    return appliedCount;
   }
 
   static bool _isUserSpecificKey(String key) {
@@ -1673,6 +1681,41 @@ final class _ImportListIndex<T> {
     }
     return indexes;
   }
+}
+
+final class _ImportScopeRestoreSummaryBuilder {
+  final ImportDataScope scope;
+  var importedCount = 0;
+  var updatedCount = 0;
+  var skippedCount = 0;
+  var detailCount = 0;
+
+  _ImportScopeRestoreSummaryBuilder(this.scope);
+
+  ImportScopeRestoreKind get kind => switch (scope) {
+    ImportDataScope.settings => ImportScopeRestoreKind.settingsApplied,
+    ImportDataScope.challenge => ImportScopeRestoreKind.challengeRestored,
+    _ => ImportScopeRestoreKind.recordChanges,
+  };
+
+  void addRecordCounts({
+    required int imported,
+    required int updated,
+    required int skipped,
+  }) {
+    importedCount += imported;
+    updatedCount += updated;
+    skippedCount += skipped;
+  }
+
+  ImportScopeRestoreSummary build() => ImportScopeRestoreSummary(
+    scope: scope,
+    kind: kind,
+    importedCount: importedCount,
+    updatedCount: updatedCount,
+    skippedCount: skippedCount,
+    detailCount: detailCount,
+  );
 }
 
 /// Import writes are made through several storage facades, each of which

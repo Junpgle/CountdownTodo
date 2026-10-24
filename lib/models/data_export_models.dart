@@ -57,6 +57,15 @@ enum ImportDataScope {
   settings,
 }
 
+const Set<String> teamScopedImportDataKeys = {
+  'todo_groups',
+  'todos',
+  'countdowns',
+  'time_logs',
+  'fixed_schedules',
+  'courses',
+};
+
 extension ImportDataScopeDetails on ImportDataScope {
   String get label => switch (this) {
     ImportDataScope.productivity => '待办、规划与专注',
@@ -132,6 +141,20 @@ class ImportPreview {
   });
 }
 
+int teamScopedImportCount(
+  ImportPreview preview,
+  Set<ImportDataScope> selectedScopes,
+) {
+  final selectedKeys = selectedScopes.expand((scope) => scope.dataKeys).toSet();
+  return preview.types
+      .where(
+        (type) =>
+            teamScopedImportDataKeys.contains(type.key) &&
+            selectedKeys.contains(type.key),
+      )
+      .fold(0, (total, type) => total + type.teamCount);
+}
+
 class ImportScopePreview {
   final ImportDataScope scope;
   final List<ImportTypePreview> types;
@@ -143,7 +166,9 @@ class ImportScopePreview {
   int get count => types.fold(0, (total, type) => total + type.count);
   int get deletedCount =>
       types.fold(0, (total, type) => total + type.deletedCount);
-  int get teamCount => types.fold(0, (total, type) => total + type.teamCount);
+  int get teamCount => types
+      .where((type) => teamScopedImportDataKeys.contains(type.key))
+      .fold(0, (total, type) => total + type.teamCount);
 }
 
 class ImportTypePreview {
@@ -170,6 +195,7 @@ class ImportResult {
   final int importedCount;
   final int skippedCount;
   final int updatedCount;
+  final List<ImportScopeRestoreSummary> scopeSummaries;
 
   const ImportResult({
     required this.success,
@@ -177,5 +203,30 @@ class ImportResult {
     required this.importedCount,
     required this.skippedCount,
     required this.updatedCount,
+    this.scopeSummaries = const [],
+  });
+}
+
+enum ImportScopeRestoreKind {
+  recordChanges,
+  settingsApplied,
+  challengeRestored,
+}
+
+class ImportScopeRestoreSummary {
+  final ImportDataScope scope;
+  final ImportScopeRestoreKind kind;
+  final int importedCount;
+  final int updatedCount;
+  final int skippedCount;
+  final int detailCount;
+
+  const ImportScopeRestoreSummary({
+    required this.scope,
+    required this.kind,
+    this.importedCount = 0,
+    this.updatedCount = 0,
+    this.skippedCount = 0,
+    this.detailCount = 0,
   });
 }
