@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import io.github.d4viddf.hyperisland_kit.HyperAction
 import io.github.d4viddf.hyperisland_kit.HyperIslandNotification
 import io.github.d4viddf.hyperisland_kit.HyperPicture
 import org.json.JSONArray
@@ -340,14 +341,18 @@ class ReminderService : Service() {
             teacher = teacher,
             notifId = notifId
         )
+        val isCourseReminder = type == "course" || notifId in (
+            CourseArrivalReceiver.FIRST_SCHEDULED_COURSE_NOTIFICATION_ID..
+                CourseArrivalReceiver.LAST_SCHEDULED_COURSE_NOTIFICATION_ID
+            )
 
         val builder = NotificationCompat.Builder(this, REMINDER_CHANNEL_ID)
             .setSmallIcon(display.iconResId)
             .setContentTitle(display.title)
             .setContentText(display.text)
             .setSubText(display.subText)
-            .setOngoing(true)
-            .setAutoCancel(false)
+            .setOngoing(!isCourseReminder)
+            .setAutoCancel(isCourseReminder)
             .setOnlyAlertOnce(false)
             .setWhen(System.currentTimeMillis())
             .setShowWhen(true)
@@ -357,10 +362,32 @@ class ReminderService : Service() {
             .setColor(display.color)
             .setColorized(false)
             .setContentIntent(pi)
-            .setRequestPromotedOngoing(true)
+            .setRequestPromotedOngoing(!isCourseReminder)
 
         val extras = Bundle().apply {
-            putBoolean("android.extra.requestPromotedOngoing", true)
+            putBoolean("android.extra.requestPromotedOngoing", !isCourseReminder)
+        }
+
+        val courseArrivalPendingIntent = if (isCourseReminder) {
+            val arrivedIntent = Intent(this, CourseArrivalReceiver::class.java).apply {
+                action = CourseArrivalReceiver.ACTION_MARK_ARRIVED
+                putExtra(CourseArrivalReceiver.EXTRA_NOTIFICATION_ID, notifId)
+            }
+            PendingIntent.getBroadcast(
+                this,
+                notifId,
+                arrivedIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        } else {
+            null
+        }
+        if (courseArrivalPendingIntent != null) {
+            builder.addAction(
+                R.drawable.ic_done,
+                "我已到达教室",
+                courseArrivalPendingIntent
+            )
         }
 
         if (Build.VERSION.SDK_INT >= 34 && display.shortText.isNotBlank()) {
@@ -418,9 +445,19 @@ class ReminderService : Service() {
                 hyperBuilder.setIslandConfig(
                     priority = 2,
                     timeout = null,
-                    dismissible = false,
+                    dismissible = isCourseReminder,
                     needCloseAnimation = true
                 )
+                if (courseArrivalPendingIntent != null) {
+                    hyperBuilder.addAction(
+                        HyperAction(
+                            "btn_course_arrived",
+                            "我已到达教室",
+                            courseArrivalPendingIntent,
+                            1
+                        )
+                    )
+                }
                 extras.putString("miui.focus.param", hyperBuilder.buildJsonParam())
                 extras.putAll(hyperBuilder.buildResourceBundle())
             }
