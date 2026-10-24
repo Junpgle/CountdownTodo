@@ -1080,7 +1080,9 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
               ),
               child: GridView.count(
                 shrinkWrap: true,
+                primary: false,
                 physics: const NeverScrollableScrollPhysics(),
+                padding: EdgeInsets.zero,
                 crossAxisCount: MediaQuery.of(context).size.width > 600 ? 4 : 2,
                 mainAxisSpacing: 12,
                 crossAxisSpacing: 12,
