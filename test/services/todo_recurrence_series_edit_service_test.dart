@@ -9,15 +9,14 @@ void main() {
     bool done = false,
     bool skipped = false,
     String seriesId = 'series-a',
-  }) =>
-      TodoItem(
-        id: id,
-        title: id,
-        isDone: done,
-        isSkipped: skipped,
-        recurrenceSeriesId: seriesId,
-        createdDate: start.toUtc().millisecondsSinceEpoch,
-      );
+  }) => TodoItem(
+    id: id,
+    title: id,
+    isDone: done,
+    isSkipped: skipped,
+    recurrenceSeriesId: seriesId,
+    createdDate: start.toUtc().millisecondsSinceEpoch,
+  );
 
   test('系列成员和状态分布包含所有未删除真实期次', () {
     final todos = [
@@ -64,10 +63,10 @@ void main() {
       'legacy-anchor',
     );
     expect(
-      TodoRecurrenceSeriesEditService.activeMemberIds(
-        [anchor, generated],
-        'legacy-anchor',
-      ),
+      TodoRecurrenceSeriesEditService.activeMemberIds([
+        anchor,
+        generated,
+      ], 'legacy-anchor'),
       {'legacy-anchor', 'legacy-occurrence'},
     );
   });

@@ -252,11 +252,10 @@ class AiActionParser {
     return actions;
   }
 
-  static bool _explicitWholeTodoSeriesRequest(String message) =>
-      RegExp(
-        r'(整个系列|全系列|所有期次|全部期次|所有周期|全部周期|每一期|全体期次|whole series|entire series|all occurrences)',
-        caseSensitive: false,
-      ).hasMatch(message);
+  static bool _explicitWholeTodoSeriesRequest(String message) => RegExp(
+    r'(整个系列|全系列|所有期次|全部期次|所有周期|全部周期|每一期|全体期次|whole series|entire series|all occurrences)',
+    caseSensitive: false,
+  ).hasMatch(message);
 
   static void _resolveCountdownTeamBindings(
     List<AiTodoAction> actions, {

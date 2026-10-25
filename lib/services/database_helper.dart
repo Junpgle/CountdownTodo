@@ -305,9 +305,7 @@ class DatabaseHelper {
     final completionColumns = await db.rawQuery(
       'PRAGMA table_info(todo_completions)',
     );
-    final completionNames = completionColumns
-        .map((row) => row['name'])
-        .toSet();
+    final completionNames = completionColumns.map((row) => row['name']).toSet();
     if (!completionNames.contains('is_skipped')) {
       await db.execute(
         'ALTER TABLE todo_completions ADD COLUMN is_skipped INTEGER NOT NULL DEFAULT 0',

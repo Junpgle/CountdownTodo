@@ -427,9 +427,7 @@ class AiChatService {
       // ask it to spend the same request in deep-thinking mode.
       final enableThinking =
           deepThinking && !(isMimo && (tools?.isNotEmpty ?? false));
-      body['thinking'] = {
-        'type': enableThinking ? 'enabled' : 'disabled',
-      };
+      body['thinking'] = {'type': enableThinking ? 'enabled' : 'disabled'};
     }
     return body;
   }

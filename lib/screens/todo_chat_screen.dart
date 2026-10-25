@@ -125,8 +125,7 @@ class TodoChatScreen extends StatefulWidget {
     List<TodoItem> updated, {
     Map<String, TodoItem>? expectedTodoBaselines,
     Map<String, Set<String>>? expectedSeriesMembership,
-  }
-  )?
+  })?
   onTodosBatchAction;
   final Function(List<TodoGroup> groups)? onTodoGroupsChanged;
   final Function(List<FixedScheduleItem> schedules)? onFixedSchedulesChanged;

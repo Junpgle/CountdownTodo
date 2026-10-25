@@ -37,7 +37,10 @@ class _HabitGoalMetOverlayState extends State<HabitGoalMetOverlay> {
   @override
   void initState() {
     super.initState();
-    _quote = _inspirationalQuotes[math.Random().nextInt(_inspirationalQuotes.length)];
+    _quote =
+        _inspirationalQuotes[math.Random().nextInt(
+          _inspirationalQuotes.length,
+        )];
     HabitCelebrationService.playGoalMetImpact();
   }
 
@@ -90,10 +93,7 @@ class _HabitGoalMetOverlayState extends State<HabitGoalMetOverlay> {
           if (widget.streakDays > 0) ...[
             const SizedBox(height: 10),
             Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 10,
-                vertical: 4,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                 color: const Color(0xFFFF9100).withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(12),

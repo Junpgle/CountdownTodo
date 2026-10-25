@@ -982,10 +982,7 @@ void main() {
       await block('a');
       await f.db.update('todos', {'team_uuid': 'team'});
       await open(t);
-      expect(
-        find.text('关联团队待办的剩余规划暂不支持批量处理，请逐条核对'),
-        findsWidgets,
-      );
+      expect(find.text('关联团队待办的剩余规划暂不支持批量处理，请逐条核对'), findsWidgets);
       expect(t.widget<FilledButton>(key('cleanup-cancel')).onPressed, isNull);
       expect(t.widget<Checkbox>(key('cleanup-select-a')).onChanged, isNull);
       expect(t.getSemantics(key('cleanup-select-a')).label, contains('45分钟'));

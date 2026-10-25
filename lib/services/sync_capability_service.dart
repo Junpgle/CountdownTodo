@@ -70,8 +70,7 @@ class SyncCapabilityService {
       capabilityVersion(rawCapabilities, financeAccountBalances) >= 1;
 
   static bool supportsTodoSkipState(dynamic rawCapabilities) =>
-      capabilityVersion(rawCapabilities, todoSkipState) >=
-      todoSkipStateVersion;
+      capabilityVersion(rawCapabilities, todoSkipState) >= todoSkipStateVersion;
 
   static bool shouldAcknowledgeFinanceChanges({
     required bool syncEnabled,

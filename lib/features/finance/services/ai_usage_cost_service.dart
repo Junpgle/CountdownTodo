@@ -1137,8 +1137,7 @@ abstract final class AiUsageCostService {
     } catch (_) {
       // Device labeling must not prevent a valid AI expense from being saved.
     }
-    final transactionNote =
-        'AI 调用费用自动汇总（$monthKey；设备：$deviceName）';
+    final transactionNote = 'AI 调用费用自动汇总（$monthKey；设备：$deviceName）';
 
     final links = await db.query(
       'ai_usage_ledger_links',

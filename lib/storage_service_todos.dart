@@ -1754,10 +1754,7 @@ mixin _StorageTodos on _StorageServiceBase {
     required int limit,
     required int offset,
   }) async {
-    await _ensureFixedScheduleRelationMigration(
-      username,
-      boundedRead: true,
-    );
+    await _ensureFixedScheduleRelationMigration(username, boundedRead: true);
 
     final safeLimit = limit.clamp(1, 100).toInt();
     final safeOffset = offset < 0 ? 0 : offset;
@@ -1805,10 +1802,7 @@ mixin _StorageTodos on _StorageServiceBase {
         .toSet();
     if (normalizedIds.isEmpty) return const [];
 
-    await _ensureFixedScheduleRelationMigration(
-      username,
-      boundedRead: true,
-    );
+    await _ensureFixedScheduleRelationMigration(username, boundedRead: true);
 
     final db = await DatabaseHelper.instance.databaseForUser(username);
     final ids = normalizedIds.toList(growable: false);

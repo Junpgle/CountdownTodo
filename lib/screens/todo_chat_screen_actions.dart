@@ -1824,13 +1824,15 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     final rawTargetRecurrence = scopeTarget?['recurrence'];
     final targetHasRecurrence = switch (rawTargetRecurrence) {
       num value => value.toInt() != RecurrenceType.none.index,
-      String value => value.trim().isNotEmpty &&
-          value.trim() != 'none' &&
-          value.trim() != '0',
+      String value =>
+        value.trim().isNotEmpty &&
+            value.trim() != 'none' &&
+            value.trim() != '0',
       _ => false,
     };
-    final targetSeriesId =
-        scopeTarget?['recurrenceSeriesId']?.toString().trim();
+    final targetSeriesId = scopeTarget?['recurrenceSeriesId']
+        ?.toString()
+        .trim();
     final canChooseWholeSeriesScope =
         action.type == AiTodoActionType.updateTodo &&
         (targetSeriesId?.isNotEmpty == true || targetHasRecurrence);
@@ -2028,11 +2030,13 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                           DropdownMenuItem(value: 'weekly', child: Text('每周')),
                           DropdownMenuItem(value: 'monthly', child: Text('每月')),
                           DropdownMenuItem(value: 'yearly', child: Text('每年')),
-                          DropdownMenuItem(value: 'weekdays', child: Text('工作日')),
+                          DropdownMenuItem(
+                            value: 'weekdays',
+                            child: Text('工作日'),
+                          ),
                         ],
-                        onChanged: (value) => setDialogState(
-                          () => recurrence = value ?? 'none',
-                        ),
+                        onChanged: (value) =>
+                            setDialogState(() => recurrence = value ?? 'none'),
                       ),
                     if (action.mutatesExistingItem ||
                         (action.isFixedScheduleAction &&
@@ -2908,10 +2912,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
           .toSet();
       expectedTodoBaselines.addEntries(
         members.map(
-          (todo) => MapEntry(
-            todo.id,
-            TodoItem.fromJson(todo.toJson()),
-          ),
+          (todo) => MapEntry(todo.id, TodoItem.fromJson(todo.toJson())),
         ),
       );
     }

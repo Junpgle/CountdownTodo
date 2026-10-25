@@ -1063,10 +1063,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     });
   }
 
-  String _resultMessage(
-    TodoTrashPurgePlan plan,
-    TodoTrashPurgeResult result,
-  ) {
+  String _resultMessage(TodoTrashPurgePlan plan, TodoTrashPurgeResult result) {
     final success = switch (plan.scope) {
       TodoTrashPurgeScope.item => '已彻底删除',
       TodoTrashPurgeScope.series => '已清理该系列 ${result.deletedCount} 条回收站记录',

@@ -1126,22 +1126,17 @@ class ShareScheduleSection extends StatelessWidget {
     if (schedules.isEmpty) return const SizedBox.shrink();
 
     final colorScheme = Theme.of(context).colorScheme;
-    final sorted = visibleSchedulesAt(schedules, now)
-      ..sort(_compareSchedules);
-    final endedSchedules = sorted
-        .where((item) {
-          final phase = item.phaseAt(now);
-          return phase == FixedSchedulePhase.ended ||
-              phase == FixedSchedulePhase.cancelled;
-        })
-        .toList();
-    final activeSchedules = sorted
-        .where((item) {
-          final phase = item.phaseAt(now);
-          return phase != FixedSchedulePhase.ended &&
-              phase != FixedSchedulePhase.cancelled;
-        })
-        .toList();
+    final sorted = visibleSchedulesAt(schedules, now)..sort(_compareSchedules);
+    final endedSchedules = sorted.where((item) {
+      final phase = item.phaseAt(now);
+      return phase == FixedSchedulePhase.ended ||
+          phase == FixedSchedulePhase.cancelled;
+    }).toList();
+    final activeSchedules = sorted.where((item) {
+      final phase = item.phaseAt(now);
+      return phase != FixedSchedulePhase.ended &&
+          phase != FixedSchedulePhase.cancelled;
+    }).toList();
 
     if (sorted.isEmpty) return const SizedBox.shrink();
 
@@ -1189,10 +1184,7 @@ class ShareScheduleSection extends StatelessWidget {
           const Spacer(),
           Text(
             '${schedules.length} 项',
-            style: TextStyle(
-              fontSize: 12,
-              color: colorScheme.onSurfaceVariant,
-            ),
+            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
           ),
         ],
       ),

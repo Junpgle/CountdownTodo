@@ -234,10 +234,10 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
 
   Future<void> _handleAiTodosBatchAction(
     List<TodoItem> inserted,
-    List<TodoItem> updated,
-    {Map<String, TodoItem>? expectedTodoBaselines,
-    Map<String, Set<String>>? expectedSeriesMembership}
-  ) async {
+    List<TodoItem> updated, {
+    Map<String, TodoItem>? expectedTodoBaselines,
+    Map<String, Set<String>>? expectedSeriesMembership,
+  }) async {
     final nextTodos = AiTodoActionExecutor.mergeTodoUpdates(
       _todos,
       inserted,

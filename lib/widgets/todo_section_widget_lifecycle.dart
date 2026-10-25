@@ -143,7 +143,9 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
       sendInitialMessage: sendInitialMessage,
       initialVoiceUsageSummary: initialVoiceUsageSummary,
       todos: widget.todos
-          .where((t) => !t.isDone && !t.isSkipped && !_isHistoricalTodoAt(t, today))
+          .where(
+            (t) => !t.isDone && !t.isSkipped && !_isHistoricalTodoAt(t, today),
+          )
           .toList(),
       todoGroups: widget.todoGroups,
       courses: aiContext.courses,
@@ -154,8 +156,12 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
       onTodoGroupsChanged: widget.onGroupsChanged,
       onFixedSchedulesChanged: (_) => widget.onRefreshRequested(),
       onTodosBatchAction:
-          (inserted, updated,
-              {expectedTodoBaselines, expectedSeriesMembership}) async {
+          (
+            inserted,
+            updated, {
+            expectedTodoBaselines,
+            expectedSeriesMembership,
+          }) async {
             final merged = AiTodoActionExecutor.mergeTodoUpdates(
               widget.todos,
               inserted,

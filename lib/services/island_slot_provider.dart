@@ -441,7 +441,8 @@ class IslandSlotProvider {
       final now = DateTime.now();
       final active = todos
           .where(
-            (t) => !t.isDone && !t.isDeleted && !t.isSkipped && t.dueDate != null,
+            (t) =>
+                !t.isDone && !t.isDeleted && !t.isSkipped && t.dueDate != null,
           )
           .toList();
 

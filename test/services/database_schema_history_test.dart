@@ -30,26 +30,31 @@ void main() {
     }
   });
 
-  test('v58 todo tables migrate to skip state without changing old rows', () async {
-    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
-    addTearDown(db.close);
-    await db.execute('CREATE TABLE todos (uuid TEXT PRIMARY KEY)');
-    await db.execute('CREATE TABLE todo_completions (todo_uuid TEXT, user_id INTEGER, is_completed INTEGER, PRIMARY KEY(todo_uuid, user_id))');
-    await db.insert('todos', {'uuid': 'old-todo'});
-    await db.insert('todo_completions', {
-      'todo_uuid': 'old-todo',
-      'user_id': 7,
-      'is_completed': 1,
-    });
+  test(
+    'v58 todo tables migrate to skip state without changing old rows',
+    () async {
+      final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      addTearDown(db.close);
+      await db.execute('CREATE TABLE todos (uuid TEXT PRIMARY KEY)');
+      await db.execute(
+        'CREATE TABLE todo_completions (todo_uuid TEXT, user_id INTEGER, is_completed INTEGER, PRIMARY KEY(todo_uuid, user_id))',
+      );
+      await db.insert('todos', {'uuid': 'old-todo'});
+      await db.insert('todo_completions', {
+        'todo_uuid': 'old-todo',
+        'user_id': 7,
+        'is_completed': 1,
+      });
 
-    await DatabaseHelper.ensureTodoSkipStateSchema(db);
+      await DatabaseHelper.ensureTodoSkipStateSchema(db);
 
-    final todo = (await db.query('todos')).single;
-    final completion = (await db.query('todo_completions')).single;
-    expect(todo['is_skipped'], 0);
-    expect(todo['is_skipped_sync_pending'], 0);
-    expect(completion['is_completed'], 1);
-    expect(completion['is_skipped'], 0);
-    expect(completion['is_skipped_sync_pending'], 0);
-  });
+      final todo = (await db.query('todos')).single;
+      final completion = (await db.query('todo_completions')).single;
+      expect(todo['is_skipped'], 0);
+      expect(todo['is_skipped_sync_pending'], 0);
+      expect(completion['is_completed'], 1);
+      expect(completion['is_skipped'], 0);
+      expect(completion['is_skipped_sync_pending'], 0);
+    },
+  );
 }

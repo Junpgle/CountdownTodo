@@ -1707,10 +1707,12 @@ mixin _StorageSync on _StorageServiceBase {
                 hasServerSkipValue &&
                 (!existingSkipPending || serverIsSkipped == existingIsSkipped);
             final useServerSkipValue =
-                todoSkipStateSupported && hasServerSkipValue &&
+                todoSkipStateSupported &&
+                hasServerSkipValue &&
                 (!existingSkipPending || skipAcknowledged);
-            final mergedIsSkipped =
-                useServerSkipValue ? serverIsSkipped : existingIsSkipped;
+            final mergedIsSkipped = useServerSkipValue
+                ? serverIsSkipped
+                : existingIsSkipped;
             final mergedSkipPending = existingSkipPending && !skipAcknowledged;
             final localUpdatedAt =
                 (existing?['updated_at'] as num?)?.toInt() ?? 0;

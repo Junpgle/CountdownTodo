@@ -1960,14 +1960,16 @@ class AiTodoActionExecutor {
     final storedSeriesId = _nullableString(
       target['recurrenceSeriesId'] ?? target['recurrence_series_id'],
     );
-    final seriesId = storedSeriesId ??
+    final seriesId =
+        storedSeriesId ??
         (_existingRecurrence(target) == RecurrenceType.none ? null : id);
     final isWholeSeriesEdit =
         action.type == AiTodoActionType.updateTodo &&
         action.recurrenceScope == 'series';
     if (action.type == AiTodoActionType.skipTodo) {
       final isRecurring =
-          seriesId != null || _existingRecurrence(target) != RecurrenceType.none;
+          seriesId != null ||
+          _existingRecurrence(target) != RecurrenceType.none;
       if (!isRecurring ||
           action.appliesToFutureOccurrences ||
           _mapBool(target, 'isDone') ||
@@ -2041,26 +2043,27 @@ class AiTodoActionExecutor {
           );
     }
 
-    final future = existingTodos.where((todo) {
-      if (todo['id'] == id || _mapBool(todo, 'isDeleted')) return false;
-      final candidateSeries = _nullableString(
-        todo['recurrenceSeriesId'] ?? todo['recurrence_series_id'],
-      );
-      final candidateStart = _todoStart(todo);
-      final candidateId = todo['id']?.toString();
-      final sameSeries = candidateSeries == seriesId ||
-          (candidateId == seriesId && candidateSeries == null);
-      if (!sameSeries) return false;
-      if (isWholeSeriesEdit) return true;
-      return candidateStart != null &&
-          targetStart != null &&
-          !candidateStart.isBefore(targetStart);
-    }).toList()
-      ..sort(
-        (a, b) => (_todoStart(a)?.millisecondsSinceEpoch ?? 0).compareTo(
-          _todoStart(b)?.millisecondsSinceEpoch ?? 0,
-        ),
-      );
+    final future =
+        existingTodos.where((todo) {
+          if (todo['id'] == id || _mapBool(todo, 'isDeleted')) return false;
+          final candidateSeries = _nullableString(
+            todo['recurrenceSeriesId'] ?? todo['recurrence_series_id'],
+          );
+          final candidateStart = _todoStart(todo);
+          final candidateId = todo['id']?.toString();
+          final sameSeries =
+              candidateSeries == seriesId ||
+              (candidateId == seriesId && candidateSeries == null);
+          if (!sameSeries) return false;
+          if (isWholeSeriesEdit) return true;
+          return candidateStart != null &&
+              targetStart != null &&
+              !candidateStart.isBefore(targetStart);
+        }).toList()..sort(
+          (a, b) => (_todoStart(a)?.millisecondsSinceEpoch ?? 0).compareTo(
+            _todoStart(b)?.millisecondsSinceEpoch ?? 0,
+          ),
+        );
 
     for (final candidate in future) {
       final candidateAction = effectiveAction.copy()
@@ -2496,7 +2499,9 @@ class AiTodoActionExecutor {
       'isSkippedSyncPending' => const ['is_skipped_sync_pending'],
       _ => const <String>[],
     };
-    final value = map[key] ?? map[snakeKey] ??
+    final value =
+        map[key] ??
+        map[snakeKey] ??
         aliases.map((alias) => map[alias]).whereType<Object>().firstOrNull;
     return value == true || value == 1 || value?.toString() == '1';
   }

@@ -444,7 +444,8 @@ class TimelineStatisticsService {
               title: representative.title,
               isCompleted: isCompleted,
               isSkipped: !isCompleted && isSkipped,
-              isMissed: !isCompleted && !isSkipped && effectiveDue.isBefore(now),
+              isMissed:
+                  !isCompleted && !isSkipped && effectiveDue.isBefore(now),
             ),
           );
     }

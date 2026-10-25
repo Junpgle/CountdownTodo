@@ -29,9 +29,7 @@ Future<List<FixedScheduleItem>> _queryFixedSchedulesLinkedToTodoIds(
     for (final row in rows) {
       final item = FixedScheduleItem.fromJson(row);
       if (item.isDeleted ||
-          !item.relatedTodoIds.any(
-            (id) => normalizedIds.contains(id.trim()),
-          )) {
+          !item.relatedTodoIds.any((id) => normalizedIds.contains(id.trim()))) {
         continue;
       }
       byId[item.id] = item;

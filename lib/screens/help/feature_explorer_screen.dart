@@ -510,15 +510,7 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
         category: FeatureExplorerCategory.focus,
         icon: Icons.bar_chart_rounded,
         badgeText: 'v3.0 升级',
-        keywords: const [
-          '统计看板',
-          '专注统计',
-          '趋势分析',
-          '专注分布',
-          '复盘',
-          '标签统计',
-          'v3.0',
-        ],
+        keywords: const ['统计看板', '专注统计', '趋势分析', '专注分布', '复盘', '标签统计', 'v3.0'],
         steps: const [
           '从底部导航栏进入「番茄钟」页面。',
           '点击底部浮动导航栏右侧的「统计看板」Tab。',

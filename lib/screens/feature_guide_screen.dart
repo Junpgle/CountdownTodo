@@ -112,7 +112,6 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   String? _changelogNotice;
   final Set<String> _expandedVersions = {};
 
-
   // 权限状态
   PermissionStatus? _notificationStatus;
   bool _hasUsageStats = false;
@@ -1139,10 +1138,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       return (label: '看教程', builder: () => const AiAssistantTutorialScreen());
     }
     if (item.contains('挑战')) {
-      return (
-        label: '去挑战',
-        builder: () => const ChallengeCenterScreen(),
-      );
+      return (label: '去挑战', builder: () => const ChallengeCenterScreen());
     }
     if (item.contains('时间轴') || item.contains('个人报告')) {
       return (
@@ -1151,16 +1147,12 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       );
     }
     if (item.contains('搜索')) {
-      return (
-        label: '去搜索',
-        builder: () => const GlobalSearchOverlay(),
-      );
+      return (label: '去搜索', builder: () => const GlobalSearchOverlay());
     }
-    if (item.contains('动画') || item.contains('液态玻璃') || item.contains('Liquid Glass')) {
-      return (
-        label: '动效设置',
-        builder: () => const AnimationSettingsPage(),
-      );
+    if (item.contains('动画') ||
+        item.contains('液态玻璃') ||
+        item.contains('Liquid Glass')) {
+      return (label: '动效设置', builder: () => const AnimationSettingsPage());
     }
     if (item.contains('主题') || item.contains('色彩') || item.contains('外观')) {
       return (
@@ -1387,9 +1379,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
             ],
           ),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: scheme.primary.withValues(alpha: 0.35),
-          ),
+          border: Border.all(color: scheme.primary.withValues(alpha: 0.35)),
         ),
         child: Row(
           children: [
@@ -2942,7 +2932,6 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     );
   }
 }
-
 
 class AssetVideoPlayer extends StatefulWidget {
   final String assetPath;

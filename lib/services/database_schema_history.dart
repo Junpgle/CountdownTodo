@@ -23,10 +23,7 @@ abstract final class DatabaseSchemaHistory {
     DatabaseSchemaChange(
       version: 59,
       title: '重复待办跳过本期',
-      changes: [
-        '为待办期次及协作成员状态增加独立的跳过标记。',
-        '保留本机待同步标记，旧服务端不支持时不覆盖本地跳过状态。',
-      ],
+      changes: ['为待办期次及协作成员状态增加独立的跳过标记。', '保留本机待同步标记，旧服务端不支持时不覆盖本地跳过状态。'],
     ),
     DatabaseSchemaChange(
       version: 58,

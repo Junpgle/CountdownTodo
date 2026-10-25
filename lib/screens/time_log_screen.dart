@@ -577,21 +577,25 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         pomodoroRecords: _allPomodoros,
         sourceKey: _aiAssistantActionKey,
         onTodosBatchAction:
-            (inserted, updated,
-                {expectedTodoBaselines, expectedSeriesMembership}) async {
-          final allTodos = await StorageService.getTodos(widget.username);
-          final merged = AiTodoActionExecutor.mergeTodoUpdates(
-            allTodos,
-            inserted,
-            updated,
-          );
-          await StorageService.saveTodos(
-            widget.username,
-            merged,
-            expectedTodoBaselines: expectedTodoBaselines,
-            expectedSeriesMembership: expectedSeriesMembership,
-          );
-        },
+            (
+              inserted,
+              updated, {
+              expectedTodoBaselines,
+              expectedSeriesMembership,
+            }) async {
+              final allTodos = await StorageService.getTodos(widget.username);
+              final merged = AiTodoActionExecutor.mergeTodoUpdates(
+                allTodos,
+                inserted,
+                updated,
+              );
+              await StorageService.saveTodos(
+                widget.username,
+                merged,
+                expectedTodoBaselines: expectedTodoBaselines,
+                expectedSeriesMembership: expectedSeriesMembership,
+              );
+            },
       );
     } catch (e) {
       if (mounted) {
