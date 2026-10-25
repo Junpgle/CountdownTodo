@@ -115,40 +115,45 @@ class _SettingsPageState extends State<SettingsPage> {
     });
   }
 
-  Widget _buildSettingsSearchField() {
+  Widget _buildSettingsSearchField({double horizontalInset = 0}) {
     final colorScheme = Theme.of(context).colorScheme;
-    return TextField(
-      controller: _settingsSearchController,
-      onChanged: _onSettingsSearchChanged,
-      textInputAction: TextInputAction.search,
-      decoration: InputDecoration(
-        hintText: '搜索设置项',
-        prefixIcon: const Icon(Icons.search_rounded),
-        suffixIcon: _settingsSearchQuery.isEmpty
-            ? null
-            : IconButton(
-                tooltip: '清除搜索',
-                onPressed: () {
-                  _settingsSearchController.clear();
-                  _onSettingsSearchChanged('');
-                },
-                icon: const Icon(Icons.close_rounded),
-              ),
-        filled: true,
-        fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outlineVariant),
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: horizontalInset),
+      child: TextField(
+        controller: _settingsSearchController,
+        onChanged: _onSettingsSearchChanged,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          hintText: '搜索设置项',
+          prefixIcon: const Icon(Icons.search_rounded),
+          suffixIcon: _settingsSearchQuery.isEmpty
+              ? null
+              : IconButton(
+                  tooltip: '清除搜索',
+                  onPressed: () {
+                    _settingsSearchController.clear();
+                    _onSettingsSearchChanged('');
+                  },
+                  icon: const Icon(Icons.close_rounded),
+                ),
+          filled: true,
+          fillColor: colorScheme.surfaceContainerHighest.withValues(
+            alpha: 0.55,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: colorScheme.outlineVariant),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: colorScheme.outlineVariant),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: colorScheme.primary),
+          ),
+          contentPadding: const EdgeInsets.symmetric(vertical: 12),
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outlineVariant),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.primary),
-        ),
-        contentPadding: const EdgeInsets.symmetric(vertical: 12),
       ),
     );
   }
@@ -1562,7 +1567,7 @@ class _SettingsPageState extends State<SettingsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _buildSettingsSearchField(),
+            _buildSettingsSearchField(horizontalInset: 4),
             const SizedBox(height: 12),
             _buildSettingsSearchResults(),
           ],
@@ -1575,7 +1580,7 @@ class _SettingsPageState extends State<SettingsPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildSettingsSearchField(),
+          _buildSettingsSearchField(horizontalInset: 4),
           const SizedBox(height: 16),
           _buildAnnouncementPanel(),
           const SizedBox(height: 16),
