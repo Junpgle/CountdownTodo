@@ -315,6 +315,42 @@ class SearchService {
     ),
   ];
 
+  /// Searches the same indexed setting entries used by global search without
+  /// querying user data or recording a search-history item.
+  List<SearchResult> searchSettings(String query) {
+    final searchTerms = _extractSearchTerms(query.trim().toLowerCase());
+    if (searchTerms.isEmpty) return const <SearchResult>[];
+
+    final matches =
+        _searchIndexedStaticResults(searchTerms, SearchScope.settings)
+            .where((match) => match.result.type == SearchResultType.setting)
+            .toList()
+          ..sort((a, b) => b.score.compareTo(a.score));
+    return matches.map((match) => match.result).toList(growable: false);
+  }
+
+  List<SearchResultWithScore> _searchIndexedStaticResults(
+    List<String> searchTerms,
+    SearchScope scope,
+  ) {
+    final matches = <SearchResultWithScore>[];
+    for (final indexed in _staticSettings) {
+      final result = indexed.result;
+      if (!scope.includes(result.type)) continue;
+
+      final score = _calculateScore(
+        indexed.title,
+        indexed.subtitle,
+        indexed.breadcrumb,
+        searchTerms,
+      );
+      if (score > 0) {
+        matches.add(SearchResultWithScore(result, score));
+      }
+    }
+    return matches;
+  }
+
   Future<List<SearchResult>> search(
     String query, {
     SearchScope scope = SearchScope.all,
@@ -388,21 +424,8 @@ class SearchService {
           ).catchError((_) => <SearchResult>[]);
         });
 
-    // 1. 静态索引扫描
-    for (final indexed in _staticSettings) {
-      final result = indexed.result;
-      if (!scope.includes(result.type)) continue;
-
-      final score = _calculateScore(
-        indexed.title,
-        indexed.subtitle,
-        indexed.breadcrumb,
-        searchTerms,
-      );
-      if (score > 0) {
-        scoredResults.add(SearchResultWithScore(result, score));
-      }
-    }
+    // 1. 静态索引扫描，共享设置页的目录搜索和相关度评分。
+    scoredResults.addAll(_searchIndexedStaticResults(searchTerms, scope));
 
     // 2. 习惯、挑战与数据库查询互不依赖，并行执行以缩短输入后的等待。
     final searchResults = await Future.wait<List<SearchResult>>([

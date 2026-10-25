@@ -39,6 +39,7 @@ import '../screens/settings/pages/permission_settings_page.dart';
 import '../screens/settings/pages/platform_specific_settings_page.dart';
 import '../screens/settings/pages/preference_settings_page.dart';
 import '../screens/settings/pages/recurrence_series_merge_page.dart';
+import '../screens/settings/pages/sync_health_page.dart';
 import '../screens/settings/pages/sidebar_menu_settings_page.dart';
 import '../screens/settings/wallpaper_settings_page.dart';
 import '../services/ai_settings_navigation_service.dart';
@@ -134,6 +135,7 @@ abstract final class AiSettingsNavigation {
       SettingsPageId.recurrenceMerge => RecurrenceSeriesMergePage(
         username: username,
       ),
+      SettingsPageId.syncHealth => SyncHealthPage(username: username),
       SettingsPageId.exportData => const DataExportPage(),
       SettingsPageId.importData => const DataImportPage(),
       SettingsPageId.notifications => const NotificationSettingsPage(),

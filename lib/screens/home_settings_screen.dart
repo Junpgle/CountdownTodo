@@ -6,8 +6,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:convert';
 
+import '../models.dart';
 import '../services/api_service.dart';
 import '../services/feature_tip_service.dart';
+import '../services/search_service.dart';
 import '../storage_service.dart';
 import '../update_service.dart';
 import '../utils/app_platform.dart';
@@ -80,6 +82,10 @@ class _SettingsPageState extends State<SettingsPage> {
   late _BreadcrumbObserver _breadcrumbObserver;
   Animation<double>? _updateCheckAnimation;
   bool _updateCheckInitialized = false;
+  String _settingsSearchQuery = '';
+  List<SearchResult> _settingsSearchResults = const [];
+  final TextEditingController _settingsSearchController =
+      TextEditingController();
 
   GlobalKey _navigationKey(String id) => _navigationKeys.putIfAbsent(
     id,
@@ -98,6 +104,142 @@ class _SettingsPageState extends State<SettingsPage> {
     rootNavigator: rootNavigator,
     settings: settings,
   );
+
+  void _onSettingsSearchChanged(String query) {
+    final normalizedQuery = query.trim();
+    setState(() {
+      _settingsSearchQuery = normalizedQuery;
+      _settingsSearchResults = SearchService.instance.searchSettings(
+        normalizedQuery,
+      );
+    });
+  }
+
+  Widget _buildSettingsSearchField() {
+    final colorScheme = Theme.of(context).colorScheme;
+    return TextField(
+      controller: _settingsSearchController,
+      onChanged: _onSettingsSearchChanged,
+      textInputAction: TextInputAction.search,
+      decoration: InputDecoration(
+        hintText: '搜索设置项',
+        prefixIcon: const Icon(Icons.search_rounded),
+        suffixIcon: _settingsSearchQuery.isEmpty
+            ? null
+            : IconButton(
+                tooltip: '清除搜索',
+                onPressed: () {
+                  _settingsSearchController.clear();
+                  _onSettingsSearchChanged('');
+                },
+                icon: const Icon(Icons.close_rounded),
+              ),
+        filled: true,
+        fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: colorScheme.outlineVariant),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: colorScheme.outlineVariant),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: colorScheme.primary),
+        ),
+        contentPadding: const EdgeInsets.symmetric(vertical: 12),
+      ),
+    );
+  }
+
+  Widget _buildSettingsSearchResults() {
+    final colorScheme = Theme.of(context).colorScheme;
+    if (_settingsSearchResults.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 12),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.search_off_rounded, color: colorScheme.onSurfaceVariant),
+            const SizedBox(width: 8),
+            Text(
+              '没有匹配的设置项',
+              style: TextStyle(color: colorScheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          for (
+            var index = 0;
+            index < _settingsSearchResults.length;
+            index++
+          ) ...[
+            _buildSettingsSearchResultTile(_settingsSearchResults[index]),
+            if (index < _settingsSearchResults.length - 1)
+              Divider(height: 1, indent: 56, color: colorScheme.outlineVariant),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettingsSearchResultTile(SearchResult result) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final routeKey = _navigationKey('search_${result.id}');
+    return ListTile(
+      key: routeKey,
+      leading: Icon(result.icon, color: colorScheme.primary),
+      title: Text(result.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (result.breadcrumb != null)
+            Text(
+              result.breadcrumb!,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          if (result.subtitle != null && result.subtitle!.isNotEmpty)
+            Text(
+              result.subtitle!,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+        ],
+      ),
+      trailing: Icon(
+        Icons.chevron_right_rounded,
+        color: colorScheme.onSurfaceVariant,
+      ),
+      onTap: () async {
+        try {
+          await SearchNavigationHandler.handle(
+            context,
+            result,
+            sourceKey: routeKey,
+          );
+        } catch (error) {
+          if (mounted) {
+            AppSnackBars.showSnackBar(
+              context,
+              SnackBar(content: Text('打开设置项失败：$error')),
+            );
+          }
+        }
+      },
+    );
+  }
 
   @override
   void initState() {
@@ -171,6 +313,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   void dispose() {
+    _settingsSearchController.dispose();
     _updateCheckAnimation?.removeStatusListener(
       _handleUpdateCheckAnimationStatus,
     );
@@ -1145,6 +1288,12 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                _buildSettingsSearchField(),
+                if (_settingsSearchQuery.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _buildSettingsSearchResults(),
+                ],
+                const SizedBox(height: 12),
                 // 账号与公告栏 (可点击)
                 Material(
                   color: Colors.transparent,
@@ -1401,16 +1550,33 @@ class _SettingsPageState extends State<SettingsPage> {
 
   // ===== 窄屏单栏布局 (原版) =====
   Widget _buildNarrowLayout() {
+    final padding = EdgeInsets.fromLTRB(
+      16.0,
+      floatingGlassTopBarHeight(context) + 16.0,
+      16.0,
+      16.0,
+    );
+    if (_settingsSearchQuery.isNotEmpty) {
+      return SingleChildScrollView(
+        padding: padding,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildSettingsSearchField(),
+            const SizedBox(height: 12),
+            _buildSettingsSearchResults(),
+          ],
+        ),
+      );
+    }
+
     return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(
-        16.0,
-        floatingGlassTopBarHeight(context) + 16.0,
-        16.0,
-        16.0,
-      ),
+      padding: padding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          _buildSettingsSearchField(),
+          const SizedBox(height: 16),
           _buildAnnouncementPanel(),
           const SizedBox(height: 16),
           AccountSection(
