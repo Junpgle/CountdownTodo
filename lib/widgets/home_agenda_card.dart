@@ -409,19 +409,28 @@ class _HomeAgendaCardState extends State<HomeAgendaCard> {
 
   Widget _expandedBodySurface(Widget child) {
     final light = widget.isLight;
+    final isDark = colors.brightness == Brightness.dark;
     final fallbackDecoration = BoxDecoration(
-      color: light ? Colors.white.withValues(alpha: 0.15) : colors.surface,
+      color: light
+          ? (isDark
+              ? colors.surfaceContainerLow.withValues(alpha: 0.75)
+              : colors.surface.withValues(alpha: 0.92))
+          : colors.surface,
       borderRadius: BorderRadius.circular(24),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withValues(alpha: light ? 0.1 : 0.05),
+          color: Colors.black.withValues(
+            alpha: light ? 0.08 : (isDark ? 0.2 : 0.05),
+          ),
           blurRadius: 10,
           offset: const Offset(0, 4),
         ),
       ],
       border: Border.all(
         color: light
-            ? Colors.white.withValues(alpha: 0.2)
+            ? (isDark
+                ? Colors.white.withValues(alpha: 0.15)
+                : Colors.white.withValues(alpha: 0.6))
             : Theme.of(context).dividerColor.withValues(alpha: 0.5),
       ),
     );
@@ -442,9 +451,9 @@ class _HomeAgendaCardState extends State<HomeAgendaCard> {
         child: OptionalLiquidGlassCard(
           padding: const EdgeInsets.all(12),
           borderRadius: 24,
-          highContrast: true,
-          tint: (light ? colors.scrim : colors.primary).withValues(alpha: 0.16),
-          isDark: light || colors.brightness == Brightness.dark,
+          highContrast: false,
+          tint: colors.primary.withValues(alpha: 0.16),
+          isDark: isDark,
           fallbackDecoration: fallbackDecoration,
           child: child,
         ),
@@ -455,7 +464,8 @@ class _HomeAgendaCardState extends State<HomeAgendaCard> {
   @override
   Widget build(BuildContext context) {
     final data = widget.snapshot;
-    final bodyActionStyle = widget.isLight
+    final isDark = colors.brightness == Brightness.dark;
+    final bodyActionStyle = isDark
         ? TextButton.styleFrom(foregroundColor: Colors.white)
         : null;
     final next = data?.upcoming.firstOrNull;
@@ -470,8 +480,9 @@ class _HomeAgendaCardState extends State<HomeAgendaCard> {
               ? '时段进行中 $current · 接下来 $upcoming'
               : (data.total > 0 ? '今日定时安排已结束' : '今天暂无安排'));
     final overview = data?.plans?.card.overview;
-    final Color? textColor = widget.isLight ? Colors.white : null;
-    final Color iconColor = widget.isLight ? Colors.white70 : colors.primary;
+    final useLightHeader = isDark || widget.isLight;
+    final Color? textColor = useLightHeader ? Colors.white : null;
+    final Color iconColor = useLightHeader ? Colors.white70 : colors.primary;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -523,7 +534,7 @@ class _HomeAgendaCardState extends State<HomeAgendaCard> {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: text.bodySmall?.copyWith(
-                              color: widget.isLight
+                              color: useLightHeader
                                   ? Colors.white70
                                   : colors.onSurfaceVariant,
                               fontSize: 12,
@@ -864,17 +875,17 @@ class _HomeAgendaCardState extends State<HomeAgendaCard> {
                                     Icon(
                                       Icons.event_available_outlined,
                                       size: 32,
-                                      color: widget.isLight
+                                      color: isDark
                                           ? Colors.white.withValues(alpha: 0.72)
                                           : colors.onSurfaceVariant.withValues(
-                                              alpha: 0.5,
+                                              alpha: 0.65,
                                             ),
                                     ),
                                     const SizedBox(height: 8),
                                     Text(
                                       '今天暂无安排，留一点时间给自己',
                                       style: text.bodyMedium?.copyWith(
-                                        color: widget.isLight
+                                        color: isDark
                                             ? Colors.white
                                             : colors.onSurfaceVariant,
                                       ),
@@ -898,7 +909,7 @@ class _HomeAgendaCardState extends State<HomeAgendaCard> {
                                     Icon(
                                       Icons.check_circle_outline_rounded,
                                       size: 15,
-                                      color: widget.isLight
+                                      color: isDark
                                           ? Colors.white.withValues(alpha: 0.8)
                                           : colors.primary,
                                     ),
@@ -909,7 +920,7 @@ class _HomeAgendaCardState extends State<HomeAgendaCard> {
                                           : '今日定时安排已结束',
                                       style: TextStyle(
                                         fontSize: 12,
-                                        color: widget.isLight
+                                        color: isDark
                                             ? Colors.white.withValues(
                                                 alpha: 0.85,
                                               )
@@ -928,7 +939,7 @@ class _HomeAgendaCardState extends State<HomeAgendaCard> {
                               child: Text(
                                 '正在读取今日安排…',
                                 style: text.bodyMedium?.copyWith(
-                                  color: widget.isLight
+                                  color: isDark
                                       ? Colors.white
                                       : colors.onSurfaceVariant,
                                 ),

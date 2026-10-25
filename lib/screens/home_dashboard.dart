@@ -318,7 +318,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
 
   int _selectedTabIndex = 0;
   bool _focusTabVisited = false;
-  double _lastHomeHeaderExtent = 112.0;
+  double _lastHomeHeaderExtent = 156.0;
   double _lastFocusHeaderExtent = 0.0;
 
   // 待确认的事项数据（从图片识别来）

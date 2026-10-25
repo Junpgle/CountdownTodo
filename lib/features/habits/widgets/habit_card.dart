@@ -207,8 +207,7 @@ class _HabitCardState extends State<HabitCard> {
   Widget build(BuildContext context) {
     final progress = widget.dayProgress.progress;
     final status = widget.dayProgress.status;
-    final isDark =
-        widget.isLight || Theme.of(context).brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final statusColor = _statusColor(status);
 
     return VisibilityDetector(
@@ -235,9 +234,7 @@ class _HabitCardState extends State<HabitCard> {
             key: widget.animationKey,
             margin: EdgeInsets.symmetric(vertical: widget.compact ? 2 : 6),
             borderRadius: widget.compact ? 18 : 24,
-            tint: (widget.isLight ? _colors.scrim : statusColor).withValues(
-              alpha: 0.16,
-            ),
+            tint: statusColor.withValues(alpha: 0.16),
             isDark: isDark,
             fallbackDecoration: BoxDecoration(
               color: _colors.surfaceContainerLow,

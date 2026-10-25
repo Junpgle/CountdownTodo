@@ -59,15 +59,19 @@ class LiquidGlassCelebrationDialog extends StatefulWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: LinearGradient(
-          colors: gradientColors ?? [
-            const Color(0xFFFFD700).withValues(alpha: 0.3),
-            const Color(0xFFFF6D00).withValues(alpha: 0.16),
-          ],
+          colors:
+              gradientColors ??
+              [
+                const Color(0xFFFFD700).withValues(alpha: 0.3),
+                const Color(0xFFFF6D00).withValues(alpha: 0.16),
+              ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
       ),
-      child: child ?? (icon != null ? Icon(icon, size: iconSize, color: iconColor) : null),
+      child:
+          child ??
+          (icon != null ? Icon(icon, size: iconSize, color: iconColor) : null),
     );
   }
 
@@ -99,10 +103,7 @@ class _LiquidGlassCelebrationDialogState
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: widget.duration,
-    );
+    _controller = AnimationController(vsync: this, duration: widget.duration);
 
     _controller.forward().then((_) {
       if (mounted && widget.autoDismiss) {
@@ -149,7 +150,8 @@ class _LiquidGlassCelebrationDialogState
                 constraints: const BoxConstraints(maxWidth: 380),
                 child: OptionalLiquidGlassCard(
                   borderRadius: 24,
-                  tint: widget.tint ??
+                  tint:
+                      widget.tint ??
                       const Color(0xFFFFD700).withValues(alpha: 0.12),
                   fallbackDecoration: BoxDecoration(
                     color: isDark

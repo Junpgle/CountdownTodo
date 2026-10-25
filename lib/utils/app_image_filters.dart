@@ -26,6 +26,10 @@ class AppImageFilters {
     sigmaX: 16,
     sigmaY: 16,
   );
+  static final ui.ImageFilter blur20 = ui.ImageFilter.blur(
+    sigmaX: 20,
+    sigmaY: 20,
+  );
   static final ui.ImageFilter blur30 = ui.ImageFilter.blur(
     sigmaX: 30,
     sigmaY: 30,

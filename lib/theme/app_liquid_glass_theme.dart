@@ -70,7 +70,12 @@ ButtonLayerBuilder _glassButtonBackgroundBuilder({
         thickness: configuration.mode == LiquidGlassEffectMode.enhanced
             ? 20
             : 16,
-        blur: configuration.mode == LiquidGlassEffectMode.enhanced ? 12 : 9,
+        blur:
+            (configuration.blurSigma *
+                    (configuration.mode == LiquidGlassEffectMode.enhanced
+                        ? 0.75
+                        : 0.6))
+                .clamp(2.0, 20.0),
         chromaticAberration: 0.0015,
         lightIntensity: isDark ? 0.48 : 0.58,
         ambientStrength: isDark ? 0.08 : 0.1,
@@ -111,6 +116,9 @@ ThemeData applyAppLiquidGlassTheme(
   LiquidGlassEffectMode mode = LiquidGlassEffectMode.standard,
   int transparencyPercent =
       LiquidGlassEffectConfiguration.defaultTransparencyPercent,
+  int scrimCoveragePercent =
+      LiquidGlassEffectConfiguration.defaultScrimCoveragePercent,
+  double blurSigma = LiquidGlassEffectConfiguration.defaultBlurSigma,
 }) {
   if (!enabled) return base;
 
@@ -121,6 +129,8 @@ ThemeData applyAppLiquidGlassTheme(
     enabled: enabled,
     mode: mode,
     transparencyPercent: transparencyPercent,
+    scrimCoveragePercent: scrimCoveragePercent,
+    blurSigma: blurSigma,
   );
   double materialOpacity(double opacity) =>
       liquidGlassBackerOpacity(opacity, configuration);

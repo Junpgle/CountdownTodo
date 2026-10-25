@@ -605,7 +605,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
             sourceKey: cardKey,
             sourceColor:
                 Theme.of(context).colorScheme.brightness == Brightness.dark
-                ? Colors.black
+                ? Theme.of(context).colorScheme.surface
                 : Colors.white,
             sourceBorderRadius: const BorderRadius.all(Radius.circular(14)),
             placeholderIcon: Icons.event_available_rounded,

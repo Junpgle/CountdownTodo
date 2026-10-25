@@ -351,10 +351,14 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
     Navigator.of(context).push(
       PageTransitions.material(
         builder: (context) => Scaffold(
-          backgroundColor: Colors.black,
+          backgroundColor: Theme.of(context).brightness == Brightness.dark
+              ? Theme.of(context).colorScheme.surface
+              : Colors.black,
           appBar: FloatingGlassAppBar(
             flexibleSpace: const FloatingGlassTopBarBackground(),
-            backgroundColor: Colors.black,
+            backgroundColor: Theme.of(context).brightness == Brightness.dark
+                ? Theme.of(context).colorScheme.surface
+                : Colors.black,
             foregroundColor: Colors.white,
             title: const Text("原本分析图片"),
           ),

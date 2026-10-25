@@ -48,7 +48,9 @@ import 'services/minor_mode_service.dart';
 import 'services/liquid_glass_effect_service.dart';
 import 'services/power_save_mode_service.dart';
 import 'theme/app_liquid_glass_theme.dart';
+import 'widgets/liquid_glass_live_preview_dock.dart';
 import 'theme/dynamic_color_scheme_adapter.dart';
+import 'theme/oled_surface_color_scheme.dart';
 import 'widgets/island_debug_host.dart';
 import 'widgets/macos_window_chrome.dart';
 
@@ -333,6 +335,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    StorageService.oledBlackModeNotifier.addListener(
+      _handleOledBlackModeChanged,
+    );
     if (AppPlatform.isAndroid) {
       WidgetsBinding.instance.addObserver(this);
       PowerSaveModeService.enabledListenable.addListener(
@@ -371,6 +376,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       _initializeApp();
       _startSplashSequence();
     }
+  }
+
+  void _handleOledBlackModeChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -952,6 +961,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void dispose() {
     _defaultSplashFallbackTimer?.cancel();
     _systemUiRestoreTimer?.cancel();
+    StorageService.oledBlackModeNotifier.removeListener(
+      _handleOledBlackModeChanged,
+    );
     if (AppPlatform.isAndroid) {
       WidgetsBinding.instance.removeObserver(this);
       PowerSaveModeService.enabledListenable.removeListener(
@@ -1083,6 +1095,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                               );
                             }
 
+                            darkScheme = withOledBlackSurfacePalette(
+                              darkScheme,
+                              enabled:
+                                  StorageService.oledBlackModeNotifier.value,
+                            );
+
                             return ValueListenableBuilder<
                               LiquidGlassEffectConfiguration
                             >(
@@ -1105,6 +1123,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                   mode: liquidGlassConfiguration.mode,
                                   transparencyPercent: liquidGlassConfiguration
                                       .transparencyPercent,
+                                  scrimCoveragePercent: liquidGlassConfiguration
+                                      .scrimCoveragePercent,
+                                  blurSigma: liquidGlassConfiguration.blurSigma,
                                 );
                                 final darkTheme = applyAppLiquidGlassTheme(
                                   ThemeData(
@@ -1122,6 +1143,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                   mode: liquidGlassConfiguration.mode,
                                   transparencyPercent: liquidGlassConfiguration
                                       .transparencyPercent,
+                                  scrimCoveragePercent: liquidGlassConfiguration
+                                      .scrimCoveragePercent,
+                                  blurSigma: liquidGlassConfiguration.blurSigma,
                                 );
 
                                 return MacosMenuBar(
@@ -1255,7 +1279,18 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                                   backgroundBrightness:
                                                       Theme.of(context)
                                                           .brightness,
-                                                  child: adaptedContent,
+                                                  child: Stack(
+                                                    children: [
+                                                      adaptedContent,
+                                                      const Positioned(
+                                                        left: 0,
+                                                        right: 0,
+                                                        bottom: 0,
+                                                        child:
+                                                            LiquidGlassLivePreviewDock(),
+                                                      ),
+                                                    ],
+                                                  ),
                                                 ),
                                               );
                                             },
@@ -1281,9 +1316,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                         : _isChecking
                                         ? Scaffold(
                                             backgroundColor:
-                                                currentThemeMode ==
-                                                    ThemeMode.dark
-                                                ? Colors.grey[900]
+                                                Theme.of(context).brightness ==
+                                                    Brightness.dark
+                                                ? Theme.of(context)
+                                                      .colorScheme
+                                                      .surface
                                                 : Theme.of(context)
                                                       .colorScheme
                                                       .primary,

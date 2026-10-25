@@ -155,11 +155,16 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final textColor = widget.isLight ? Colors.white : colorScheme.onSurface;
-    final subColor = widget.isLight
+    final isDark = colorScheme.brightness == Brightness.dark;
+    final useLightHeader = widget.isLight || isDark;
+    final textColor = useLightHeader ? Colors.white : colorScheme.onSurface;
+    final subColor = useLightHeader
         ? Colors.white.withValues(alpha: 0.72)
         : colorScheme.onSurfaceVariant;
-    final iconColor = widget.isLight ? Colors.white : colorScheme.tertiary;
+    final iconColor = useLightHeader ? Colors.white : colorScheme.tertiary;
+    final cardSubColor = isDark
+        ? Colors.white.withValues(alpha: 0.72)
+        : colorScheme.onSurfaceVariant;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -222,21 +227,31 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
             child: OptionalLiquidGlassCard(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
               borderRadius: 24,
-              highContrast: true,
-              tint: (widget.isLight ? colorScheme.scrim : colorScheme.tertiary)
-                  .withValues(alpha: 0.16),
-              isDark:
-                  widget.isLight || colorScheme.brightness == Brightness.dark,
+              tint: colorScheme.tertiary.withValues(alpha: 0.16),
+              isDark: isDark,
               fallbackDecoration: BoxDecoration(
                 color: widget.isLight
-                    ? Colors.white.withValues(alpha: 0.15)
+                    ? (isDark
+                        ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
+                        : colorScheme.surface.withValues(alpha: 0.92))
                     : colorScheme.surfaceContainerLow.withValues(alpha: 0.6),
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(
                   color: widget.isLight
-                      ? Colors.white.withValues(alpha: 0.2)
+                      ? (isDark
+                          ? Colors.white.withValues(alpha: 0.15)
+                          : Colors.white.withValues(alpha: 0.6))
                       : colorScheme.outlineVariant.withValues(alpha: 0.5),
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(
+                      alpha: widget.isLight ? 0.08 : (isDark ? 0.2 : 0.04),
+                    ),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
               child: _isLoading
                   ? SizedBox(
@@ -244,15 +259,15 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
                       child: Center(
                         child: CircularProgressIndicator(
                           strokeWidth: 2.5,
-                          color: widget.isLight
+                          color: isDark
                               ? Colors.white
                               : colorScheme.tertiary,
                         ),
                       ),
                     )
                   : _hasError
-                  ? _buildError(subColor)
-                  : _buildSummary(colorScheme, subColor),
+                  ? _buildError(cardSubColor)
+                  : _buildSummary(colorScheme, cardSubColor),
             ),
           ),
         ),
@@ -261,10 +276,11 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
   }
 
   Widget _buildSummary(ColorScheme colorScheme, Color subColor) {
-    final dividerColor = widget.isLight
+    final isDark = colorScheme.brightness == Brightness.dark;
+    final dividerColor = isDark
         ? Colors.white.withValues(alpha: 0.22)
         : colorScheme.outlineVariant.withValues(alpha: 0.35);
-    final valueColor = widget.isLight ? Colors.white : colorScheme.onSurface;
+    final valueColor = isDark ? Colors.white : colorScheme.onSurface;
 
     return Column(
       children: [
@@ -273,14 +289,14 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
             _buildMetric(
               label: '净支出',
               value: formatFinanceAmount(_summary.netExpenseMinor),
-              valueColor: widget.isLight ? Colors.white : colorScheme.error,
+              valueColor: colorScheme.error,
               labelColor: subColor,
             ),
             _buildMetricDivider(dividerColor),
             _buildMetric(
               label: '收入',
               value: formatFinanceAmount(_summary.incomeMinor),
-              valueColor: widget.isLight ? Colors.white : colorScheme.primary,
+              valueColor: colorScheme.primary,
               labelColor: subColor,
             ),
             _buildMetricDivider(dividerColor),
@@ -380,9 +396,8 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
     final title = transaction.merchant?.trim().isNotEmpty == true
         ? transaction.merchant!.trim()
         : transaction.type.label;
-    final amountColor = widget.isLight
-        ? Colors.white
-        : transaction.type == FinanceTransactionType.expense
+    final isDark = colorScheme.brightness == Brightness.dark;
+    final amountColor = transaction.type == FinanceTransactionType.expense
         ? colorScheme.error
         : colorScheme.primary;
 
@@ -400,7 +415,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 12.5,
-                  color: widget.isLight ? Colors.white : colorScheme.onSurface,
+                  color: isDark ? Colors.white : colorScheme.onSurface,
                   fontWeight: FontWeight.w600,
                 ),
               ),

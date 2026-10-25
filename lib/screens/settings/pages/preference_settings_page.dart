@@ -61,6 +61,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   String? _highlightTarget;
 
   String _themeMode = 'system';
+  bool _oledBlackModeEnabled = true;
   String _themeColorMode = 'default';
   Color? _customThemeColor;
   String _wallpaperProvider = 'bing';
@@ -117,6 +118,8 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     _username = prefs.getString(StorageService.keyCurrentUser) ?? '';
 
     String theme = await StorageService.getThemeMode();
+    bool oledBlackModeEnabled =
+        prefs.getBool(StorageService.keyOledBlackMode) ?? true;
     String themeColorMode =
         prefs.getString(StorageService.keyThemeColorMode) ?? 'default';
     int? customColorVal = prefs.getInt(StorageService.keyCustomThemeColor);
@@ -131,6 +134,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     if (mounted) {
       setState(() {
         _themeMode = theme;
+        _oledBlackModeEnabled = oledBlackModeEnabled;
         _themeColorMode = themeColorMode;
         _wallpaperProvider = wallpaperProvider;
         _homeTextConfig = homeTextConfig;
@@ -287,139 +291,162 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             top: widget.isEmbedded
                 ? 16
                 : floatingGlassSettingsContentTopInset(context),
+            bottom: 32,
           ),
           children: [
-            _buildWallpaperSection(),
-            const AppSettingsDivider(),
-            _buildHomeTextSection(),
-            _buildAppearanceSection(),
-            _buildHomeLayoutSection(),
-            _buildSidebarMenuSection(),
-            _buildColorSection(),
-            AppSettingsSectionHeader(
-              title: isWeb ? '浏览器与存储' : '系统与存储',
-              padding: const EdgeInsets.only(left: 16, bottom: 8, top: 24),
+            // 1. 外观与色彩 (浅色、深色、自动 + 纯黑 OLED 模式 + 主题色盘)
+            _buildMacGroupCard(
+              children: [
+                _buildAppearanceRow(),
+                _buildMacDivider(),
+                _buildOledBlackRow(),
+                _buildMacDivider(),
+                _buildColorSection(),
+              ],
             ),
-            _buildTile(
-              targetId: 'cache',
-              child: ListTile(
-                leading: Icon(
-                  Icons.cleaning_services_outlined,
-                  color: colorScheme.secondary,
-                ),
-                title: Text(isWeb ? '清理页面图片缓存' : '深度清理缓存与冗余'),
-                subtitle: Text(isWeb ? '清理当前浏览器页面的图片缓存' : '包含更新残留包与深度图片缓存'),
-                trailing: Text(
-                  _cacheSizeStr,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                onTap: _storageManagementHandler.clearCache,
-              ),
+
+            // 2. 桌面与首页 (首页壁纸 + 首页文字 + 首页布局 + 侧边栏菜单)
+            _buildMacSectionHeader('桌面与首页'),
+            _buildMacGroupCard(
+              children: [
+                _buildWallpaperSection(),
+                _buildMacDivider(),
+                _buildHomeTextSection(),
+                _buildMacDivider(),
+                _buildHomeLayoutSection(),
+                _buildMacDivider(),
+                _buildSidebarMenuSection(),
+              ],
             ),
-            if (!isWeb) ...[
-              const AppSettingsDivider(indent: 72),
-              _buildTile(
-                targetId: 'storage',
-                child: ListTile(
-                  leading: Icon(
-                    Icons.data_usage,
-                    color: colorScheme.cdtWarning,
-                  ),
-                  title: const Text('存储空间深度分析'),
-                  subtitle: const Text('找出占用数百MB的隐藏文件'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: _storageManagementHandler.showStorageAnalysis,
-                ),
-              ),
-            ],
-            const AppSettingsSectionHeader(
-              title: '其他工具',
-              padding: EdgeInsets.only(left: 16, bottom: 8, top: 24),
-            ),
-            _buildTile(
-              targetId: 'help_center',
-              child: ListTile(
-                leading: Icon(
-                  Icons.help_outline_rounded,
-                  color: colorScheme.primary,
-                ),
-                title: const Text('帮助与反馈'),
-                subtitle: const Text('使用指南、快速上手、常见问题'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  _openSettingsPage(
-                    'help_center',
-                    HelpCenterScreen(username: _username),
-                  );
-                },
-              ),
-            ),
-            const AppSettingsDivider(indent: 72),
-            _buildTile(
-              targetId: 'changelog',
-              child: ListTile(
-                leading: Icon(
-                  Icons.system_update_outlined,
-                  color: colorScheme.primary,
-                ),
-                title: const Text('更新日志'),
-                subtitle: const Text('查看当前版本及历史更新内容'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  _openSettingsPage(
-                    'changelog',
-                    FeatureGuideScreen(
-                      mode: FeatureGuideMode.changelog,
-                      loggedInUser: _username,
+
+            // 4. 系统与存储 Group Card (清理缓存 + 存储深度分析)
+            _buildMacSectionHeader(isWeb ? '浏览器与存储' : '系统与存储'),
+            _buildMacGroupCard(
+              children: [
+                _buildTile(
+                  targetId: 'cache',
+                  child: ListTile(
+                    leading: Icon(
+                      Icons.cleaning_services_outlined,
+                      color: colorScheme.secondary,
                     ),
-                    rootNavigator: true,
-                  );
-                },
-              ),
-            ),
-            const AppSettingsDivider(indent: 72),
-            _buildTile(
-              targetId: 'feature_guide',
-              child: ListTile(
-                leading: Icon(
-                  Icons.school_outlined,
-                  color: colorScheme.tertiary,
-                ),
-                title: const Text('版本引导'),
-                subtitle: const Text('查看新版本功能介绍与使用引导'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  _openSettingsPage(
-                    'feature_guide',
-                    FeatureGuideScreen(
-                      mode: FeatureGuideMode.guide,
-                      loggedInUser: _username,
+                    title: Text(isWeb ? '清理页面图片缓存' : '深度清理缓存与冗余'),
+                    subtitle: Text(isWeb ? '清理当前浏览器页面的图片缓存' : '包含更新残留包与深度图片缓存'),
+                    trailing: Text(
+                      _cacheSizeStr,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                    rootNavigator: true,
-                  );
-                },
-              ),
-            ),
-            const AppSettingsDivider(indent: 72),
-            if (!isWeb)
-              _buildTile(
-                targetId: 'migration',
-                child: ListTile(
-                  leading: Icon(
-                    Icons.move_to_inbox,
-                    color: colorScheme.secondary,
+                    onTap: _storageManagementHandler.clearCache,
                   ),
-                  title: const Text('旧版本地数据一键迁移'),
-                  subtitle: const Text('包含待办、课程、课表与习惯数据'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: _showMigrationDialog,
                 ),
-              ),
-            if (!isWeb) const AppSettingsDivider(indent: 72),
-            const SizedBox(height: 32),
+                if (!isWeb) ...[
+                  _buildMacDivider(indent: 56),
+                  _buildTile(
+                    targetId: 'storage',
+                    child: ListTile(
+                      leading: Icon(
+                        Icons.data_usage,
+                        color: colorScheme.cdtWarning,
+                      ),
+                      title: const Text('存储空间深度分析'),
+                      subtitle: const Text('找出占用数百MB的隐藏文件'),
+                      trailing: const Icon(Icons.chevron_right, size: 18),
+                      onTap: _storageManagementHandler.showStorageAnalysis,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+
+            // 5. 其他 Group Card (帮助与反馈 + 更新日志 + 版本引导 + 迁移)
+            _buildMacSectionHeader('其他'),
+            _buildMacGroupCard(
+              children: [
+                _buildTile(
+                  targetId: 'help_center',
+                  child: ListTile(
+                    leading: Icon(
+                      Icons.help_outline_rounded,
+                      color: colorScheme.primary,
+                    ),
+                    title: const Text('帮助与反馈'),
+                    subtitle: const Text('使用指南、快速上手、常见问题'),
+                    trailing: const Icon(Icons.chevron_right, size: 18),
+                    onTap: () {
+                      _openSettingsPage(
+                        'help_center',
+                        HelpCenterScreen(username: _username),
+                      );
+                    },
+                  ),
+                ),
+                _buildMacDivider(indent: 56),
+                _buildTile(
+                  targetId: 'changelog',
+                  child: ListTile(
+                    leading: Icon(
+                      Icons.system_update_outlined,
+                      color: colorScheme.primary,
+                    ),
+                    title: const Text('更新日志'),
+                    subtitle: const Text('查看当前版本及历史更新内容'),
+                    trailing: const Icon(Icons.chevron_right, size: 18),
+                    onTap: () {
+                      _openSettingsPage(
+                        'changelog',
+                        FeatureGuideScreen(
+                          mode: FeatureGuideMode.changelog,
+                          loggedInUser: _username,
+                        ),
+                        rootNavigator: true,
+                      );
+                    },
+                  ),
+                ),
+                _buildMacDivider(indent: 56),
+                _buildTile(
+                  targetId: 'feature_guide',
+                  child: ListTile(
+                    leading: Icon(
+                      Icons.school_outlined,
+                      color: colorScheme.tertiary,
+                    ),
+                    title: const Text('版本引导'),
+                    subtitle: const Text('查看新版本功能介绍与使用引导'),
+                    trailing: const Icon(Icons.chevron_right, size: 18),
+                    onTap: () {
+                      _openSettingsPage(
+                        'feature_guide',
+                        FeatureGuideScreen(
+                          mode: FeatureGuideMode.guide,
+                          loggedInUser: _username,
+                        ),
+                        rootNavigator: true,
+                      );
+                    },
+                  ),
+                ),
+                if (!isWeb) ...[
+                  _buildMacDivider(indent: 56),
+                  _buildTile(
+                    targetId: 'migration',
+                    child: ListTile(
+                      leading: Icon(
+                        Icons.move_to_inbox,
+                        color: colorScheme.secondary,
+                      ),
+                      title: const Text('旧版本地数据一键迁移'),
+                      subtitle: const Text('包含待办、课程、课表与习惯数据'),
+                      trailing: const Icon(Icons.chevron_right, size: 18),
+                      onTap: _showMigrationDialog,
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ],
         ),
       ),
@@ -763,39 +790,6 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                   ],
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAppearanceSection() {
-    return _buildTile(
-      targetId: 'theme',
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '外观',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildAppearanceCard('system', '自动', _buildAutoIcon()),
-                const SizedBox(width: 24),
-                _buildAppearanceCard('light', '浅色', _buildLightIcon()),
-                const SizedBox(width: 24),
-                _buildAppearanceCard('dark', '深色', _buildDarkIcon()),
-              ],
             ),
           ],
         ),
@@ -1147,9 +1141,147 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     );
   }
 
-  Widget _buildAppearanceCard(String value, String title, Widget icon) {
+  // ===== macOS 风格 Grouped Card 基础容器 =====
+  Widget _buildMacGroupCard({
+    required List<Widget> children,
+    EdgeInsetsGeometry? margin,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      margin: margin ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF262628) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? const Color(0x1FFFFFFF) : const Color(0x14000000),
+          width: 0.8,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: children,
+      ),
+    );
+  }
+
+  Widget _buildMacSectionHeader(String title) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.only(left: 28, right: 16, top: 22, bottom: 6),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: isDark ? const Color(0xFF98989D) : const Color(0xFF6C6C70),
+          letterSpacing: -0.2,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMacDivider({double indent = 16, double endIndent = 16}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Divider(
+      height: 1,
+      thickness: 0.5,
+      indent: indent,
+      endIndent: endIndent,
+      color: isDark ? const Color(0x1FFFFFFF) : const Color(0x14000000),
+    );
+  }
+
+  // ===== 外观行：浅色 / 深色 / 自动 Mini macOS 窗口微缩模型 =====
+  Widget _buildAppearanceRow() {
+    return _buildTile(
+      targetId: 'theme',
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isNarrow = constraints.maxWidth < 460;
+            final miniatureRow = Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: isNarrow
+                  ? MainAxisAlignment.center
+                  : MainAxisAlignment.end,
+              children: [
+                _buildAppearanceMiniature('light', '浅色'),
+                const SizedBox(width: 14),
+                _buildAppearanceMiniature('dark', '深色'),
+                const SizedBox(width: 14),
+                _buildAppearanceMiniature('system', '自动'),
+              ],
+            );
+
+            if (isNarrow) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '外观',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Center(child: miniatureRow),
+                ],
+              );
+            }
+
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  '外观',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                const Spacer(),
+                miniatureRow,
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAppearanceMiniature(String value, String title) {
     final isSelected = _themeMode == value;
-    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    Widget previewContent;
+    if (value == 'light') {
+      previewContent = _buildLightWindowMiniature();
+    } else if (value == 'dark') {
+      previewContent = _buildDarkWindowMiniature();
+    } else {
+      // 自动模式：左右对半裁切
+      previewContent = Row(
+        children: [
+          Expanded(child: _buildLightWindowMiniature(isLeftHalf: true)),
+          Container(width: 1, color: Colors.black26),
+          Expanded(child: _buildDarkWindowMiniature(isRightHalf: true)),
+        ],
+      );
+    }
+
     return GestureDetector(
       onTap: () {
         setState(() => _themeMode = value);
@@ -1157,41 +1289,45 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
         StorageService.themeNotifier.value = value;
       },
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 86,
-            height: 60,
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            width: 96,
+            height: 64,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(9),
               border: Border.all(
-                color: isSelected ? colorScheme.primary : Colors.transparent,
-                width: 2.5,
+                color: isSelected
+                    ? const Color(0xFF007AFF)
+                    : (isDark
+                          ? const Color(0x26FFFFFF)
+                          : const Color(0x1A000000)),
+                width: isSelected ? 2.5 : 1.2,
               ),
-              color: colorScheme.surfaceContainerHighest,
               boxShadow: [
                 if (isSelected)
                   BoxShadow(
-                    color: colorScheme.primary.withValues(alpha: 0.2),
-                    blurRadius: 6,
+                    color: const Color(0xFF007AFF).withValues(alpha: 0.35),
+                    blurRadius: 7,
                     spreadRadius: 1,
                   ),
               ],
             ),
-            child: Padding(
-              padding: const EdgeInsets.all(4.0),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: icon,
-              ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(7),
+              child: previewContent,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 7),
           Text(
             title,
             style: TextStyle(
-              fontSize: 13,
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              color: isSelected ? colorScheme.primary : null,
+              fontSize: 12.5,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+              color: isSelected
+                  ? (isDark ? Colors.white : const Color(0xFF007AFF))
+                  : (isDark ? Colors.white70 : Colors.black87),
             ),
           ),
         ],
@@ -1199,32 +1335,108 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     );
   }
 
-  Widget _buildLightIcon() {
-    final colorScheme = Theme.of(context).colorScheme;
+  Widget _buildLightWindowMiniature({
+    bool isLeftHalf = false,
+    bool isRightHalf = false,
+  }) {
     return Container(
-      color: colorScheme.surface,
-      child: Column(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF68B2FF), Color(0xFF2C82F6), Color(0xFF1B62D6)],
+        ),
+      ),
+      child: Stack(
         children: [
-          Container(height: 14, color: colorScheme.surfaceContainerHighest),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(4.0),
-              child: Row(
+          Positioned(
+            left: isRightHalf ? -10 : 8,
+            right: isLeftHalf ? -10 : 8,
+            top: 10,
+            bottom: 0,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(5),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.25),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+              child: Column(
                 children: [
-                  Expanded(
-                    flex: 1,
-                    child: Container(
-                      color: colorScheme.surfaceContainerHigh,
-                      margin: const EdgeInsets.only(right: 4),
+                  Container(
+                    height: 12,
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFEDEDF2),
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(5),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        if (!isRightHalf) ...[
+                          _buildTrafficDot(const Color(0xFFFF5F56)),
+                          const SizedBox(width: 2.5),
+                          _buildTrafficDot(const Color(0xFFFFBD2E)),
+                          const SizedBox(width: 2.5),
+                          _buildTrafficDot(const Color(0xFF27C93F)),
+                          const Spacer(),
+                        ],
+                        Container(
+                          width: 20,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFD1D1D6),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   Expanded(
-                    flex: 2,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: colorScheme.primaryContainer,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
+                    child: Row(
+                      children: [
+                        if (!isRightHalf)
+                          Container(width: 16, color: const Color(0xFFF2F2F7)),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 4,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: 24,
+                                  height: 3,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF007AFF)
+                                        .withValues(alpha: 0.7),
+                                    borderRadius: BorderRadius.circular(1.5),
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Container(
+                                  width: 32,
+                                  height: 3,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFD1D1D6),
+                                    borderRadius: BorderRadius.circular(1.5),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -1236,37 +1448,108 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     );
   }
 
-  Widget _buildDarkIcon() {
-    final colorScheme = Theme.of(context).colorScheme;
+  Widget _buildDarkWindowMiniature({
+    bool isLeftHalf = false,
+    bool isRightHalf = false,
+  }) {
     return Container(
-      color: colorScheme.inverseSurface,
-      child: Column(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1E284A), Color(0xFF141A32), Color(0xFF0C1020)],
+        ),
+      ),
+      child: Stack(
         children: [
-          Container(
-            height: 14,
-            color: colorScheme.inversePrimary.withValues(alpha: 0.28),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(4.0),
-              child: Row(
+          Positioned(
+            left: isRightHalf ? -10 : 8,
+            right: isLeftHalf ? -10 : 8,
+            top: 10,
+            bottom: 0,
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF1C1C1E),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(5),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+              child: Column(
                 children: [
-                  Expanded(
-                    flex: 1,
-                    child: Container(
-                      color: colorScheme.onInverseSurface.withValues(
-                        alpha: 0.14,
+                  Container(
+                    height: 12,
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF2C2C2E),
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(5),
                       ),
-                      margin: const EdgeInsets.only(right: 4),
+                    ),
+                    child: Row(
+                      children: [
+                        if (!isRightHalf) ...[
+                          _buildTrafficDot(const Color(0xFFFF5F56)),
+                          const SizedBox(width: 2.5),
+                          _buildTrafficDot(const Color(0xFFFFBD2E)),
+                          const SizedBox(width: 2.5),
+                          _buildTrafficDot(const Color(0xFF27C93F)),
+                          const Spacer(),
+                        ],
+                        Container(
+                          width: 20,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF48484A),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   Expanded(
-                    flex: 2,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: colorScheme.inversePrimary,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
+                    child: Row(
+                      children: [
+                        if (!isRightHalf)
+                          Container(width: 16, color: const Color(0xFF282828)),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 4,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: 24,
+                                  height: 3,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF007AFF)
+                                        .withValues(alpha: 0.7),
+                                    borderRadius: BorderRadius.circular(1.5),
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Container(
+                                  width: 32,
+                                  height: 3,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF48484A),
+                                    borderRadius: BorderRadius.circular(1.5),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -1278,255 +1561,300 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     );
   }
 
-  Widget _buildAutoIcon() {
-    return Row(
-      children: [
-        Expanded(child: _buildLightIcon()),
-        Expanded(child: _buildDarkIcon()),
-      ],
+  Widget _buildTrafficDot(Color color) {
+    return Container(
+      width: 3.5,
+      height: 3.5,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
     );
   }
 
+  Widget _buildOledBlackRow() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+      child: SwitchListTile.adaptive(
+        contentPadding: EdgeInsets.zero,
+        secondary: Icon(
+          Icons.brightness_2_outlined,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+        title: const Text('纯黑 OLED 省电模式'),
+        subtitle: Text(_oledBlackModeEnabled ? '深色界面使用纯黑背景' : '深色界面使用柔和深灰背景'),
+        value: _oledBlackModeEnabled,
+        onChanged: (enabled) {
+          setState(() => _oledBlackModeEnabled = enabled);
+          StorageService.oledBlackModeNotifier.value = enabled;
+          unawaited(
+            StorageService.saveAppSetting(
+              StorageService.keyOledBlackMode,
+              enabled,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // ===== 主题颜色行：多色 SweepGradient + 苹果 8 种原生色 + 自定义 + 相册取色 =====
   Widget _buildColorSection() {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isMobile = screenWidth < 600;
-
     final allPresetColors = [
-      Colors.blue,
-      Colors.purple,
-      Colors.pink,
-      Colors.red,
-      Colors.orange,
-      Colors.yellow,
-      Colors.green,
-      Colors.grey,
+      const Color(0xFF007AFF), // Blue
+      const Color(0xFFAF52DE), // Purple
+      const Color(0xFFFF2D55), // Pink
+      const Color(0xFFFF3B30), // Red
+      const Color(0xFFFF9500), // Orange
+      const Color(0xFFFFCC00), // Yellow
+      const Color(0xFF34C759), // Green
+      const Color(0xFF8E8E93), // Grey
     ];
-
-    List<Color> displayColors;
-    if (isMobile) {
-      displayColors = [Colors.blue, Colors.purple, Colors.orange, Colors.green];
-      if (_themeColorMode == 'custom' && _customThemeColor != null) {
-        final customArgb = _customThemeColor!.toARGB32();
-        if (allPresetColors.any((c) => c.toARGB32() == customArgb)) {
-          if (!displayColors.any((c) => c.toARGB32() == customArgb)) {
-            displayColors[3] = _customThemeColor!;
-          }
-        }
-      }
-    } else {
-      displayColors = allPresetColors;
-    }
 
     return _buildTile(
       targetId: 'theme_color',
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '主题颜色',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Center(
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildColorCircle(
-                      'system_wallpaper',
-                      null,
-                      AppPlatform.isWeb ? '默认' : '多色/自动',
-                      displayColors,
-                    ),
-                    const SizedBox(width: 12),
-                    _buildColorCircle(
-                      'app_wallpaper',
-                      null,
-                      '应用壁纸',
-                      displayColors,
-                    ),
-                    const SizedBox(width: 12),
-                    ...displayColors.map(
-                      (c) => Padding(
-                        padding: const EdgeInsets.only(right: 12.0),
-                        child: _buildColorCircle(
-                          'custom',
-                          c,
-                          null,
-                          displayColors,
-                        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isNarrow = constraints.maxWidth < 450;
+            final swatches = SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildMacColorDot(
+                    mode: 'system_wallpaper',
+                    color: null,
+                    label: '多色',
+                    isSelected:
+                        _themeColorMode == 'system_wallpaper' ||
+                        _themeColorMode == 'default',
+                    onTap: () async {
+                      await StorageService.setThemeColorMode(
+                        'system_wallpaper',
+                      );
+                      setState(() => _themeColorMode = 'system_wallpaper');
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  _buildMacColorDot(
+                    mode: 'app_wallpaper',
+                    color: null,
+                    label: '壁纸',
+                    isSelected: _themeColorMode == 'app_wallpaper',
+                    onTap: () async {
+                      await StorageService.setThemeColorMode('app_wallpaper');
+                      setState(() => _themeColorMode = 'app_wallpaper');
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  ...allPresetColors.map(
+                    (c) => Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: _buildMacColorDot(
+                        mode: 'custom',
+                        color: c,
+                        label: null,
+                        isSelected:
+                            (_themeColorMode == 'custom') &&
+                            _customThemeColor?.toARGB32() == c.toARGB32(),
+                        onTap: () async {
+                          await StorageService.setCustomThemeColor(c);
+                          await StorageService.setThemeColorMode('custom');
+                          setState(() {
+                            _customThemeColor = c;
+                            _themeColorMode = 'custom';
+                          });
+                        },
                       ),
                     ),
-                    _buildColorCircle(
-                      'custom_picker',
-                      null,
-                      '自定义',
-                      displayColors,
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: _buildMacColorDot(
+                      mode: 'custom_picker',
+                      color: null,
+                      label: '自选',
+                      isSelected:
+                          (_themeColorMode == 'custom') &&
+                          _customThemeColor != null &&
+                          !allPresetColors.any(
+                            (c) =>
+                                c.toARGB32() == _customThemeColor!.toARGB32(),
+                          ),
+                      onTap: _handlePickCustomThemeColor,
                     ),
-                    const SizedBox(width: 12),
-                    _buildColorCircle(
-                      'image_extracted',
-                      null,
-                      '图片取色',
-                      displayColors,
-                    ),
-                  ],
-                ),
+                  ),
+                  _buildMacColorDot(
+                    mode: 'image_extracted',
+                    color: null,
+                    label: '取色',
+                    isSelected: _themeColorMode == 'image_extracted',
+                    onTap: () =>
+                        _handleThemeColorModeChanged('image_extracted'),
+                  ),
+                ],
               ),
-            ),
-          ],
+            );
+
+            if (isNarrow) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '主题颜色',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  swatches,
+                ],
+              );
+            }
+
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  '主题颜色',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: swatches,
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
   }
 
-  Widget _buildColorCircle(
-    String mode,
-    Color? color,
-    String? label,
-    List<Color> displayColors,
-  ) {
-    bool isSelected = false;
+  Widget _buildMacColorDot({
+    required String mode,
+    required Color? color,
+    required String? label,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    Widget dotContent;
     if (mode == 'system_wallpaper') {
-      isSelected =
-          _themeColorMode == 'system_wallpaper' || _themeColorMode == 'default';
-    } else if (mode == 'app_wallpaper') {
-      isSelected = _themeColorMode == 'app_wallpaper';
-    } else if (mode == 'custom' && color != null) {
-      isSelected =
-          (_themeColorMode == 'custom') &&
-          _customThemeColor?.toARGB32() == color.toARGB32();
-    } else if (mode == 'custom_picker') {
-      final customArgb = _customThemeColor?.toARGB32();
-      isSelected =
-          (_themeColorMode == 'custom') &&
-          !displayColors.any((c) => c.toARGB32() == customArgb);
-    } else if (mode == 'image_extracted') {
-      isSelected = _themeColorMode == 'image_extracted';
-    }
-
-    Widget inner;
-    if (mode == 'system_wallpaper') {
-      inner = Container(
+      dotContent = Container(
         decoration: const BoxDecoration(
           shape: BoxShape.circle,
           gradient: SweepGradient(
             colors: [
-              Colors.blue,
-              Colors.purple,
-              Colors.red,
-              Colors.orange,
-              Colors.yellow,
-              Colors.green,
-              Colors.blue,
+              Color(0xFFFF3B30),
+              Color(0xFFFF9500),
+              Color(0xFFFFCC00),
+              Color(0xFF34C759),
+              Color(0xFF007AFF),
+              Color(0xFFAF52DE),
+              Color(0xFFFF2D55),
+              Color(0xFFFF3B30),
             ],
           ),
         ),
       );
-    } else if (mode == 'app_wallpaper') {
-      inner = Container(
+    } else if (mode == 'custom_picker') {
+      dotContent = Container(
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          color: isDark ? const Color(0xFF3A3A3C) : const Color(0xFFE5E5EA),
         ),
         child: Icon(
-          Icons.wallpaper,
-          size: 16,
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          Icons.colorize_rounded,
+          size: 13,
+          color: isDark ? Colors.white70 : Colors.black54,
         ),
       );
-    } else if (mode == 'custom_picker') {
-      inner = Container(
+    } else if (mode == 'app_wallpaper') {
+      dotContent = Container(
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          color: isDark ? const Color(0xFF3A3A3C) : const Color(0xFFE5E5EA),
         ),
         child: Icon(
-          Icons.colorize,
-          size: 16,
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          Icons.wallpaper_rounded,
+          size: 13,
+          color: isDark ? Colors.white70 : Colors.black54,
         ),
       );
     } else if (mode == 'image_extracted') {
-      inner = Container(
+      dotContent = Container(
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          color: isDark ? const Color(0xFF3A3A3C) : const Color(0xFFE5E5EA),
         ),
         child: Icon(
-          Icons.image,
-          size: 16,
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          Icons.image_search_rounded,
+          size: 13,
+          color: isDark ? Colors.white70 : Colors.black54,
         ),
       );
     } else {
-      inner = Container(
+      dotContent = Container(
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: color ?? Theme.of(context).colorScheme.primary,
+          color: color ?? const Color(0xFF007AFF),
         ),
       );
     }
 
+    final activeColor = (mode == 'system_wallpaper' || color == null)
+        ? const Color(0xFF007AFF)
+        : color;
+
     return GestureDetector(
-      onTap: () async {
-        if (mode == 'system_wallpaper' || mode == 'app_wallpaper') {
-          await StorageService.setThemeColorMode(mode);
-          setState(() => _themeColorMode = mode);
-        } else if (mode == 'custom' && color != null) {
-          await StorageService.setCustomThemeColor(color);
-          await StorageService.setThemeColorMode('custom');
-          setState(() {
-            _customThemeColor = color;
-            _themeColorMode = 'custom';
-          });
-        } else if (mode == 'custom_picker') {
-          await _handlePickCustomThemeColor();
-        } else if (mode == 'image_extracted') {
-          await _handleThemeColorModeChanged('image_extracted');
-        }
-      },
-      child: SizedBox(
-        width: 48,
-        child: Column(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              padding: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: isSelected
-                      ? Theme.of(context).colorScheme.primary
-                      : Colors.transparent,
-                  width: 2.5,
-                ),
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 26,
+            height: 26,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isSelected ? activeColor : Colors.transparent,
+                width: 2.0,
               ),
-              child: inner,
             ),
-            if (label != null) ...[
-              const SizedBox(height: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-                textAlign: TextAlign.center,
+            child: Container(
+              width: isSelected ? 18 : 22,
+              height: isSelected ? 18 : 22,
+              clipBehavior: Clip.antiAlias,
+              decoration: const BoxDecoration(shape: BoxShape.circle),
+              child: dotContent,
+            ),
+          ),
+          if (label != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                color: isDark
+                    ? const Color(0xFF8E8E93)
+                    : const Color(0xFF6C6C70),
               ),
-            ],
-          ],
-        ),
+            ),
+          ] else
+            const SizedBox(height: 15),
+        ],
       ),
     );
   }

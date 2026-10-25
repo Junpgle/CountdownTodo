@@ -251,6 +251,8 @@ todo.md
 !/test/widgets/held_quick_voice_test.dart
 !/test/widgets/voice_chat_initial_message_test.dart
 !/test/widgets/voice_chat_initial_draft_test.dart
+!/test/widgets/pomodoro_today_section_test.dart
+!/test/widgets/personal_timeline_section_test.dart
 !/test/utils/
 /test/utils/*
 !/test/utils/todo_recurrence_picker_test.dart

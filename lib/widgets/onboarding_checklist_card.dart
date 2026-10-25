@@ -278,19 +278,31 @@ class _OnboardingChecklistCardState extends State<OnboardingChecklistCard> {
               child: OptionalLiquidGlassCard(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
                 borderRadius: 20,
-                tint: (widget.isLight ? scheme.scrim : scheme.primary)
-                    .withValues(alpha: 0.14),
-                isDark: widget.isLight || isDark,
+                tint: scheme.primary.withValues(alpha: 0.14),
+                isDark: isDark,
                 fallbackDecoration: BoxDecoration(
                   color: widget.isLight
-                      ? Colors.white.withValues(alpha: 0.15)
+                      ? (isDark
+                          ? scheme.surfaceContainerLow.withValues(alpha: 0.75)
+                          : scheme.surface.withValues(alpha: 0.92))
                       : scheme.surfaceContainerHighest.withValues(alpha: 0.32),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: widget.isLight
-                        ? Colors.white.withValues(alpha: 0.2)
+                        ? (isDark
+                            ? Colors.white.withValues(alpha: 0.15)
+                            : Colors.white.withValues(alpha: 0.6))
                         : Theme.of(context).dividerColor.withValues(alpha: 0.5),
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(
+                        alpha: widget.isLight ? 0.08 : (isDark ? 0.2 : 0.04),
+                      ),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

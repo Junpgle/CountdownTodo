@@ -127,6 +127,8 @@ class StorageService {
 
   static const String keyThemeMode = _storageService_keyThemeMode;
 
+  static const String keyOledBlackMode = _storageService_keyOledBlackMode;
+
   static const String keyThemeColorMode = _storageService_keyThemeColorMode;
 
   static const String keyCustomThemeColor = _storageService_keyCustomThemeColor;
@@ -254,6 +256,11 @@ class StorageService {
   static ValueNotifier<String> get themeNotifier => _storage.themeNotifier;
   static set themeNotifier(ValueNotifier<String> value) =>
       _storage.themeNotifier = value;
+
+  static ValueNotifier<bool> get oledBlackModeNotifier =>
+      _storage.oledBlackModeNotifier;
+  static set oledBlackModeNotifier(ValueNotifier<bool> value) =>
+      _storage.oledBlackModeNotifier = value;
 
   static ValueNotifier<String> get themeColorModeNotifier =>
       _storage.themeColorModeNotifier;

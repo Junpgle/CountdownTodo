@@ -1450,10 +1450,14 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
     Navigator.of(context).push(
       PageTransitions.material(
         builder: (context) => Scaffold(
-          backgroundColor: Colors.black,
+          backgroundColor: Theme.of(context).brightness == Brightness.dark
+              ? Theme.of(context).colorScheme.surface
+              : Colors.black,
           appBar: FloatingGlassAppBar(
             flexibleSpace: const FloatingGlassTopBarBackground(),
-            backgroundColor: Colors.black,
+            backgroundColor: Theme.of(context).brightness == Brightness.dark
+                ? Theme.of(context).colorScheme.surface
+                : Colors.black,
             foregroundColor: Colors.white,
             title: const Text("图片预览"),
           ),

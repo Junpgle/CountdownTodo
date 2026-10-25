@@ -62,53 +62,49 @@ mixin _HomeDashboardViewMixin
         children: [
           if (showWallpaper && wallpaperUrl != null)
             Positioned.fill(
-              child: RepaintBoundary(
-                // Darken the image in its draw pass. A separate full-screen
-                // scrim adds another alpha-blended pass on every GPU frame.
-                child: wallpaperUrl.startsWith('assets/')
-                    ? Builder(
-                        builder: (context) {
-                          _scheduleWallpaperColorExtraction(
-                            AssetImage(wallpaperUrl),
-                            wallpaperUrl,
-                          );
-                          return Image.asset(
-                            wallpaperUrl,
-                            fit: BoxFit.cover,
-                            color: const Color(0x66000000),
-                            colorBlendMode: BlendMode.srcOver,
-                          );
-                        },
-                      )
-                    : localWallpaperProvider != null
-                    ? Builder(
-                        builder: (context) {
-                          final provider = localWallpaperProvider;
-                          _scheduleWallpaperColorExtraction(
-                            provider,
-                            wallpaperUrl,
-                          );
-                          return Image(
-                            image: provider,
-                            fit: BoxFit.cover,
-                            color: const Color(0x66000000),
-                            colorBlendMode: BlendMode.srcOver,
-                          );
-                        },
-                      )
-                    : _WallpaperNetworkImage(
-                        url: _wallpaperUrl!,
-                        onImageProvider: (provider) {
-                          _extractColorFromProvider(provider, _wallpaperUrl!);
-                        },
-                        onSuccess: () {
-                          _wallpaperRetryCount = 0;
-                        },
-                        onError: () {
-                          _handleWallpaperError();
-                        },
-                      ),
-              ),
+              child: wallpaperUrl.startsWith('assets/')
+                  ? Builder(
+                      builder: (context) {
+                        _scheduleWallpaperColorExtraction(
+                          AssetImage(wallpaperUrl),
+                          wallpaperUrl,
+                        );
+                        return Image.asset(
+                          wallpaperUrl,
+                          fit: BoxFit.cover,
+                          color: const Color(0x66000000),
+                          colorBlendMode: BlendMode.srcOver,
+                        );
+                      },
+                    )
+                  : localWallpaperProvider != null
+                  ? Builder(
+                      builder: (context) {
+                        final provider = localWallpaperProvider;
+                        _scheduleWallpaperColorExtraction(
+                          provider,
+                          wallpaperUrl,
+                        );
+                        return Image(
+                          image: provider,
+                          fit: BoxFit.cover,
+                          color: const Color(0x66000000),
+                          colorBlendMode: BlendMode.srcOver,
+                        );
+                      },
+                    )
+                  : _WallpaperNetworkImage(
+                      url: _wallpaperUrl!,
+                      onImageProvider: (provider) {
+                        _extractColorFromProvider(provider, _wallpaperUrl!);
+                      },
+                      onSuccess: () {
+                        _wallpaperRetryCount = 0;
+                      },
+                      onError: () {
+                        _handleWallpaperError();
+                      },
+                    ),
             ),
           SafeArea(
             // 仅避让顶部状态栏。列表需要继续绘制到 Android 手势导航区
@@ -118,8 +114,9 @@ mixin _HomeDashboardViewMixin
             child: FloatingGlassPinnedHeaderLayout(
               initialHeaderExtent:
                   (_selectedTabIndex != _homeFocusTabIndex || isTablet)
-                  ? 112.0
+                  ? (112.0 + MediaQuery.paddingOf(context).top)
                   : 0.0,
+              fadeContent: !showWallpaper,
               header: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -235,7 +232,10 @@ mixin _HomeDashboardViewMixin
                                 )
                               : LayoutBuilder(
                                   builder: (context, constraints) {
-                                    // ... (rest of section definitions)
+                                    Widget wrapSectionBoundary(Widget child) =>
+                                        showWallpaper
+                                        ? child
+                                        : RepaintBoundary(child: child);
                                     Widget buildCountdown() =>
                                         ValueListenableBuilder<
                                           List<CountdownItem>
@@ -357,8 +357,9 @@ mixin _HomeDashboardViewMixin
                                         );
                                       },
                                     );
-                                    Widget buildScreenTime() => RepaintBoundary(
-                                      child: KeyedSubtree(
+                                    Widget
+                                    buildScreenTime() => wrapSectionBoundary(
+                                      KeyedSubtree(
                                         key: _screenTimeCardKey,
                                         child: Column(
                                           crossAxisAlignment:
@@ -413,8 +414,8 @@ mixin _HomeDashboardViewMixin
                                         >(
                                           valueListenable: _mathStatsNotifier,
                                           builder: (context, stats, _) =>
-                                              RepaintBoundary(
-                                                child: KeyedSubtree(
+                                              wrapSectionBoundary(
+                                                KeyedSubtree(
                                                   key: _mathCardKey,
                                                   child: Column(
                                                     crossAxisAlignment:
@@ -469,8 +470,9 @@ mixin _HomeDashboardViewMixin
                                       ),
                                     );
 
-                                    Widget buildPomodoro() => RepaintBoundary(
-                                      child: ValueListenableBuilder<int>(
+                                    Widget
+                                    buildPomodoro() => wrapSectionBoundary(
+                                      ValueListenableBuilder<int>(
                                         valueListenable: _pomodoroRevision,
                                         builder: (context, trigger, _) {
                                           return KeyedSubtree(
@@ -498,8 +500,8 @@ mixin _HomeDashboardViewMixin
                                       ),
                                     );
 
-                                    Widget buildAgenda() => RepaintBoundary(
-                                      child: AnimatedBuilder(
+                                    Widget buildAgenda() => wrapSectionBoundary(
+                                      AnimatedBuilder(
                                         animation: _agendaSectionListenable,
                                         builder: (context, _) {
                                           return PlanBlockTodaySection(
@@ -581,8 +583,9 @@ mixin _HomeDashboardViewMixin
                                         },
                                       ),
                                     );
-                                    Widget buildFinance() => RepaintBoundary(
-                                      child: KeyedSubtree(
+                                    Widget
+                                    buildFinance() => wrapSectionBoundary(
+                                      KeyedSubtree(
                                         key: _financeCardKey,
                                         child: FinanceTodaySection(
                                           username: widget.username,
@@ -619,8 +622,8 @@ mixin _HomeDashboardViewMixin
                                       'pomodoro': buildPomodoro,
                                       'timeline': buildTimeline,
                                       'finance': buildFinance,
-                                      'habits': () => RepaintBoundary(
-                                        child: KeyedSubtree(
+                                      'habits': () => wrapSectionBoundary(
+                                        KeyedSubtree(
                                           key: _habitsCardKey,
                                           child: ValueListenableBuilder<int>(
                                             valueListenable: _habitsRevision,
@@ -720,90 +723,95 @@ mixin _HomeDashboardViewMixin
                                             ? sectionKeys.length +
                                                   (hasOnboarding ? 1 : 0)
                                             : -1;
-                                        return RepaintBoundary(
-                                          key: ValueKey<String>(
-                                            focusPage
-                                                ? 'home-focus-tab-content'
-                                                : 'home-main-tab-content',
-                                          ),
-                                          child: OptionalLiquidGlassScrollOptimizer(
-                                            child: ListView.builder(
-                                              key: PageStorageKey<String>(
-                                                focusPage
-                                                    ? 'home-focus-sections'
-                                                    : 'home-main-sections',
-                                              ),
-                                              padding: EdgeInsets.fromLTRB(
-                                                16,
-                                                listHeaderExtent + 16,
-                                                16,
-                                                16,
-                                              ),
-                                              itemCount:
-                                                  sectionKeys.length +
-                                                  (hasOnboarding ? 1 : 0) +
-                                                  (hasCopyright ? 1 : 0) +
-                                                  1,
-                                              findChildIndexCallback: (key) {
-                                                if (key is! ValueKey<String>) {
-                                                  return null;
-                                                }
-                                                if (hasOnboarding &&
-                                                    key.value ==
-                                                        'onboarding_checklist') {
-                                                  return onboardingIndex;
-                                                }
-                                                final index = sectionKeys
-                                                    .indexOf(key.value);
-                                                return index < 0 ? null : index;
-                                              },
-                                              itemBuilder: (context, index) {
-                                                if (index <
-                                                    sectionKeys.length) {
-                                                  return buildScrollableSection(
-                                                    sectionKeys[index],
-                                                  );
-                                                }
-                                                if (index == onboardingIndex) {
-                                                  return HomeDashboardScrollSection(
-                                                    key: const ValueKey<String>(
-                                                      'onboarding_checklist',
-                                                    ),
-                                                    child: AppSystemUiRegion(
-                                                      backgroundBrightness:
-                                                          cardBackgroundBrightness,
-                                                      child: AnimatedBuilder(
-                                                        animation:
-                                                            _bannerSectionListenable,
-                                                        builder: (_, _) =>
-                                                            _buildOnboardingChecklistSection(
-                                                              isLight,
-                                                            ),
-                                                      ),
-                                                    ),
-                                                  );
-                                                }
-                                                if (index == copyrightIndex) {
-                                                  return _buildWallpaperCopyright(
-                                                    isLight,
-                                                  );
-                                                }
-                                                return SizedBox(
-                                                  // The header overlays the list, so
-                                                  // reserve it at the trailing edge
-                                                  // to keep short pages scrollable.
-                                                  height:
-                                                      homeDashboardPhoneScrollTailExtent(
-                                                        headerExtent:
-                                                            listHeaderExtent,
-                                                        bottomInset:
-                                                            bottomSystemInset,
-                                                      ),
-                                                );
-                                              },
+                                        final listContent = OptionalLiquidGlassScrollOptimizer(
+                                          child: ListView.builder(
+                                            key: PageStorageKey<String>(
+                                              focusPage
+                                                  ? 'home-focus-sections'
+                                                  : 'home-main-sections',
                                             ),
+                                            addRepaintBoundaries:
+                                                !showWallpaper,
+                                            padding: EdgeInsets.fromLTRB(
+                                              16,
+                                              listHeaderExtent + 16,
+                                              16,
+                                              16,
+                                            ),
+                                            itemCount:
+                                                sectionKeys.length +
+                                                (hasOnboarding ? 1 : 0) +
+                                                (hasCopyright ? 1 : 0) +
+                                                1,
+                                            findChildIndexCallback: (key) {
+                                              if (key is! ValueKey<String>) {
+                                                return null;
+                                              }
+                                              if (hasOnboarding &&
+                                                  key.value ==
+                                                      'onboarding_checklist') {
+                                                return onboardingIndex;
+                                              }
+                                              final index = sectionKeys.indexOf(
+                                                key.value,
+                                              );
+                                              return index < 0 ? null : index;
+                                            },
+                                            itemBuilder: (context, index) {
+                                              if (index < sectionKeys.length) {
+                                                return buildScrollableSection(
+                                                  sectionKeys[index],
+                                                );
+                                              }
+                                              if (index == onboardingIndex) {
+                                                return HomeDashboardScrollSection(
+                                                  key: const ValueKey<String>(
+                                                    'onboarding_checklist',
+                                                  ),
+                                                  child: AppSystemUiRegion(
+                                                    backgroundBrightness:
+                                                        cardBackgroundBrightness,
+                                                    child: AnimatedBuilder(
+                                                      animation:
+                                                          _bannerSectionListenable,
+                                                      builder: (_, _) =>
+                                                          _buildOnboardingChecklistSection(
+                                                            isLight,
+                                                          ),
+                                                    ),
+                                                  ),
+                                                );
+                                              }
+                                              if (index == copyrightIndex) {
+                                                return _buildWallpaperCopyright(
+                                                  isLight,
+                                                );
+                                              }
+                                              return SizedBox(
+                                                // The header overlays the list, so
+                                                // reserve it at the trailing edge
+                                                // to keep short pages scrollable.
+                                                height:
+                                                    homeDashboardPhoneScrollTailExtent(
+                                                      headerExtent:
+                                                          listHeaderExtent,
+                                                      bottomInset:
+                                                          bottomSystemInset,
+                                                    ),
+                                              );
+                                            },
                                           ),
                                         );
+                                        return showWallpaper
+                                            ? listContent
+                                            : RepaintBoundary(
+                                                key: ValueKey<String>(
+                                                  focusPage
+                                                      ? 'home-focus-tab-content'
+                                                      : 'home-main-tab-content',
+                                                ),
+                                                child: listContent,
+                                              );
                                       }
 
                                       if (AppPlatform.isAndroid) {
@@ -925,7 +933,9 @@ mixin _HomeDashboardViewMixin
                                                 padding: const EdgeInsets.only(
                                                   bottom: 24.0,
                                                 ),
-                                                child: isolateTabletSection
+                                                child:
+                                                    isolateTabletSection &&
+                                                        !showWallpaper
                                                     ? RepaintBoundary(
                                                         child: section,
                                                       )

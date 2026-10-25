@@ -1145,39 +1145,31 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                     _isTodayManuallyExpanded = true;
                     _isTodayExpanded = true;
                   }),
-                  child: Container(
+                  child: OptionalLiquidGlassCard(
                     margin: const EdgeInsets.symmetric(vertical: 10),
-                    decoration: BoxDecoration(
-                      color: widget.isLight
-                          ? (isDarkTheme
-                                ? Colors.grey[850]!.withValues(alpha: 0.95)
-                                : Colors.white.withValues(alpha: 0.95))
-                          : (allTodayDone
-                                ? (isDarkTheme
-                                      ? Colors.green.withValues(alpha: 0.15)
-                                      : Colors.green.withValues(alpha: 0.08))
-                                : (isDarkTheme
-                                      ? Colors.white.withValues(alpha: 0.08)
-                                      : Theme.of(context).colorScheme.primary
-                                            .withValues(alpha: 0.04))),
+                    borderRadius: 20,
+                    tint: allTodayDone
+                        ? Colors.green.withValues(alpha: 0.16)
+                        : Theme.of(context).colorScheme.primary
+                              .withValues(alpha: 0.14),
+                    isDark: isDarkTheme,
+                    fallbackDecoration: BoxDecoration(
+                      color: isDarkTheme
+                          ? Colors.grey[850]!.withValues(alpha: 0.95)
+                          : Colors.white.withValues(alpha: 0.95),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
                         color: allTodayDone
                             ? Colors.green.withValues(alpha: 0.4)
-                            : (widget.isLight
-                                  ? (isDarkTheme
-                                        ? Colors.white.withValues(alpha: 0.15)
-                                        : Colors.black.withValues(alpha: 0.1))
-                                  : (isDarkTheme
-                                        ? Colors.white.withValues(alpha: 0.22)
-                                        : Theme.of(context).colorScheme.primary
-                                              .withValues(alpha: 0.25))),
+                            : (isDarkTheme
+                                  ? Colors.white.withValues(alpha: 0.15)
+                                  : Colors.black.withValues(alpha: 0.1)),
                         width: 1.5,
                       ),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withValues(
-                            alpha: widget.isLight ? 0.15 : 0.08,
+                            alpha: isDarkTheme ? 0.25 : 0.08,
                           ),
                           blurRadius: 12,
                           offset: const Offset(0, 5),
@@ -1233,17 +1225,11 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                         ? (isDarkTheme
                                               ? Colors.green.shade200
                                               : Colors.green.shade900)
-                                        : (widget.isLight
-                                              ? (isDarkTheme
-                                                    ? Colors.white
-                                                    : Colors.black)
-                                              : (isDarkTheme
-                                                    ? Colors.white.withValues(
-                                                        alpha: 0.9,
-                                                      )
-                                                    : Colors.black.withValues(
-                                                        alpha: 0.85,
-                                                      ))),
+                                        : (isDarkTheme
+                                              ? Colors.white
+                                              : Colors.black.withValues(
+                                                  alpha: 0.85,
+                                                )),
                                     fontWeight: FontWeight.bold,
                                     fontSize: 16,
                                     letterSpacing: 0.2,
@@ -1259,17 +1245,13 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                         ? (isDarkTheme
                                               ? Colors.green[200]
                                               : Colors.green[800])
-                                        : (widget.isLight
-                                              ? (isDarkTheme
-                                                    ? Colors.white.withValues(
-                                                        alpha: 0.7,
-                                                      )
-                                                    : Colors.black.withValues(
-                                                        alpha: 0.6,
-                                                      ))
-                                              : (isDarkTheme
-                                                    ? Colors.white
-                                                    : Colors.black))),
+                                        : (isDarkTheme
+                                              ? Colors.white.withValues(
+                                                  alpha: 0.7,
+                                                )
+                                              : Colors.black.withValues(
+                                                  alpha: 0.6,
+                                                ))),
                                     fontSize: 12.5,
                                   ),
                                 ),

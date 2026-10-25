@@ -38,6 +38,8 @@ const String keySyncInterval = "app_sync_interval";
 const String _storageService_keySyncInterval = "app_sync_interval";
 const String keyThemeMode = "app_theme_mode";
 const String _storageService_keyThemeMode = "app_theme_mode";
+const String keyOledBlackMode = "app_oled_black_mode";
+const String _storageService_keyOledBlackMode = "app_oled_black_mode";
 const String keyThemeColorMode = "app_theme_color_mode";
 const String _storageService_keyThemeColorMode = "app_theme_color_mode";
 const String keyCustomThemeColor = "app_custom_theme_color";
@@ -172,6 +174,7 @@ abstract class _StorageServiceBase {
   final Set<String> _attemptedRecurrenceSeriesRepairUploads = {};
   bool _isCheckingRecurrence = false;
   ValueNotifier<String> themeNotifier = ValueNotifier('system');
+  ValueNotifier<bool> oledBlackModeNotifier = ValueNotifier(true);
   ValueNotifier<String> themeColorModeNotifier = ValueNotifier('default');
   ValueNotifier<Color?> customThemeColorNotifier = ValueNotifier(null);
   ValueNotifier<Color?> appWallpaperColorNotifier = ValueNotifier(null);

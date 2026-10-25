@@ -341,10 +341,11 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                         )
                       : BorderRadius.circular(20),
                   tint: statusColor.withValues(alpha: 0.16),
+                  isDark: isDark,
                   fallbackDecoration: BoxDecoration(
                     color: isHovering
                         ? statusColor.withValues(alpha: 0.08)
-                        : (widget.isLight ? Colors.white : Colors.grey[900]),
+                        : (isDark ? Colors.grey[900] : Colors.white),
                     borderRadius: isExpanded
                         ? const BorderRadius.only(
                             topLeft: Radius.circular(20),
@@ -358,9 +359,9 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                           ? Colors.green.withValues(alpha: isDark ? 0.25 : 0.15)
                           : isHovering
                           ? statusColor
-                          : (widget.isLight
-                                ? Colors.grey.withValues(alpha: 0.12)
-                                : Colors.white.withValues(alpha: 0.06)),
+                          : (isDark
+                                ? Colors.white.withValues(alpha: 0.06)
+                                : Colors.grey.withValues(alpha: 0.12)),
                       width: allDone || isHovering ? 1.2 : 1,
                     ),
                     boxShadow: [
@@ -554,9 +555,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                               ? (isDark
                                     ? Colors.green.shade200
                                     : Colors.green.shade800)
-                              : (widget.isLight
-                                    ? Colors.black87
-                                    : Colors.white),
+                              : (isDark ? Colors.white : Colors.black87),
                           letterSpacing: 0.2,
                         ),
                       ),
@@ -567,9 +566,9 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                           fontSize: 11,
                           color: allDone
                               ? (isDark
-                                    ? Colors.green.withValues(alpha: 0.5)
-                                    : Colors.green.withValues(alpha: 0.6))
-                              : Colors.grey[500],
+                                    ? Colors.green.withValues(alpha: 0.7)
+                                    : Colors.green.withValues(alpha: 0.8))
+                              : (isDark ? Colors.white70 : Colors.black54),
                         ),
                       ),
                     ],
@@ -606,20 +605,21 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     double scale,
     double opacity,
   ) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Transform.scale(
       scale: scale,
       child: Container(
         height: 7,
         width: MediaQuery.of(context).size.width * 0.88,
         decoration: BoxDecoration(
-          color: (widget.isLight ? Colors.white : Colors.grey[800])!.withValues(
+          color: (isDark ? Colors.grey[800] : Colors.white)!.withValues(
             alpha: opacity,
           ),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
           border: Border.all(
-            color: widget.isLight
-                ? Colors.black.withValues(alpha: 0.08)
-                : Colors.white.withValues(alpha: 0.08),
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.08)
+                : Colors.black.withValues(alpha: 0.08),
             width: 1,
           ),
         ),
@@ -715,6 +715,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     TodoItem todo, {
     required DateTime now,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final start = DateTime.fromMillisecondsSinceEpoch(
       todo.createdDate ?? todo.createdAt,
       isUtc: true,
@@ -861,9 +862,9 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
             clipBehavior: Clip.antiAlias,
             key: _todoCardKeyFor(todo.id),
             decoration: BoxDecoration(
-              color: widget.isLight
-                  ? Colors.black.withValues(alpha: 0.02)
-                  : Colors.white.withValues(alpha: 0.03),
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.04)
+                  : Colors.black.withValues(alpha: 0.03),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Stack(
@@ -967,9 +968,9 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                                     style: TextStyle(
                                       fontSize: 15,
                                       fontWeight: FontWeight.w600,
-                                      color: widget.isLight
-                                          ? Colors.black87
-                                          : Colors.white,
+                                      color: isDark
+                                          ? Colors.white
+                                          : Colors.black87,
                                       decoration: todo.isDone
                                           ? TextDecoration.lineThrough
                                           : null,
@@ -1197,6 +1198,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
   }
 
   Widget _buildTodoDragHandle(BuildContext context, TodoItem todo) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
     return LongPressDraggable<String>(
       data: todo.id,
@@ -1211,7 +1213,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
           width: MediaQuery.of(context).size.width * 0.8,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: widget.isLight ? Colors.white : Colors.grey[900],
+            color: isDark ? Colors.grey[900] : Colors.white,
             borderRadius: BorderRadius.circular(16),
             boxShadow: const [
               BoxShadow(color: Colors.black26, blurRadius: 10, spreadRadius: 1),
@@ -1219,9 +1221,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
           ),
           child: Text(
             todo.title,
-            style: TextStyle(
-              color: widget.isLight ? Colors.black : Colors.white,
-            ),
+            style: TextStyle(color: isDark ? Colors.white : Colors.black),
           ),
         ),
       ),

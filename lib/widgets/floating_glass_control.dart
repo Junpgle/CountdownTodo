@@ -1346,7 +1346,9 @@ class _FloatingGlassPinnedHeaderLayoutState
           top: 0,
           left: 0,
           right: 0,
-          child: KeyedSubtree(key: _headerKey, child: widget.header),
+          child: FloatingGlassScrollAware(
+            child: KeyedSubtree(key: _headerKey, child: widget.header),
+          ),
         ),
       ],
     );
