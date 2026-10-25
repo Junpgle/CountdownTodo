@@ -13,6 +13,7 @@ import '../../../widgets/settings_focus_page.dart';
 import '../../../services/pomodoro_service.dart';
 import '../../../services/pomodoro_control_service.dart';
 import '../../../services/notification_service.dart';
+import '../../../services/android_window_rendering_policy.dart';
 import '../../../services/scheduled_reminder_registry.dart';
 import '../../../services/pomodoro_sync_service.dart';
 import '../../../services/focus_do_not_disturb_service.dart';
@@ -3519,8 +3520,13 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                       ),
                     ),
                     const Spacer(),
-                    _buildIdleMiddle(focusTagsKey: _landscapeFocusTagsKey),
-                    const SizedBox(height: 32),
+                    Expanded(
+                      flex: 3,
+                      child: _buildIdleMiddle(
+                        focusTagsKey: _landscapeFocusTagsKey,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     _buildActions(
                       isIdle,
                       isFocusing,
@@ -3678,53 +3684,57 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                     },
             ),
           ),
-          if (_settings.mode == TimerMode.countUp &&
-              (AppPlatform.isAndroid || AppPlatform.isIOS)) ...[
-            const SizedBox(height: 6),
-            FilterChip(
-              avatar: Icon(
-                Icons.screen_lock_portrait_outlined,
-                size: 16,
-                color: _settings.strictFreeFocus
-                    ? Theme.of(context).colorScheme.primary
-                    : Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-              label: const Text('严格模式', style: TextStyle(fontSize: 12)),
-              selected: _settings.strictFreeFocus,
-              showCheckmark: false,
-              visualDensity: VisualDensity.compact,
-              onSelected: _strictWaitingForFlip
-                  ? null
-                  : (value) async {
-                      setState(() => _settings.strictFreeFocus = value);
-                      await PomodoroService.saveSettings(_settings);
-                    },
-            ),
-          ],
           const SizedBox(height: 6),
-          Tooltip(
-            message: '专注期间隐藏 CountdownTodo 的其他提醒，并同步到当前在线的其他设备；Android 授权后还会打开系统勿扰。专注进度和结束提醒仍保留。',
-            child: FilterChip(
-              avatar: Icon(
-                Icons.do_not_disturb_on_outlined,
-                size: 16,
-                color: _settings.doNotDisturbDuringFocus
-                    ? Theme.of(context).colorScheme.primary
-                    : Theme.of(context).colorScheme.onSurfaceVariant,
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 6,
+            children: [
+              if (_settings.mode == TimerMode.countUp &&
+                  (AppPlatform.isAndroid || AppPlatform.isIOS))
+                FilterChip(
+                  avatar: Icon(
+                    Icons.screen_lock_portrait_outlined,
+                    size: 16,
+                    color: _settings.strictFreeFocus
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  label: const Text('严格模式', style: TextStyle(fontSize: 12)),
+                  selected: _settings.strictFreeFocus,
+                  showCheckmark: false,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: _strictWaitingForFlip
+                      ? null
+                      : (value) async {
+                          setState(() => _settings.strictFreeFocus = value);
+                          await PomodoroService.saveSettings(_settings);
+                        },
+                ),
+              Tooltip(
+                message: '专注期间隐藏 CountdownTodo 的其他提醒，并同步到当前在线的其他设备；Android 授权后还会打开系统勿扰。专注进度和结束提醒仍保留。',
+                child: FilterChip(
+                  avatar: Icon(
+                    Icons.do_not_disturb_on_outlined,
+                    size: 16,
+                    color: _settings.doNotDisturbDuringFocus
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  label: const Text('专注勿扰', style: TextStyle(fontSize: 12)),
+                  selected: _settings.doNotDisturbDuringFocus,
+                  showCheckmark: false,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: _strictWaitingForFlip
+                      ? null
+                      : (value) async {
+                          setState(() {
+                            _settings.doNotDisturbDuringFocus = value;
+                          });
+                          await PomodoroService.saveSettings(_settings);
+                        },
+                ),
               ),
-              label: const Text('专注勿扰', style: TextStyle(fontSize: 12)),
-              selected: _settings.doNotDisturbDuringFocus,
-              showCheckmark: false,
-              visualDensity: VisualDensity.compact,
-              onSelected: _strictWaitingForFlip
-                  ? null
-                  : (value) async {
-                      setState(() {
-                        _settings.doNotDisturbDuringFocus = value;
-                      });
-                      await PomodoroService.saveSettings(_settings);
-                    },
-            ),
+            ],
           ),
           if (FocusDoNotDisturbService.supportsSystemDoNotDisturb &&
               _settings.doNotDisturbDuringFocus &&
@@ -3811,8 +3821,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         const SizedBox(height: 12),
         _buildModeToggle(modeSwitchKey: _portraitModeSwitchKey),
         const SizedBox(height: 8),
-        _buildIdleMiddle(focusTagsKey: _portraitFocusTagsKey),
-        const Spacer(flex: 3),
+        Expanded(
+          flex: 12,
+          child: _buildIdleMiddle(focusTagsKey: _portraitFocusTagsKey),
+        ),
         _buildActions(
           true,
           false,
@@ -3958,49 +3970,86 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   Widget _buildIdleMiddle({required GlobalKey focusTagsKey}) {
     if (_tags.isEmpty) return const SizedBox.shrink();
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxHeight: 148),
-      child: SingleChildScrollView(
-        child: Wrap(
-          key: focusTagsKey,
-          spacing: 8,
-          runSpacing: 8,
-          alignment: WrapAlignment.center,
-          children: _tags.map((tag) {
-            final selected = _selectedTagUuids.contains(tag.uuid);
-            final color = AppColorUtils.parseHex(tag.color);
-            return FilterChip(
-              label: Text(tag.name, style: const TextStyle(fontSize: 13)),
-              selected: selected,
-              showCheckmark: false,
-              selectedColor: color.withValues(alpha: 0.2),
-              side: BorderSide(color: selected ? color : Colors.grey.shade300),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              onSelected: (val) async {
-                setState(() {
-                  if (val) {
-                    _selectedTagUuids.add(tag.uuid);
-                  } else {
-                    _selectedTagUuids.remove(tag.uuid);
-                  }
-                });
-                await _persistIdleBoundTodo(_boundTodo);
-                _showLocalFloat();
-                if (_phase == PomodoroPhase.focusing) {
-                  _syncService.sendUpdateTagsSignal(
-                    _tags
-                        .where((t) => _selectedTagUuids.contains(t.uuid))
-                        .map((t) => t.name)
-                        .toList(),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final minContentHeight = constraints.hasBoundedHeight
+            ? (constraints.maxHeight - 48)
+                  .clamp(0.0, double.infinity)
+                  .toDouble()
+            : 0.0;
+        final tagList = SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: 24),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minContentHeight),
+            child: Center(
+              child: Wrap(
+                key: focusTagsKey,
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.center,
+                children: _tags.map((tag) {
+                  final selected = _selectedTagUuids.contains(tag.uuid);
+                  final color = AppColorUtils.parseHex(tag.color);
+                  return FilterChip(
+                    label: Text(tag.name, style: const TextStyle(fontSize: 13)),
+                    selected: selected,
+                    showCheckmark: false,
+                    selectedColor: color.withValues(alpha: 0.2),
+                    side: BorderSide(
+                      color: selected ? color : Colors.grey.shade300,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    onSelected: (val) async {
+                      setState(() {
+                        if (val) {
+                          _selectedTagUuids.add(tag.uuid);
+                        } else {
+                          _selectedTagUuids.remove(tag.uuid);
+                        }
+                      });
+                      await _persistIdleBoundTodo(_boundTodo);
+                      _showLocalFloat();
+                      if (_phase == PomodoroPhase.focusing) {
+                        _syncService.sendUpdateTagsSignal(
+                          _tags
+                              .where((t) => _selectedTagUuids.contains(t.uuid))
+                              .map((t) => t.name)
+                              .toList(),
+                        );
+                      }
+                    },
                   );
-                }
-              },
+                }).toList(),
+              ),
+            ),
+          ),
+        );
+        return ValueListenableBuilder<bool>(
+          valueListenable:
+              AndroidWindowRenderingPolicy.disableShaderContentFade,
+          child: tagList,
+          builder: (context, disableFade, child) {
+            if (disableFade) return child!;
+            return ShaderMask(
+              blendMode: BlendMode.dstIn,
+              shaderCallback: (bounds) => const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.transparent,
+                  Colors.white,
+                  Colors.white,
+                  Colors.transparent,
+                ],
+                stops: [0, 0.16, 0.84, 1],
+              ).createShader(bounds),
+              child: child,
             );
-          }).toList(),
-        ),
-      ),
+          },
+        );
+      },
     );
   }
 
