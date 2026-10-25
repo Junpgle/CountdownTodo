@@ -102,6 +102,17 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
   bool get _powerSaveModeEnabled =>
       widget.powerSaveModeOverride ?? PowerSaveModeService.isEnabled;
 
+  String get _liquidGlassModeDescription {
+    if (AppPlatform.isWindows) {
+      return _liquidGlassMode == LiquidGlassEffectMode.standard
+          ? '高可读性和低功耗；Windows 使用静态半透明材质，避免重复背景模糊。'
+          : '增强材质层次与高光；Windows 使用静态玻璃和标准渲染，避免实时模糊拖慢动画。';
+    }
+    return _liquidGlassMode == LiquidGlassEffectMode.standard
+        ? '高可读性和低功耗；滚动卡片使用轻量玻璃材质，重点表面保留折射。'
+        : '更强折射、高光和色散；固定重点表面使用高画质玻璃，滚动卡片启用实时玻璃。';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -670,9 +681,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                           ),
                           const SizedBox(height: 10),
                           Text(
-                            _liquidGlassMode == LiquidGlassEffectMode.standard
-                                ? '高可读性和低功耗；滚动卡片使用轻量玻璃材质，重点表面保留折射。'
-                                : '更强折射、高光和色散；固定重点表面使用高画质玻璃，滚动卡片启用实时玻璃。',
+                            _liquidGlassModeDescription,
                             style: TextStyle(
                               fontSize: 12,
                               height: 1.4,

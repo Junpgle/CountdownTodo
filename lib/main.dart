@@ -338,8 +338,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     StorageService.oledBlackModeNotifier.addListener(
       _handleOledBlackModeChanged,
     );
+    WidgetsBinding.instance.addObserver(this);
+    final lifecycleState = WidgetsBinding.instance.lifecycleState;
+    WindowService.windowIsActiveListenable.value =
+        lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
     if (AppPlatform.isAndroid) {
-      WidgetsBinding.instance.addObserver(this);
       PowerSaveModeService.enabledListenable.addListener(
         _handlePowerSaveModeChanged,
       );
@@ -389,15 +392,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    WindowService.windowIsActiveListenable.value =
+        state == AppLifecycleState.resumed;
+
     if (state == AppLifecycleState.resumed) {
-      unawaited(PowerSaveModeService.refresh());
-      WidgetService.setAppForeground(true);
+      if (AppPlatform.isAndroid) {
+        unawaited(PowerSaveModeService.refresh());
+        WidgetService.setAppForeground(true);
+      }
       _scheduleSystemUiRestore();
     } else if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
-      WidgetService.setAppForeground(false);
+      if (AppPlatform.isAndroid) WidgetService.setAppForeground(false);
     }
   }
 
@@ -964,8 +972,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     StorageService.oledBlackModeNotifier.removeListener(
       _handleOledBlackModeChanged,
     );
+    WidgetsBinding.instance.removeObserver(this);
     if (AppPlatform.isAndroid) {
-      WidgetsBinding.instance.removeObserver(this);
       PowerSaveModeService.enabledListenable.removeListener(
         _handlePowerSaveModeChanged,
       );
@@ -1274,23 +1282,37 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                                     )
                                                   : content;
 
-                                              return MacosWindowChrome(
-                                                child: AppSystemUiRegion(
-                                                  backgroundBrightness:
-                                                      Theme.of(context)
-                                                          .brightness,
-                                                  child: Stack(
-                                                    children: [
-                                                      adaptedContent,
-                                                      const Positioned(
-                                                        left: 0,
-                                                        right: 0,
-                                                        bottom: 0,
-                                                        child:
-                                                            LiquidGlassLivePreviewDock(),
-                                                      ),
-                                                    ],
+                                              return ValueListenableBuilder<bool>(
+                                                valueListenable: WindowService
+                                                    .windowIsActiveListenable,
+                                                child: MacosWindowChrome(
+                                                  child: AppSystemUiRegion(
+                                                    backgroundBrightness:
+                                                        Theme.of(context)
+                                                            .brightness,
+                                                    child: Stack(
+                                                      children: [
+                                                        adaptedContent,
+                                                        const Positioned(
+                                                          left: 0,
+                                                          right: 0,
+                                                          bottom: 0,
+                                                          child:
+                                                              LiquidGlassLivePreviewDock(),
+                                                        ),
+                                                      ],
+                                                    ),
                                                   ),
+                                                ),
+                                                builder: (
+                                                  context,
+                                                  isWindowActive,
+                                                  child,
+                                                ) => TickerMode(
+                                                  enabled: isWindowActive,
+                                                  child:
+                                                      child ??
+                                                      const SizedBox.shrink(),
                                                 ),
                                               );
                                             },

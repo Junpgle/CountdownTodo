@@ -6,7 +6,21 @@ import 'package:flutter/widgets.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../utils/app_platform.dart';
+
 enum LiquidGlassEffectMode { standard, enhanced }
+
+/// Resolves the glass shader quality for the active platform.
+///
+/// Windows' Flutter renderer is statically capped at standard quality by the
+/// Liquid Glass package. Keep enhanced mode's stronger colors and material
+/// treatment, but avoid requesting the unsupported premium capture pipeline.
+GlassQuality liquidGlassQualityForMode(LiquidGlassEffectMode mode) {
+  if (mode == LiquidGlassEffectMode.enhanced && !AppPlatform.isWindows) {
+    return GlassQuality.premium;
+  }
+  return GlassQuality.standard;
+}
 
 @immutable
 class LiquidGlassEffectConfiguration {
@@ -521,7 +535,7 @@ class LiquidGlassEffectService {
       }
     }
 
-    if (mode == LiquidGlassEffectMode.enhanced) {
+    if (liquidGlassQualityForMode(mode) == GlassQuality.premium) {
       await _ensurePremiumRendererInitialized();
     }
   }

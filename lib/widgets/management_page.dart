@@ -370,9 +370,7 @@ class ManagementSearchField extends StatelessWidget {
                       ),
                     ),
                     useOwnLayer: true,
-                    quality: enhanced
-                        ? GlassQuality.premium
-                        : GlassQuality.standard,
+                    quality: liquidGlassQualityForMode(configuration.mode),
                   );
                 }
 

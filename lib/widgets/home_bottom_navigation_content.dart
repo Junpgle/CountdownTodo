@@ -515,9 +515,7 @@ class _FloatingBottomNavigationContentState
 
   GlassQuality _qualityFor(LiquidGlassEffectConfiguration configuration) {
     if (!configuration.enabled) return GlassQuality.minimal;
-    return configuration.mode == LiquidGlassEffectMode.enhanced
-        ? GlassQuality.premium
-        : GlassQuality.standard;
+    return liquidGlassQualityForMode(configuration.mode);
   }
 
   Widget _buildNavigationRow(

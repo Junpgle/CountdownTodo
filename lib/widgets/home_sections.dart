@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:intl/intl.dart' hide TextDirection;
 
+import '../utils/android_energy_policy.dart';
 import '../utils/app_image_filters.dart';
 import '../utils/time_utils.dart';
 import '../utils/app_platform.dart';
@@ -263,9 +264,9 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
     );
     _pieAnim = _pieCtrl.drive(CurveTween(curve: Curves.easeInOutCubic));
     _shimmerAnim = Tween<double>(begin: -2.0, end: 2.0).animate(_pieCtrl);
-    if (_showsShimmer) {
+    if (_showsShimmer && AndroidEnergyPolicy.shouldRunDecorativeMotion) {
       _pieCtrl.repeat();
-    } else {
+    } else if (!_showsShimmer) {
       _pieCtrl.forward();
     }
   }
@@ -282,9 +283,9 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
             ? _shimmerAnimationDuration
             : _chartAnimationDuration
         ..reset();
-      if (_showsShimmer) {
+      if (_showsShimmer && AndroidEnergyPolicy.shouldRunDecorativeMotion) {
         _pieCtrl.repeat();
-      } else {
+      } else if (!_showsShimmer) {
         _pieCtrl.forward();
       }
     }
@@ -878,7 +879,7 @@ class EmptyState extends StatelessWidget {
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
-      child: AppPlatform.isAndroid
+      child: AppPlatform.isAndroid || AppPlatform.isWindows
           ? content
           : BackdropFilter(filter: AppImageFilters.blur10, child: content),
     );

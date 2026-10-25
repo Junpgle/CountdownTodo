@@ -7,6 +7,7 @@ import 'island_config.dart';
 import 'island_state_stack.dart';
 import 'island_win32.dart';
 import '../utils/app_image_filters.dart';
+import '../utils/app_platform.dart';
 import '../services/system_control_service.dart';
 import '../utils/time_utils.dart';
 
@@ -809,6 +810,29 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           ),
           builder: (_, child) {
             final double borderRadius = _radiusAnimation.value;
+            final surface = Container(
+              decoration: BoxDecoration(
+                color: isTransparent
+                    ? Colors.transparent
+                    : IslandConfig.bgColor.withValues(alpha: 0.82),
+                borderRadius: BorderRadius.circular(borderRadius),
+                border: isTransparent
+                    ? null
+                    : Border.all(
+                        color: Colors.white.withValues(alpha: 0.08),
+                        width: 0.8,
+                      ),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: child!,
+            );
+            final glassSurface = AppPlatform.isWindows
+                ? surface
+                : BackdropFilter(
+                    filter: AppImageFilters.blur6,
+                    child: surface,
+                  );
+
             return Container(
               width: _sizeAnimation.value.width,
               height: _sizeAnimation.value.height,
@@ -825,25 +849,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(borderRadius),
                 child: RepaintBoundary(
-                  child: BackdropFilter(
-                    filter: AppImageFilters.blur6,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: isTransparent
-                            ? Colors.transparent
-                            : IslandConfig.bgColor.withValues(alpha: 0.82),
-                        borderRadius: BorderRadius.circular(borderRadius),
-                        border: isTransparent
-                            ? null
-                            : Border.all(
-                                color: Colors.white.withValues(alpha: 0.08),
-                                width: 0.8,
-                              ),
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: child!,
-                    ),
-                  ),
+                  child: glassSurface,
                 ),
               ),
             );
