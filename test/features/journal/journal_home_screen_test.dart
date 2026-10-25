@@ -1,3 +1,4 @@
+import 'package:countdown_todo/features/journal/models/journal_entry.dart';
 import 'package:countdown_todo/features/journal/screens/journal_home_screen.dart';
 import 'package:countdown_todo/features/journal/services/journal_storage.dart';
 import 'package:countdown_todo/services/database_helper.dart';
@@ -46,6 +47,44 @@ void main() {
 
     expect(emptyState, findsOneWidget);
     expect(find.text('没有找到相关日记'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('日记首页显示回收站数量并可打开回收站', (tester) async {
+    final database = (await tester.runAsync(
+      () => databaseFactoryFfi.openDatabase(inMemoryDatabasePath),
+    ))!;
+    addTearDown(() => database.close());
+    await tester.runAsync(() => DatabaseHelper.ensureJournalSchema(database));
+    final storage = JournalStorage.forTesting(
+      databaseLoader: (_) async => database,
+    );
+    final entry = JournalEntry(
+      id: 'journal-home-trash-entry',
+      title: '等待恢复',
+      content: '还在本机。',
+    );
+    await tester.runAsync(() async {
+      await storage.saveEntry(entry, const [], accountId: 'journal-home-trash');
+      await storage.moveEntryToTrash(entry.id, accountId: 'journal-home-trash');
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(useMaterial3: true),
+        home: JournalHomeScreen(
+          username: 'journal-home-trash',
+          storage: storage,
+        ),
+      ),
+    );
+    final trashButton = find.byTooltip('日记回收站');
+    await _waitFor(tester, () => trashButton.evaluate().isNotEmpty);
+    await tester.tap(trashButton);
+    await _waitFor(tester, () => find.text('等待恢复').evaluate().isNotEmpty);
+
+    expect(find.text('1'), findsOneWidget);
+    expect(find.text('回收站空空如也'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

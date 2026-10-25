@@ -9,6 +9,7 @@ import '../../../utils/time_utils.dart';
 import '../../../widgets/floating_glass_control.dart';
 import 'journal_detail_screen.dart';
 import 'journal_editor_screen.dart';
+import 'journal_trash_screen.dart';
 import '../../../utils/app_dialogs.dart';
 
 DateFormat _photoWallDateFormat() => AppTimeFormats.dateFormatter('MM月dd日');
@@ -34,6 +35,7 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
   bool _hasMore = true;
   bool _isPhotoWall = false;
   String _query = '';
+  int _trashCount = 0;
   int _loadRequest = 0;
 
   @override
@@ -99,7 +101,19 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
 
   Future<void> _initialize() async {
     await _recoverLostImagePick();
-    if (mounted) await _loadEntries();
+    if (!mounted) return;
+    await Future.wait([_loadEntries(), _loadTrashCount()]);
+  }
+
+  Future<void> _loadTrashCount() async {
+    try {
+      final count = await _storage.countTrashEntries(
+        accountId: widget.username,
+      );
+      if (mounted) setState(() => _trashCount = count);
+    } catch (_) {
+      // Keep the timeline usable if the optional trash count cannot be read.
+    }
   }
 
   Future<void> _createEntry() async {
@@ -117,13 +131,32 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
       accountId: widget.username,
     );
     if (!mounted || fullEntry == null) return;
-    final changed = await Navigator.of(context).push<bool>(
+    final result = await Navigator.of(context).push<Object?>(
       MaterialPageRoute(
-        builder: (_) =>
-            JournalDetailScreen(accountId: widget.username, entry: fullEntry),
+        builder: (_) => JournalDetailScreen(
+          accountId: widget.username,
+          entry: fullEntry,
+          storage: _storage,
+        ),
       ),
     );
-    if (changed == true) await _loadEntries();
+    if (result == JournalDetailResult.movedToTrash) {
+      await Future.wait([_loadEntries(), _loadTrashCount()]);
+      if (mounted) _showMessage('已移入回收站，可恢复');
+    } else if (result == true) {
+      await _loadEntries();
+    }
+  }
+
+  Future<void> _openTrash() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) =>
+            JournalTrashScreen(accountId: widget.username, storage: _storage),
+      ),
+    );
+    if (!mounted) return;
+    await Future.wait([_loadEntries(), _loadTrashCount()]);
   }
 
   @override
@@ -166,6 +199,15 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: '日记回收站',
+            onPressed: _openTrash,
+            icon: Badge(
+              isLabelVisible: _trashCount > 0,
+              label: Text('$_trashCount'),
+              child: const Icon(Icons.delete_outline_rounded),
+            ),
+          ),
           IconButton(
             tooltip: '搜索日记',
             onPressed: () => _showSearch(context),

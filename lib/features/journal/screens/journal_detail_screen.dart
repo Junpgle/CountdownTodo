@@ -9,14 +9,18 @@ import 'journal_editor_screen.dart';
 import '../../../utils/app_dialogs.dart';
 import '../../../utils/time_utils.dart';
 
+enum JournalDetailResult { movedToTrash }
+
 class JournalDetailScreen extends StatefulWidget {
   final String accountId;
   final JournalEntry entry;
+  final JournalStorage? storage;
 
   const JournalDetailScreen({
     super.key,
     required this.accountId,
     required this.entry,
+    this.storage,
   });
 
   @override
@@ -24,6 +28,8 @@ class JournalDetailScreen extends StatefulWidget {
 }
 
 class _JournalDetailScreenState extends State<JournalDetailScreen> {
+  JournalStorage get _storage => widget.storage ?? JournalStorage.instance;
+
   late JournalEntry _entry;
 
   @override
@@ -40,7 +46,7 @@ class _JournalDetailScreenState extends State<JournalDetailScreen> {
       ),
     );
     if (changed != true || !mounted) return;
-    final refreshed = await JournalStorage.instance.loadEntry(
+    final refreshed = await _storage.loadEntry(
       _entry.id,
       accountId: widget.accountId,
     );
@@ -52,8 +58,8 @@ class _JournalDetailScreenState extends State<JournalDetailScreen> {
     final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('删除这篇日记？'),
-        content: const Text('删除后无法恢复。'),
+        title: const Text('移至回收站？'),
+        content: const Text('日记文字和照片会保留在本机，可随时从回收站恢复。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -61,31 +67,34 @@ class _JournalDetailScreenState extends State<JournalDetailScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除'),
+            child: const Text('移至回收站'),
           ),
         ],
       ),
     );
     if (confirmed != true) return;
     try {
-      final deleted = await JournalStorage.instance.deleteEntry(
+      final moved = await _storage.moveEntryToTrash(
         _entry.id,
         accountId: widget.accountId,
       );
-      for (final attachment in deleted) {
-        try {
-          await JournalMediaService.instance.delete(attachment);
-        } catch (_) {
-          // The entry has been removed. A later media reconciliation will
-          // clean any inaccessible leftover file without blocking navigation.
+      if (!moved) {
+        if (mounted) {
+          AppSnackBars.showSnackBar(
+            context,
+            const SnackBar(content: Text('日记已变化，请返回时间线后刷新')),
+          );
         }
+        return;
       }
-      if (mounted) Navigator.of(context).pop(true);
+      if (mounted) {
+        Navigator.of(context).pop(JournalDetailResult.movedToTrash);
+      }
     } catch (_) {
       if (mounted) {
         AppSnackBars.showSnackBar(
           context,
-          const SnackBar(content: Text('删除失败，请稍后重试')),
+          const SnackBar(content: Text('移入回收站失败，请稍后重试')),
         );
       }
     }
@@ -119,7 +128,7 @@ class _JournalDetailScreenState extends State<JournalDetailScreen> {
             icon: const Icon(Icons.edit_rounded),
           ),
           IconButton(
-            tooltip: '删除',
+            tooltip: '移至回收站',
             onPressed: _delete,
             icon: const Icon(Icons.delete_outline_rounded),
           ),
@@ -266,11 +275,15 @@ class _JournalGalleryViewerState extends State<_JournalGalleryViewer> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final mediaBackgroundColor = colorScheme.brightness == Brightness.dark
+        ? colorScheme.surface
+        : Colors.black;
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: mediaBackgroundColor,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
-        backgroundColor: Colors.transparent,
+        backgroundColor: mediaBackgroundColor,
         foregroundColor: Colors.white,
         title: Text('${_index + 1}/${widget.attachments.length}'),
       ),
