@@ -576,6 +576,7 @@ class MacPomodoroStatusBarService {
       case 'STOP':
       case 'INTERRUPT':
       case 'FINISH':
+      case 'SYNC_RESET':
       case 'CLEAR_FOCUS':
       case 'FOCUS_DISCONNECTED':
         _checkAndClearIfNoLocal();

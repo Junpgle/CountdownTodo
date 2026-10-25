@@ -10,6 +10,7 @@ import '../services/course_service.dart';
 import '../services/pomodoro_service.dart';
 import '../services/power_save_mode_service.dart';
 import '../models.dart';
+import '../models/todo_create_save_result.dart';
 import '../storage_service.dart';
 import '../utils/app_color_utils.dart';
 import '../utils/app_dialogs.dart';
@@ -21,6 +22,7 @@ import 'time_log_screen.dart';
 import 'course_month_view.dart';
 import 'fixed_schedule_detail_screen.dart';
 import '../widgets/app_detail_widgets.dart';
+import '../widgets/todo_related_fixed_schedules_section.dart';
 import '../utils/theme_color_tokens.dart';
 import '../utils/todo_recurrence_calendar_index.dart';
 import '../services/feature_tip_service.dart';
@@ -39,7 +41,12 @@ part 'course_detail_screens.dart';
 
 class WeeklyCourseScreen extends StatefulWidget {
   final String username;
-  const WeeklyCourseScreen({super.key, required this.username});
+  final FixedScheduleTodoLinkSaver? onCreateRelatedTodo;
+  const WeeklyCourseScreen({
+    super.key,
+    required this.username,
+    this.onCreateRelatedTodo,
+  });
 
   @override
   State<WeeklyCourseScreen> createState() => _WeeklyCourseScreenState();

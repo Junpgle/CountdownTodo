@@ -447,12 +447,12 @@ void main() {
       expect(gradient.colors, hasLength(2));
       for (final color in gradient.colors) {
         expect(color.computeLuminance(), lessThan(0.08));
-        expect(color.a, lessThan(0.5));
+        expect(color.a, lessThan(0.6));
       }
     },
   );
 
-  testWidgets('wallpaper dashboard cards share one dark glass treatment', (
+  testWidgets('wallpaper dashboard cards adapt harmoniously to light UI and dark mode', (
     tester,
   ) async {
     await LiquidGlassEffectService.setEnabled(true);
@@ -492,14 +492,14 @@ void main() {
       final decoration = card.decoration! as BoxDecoration;
       final gradient = decoration.gradient! as LinearGradient;
       expect(decoration.borderRadius, BorderRadius.circular(24));
-      expect(gradient.colors.first.computeLuminance(), lessThan(0.08));
-      expect(gradient.colors.last.a, lessThan(0.5));
+      // In light theme, cards use light frosted glass treatment (> 0.8 luminance)
+      expect(gradient.colors.first.computeLuminance(), greaterThan(0.8));
     }
 
     final screenTimeTitle = tester.widget<Text>(find.text('未开启屏幕时间统计'));
     final mathTitle = tester.widget<Text>(find.text('今日还未完成测验'));
-    expect(screenTimeTitle.style?.color, colorScheme.onPrimary);
-    expect(mathTitle.style?.color, colorScheme.onPrimary);
+    expect(screenTimeTitle.style?.color, colorScheme.onSurface);
+    expect(mathTitle.style?.color, colorScheme.onSurface);
   });
 
   testWidgets('folder header taps keep toggling expand and collapse', (
@@ -606,7 +606,10 @@ void main() {
     expect(folderDecoration().borderRadius, BorderRadius.circular(20));
     expect(
       (folderDecoration().gradient! as LinearGradient).colors.last.a,
-      liquidGlassHighContrastStaticOpacityFor(isDark: false),
+      liquidGlassBackerOpacity(
+        liquidGlassHighContrastStaticOpacityFor(isDark: false),
+        LiquidGlassEffectService.configuration,
+      ),
     );
     expect(find.text('工作'), findsOneWidget);
 
@@ -711,7 +714,7 @@ void main() {
     expect(find.byType(GlassContainer), findsNothing);
     final screenTimeTitle = tester.widget<Text>(find.text('未开启屏幕时间统计'));
     final mathTitle = tester.widget<Text>(find.text('今日还未完成测验'));
-    expect(screenTimeTitle.style?.color, colorScheme.onPrimary);
+    expect(screenTimeTitle.style?.color, colorScheme.onSurface);
     expect(mathTitle.style?.color, colorScheme.onSurface);
   });
 

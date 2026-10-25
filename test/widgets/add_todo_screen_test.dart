@@ -1,4 +1,5 @@
 import 'package:countdown_todo/models.dart';
+import 'package:countdown_todo/models/todo_create_save_result.dart';
 import 'package:countdown_todo/screens/add_todo_screen.dart';
 import 'package:countdown_todo/screens/todo_confirm_screen.dart';
 import 'package:countdown_todo/services/api_service.dart';
@@ -151,5 +152,157 @@ void main() {
     expect(savedSchedule!.remark, '带合同');
     expect(savedSchedule!.endTime, isNull);
     expect(savedSchedule!.reminderMinutes, [15]);
+  });
+
+  testWidgets('AI清单保存失败保留已确认事项，重试沿用同一ID', (tester) async {
+    Future<void> pumpConfirmScreen() async {
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+    }
+
+    final localTodoIds = <String>[];
+    var attempts = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TickerMode(
+          enabled: false,
+          child: TodoConfirmScreen(
+            llmResults: const [
+              {'itemKind': 'todo', 'title': '确认清单项', 'timeMode': 'unscheduled'},
+            ],
+            onConfirm: (results) async {
+              attempts++;
+              localTodoIds.add(results.single['localTodoId']!.toString());
+              if (attempts == 1) throw StateError('合成存储失败');
+            },
+          ),
+        ),
+      ),
+    );
+    await pumpConfirmScreen();
+
+    await tester.tap(find.text('确认并添加'));
+    await tester.pump();
+    if (find.text('暂存为待办').evaluate().isNotEmpty) {
+      await tester.tap(find.text('暂存为待办'));
+    }
+    await pumpConfirmScreen();
+    expect(find.byType(TodoConfirmScreen), findsOneWidget);
+    expect(attempts, 1);
+    expect(localTodoIds, hasLength(1));
+    expect(find.text('重试保存并完成'), findsOneWidget);
+
+    final retryButton = tester.widget<FilledButton>(
+      find.ancestor(
+        of: find.text('重试保存并完成'),
+        matching: find.byType(FilledButton),
+      ),
+    );
+    retryButton.onPressed!.call();
+    await pumpConfirmScreen();
+
+    expect(attempts, 2);
+    expect(localTodoIds, hasLength(2));
+    expect(localTodoIds.first, localTodoIds.last);
+    expect(find.byType(TodoConfirmScreen), findsNothing);
+  });
+
+  testWidgets('新建待办有草稿时返回提供继续、放弃和保存选项', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: FilledButton(
+                key: const ValueKey('open-add-todo'),
+                onPressed: () => Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => AddTodoScreen(onTodoAdded: (_) {}),
+                  ),
+                ),
+                child: const Text('打开新建待办'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('open-add-todo')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('manual-todo-title')),
+      '尚未保存的清单项',
+    );
+    await tester.pump();
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('manual-todo-title')))
+          .controller!
+          .text,
+      '尚未保存的清单项',
+    );
+    expect(
+      tester.widget<PopScope<Object?>>(find.byType(PopScope<Object?>)).canPop,
+      isFalse,
+    );
+    await Navigator.of(tester.element(find.byType(AddTodoScreen))).maybePop();
+    await tester.pumpAndSettle();
+
+    expect(find.text('内容还没有保存'), findsOneWidget);
+    expect(find.text('继续填写'), findsOneWidget);
+    expect(find.text('放弃草稿'), findsOneWidget);
+    expect(find.text('保存并退出'), findsOneWidget);
+    await tester.tap(find.text('继续填写'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('manual-todo-title')))
+          .controller!
+          .text,
+      '尚未保存的清单项',
+    );
+
+    await Navigator.of(tester.element(find.byType(AddTodoScreen))).maybePop();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('放弃草稿'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AddTodoScreen), findsNothing);
+  });
+
+  testWidgets('手动保存失败保留输入并在重试时沿用同一待办ID', (tester) async {
+    final ids = <String>[];
+    var attempts = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AddTodoScreen(
+          onManualTodoSaved: (todo) async {
+            attempts++;
+            ids.add(todo.id);
+            if (attempts == 1) throw StateError('合成存储失败');
+            return const TodoCreateSaveResult();
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, '可重试待办');
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AddTodoScreen), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byType(TextField).first).controller!.text,
+      '可重试待办',
+    );
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+
+    expect(attempts, 2);
+    expect(ids, hasLength(2));
+    expect(ids.first, isNotEmpty);
+    expect(ids[1], ids.first);
   });
 }

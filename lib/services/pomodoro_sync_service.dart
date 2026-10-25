@@ -20,7 +20,7 @@ import '../utils/json_value_parser.dart';
 
 /// 从 WebSocket 收到的跨端状态（扩充了版本更新字段）
 class CrossDevicePomodoroState {
-  final String action; // 'START'|'STOP'|'SWITCH'|'SYNC_FOCUS'|'SYNC_TAGS'|'UPDATE_TAGS'|'HEARTBEAT'|'UPDATE_AVAILABLE'|'FOCUS_DISCONNECTED'|'CLEAR_FOCUS'|'CONFLICT_ALERT'|'TEAM_UPDATE'
+  final String action; // 'START'|'STOP'|'SWITCH'|'SYNC_FOCUS'|'SYNC_RESET'|'SYNC_TAGS'|'UPDATE_TAGS'|'HEARTBEAT'|'UPDATE_AVAILABLE'|'FOCUS_DISCONNECTED'|'CLEAR_FOCUS'|'CONFLICT_ALERT'|'TEAM_UPDATE'
   final String? sessionUuid;
   final String? todoUuid;
   final String? todoTitle;
@@ -591,6 +591,8 @@ class PomodoroSyncService {
         if (signal.sourceDevice?.isNotEmpty == true) {
           _focusSourceDevice = signal.sourceDevice;
         }
+      } else if (signal.action == 'SYNC_RESET') {
+        _focusSourceDevice = null;
       } else if (signal.action == 'STOP' ||
           signal.action == 'INTERRUPT' ||
           signal.action == 'FINISH' ||
@@ -653,6 +655,7 @@ class PomodoroSyncService {
           _onDisconnected();
           return;
         }
+        if (!_isLocalFocusing) _reportIdleStatus();
         _flushPendingStops();
         _send({'action': 'HEARTBEAT'});
       }

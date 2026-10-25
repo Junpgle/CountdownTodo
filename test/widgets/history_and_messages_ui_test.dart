@@ -4,6 +4,7 @@ import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/screens/historical_countdowns_screen.dart';
 import 'package:countdown_todo/screens/historical_todos_screen.dart';
 import 'package:countdown_todo/screens/team_message_center_screen.dart';
+import 'package:countdown_todo/services/todo_trash_purge_service.dart';
 import 'package:countdown_todo/utils/time_utils.dart';
 import 'package:countdown_todo/widgets/countdown_section_widget.dart';
 import 'package:countdown_todo/widgets/share_readonly_widgets.dart';
@@ -32,7 +33,25 @@ HistoricalTodosScreen historyTodoPage() => HistoricalTodosScreen(
   username: 'ui-test',
   loadTodos: () async => historyTodos(),
   loadGroups: () async => [],
+  previewTrashItemPurge: (_, uuid) async => TodoTrashPurgeService.forItem(
+    historyTodos().singleWhere((todo) => todo.id == uuid),
+  ),
+  previewTrashClear: (_) async =>
+      TodoTrashPurgeService.forRecycleBin(historyTodos()),
+  purgeTrash: (_, plan) async => TodoTrashPurgeResult(
+    deletedCount: plan.targetEntries.length,
+    cacheCleared: true,
+    conflictsRefreshed: true,
+  ),
 );
+
+Future<void> _tapActionUntilDialog(WidgetTester tester, Finder finder) async {
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+  await tester.tap(finder);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 500));
+}
 
 List<CountdownItem> historyCountdowns() => [
   CountdownItem(
@@ -116,10 +135,12 @@ void main() {
   testWidgets('待办彻底删除先确认，取消不修改记录', (tester) async {
     await pumpManagementPage(tester, historyTodoPage());
     await tapVisible(tester, find.text('回收站 2'));
-    await tapVisible(tester, find.text('彻底删除').first);
+    await _tapActionUntilDialog(tester, find.text('彻底删除').first);
     expect(find.text('彻底删除这条待办？'), findsOneWidget);
     expect(find.textContaining('删除后无法恢复'), findsOneWidget);
-    await tapVisible(tester, find.text('取消'));
+    await tester.tap(find.text('取消'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('回收站 2'), findsOneWidget);
     expect(find.byType(AlertDialog), findsNothing);
   });
@@ -131,7 +152,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('找到 1 条待办'), findsOneWidget);
     await tapVisible(tester, find.text('清空全部'));
-    expect(find.textContaining('全部 2 条待办'), findsOneWidget);
+    expect(find.textContaining('将永久删除 2 条待办'), findsOneWidget);
     await tapVisible(tester, find.text('取消'));
   });
 
@@ -184,6 +205,40 @@ void main() {
     expect(find.text('所属文件夹已失效'), findsOneWidget);
     expect(find.text('恢复到独立待办'), findsOneWidget);
     expect(find.textContaining('无效ID'), findsNothing);
+  });
+
+  testWidgets('已跳过页标出待同步状态并可恢复本期', (tester) async {
+    final skipped = TodoItem(
+      id: 'skipped-occurrence',
+      title: '每周整理资料',
+      recurrenceSeriesId: 'series-cleanup',
+      isSkipped: true,
+      isSkippedSyncPending: true,
+    );
+    final loadedTodos = <TodoItem>[skipped];
+    TodoItem? savedTodo;
+    await pumpManagementPage(
+      tester,
+      HistoricalTodosScreen(
+        username: 'ui-test',
+        loadTodos: () async => loadedTodos,
+        loadGroups: () async => [],
+        loadTodoById: (_, _) async => skipped.detachedCopy(),
+        saveTodo: (_, todo) async {
+          savedTodo = todo;
+          loadedTodos[0] = todo;
+        },
+      ),
+    );
+
+    await tapVisible(tester, find.text('已跳过 1'));
+    expect(find.textContaining('尚未同步'), findsOneWidget);
+    await tapVisible(tester, find.text('恢复本期'));
+    await tester.pumpAndSettle();
+
+    expect(savedTodo?.isSkipped, isFalse);
+    expect(savedTodo?.isDone, isFalse);
+    expect(find.text('已跳过 0'), findsOneWidget);
   });
 
   testWidgets('待办加载错误可重试', (tester) async {
@@ -531,9 +586,11 @@ void main() {
         brightness: brightness,
       );
       await tapVisible(tester, find.text('回收站 2'));
-      await tapVisible(tester, find.text('彻底删除').first);
+      await _tapActionUntilDialog(tester, find.text('彻底删除').first);
       expect(tester.takeException(), isNull);
-      await tapVisible(tester, find.text('取消'));
+      await tester.tap(find.text('取消'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
       await pumpManagementPage(
         tester,
         HistoricalCountdownsScreen(

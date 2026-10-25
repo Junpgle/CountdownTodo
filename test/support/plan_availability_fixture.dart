@@ -18,8 +18,10 @@ class PlanAvailabilityFixture {
   late DatabaseFactory previousFactory;
   TargetPlatform? previousPlatform;
 
-  Future<void> initialize() async {
-    SharedPreferences.setMockInitialValues({'current_login_user': username});
+  Future<void> initialize({bool resetPreferences = true}) async {
+    if (resetPreferences) {
+      SharedPreferences.setMockInitialValues({'current_login_user': username});
+    }
     previousPlatform = debugDefaultTargetPlatformOverride;
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     sqfliteFfiInit();

@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../models.dart';
+import '../models/todo_create_save_result.dart';
 import '../services/api_service.dart';
 import '../services/pomodoro_sync_service.dart';
 import '../storage_service.dart';
@@ -203,22 +204,50 @@ class MacosMenuBar extends StatelessWidget {
       return;
     }
     if (!context.mounted) return;
+    Future<TodoCreateSaveResult> saveManualTodo(TodoItem todo) async {
+      final allTodos = await StorageService.getTodos(username);
+      final existingIndex = allTodos.indexWhere((item) => item.id == todo.id);
+      if (existingIndex < 0) {
+        allTodos.add(todo);
+      } else {
+        allTodos[existingIndex] = todo;
+      }
+      await StorageService.saveTodos(username, allTodos);
+      final warnings = <String>[];
+      if (todo.teamUuid != null) {
+        try {
+          PomodoroSyncService.instance.sendTeamUpdateSignal(todo.teamUuid!);
+        } catch (_) {
+          warnings.add('团队状态待更新');
+        }
+      }
+      return TodoCreateSaveResult(warnings: warnings);
+    }
+
     Navigator.of(context).push(
       PageTransitions.material(
         builder: (_) => AddTodoScreen(
           onFixedScheduleAdded: (item) =>
               StorageService.saveFixedSchedules(username, [item]),
           onTodoAdded: (todo) async {
-            final allTodos = await StorageService.getTodos(username);
-            allTodos.add(todo);
-            await StorageService.saveTodos(username, allTodos);
-            if (todo.teamUuid != null) {
-              PomodoroSyncService.instance.sendTeamUpdateSignal(todo.teamUuid);
-            }
+            await saveManualTodo(todo);
           },
+          onManualTodoSaved: saveManualTodo,
           onTodosBatchAdded: (todos) async {
             final allTodos = await StorageService.getTodos(username);
-            allTodos.addAll(todos);
+            final indexById = <String, int>{};
+            for (var index = 0; index < allTodos.length; index++) {
+              indexById.putIfAbsent(allTodos[index].id, () => index);
+            }
+            for (final todo in todos) {
+              final index = indexById[todo.id];
+              if (index == null) {
+                indexById[todo.id] = allTodos.length;
+                allTodos.add(todo);
+              } else {
+                allTodos[index] = todo;
+              }
+            }
             await StorageService.saveTodos(username, allTodos);
           },
         ),

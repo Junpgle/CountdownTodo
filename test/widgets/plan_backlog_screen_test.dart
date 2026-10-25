@@ -221,7 +221,7 @@ void main() {
       await tester.tap(save);
       await drain(tester);
       expect(find.byType(PlanBlockEditorSheet), findsOneWidget);
-      expect(find.text('待办已完成或失效，请选择未完成的待办'), findsOneWidget);
+      expect(find.text('待办已完成、已跳过或失效，请选择未完成的待办'), findsOneWidget);
       expect(await f.db.query('op_logs'), isEmpty);
       expect(await f.db.query('todo_plan_blocks'), isEmpty);
     },

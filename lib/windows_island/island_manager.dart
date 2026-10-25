@@ -110,7 +110,7 @@ class IslandManager {
     }
 
     // 立即注册 future 到 _creating, 阻止后续调用进入 (在任何 await 之前!)
-    final future = _createIslandInternal(
+    final future = _createOrReuseIsland(
       islandId,
       initialPayload: initialPayload,
       startupPayload: startupPayload,
@@ -126,6 +126,68 @@ class IslandManager {
     } finally {
       _creating.remove(islandId);
     }
+  }
+
+  Future<String?> _createOrReuseIsland(
+    String islandId, {
+    Map<String, dynamic>? initialPayload,
+    Map<String, dynamic>? startupPayload,
+  }) async {
+    final existingWindowId = await _adoptExistingIsland(
+      islandId,
+      showWindow: true,
+    );
+    if (existingWindowId != null) return existingWindowId;
+
+    return _createIslandInternal(
+      islandId,
+      initialPayload: initialPayload,
+      startupPayload: startupPayload,
+    );
+  }
+
+  Future<void> reconcileExistingIslands(String islandId) async {
+    await _adoptExistingIsland(islandId, showWindow: false);
+  }
+
+  Future<String?> _adoptExistingIsland(
+    String islandId, {
+    required bool showWindow,
+  }) async {
+    final existingWindowIds = await IslandChannel.getIslandWindowIds();
+    final persistedWindowId = await _loadPersistedWindowId(islandId);
+    if (existingWindowIds.isEmpty) {
+      if (persistedWindowId != null) await _clearPersistedWindowId(islandId);
+      return null;
+    }
+
+    final keepWindowId = existingWindowIds.contains(persistedWindowId)
+        ? persistedWindowId!
+        : existingWindowIds.first;
+    _windowIdCache[islandId] = keepWindowId;
+    await _persistWindowId(islandId, keepWindowId);
+
+    for (final windowId in existingWindowIds) {
+      if (windowId == keepWindowId) continue;
+      debugPrint(
+        '[IslandManager] Closing duplicate island $islandId (windowId=$windowId)',
+      );
+      await IslandChannel.destroyWindow(windowId);
+    }
+
+    if (showWindow) await IslandChannel.showWindow(keepWindowId);
+    try {
+      _transparentSupport[islandId] = await IslandChannel.setWindowTransparent(
+        keepWindowId,
+        true,
+      );
+    } catch (_) {
+      _transparentSupport[islandId] = false;
+    }
+    debugPrint(
+      '[IslandManager] Reusing island $islandId (windowId=$keepWindowId)',
+    );
+    return keepWindowId;
   }
 
   Future<String?> _createIslandInternal(

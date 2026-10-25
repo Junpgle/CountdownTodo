@@ -131,6 +131,7 @@ class HomeDrawerMenu extends StatefulWidget {
   final HomeDrawerNavigationCallback onScreenTime;
   final HomeDrawerNavigationCallback onPlanCenter;
   final HomeDrawerNavigationCallback onHabits;
+  final HomeDrawerNavigationCallback? onFeatureExplorer;
   final int teamPendingCount;
   final bool hasTeamConflictDot;
 
@@ -151,6 +152,7 @@ class HomeDrawerMenu extends StatefulWidget {
     required this.onScreenTime,
     required this.onPlanCenter,
     required this.onHabits,
+    this.onFeatureExplorer,
     this.teamPendingCount = 0,
     this.hasTeamConflictDot = false,
   });
@@ -518,6 +520,15 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                             padding: const EdgeInsets.symmetric(vertical: 8),
                             child: Column(
                               children: [
+                                if (widget.onFeatureExplorer != null)
+                                  _buildMenuItem(
+                                    context,
+                                    icon: Icons.explore_rounded,
+                                    title: '功能百宝箱',
+                                    sourceKey: _sourceKeyFor('featureExplorer'),
+                                    onTap: widget.onFeatureExplorer!,
+                                    isCompact: true,
+                                  ),
                                 ..._utilityOrder
                                     .map(
                                       (key) => _buildConfiguredMenuItem(

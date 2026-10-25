@@ -240,6 +240,10 @@
             android:name=".FocusDoNotDisturbRestoreReceiver"
             android:exported="false" />
 
+        <receiver
+            android:name=".CourseArrivalReceiver"
+            android:exported="false" />
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

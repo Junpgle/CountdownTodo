@@ -21,6 +21,10 @@ import 'services/sync_capability_service.dart';
 import 'services/sync_oplog_policy.dart';
 import 'services/todo_lww_service.dart';
 import 'services/todo_recurrence_date_service.dart';
+import 'services/todo_recurrence_delete_service.dart';
+import 'services/todo_recurrence_restore_service.dart';
+import 'services/todo_trash_multi_restore_service.dart';
+import 'services/todo_trash_purge_service.dart';
 import 'services/conflict_visibility_service.dart';
 import 'services/storage/app_settings_storage.dart';
 import 'services/storage/countdown_storage.dart';
@@ -122,6 +126,8 @@ class StorageService {
   static const String keySyncInterval = _storageService_keySyncInterval;
 
   static const String keyThemeMode = _storageService_keyThemeMode;
+
+  static const String keyOledBlackMode = _storageService_keyOledBlackMode;
 
   static const String keyThemeColorMode = _storageService_keyThemeColorMode;
 
@@ -251,6 +257,11 @@ class StorageService {
   static set themeNotifier(ValueNotifier<String> value) =>
       _storage.themeNotifier = value;
 
+  static ValueNotifier<bool> get oledBlackModeNotifier =>
+      _storage.oledBlackModeNotifier;
+  static set oledBlackModeNotifier(ValueNotifier<bool> value) =>
+      _storage.oledBlackModeNotifier = value;
+
   static ValueNotifier<String> get themeColorModeNotifier =>
       _storage.themeColorModeNotifier;
   static set themeColorModeNotifier(ValueNotifier<String> value) =>
@@ -302,10 +313,38 @@ class StorageService {
     isSyncSource: isSyncSource,
   );
 
+  static Future<bool> saveFixedSchedulesIfUnchanged(
+    String username, {
+    required List<FixedScheduleItem> baseline,
+    required List<FixedScheduleItem> items,
+    List<String> reviewedTodoIds = const [],
+    List<TodoItem> reviewedTodos = const [],
+    List<TodoPlanBlock>? reviewedPlanBlocks,
+    bool sync = true,
+  }) => _storage.saveFixedSchedulesIfUnchanged(
+    username,
+    baseline: baseline,
+    items: items,
+    reviewedTodoIds: reviewedTodoIds,
+    reviewedTodos: reviewedTodos,
+    reviewedPlanBlocks: reviewedPlanBlocks,
+    sync: sync,
+  );
+
   static Future<List<FixedScheduleItem>> getFixedSchedules(
     String username, {
     bool includeDeleted = false,
   }) => _storage.getFixedSchedules(username, includeDeleted: includeDeleted);
+
+  static Future<List<FixedScheduleItem>> getFixedSchedulesByRelatedTodo(
+    String username,
+    String todoId,
+  ) => _storage.getFixedSchedulesByRelatedTodo(username, todoId);
+
+  static Future<List<FixedScheduleItem>> getFixedSchedulesByRelatedTodos(
+    String username,
+    Set<String> todoIds,
+  ) => _storage.getFixedSchedulesByRelatedTodos(username, todoIds);
 
   static Future<List<FixedScheduleItem>> getFixedSchedulesByDay(
     String username,
@@ -415,6 +454,11 @@ class StorageService {
     from: from,
     to: to,
   );
+
+  static Future<List<TodoPlanBlock>> getPlanBlocksOverlappingFixedSchedules(
+    String username,
+    List<FixedScheduleItem> schedules,
+  ) => _storage.getPlanBlocksOverlappingFixedSchedules(username, schedules);
 
   static Future<List<TodoPlanBlock>> getPlanBlocksForReminderWindow(
     String username, {
@@ -571,6 +615,13 @@ class StorageService {
     bool isSyncSource = false,
     bool recomputeScheduleConflicts = true,
     List<TodoItem>? bandSyncSnapshot,
+    Map<String, TodoItem>? expectedTodoBaselines,
+    Map<String, Set<String>>? expectedSeriesMembership,
+    bool expectedSeriesMembershipIncludesDeleted = false,
+    Set<String>? expectedFixedScheduleTodoIds,
+    List<FixedScheduleItem>? expectedFixedScheduleBaselines,
+    FixedScheduleItem? linkedFixedScheduleBaseline,
+    FixedScheduleItem? linkedFixedScheduleUpdate,
   }) => _storage.saveTodos(
     username,
     items,
@@ -578,7 +629,59 @@ class StorageService {
     isSyncSource: isSyncSource,
     recomputeScheduleConflicts: recomputeScheduleConflicts,
     bandSyncSnapshot: bandSyncSnapshot,
+    expectedTodoBaselines: expectedTodoBaselines,
+    expectedSeriesMembership: expectedSeriesMembership,
+    expectedSeriesMembershipIncludesDeleted:
+        expectedSeriesMembershipIncludesDeleted,
+    expectedFixedScheduleTodoIds: expectedFixedScheduleTodoIds,
+    expectedFixedScheduleBaselines: expectedFixedScheduleBaselines,
+    linkedFixedScheduleBaseline: linkedFixedScheduleBaseline,
+    linkedFixedScheduleUpdate: linkedFixedScheduleUpdate,
   );
+
+  /// Creates a manual todo and links it to exactly one fixed-schedule
+  /// occurrence in the same SQLite transaction.
+  static Future<FixedScheduleItem> saveTodoLinkedToFixedSchedule(
+    String username,
+    TodoItem todo,
+    FixedScheduleItem baseline, {
+    bool sync = true,
+  }) async {
+    String? normalizeTeam(String? value) {
+      final normalized = value?.trim();
+      return normalized == null || normalized.isEmpty ? null : normalized;
+    }
+
+    if (todo.id.trim().isEmpty ||
+        todo.isDone ||
+        todo.isSkipped ||
+        todo.isDeleted ||
+        todo.recurrence != RecurrenceType.none) {
+      throw ArgumentError('关联待办必须是新的单次未完成待办');
+    }
+    if (baseline.isDeleted ||
+        baseline.status == FixedScheduleStatus.cancelled) {
+      throw StateError('当前固定日程已取消或删除，不能新建关联待办。');
+    }
+    if (normalizeTeam(todo.teamUuid) != normalizeTeam(baseline.teamUuid)) {
+      throw StateError('待办与固定日程必须属于同一团队范围。');
+    }
+
+    final updated = FixedScheduleItem.fromJson(baseline.toJson());
+    if (!updated.relatedTodoIds.any((id) => id.trim() == todo.id.trim())) {
+      updated.relatedTodoIds.add(todo.id.trim());
+      updated.markAsChanged();
+    }
+    await _storage.saveTodos(
+      username,
+      [todo],
+      sync: sync,
+      recomputeScheduleConflicts: false,
+      linkedFixedScheduleBaseline: baseline,
+      linkedFixedScheduleUpdate: updated,
+    );
+    return updated;
+  }
 
   static Future<Map<String, int>> scanAllTodoConflicts(String username) =>
       _storage.scanAllTodoConflicts(username);
@@ -599,6 +702,25 @@ class StorageService {
 
   static Future<TodoItem?> getTodoByUuid(String username, String uuid) =>
       _storage.getTodoByUuid(username, uuid);
+
+  static Future<TodoTrashPurgePlan> previewPermanentTodoDelete(
+    String username,
+    String uuid,
+  ) => _storage.previewPermanentTodoDelete(username, uuid);
+
+  static Future<TodoTrashPurgePlan> previewPermanentTodoSeriesDelete(
+    String username,
+    String seriesId,
+  ) => _storage.previewPermanentTodoSeriesDelete(username, seriesId);
+
+  static Future<TodoTrashPurgePlan> previewClearTodoRecycleBin(
+    String username,
+  ) => _storage.previewClearTodoRecycleBin(username);
+
+  static Future<TodoTrashPurgeResult> purgeTodoTrash(
+    String username,
+    TodoTrashPurgePlan plan,
+  ) => _storage.purgeTodoTrash(username, plan);
 
   static Future<void> permanentlyDeleteTodo(String username, String uuid) =>
       _storage.permanentlyDeleteTodo(username, uuid);
@@ -625,6 +747,33 @@ class StorageService {
     limit: limit,
     offset: offset,
   );
+
+  /// Strict relationship lookup for fixed-schedule details and editors.
+  /// Unlike the general todo list's legacy fallback, database errors propagate
+  /// so a failed lookup is not presented as an empty relationship list.
+  static Future<List<TodoItem>> getTodosForFixedScheduleRelations(
+    String username,
+  ) => _storage.getTodosForFixedScheduleRelations(username);
+
+  static Future<({List<TodoItem> todos, bool hasMore})>
+  getTodosForFixedScheduleRelationPage(
+    String username, {
+    required String? teamUuid,
+    required String query,
+    required int limit,
+    required int offset,
+  }) => _storage.getTodosForFixedScheduleRelationPage(
+    username,
+    teamUuid: teamUuid,
+    query: query,
+    limit: limit,
+    offset: offset,
+  );
+
+  static Future<List<TodoItem>> getTodosForFixedScheduleRelationIds(
+    String username,
+    Set<String> todoIds,
+  ) => _storage.getTodosForFixedScheduleRelationIds(username, todoIds);
 
   static Future<List<TodoItem>> getTodosForWidget(String username) =>
       _storage.getTodosForWidget(username);
@@ -704,16 +853,42 @@ class StorageService {
   static Future<bool> deleteTodoGlobally(String username, String idToDelete) =>
       _storage.deleteTodoGlobally(username, idToDelete);
 
+  static Future<TodoRecurrenceDeletePlan> deleteRecurringTodoWithScope(
+    String username,
+    String todoId,
+    TodoRecurrenceDeleteScope scope, {
+    bool sync = true,
+  }) => _storage.deleteRecurringTodoWithScope(
+    username,
+    todoId,
+    scope,
+    sync: sync,
+  );
+
+  static Future<TodoRecurrenceRestorePlan> restoreRecurringTodoSeries(
+    String username,
+    String seriesId, {
+    bool sync = true,
+  }) => _storage.restoreRecurringTodoSeries(username, seriesId, sync: sync);
+
+  static Future<TodoTrashMultiRestorePlan> restoreTodoTrashSelection(
+    String username,
+    TodoTrashMultiRestorePlan plan, {
+    bool sync = true,
+  }) => _storage.restoreTodoTrashSelection(username, plan, sync: sync);
+
   static Future<void> saveTodoGroups(
     String username,
     List<TodoGroup> items, {
     bool sync = true,
     bool isSyncSource = false,
+    Map<String, TodoGroup>? expectedGroupBaselines,
   }) => _storage.saveTodoGroups(
     username,
     items,
     sync: sync,
     isSyncSource: isSyncSource,
+    expectedGroupBaselines: expectedGroupBaselines,
   );
 
   static Future<List<TodoGroup>> getTodoGroups(

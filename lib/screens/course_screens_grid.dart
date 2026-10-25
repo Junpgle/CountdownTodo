@@ -440,7 +440,10 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                           Navigator.push(
                             context,
                             PageTransitions.slideHorizontal(
-                              TodoDetailScreen(todo: todo),
+                              TodoDetailScreen(
+                                todo: todo,
+                                onCreateRelatedTodo: widget.onCreateRelatedTodo,
+                              ),
                             ),
                           );
                         },
@@ -1211,7 +1214,10 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                       onTap: () {
                         PageTransitions.pushFromRect(
                           context: context,
-                          page: TodoDetailScreen(todo: todo),
+                          page: TodoDetailScreen(
+                            todo: todo,
+                            onCreateRelatedTodo: widget.onCreateRelatedTodo,
+                          ),
                           sourceKey: todoCardKey,
                           sourceColor: _weekLazyLoadPlaceholderColor,
                           sourceBorderRadius: const BorderRadius.all(

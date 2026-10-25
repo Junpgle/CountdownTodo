@@ -87,7 +87,10 @@ mixin _TodoSectionContract {
 
   void _editTodo(TodoItem todo, BuildContext cardCtx);
 
-  void _openTodoEditor(TodoItem todo, {bool applyToFutureOccurrences = false});
+  void _openTodoEditor(
+    TodoItem todo, {
+    TodoRecurrenceEditScope scope = TodoRecurrenceEditScope.occurrence,
+  });
 
   String _buildTimeLabel(
     TodoItem todo,
@@ -115,6 +118,8 @@ mixin _TodoSectionContract {
   void _setTodoCompletion(TodoItem todo, bool isDone);
 
   Future<void> _showRecurrenceManagement(TodoItem todo);
+
+  Future<void> _deleteRecurringTodoWithScope(TodoItem todo);
 
   Widget _buildTodoItemCard(
     TodoItem todo, {

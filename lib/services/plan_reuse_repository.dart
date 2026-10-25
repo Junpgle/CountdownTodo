@@ -5,6 +5,7 @@ import '../models/plan_availability.dart';
 import 'database_helper.dart';
 import 'plan_todo_guard.dart';
 import 'conflict_visibility_service.dart';
+import 'plan_settings_compatibility.dart';
 
 /// Settings only: never carries the source plan's mutable execution metadata.
 class PlanReuseSettings {
@@ -14,9 +15,11 @@ class PlanReuseSettings {
     required this.reminder,
     required this.pomodoro,
     required this.rounds,
+    this.corrections = const [],
   });
   final int minutes, reminder, pomodoro, rounds;
   final String remark;
+  final List<PlanSettingCorrection> corrections;
 }
 
 class PlanReuseSeed {
@@ -104,16 +107,14 @@ class PlanReuseRepository {
       final reminder = row['reminder_minutes'],
           pomodoro = row['pomodoro_minutes'];
       final rounds = row['pomodoro_rounds'], remark = row['remark'];
-      if (reminder is! int ||
-          ![0, 5, 10, 15, 30].contains(reminder) ||
-          pomodoro is! int ||
-          ![15, 20, 25, 30, 45, 60].contains(pomodoro) ||
-          rounds is! int ||
-          rounds < 0 ||
-          rounds > 6 ||
-          (remark != null && remark is! String)) {
-        throw const PlanAvailabilityException('原规划的番茄或提醒设置暂不支持复用，请手动新建');
+      if (remark != null && remark is! String) {
+        throw const PlanAvailabilityException('原规划备注内容无效，请先核对');
       }
+      final settings = PlanSettingsCompatibility.normalize(
+        reminderMinutes: reminder,
+        pomodoroMinutes: pomodoro,
+        pomodoroRounds: rounds,
+      );
       final todoRows = await PlanTodoGuard.projectedRows(txn, identity, todoId);
       TodoItem? todo;
       if (todoRows.isNotEmpty) {
@@ -123,6 +124,7 @@ class PlanReuseRepository {
         })..id = todoId;
         if (!candidate.isDone &&
             !candidate.isDeleted &&
+            !candidate.isSkipped &&
             !ConflictVisibilityService.blocksTodoPlanning(candidate) &&
             candidate.title.trim().isNotEmpty) {
           todo = candidate;
@@ -151,9 +153,10 @@ class PlanReuseRepository {
         PlanReuseSettings(
           minutes: minutes,
           remark: remark as String? ?? '',
-          reminder: reminder,
-          pomodoro: pomodoro,
-          rounds: rounds,
+          reminder: settings.reminderMinutes,
+          pomodoro: settings.pomodoroMinutes,
+          rounds: settings.pomodoroRounds,
+          corrections: settings.corrections,
         ),
         tentative,
         todo,

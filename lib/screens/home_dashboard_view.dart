@@ -62,53 +62,49 @@ mixin _HomeDashboardViewMixin
         children: [
           if (showWallpaper && wallpaperUrl != null)
             Positioned.fill(
-              child: RepaintBoundary(
-                // Darken the image in its draw pass. A separate full-screen
-                // scrim adds another alpha-blended pass on every GPU frame.
-                child: wallpaperUrl.startsWith('assets/')
-                    ? Builder(
-                        builder: (context) {
-                          _scheduleWallpaperColorExtraction(
-                            AssetImage(wallpaperUrl),
-                            wallpaperUrl,
-                          );
-                          return Image.asset(
-                            wallpaperUrl,
-                            fit: BoxFit.cover,
-                            color: const Color(0x66000000),
-                            colorBlendMode: BlendMode.srcOver,
-                          );
-                        },
-                      )
-                    : localWallpaperProvider != null
-                    ? Builder(
-                        builder: (context) {
-                          final provider = localWallpaperProvider;
-                          _scheduleWallpaperColorExtraction(
-                            provider,
-                            wallpaperUrl,
-                          );
-                          return Image(
-                            image: provider,
-                            fit: BoxFit.cover,
-                            color: const Color(0x66000000),
-                            colorBlendMode: BlendMode.srcOver,
-                          );
-                        },
-                      )
-                    : _WallpaperNetworkImage(
-                        url: _wallpaperUrl!,
-                        onImageProvider: (provider) {
-                          _extractColorFromProvider(provider, _wallpaperUrl!);
-                        },
-                        onSuccess: () {
-                          _wallpaperRetryCount = 0;
-                        },
-                        onError: () {
-                          _handleWallpaperError();
-                        },
-                      ),
-              ),
+              child: wallpaperUrl.startsWith('assets/')
+                  ? Builder(
+                      builder: (context) {
+                        _scheduleWallpaperColorExtraction(
+                          AssetImage(wallpaperUrl),
+                          wallpaperUrl,
+                        );
+                        return Image.asset(
+                          wallpaperUrl,
+                          fit: BoxFit.cover,
+                          color: const Color(0x66000000),
+                          colorBlendMode: BlendMode.srcOver,
+                        );
+                      },
+                    )
+                  : localWallpaperProvider != null
+                  ? Builder(
+                      builder: (context) {
+                        final provider = localWallpaperProvider;
+                        _scheduleWallpaperColorExtraction(
+                          provider,
+                          wallpaperUrl,
+                        );
+                        return Image(
+                          image: provider,
+                          fit: BoxFit.cover,
+                          color: const Color(0x66000000),
+                          colorBlendMode: BlendMode.srcOver,
+                        );
+                      },
+                    )
+                  : _WallpaperNetworkImage(
+                      url: _wallpaperUrl!,
+                      onImageProvider: (provider) {
+                        _extractColorFromProvider(provider, _wallpaperUrl!);
+                      },
+                      onSuccess: () {
+                        _wallpaperRetryCount = 0;
+                      },
+                      onError: () {
+                        _handleWallpaperError();
+                      },
+                    ),
             ),
           SafeArea(
             // 仅避让顶部状态栏。列表需要继续绘制到 Android 手势导航区
@@ -118,8 +114,9 @@ mixin _HomeDashboardViewMixin
             child: FloatingGlassPinnedHeaderLayout(
               initialHeaderExtent:
                   (_selectedTabIndex != _homeFocusTabIndex || isTablet)
-                  ? 112.0
+                  ? (112.0 + MediaQuery.paddingOf(context).top)
                   : 0.0,
+              fadeContent: !showWallpaper,
               header: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -128,6 +125,7 @@ mixin _HomeDashboardViewMixin
                   if (_selectedTabIndex != _homeFocusTabIndex || isTablet)
                     HomeAppBar(
                       username: widget.username,
+                      onCreateRelatedTodo: _saveTodoLinkedToFixedSchedule,
                       timeSalutation: _timeSalutation,
                       currentGreeting: _currentGreeting,
                       semesterWeek: _currentSemesterWeek,
@@ -234,7 +232,10 @@ mixin _HomeDashboardViewMixin
                                 )
                               : LayoutBuilder(
                                   builder: (context, constraints) {
-                                    // ... (rest of section definitions)
+                                    Widget wrapSectionBoundary(Widget child) =>
+                                        showWallpaper
+                                        ? child
+                                        : RepaintBoundary(child: child);
                                     Widget buildCountdown() =>
                                         ValueListenableBuilder<
                                           List<CountdownItem>
@@ -286,12 +287,6 @@ mixin _HomeDashboardViewMixin
                                             });
                                           },
                                           onGroupsChanged: (newGroups) async {
-                                            setState(() {
-                                              _todoGroups = newGroups
-                                                  .where((g) => !g.isDeleted)
-                                                  .toList();
-                                              _todoDataRevision++;
-                                            });
                                             final allGroups =
                                                 await StorageService.getTodoGroups(
                                                   widget.username,
@@ -325,8 +320,21 @@ mixin _HomeDashboardViewMixin
                                               allGroups,
                                               sync: true,
                                             );
+                                            if (!mounted) return;
+                                            setState(() {
+                                              _todoGroups = newGroups
+                                                  .where(
+                                                    (group) => !group.isDeleted,
+                                                  )
+                                                  .toList();
+                                              _todoDataRevision++;
+                                            });
                                           },
                                           onTodosChanged: _handleTodosChanged,
+                                          onManualTodoSaved: _saveManualTodo,
+                                          onEditorSave: _handleTodoEditorSave,
+                                          onEditorGroupsSave:
+                                              _handleTodoEditorGroupsSave,
                                           initialSelectedTeamUuid:
                                               _currentSelectedTeamUuid,
                                           onRefreshRequested: _handleManualSync,
@@ -349,8 +357,9 @@ mixin _HomeDashboardViewMixin
                                         );
                                       },
                                     );
-                                    Widget buildScreenTime() => RepaintBoundary(
-                                      child: KeyedSubtree(
+                                    Widget
+                                    buildScreenTime() => wrapSectionBoundary(
+                                      KeyedSubtree(
                                         key: _screenTimeCardKey,
                                         child: Column(
                                           crossAxisAlignment:
@@ -405,8 +414,8 @@ mixin _HomeDashboardViewMixin
                                         >(
                                           valueListenable: _mathStatsNotifier,
                                           builder: (context, stats, _) =>
-                                              RepaintBoundary(
-                                                child: KeyedSubtree(
+                                              wrapSectionBoundary(
+                                                KeyedSubtree(
                                                   key: _mathCardKey,
                                                   child: Column(
                                                     crossAxisAlignment:
@@ -461,8 +470,9 @@ mixin _HomeDashboardViewMixin
                                       ),
                                     );
 
-                                    Widget buildPomodoro() => RepaintBoundary(
-                                      child: ValueListenableBuilder<int>(
+                                    Widget
+                                    buildPomodoro() => wrapSectionBoundary(
+                                      ValueListenableBuilder<int>(
                                         valueListenable: _pomodoroRevision,
                                         builder: (context, trigger, _) {
                                           return KeyedSubtree(
@@ -490,8 +500,8 @@ mixin _HomeDashboardViewMixin
                                       ),
                                     );
 
-                                    Widget buildAgenda() => RepaintBoundary(
-                                      child: AnimatedBuilder(
+                                    Widget buildAgenda() => wrapSectionBoundary(
+                                      AnimatedBuilder(
                                         animation: _agendaSectionListenable,
                                         builder: (context, _) {
                                           return PlanBlockTodaySection(
@@ -529,11 +539,12 @@ mixin _HomeDashboardViewMixin
                                                             ? _mobileFocusSections
                                                             : _mobileHomeSections)
                                                         .contains('agenda')),
-                                            onTodoAdded: (todo) =>
-                                                _handleTodosChanged([
-                                                  ..._todos,
-                                                  todo,
-                                                ]),
+                                            onTodoAdded: (todo) async {
+                                              await _saveManualTodo(todo);
+                                            },
+                                            onManualTodoSaved: _saveManualTodo,
+                                            onCreateRelatedTodo:
+                                                _saveTodoLinkedToFixedSchedule,
                                             onTap: ([sourceKey]) async {
                                               final page = TodoPlanScreen(
                                                 username: widget.username,
@@ -572,8 +583,9 @@ mixin _HomeDashboardViewMixin
                                         },
                                       ),
                                     );
-                                    Widget buildFinance() => RepaintBoundary(
-                                      child: KeyedSubtree(
+                                    Widget
+                                    buildFinance() => wrapSectionBoundary(
+                                      KeyedSubtree(
                                         key: _financeCardKey,
                                         child: FinanceTodaySection(
                                           username: widget.username,
@@ -610,8 +622,8 @@ mixin _HomeDashboardViewMixin
                                       'pomodoro': buildPomodoro,
                                       'timeline': buildTimeline,
                                       'finance': buildFinance,
-                                      'habits': () => RepaintBoundary(
-                                        child: KeyedSubtree(
+                                      'habits': () => wrapSectionBoundary(
+                                        KeyedSubtree(
                                           key: _habitsCardKey,
                                           child: ValueListenableBuilder<int>(
                                             valueListenable: _habitsRevision,
@@ -703,67 +715,103 @@ mixin _HomeDashboardViewMixin
                                         final sectionKeys = focusPage
                                             ? tab3SectionKeys
                                             : tab1SectionKeys;
-                                        return RepaintBoundary(
-                                          key: ValueKey<String>(
-                                            focusPage
-                                                ? 'home-focus-tab-content'
-                                                : 'home-main-tab-content',
-                                          ),
-                                          child: OptionalLiquidGlassScrollOptimizer(
-                                            child: ListView.builder(
-                                              key: PageStorageKey<String>(
-                                                focusPage
-                                                    ? 'home-focus-sections'
-                                                    : 'home-main-sections',
-                                              ),
-                                              padding: EdgeInsets.fromLTRB(
-                                                16,
-                                                listHeaderExtent + 16,
-                                                16,
-                                                16,
-                                              ),
-                                              itemCount:
-                                                  sectionKeys.length +
-                                                  (hasCopyright ? 1 : 0) +
-                                                  1,
-                                              findChildIndexCallback: (key) {
-                                                if (key is! ValueKey<String>) {
-                                                  return null;
-                                                }
-                                                final index = sectionKeys
-                                                    .indexOf(key.value);
-                                                return index < 0 ? null : index;
-                                              },
-                                              itemBuilder: (context, index) {
-                                                if (index <
-                                                    sectionKeys.length) {
-                                                  return buildScrollableSection(
-                                                    sectionKeys[index],
-                                                  );
-                                                }
-                                                if (hasCopyright &&
-                                                    index ==
-                                                        sectionKeys.length) {
-                                                  return _buildWallpaperCopyright(
-                                                    isLight,
-                                                  );
-                                                }
-                                                return SizedBox(
-                                                  // The header overlays the list, so
-                                                  // reserve it at the trailing edge
-                                                  // to keep short pages scrollable.
-                                                  height:
-                                                      homeDashboardPhoneScrollTailExtent(
-                                                        headerExtent:
-                                                            listHeaderExtent,
-                                                        bottomInset:
-                                                            bottomSystemInset,
-                                                      ),
-                                                );
-                                              },
+                                        final hasOnboarding = !focusPage;
+                                        final onboardingIndex = hasOnboarding
+                                            ? sectionKeys.length
+                                            : -1;
+                                        final copyrightIndex = hasCopyright
+                                            ? sectionKeys.length +
+                                                  (hasOnboarding ? 1 : 0)
+                                            : -1;
+                                        final listContent = OptionalLiquidGlassScrollOptimizer(
+                                          child: ListView.builder(
+                                            key: PageStorageKey<String>(
+                                              focusPage
+                                                  ? 'home-focus-sections'
+                                                  : 'home-main-sections',
                                             ),
+                                            addRepaintBoundaries:
+                                                !showWallpaper,
+                                            padding: EdgeInsets.fromLTRB(
+                                              16,
+                                              listHeaderExtent + 16,
+                                              16,
+                                              16,
+                                            ),
+                                            itemCount:
+                                                sectionKeys.length +
+                                                (hasOnboarding ? 1 : 0) +
+                                                (hasCopyright ? 1 : 0) +
+                                                1,
+                                            findChildIndexCallback: (key) {
+                                              if (key is! ValueKey<String>) {
+                                                return null;
+                                              }
+                                              if (hasOnboarding &&
+                                                  key.value ==
+                                                      'onboarding_checklist') {
+                                                return onboardingIndex;
+                                              }
+                                              final index = sectionKeys.indexOf(
+                                                key.value,
+                                              );
+                                              return index < 0 ? null : index;
+                                            },
+                                            itemBuilder: (context, index) {
+                                              if (index < sectionKeys.length) {
+                                                return buildScrollableSection(
+                                                  sectionKeys[index],
+                                                );
+                                              }
+                                              if (index == onboardingIndex) {
+                                                return HomeDashboardScrollSection(
+                                                  key: const ValueKey<String>(
+                                                    'onboarding_checklist',
+                                                  ),
+                                                  child: AppSystemUiRegion(
+                                                    backgroundBrightness:
+                                                        cardBackgroundBrightness,
+                                                    child: AnimatedBuilder(
+                                                      animation:
+                                                          _bannerSectionListenable,
+                                                      builder: (_, _) =>
+                                                          _buildOnboardingChecklistSection(
+                                                            isLight,
+                                                          ),
+                                                    ),
+                                                  ),
+                                                );
+                                              }
+                                              if (index == copyrightIndex) {
+                                                return _buildWallpaperCopyright(
+                                                  isLight,
+                                                );
+                                              }
+                                              return SizedBox(
+                                                // The header overlays the list, so
+                                                // reserve it at the trailing edge
+                                                // to keep short pages scrollable.
+                                                height:
+                                                    homeDashboardPhoneScrollTailExtent(
+                                                      headerExtent:
+                                                          listHeaderExtent,
+                                                      bottomInset:
+                                                          bottomSystemInset,
+                                                    ),
+                                              );
+                                            },
                                           ),
                                         );
+                                        return showWallpaper
+                                            ? listContent
+                                            : RepaintBoundary(
+                                                key: ValueKey<String>(
+                                                  focusPage
+                                                      ? 'home-focus-tab-content'
+                                                      : 'home-main-tab-content',
+                                                ),
+                                                child: listContent,
+                                              );
                                       }
 
                                       if (AppPlatform.isAndroid) {
@@ -885,7 +933,9 @@ mixin _HomeDashboardViewMixin
                                                 padding: const EdgeInsets.only(
                                                   bottom: 24.0,
                                                 ),
-                                                child: isolateTabletSection
+                                                child:
+                                                    isolateTabletSection &&
+                                                        !showWallpaper
                                                     ? RepaintBoundary(
                                                         child: section,
                                                       )
@@ -964,6 +1014,18 @@ mixin _HomeDashboardViewMixin
                                                           ...rightWidgets,
                                                         ],
                                                       ),
+                                                AppSystemUiRegion(
+                                                  backgroundBrightness:
+                                                      cardBackgroundBrightness,
+                                                  child: AnimatedBuilder(
+                                                    animation:
+                                                        _bannerSectionListenable,
+                                                    builder: (_, _) =>
+                                                        _buildOnboardingChecklistSection(
+                                                          isLight,
+                                                        ),
+                                                  ),
+                                                ),
                                                 if (_wallpaperCopyright !=
                                                         null &&
                                                     _wallpaperCopyright!
@@ -1119,6 +1181,14 @@ mixin _HomeDashboardViewMixin
           checkUpdatesOnOpen: true,
           placeholderIcon: Icons.system_update_rounded,
         ),
+        onFeatureExplorer: (sourceKey) async {
+          await PageTransitions.pushFromRect(
+            context: Navigator.of(context, rootNavigator: true).context,
+            page: FeatureExplorerScreen(username: widget.username),
+            sourceKey: sourceKey,
+            placeholderIcon: Icons.explore_rounded,
+          );
+        },
       ),
       mainScreen: AppSystemUiRegion(
         backgroundBrightness: showWallpaper || isDarkMode
@@ -1288,6 +1358,114 @@ mixin _HomeDashboardViewMixin
     );
   }
 
+  Future<TodoCreateSaveResult> _saveManualTodo(TodoItem todo) async {
+    final allTodos = await StorageService.getTodos(widget.username);
+    final existingIndex = allTodos.indexWhere((item) => item.id == todo.id);
+    if (existingIndex < 0) {
+      allTodos.add(todo);
+    } else {
+      allTodos[existingIndex] = todo;
+    }
+    await StorageService.saveTodos(widget.username, allTodos);
+
+    return _finishManualTodoSave(todo, allTodos);
+  }
+
+  Future<FixedScheduleTodoSaveResult> _saveTodoLinkedToFixedSchedule(
+    TodoItem todo,
+    FixedScheduleItem baseline,
+  ) async {
+    final updatedSchedule = await StorageService.saveTodoLinkedToFixedSchedule(
+      widget.username,
+      todo,
+      baseline,
+    );
+    var snapshotReady = true;
+    List<TodoItem> allTodos;
+    try {
+      allTodos = await StorageService.getTodos(widget.username);
+    } catch (_) {
+      snapshotReady = false;
+      allTodos = _todos.map((item) => item.detachedCopy()).toList();
+      final index = allTodos.indexWhere((item) => item.id == todo.id);
+      if (index < 0) {
+        allTodos.add(todo);
+      } else {
+        allTodos[index] = todo;
+      }
+    }
+    final saveResult = await _finishManualTodoSave(
+      todo,
+      allTodos,
+      refreshDomains: const {
+        DataRefreshDomain.todos,
+        DataRefreshDomain.fixedSchedules,
+      },
+      updateSharedSnapshots: snapshotReady,
+      extraWarnings: snapshotReady ? const [] : const ['待办列表刷新失败'],
+    );
+    return FixedScheduleTodoSaveResult(
+      schedule: updatedSchedule,
+      warnings: saveResult.warnings,
+    );
+  }
+
+  Future<TodoCreateSaveResult> _finishManualTodoSave(
+    TodoItem todo,
+    List<TodoItem> allTodos, {
+    Set<DataRefreshDomain> refreshDomains = const {DataRefreshDomain.todos},
+    bool updateSharedSnapshots = true,
+    List<String> extraWarnings = const [],
+  }) async {
+    final warnings = <String>[...extraWarnings];
+    Future<void> tryUpdate(
+      String warning,
+      FutureOr<void> Function() update,
+    ) async {
+      try {
+        await update();
+      } catch (_) {
+        warnings.add(warning);
+      }
+    }
+
+    if (todo.teamUuid != null) {
+      await tryUpdate('团队状态待更新', () {
+        PomodoroSyncService.instance.sendTeamUpdateSignal(todo.teamUuid!);
+      });
+    }
+    if (updateSharedSnapshots) {
+      await tryUpdate('共享状态待更新', () async {
+        if (!await _saveTodosToSharedFile(allTodos)) {
+          throw StateError('shared todo snapshot was not updated');
+        }
+      });
+    } else {
+      warnings.add('共享状态与桌面小组件待更新');
+    }
+    await tryUpdate('提醒待更新', () {
+      FloatWindowService.triggerReminderCheck();
+      FloatWindowService.invalidateSlotCache();
+      _syncTodoNotification();
+      _rescheduleAlarms();
+    });
+    if (updateSharedSnapshots) {
+      await tryUpdate('桌面小组件待更新', () async {
+        await WidgetService.updateTodoWidget(allTodos);
+      });
+    }
+    await tryUpdate('首页列表待刷新', () async {
+      if (mounted) {
+        await _loadAllData(deferred: true, domains: refreshDomains);
+        if (refreshDomains.contains(DataRefreshDomain.fixedSchedules)) {
+          _scheduleRevision.value++;
+          _timelineRevision.value++;
+        }
+      }
+    });
+    return TodoCreateSaveResult(warnings: warnings);
+  }
+
   Future<void> _openHomeTodo({GlobalKey? sourceKey}) async {
     final page = AddTodoScreen(
       todoGroups: _todoGroups,
@@ -1305,45 +1483,66 @@ mixin _HomeDashboardViewMixin
         }
       },
       onTodoAdded: (todo) async {
-        final allTodos = await StorageService.getTodos(widget.username);
-        allTodos.add(todo);
-        await StorageService.saveTodos(widget.username, allTodos);
-        if (todo.teamUuid != null) {
-          PomodoroSyncService.instance.sendTeamUpdateSignal(todo.teamUuid!);
-        }
-        await _saveTodosToSharedFile(allTodos);
-        FloatWindowService.triggerReminderCheck();
-        FloatWindowService.invalidateSlotCache();
-        _syncTodoNotification();
-        _rescheduleAlarms();
-        await WidgetService.updateTodoWidget(allTodos);
-        if (mounted) {
-          await _loadAllData(
-            deferred: true,
-            domains: const {DataRefreshDomain.todos},
-          );
-        }
+        await _saveManualTodo(todo);
       },
+      onManualTodoSaved: _saveManualTodo,
       onTodosBatchAdded: (todos) async {
         final allTodos = await StorageService.getTodos(widget.username);
-        allTodos.addAll(todos);
+        final indexById = <String, int>{};
+        for (var index = 0; index < allTodos.length; index++) {
+          indexById.putIfAbsent(allTodos[index].id, () => index);
+        }
+        for (final todo in todos) {
+          final index = indexById[todo.id];
+          if (index == null) {
+            indexById[todo.id] = allTodos.length;
+            allTodos.add(todo);
+          } else {
+            allTodos[index] = todo;
+          }
+        }
         await StorageService.saveTodos(widget.username, allTodos);
+        final warnings = <String>[];
         final updatedTeamUuid = todos
             .firstWhere((t) => t.teamUuid != null, orElse: () => todos.first)
             .teamUuid;
         if (updatedTeamUuid != null) {
-          PomodoroSyncService.instance.sendTeamUpdateSignal(updatedTeamUuid);
+          try {
+            PomodoroSyncService.instance.sendTeamUpdateSignal(updatedTeamUuid);
+          } catch (_) {
+            warnings.add('团队状态待更新');
+          }
         }
-        await _saveTodosToSharedFile(allTodos);
-        FloatWindowService.triggerReminderCheck();
-        FloatWindowService.invalidateSlotCache();
-        _syncTodoNotification();
-        _rescheduleAlarms();
-        await WidgetService.updateTodoWidget(allTodos);
-        if (mounted) {
-          await _loadAllData(
-            deferred: true,
-            domains: const {DataRefreshDomain.todos},
+        if (!await _saveTodosToSharedFile(allTodos)) {
+          warnings.add('共享状态待更新');
+        }
+        try {
+          FloatWindowService.triggerReminderCheck();
+          FloatWindowService.invalidateSlotCache();
+          _syncTodoNotification();
+          _rescheduleAlarms();
+        } catch (_) {
+          warnings.add('提醒状态待更新');
+        }
+        try {
+          await WidgetService.updateTodoWidget(allTodos);
+        } catch (_) {
+          warnings.add('桌面小组件待更新');
+        }
+        try {
+          if (mounted) {
+            await _loadAllData(
+              deferred: true,
+              domains: const {DataRefreshDomain.todos},
+            );
+          }
+        } catch (_) {
+          warnings.add('首页列表待刷新');
+        }
+        if (mounted && warnings.isNotEmpty) {
+          AppSnackBars.showSnackBar(
+            context,
+            SnackBar(content: Text('待办已保存；${warnings.join('；')}')),
           );
         }
       },
@@ -1581,7 +1780,10 @@ mixin _HomeDashboardViewMixin
       onWeeklyPressed: () {
         PageTransitions.pushFromRect(
           context: context,
-          page: WeeklyCourseScreen(username: widget.username),
+          page: WeeklyCourseScreen(
+            username: widget.username,
+            onCreateRelatedTodo: _saveTodoLinkedToFixedSchedule,
+          ),
           sourceKey: _courseCenterKey,
         );
       },
@@ -1677,6 +1879,170 @@ mixin _HomeDashboardViewMixin
 
   bool _isMapEqual(Map a, Map b) {
     return _isDeepValueEqual(a, b);
+  }
+
+  Widget _buildOnboardingChecklistSection(bool isLight) {
+    final courses = _safeListResult<CourseItem>(
+      _dashboardCourseData['courses'],
+    );
+    final hasTodosOrCountdowns =
+        _todos.any((t) => !t.isDeleted) || _countdowns.any((c) => !c.isDeleted);
+    final hasCoursesOrSchedules = courses.any((c) => !c.isDeleted);
+    final hasPlanBlocks = _planBlocks.any((b) => !b.isDeleted);
+
+    return OnboardingChecklistCard(
+      isLight: isLight,
+      hasTodosOrCountdowns: hasTodosOrCountdowns,
+      hasCoursesOrSchedules: hasCoursesOrSchedules,
+      hasPlanBlocks: hasPlanBlocks,
+      onLaunchTask: _handleOnboardingTaskLaunch,
+      onSpotlightTask: _handleOnboardingTaskSpotlight,
+      onOpenFeatureExplorer: () {
+        Navigator.of(context, rootNavigator: true).push(
+          PageTransitions.slideHorizontal(
+            FeatureExplorerScreen(username: widget.username),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _handleOnboardingTaskLaunch(String taskId) async {
+    await OnboardingChecklistService.markTaskCompleted(taskId);
+    if (!mounted) return;
+    switch (taskId) {
+      case OnboardingChecklistService.taskCreateTodoOrCountdown:
+        await _openHomeAddMenu();
+      case OnboardingChecklistService.taskCourseOrSchedule:
+        await PageTransitions.pushFromRect(
+          context: context,
+          page: WeeklyCourseScreen(
+            username: widget.username,
+            onCreateRelatedTodo: _saveTodoLinkedToFixedSchedule,
+          ),
+          sourceKey: _courseCenterKey,
+        );
+      case OnboardingChecklistService.taskPlanBlock:
+        await Navigator.of(context).push(
+          PageTransitions.material(
+            builder: (_) => TodoPlanScreen(username: widget.username),
+          ),
+        );
+        if (mounted) {
+          _scheduleRevision.value++;
+          _loadAllData(
+            domains: const {
+              DataRefreshDomain.todos,
+              DataRefreshDomain.planBlocks,
+              DataRefreshDomain.fixedSchedules,
+            },
+          );
+        }
+      case OnboardingChecklistService.taskPomodoroFocus:
+        await _openHomePomodoro(sourceKey: _homePomodoroActionKey);
+      case OnboardingChecklistService.taskAiOrQuickVoice:
+        await _openAiAssistantFromAppBar();
+      case OnboardingChecklistService.taskExploreFeatureHub:
+        await Navigator.of(context, rootNavigator: true).push(
+          PageTransitions.slideHorizontal(
+            FeatureExplorerScreen(username: widget.username),
+          ),
+        );
+    }
+  }
+
+  Future<void> _handleOnboardingTaskSpotlight(String taskId) async {
+    if (_showCoachMarks || !mounted) return;
+    final CoachMarkStep? step = switch (taskId) {
+      OnboardingChecklistService.taskCreateTodoOrCountdown => CoachMarkStep(
+        targetKey: _homeAddActionKey,
+        title: '新建待办 / 倒计时 / 记账',
+        description: '点这里可快速创建待办事项、重要日倒计时或记一笔账；长按还能直接语音速记！',
+        buttonLabel: '立即打开',
+        finishOnButtonTap: true,
+        onButtonTap: () {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _handleOnboardingTaskLaunch(taskId);
+          });
+        },
+      ),
+      OnboardingChecklistService.taskCourseOrSchedule => CoachMarkStep(
+        targetKey: _courseCenterKey,
+        title: '周视图与课程表/固定日程',
+        description: '在这里查看整周课程表、创建每周重复的固定日程，并支持将待办关联到固定日程。',
+        buttonLabel: '进入周视图',
+        finishOnButtonTap: true,
+        onButtonTap: () {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _handleOnboardingTaskLaunch(taskId);
+          });
+        },
+      ),
+      OnboardingChecklistService.taskPlanBlock => CoachMarkStep(
+        targetKey: _todayPlanChartKey,
+        title: '今日日程与规划中心',
+        description: '点击这里可将待办安排到具体时间块，把“要做什么”变成“什么时候做”。',
+        buttonLabel: '去规划',
+        finishOnButtonTap: true,
+        onButtonTap: () {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _handleOnboardingTaskLaunch(taskId);
+          });
+        },
+      ),
+      OnboardingChecklistService.taskPomodoroFocus => CoachMarkStep(
+        targetKey: _homePomodoroActionKey,
+        title: '番茄钟专注工作台',
+        description: '点击这里开启番茄钟倒计时或正计时专注，支持绑定待办并跨设备实时同步专注状态。',
+        buttonLabel: '去专注',
+        finishOnButtonTap: true,
+        onButtonTap: () {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _handleOnboardingTaskLaunch(taskId);
+          });
+        },
+      ),
+      OnboardingChecklistService.taskAiOrQuickVoice => CoachMarkStep(
+        targetKey: _aiButtonKey,
+        title: 'AI 智能助手',
+        description: '点击顶部机器人图标进入 AI 对话，或长按底部「+」按钮语音速记，一句话搞定排期与记账。',
+        buttonLabel: '打开 AI 助手',
+        finishOnButtonTap: true,
+        onButtonTap: () {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _handleOnboardingTaskLaunch(taskId);
+          });
+        },
+      ),
+      OnboardingChecklistService.taskExploreFeatureHub => CoachMarkStep(
+        targetKey: _menuKey,
+        title: '侧边栏与功能百宝箱',
+        description: '点击左上角打开侧边栏，可随时进入「功能百宝箱」、记账、习惯中心、挑战中心、私密日记与设置中心。',
+        buttonLabel: '打开百宝箱',
+        finishOnButtonTap: true,
+        onButtonTap: () {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _handleOnboardingTaskLaunch(taskId);
+          });
+        },
+      ),
+      _ => null,
+    };
+    if (step == null || step.targetKey.currentContext == null) {
+      await _handleOnboardingTaskLaunch(taskId);
+      return;
+    }
+    _showCoachMarks = true;
+    try {
+      await CoachMarkOverlay.show(
+        context: context,
+        steps: [step],
+        onFinish: () => _showCoachMarks = false,
+        onSkip: () => _showCoachMarks = false,
+      );
+    } finally {
+      _showCoachMarks = false;
+    }
   }
 
   Widget _buildDashboardSkeleton(bool isLight, {double topPadding = 16}) {

@@ -106,7 +106,7 @@ class AiActionParser {
   };
 
   static const String _actionTypes =
-      'create_todo|update_todo|complete_todo|'
+      'create_todo|update_todo|complete_todo|skip_todo|'
       'create_habit|create_habit_goal|habit_create|'
       'update_habit|update_habit_goal|habit_update|'
       'delete_habit|delete_habit_goal|habit_delete|'
@@ -230,6 +230,13 @@ class AiActionParser {
     }
 
     for (final action in actions) {
+      if (action.recurrenceScope == 'series' &&
+          (action.type != AiTodoActionType.updateTodo ||
+              !_explicitWholeTodoSeriesRequest(originalText))) {
+        action
+          ..recurrenceScope = 'occurrence'
+          ..metadata['wholeSeriesScopeDowngraded'] = true;
+      }
       // Execution state belongs to the app, never to a newly returned proposal.
       // History restoration uses AiTodoAction.fromJson directly and retains it.
       action.isAdded = false;
@@ -244,6 +251,11 @@ class AiActionParser {
     );
     return actions;
   }
+
+  static bool _explicitWholeTodoSeriesRequest(String message) => RegExp(
+    r'(整个系列|全系列|所有期次|全部期次|所有周期|全部周期|每一期|全体期次|whole series|entire series|all occurrences)',
+    caseSensitive: false,
+  ).hasMatch(message);
 
   static void _resolveCountdownTeamBindings(
     List<AiTodoAction> actions, {
@@ -707,6 +719,38 @@ class AiActionParser {
           actions.add(action);
         }
         return actions;
+      case 'skip_todo':
+        // Skipping is deliberately bound to one existing UUID. Do not infer
+        // an occurrence from a title or accept a future-series scope.
+        return _listFromOrSelf(actionData, actionData['updates'])
+            .where((update) {
+              final suppliedIds = {
+                for (final value in [
+                  update['todoId'],
+                  update['todo_id'],
+                  update['todoUuid'],
+                  update['id'],
+                ])
+                  if (value?.toString().trim().isNotEmpty == true)
+                    value.toString().trim(),
+              };
+              return suppliedIds.length == 1 &&
+                  existingTodoTitles.containsKey(suppliedIds.single) &&
+                  update['recurrenceScope']?.toString() != 'future';
+            })
+            .map((update) {
+              final todoId = _resolveExistingTodoId(
+                update,
+                existingTodoTitles,
+              )!;
+              return AiTodoAction.fromJson({
+                ...update,
+                'todoId': todoId,
+                'recurrenceScope': 'occurrence',
+                'action': actionData['action'],
+              });
+            })
+            .toList(growable: false);
       case 'split_todo':
         return _processSplitTodo(actionData, existingTodoTitles);
       case 'merge_todos':

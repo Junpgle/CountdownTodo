@@ -39,6 +39,45 @@ void main() {
     expect(restored.recurrenceSeriesId, isNull);
   });
 
+  test('TodoItem round-trips skipped status and local sync-pending state', () {
+    final skipped = TodoItem(
+      id: 'skipped-occurrence',
+      title: '每周整理资料',
+      recurrenceSeriesId: 'weekly-series',
+      isSkipped: true,
+      isSkippedSyncPending: true,
+    );
+
+    final restored = TodoItem.fromJson(skipped.toJson());
+
+    expect(restored.isSkipped, isTrue);
+    expect(restored.isSkippedSyncPending, isTrue);
+    expect(restored.isDone, isFalse);
+    expect(skipped.detachedCopy().isSkipped, isTrue);
+  });
+
+  test('legacy todo JSON defaults to not skipped', () {
+    final restored = TodoItem.fromJson({
+      'uuid': '550e8400-e29b-41d4-a716-446655440002',
+      'content': '旧版待办',
+    });
+
+    expect(restored.isSkipped, isFalse);
+    expect(restored.isSkippedSyncPending, isFalse);
+  });
+
+  test('TodoItem rejects mutually exclusive completed and skipped flags', () {
+    expect(
+      () => TodoItem.fromJson({
+        'uuid': '550e8400-e29b-41d4-a716-446655440003',
+        'content': '无效待办',
+        'is_completed': 1,
+        'is_skipped': 1,
+      }),
+      throwsFormatException,
+    );
+  });
+
   test(
     'recurrence dedupe keeps newer completion over higher-version stale copy',
     () {
@@ -823,6 +862,70 @@ void main() {
       expect(active.isDeleted, isFalse);
     },
   );
+
+  test('ended series still rejects a remote fifteenth occurrence', () {
+    final firstDay = DateTime(2026, 7, 1, 9);
+    final end = DateTime(2026, 7, 14);
+    final retained = List.generate(
+      14,
+      (index) => TodoItem(
+        id: 'ended-series-$index',
+        title: '每日循环',
+        recurrenceSeriesId: 'ended-series',
+        createdDate: firstDay.add(Duration(days: index)).millisecondsSinceEpoch,
+        recurrenceEndDate: end,
+        updatedAt: 2000,
+      ),
+    );
+    final remote = TodoItem(
+      id: 'ended-series-14',
+      title: '每日循环',
+      recurrenceSeriesId: 'ended-series',
+      createdDate: DateTime(2026, 7, 15, 9).millisecondsSinceEpoch,
+      recurrenceEndDate: DateTime(2026, 7, 15),
+      updatedAt: 1000,
+    );
+    final todos = [...retained, remote];
+
+    final changed =
+        StorageService.pruneRecurrenceOccurrencesAfterEndDatesForTest(todos);
+
+    expect(changed, {remote.id});
+    expect(todos.where((todo) => !todo.isDeleted), hasLength(14));
+    expect(remote.recurrence, RecurrenceType.none);
+    expect(retained.every((todo) => !todo.isDeleted), isTrue);
+    expect(
+      StorageService.pruneRecurrenceOccurrencesAfterEndDatesForTest(todos),
+      isEmpty,
+    );
+  });
+
+  test('active extended rule takes precedence over old ended boundaries', () {
+    final old = TodoItem(
+      id: 'extended-old',
+      title: '每日循环',
+      recurrenceSeriesId: 'extended-series',
+      createdDate: DateTime(2026, 7, 14, 9).millisecondsSinceEpoch,
+      recurrenceEndDate: DateTime(2026, 7, 14),
+    );
+    final active = TodoItem(
+      id: 'extended-active',
+      title: '每日循环',
+      recurrenceSeriesId: 'extended-series',
+      recurrence: RecurrenceType.daily,
+      createdDate: DateTime(2099, 1, 1, 9).millisecondsSinceEpoch,
+    );
+
+    expect(
+      StorageService.pruneRecurrenceOccurrencesAfterEndDatesForTest([
+        old,
+        active,
+      ]),
+      isEmpty,
+    );
+    expect(active.isDeleted, isFalse);
+    expect(active.recurrence, RecurrenceType.daily);
+  });
 
   test('existing recurrence series repairs missing past occurrences', () {
     final previous = TodoItem(

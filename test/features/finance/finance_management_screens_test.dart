@@ -7,6 +7,7 @@ import 'package:countdown_todo/features/finance/screens/finance_budget_entry_scr
 import 'package:countdown_todo/features/finance/screens/finance_budget_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_category_detail_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_entry_screen.dart';
+import 'package:countdown_todo/features/finance/screens/finance_future_commitments_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_home_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_loan_entry_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_loan_screen.dart';
@@ -125,6 +126,7 @@ Future<Database> _seed(WidgetTester tester) async {
         amountMinor: 250000,
         dayOfMonth: 15,
         startDate: '2026-01-01',
+        autoGenerate: false,
       ).toMap(),
     );
     await db.insert(
@@ -163,14 +165,18 @@ Future<Database> _seed(WidgetTester tester) async {
   return db;
 }
 
-Future<void> _waitFor(WidgetTester tester, bool Function() ready) async {
+Future<void> _waitFor(
+  WidgetTester tester,
+  bool Function() ready, {
+  bool settleAfterReady = true,
+}) async {
   for (var i = 0; i < 250; i++) {
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 20)),
     );
     await tester.pump(const Duration(milliseconds: 20));
     if (ready()) {
-      await tester.pumpAndSettle();
+      if (settleAfterReady) await tester.pumpAndSettle();
       return;
     }
   }
@@ -2442,6 +2448,122 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('月度结余趋势直达选中月份账单且保留概览月份', (tester) async {
+    final db = await _seed(tester);
+    final expenseAt = DateTime(2026, 9, 8, 10);
+    final incomeAt = DateTime(2026, 9, 18, 16);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'trend-september-expense',
+          amountMinor: 1250,
+          categoryUuid: 'test-food',
+          transactionDate: dateKey(expenseAt),
+          occurredAt: expenseAt.millisecondsSinceEpoch,
+          createdAt: expenseAt.millisecondsSinceEpoch,
+          merchant: '九月支出',
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'trend-september-income',
+          type: FinanceTransactionType.income,
+          amountMinor: 5000,
+          transactionDate: dateKey(incomeAt),
+          occurredAt: incomeAt.millisecondsSinceEpoch,
+          createdAt: incomeAt.millisecondsSinceEpoch,
+          merchant: '九月收入',
+        ).toMap(),
+      );
+    });
+    final clockNow = DateTime(2026, 10, 23, 12);
+    await _pump(
+      tester,
+      FinanceHomeScreen(username: 'default', clock: () => clockNow),
+    );
+
+    await _tap(tester, _key('finance-overview-period-previous'));
+    await _waitFor(tester, () => find.text('2026年9月').evaluate().isNotEmpty);
+    await tester.scrollUntilVisible(
+      find.text('查看当月账单'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pump();
+    expect(find.text('2026年9月 · 月末'), findsOneWidget);
+    await _tap(tester, find.text('查看当月账单'));
+    await _waitFor(
+      tester,
+      () =>
+          find.text('九月支出').evaluate().isNotEmpty &&
+          find.text('九月收入').evaluate().isNotEmpty,
+    );
+    expect(find.text('2026-09-01 – 2026-09-30'), findsOneWidget);
+    final monthLedger = tester.widget<FinanceLedgerPanel>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is FinanceLedgerPanel && widget.month == DateTime(2026, 9),
+      ),
+    );
+    expect(monthLedger.categoryUuids, isEmpty);
+    expect(monthLedger.filterType, isNull);
+    expect(find.text('九月支出'), findsOneWidget);
+    expect(find.text('九月收入'), findsOneWidget);
+
+    await _tap(tester, find.byTooltip('返回结余趋势'));
+    await tester.pumpAndSettle();
+    expect(find.text('2026年9月 · 月末'), findsOneWidget);
+
+    await _top(tester);
+    await _tap(tester, _key('finance-overview-period-previous'));
+    await _waitFor(tester, () => find.text('2026年8月').evaluate().isNotEmpty);
+    await tester.scrollUntilVisible(
+      find.text('查看当月账单'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pump();
+    expect(find.text('2026年8月 · 月末'), findsOneWidget);
+    await _tap(tester, find.text('查看当月账单'));
+    await _waitFor(tester, () => find.text('没有匹配的账单').evaluate().isNotEmpty);
+    expect(find.text('2026-08-01 – 2026-08-31'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('当前月趋势账单范围截止今天并保留待发生标记', (tester) async {
+    final db = await _seed(tester);
+    final clockNow = DateTime(2026, 10, 23, 12);
+    final plannedAt = DateTime(2026, 10, 23, 23, 59);
+    await tester.runAsync(
+      () => db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'trend-today-planned-expense',
+          amountMinor: 9000,
+          categoryUuid: 'test-food',
+          transactionDate: dateKey(plannedAt),
+          occurredAt: plannedAt.millisecondsSinceEpoch,
+          timezoneOffsetMinutes: plannedAt.timeZoneOffset.inMinutes,
+          createdAt: clockNow.millisecondsSinceEpoch,
+          merchant: '今天稍后发生',
+        ).toMap(),
+      ),
+    );
+    await _pump(
+      tester,
+      FinanceHomeScreen(username: 'default', clock: () => clockNow),
+    );
+
+    await _tap(tester, find.text('查看当月账单'));
+    await _waitFor(tester, () => find.text('今天稍后发生').evaluate().isNotEmpty);
+    expect(find.text('2026-10-01 – 2026-10-23'), findsOneWidget);
+    expect(find.text('今天稍后发生'), findsOneWidget);
+    expect(find.textContaining('待发生'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('记账概览不提前统计本月未来发生的账单', (tester) async {
     final db = await _seed(tester);
     final now = DateTime.now();
@@ -2481,6 +2603,14 @@ void main() {
 
   testWidgets('记账首页保持打开时会在周期账单到期后自动生成', (tester) async {
     final db = await _seed(tester);
+    await tester.runAsync(
+      () => db.update(
+        'finance_recurring_rules',
+        {'auto_generate': 1},
+        where: 'uuid = ?',
+        whereArgs: ['test-rent'],
+      ),
+    );
     var clockNow = DateTime(2026, 9, 15, 8, 59);
     await _pump(
       tester,
@@ -2724,6 +2854,24 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('导出本月 CSV'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('记账首页更多操作可打开未来收支', (tester) async {
+    await _seed(tester);
+    await _pump(tester, const FinanceHomeScreen(username: 'default'));
+
+    await _tap(tester, find.byTooltip('更多操作'));
+    await _tap(tester, find.text('未来收支'));
+
+    expect(
+      find.byType(FinanceFutureCommitmentsScreen, skipOffstage: false),
+      findsOneWidget,
+    );
+    await _waitFor(
+      tester,
+      () => find.text('未来3个月合计', skipOffstage: false).evaluate().isNotEmpty,
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -3643,7 +3791,206 @@ void main() {
     expect(find.text('未来房租'), findsOneWidget);
     expect(find.text('净支出 ¥15.00'), findsOneWidget);
     expect(find.text('计划净支出 ¥30.00'), findsOneWidget);
-    expect(find.text('计划收入 ¥72.00'), findsOneWidget);
+    final summaryFooter = find
+        .ancestor(
+          of: find.textContaining('计划收入 ¥72.00'),
+          matching: find.byType(Card),
+        )
+        .first;
+    expect(
+      find.descendant(
+        of: summaryFooter,
+        matching: find.textContaining('计划收入 ¥72.00'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('3 笔账单'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('多日账单列表同时显示筛选总计与每日小计', (tester) async {
+    final now = DateTime(2026, 10, 3, 12);
+    final yesterday = DateTime(2026, 10, 2, 18);
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'ledger-multi-day-today',
+        amountMinor: 1000,
+        transactionDate: dateKey(now),
+        occurredAt: now
+            .subtract(const Duration(hours: 1))
+            .millisecondsSinceEpoch,
+        createdAt: now
+            .subtract(const Duration(hours: 1))
+            .millisecondsSinceEpoch,
+        merchant: '今天支出',
+      ),
+      FinanceTransaction(
+        uuid: 'ledger-multi-day-yesterday',
+        amountMinor: 500,
+        transactionDate: dateKey(yesterday),
+        occurredAt: yesterday.millisecondsSinceEpoch,
+        createdAt: yesterday.millisecondsSinceEpoch,
+        merchant: '昨天支出',
+      ),
+    ];
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceLedgerPanel(
+          clock: () => now,
+          transactions: transactions,
+          categories: const {},
+          paymentMethods: const {},
+          keyword: '',
+          filterType: null,
+          onOpenDetail: (_, _) {},
+          onKeywordChanged: (_) {},
+          onFilterChanged: (_) {},
+          onEdit: (_) {},
+          onDelete: (_) {},
+          onRefund: (_) {},
+        ),
+      ),
+    );
+
+    expect(find.text('净支出 ¥15.00'), findsOneWidget);
+    expect(find.text('净支出 ¥10.00'), findsOneWidget);
+    expect(find.text('净支出 ¥5.00'), findsOneWidget);
+    expect(find.textContaining('10月3日'), findsOneWidget);
+    expect(find.textContaining('10月2日'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('单日选择账单时区分整日小计和已选总计', (tester) async {
+    final now = DateTime(2026, 10, 3, 12);
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'ledger-selection-first',
+        amountMinor: 1000,
+        transactionDate: dateKey(now),
+        occurredAt: now
+            .subtract(const Duration(hours: 2))
+            .millisecondsSinceEpoch,
+        createdAt: now
+            .subtract(const Duration(hours: 2))
+            .millisecondsSinceEpoch,
+        merchant: '已选账单',
+      ),
+      FinanceTransaction(
+        uuid: 'ledger-selection-second',
+        amountMinor: 500,
+        transactionDate: dateKey(now),
+        occurredAt: now
+            .subtract(const Duration(hours: 1))
+            .millisecondsSinceEpoch,
+        createdAt: now
+            .subtract(const Duration(hours: 1))
+            .millisecondsSinceEpoch,
+        merchant: '未选账单',
+      ),
+    ];
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceLedgerPanel(
+          clock: () => now,
+          transactions: transactions,
+          categories: const {},
+          paymentMethods: const {},
+          keyword: '',
+          filterType: null,
+          onOpenDetail: (_, _) {},
+          onKeywordChanged: (_) {},
+          onFilterChanged: (_) {},
+          onEdit: (_) {},
+          onDelete: (_) {},
+          onRefund: (_) {},
+        ),
+      ),
+    );
+
+    await _tap(tester, find.text('选择账单'));
+    await _tap(tester, find.text('已选账单'));
+    expect(find.text('已选 1 笔 / 2 笔'), findsOneWidget);
+    expect(find.text('净支出 ¥15.00'), findsOneWidget);
+    expect(find.text('净支出 ¥10.00'), findsOneWidget);
+    await _tap(tester, find.text('完成'));
+    expect(find.text('所选 1 笔 / 2 笔'), findsOneWidget);
+    expect(find.text('净支出 ¥15.00'), findsOneWidget);
+    expect(find.text('净支出 ¥10.00'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('账单列表筛选合计浮窗支持展开与收起双向动画切换', (tester) async {
+    final now = DateTime(2026, 10, 3, 12);
+    final transaction = FinanceTransaction(
+      uuid: 'ledger-collapse-expand',
+      amountMinor: 1000,
+      transactionDate: dateKey(now),
+      merchant: '测试账单',
+    );
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceLedgerPanel(
+          clock: () => now,
+          transactions: [transaction],
+          categories: const {},
+          paymentMethods: const {},
+          keyword: '',
+          filterType: null,
+          onOpenDetail: (_, _) {},
+          onKeywordChanged: (_) {},
+          onFilterChanged: (_) {},
+          onEdit: (_) {},
+          onDelete: (_) {},
+          onRefund: (_) {},
+        ),
+      ),
+    );
+
+    // 默认展示统计浮窗
+    expect(
+      find.byKey(const ValueKey('finance-ledger-summary-panel')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('finance-ledger-summary-button')),
+      findsNothing,
+    );
+
+    // 点击收起，平滑过渡到悬浮计算器按钮
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('finance-ledger-summary-collapse')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('finance-ledger-summary-panel')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('finance-ledger-summary-button')),
+      findsOneWidget,
+    );
+
+    // 点击按钮，重新展开统计浮窗
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('finance-ledger-summary-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('finance-ledger-summary-panel')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('finance-ledger-summary-button')),
+      findsNothing,
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -4243,7 +4590,12 @@ void main() {
 
     expect(find.text('删除分类后的历史账单'), findsOneWidget);
     expect(find.text('分类已删除或不可用'), findsOneWidget);
-    expect(find.text('分类 · 分类已删除或不可用'), findsOneWidget);
+    expect(find.text('未分类'), findsNothing);
+    await _pump(
+      tester,
+      FinanceTransactionDetailScreen(transaction: transaction),
+    );
+    expect(find.text('分类已删除或不可用'), findsOneWidget);
     expect(find.text('未分类'), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -5491,6 +5843,9 @@ void main() {
     await _waitFor(
       tester,
       () => find.text('该账单已关联退款，请先处理退款记录').evaluate().isNotEmpty,
+      // The glass toast continues animating while visible, so settling all
+      // scheduled frames here would wait until the test timeout.
+      settleAfterReady: false,
     );
     expect(find.text('该账单已关联退款，请先处理退款记录'), findsOneWidget);
     expect(find.text('删除账单？'), findsNothing);

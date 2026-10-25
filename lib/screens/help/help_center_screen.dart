@@ -5,7 +5,9 @@ import '../../models/help_article.dart';
 import '../../features/habits/screens/habit_center_screen.dart';
 import '../../features/thirty_day_challenge/screens/challenge_center_screen.dart';
 import '../../services/feature_tip_service.dart';
+import '../../services/onboarding_checklist_service.dart';
 import '../../storage_service.dart';
+import '../../models/todo_create_save_result.dart';
 import '../../update_service.dart';
 import '../../utils/app_platform.dart';
 import '../../utils/page_transitions.dart';
@@ -14,8 +16,10 @@ import '../feature_guide_screen.dart';
 import '../pomodoro_screen.dart';
 import '../add_todo_screen.dart';
 import '../course_screens.dart';
+import '../time_log_screen.dart';
 import '../../features/finance/screens/finance_home_screen.dart';
 import '../../widgets/floating_glass_control.dart';
+import 'feature_explorer_screen.dart';
 import 'help_article_screen.dart';
 import '../../utils/app_dialogs.dart';
 
@@ -81,8 +85,24 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
               scheme.primary,
               [
                 _HelpEntry(
+                  '功能探索百宝箱',
+                  '全景查看所有功能入口、新版本亮点与隐藏操作技巧',
+                  Icons.explore_rounded,
+                  scheme.primary,
+                  () {
+                    _openSettingsPage(
+                      '功能探索百宝箱',
+                      FeatureExplorerScreen(
+                        username: widget.username,
+                        isEmbedded: widget.isEmbedded,
+                      ),
+                      rootNavigator: true,
+                    );
+                  },
+                ),
+                _HelpEntry(
                   '重新显示功能提示',
-                  '重置所有情境提示，让其重新出现',
+                  '重置所有情境提示与首页新手探索清单，让其重新出现',
                   Icons.tips_and_updates_rounded,
                   Colors.amber,
                   () => _resetTips(context),
@@ -254,10 +274,34 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
                         throw StateError('请先登录后再保存待办');
                       }
                       final todos = await StorageService.getTodos(username);
-                      await StorageService.saveTodos(username, [
-                        ...todos,
-                        todo,
-                      ]);
+                      final existingIndex = todos.indexWhere(
+                        (item) => item.id == todo.id,
+                      );
+                      if (existingIndex < 0) {
+                        todos.add(todo);
+                      } else {
+                        todos[existingIndex] = todo;
+                      }
+                      await StorageService.saveTodos(username, todos);
+                    },
+                    onManualTodoSaved: (todo) async {
+                      final username =
+                          widget.username ??
+                          await StorageService.getLoginSession();
+                      if (username == null || username.isEmpty) {
+                        throw StateError('请先登录后再保存待办');
+                      }
+                      final todos = await StorageService.getTodos(username);
+                      final existingIndex = todos.indexWhere(
+                        (item) => item.id == todo.id,
+                      );
+                      if (existingIndex < 0) {
+                        todos.add(todo);
+                      } else {
+                        todos[existingIndex] = todo;
+                      }
+                      await StorageService.saveTodos(username, todos);
+                      return const TodoCreateSaveResult();
                     },
                   ),
                 ),
@@ -479,11 +523,18 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
             steps: [
               '数据会丢失吗？所有数据都存储在本地 SQLite 和云端服务器，登录账户即可恢复。',
               '如何删除账户？在设置中点击"注销登录"可清除本地数据。',
-              '忘记录制专注怎么办？可在专注页面查看历史记录，手动补录暂不支持。',
+              '忘记录制专注怎么办？进入时间日志页面，点击“补录”并选择时段；也可以在日历网格中拖动创建时间日志。',
               '课程导入失败怎么办？确认教务系统课表格式正确，尝试手动添加。',
               '同步不成功？检查网络连接，在设置中手动触发同步。',
             ],
-            actionLabel: '知道了',
+            actionLabel: '前往时间日志',
+            onAction: () {
+              Navigator.of(context, rootNavigator: true).push(
+                PageTransitions.slideHorizontal(
+                  TimeLogScreen(username: widget.username ?? ''),
+                ),
+              );
+            },
           ),
         ),
       ),
@@ -593,10 +644,11 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
 
     if (confirmed == true) {
       await FeatureTipService.resetAllTips();
+      await OnboardingChecklistService.resetAll();
       if (context.mounted) {
         AppSnackBars.showSnackBar(
           context,
-          const SnackBar(content: Text('功能提示已重置')),
+          const SnackBar(content: Text('功能提示与首页探索清单已重置')),
         );
       }
     }
@@ -648,19 +700,24 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
             side: BorderSide(color: scheme.outlineVariant),
           ),
           child: Column(
-            children: entries
-                .map((entry) => _buildEntryTile(entry, scheme))
-                .toList(),
+            children: [
+              for (var i = 0; i < entries.length; i++)
+                _buildEntryTile(entries[i], scheme, showTopDivider: i > 0),
+            ],
           ),
         ),
       ],
     );
   }
 
-  Widget _buildEntryTile(_HelpEntry entry, ColorScheme scheme) {
+  Widget _buildEntryTile(
+    _HelpEntry entry,
+    ColorScheme scheme, {
+    bool showTopDivider = false,
+  }) {
     return Column(
       children: [
-        if (entry != _buildArticleEntries().first)
+        if (showTopDivider)
           Divider(height: 1, indent: 72, color: scheme.outlineVariant),
         ListTile(
           key: _navigationKey(entry.title),

@@ -103,6 +103,7 @@ todo.md
 !/test/screens/
 /test/screens/*
 !/test/screens/fixed_schedule_detail_screen_test.dart
+!/test/screens/plan_preparation_screen_test.dart
 !/test/screens/plan_split_screen_test.dart
 !/test/screens/course_calendar_adjustment_screen_test.dart
 !/test/screens/team_management_invite_test.dart
@@ -114,6 +115,7 @@ todo.md
 !/test/ai_context_mode_test.dart
 !/test/pomodoro_focus_end_sync_test.dart
 !/test/ai_recognition_chat_flow_test.dart
+!/test/ai_todo_action_draft_test.dart
 !/test/llm_config_page_test.dart
 !/test/services/
 /test/services/*
@@ -126,6 +128,13 @@ todo.md
 !/test/services/plan_availability_service_test.dart
 !/test/services/plan_availability_repository_test.dart
 !/test/services/plan_availability_preferences_test.dart
+!/test/services/fixed_schedule_preparation_guard_test.dart
+!/test/services/time_log_overlap_service_test.dart
+!/test/services/todo_recurrence_restore_service_test.dart
+!/test/services/todo_recurrence_restore_storage_test.dart
+!/test/services/todo_trash_multi_restore_service_test.dart
+!/test/services/todo_trash_multi_restore_storage_test.dart
+!/test/services/todo_trash_purge_storage_test.dart
 !/test/services/device_calendar_refresh_test.dart
 !/test/services/plan_editor_draft_repository_test.dart
 !/test/support/
@@ -187,6 +196,24 @@ todo.md
 !/test/models/json_compatibility_test.dart
 !/test/widgets/
 /test/widgets/*
+!/test/widgets/goldens/
+/test/widgets/goldens/*
+!/test/widgets/goldens/todo_recurrence_trash_series_phone.png
+!/test/widgets/goldens/todo_recurrence_trash_series_expanded_phone.png
+!/test/widgets/goldens/todo_recurrence_trash_series_restore_confirm_phone.png
+!/test/widgets/goldens/todo_recurrence_trash_series_restored_phone.png
+!/test/widgets/todo_recurrence_trash_series_restore_test.dart
+!/test/widgets/todo_trash_purge_flow_test.dart
+!/test/widgets/goldens/todo_trash_purge_partial_confirm_phone.png
+!/test/widgets/goldens/todo_trash_purge_full_confirm_phone.png
+!/test/widgets/goldens/todo_trash_purge_clear_confirm_desktop.png
+!/test/widgets/goldens/todo_trash_multi_restore_phone_confirm.png
+!/test/widgets/goldens/todo_trash_multi_restore_phone_success.png
+!/test/widgets/goldens/todo_trash_multi_restore_desktop_selection.png
+!/test/widgets/todo_trash_multi_restore_test.dart
+!/test/widgets/goldens/todo_trash_purge_series_success_phone.png
+!/test/widgets/goldens/plan_preparation_phone.png
+!/test/widgets/goldens/plan_preparation_dark_narrow.png
 !/test/widgets/home_dashboard_scroll_section_test.dart
 !/test/widgets/todo_completion_celebration_test.dart
 !/test/widgets/todo_overdue_triage_test.dart
@@ -209,6 +236,7 @@ todo.md
 !/test/widgets/finance_transaction_detail_screen_test.dart
 !/test/widgets/home_drawer_menu_test.dart
 !/test/widgets/settings_navigation_test.dart
+!/test/widgets/time_log_save_confirmation_test.dart
 !/test/widgets/management_pages_test.dart
 !/test/widgets/management_components_test.dart
 !/test/widgets/history_and_messages_ui_test.dart
@@ -223,6 +251,8 @@ todo.md
 !/test/widgets/held_quick_voice_test.dart
 !/test/widgets/voice_chat_initial_message_test.dart
 !/test/widgets/voice_chat_initial_draft_test.dart
+!/test/widgets/pomodoro_today_section_test.dart
+!/test/widgets/personal_timeline_section_test.dart
 !/test/utils/
 /test/utils/*
 !/test/utils/todo_recurrence_picker_test.dart
@@ -233,6 +263,7 @@ todo.md
 !/test/utils/time_utils_test.dart
 !/test/features/
 /test/features/*
+!/test/features/finance_cumulative_balance_trend_test.dart
 !/test/features/thirty_day_challenge/
 /test/features/thirty_day_challenge/*
 !/test/features/thirty_day_challenge/challenge_center_screen_test.dart
@@ -250,6 +281,7 @@ todo.md
 !/test/features/habits/habit_time_point_chart_test.dart
 !/test/features/finance/
 /test/features/finance/*
+!/test/features/finance/finance_cumulative_balance_test.dart
 !/test/features/finance/finance_models_test.dart
 !/test/features/finance/finance_schema_test.dart
 !/test/features/finance/finance_sync_test.dart
@@ -357,3 +389,5 @@ todo.md
 !/test/widgets/home_layout_settings_page_test.dart
 !/test/widgets/conflict_alert_dialog_test.dart
 !/test/widgets/sticky_announcement_banner_test.dart
+!/test/services/todo_editor_save_service_test.dart
+!/test/widgets/todo_edit_exit_protection_test.dart

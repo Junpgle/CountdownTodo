@@ -271,6 +271,25 @@ void main() {
     await click(tester, key('open'));
   }
 
+  testWidgets('恢复页逐项显示设置替换，读取来源时不产生写入', (tester) async {
+    await fixture.db.update(
+      'todo_plan_blocks',
+      {'reminder_minutes': 7, 'pomodoro_minutes': 35, 'pomodoro_rounds': 7},
+      where: 'uuid = ?',
+      whereArgs: [source.id],
+    );
+    final before = await fixture.db.query('todo_plan_blocks');
+
+    await recoveryEditor(tester);
+
+    expect(find.text('提前提醒：7 分钟前 → 5 分钟前（仅应用于新规划）'), findsOneWidget);
+    expect(find.text('单轮番茄：35 分钟 → 25 分钟（仅应用于新规划）'), findsOneWidget);
+    expect(find.text('番茄轮数：7 轮 → 按规划时长（仅应用于新规划）'), findsOneWidget);
+    expect(await fixture.db.query('todo_plan_blocks'), before);
+    expect(await fixture.db.query('op_logs'), isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('采用五个候选，取消零写入，明天快捷选择重新读取今天', (tester) async {
     await recoveryEditor(tester);
     await click(tester, key('plan-lookup-slots'));

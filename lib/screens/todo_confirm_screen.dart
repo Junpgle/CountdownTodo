@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:uuid/uuid.dart';
+
 import '../widgets/floating_glass_control.dart';
 import '../widgets/ai_water_border.dart';
 
@@ -24,6 +26,7 @@ import '../utils/semester_week_context.dart';
 enum _TodoConfirmationAction { addTodo, addFixedSchedule, cancel }
 
 class ParsedTodoResult {
+  final String localTodoId;
   final String title;
   final String? remark;
   final String? location;
@@ -44,6 +47,7 @@ class ParsedTodoResult {
   final DateTime? recurrenceEndDate;
 
   ParsedTodoResult({
+    String? localTodoId,
     required this.title,
     this.remark,
     this.location,
@@ -61,7 +65,7 @@ class ParsedTodoResult {
     this.teamUuid,
     this.teamName,
     this.recurrenceEndDate,
-  });
+  }) : localTodoId = localTodoId ?? const Uuid().v4();
 
   Map<String, dynamic> toMap() {
     final isDateOnly =
@@ -76,6 +80,7 @@ class ParsedTodoResult {
       isDateOnly: isDateOnly,
     );
     return {
+      'localTodoId': localTodoId,
       'title': title,
       'remark': remark,
       'location': location,
@@ -214,6 +219,8 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
               endTime != null &&
               TodoItem.looksLikeLegacyDateOnlyRange(startTime, endTime));
       return ParsedTodoResult(
+        localTodoId: (result['localTodoId'] ?? result['local_todo_id'])
+            ?.toString(),
         title:
             result['title']?.toString() ?? result['content']?.toString() ?? '',
         remark: (result['remark'] ?? result['notes'] ?? result['note'])
@@ -802,6 +809,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                       : todo.timeSemantics;
                   setState(() {
                     _allTodos[_currentIndex] = ParsedTodoResult(
+                      localTodoId: todo.localTodoId,
                       title: titleCtrl.text,
                       remark: remarkCtrl.text.isEmpty ? null : remarkCtrl.text,
                       location: todo.location,
@@ -839,7 +847,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     if (action == _TodoConfirmationAction.addFixedSchedule) {
       if (!await _saveAsFixedSchedule(todo)) return;
     } else {
-      _confirmedTodos.add(todo.toMap());
+      _stageConfirmedTodo(todo);
     }
     _moveToNext();
   }
@@ -1041,7 +1049,20 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         _currentIndex++;
       });
     } else {
+      setState(() => _currentIndex = _allTodos.length);
       _finishConfirm();
+    }
+  }
+
+  void _stageConfirmedTodo(ParsedTodoResult todo) {
+    final result = todo.toMap();
+    final existingIndex = _confirmedTodos.indexWhere(
+      (existing) => existing['localTodoId'] == todo.localTodoId,
+    );
+    if (existingIndex < 0) {
+      _confirmedTodos.add(result);
+    } else {
+      _confirmedTodos[existingIndex] = result;
     }
   }
 
@@ -1054,6 +1075,13 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
       );
       widget.onSkip?.call();
       Navigator.pop(context);
+      return;
+    }
+    if (_confirmedTodos.isNotEmpty && widget.onConfirm == null) {
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('当前入口未连接待办保存，草稿仍保留')),
+      );
       return;
     }
 
@@ -1549,7 +1577,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                               _TodoConfirmationAction.addFixedSchedule) {
                             if (!await _saveAsFixedSchedule(todo)) return;
                           } else {
-                            _confirmedTodos.add(todo.toMap());
+                            _stageConfirmedTodo(todo);
                           }
                         }
                         await _finishConfirm();
@@ -1572,13 +1600,17 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
       width: double.infinity,
       child: FilledButton.icon(
         onPressed: () {
+          if (_confirmedTodos.isNotEmpty) {
+            unawaited(_finishConfirm());
+            return;
+          }
           if (_confirmedTodos.isEmpty && _fixedScheduleCount == 0) {
             widget.onSkip?.call();
           }
           Navigator.pop(context);
         },
         icon: const Icon(Icons.check),
-        label: const Text('完成'),
+        label: Text(_confirmedTodos.isEmpty ? '完成' : '重试保存并完成'),
         style: FilledButton.styleFrom(
           padding: const EdgeInsets.symmetric(vertical: 14),
         ),

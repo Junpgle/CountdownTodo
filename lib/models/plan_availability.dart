@@ -44,6 +44,7 @@ class PlanAvailabilityQuery {
     this.bufferDefaultsKey,
     this.avoidanceOverride = false,
     this.avoidanceDefaultsKey,
+    this.preparationEnd,
     this.weekly,
   });
   final PlanWeeklyContext? weekly;
@@ -64,6 +65,10 @@ class PlanAvailabilityQuery {
   final String? bufferDefaultsKey;
   final bool avoidanceOverride;
   final String? avoidanceDefaultsKey;
+
+  /// Temporary hard boundary for preparation before one fixed-schedule
+  /// occurrence. It is never written to the todo deadline.
+  final DateTime? preparationEnd;
   PlanAvailabilityQuery withWeekly(PlanWeeklyContext? value) =>
       PlanAvailabilityQuery(
         username: username,
@@ -82,6 +87,7 @@ class PlanAvailabilityQuery {
         bufferDefaultsKey: bufferDefaultsKey,
         avoidanceOverride: avoidanceOverride,
         avoidanceDefaultsKey: avoidanceDefaultsKey,
+        preparationEnd: preparationEnd,
         weekly: value,
       );
   PlanAvailabilityQuery onDate(DateTime value, {int? limit, bool? onlyApp}) =>
@@ -102,6 +108,7 @@ class PlanAvailabilityQuery {
         bufferDefaultsKey: bufferDefaultsKey,
         avoidanceOverride: avoidanceOverride,
         avoidanceDefaultsKey: avoidanceDefaultsKey,
+        preparationEnd: preparationEnd,
         weekly: weekly,
       );
   bool get hasBuffers => bufferBefore != 0 || bufferAfter != 0;
@@ -117,6 +124,49 @@ class PlanAvailabilityQuery {
   );
   DateTime get dayStart => DateTime(date.year, date.month, date.day);
   DateTime get dayEnd => DateTime(date.year, date.month, date.day + 1);
+}
+
+/// The fixed-schedule occurrence that bounds a preparation plan. The start
+/// time is a snapshot used to reject stale recommendations and drafts.
+class FixedSchedulePreparationContext {
+  const FixedSchedulePreparationContext({
+    required this.scheduleId,
+    required this.startTime,
+    this.appOnly = false,
+  });
+
+  final String scheduleId;
+  final int startTime;
+  final bool appOnly;
+
+  FixedSchedulePreparationContext copyWith({bool? appOnly}) =>
+      FixedSchedulePreparationContext(
+        scheduleId: scheduleId,
+        startTime: startTime,
+        appOnly: appOnly ?? this.appOnly,
+      );
+
+  Map<String, Object> toJson() => {
+    'scheduleId': scheduleId,
+    'startTime': startTime,
+    'appOnly': appOnly,
+  };
+
+  factory FixedSchedulePreparationContext.fromJson(Object? value) {
+    if (value is! Map ||
+        value['scheduleId'] is! String ||
+        (value['scheduleId'] as String).trim().isEmpty ||
+        value['startTime'] is! int ||
+        (value['startTime'] as int) <= 0 ||
+        (value.containsKey('appOnly') && value['appOnly'] is! bool)) {
+      throw const FormatException('固定日程准备上下文无效');
+    }
+    return FixedSchedulePreparationContext(
+      scheduleId: value['scheduleId'] as String,
+      startTime: value['startTime'] as int,
+      appOnly: value['appOnly'] == true,
+    );
+  }
 }
 
 /// Optional daily preferences, separate from persisted scheduling records.

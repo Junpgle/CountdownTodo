@@ -12,6 +12,7 @@ import '../utils/app_dialogs.dart';
 import '../services/ai_todo_action_executor.dart';
 import '../services/pomodoro_service.dart';
 import '../services/conflict_visibility_service.dart';
+import '../services/todo_editor_save_service.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/floating_glass_control.dart';
 
@@ -781,20 +782,33 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         onFixedSchedulesChanged: (_) {
           unawaited(_loadConflicts());
         },
-        onTodosBatchAction: (inserted, updated) async {
-          final allTodos = await StorageService.getTodos(widget.username);
-          final merged = AiTodoActionExecutor.mergeTodoUpdates(
-            allTodos,
-            inserted,
-            updated,
-          );
-          await StorageService.saveTodos(widget.username, merged);
-          try {
-            await _loadConflicts();
-          } catch (error) {
-            debugPrint('AI todo conflict refresh failed after save: $error');
-          }
-        },
+        onTodosBatchAction:
+            (
+              inserted,
+              updated, {
+              expectedTodoBaselines,
+              expectedSeriesMembership,
+            }) async {
+              final allTodos = await StorageService.getTodos(widget.username);
+              final merged = AiTodoActionExecutor.mergeTodoUpdates(
+                allTodos,
+                inserted,
+                updated,
+              );
+              await StorageService.saveTodos(
+                widget.username,
+                merged,
+                expectedTodoBaselines: expectedTodoBaselines,
+                expectedSeriesMembership: expectedSeriesMembership,
+              );
+              try {
+                await _loadConflicts();
+              } catch (error) {
+                debugPrint(
+                  'AI todo conflict refresh failed after save: $error',
+                );
+              }
+            },
       );
     } catch (e) {
       if (mounted) {
@@ -3327,6 +3341,27 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
           onTodosChanged: (updatedTodos) async {
             await StorageService.saveTodos(widget.username, updatedTodos);
           },
+          onEditorSave:
+              (
+                updatedTodos,
+                baselines, {
+                expectedSeriesMembership,
+                expectedFixedScheduleTodoIds,
+                expectedFixedScheduleBaselines,
+              }) => TodoEditorSaveService.save(
+                username: widget.username,
+                changedTodos: updatedTodos,
+                baselines: baselines,
+                expectedSeriesMembership: expectedSeriesMembership,
+                expectedFixedScheduleTodoIds: expectedFixedScheduleTodoIds,
+                expectedFixedScheduleBaselines: expectedFixedScheduleBaselines,
+              ),
+          onEditorGroupsSave: (updatedGroups, baselines) =>
+              TodoEditorSaveService.saveGroups(
+                username: widget.username,
+                changedGroups: updatedGroups,
+                baselines: baselines,
+              ),
           todoGroups: allGroups,
           onGroupsChanged: (updatedGroups) async {
             await StorageService.saveTodoGroups(widget.username, updatedGroups);

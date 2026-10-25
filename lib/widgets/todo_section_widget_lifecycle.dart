@@ -143,7 +143,9 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
       sendInitialMessage: sendInitialMessage,
       initialVoiceUsageSummary: initialVoiceUsageSummary,
       todos: widget.todos
-          .where((t) => !t.isDone && !_isHistoricalTodoAt(t, today))
+          .where(
+            (t) => !t.isDone && !t.isSkipped && !_isHistoricalTodoAt(t, today),
+          )
           .toList(),
       todoGroups: widget.todoGroups,
       courses: aiContext.courses,
@@ -153,15 +155,38 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
       teams: aiContext.teams,
       onTodoGroupsChanged: widget.onGroupsChanged,
       onFixedSchedulesChanged: (_) => widget.onRefreshRequested(),
-      onTodosBatchAction: (inserted, updated) {
-        widget.onTodosChanged(
-          AiTodoActionExecutor.mergeTodoUpdates(
-            widget.todos,
+      onTodosBatchAction:
+          (
             inserted,
-            updated,
-          ),
-        );
-      },
+            updated, {
+            expectedTodoBaselines,
+            expectedSeriesMembership,
+          }) async {
+            final merged = AiTodoActionExecutor.mergeTodoUpdates(
+              widget.todos,
+              inserted,
+              updated,
+            );
+            if (expectedSeriesMembership?.isNotEmpty == true) {
+              final save = widget.onEditorSave;
+              if (save == null || expectedTodoBaselines == null) {
+                throw StateError('当前入口无法安全保存整个待办系列');
+              }
+              final result = await save(
+                [...inserted, ...updated],
+                expectedTodoBaselines,
+                expectedSeriesMembership: expectedSeriesMembership,
+              );
+              if (result.warnings.isNotEmpty && mounted) {
+                AppSnackBars.showSnackBar(
+                  context,
+                  SnackBar(content: Text(result.warnings.join('；'))),
+                );
+              }
+            } else {
+              await widget.onTodosChanged(merged);
+            }
+          },
     );
   }
 
@@ -186,10 +211,11 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
         builder: (_) => AddTodoScreen(
           todoGroups: widget.todoGroups,
           initialTeamUuid: _selectedSubTeamUuid, // 🚀 关键：穿透视口上下文，自动标记团队
-          onTodoAdded: (todo) {
+          onTodoAdded: (todo) async {
             final updatedList = List<TodoItem>.from(widget.todos)..add(todo);
-            widget.onTodosChanged(updatedList);
+            await widget.onTodosChanged(updatedList);
           },
+          onManualTodoSaved: widget.onManualTodoSaved,
           onFixedScheduleAdded: (item) async {
             await StorageService.saveFixedSchedules(widget.username, [item]);
             widget.onRefreshRequested();

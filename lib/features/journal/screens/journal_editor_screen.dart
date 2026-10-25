@@ -245,6 +245,7 @@ class _JournalEditorScreenState extends State<JournalEditorScreen> {
         entry,
         savedAttachments,
         accountId: widget.accountId,
+        requireExisting: _isEditing,
       );
       savedToDatabase = true;
       final currentIds = savedAttachments.map((item) => item.id).toSet();
@@ -269,14 +270,18 @@ class _JournalEditorScreenState extends State<JournalEditorScreen> {
       }
       if (!mounted) return;
       Navigator.of(context).pop(true);
-    } catch (_) {
+    } catch (error) {
       if (!savedToDatabase && mediaCommit != null) {
         for (final attachment in mediaCommit.createdAttachments) {
           await JournalMediaService.instance.delete(attachment);
         }
       }
       if (mounted && !savedToDatabase) {
-        _showMessage('保存失败，内容仍保留在当前页面');
+        _showMessage(
+          error is JournalEntryUnavailableException
+              ? error.message
+              : '保存失败，内容仍保留在当前页面',
+        );
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);

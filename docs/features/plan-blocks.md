@@ -95,6 +95,25 @@ by default). Select a result to return to the page; a custom selection remains
 visible even when it was outside the original first two. The predicted duration
 is shown as **预计专注用时** and can be adjusted.
 
+## Schedule preparation planning
+
+An upcoming fixed-schedule detail can offer **安排准备时间** beside an
+associated unfinished todo. The preparation page estimates the todo duration,
+then shows up to five free slots across seven local days at a time. Weekly
+availability, avoidance windows, buffers, app schedules and readable phone
+calendar events use the same availability repository as ordinary planning.
+Longer lead times can be browsed one week at a time, and the page lists existing
+plans for the todo.
+
+The occurrence's start time is a temporary search boundary. It does not change
+the todo deadline or the repeating series. Choosing a result only fills the
+existing full-page plan editor; the user still reviews and explicitly saves one
+plan block. Before saving, the editor rechecks the todo, occurrence, linked
+relationship, current availability and start-time boundary. A local draft keeps
+the occurrence identity and boundary so a changed, cancelled or started event
+cannot authorize a stale plan. **到时间轴拖动安排** remains available and
+preselects the same todo.
+
 Both todo creation and plan editing use a compact estimate/reference row and an
 **估时依据** information button. Its read-only sheet shows the actual sample count,
 at most three title groups, cumulative focus durations and insufficient-data or

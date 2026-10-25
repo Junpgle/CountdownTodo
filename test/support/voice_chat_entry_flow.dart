@@ -46,7 +46,7 @@ void runVoiceChatEntryTest({required bool sendImmediately}) {
             'data: ${jsonEncode({
               'choices': [
                 {
-                  'delta': {'content': '好的，我来帮你安排'},
+                  'delta': {'content': '晚安，愿你带着轻松的心情入睡。'},
                   'finish_reason': 'stop',
                 },
               ],
@@ -66,8 +66,8 @@ void runVoiceChatEntryTest({required bool sendImmediately}) {
           200,
         );
       });
-      const initialVoiceText = '明天九点提醒我交报告';
-      const editedVoiceDraft = '我改成后天交报告';
+      const initialVoiceText = '写一句温柔的晚安句子';
+      const editedVoiceDraft = '给我一句适合今天的短句';
       await http.runWithClient(() async {
         await tester.pumpWidget(
           MaterialApp(
@@ -143,7 +143,7 @@ void runVoiceChatEntryTest({required bool sendImmediately}) {
           history.where((m) => m.role == ChatRole.user).single.content,
           expectedMessage,
         );
-        expect(history.last.content, contains('好的，我来帮你安排'));
+        expect(history.last.content, contains('轻松的心情入睡'));
         expect(history.first.usageSummary?.costMicros, 556);
         expect(history.first.usageSummary?.audioSeconds, 4);
         expect(find.text('语音识别 ¥0.0006 · 录音 4 秒'), findsOneWidget);

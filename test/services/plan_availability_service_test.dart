@@ -297,7 +297,7 @@ void main() {
       isFalse,
     );
   });
-  test('非法时长、倒置窗口、已完成待办均拒绝', () {
+  test('非法时长、倒置窗口、已完成或已跳过待办均拒绝', () {
     for (final q in [
       query(minutes: 0),
       query(minutes: -1),
@@ -315,6 +315,22 @@ void main() {
         snapshot(
           [],
           todo: TodoItem(id: 'todo-target', title: '完成', isDone: true),
+        ),
+        now: now,
+      ).slots,
+      isEmpty,
+    );
+    expect(
+      PlanAvailabilityService.find(
+        query(),
+        snapshot(
+          [],
+          todo: TodoItem(
+            id: 'todo-target',
+            title: '已跳过',
+            recurrenceSeriesId: 'series-1',
+            isSkipped: true,
+          ),
         ),
         now: now,
       ).slots,
@@ -363,6 +379,41 @@ void main() {
         snapshot([busy(12, 13)]),
         now: now,
       ),
+      isFalse,
+    );
+  });
+  test('固定日程开始时刻是独立硬边界，复制到跨日查询并阻止越界保存', () {
+    final boundary = at(9, 0).add(const Duration(seconds: 30));
+    final q = PlanAvailabilityQuery(
+      username: 'fixture',
+      todoId: 'todo-target',
+      date: day,
+      minutes: 45,
+      windowStart: 480,
+      windowEnd: 1440,
+      preparationEnd: boundary,
+    );
+    final snapshot = PlanAvailabilitySnapshot(
+      todo: TodoItem(id: 'todo-target', title: '复习高数'),
+      busy: const [],
+      coverage: '合成来源',
+    );
+
+    final suggestions = PlanAvailabilityService.find(q, snapshot, now: now);
+    expect(suggestions.slots, isNotEmpty);
+    expect(
+      suggestions.slots.every((slot) => !slot.end.isAfter(boundary)),
+      isTrue,
+    );
+    expect(q.onDate(DateTime(2026, 10, 9)).preparationEnd, boundary);
+
+    final overBoundary = PlanAvailabilitySelection(
+      q,
+      PlanTimeSlot(at(8, 30), at(9, 15)),
+      snapshot,
+    );
+    expect(
+      PlanAvailabilityService.accepts(overBoundary, snapshot, now: now),
       isFalse,
     );
   });

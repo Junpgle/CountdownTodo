@@ -281,6 +281,7 @@ abstract final class AiToolChatRunner {
           _isSelfContainedPlanningRequest(planningRequestText),
     );
     var callCount = 0;
+    var toolCallIndexOffset = 0;
     var proposalsProduced = false;
     var planningRepairAttempted = false;
     var planningScheduleRepairAttempted = false;
@@ -408,6 +409,20 @@ abstract final class AiToolChatRunner {
           // call arrived. Never flash a false "created/saved" claim.
           content: visibleDelta,
           reasoningContent: chunk.reasoningContent,
+          // Query-only turns can expose the incremental call stream for the
+          // thinking UI. When a write proposal is available, wait until the
+          // complete call has passed app-side validation before emitting it.
+          toolCallDeltas: hasWriteProposalTool
+              ? const []
+              : [
+                  for (final delta in chunk.toolCallDeltas)
+                    AiChatFunctionCallDelta(
+                      index: delta.index + toolCallIndexOffset,
+                      id: delta.id,
+                      name: delta.name,
+                      arguments: delta.arguments,
+                    ),
+                ],
           // Emit calls only after the complete proposal passes app-side
           // validation. Malformed writes must not reach the action parser.
           finishReason: chunk.finishReason,
@@ -415,6 +430,7 @@ abstract final class AiToolChatRunner {
           usageSummary: chunk.usageSummary,
         );
       }
+      if (!hasWriteProposalTool) toolCallIndexOffset += calls.length;
       yield AiChatStreamChunk(
         rawModelReply: AiNativeToolCallParser.formatRawReply(content, calls),
       );
@@ -1142,6 +1158,7 @@ abstract final class AiToolChatRunner {
   static const _cdtActionQueryDomains = {
     'update_todo': {'todos'},
     'complete_todo': {'todos'},
+    'skip_todo': {'todos'},
     'delete_todo': {'todos'},
     'reschedule_todo': {'todos'},
     'bulk_reschedule': {'todos'},
@@ -2606,6 +2623,7 @@ abstract final class AiToolChatRunner {
     final referenceFields = switch (actionName) {
       'update_todo' ||
       'complete_todo' ||
+      'skip_todo' ||
       'delete_todo' ||
       'reschedule_todo' ||
       'bulk_reschedule' ||
@@ -2655,6 +2673,7 @@ abstract final class AiToolChatRunner {
     const actionsWithTodoReferences = {
       'update_todo',
       'complete_todo',
+      'skip_todo',
       'delete_todo',
       'reschedule_todo',
       'bulk_reschedule',
@@ -2866,6 +2885,7 @@ abstract final class AiToolChatRunner {
     'complete_countdown' => '完成倒计时',
     'delete_countdown' => '删除倒计时',
     'complete_todo' => '完成待办',
+    'skip_todo' => '跳过本期待办',
     'delete_todo' => '删除待办',
     'update_todo' => '修改待办',
     'reschedule_todo' => '改期待办',

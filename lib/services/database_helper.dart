@@ -14,6 +14,8 @@ import '../utils/json_value_parser.dart';
 import 'database_path_resolver.dart';
 import 'database_schema_history.dart';
 
+enum TodoMapsOrdering { updatedAtDescending, fixedScheduleRelations }
+
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;
@@ -31,6 +33,8 @@ class DatabaseHelper {
     'creator_id',
     'creator_name',
     'is_completed',
+    'is_skipped',
+    'is_skipped_sync_pending',
     'is_deleted',
     'version',
     'due_date',
@@ -198,6 +202,119 @@ class DatabaseHelper {
       }
     } catch (e) {
       //       debugPrint("⚠️ Database: 检查/修复 todos 本地来源字段失败: $e");
+    }
+  }
+
+  /// Keeps an unscheduled todo's business start date nullable in local SQLite.
+  ///
+  /// Called from onUpgrade, which runs transactionally. Rebuilding from the
+  /// stored CREATE TABLE SQL changes only the created_date constraint while
+  /// preserving the exact columns and table constraints of older databases.
+  Future<void> _ensureTodoCreatedDateNullable(Database db) async {
+    final columns = await db.rawQuery('PRAGMA table_info(todos)');
+    if (columns.isEmpty) return;
+
+    final createdDateColumns = columns
+        .where((column) => column['name'] == 'created_date')
+        .toList(growable: false);
+    if (createdDateColumns.isEmpty ||
+        createdDateColumns.single['notnull'] != 1) {
+      return;
+    }
+
+    const temporaryTable = 'todos_created_date_nullable_migration';
+    final createRows = await db.rawQuery(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'todos'",
+    );
+    final createSql = createRows.isEmpty ? null : createRows.single['sql'];
+    if (createSql is! String) {
+      throw StateError('无法读取 todos 表结构，取消 created_date 迁移');
+    }
+
+    final renamedCreateSql = createSql.replaceFirst(
+      RegExp(
+        r'^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"todos"|`todos`|\[todos\]|todos)(?=\s*\()',
+        caseSensitive: false,
+      ),
+      'CREATE TABLE $temporaryTable',
+    );
+    if (renamedCreateSql == createSql) {
+      throw StateError('无法安全重建 todos 表，取消 created_date 迁移');
+    }
+
+    final nullableCreateSql = renamedCreateSql.replaceFirstMapped(
+      RegExp(
+        r'(\bcreated_date\b\s+INTEGER)\s+NOT\s+NULL\b',
+        caseSensitive: false,
+      ),
+      (match) => match.group(1)!,
+    );
+    if (nullableCreateSql == renamedCreateSql) {
+      throw StateError('无法移除 created_date 的 NOT NULL 约束');
+    }
+
+    final dependentObjects = await db.rawQuery('''
+      SELECT sql FROM sqlite_master
+      WHERE tbl_name = 'todos'
+        AND type IN ('index', 'trigger')
+        AND sql IS NOT NULL
+      ORDER BY type, name
+    ''');
+
+    // The onUpgrade callback is transactional, so any copy/rebuild failure
+    // rolls the schema back without discarding existing todo data.
+    await db.execute(nullableCreateSql);
+    await db.execute('INSERT INTO $temporaryTable SELECT * FROM todos');
+    await db.execute('DROP TABLE todos');
+    await db.execute('ALTER TABLE $temporaryTable RENAME TO todos');
+
+    for (final object in dependentObjects) {
+      final sql = object['sql'];
+      if (sql is String && sql.isNotEmpty) {
+        await db.execute(sql);
+      }
+    }
+  }
+
+  static Future<void> ensureTodoSkipStateSchema(Database db) async {
+    final todoColumns = await db.rawQuery('PRAGMA table_info(todos)');
+    if (todoColumns.isEmpty) return;
+    final todoNames = todoColumns.map((row) => row['name']).toSet();
+    if (!todoNames.contains('is_skipped')) {
+      await db.execute(
+        'ALTER TABLE todos ADD COLUMN is_skipped INTEGER NOT NULL DEFAULT 0',
+      );
+    }
+    if (!todoNames.contains('is_skipped_sync_pending')) {
+      await db.execute(
+        'ALTER TABLE todos ADD COLUMN is_skipped_sync_pending INTEGER NOT NULL DEFAULT 0',
+      );
+    }
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS todo_completions (
+        todo_uuid TEXT,
+        user_id INTEGER,
+        is_completed INTEGER,
+        is_skipped INTEGER NOT NULL DEFAULT 0,
+        is_skipped_sync_pending INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER,
+        PRIMARY KEY(todo_uuid, user_id)
+      )
+    ''');
+    final completionColumns = await db.rawQuery(
+      'PRAGMA table_info(todo_completions)',
+    );
+    final completionNames = completionColumns.map((row) => row['name']).toSet();
+    if (!completionNames.contains('is_skipped')) {
+      await db.execute(
+        'ALTER TABLE todo_completions ADD COLUMN is_skipped INTEGER NOT NULL DEFAULT 0',
+      );
+    }
+    if (!completionNames.contains('is_skipped_sync_pending')) {
+      await db.execute(
+        'ALTER TABLE todo_completions ADD COLUMN is_skipped_sync_pending INTEGER NOT NULL DEFAULT 0',
+      );
     }
   }
 
@@ -1055,6 +1172,9 @@ class DatabaseHelper {
           },
           onCreate: _createDB,
           onUpgrade: (db, oldVersion, newVersion) async {
+            if (oldVersion < 59) {
+              await ensureTodoSkipStateSchema(db);
+            }
             if (oldVersion < 58) {
               await ensurePlanEditorDraftSchema(db);
             }
@@ -1634,11 +1754,15 @@ class DatabaseHelper {
                 //                 debugPrint("⚠️ Database: 升级 V25 失败: $e");
               }
             }
+            if (oldVersion < 60) {
+              await _ensureTodoCreatedDateNullable(db);
+            }
           },
           onOpen: (db) async {
             await ensurePlanEditorDraftSchema(db);
             await ensureCourseTableSchema(db);
             await ensureTodoClientLocalSchema(db);
+            await ensureTodoSkipStateSchema(db);
             await ensureTodoPlanBlockSchema(db);
             await ensureFixedScheduleSchema(db);
             await ensureSuggestionFeedbackSchema(db);
@@ -1900,10 +2024,12 @@ class DatabaseHelper {
         creator_id $jsonType,
         creator_name $jsonType,
         is_completed $boolType DEFAULT 0,
+        is_skipped $boolType DEFAULT 0,
+        is_skipped_sync_pending $boolType DEFAULT 0,
         is_deleted $boolType DEFAULT 0,
         version $integerType DEFAULT 1,
         due_date $jsonType,
-        created_date $integerType,
+        created_date INTEGER,
         created_at $integerType,
         updated_at $integerType,
         collab_type $integerType DEFAULT 0,
@@ -1981,6 +2107,8 @@ class DatabaseHelper {
         todo_uuid TEXT,
         user_id INTEGER,
         is_completed INTEGER,
+        is_skipped INTEGER NOT NULL DEFAULT 0,
+        is_skipped_sync_pending INTEGER NOT NULL DEFAULT 0,
         updated_at INTEGER,
         PRIMARY KEY(todo_uuid, user_id)
       )
@@ -2939,12 +3067,14 @@ class DatabaseHelper {
 
   Future<List<Map<String, dynamic>>> getTodoMaps({
     bool includeDeleted = false,
+    bool deletedOnly = false,
     String? where,
     List<Object?>? whereArgs,
     List<String>? uuids,
     Set<String>? recurrenceSeriesIds,
     int? limit,
     int offset = 0,
+    TodoMapsOrdering ordering = TodoMapsOrdering.updatedAtDescending,
     bool inlineTextColumns = false,
     bool includeConflictData = false,
     DatabaseExecutor? databaseOverride,
@@ -2971,6 +3101,8 @@ class DatabaseHelper {
     }
     if (where != null && where.isNotEmpty) {
       whereParts.add(where);
+    } else if (deletedOnly) {
+      whereParts.add('t.is_deleted IS 1');
     } else if (!includeDeleted) {
       whereParts.add('t.is_deleted IS NOT 1');
     }
@@ -2991,6 +3123,14 @@ class DatabaseHelper {
     final List<String> projectedColumns = _todoBaseColumns.map((col) {
       if (col == 'is_completed') {
         return 'CASE WHEN t.collab_type = 1 AND c.is_completed IS NOT NULL THEN c.is_completed ELSE t.is_completed END AS is_completed';
+      }
+      if (col == 'is_skipped') {
+        return 'CASE WHEN t.collab_type = 1 AND c.is_skipped IS NOT NULL THEN c.is_skipped ELSE t.is_skipped END AS is_skipped';
+      }
+      if (col == 'is_skipped_sync_pending') {
+        return 'CASE WHEN t.collab_type = 1 AND c.is_skipped_sync_pending IS NOT NULL '
+            'THEN c.is_skipped_sync_pending ELSE t.is_skipped_sync_pending '
+            'END AS is_skipped_sync_pending';
       }
       return 't.$col AS $col';
     }).toList();
@@ -3032,7 +3172,26 @@ class DatabaseHelper {
     if (whereParts.isNotEmpty) {
       sql.write(' WHERE ${whereParts.join(' AND ')}');
     }
-    sql.write(' ORDER BY t.updated_at DESC');
+    switch (ordering) {
+      case TodoMapsOrdering.updatedAtDescending:
+        sql.write(' ORDER BY t.updated_at DESC');
+        break;
+      case TodoMapsOrdering.fixedScheduleRelations:
+        sql.write(
+          ' ORDER BY '
+          'CASE WHEN '
+          '(CASE WHEN t.collab_type = 1 AND c.is_completed IS NOT NULL '
+          'THEN c.is_completed ELSE t.is_completed END) = 0 AND '
+          '(CASE WHEN t.collab_type = 1 AND c.is_skipped IS NOT NULL '
+          'THEN c.is_skipped ELSE t.is_skipped END) = 0 '
+          'THEN 0 ELSE 1 END ASC, '
+          'CASE WHEN due_date IS NULL OR CAST(due_date AS INTEGER) = 0 THEN 1 ELSE 0 END ASC, '
+          'CAST(due_date AS INTEGER) ASC, '
+          "CASE WHEN TRIM(COALESCE(t.content, '')) = '' "
+          "THEN '未命名待办' ELSE LOWER(t.content) END ASC, t.uuid ASC",
+        );
+        break;
+    }
     if (limit != null) {
       sql.write(' LIMIT $limit');
       if (offset > 0) sql.write(' OFFSET $offset');
@@ -3091,6 +3250,16 @@ class DatabaseHelper {
           THEN c.is_completed
           ELSE t.is_completed
         END AS is_completed,
+        CASE
+          WHEN t.collab_type = 1 AND c.is_skipped IS NOT NULL
+          THEN c.is_skipped
+          ELSE t.is_skipped
+        END AS is_skipped,
+        CASE
+          WHEN t.collab_type = 1 AND c.is_skipped_sync_pending IS NOT NULL
+          THEN c.is_skipped_sync_pending
+          ELSE t.is_skipped_sync_pending
+        END AS is_skipped_sync_pending,
         t.is_deleted AS is_deleted,
         t.version AS version,
         t.due_date AS due_date,

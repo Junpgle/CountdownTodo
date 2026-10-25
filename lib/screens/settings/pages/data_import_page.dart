@@ -14,6 +14,8 @@ import '../../../utils/text_file_reader.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
 import '../../../utils/app_dialogs.dart';
+import '../widgets/import_scope_selector.dart';
+import '../widgets/import_restore_widgets.dart';
 
 class DataImportPage extends StatefulWidget {
   final bool isEmbedded;
@@ -33,6 +35,7 @@ class _DataImportPageState extends State<DataImportPage> {
   bool _isImporting = false;
   ImportResult? _result;
   bool? _isSameAccount;
+  Set<ImportDataScope> _selectedScopes = {};
 
   // 导入选项
   TeamDataStrategy _teamStrategy = TeamDataStrategy.skip;
@@ -66,6 +69,7 @@ class _DataImportPageState extends State<DataImportPage> {
       _result = null;
       _isParsing = true;
       _isSameAccount = null;
+      _selectedScopes = {};
     });
 
     try {
@@ -96,6 +100,7 @@ class _DataImportPageState extends State<DataImportPage> {
           _preview = preview;
           _isParsing = false;
           _isSameAccount = isSameAccount;
+          _selectedScopes = preview.scopes.map((scope) => scope.scope).toSet();
         });
 
         // 如果是不同账号，显示提示
@@ -141,6 +146,7 @@ class _DataImportPageState extends State<DataImportPage> {
                 _fileContent = null;
                 _preview = null;
                 _isSameAccount = null;
+                _selectedScopes = {};
               });
             },
             child: const Text('取消'),
@@ -155,7 +161,11 @@ class _DataImportPageState extends State<DataImportPage> {
   }
 
   Future<void> _import() async {
-    if (_filePath == null && _fileContent == null) return;
+    if ((_filePath == null && _fileContent == null) ||
+        _preview == null ||
+        _selectedScopes.isEmpty) {
+      return;
+    }
 
     final authorized = await MinorModeService.instance.authorizeAction(
       MinorModeAction.dataImport,
@@ -175,8 +185,26 @@ class _DataImportPageState extends State<DataImportPage> {
       }
       return;
     }
+    if (!mounted) return;
 
-    setState(() => _isImporting = true);
+    final preview = _preview!;
+    final selectedScopes = Set<ImportDataScope>.unmodifiable(_selectedScopes);
+    final selectedTeamCount = teamScopedImportCount(preview, selectedScopes);
+    final teamStrategy = _teamStrategy;
+    final confirmed = await ImportRestoreReviewDialog.show(
+      context: context,
+      preview: preview,
+      selectedScopes: selectedScopes,
+      isSameAccount: _isSameAccount,
+      teamStrategy: teamStrategy,
+      selectedTeamCount: selectedTeamCount,
+    );
+    if (!confirmed || !mounted) return;
+
+    setState(() {
+      _isImporting = true;
+      _result = null;
+    });
 
     final username = await StorageService.getCurrentUsername();
     if (username == null || username.isEmpty) {
@@ -194,8 +222,9 @@ class _DataImportPageState extends State<DataImportPage> {
         ? UuidStrategy.regenerate
         : UuidStrategy.keepOriginal;
     final importOptions = ImportOptions(
-      teamStrategy: _teamStrategy,
+      teamStrategy: teamStrategy,
       uuidStrategy: uuidStrategy,
+      selectedScopes: selectedScopes,
     );
     final result = _fileContent != null
         ? await DataImportService.importDataFromJsonString(
@@ -219,9 +248,7 @@ class _DataImportPageState extends State<DataImportPage> {
         AppSnackBars.showSnackBar(
           context,
           SnackBar(
-            content: Text(
-              '导入成功: 新增 ${result.importedCount} 条，更新 ${result.updatedCount} 条，跳过 ${result.skippedCount} 条',
-            ),
+            content: const Text('恢复完成，详细结果已按数据域列出。'),
             duration: const Duration(seconds: 3),
           ),
         );
@@ -299,11 +326,14 @@ class _DataImportPageState extends State<DataImportPage> {
               ),
             ),
           ] else if (_preview != null) ...[
-            _buildPreviewSection(colorScheme),
+            _buildPreviewSection(),
             const SizedBox(height: 16),
             _buildImportOptionsCard(colorScheme),
             const SizedBox(height: 16),
-            _buildMergeInfoCard(colorScheme),
+            ImportRestoreRulesCard(
+              selectedScopes: _selectedScopes,
+              selectedTeamCount: _selectedTeamImportCount,
+            ),
             const SizedBox(height: 24),
             _buildImportButton(),
           ],
@@ -337,7 +367,7 @@ class _DataImportPageState extends State<DataImportPage> {
                     ),
                   ),
                 ] else if (_preview != null) ...[
-                  _buildPreviewSection(colorScheme),
+                  _buildPreviewSection(),
                 ],
                 if (_result != null) ...[
                   const SizedBox(height: 16),
@@ -357,7 +387,10 @@ class _DataImportPageState extends State<DataImportPage> {
                 if (_preview != null) ...[
                   _buildImportOptionsCard(colorScheme),
                   const SizedBox(height: 16),
-                  _buildMergeInfoCard(colorScheme),
+                  ImportRestoreRulesCard(
+                    selectedScopes: _selectedScopes,
+                    selectedTeamCount: _selectedTeamImportCount,
+                  ),
                   const SizedBox(height: 24),
                   _buildImportButton(),
                 ],
@@ -442,8 +475,9 @@ class _DataImportPageState extends State<DataImportPage> {
     );
   }
 
-  Widget _buildPreviewSection(ColorScheme colorScheme) {
+  Widget _buildPreviewSection() {
     final preview = _preview!;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Card(
       child: Padding(
@@ -469,27 +503,13 @@ class _DataImportPageState extends State<DataImportPage> {
             if (preview.appVersion != null)
               _buildInfoRow('应用版本', preview.appVersion!),
             const Divider(height: 24),
-            const Text('包含数据:', style: TextStyle(fontWeight: FontWeight.w500)),
-            const SizedBox(height: 8),
-            ...preview.types.map(
-              (type) => Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  children: [
-                    const Icon(Icons.circle, size: 6),
-                    const SizedBox(width: 8),
-                    Text(type.label),
-                    const Spacer(),
-                    Text(
-                      '${type.count} 条',
-                      style: TextStyle(
-                        color: colorScheme.onSurfaceVariant,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            ImportScopeSelector(
+              preview: preview,
+              selectedScopes: _selectedScopes,
+              onSelectionChanged: (scopes) => setState(() {
+                _selectedScopes = scopes;
+                _result = null;
+              }),
             ),
           ],
         ),
@@ -509,61 +529,8 @@ class _DataImportPageState extends State<DataImportPage> {
     );
   }
 
-  Widget _buildMergeInfoCard(ColorScheme colorScheme) {
-    return OptionalLiquidGlassCard(
-      borderRadius: 12,
-      highContrast: true,
-      tint: colorScheme.primaryContainer.withValues(alpha: 0.16),
-      fallbackDecoration: BoxDecoration(
-        color: colorScheme.primaryContainer,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.merge_type,
-                  color: colorScheme.onPrimaryContainer,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '智能合并',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.onPrimaryContainer,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '• 本地不存在的数据将被导入\n• 冲突数据将保留最新版本\n• 已删除的数据也会被导入',
-              style: TextStyle(
-                fontSize: 13,
-                color: colorScheme.onPrimaryContainer,
-                height: 1.5,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildImportOptionsCard(ColorScheme colorScheme) {
-    // 计算团队数据总数
-    int totalTeamCount = 0;
-    if (_preview != null) {
-      for (final type in _preview!.types) {
-        totalTeamCount += type.teamCount;
-      }
-    }
+    final totalTeamCount = _selectedTeamImportCount;
 
     return Card(
       child: Padding(
@@ -663,7 +630,7 @@ class _DataImportPageState extends State<DataImportPage> {
     return SizedBox(
       width: double.infinity,
       child: FilledButton.icon(
-        onPressed: _isImporting ? null : _import,
+        onPressed: _isImporting || _selectedScopes.isEmpty ? null : _import,
         icon: _isImporting
             ? const SizedBox(
                 width: 18,
@@ -674,9 +641,21 @@ class _DataImportPageState extends State<DataImportPage> {
                 ),
               )
             : const Icon(Icons.download),
-        label: Text(_isImporting ? '导入中...' : '开始导入'),
+        label: Text(
+          _isImporting
+              ? '导入中...'
+              : _selectedScopes.isEmpty
+              ? '先选择恢复范围'
+              : '复核并导入',
+        ),
       ),
     );
+  }
+
+  int get _selectedTeamImportCount {
+    final preview = _preview;
+    if (preview == null) return 0;
+    return teamScopedImportCount(preview, _selectedScopes);
   }
 
   Widget _buildResultCard(ColorScheme colorScheme) {
@@ -725,15 +704,13 @@ class _DataImportPageState extends State<DataImportPage> {
             ),
             if (result.success) ...[
               const SizedBox(height: 8),
-              Text(
-                '新增: ${result.importedCount} 条\n'
-                '更新: ${result.updatedCount} 条\n'
-                '跳过: ${result.skippedCount} 条',
-                style: TextStyle(
-                  color: colorScheme.onTertiaryContainer,
-                  height: 1.5,
+              if (result.scopeSummaries.isNotEmpty)
+                ImportScopeRestoreSummaryList(summaries: result.scopeSummaries)
+              else
+                Text(
+                  '恢复已完成。',
+                  style: TextStyle(color: colorScheme.onTertiaryContainer),
                 ),
-              ),
             ] else if (result.errorMessage != null) ...[
               const SizedBox(height: 8),
               Text(

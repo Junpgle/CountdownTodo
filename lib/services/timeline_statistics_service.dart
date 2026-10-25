@@ -10,6 +10,7 @@ class TimelineRecurrenceSeriesStatistics {
     required this.scheduledCount,
     required this.completedCount,
     required this.missedCount,
+    required this.skippedCount,
     required this.pendingCount,
     required this.longestStreak,
     required this.endingStreak,
@@ -20,6 +21,7 @@ class TimelineRecurrenceSeriesStatistics {
   final int scheduledCount;
   final int completedCount;
   final int missedCount;
+  final int skippedCount;
   final int pendingCount;
   final int longestStreak;
   final int endingStreak;
@@ -51,6 +53,7 @@ class TimelineRangeStatistics {
     required this.recurringCompletedCount,
     required this.recurringScheduledCount,
     required this.recurringMissedCount,
+    required this.recurringSkippedCount,
     required this.recurringPendingCount,
     required this.recurrenceSeries,
     required this.topFocusTags,
@@ -71,6 +74,7 @@ class TimelineRangeStatistics {
   final int recurringCompletedCount;
   final int recurringScheduledCount;
   final int recurringMissedCount;
+  final int recurringSkippedCount;
   final int recurringPendingCount;
   final List<TimelineRecurrenceSeriesStatistics> recurrenceSeries;
   final List<MapEntry<String, int>> topFocusTags;
@@ -239,11 +243,13 @@ class TimelineStatisticsService {
     );
     var recurringCompletedCount = 0;
     var recurringMissedCount = 0;
+    var recurringSkippedCount = 0;
     var recurringPendingCount = 0;
     var recurringScheduledCount = 0;
     for (final series in recurrenceSeries) {
       recurringCompletedCount += series.completedCount;
       recurringMissedCount += series.missedCount;
+      recurringSkippedCount += series.skippedCount;
       recurringPendingCount += series.pendingCount;
       recurringScheduledCount += series.scheduledCount;
     }
@@ -267,6 +273,7 @@ class TimelineStatisticsService {
       recurringCompletedCount: recurringCompletedCount,
       recurringScheduledCount: recurringScheduledCount,
       recurringMissedCount: recurringMissedCount,
+      recurringSkippedCount: recurringSkippedCount,
       recurringPendingCount: recurringPendingCount,
       recurrenceSeries: recurrenceSeries,
       topFocusTags: topFocusTags.take(5).toList(),
@@ -402,12 +409,14 @@ class TimelineStatisticsService {
       final todosOnDay = entry.value;
       var representative = todosOnDay.first;
       var isCompleted = representative.isDone;
+      var isSkipped = representative.isSkipped;
       var due = _todoDueEnd(representative);
       for (final candidate in todosOnDay.skip(1)) {
         if (_preferRecurrenceOccurrence(candidate, representative)) {
           representative = candidate;
         }
         isCompleted = isCompleted || candidate.isDone;
+        isSkipped = isSkipped || candidate.isSkipped;
         final candidateDue = _todoDueEnd(candidate);
         if (candidateDue != null &&
             (due == null || candidateDue.isAfter(due))) {
@@ -434,7 +443,9 @@ class TimelineStatisticsService {
               start: occurrenceStart,
               title: representative.title,
               isCompleted: isCompleted,
-              isMissed: !isCompleted && effectiveDue.isBefore(now),
+              isSkipped: !isCompleted && isSkipped,
+              isMissed:
+                  !isCompleted && !isSkipped && effectiveDue.isBefore(now),
             ),
           );
     }
@@ -445,6 +456,7 @@ class TimelineStatisticsService {
         ..sort((a, b) => a.start.compareTo(b.start));
       var completed = 0;
       var missed = 0;
+      var skipped = 0;
       var pending = 0;
       var runningStreak = 0;
       var longestStreak = 0;
@@ -456,6 +468,9 @@ class TimelineStatisticsService {
         } else if (occurrence.isMissed) {
           missed++;
           runningStreak = 0;
+        } else if (occurrence.isSkipped) {
+          skipped++;
+          runningStreak = 0;
         } else {
           pending++;
         }
@@ -463,6 +478,7 @@ class TimelineStatisticsService {
 
       var endingStreak = 0;
       for (final occurrence in occurrences.reversed) {
+        if (occurrence.isSkipped) break;
         if (!occurrence.isCompleted && !occurrence.isMissed) continue;
         if (!occurrence.isCompleted) break;
         endingStreak++;
@@ -474,6 +490,7 @@ class TimelineStatisticsService {
           scheduledCount: occurrences.length,
           completedCount: completed,
           missedCount: missed,
+          skippedCount: skipped,
           pendingCount: pending,
           longestStreak: longestStreak,
           endingStreak: endingStreak,
@@ -495,6 +512,7 @@ class TimelineStatisticsService {
     TodoItem existing,
   ) {
     if (candidate.isDone != existing.isDone) return candidate.isDone;
+    if (candidate.isSkipped != existing.isSkipped) return candidate.isSkipped;
     final candidateActive = candidate.recurrence != RecurrenceType.none;
     final existingActive = existing.recurrence != RecurrenceType.none;
     if (candidateActive != existingActive) return candidateActive;
@@ -528,11 +546,13 @@ class _RecurrenceOccurrence {
     required this.start,
     required this.title,
     required this.isCompleted,
+    required this.isSkipped,
     required this.isMissed,
   });
 
   final DateTime start;
   final String title;
   final bool isCompleted;
+  final bool isSkipped;
   final bool isMissed;
 }

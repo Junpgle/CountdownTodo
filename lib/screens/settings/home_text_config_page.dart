@@ -985,9 +985,9 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
                 itemBuilder: (context, index) {
                   final slot = _salutationSlots[index];
                   return Material(
+                    key: ValueKey(slot.id),
                     type: MaterialType.transparency,
                     child: ListTile(
-                      key: ValueKey(slot.id),
                       leading: Icon(
                         _getSlotIcon(slot.startHour),
                         color: slot.text.isNotEmpty
@@ -1179,9 +1179,9 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
                 itemBuilder: (context, index) {
                   final slot = _timeSlots[index];
                   return Material(
+                    key: ValueKey(slot.id),
                     type: MaterialType.transparency,
                     child: ListTile(
-                      key: ValueKey(slot.id),
                       leading: Icon(
                         _getSlotIcon(slot.startHour),
                         color: slot.greetings.isNotEmpty

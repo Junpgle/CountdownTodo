@@ -3,6 +3,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 
 import '../screens/plan_editor_drafts_screen.dart';
 import '../screens/plan_cleanup_screen.dart';
@@ -16,6 +17,8 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models.dart';
+import '../models/todo_create_save_result.dart';
+import '../models/todo_editor_save_result.dart';
 import '../models/chat_message.dart';
 import '../services/api_service.dart';
 import '../storage_service.dart';
@@ -27,6 +30,7 @@ import '../services/course_service.dart';
 import '../services/ai_todo_action_executor.dart';
 import '../services/ai_todo_chat_launcher.dart';
 import '../services/pomodoro_service.dart';
+import '../services/todo_deadline_fixed_schedule_review_service.dart';
 import '../screens/course_screens.dart';
 import '../screens/home_settings_screen.dart';
 import '../screens/add_todo_screen.dart';
@@ -36,6 +40,7 @@ import 'todo_group_widget.dart';
 import 'todo_recurrence_progress.dart';
 import 'todo_recurrence_occurrence_picker.dart';
 import 'todo_recurrence_completion_overview.dart';
+import 'todo_deadline_fixed_schedule_review_dialog.dart';
 import '../utils/local_image_provider.dart';
 import '../utils/page_transitions.dart';
 import '../screens/folder_manage_screen.dart';
@@ -44,6 +49,8 @@ import '../services/feature_tip_service.dart';
 import '../services/item_semantics_service.dart';
 import '../services/fixed_schedule_recurrence_service.dart';
 import '../services/todo_recurrence_date_service.dart';
+import '../services/todo_recurrence_delete_service.dart';
+import '../services/todo_recurrence_series_edit_service.dart';
 import '../services/conflict_visibility_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/recognized_todo_adapter.dart';
@@ -60,6 +67,7 @@ import 'todo_overdue_triage_sheet.dart';
 import '../services/todo_completion_celebration_service.dart';
 import '../utils/calendar_date_math.dart';
 import 'todo_completion_celebration.dart';
+import 'todo_recurrence_delete_dialog.dart';
 
 part 'todo_section_widget_contract.dart';
 part 'todo_section_widget_lifecycle.dart';
@@ -71,7 +79,7 @@ part 'todo_edit_screen.dart';
 
 enum _TodoFolderDisplayMode { inline, separate, urgentFirst, hidden }
 
-enum _RecurrenceOccurrenceAction { toggleCompletion, edit }
+enum _RecurrenceOccurrenceAction { toggleCompletion, skip, edit }
 
 enum _OccurrenceSwitchAction { cancel, discard, save }
 
@@ -86,6 +94,17 @@ class TodoSectionWidget extends StatefulWidget {
   final String username;
   final bool isLight;
   final Function(List<TodoItem>) onTodosChanged;
+  final FutureOr<TodoCreateSaveResult> Function(TodoItem)? onManualTodoSaved;
+  final Future<TodoEditorSaveResult> Function(
+    List<TodoItem>,
+    Map<String, TodoItem>, {
+    Map<String, Set<String>>? expectedSeriesMembership,
+    Set<String>? expectedFixedScheduleTodoIds,
+    List<FixedScheduleItem>? expectedFixedScheduleBaselines,
+  })?
+  onEditorSave;
+  final FutureOr<void> Function(List<TodoGroup>, Map<String, TodoGroup>)?
+  onEditorGroupsSave;
   final VoidCallback onRefreshRequested;
   final Set<String> highlightedTodoIds;
   final int remoteUpdateHighlightSignal;
@@ -107,6 +126,7 @@ class TodoSectionWidget extends StatefulWidget {
 
   final GlobalKey? folderKey;
   final GlobalKey? historyKey;
+  final DateTime Function() clock;
 
   const TodoSectionWidget({
     super.key,
@@ -115,6 +135,9 @@ class TodoSectionWidget extends StatefulWidget {
     required this.username,
     required this.isLight,
     required this.onTodosChanged,
+    this.onManualTodoSaved,
+    this.onEditorSave,
+    this.onEditorGroupsSave,
     required this.onRefreshRequested,
     this.highlightedTodoIds = const <String>{},
     this.remoteUpdateHighlightSignal = 0,
@@ -126,6 +149,7 @@ class TodoSectionWidget extends StatefulWidget {
     this.initialSelectedTeamUuid,
     this.folderKey,
     this.historyKey,
+    this.clock = DateTime.now,
   });
 
   final String? initialSelectedTeamUuid;
@@ -238,7 +262,7 @@ List<TodoItem> _collapseRecurrenceInstancesForDisplayForTest(
       .toList();
 }
 
-({int completedCount, int totalCount, int overdueCount})
+({int completedCount, int totalCount, int overdueCount, int skippedCount})
 _calculateRecurrenceSummary({
   required List<TodoRecurrenceProgressNode> allNodes,
   required List<TodoRecurrenceProgressNode> historyNodes,
@@ -247,14 +271,17 @@ _calculateRecurrenceSummary({
   final summaryNodes = hasFixedEnd ? allNodes : historyNodes;
   var completedCount = 0;
   var overdueCount = 0;
+  var skippedCount = 0;
   for (final node in summaryNodes) {
     if (node.state == TodoRecurrenceNodeState.completed) completedCount++;
     if (node.state == TodoRecurrenceNodeState.overdue) overdueCount++;
+    if (node.state == TodoRecurrenceNodeState.skipped) skippedCount++;
   }
   return (
     completedCount: completedCount,
     totalCount: summaryNodes.length,
     overdueCount: overdueCount,
+    skippedCount: skippedCount,
   );
 }
 
@@ -267,6 +294,7 @@ abstract class _TodoSectionStateBase extends State<TodoSectionWidget>
   bool _isPastTodosExpanded = false;
   bool _isFutureExpanded = true;
   bool _hasInitializedExpansion = false;
+  bool _isDeletingRecurringTodo = false;
 
   final Map<String, GlobalKey> _todoCardKeys = {};
   final GlobalKey _folderManagementButtonKey = GlobalKey();
@@ -329,7 +357,12 @@ class TodoSectionWidgetState extends _TodoSectionStateBase
   ) => _filterHabitOnlyRecurringTodos(todos, habitOnlySeriesIds);
 
   @visibleForTesting
-  static ({int completedCount, int totalCount, int overdueCount})
+  static ({
+    int completedCount,
+    int totalCount,
+    int overdueCount,
+    int skippedCount,
+  })
   recurrenceSummaryForTest({
     required List<TodoRecurrenceProgressNode> allNodes,
     required List<TodoRecurrenceProgressNode> historyNodes,
@@ -372,7 +405,11 @@ class _TodoSectionViewModel {
             ),
           ]
           .where(
-            (todo) => !todo.isDone && !todo.isDeleted && todo.dueDate != null,
+            (todo) =>
+                !todo.isDone &&
+                !todo.isSkipped &&
+                !todo.isDeleted &&
+                todo.dueDate != null,
           )
           .toList(growable: false);
   late final int futureUndoneCount = futureItems

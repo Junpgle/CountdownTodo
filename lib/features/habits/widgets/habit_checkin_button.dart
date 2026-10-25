@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/habit_celebration_service.dart';
 
@@ -102,6 +104,9 @@ class HabitCelebrationTrigger extends StatefulWidget {
   /// 长按模式下短按时的提示信息。
   final String holdHint;
 
+  /// 无障碍按钮名称；为空时使用 [holdHint]。
+  final String? semanticLabel;
+
   const HabitCelebrationTrigger({
     super.key,
     required this.child,
@@ -111,6 +116,7 @@ class HabitCelebrationTrigger extends StatefulWidget {
     this.burstColor,
     this.borderRadius,
     this.holdHint = '长按以打卡',
+    this.semanticLabel,
   });
 
   @override
@@ -229,6 +235,14 @@ class _HabitCelebrationTriggerState extends State<HabitCelebrationTrigger>
     await widget.onCheckIn?.call();
   }
 
+  bool get _canActivate => widget.enabled && widget.onCheckIn != null;
+
+  void _activateWithoutPointerHold() {
+    if (!_canActivate) return;
+    final primary = widget.burstColor ?? Theme.of(context).colorScheme.primary;
+    unawaited(_triggerSuccess(primary));
+  }
+
   void _handlePointerDown(PointerDownEvent event) {
     if (!widget.enabled || widget.onCheckIn == null) return;
     _scaleController.animateTo(0.93, curve: Curves.easeInOut);
@@ -268,11 +282,8 @@ class _HabitCelebrationTriggerState extends State<HabitCelebrationTrigger>
       _isHolding = false;
       _holdController.reverse();
       _scaleController.animateTo(1.0, curve: Curves.easeOutBack);
-
-      // 轻按松开：未满蓄力时也直接完成打卡并触发庆祝动效，满足快速点击打卡需求
-      final primary =
-          widget.burstColor ?? Theme.of(context).colorScheme.primary;
-      _triggerSuccess(primary);
+      // 长按模式下，未满蓄力就松手只取消操作；即时辅助激活由语义／键盘
+      // 动作单独处理，避免把防误触设置重新变成轻触打卡。
     } else {
       final primary =
           widget.burstColor ?? Theme.of(context).colorScheme.primary;
@@ -296,69 +307,97 @@ class _HabitCelebrationTriggerState extends State<HabitCelebrationTrigger>
     final primaryColor = widget.burstColor ?? theme.colorScheme.primary;
     final effectiveRadius = widget.borderRadius ?? BorderRadius.circular(12);
 
-    return Stack(
-      fit: StackFit.passthrough,
-      clipBehavior: Clip.none,
-      alignment: Alignment.center,
-      children: [
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () {
-            // 吸收点击手势，阻止向上冒泡至卡片全局的跳转详情 onTap
+    return FocusableActionDetector(
+      enabled: _canActivate,
+      shortcuts: const <ShortcutActivator, Intent>{
+        SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+        SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+      },
+      actions: <Type, Action<Intent>>{
+        ActivateIntent: CallbackAction<ActivateIntent>(
+          onInvoke: (_) {
+            _activateWithoutPointerHold();
+            return null;
           },
-          onTapDown: (_) {},
-          onTapUp: (_) {},
-          onTapCancel: () {},
-          child: Listener(
-            behavior: HitTestBehavior.opaque,
-            onPointerDown: _handlePointerDown,
-            onPointerMove: _handlePointerMove,
-            onPointerUp: _handlePointerUp,
-            onPointerCancel: _handlePointerCancel,
-            child: AnimatedBuilder(
-              animation: Listenable.merge([_scaleController, _holdController]),
-              builder: (context, child) {
-                final scale = _scaleController.value;
-                final holdProgress = _holdController.value;
+        ),
+      },
+      child: Semantics(
+        button: true,
+        enabled: _canActivate,
+        label: widget.semanticLabel ?? widget.holdHint,
+        hint: _isHoldMode ? '${widget.holdHint}；轻触会取消蓄力，辅助操作可直接打卡。' : '轻触以打卡。',
+        onTap: _canActivate ? _activateWithoutPointerHold : null,
+        child: ExcludeSemantics(
+          child: Stack(
+            fit: StackFit.passthrough,
+            clipBehavior: Clip.none,
+            alignment: Alignment.center,
+            children: [
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                excludeFromSemantics: true,
+                onTap: () {
+                  // 吸收点击手势，阻止向上冒泡至卡片全局的跳转详情 onTap
+                },
+                onTapDown: (_) {},
+                onTapUp: (_) {},
+                onTapCancel: () {},
+                child: Listener(
+                  behavior: HitTestBehavior.opaque,
+                  onPointerDown: _handlePointerDown,
+                  onPointerMove: _handlePointerMove,
+                  onPointerUp: _handlePointerUp,
+                  onPointerCancel: _handlePointerCancel,
+                  child: AnimatedBuilder(
+                    animation: Listenable.merge([
+                      _scaleController,
+                      _holdController,
+                    ]),
+                    builder: (context, child) {
+                      final scale = _scaleController.value;
+                      final holdProgress = _holdController.value;
 
-                return Transform.scale(
-                  scale: scale,
-                  child: CustomPaint(
-                    foregroundPainter: _isHoldMode && holdProgress > 0.0
-                        ? _HoldProgressBorderPainter(
-                            progress: holdProgress,
-                            color: primaryColor,
-                            borderRadius: effectiveRadius,
-                          )
-                        : null,
-                    child: widget.child,
+                      return Transform.scale(
+                        scale: scale,
+                        child: CustomPaint(
+                          foregroundPainter: _isHoldMode && holdProgress > 0.0
+                              ? _HoldProgressBorderPainter(
+                                  progress: holdProgress,
+                                  color: primaryColor,
+                                  borderRadius: effectiveRadius,
+                                )
+                              : null,
+                          child: widget.child,
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
-            ),
+                ),
+              ),
+
+              // 粒子爆发层
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: AnimatedBuilder(
+                    animation: _burstController,
+                    builder: (context, child) {
+                      if (!_burstController.isAnimating) {
+                        return const SizedBox.shrink();
+                      }
+                      return CustomPaint(
+                        painter: _BurstPainter(
+                          particles: _particles,
+                          progress: _burstController.value,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
-
-        // 粒子爆发层
-        Positioned.fill(
-          child: IgnorePointer(
-            child: AnimatedBuilder(
-              animation: _burstController,
-              builder: (context, child) {
-                if (!_burstController.isAnimating) {
-                  return const SizedBox.shrink();
-                }
-                return CustomPaint(
-                  painter: _BurstPainter(
-                    particles: _particles,
-                    progress: _burstController.value,
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }

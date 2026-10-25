@@ -10,6 +10,7 @@ class JournalEntry {
   final DateTime createdAt;
   final DateTime updatedAt;
   final List<JournalAttachment> attachments;
+  final bool isDeleted;
 
   JournalEntry({
     String? id,
@@ -19,6 +20,7 @@ class JournalEntry {
     DateTime? createdAt,
     DateTime? updatedAt,
     this.attachments = const [],
+    this.isDeleted = false,
   }) : id = id ?? const Uuid().v4(),
        occurredAt = occurredAt ?? DateTime.now(),
        createdAt = createdAt ?? DateTime.now(),
@@ -32,6 +34,7 @@ class JournalEntry {
     DateTime? occurredAt,
     DateTime? updatedAt,
     List<JournalAttachment>? attachments,
+    bool? isDeleted,
     bool clearTitle = false,
   }) {
     return JournalEntry(
@@ -42,6 +45,7 @@ class JournalEntry {
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       attachments: attachments ?? this.attachments,
+      isDeleted: isDeleted ?? this.isDeleted,
     );
   }
 
@@ -53,7 +57,7 @@ class JournalEntry {
       'occurred_at': occurredAt.millisecondsSinceEpoch,
       'created_at': createdAt.millisecondsSinceEpoch,
       'updated_at': updatedAt.millisecondsSinceEpoch,
-      'is_deleted': 0,
+      'is_deleted': isDeleted ? 1 : 0,
     };
   }
 
@@ -78,6 +82,10 @@ class JournalEntry {
       createdAt: parseDate(map['created_at'], now),
       updatedAt: parseDate(map['updated_at'], now),
       attachments: attachments,
+      isDeleted:
+          map['is_deleted'] == 1 ||
+          map['is_deleted'] == true ||
+          map['is_deleted'] == '1',
     );
   }
 }

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models.dart';
+import '../models/todo_create_save_result.dart';
 import '../storage_service.dart';
 import '../services/database_helper.dart';
 import '../services/plan_review_repository.dart';
@@ -62,6 +63,8 @@ class PlanBlockTodaySection extends StatefulWidget {
     this.todos = const [],
     this.agendaRepository,
     this.onTodoAdded,
+    this.onManualTodoSaved,
+    this.onCreateRelatedTodo,
   });
   final String username;
   final bool isLight, enabled;
@@ -75,6 +78,8 @@ class PlanBlockTodaySection extends StatefulWidget {
   final List<TodoItem> todos;
   final HomeAgendaRepository? agendaRepository;
   final Future<void> Function(TodoItem)? onTodoAdded;
+  final FutureOr<TodoCreateSaveResult> Function(TodoItem)? onManualTodoSaved;
+  final FixedScheduleTodoLinkSaver? onCreateRelatedTodo;
   @override
   State<PlanBlockTodaySection> createState() => _PlanBlockTodaySectionState();
 }
@@ -737,13 +742,17 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
           page = FixedScheduleDetailScreen(
             username: widget.username,
             item: item.fixed!,
+            onCreateRelatedTodo: widget.onCreateRelatedTodo,
           );
           placeholder = Icons.event_available_rounded;
         } else if (item.calendar != null) {
           page = DeviceCalendarEventDetailScreen(event: item.calendar!);
           placeholder = Icons.event_note_rounded;
         } else {
-          page = TodoDetailScreen(todo: item.todo!);
+          page = TodoDetailScreen(
+            todo: item.todo!,
+            onCreateRelatedTodo: widget.onCreateRelatedTodo,
+          );
           placeholder = Icons.check_circle_outline_rounded;
         }
         if (cardKey != null) {
@@ -812,7 +821,8 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
         } else if (action == 'fixed') {
           final page = AddTodoScreen(
             initialMode: AddTodoInitialMode.fixedSchedule,
-            onTodoAdded: widget.onTodoAdded ?? (_) async {},
+            onTodoAdded: widget.onTodoAdded,
+            onManualTodoSaved: widget.onManualTodoSaved,
             onFixedScheduleAdded: (item) =>
                 StorageService.saveFixedSchedules(widget.username, [item]),
           );
@@ -952,48 +962,88 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
     _manualHostKey.currentState?.present(confirmedReceipt);
   }, preserveOnError: true);
 
-  Widget _agendaPlanActions(PlanTodayRow row, [GlobalKey? cardKey]) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        '今日已核实投入 ${planOverviewDuration(row.focusSeconds)}',
-        style: Theme.of(context).textTheme.bodySmall,
+  Widget _agendaPlanActions(PlanTodayRow row, [GlobalKey? cardKey]) {
+    final colors = Theme.of(context).colorScheme;
+    final secondaryActionStyle = TextButton.styleFrom(
+      foregroundColor: colors.primary,
+      minimumSize: const Size(0, 40),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      tapTargetSize: MaterialTapTargetSize.padded,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radius.circular(12)),
       ),
-      Wrap(
-        spacing: 4,
-        children: [
-          TextButton(
-            key: _editSourceKey(row.entry.id),
-            onPressed: _canOpen
-                ? () => _edit(row, sourceKey: _editSourceKey(row.entry.id))
-                : null,
-            child: const Text('查看规划'),
-          ),
-          TextButton(
-            key: ValueKey('plan-today-focus-${row.entry.id}'),
-            onPressed: _canOpen
-                ? () => _review(PlanReviewFilter.focus, row.entry.id, cardKey)
-                : null,
-            child: const Text('投入明细'),
-          ),
-          if (_canMarkAgendaPlanCompleted(row))
-            FilledButton.tonalIcon(
-              key: ValueKey('plan-today-complete-${row.entry.id}'),
-              onPressed: _active ? () => _openAgendaPlanCompletion(row) : null,
-              icon: const Icon(Icons.check_circle_outline),
-              label: const Text('标记为已完成'),
-            ),
-          if (row.status == TodoPlanStatus.missed.index)
+    );
+    final completeActionStyle = secondaryActionStyle.copyWith(
+      foregroundColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.disabled)
+            ? colors.onSurface.withValues(alpha: 0.38)
+            : colors.onSecondaryContainer,
+      ),
+      backgroundBuilder: (context, states, child) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: states.contains(WidgetState.disabled)
+              ? colors.onSurface.withValues(alpha: 0.08)
+              : colors.secondaryContainer,
+          borderRadius: const BorderRadius.all(Radius.circular(12)),
+        ),
+        child: child ?? const SizedBox.shrink(),
+      ),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '今日已核实投入 ${planOverviewDuration(row.focusSeconds)}',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
             TextButton.icon(
-              key: ValueKey('plan-today-recover-${row.entry.id}'),
-              onPressed: _canOpen ? () => _recover(row) : null,
-              icon: const Icon(Icons.event_repeat),
-              label: const Text('重新安排'),
+              key: _editSourceKey(row.entry.id),
+              onPressed: _canOpen
+                  ? () => _edit(row, sourceKey: _editSourceKey(row.entry.id))
+                  : null,
+              style: secondaryActionStyle,
+              icon: const Icon(Icons.edit_calendar_outlined, size: 18),
+              label: const Text('查看规划'),
             ),
-        ],
-      ),
-    ],
-  );
+            TextButton.icon(
+              key: ValueKey('plan-today-focus-${row.entry.id}'),
+              onPressed: _canOpen
+                  ? () => _review(PlanReviewFilter.focus, row.entry.id, cardKey)
+                  : null,
+              style: secondaryActionStyle,
+              icon: const Icon(Icons.receipt_long_outlined, size: 18),
+              label: const Text('投入明细'),
+            ),
+            if (_canMarkAgendaPlanCompleted(row))
+              TextButton.icon(
+                key: ValueKey('plan-today-complete-${row.entry.id}'),
+                onPressed: _active
+                    ? () => _openAgendaPlanCompletion(row)
+                    : null,
+                style: completeActionStyle,
+                icon: const Icon(Icons.check_circle_outline, size: 18),
+                label: const Text('标记为已完成'),
+              ),
+            if (row.status == TodoPlanStatus.missed.index)
+              TextButton.icon(
+                key: ValueKey('plan-today-recover-${row.entry.id}'),
+                onPressed: _canOpen ? () => _recover(row) : null,
+                style: secondaryActionStyle,
+                icon: const Icon(Icons.event_repeat, size: 18),
+                label: const Text('重新安排'),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
 
   void _openAgendaPlanCompletion(PlanTodayRow row) {
     if (!_active) return;

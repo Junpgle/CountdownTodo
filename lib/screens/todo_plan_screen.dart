@@ -1518,6 +1518,7 @@ class _PlanGridViewState extends State<_PlanGridView>
         todo != null &&
         !todo.isDone &&
         !todo.isDeleted &&
+        !todo.isSkipped &&
         !ConflictVisibilityService.blocksTodoPlanning(todo);
     final hiddenAnchor = !previewOnly && _gesture?.block.id == block.id;
     final isMappedCourse = block.id.startsWith('mapped_course_');

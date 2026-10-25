@@ -219,7 +219,7 @@ class CalendarSyncService {
     final entries = <CalendarSyncEntry>[];
 
     for (final todo in todos) {
-      if (todo.isDeleted || todo.isDone) continue;
+      if (todo.isDeleted || todo.isDone || todo.isSkipped) continue;
       final entry = _todoToEntry(todo);
       if (entry != null) entries.add(entry);
     }

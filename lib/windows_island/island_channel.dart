@@ -310,6 +310,21 @@ class IslandChannel {
     }
   }
 
+  static Future<List<String>> getIslandWindowIds() async {
+    try {
+      final windows = await WindowController.getAll().timeout(
+        _nativeCallTimeout,
+      );
+      return windows
+          .where((window) => window.arguments == 'islandMain')
+          .map((window) => window.windowId)
+          .toList(growable: false);
+    } catch (e) {
+      debugPrint('[IslandChannel] getIslandWindowIds failed: $e');
+      return [];
+    }
+  }
+
   static Future<bool> destroyWindow(String windowId) async {
     // First hide the window for immediate visual feedback
     try {

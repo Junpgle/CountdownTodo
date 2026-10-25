@@ -822,9 +822,7 @@ class AppSnackBars {
               },
             ),
       settings: _glassOverlaySettings(context, configuration),
-      quality: configuration.mode == LiquidGlassEffectMode.enhanced
-          ? GlassQuality.premium
-          : GlassQuality.standard,
+      quality: liquidGlassQualityForMode(configuration.mode),
     );
 
     Timer? expiryTimer;

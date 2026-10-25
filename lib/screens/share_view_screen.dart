@@ -481,9 +481,14 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
     final announcements = (_data!['announcements'] as List?) ?? [];
     final isLight = Theme.of(context).brightness == Brightness.light;
     final contentWidth = math.min(size.width - (isDesktop ? 48 : 32), 1240.0);
+    final scheduleNow = DateTime.now();
+    final visibleSchedules = ShareScheduleSection.visibleSchedulesAt(
+      _schedules,
+      scheduleNow,
+    );
     final hasContent =
         _todos.isNotEmpty ||
-        _schedules.isNotEmpty ||
+        visibleSchedules.isNotEmpty ||
         _countdowns.isNotEmpty ||
         announcements.isNotEmpty;
 
@@ -559,6 +564,7 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                     _buildSummaryCard(
                       teamName: teamName,
                       announcementsCount: announcements.length,
+                      scheduleCount: visibleSchedules.length,
                       isDesktop: isDesktop,
                       colorScheme: colorScheme,
                     ),
@@ -572,10 +578,14 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                       isDesktop
                           ? _buildDesktopSections(
                               announcements: announcements,
+                              schedules: visibleSchedules,
+                              scheduleNow: scheduleNow,
                               isLight: isLight,
                             )
                           : _buildMobileSections(
                               announcements: announcements,
+                              schedules: visibleSchedules,
+                              scheduleNow: scheduleNow,
                               isLight: isLight,
                             ),
                       contentWidth: contentWidth,
@@ -773,6 +783,7 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
   Widget _buildSummaryCard({
     required String teamName,
     required int announcementsCount,
+    required int scheduleCount,
     required bool isDesktop,
     required ColorScheme colorScheme,
   }) {
@@ -791,7 +802,7 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
       ),
       (
         icon: Icons.event_available_outlined,
-        value: _schedules.length.toString(),
+        value: scheduleCount.toString(),
         label: '日程',
         color: colorScheme.tertiary,
       ),
@@ -918,6 +929,8 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
 
   Widget _buildDesktopSections({
     required List announcements,
+    required List<FixedScheduleItem> schedules,
+    required DateTime scheduleNow,
     required bool isLight,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -949,12 +962,13 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
       );
     }
 
-    final schedulePanel = _schedules.isNotEmpty
+    final schedulePanel = schedules.isNotEmpty
         ? _buildSurfacePanel(
             colorScheme: colorScheme,
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
             child: ShareScheduleSection(
-              schedules: _schedules,
+              schedules: schedules,
+              now: scheduleNow,
               isLight: isLight,
             ),
           )
@@ -998,16 +1012,22 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
 
   Widget _buildMobileSections({
     required List announcements,
+    required List<FixedScheduleItem> schedules,
+    required DateTime scheduleNow,
     required bool isLight,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final sections = <Widget>[];
-    if (_schedules.isNotEmpty) {
+    if (schedules.isNotEmpty) {
       sections.add(
         _buildSurfacePanel(
           colorScheme: colorScheme,
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          child: ShareScheduleSection(schedules: _schedules, isLight: isLight),
+          child: ShareScheduleSection(
+            schedules: schedules,
+            now: scheduleNow,
+            isLight: isLight,
+          ),
         ),
       );
     }

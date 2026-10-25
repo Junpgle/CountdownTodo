@@ -4,7 +4,7 @@ import 'dart:math' as math;
 
 import 'package:intl/intl.dart' hide TextDirection;
 
-import '../services/liquid_glass_effect_service.dart';
+import '../utils/android_energy_policy.dart';
 import '../utils/app_image_filters.dart';
 import '../utils/time_utils.dart';
 import '../utils/app_platform.dart';
@@ -38,8 +38,10 @@ class SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color? textColor = isLight ? Colors.white : null;
-    final Color iconColor = isLight
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final useLightHeader = isLight || isDark;
+    final Color? textColor = useLightHeader ? Colors.white : null;
+    final Color iconColor = useLightHeader
         ? Colors.white70
         : Theme.of(context).colorScheme.primary;
 
@@ -262,9 +264,9 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
     );
     _pieAnim = _pieCtrl.drive(CurveTween(curve: Curves.easeInOutCubic));
     _shimmerAnim = Tween<double>(begin: -2.0, end: 2.0).animate(_pieCtrl);
-    if (_showsShimmer) {
+    if (_showsShimmer && AndroidEnergyPolicy.shouldRunDecorativeMotion) {
       _pieCtrl.repeat();
-    } else {
+    } else if (!_showsShimmer) {
       _pieCtrl.forward();
     }
   }
@@ -281,9 +283,9 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
             ? _shimmerAnimationDuration
             : _chartAnimationDuration
         ..reset();
-      if (_showsShimmer) {
+      if (_showsShimmer && AndroidEnergyPolicy.shouldRunDecorativeMotion) {
         _pieCtrl.repeat();
-      } else {
+      } else if (!_showsShimmer) {
         _pieCtrl.forward();
       }
     }
@@ -366,19 +368,30 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
 
   Widget _buildShimmerLoading(bool isTablet) {
     final colorScheme = Theme.of(context).colorScheme;
-    final useDarkGlass =
-        widget.isLight || colorScheme.brightness == Brightness.dark;
+    final isDark = colorScheme.brightness == Brightness.dark;
     return OptionalLiquidGlassCard(
       borderRadius: 24,
-      tint: (widget.isLight ? colorScheme.scrim : colorScheme.primary)
-          .withValues(alpha: 0.16),
-      isDark: useDarkGlass,
+      tint: colorScheme.primary.withValues(alpha: 0.16),
+      isDark: isDark,
       fallbackDecoration: BoxDecoration(
-        color: colorScheme.surface,
+        color: widget.isLight
+            ? (isDark
+                ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
+                : colorScheme.surface.withValues(alpha: 0.92))
+            : colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: widget.isLight
+              ? (isDark
+                  ? Colors.white.withValues(alpha: 0.15)
+                  : Colors.white.withValues(alpha: 0.6))
+              : Theme.of(context).dividerColor.withValues(alpha: 0.5),
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: Colors.black.withValues(
+              alpha: widget.isLight ? 0.08 : (isDark ? 0.2 : 0.05),
+            ),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -443,30 +456,22 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
       builder: (context, constraints) {
         final bool isTablet = constraints.maxWidth >= 600;
         final colorScheme = Theme.of(context).colorScheme;
-        final useDarkGlass =
-            widget.isLight || colorScheme.brightness == Brightness.dark;
-        final useWallpaperGlass =
-            widget.isLight && LiquidGlassEffectService.configuration.enabled;
-        final foregroundColor = useWallpaperGlass
-            ? colorScheme.onPrimary
+        final isDark = colorScheme.brightness == Brightness.dark;
+        final foregroundColor = isDark
+            ? Colors.white
             : colorScheme.onSurface;
-        final secondaryColor = useWallpaperGlass
-            ? colorScheme.onPrimary.withValues(alpha: 0.7)
+        final secondaryColor = isDark
+            ? Colors.white.withValues(alpha: 0.7)
             : colorScheme.onSurfaceVariant;
-        final permissionForegroundColor = widget.isLight
-            ? colorScheme.onPrimary
-            : foregroundColor;
-        final permissionSecondaryColor = widget.isLight
-            ? colorScheme.onPrimary.withValues(alpha: 0.7)
-            : secondaryColor;
+        final permissionForegroundColor = foregroundColor;
+        final permissionSecondaryColor = secondaryColor;
 
         if (!widget.hasPermission) {
           return OptionalLiquidGlassCard(
             margin: const EdgeInsets.only(bottom: 24),
             borderRadius: 24,
-            tint: (widget.isLight ? colorScheme.scrim : colorScheme.tertiary)
-                .withValues(alpha: 0.16),
-            isDark: useDarkGlass,
+            tint: colorScheme.tertiary.withValues(alpha: 0.16),
+            isDark: isDark,
             fallbackDecoration: BoxDecoration(
               color: Colors.amber.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(24),
@@ -504,15 +509,27 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
         if (widget.stats.isEmpty) {
           return OptionalLiquidGlassCard(
             borderRadius: 24,
-            tint: (widget.isLight ? colorScheme.scrim : colorScheme.primary)
-                .withValues(alpha: 0.16),
-            isDark: useDarkGlass,
+            tint: colorScheme.primary.withValues(alpha: 0.16),
+            isDark: isDark,
             fallbackDecoration: BoxDecoration(
-              color: colorScheme.surface,
+              color: widget.isLight
+                  ? (isDark
+                      ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
+                      : colorScheme.surface.withValues(alpha: 0.92))
+                  : colorScheme.surface,
               borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: widget.isLight
+                    ? (isDark
+                        ? Colors.white.withValues(alpha: 0.15)
+                        : Colors.white.withValues(alpha: 0.6))
+                    : Theme.of(context).dividerColor.withValues(alpha: 0.5),
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
+                  color: Colors.black.withValues(
+                    alpha: widget.isLight ? 0.08 : (isDark ? 0.2 : 0.05),
+                  ),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
@@ -535,17 +552,29 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
 
         return OptionalLiquidGlassCard(
           borderRadius: 24,
-          tint: (widget.isLight ? colorScheme.scrim : colorScheme.primary)
-              .withValues(alpha: 0.16),
-          isDark: useDarkGlass,
+          tint: colorScheme.primary.withValues(alpha: 0.16),
+          isDark: isDark,
           fallbackDecoration: BoxDecoration(
-            color: colorScheme.surface,
+            color: widget.isLight
+                ? (isDark
+                    ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
+                    : colorScheme.surface.withValues(alpha: 0.92))
+                : colorScheme.surface,
             borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: widget.isLight
+                  ? (isDark
+                      ? Colors.white.withValues(alpha: 0.15)
+                      : Colors.white.withValues(alpha: 0.6))
+                  : Theme.of(context).dividerColor.withValues(alpha: 0.5),
+            ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
+                color: Colors.black.withValues(
+                  alpha: widget.isLight ? 0.08 : (isDark ? 0.2 : 0.05),
+                ),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
@@ -595,9 +624,7 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
                               style: TextStyle(
                                 fontSize: isTablet ? 28 : 22,
                                 fontWeight: FontWeight.bold,
-                                color: useWallpaperGlass
-                                    ? foregroundColor
-                                    : colorScheme.primary,
+                                color: colorScheme.primary,
                               ),
                             ),
                           ],
@@ -852,7 +879,7 @@ class EmptyState extends StatelessWidget {
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
-      child: AppPlatform.isAndroid
+      child: AppPlatform.isAndroid || AppPlatform.isWindows
           ? content
           : BackdropFilter(filter: AppImageFilters.blur10, child: content),
     );
@@ -886,15 +913,12 @@ class MathStatsCard extends StatelessWidget {
       builder: (context, constraints) {
         final bool isTablet = constraints.maxWidth >= 600;
         final colorScheme = Theme.of(context).colorScheme;
-        final useDarkGlass =
-            isLight || colorScheme.brightness == Brightness.dark;
-        final useWallpaperGlass =
-            isLight && LiquidGlassEffectService.configuration.enabled;
-        final foregroundColor = useWallpaperGlass
-            ? colorScheme.onPrimary
+        final isDark = colorScheme.brightness == Brightness.dark;
+        final foregroundColor = isDark
+            ? Colors.white
             : colorScheme.onSurface;
-        final secondaryColor = useWallpaperGlass
-            ? colorScheme.onPrimary.withValues(alpha: 0.7)
+        final secondaryColor = isDark
+            ? Colors.white.withValues(alpha: 0.7)
             : colorScheme.onSurfaceVariant;
         final todayCountStyle = TextStyle(
           fontSize: isTablet ? 16 : 14,
@@ -904,7 +928,7 @@ class MathStatsCard extends StatelessWidget {
         final bestTimeStyle = TextStyle(
           fontSize: isTablet ? 26 : 20,
           fontWeight: FontWeight.w900,
-          color: useWallpaperGlass ? foregroundColor : colorScheme.primary,
+          color: colorScheme.primary,
         );
         final accuracyStyle = TextStyle(
           fontSize: isTablet ? 26 : 20,
@@ -914,21 +938,27 @@ class MathStatsCard extends StatelessWidget {
 
         return OptionalLiquidGlassCard(
           borderRadius: 24,
-          tint: (isLight ? colorScheme.scrim : colorScheme.tertiary).withValues(
-            alpha: 0.16,
-          ),
-          isDark: useDarkGlass,
+          tint: colorScheme.primary.withValues(alpha: 0.16),
+          isDark: isDark,
           fallbackDecoration: BoxDecoration(
-            color: colorScheme.surface,
+            color: isLight
+                ? (isDark
+                    ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
+                    : colorScheme.surface.withValues(alpha: 0.92))
+                : colorScheme.surface,
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
               color: isLight
-                  ? Colors.white.withValues(alpha: 0.2)
+                  ? (isDark
+                      ? Colors.white.withValues(alpha: 0.15)
+                      : Colors.white.withValues(alpha: 0.6))
                   : Theme.of(context).dividerColor.withValues(alpha: 0.5),
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
+                color: Colors.black.withValues(
+                  alpha: isLight ? 0.08 : (isDark ? 0.2 : 0.05),
+                ),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -1055,9 +1085,7 @@ class MathStatsCard extends StatelessWidget {
                                       minHeight: 4,
                                       backgroundColor: secondaryColor
                                           .withValues(alpha: 0.18),
-                                      color: useWallpaperGlass
-                                          ? foregroundColor
-                                          : colorScheme.primary,
+                                      color: colorScheme.primary,
                                     ),
                                   ),
                                 ],

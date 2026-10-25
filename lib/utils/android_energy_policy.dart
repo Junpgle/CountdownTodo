@@ -1,7 +1,7 @@
 import 'app_platform.dart';
 import '../services/power_save_mode_service.dart';
 
-/// Shared Android-only limits for energy-sensitive UI and sensor work.
+/// Shared platform limits for energy-sensitive UI and sensor work.
 abstract final class AndroidEnergyPolicy {
   static const Duration androidStrictFocusSensorPeriod = Duration(
     milliseconds: 200,
@@ -92,17 +92,20 @@ abstract final class AndroidEnergyPolicy {
     );
   }
 
-  /// Decorative motion is paused while Android Battery Saver is active.
+  /// Continuous decorative motion is disabled on Windows and paused while
+  /// Android Battery Saver is active.
   static bool get shouldRunDecorativeMotion => shouldRunDecorativeMotionFor(
     isAndroid: AppPlatform.isAndroid,
     isPowerSaveMode: PowerSaveModeService.isEnabled,
+    isWindows: AppPlatform.isWindows,
   );
 
   static bool shouldRunDecorativeMotionFor({
     required bool isAndroid,
     required bool isPowerSaveMode,
+    bool isWindows = false,
   }) {
-    return !isAndroid || !isPowerSaveMode;
+    return !isWindows && (!isAndroid || !isPowerSaveMode);
   }
 
   /// Android's native widget providers already perform their own scheduled
@@ -132,12 +135,13 @@ abstract final class AndroidEnergyPolicy {
         : defaultForegroundWidgetRefreshInterval;
   }
 
-  /// Android decorative loops settle after a few passes so static screens can
-  /// stop requesting frames. Other platforms keep their existing motion.
+  /// Android loops settle after a few passes; Windows loops are limited to
+  /// one pass as a fallback for callers that do not gate motion separately.
   static int? decorativeRepeatCount({int androidCount = 4}) {
     return decorativeRepeatCountFor(
       isAndroid: AppPlatform.isAndroid,
       isPowerSaveMode: PowerSaveModeService.isEnabled,
+      isWindows: AppPlatform.isWindows,
       androidCount: androidCount,
     );
   }
@@ -145,9 +149,11 @@ abstract final class AndroidEnergyPolicy {
   static int? decorativeRepeatCountFor({
     required bool isAndroid,
     bool isPowerSaveMode = false,
+    bool isWindows = false,
     int androidCount = 4,
   }) {
     assert(androidCount > 0);
+    if (isWindows) return 1;
     if (!isAndroid) return null;
     return isPowerSaveMode ? 1 : androidCount;
   }

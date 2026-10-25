@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../utils/page_transitions.dart';
@@ -38,6 +40,18 @@ typedef FinanceCategorySelectionCallback = Future<void> Function(
   List<FinanceTransaction> periodTransactions,
 );
 
+typedef FinanceCategoryRangeSelectionCallback = Future<void> Function(
+  String categoryUuid,
+  GlobalKey sourceKey,
+  List<FinanceTransaction> periodTransactions,
+  DateTimeRange periodRange,
+);
+
+typedef FinanceMonthLedgerCallback = Future<void> Function(
+  DateTime month,
+  GlobalKey sourceKey,
+);
+
 class FinanceOverviewPanel extends StatefulWidget {
   final double topPadding;
   final DateTime Function() clock;
@@ -55,6 +69,13 @@ class FinanceOverviewPanel extends StatefulWidget {
   final Future<void> Function() onRefresh;
   final ValueChanged<DateTime>? onMonthChanged;
   final FinanceCategorySelectionCallback? onCategorySelected;
+  final FinanceCategoryRangeSelectionCallback? onCategorySelectedWithRange;
+  final FinanceMonthLedgerCallback? onOpenMonthLedger;
+  final Future<void> Function(
+    FinanceTransaction transaction,
+    GlobalKey sourceKey,
+  )?
+  onOpenTransaction;
 
   const FinanceOverviewPanel({
     super.key,
@@ -74,6 +95,9 @@ class FinanceOverviewPanel extends StatefulWidget {
     required this.onRefresh,
     this.onMonthChanged,
     this.onCategorySelected,
+    this.onCategorySelectedWithRange,
+    this.onOpenMonthLedger,
+    this.onOpenTransaction,
   });
 
   @override
@@ -84,6 +108,10 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   _FinanceOverviewView _view = _FinanceOverviewView.month;
   late DateTime _focusedDate;
   int? _cumulativeBalanceMinor;
+  String? _selectedCumulativeTrendMonthKey;
+  final GlobalKey _selectedTrendLedgerActionKey = GlobalKey(
+    debugLabel: 'finance-cumulative-trend-open-ledger',
+  );
   final Map<String, GlobalKey> _categorySourceKeys = {};
   Map<String, FinanceCategory>? _categoryDisplayNamesSource;
   final Map<String, String> _categoryDisplayNames = {};
@@ -105,6 +133,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   ValueChanged<DateTime>? get onMonthChanged => widget.onMonthChanged;
   FinanceCategorySelectionCallback? get onCategorySelected =>
       widget.onCategorySelected;
+  FinanceCategoryRangeSelectionCallback? get onCategorySelectedWithRange =>
+      widget.onCategorySelectedWithRange;
 
   String _categoryDisplayName(String? categoryUuid) {
     if (!identical(_categoryDisplayNamesSource, categories)) {
@@ -134,6 +164,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     if (oldWidget.month.year != month.year ||
         oldWidget.month.month != month.month) {
       _focusedDate = _initialFocusDate(month);
+      _selectedCumulativeTrendMonthKey = null;
       refreshBalance = true;
     }
     if (!identical(
@@ -263,6 +294,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
             period,
           ),
           const SizedBox(height: 24),
+          _buildCumulativeBalanceTrendCard(context, colorScheme),
+          const SizedBox(height: 12),
           _buildCumulativeBalanceCard(context, colorScheme),
         ],
       ),
@@ -631,6 +664,214 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     );
     if (!mounted) return;
     setState(() => _cumulativeBalanceMinor = balance);
+  }
+
+  Widget _buildCumulativeBalanceTrendCard(
+    BuildContext context,
+    ColorScheme colorScheme,
+  ) {
+    final now = clock();
+    final points = FinanceRepository.cumulativeBalanceTrend(
+      events: widget.cumulativeBalanceEvents,
+      selectedMonth: month,
+      nowAt: now.millisecondsSinceEpoch,
+      openingBalanceMinor: widget.openingBalanceMinor,
+      openingBalanceStartDate: widget.openingBalanceStartDate,
+    );
+    final matchingIndex = points.indexWhere(
+      (point) => dateKey(point.month) == _selectedCumulativeTrendMonthKey,
+    );
+    final selectedIndex = matchingIndex >= 0
+        ? matchingIndex
+        : points.length - 1;
+    final selectedPoint = selectedIndex >= 0 ? points[selectedIndex] : null;
+    final rangeLabel = points.isEmpty
+        ? '最多显示近 12 个月'
+        : '${points.first.month.year}年${points.first.month.month}月'
+              ' — ${points.last.month.year}年${points.last.month.month}月';
+    final effectiveEndMonth =
+        DateTime(month.year, month.month).isAfter(DateTime(now.year, now.month))
+        ? DateTime(now.year, now.month)
+        : DateTime(month.year, month.month);
+    final rangeEndDate =
+        effectiveEndMonth.year == now.year &&
+            effectiveEndMonth.month == now.month
+        ? dateKey(now)
+        : dateKey(
+            DateTime(effectiveEndMonth.year, effectiveEndMonth.month + 1, 0),
+          );
+    final isBeforeOpeningDate =
+        widget.openingBalanceStartDate != null &&
+        rangeEndDate.compareTo(widget.openingBalanceStartDate!) < 0;
+    final hasNoBalanceHistory =
+        widget.cumulativeBalanceEvents.isEmpty &&
+        widget.openingBalanceMinor == 0 &&
+        widget.openingBalanceStartDate == null;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '月度累计结余趋势',
+              style: Theme.of(context).textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              rangeLabel,
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: colorScheme.onSurfaceVariant),
+            ),
+            if (selectedPoint case final point?) ...[
+              const SizedBox(height: 12),
+              Semantics(
+                liveRegion: true,
+                label:
+                    '${point.month.year}年${point.month.month}月，'
+                    '${point.isCurrentMonth ? '截至今天' : '月末'}累计结余'
+                    ' ${formatFinanceAmount(point.balanceMinor)}',
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${point.month.year}年${point.month.month}月 · '
+                        '${point.isCurrentMonth ? '截至今天' : '月末'}',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ),
+                    Text(
+                      formatFinanceAmount(point.balanceMinor),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: colorScheme.primary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (widget.onOpenMonthLedger != null)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    key: _selectedTrendLedgerActionKey,
+                    onPressed: () => unawaited(
+                      widget.onOpenMonthLedger!(
+                        selectedPoint.month,
+                        _selectedTrendLedgerActionKey,
+                      ),
+                    ),
+                    icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                    label: const Text('查看当月账单'),
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 4),
+              SizedBox(
+                height: 148,
+                width: double.infinity,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final semanticPoints = points
+                        .map(
+                          (item) =>
+                              '${item.month.year}年${item.month.month}月'
+                              '${item.isCurrentMonth ? '截至今天' : '月末'}'
+                              '${formatFinanceAmount(item.balanceMinor)}',
+                        )
+                        .join('；');
+                    return Semantics(
+                      button: true,
+                      label: '月度累计结余趋势。$semanticPoints。点击图表选择月份。',
+                      customSemanticsActions: {
+                        if (selectedIndex > 0)
+                          const CustomSemanticsAction(label: '前一个月'): () =>
+                              _selectCumulativeTrendPoint(
+                                points,
+                                selectedIndex - 1,
+                              ),
+                        if (selectedIndex < points.length - 1)
+                          const CustomSemanticsAction(label: '后一个月'): () =>
+                              _selectCumulativeTrendPoint(
+                                points,
+                                selectedIndex + 1,
+                              ),
+                      },
+                      child: GestureDetector(
+                        key: const ValueKey(
+                          'finance-cumulative-balance-trend-chart',
+                        ),
+                        behavior: HitTestBehavior.opaque,
+                        onTapUp: (details) {
+                          final index = _cumulativeTrendIndexForPosition(
+                            details.localPosition.dx,
+                            constraints.maxWidth,
+                            points.length,
+                          );
+                          _selectCumulativeTrendPoint(points, index);
+                        },
+                        child: CustomPaint(
+                          size: Size(constraints.maxWidth, 148),
+                          painter: _FinanceCumulativeBalanceTrendPainter(
+                            points: points,
+                            selectedIndex: selectedIndex,
+                            colorScheme: colorScheme,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ] else ...[
+              const SizedBox(height: 16),
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  child: Text(
+                    isBeforeOpeningDate
+                        ? '尚未到期初结余起算日期'
+                        : hasNoBalanceHistory
+                        ? '暂无可展示的结余趋势'
+                        : '所选月份没有可用的累计结余',
+                    style: Theme.of(context).textTheme.bodyMedium
+                        ?.copyWith(color: colorScheme.onSurfaceVariant),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  int _cumulativeTrendIndexForPosition(
+    double position,
+    double width,
+    int pointCount,
+  ) {
+    if (pointCount < 2) return 0;
+    const horizontalInset = 18.0;
+    final plotWidth = math.max(1.0, width - horizontalInset * 2);
+    final fraction = ((position - horizontalInset) / plotWidth).clamp(0.0, 1.0);
+    return (fraction * (pointCount - 1)).round();
+  }
+
+  void _selectCumulativeTrendPoint(
+    List<FinanceCumulativeBalancePoint> points,
+    int index,
+  ) {
+    if (index < 0 || index >= points.length) return;
+    setState(() {
+      _selectedCumulativeTrendMonthKey = dateKey(points[index].month);
+    });
   }
 
   Widget _buildCumulativeBalanceCard(
@@ -1150,6 +1391,16 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
                   sourceKey,
                   periodTransactions,
                 ),
+      onCategorySelectedWithRange: onCategorySelectedWithRange == null
+          ? null
+          : (categoryUuid, sourceKey, periodTransactions, periodRange) =>
+                onCategorySelectedWithRange!(
+                  categoryUuid,
+                  sourceKey,
+                  periodTransactions,
+                  periodRange,
+                ),
+      onOpenTransaction: widget.onOpenTransaction,
     );
     await PageTransitions.pushFromRect<String>(
       context: context,
@@ -1451,7 +1702,9 @@ class _FinanceLedgerOrderEntry {
 
 typedef _FinanceLedgerFilterKey = ({
   FinanceTransactionType? type,
-  String? categoryUuid,
+  String categoryKey,
+  String? rangeStartKey,
+  String? rangeEndKey,
 });
 
 class FinanceLedgerPanel extends StatefulWidget {
@@ -1464,10 +1717,17 @@ class FinanceLedgerPanel extends StatefulWidget {
   final String keyword;
   final FinanceTransactionType? filterType;
   final String? categoryUuid;
+  final Set<String>? categoryUuids;
+  final DateTimeRange? dateRange;
+  final bool isLoading;
+  final String? queryError;
+  final VoidCallback? onRetry;
   final void Function(FinanceTransaction, GlobalKey) onOpenDetail;
   final ValueChanged<String> onKeywordChanged;
   final ValueChanged<FinanceTransactionType?> onFilterChanged;
   final ValueChanged<String?>? onCategoryChanged;
+  final ValueChanged<Set<String>>? onCategoryUuidsChanged;
+  final ValueChanged<DateTimeRange?>? onDateRangeChanged;
   final ValueChanged<FinanceTransaction> onEdit;
   final ValueChanged<FinanceTransaction> onDelete;
   final ValueChanged<FinanceTransaction> onRefund;
@@ -1483,10 +1743,17 @@ class FinanceLedgerPanel extends StatefulWidget {
     required this.keyword,
     required this.filterType,
     this.categoryUuid,
+    this.categoryUuids,
+    this.dateRange,
+    this.isLoading = false,
+    this.queryError,
+    this.onRetry,
     required this.onOpenDetail,
     required this.onKeywordChanged,
     required this.onFilterChanged,
     this.onCategoryChanged,
+    this.onCategoryUuidsChanged,
+    this.onDateRangeChanged,
     required this.onEdit,
     required this.onDelete,
     required this.onRefund,
@@ -1503,7 +1770,12 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
   late final TextEditingController _keywordController;
   late String _localKeyword;
   FinanceTransactionType? _localFilterType;
-  String? _localCategoryUuid;
+  Set<String> _localCategoryUuids = <String>{};
+  DateTimeRange? _localDateRange;
+  final Set<String> _selectedTransactionUuids = <String>{};
+  bool _selectionMode = false;
+  bool _hasCommittedSelection = false;
+  bool _summaryExpanded = true;
   List<FinanceTransaction>? _searchSourceTransactions;
   Map<String, FinanceCategory>? _searchSourceCategories;
   Map<String, FinancePaymentMethod>? _searchSourcePaymentMethods;
@@ -1518,7 +1790,9 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
   Map<String, FinancePaymentMethod> get paymentMethods => widget.paymentMethods;
   String get keyword => _localKeyword;
   FinanceTransactionType? get filterType => _localFilterType;
-  String? get categoryUuid => _localCategoryUuid;
+  Set<String> get categoryUuids => _localCategoryUuids;
+  DateTimeRange? get dateRange =>
+      widget.onDateRangeChanged == null ? _localDateRange : widget.dateRange;
   void Function(FinanceTransaction, GlobalKey) get onOpenDetail =>
       widget.onOpenDetail;
   ValueChanged<String> get onKeywordChanged => widget.onKeywordChanged;
@@ -1538,7 +1812,12 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
     super.initState();
     _localKeyword = widget.keyword;
     _localFilterType = widget.filterType;
-    _localCategoryUuid = widget.categoryUuid;
+    _localCategoryUuids =
+        widget.categoryUuids?.toSet() ??
+        (widget.categoryUuid == null
+            ? <String>{}
+            : <String>{widget.categoryUuid!});
+    _localDateRange = widget.dateRange;
     _keywordController = TextEditingController(text: widget.keyword);
   }
 
@@ -1555,8 +1834,21 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
     if (_localFilterType != widget.filterType) {
       _localFilterType = widget.filterType;
     }
-    if (_localCategoryUuid != widget.categoryUuid) {
-      _localCategoryUuid = widget.categoryUuid;
+    if (widget.categoryUuids != null) {
+      _localCategoryUuids = widget.categoryUuids!.toSet();
+    } else if (widget.categoryUuids == null &&
+        _localCategoryUuids.length == 1 &&
+        !_localCategoryUuids.contains(widget.categoryUuid)) {
+      _localCategoryUuids = widget.categoryUuid == null
+          ? <String>{}
+          : <String>{widget.categoryUuid!};
+    }
+    if (widget.onDateRangeChanged != null) {
+      _localDateRange = widget.dateRange;
+    }
+    if (oldWidget.dateRange != widget.dateRange) {
+      _selectedTransactionUuids.clear();
+      _hasCommittedSelection = false;
     }
   }
 
@@ -1610,10 +1902,18 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
 
   List<_FinanceLedgerOrderEntry> _ensureOrderedEntries({
     required FinanceTransactionType? filterType,
-    required String? categoryUuid,
+    required Set<String> categoryUuids,
   }) {
     _syncSearchInputs();
-    final filterKey = (type: filterType, categoryUuid: categoryUuid);
+    final selectedRange = dateRange;
+    final filterKey = (
+      type: filterType,
+      categoryKey: (categoryUuids.toList()..sort()).join('\u0000'),
+      rangeStartKey: selectedRange == null
+          ? null
+          : dateKey(selectedRange.start),
+      rangeEndKey: selectedRange == null ? null : dateKey(selectedRange.end),
+    );
     if (identical(_orderedSourceTransactions, transactions) &&
         _orderedFilterKey == filterKey) {
       return _orderedEntries;
@@ -1622,13 +1922,13 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
     final entries = <_FinanceLedgerOrderEntry>[];
     for (final transaction in transactions) {
       if (filterType != null && transaction.type != filterType) continue;
-      if (categoryUuid != null) {
-        final matchesCategory =
-            categoryUuid == financeUncategorizedCategoryFilterUuid
-            ? transaction.categoryUuid == null ||
-                  transaction.categoryUuid!.trim().isEmpty
-            : transaction.categoryUuid == categoryUuid;
-        if (!matchesCategory) continue;
+      if (!_matchesSelectedCategories(transaction)) continue;
+      if (selectedRange != null) {
+        final transactionDate = transaction.transactionDate;
+        if (transactionDate.compareTo(dateKey(selectedRange.start)) < 0 ||
+            transactionDate.compareTo(dateKey(selectedRange.end)) > 0) {
+          continue;
+        }
       }
       entries.add(
         _FinanceLedgerOrderEntry(
@@ -1701,6 +2001,8 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
   }
 
   void _updateKeyword(String value) {
+    _selectedTransactionUuids.clear();
+    _hasCommittedSelection = false;
     if (_localKeyword != value) {
       setState(() => _localKeyword = value);
     }
@@ -1708,17 +2010,182 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
   }
 
   void _updateFilterType(FinanceTransactionType? value) {
+    _selectedTransactionUuids.clear();
+    _hasCommittedSelection = false;
     if (_localFilterType != value) {
       setState(() => _localFilterType = value);
     }
     onFilterChanged(value);
   }
 
-  void _updateCategoryFilter(String? value) {
-    if (_localCategoryUuid != value) {
-      setState(() => _localCategoryUuid = value);
+  void _updateCategoryFilters(Set<String> values) {
+    _selectedTransactionUuids.clear();
+    _hasCommittedSelection = false;
+    setState(() => _localCategoryUuids = values);
+    widget.onCategoryUuidsChanged?.call(values);
+    if (widget.onCategoryUuidsChanged == null) {
+      onCategoryChanged?.call(values.length == 1 ? values.first : null);
     }
-    onCategoryChanged?.call(value);
+  }
+
+  Future<void> _pickDateRange() async {
+    final now = widget.clock();
+    final month = widget.month ?? now;
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      initialDateRange:
+          dateRange ??
+          DateTimeRange(
+            start: DateTime(month.year, month.month),
+            end: DateTime(month.year, month.month + 1, 0),
+          ),
+      helpText: '选择统计日期范围',
+      saveText: '应用',
+    );
+    if (picked == null || !mounted) return;
+    _selectedTransactionUuids.clear();
+    _hasCommittedSelection = false;
+    if (widget.onDateRangeChanged == null) {
+      setState(() => _localDateRange = picked);
+    } else {
+      widget.onDateRangeChanged!(picked);
+    }
+  }
+
+  void _resetDateRange() {
+    _selectedTransactionUuids.clear();
+    _hasCommittedSelection = false;
+    if (widget.onDateRangeChanged == null) {
+      setState(() => _localDateRange = null);
+    } else {
+      widget.onDateRangeChanged!(null);
+    }
+  }
+
+  Future<void> _pickCategories() async {
+    final selected = await showDialog<Set<String>>(
+      context: context,
+      builder: (context) => _FinanceLedgerCategoryPickerDialog(
+        categories: categories,
+        initialSelection: categoryUuids,
+        categoryCounts: widget.isLoading || widget.queryError != null
+            ? null
+            : _categoryCountsForPicker(),
+      ),
+    );
+    if (selected == null || !mounted) return;
+    _updateCategoryFilters(selected);
+  }
+
+  Map<String, int> _categoryCountsForPicker() {
+    final counts = <String, int>{};
+    final selectedRange = dateRange;
+    final query = keyword.trim().toLowerCase();
+    final dateMatches = <String, bool>{};
+
+    for (final transaction in transactions) {
+      if (filterType != null && transaction.type != filterType) continue;
+      if (selectedRange != null) {
+        final transactionDate = transaction.transactionDate;
+        if (transactionDate.compareTo(dateKey(selectedRange.start)) < 0 ||
+            transactionDate.compareTo(dateKey(selectedRange.end)) > 0) {
+          continue;
+        }
+      }
+      if (query.isNotEmpty) {
+        final matchesText = _searchableTextFor(transaction).contains(query);
+        final matchesDate = dateMatches.putIfAbsent(
+          transaction.transactionDate,
+          () => _matchesFinanceLedgerDate(transaction.transactionDate, query),
+        );
+        if (!matchesText && !matchesDate) continue;
+      }
+
+      final categoryUuid = transaction.categoryUuid?.trim();
+      if (categoryUuid == null || categoryUuid.isEmpty) {
+        counts.update(
+          financeUncategorizedCategoryFilterUuid,
+          (count) => count + 1,
+          ifAbsent: () => 1,
+        );
+        continue;
+      }
+
+      var category = categories[categoryUuid];
+      final visited = <String>{};
+      while (category != null && visited.add(category.uuid)) {
+        counts.update(category.uuid, (count) => count + 1, ifAbsent: () => 1);
+        final parentUuid = category.parentUuid?.trim();
+        if (parentUuid == null || parentUuid.isEmpty) break;
+        final parent = categories[parentUuid];
+        if (parent == null || parent.type != category.type) break;
+        category = parent;
+      }
+    }
+
+    return counts;
+  }
+
+  void _toggleSelectionMode() {
+    setState(() {
+      _selectionMode = !_selectionMode;
+      if (_selectionMode) {
+        _summaryExpanded = true;
+      } else {
+        _hasCommittedSelection = _selectedTransactionUuids.isNotEmpty;
+      }
+    });
+  }
+
+  void _clearSelection() {
+    setState(() {
+      _selectedTransactionUuids.clear();
+      _hasCommittedSelection = false;
+    });
+  }
+
+  void _toggleTransactionSelection(FinanceTransaction transaction) {
+    setState(() {
+      if (!_selectedTransactionUuids.add(transaction.uuid)) {
+        _selectedTransactionUuids.remove(transaction.uuid);
+      }
+    });
+  }
+
+  void _toggleSelectAll(List<_FinanceLedgerOrderEntry> filtered) {
+    final visibleUuids = filtered
+        .map((entry) => entry.transaction.uuid)
+        .toSet();
+    setState(() {
+      if (visibleUuids.isNotEmpty &&
+          visibleUuids.every(_selectedTransactionUuids.contains)) {
+        _selectedTransactionUuids.removeAll(visibleUuids);
+      } else {
+        _selectedTransactionUuids.addAll(visibleUuids);
+      }
+    });
+  }
+
+  bool _matchesSelectedCategories(FinanceTransaction transaction) {
+    if (categoryUuids.isEmpty) return true;
+    final selected = categoryUuids;
+    final transactionCategoryUuid = transaction.categoryUuid?.trim();
+    if (transactionCategoryUuid == null || transactionCategoryUuid.isEmpty) {
+      return selected.contains(financeUncategorizedCategoryFilterUuid);
+    }
+    var current = categories[transactionCategoryUuid];
+    final visited = <String>{};
+    while (current != null && visited.add(current.uuid)) {
+      if (selected.contains(current.uuid)) return true;
+      final parentUuid = current.parentUuid?.trim();
+      if (parentUuid == null || parentUuid.isEmpty) break;
+      final parent = categories[parentUuid];
+      if (parent == null || parent.type != current.type) break;
+      current = parent;
+    }
+    return selected.contains(transactionCategoryUuid);
   }
 
   @override
@@ -1727,7 +2194,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
     final hasKeyword = query.isNotEmpty;
     final orderedEntries = _ensureOrderedEntries(
       filterType: filterType,
-      categoryUuid: categoryUuid,
+      categoryUuids: categoryUuids,
     );
     if (hasKeyword) _ensureSearchEntries(orderedEntries);
 
@@ -1755,6 +2222,21 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
       }
     }
     final nowAt = widget.clock().millisecondsSinceEpoch;
+    final screenSize = MediaQuery.sizeOf(context);
+    const summaryPanelHorizontalMargin = 16.0;
+    final summaryPanelWidth = math
+        .min(
+          540.0,
+          math.max(0.0, screenSize.width - summaryPanelHorizontalMargin * 2),
+        )
+        .toDouble();
+    final summaryPanelMaxHeight = math
+        .min(260.0, math.max(140.0, screenSize.height * 0.40))
+        .toDouble();
+    final listBottomPadding =
+        financeBottomContentPaddingFor(context) +
+        (_summaryExpanded ? summaryPanelMaxHeight : 56.0) +
+        16;
     final dayGroups = _groupFinanceTransactionsByDay(filtered, asOfAt: nowAt);
     final ledgerRows = <_FinanceLedgerRow>[];
     for (var groupIndex = 0; groupIndex < dayGroups.length; groupIndex++) {
@@ -1781,61 +2263,158 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
       final cardKey = _cardKeys[transaction.uuid];
       if (cardKey != null) keyedRowIndices[cardKey] = rowIndex;
     }
-    final bottomPadding = financeBottomContentPaddingFor(context);
-
-    return Column(
+    return Stack(
+      fit: StackFit.expand,
       children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(16, widget.topPadding + 12, 16, 4),
-          child: TextField(
-            controller: _keywordController,
-            onChanged: _updateKeyword,
-            decoration: InputDecoration(
-              hintText: '搜索商家、备注、分类、关联账户或日期',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: keyword.isEmpty
-                  ? null
-                  : IconButton(
-                      onPressed: () => _updateKeyword(''),
-                      icon: const Icon(Icons.clear),
-                    ),
-              border: const OutlineInputBorder(),
-              isDense: true,
-            ),
-          ),
-        ),
-        SizedBox(
-          height: 48,
-          child: ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            scrollDirection: Axis.horizontal,
-            children: [
-              _buildFilterChip(context, '全部', null),
-              for (final type in FinanceTransactionType.values)
-                _buildFilterChip(context, type.label, type),
-              if (categoryUuid != null) _buildCategoryFilterChip(context),
-            ],
-          ),
-        ),
-        Expanded(
-          child: filtered.isEmpty
-              ? _buildEmptyState(context)
-              : ListView.builder(
-                  padding: EdgeInsets.fromLTRB(16, 4, 16, bottomPadding),
-                  itemCount: ledgerRows.length,
-                  findChildIndexCallback: (key) => keyedRowIndices[key],
-                  itemBuilder: (context, index) {
-                    final row = ledgerRows[index];
-                    if (row.isSpacer) return const SizedBox(height: 8);
-                    final group = row.group;
-                    if (group != null) return _buildDayHeader(context, group);
-                    return _buildTransactionTile(
-                      context,
-                      row.transaction!,
-                      nowAt,
-                    );
-                  },
+        Column(
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(16, widget.topPadding + 12, 16, 4),
+              child: TextField(
+                controller: _keywordController,
+                onChanged: _updateKeyword,
+                decoration: InputDecoration(
+                  hintText: '搜索商家、备注、分类、关联账户或日期',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: keyword.isEmpty
+                      ? null
+                      : IconButton(
+                          onPressed: () => _updateKeyword(''),
+                          icon: const Icon(Icons.clear),
+                        ),
+                  border: const OutlineInputBorder(),
+                  isDense: true,
                 ),
+              ),
+            ),
+            SizedBox(
+              height: 48,
+              child: ListView(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
+                scrollDirection: Axis.horizontal,
+                children: [
+                  _buildFilterChip(context, '全部', null),
+                  for (final type in FinanceTransactionType.values)
+                    _buildFilterChip(context, type.label, type),
+                  if (widget.onDateRangeChanged != null)
+                    _buildDateRangeFilterChip(context),
+                  _buildCategoryFilterChip(context),
+                ],
+              ),
+            ),
+            Expanded(
+              child: widget.queryError != null
+                  ? _buildQueryError(context, widget.queryError!)
+                  : widget.isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : filtered.isEmpty
+                  ? _buildEmptyState(context)
+                  : ListView.builder(
+                      padding: EdgeInsets.fromLTRB(
+                        16,
+                        4,
+                        16,
+                        listBottomPadding,
+                      ),
+                      itemCount: ledgerRows.length,
+                      findChildIndexCallback: (key) => keyedRowIndices[key],
+                      itemBuilder: (context, index) {
+                        final row = ledgerRows[index];
+                        if (row.isSpacer) return const SizedBox(height: 8);
+                        final group = row.group;
+                        if (group != null) {
+                          return _buildDayHeader(
+                            context,
+                            group,
+                            hideAmountsDuplicatedByFooter:
+                                _summaryExpanded &&
+                                dayGroups.length == 1 &&
+                                !_selectionMode &&
+                                !_hasCommittedSelection,
+                          );
+                        }
+                        return _buildTransactionTile(
+                          context,
+                          row.transaction!,
+                          nowAt,
+                          selectionMode: _selectionMode,
+                          selected: _selectedTransactionUuids.contains(
+                            row.transaction!.uuid,
+                          ),
+                          onToggleSelection: () =>
+                              _toggleTransactionSelection(row.transaction!),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+        Positioned(
+          right: summaryPanelHorizontalMargin,
+          bottom: financeBottomContentPaddingFor(context),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 240),
+            reverseDuration: const Duration(milliseconds: 200),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) {
+              return FadeTransition(
+                opacity: animation,
+                child: ScaleTransition(
+                  scale: animation,
+                  alignment: Alignment.bottomRight,
+                  child: child,
+                ),
+              );
+            },
+            layoutBuilder: (currentChild, previousChildren) {
+              return Stack(
+                alignment: Alignment.bottomRight,
+                children: [
+                  ...previousChildren.map(
+                    (child) => IgnorePointer(child: child),
+                  ),
+                  ?currentChild,
+                ],
+              );
+            },
+            child: _summaryExpanded
+                ? SizedBox(
+                    key: const ValueKey('finance-ledger-summary-panel'),
+                    width: summaryPanelWidth,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight: summaryPanelMaxHeight,
+                      ),
+                      child: SingleChildScrollView(
+                        child: _buildSummaryFooter(
+                          context,
+                          filtered,
+                          nowAt,
+                          onCollapse: () =>
+                              setState(() => _summaryExpanded = false),
+                        ),
+                      ),
+                    ),
+                  )
+                : FloatingActionButton.small(
+                    key: const ValueKey('finance-ledger-summary-button'),
+                    heroTag: null,
+                    tooltip: '查看账单合计',
+                    backgroundColor: Theme.of(context)
+                        .colorScheme
+                        .primaryContainer,
+                    foregroundColor: Theme.of(context)
+                        .colorScheme
+                        .onPrimaryContainer,
+                    elevation: 3,
+                    onPressed: () => setState(() => _summaryExpanded = true),
+                    child: const Icon(Icons.calculate_outlined),
+                  ),
+          ),
         ),
       ],
     );
@@ -1857,42 +2436,354 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
   }
 
   Widget _buildCategoryFilterChip(BuildContext context) {
-    final isUncategorized =
-        categoryUuid == financeUncategorizedCategoryFilterUuid;
-    final category = isUncategorized ? null : categories[categoryUuid];
-    final label = isUncategorized
-        ? '分类 · 未分类'
-        : categoryUuid == null
+    final selected = categoryUuids;
+    final category =
+        selected.length == 1 &&
+            selected.first != financeUncategorizedCategoryFilterUuid
+        ? categories[selected.first]
+        : null;
+    final label = selected.isEmpty
         ? '分类筛选'
-        : '分类 · ${_categoryDisplayName(categoryUuid)}';
+        : selected.length == 1 &&
+              selected.first == financeUncategorizedCategoryFilterUuid
+        ? '分类 · 未分类'
+        : '分类 · ${selected.length} 项';
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: FilterChip(
         key: const ValueKey('finance-ledger-category-filter'),
         avatar: category == null ? null : Text(category.icon),
         label: Text(label),
-        selected: true,
-        onSelected: onCategoryChanged == null
-            ? null
-            : (_) => _updateCategoryFilter(null),
+        selected: selected.isNotEmpty,
+        onSelected: (_) {
+          if (widget.categoryUuids == null &&
+              widget.categoryUuid != null &&
+              widget.onCategoryUuidsChanged == null) {
+            _updateCategoryFilters(<String>{});
+          } else {
+            _pickCategories();
+          }
+        },
       ),
     );
   }
 
-  Widget _buildDayHeader(BuildContext context, _FinanceDayGroup group) {
+  Widget _buildDateRangeFilterChip(BuildContext context) {
+    final now = widget.clock();
+    final month = widget.month ?? now;
+    final range =
+        dateRange ??
+        DateTimeRange(
+          start: DateTime(month.year, month.month),
+          end: DateTime(month.year, month.month + 1, 0),
+        );
+    final isCustomRange = dateRange != null;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: InputChip(
+        key: const ValueKey('finance-ledger-date-range-filter'),
+        avatar: const Icon(Icons.date_range_outlined, size: 18),
+        label: Text(
+          '${dateKey(range.start)} – ${dateKey(range.end)}',
+          maxLines: 1,
+        ),
+        onPressed: _pickDateRange,
+        onDeleted: isCustomRange ? _resetDateRange : null,
+        deleteButtonTooltipMessage: '恢复当前月',
+      ),
+    );
+  }
+
+  Widget _buildSummaryFooter(
+    BuildContext context,
+    List<_FinanceLedgerOrderEntry> filtered,
+    int nowAt, {
+    required VoidCallback onCollapse,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final showSelectedTotals = _selectionMode || _hasCommittedSelection;
+    final selectedEntries = showSelectedTotals
+        ? filtered
+              .where(
+                (entry) =>
+                    _selectedTransactionUuids.contains(entry.transaction.uuid),
+              )
+              .toList(growable: false)
+        : filtered;
+    final totals = _FinanceLedgerTotals.fromEntries(selectedEntries, nowAt);
+    final selectedCount = selectedEntries.length;
+    final allVisibleSelected =
+        filtered.isNotEmpty &&
+        filtered.every(
+          (entry) => _selectedTransactionUuids.contains(entry.transaction.uuid),
+        );
+    final amountLabels = <String>[
+      if (totals.expenseMinor > 0)
+        '支出 ${formatFinanceAmount(totals.expenseMinor)}',
+      if (totals.refundMinor > 0)
+        '退款 ${formatFinanceAmount(totals.refundMinor)}',
+      if (totals.expenseMinor > 0 || totals.refundMinor > 0)
+        '净支出 ${formatFinanceAmount(totals.netExpenseMinor)}',
+      if (totals.incomeMinor > 0)
+        '收入 ${formatFinanceAmount(totals.incomeMinor)}',
+    ];
+    final plannedLabels = <String>[
+      if (totals.plannedExpenseMinor > 0)
+        '计划支出 ${formatFinanceAmount(totals.plannedExpenseMinor)}',
+      if (totals.plannedRefundMinor > 0)
+        '计划退款 ${formatFinanceAmount(totals.plannedRefundMinor)}',
+      if (totals.plannedIncomeMinor > 0)
+        '计划收入 ${formatFinanceAmount(totals.plannedIncomeMinor)}',
+    ];
+
+    return Card(
+      color: colorScheme.surfaceContainerHigh,
+      surfaceTintColor: Colors.transparent,
+      shadowColor: colorScheme.shadow.withValues(alpha: 0.16),
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.45),
+        ),
+      ),
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 8, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(5),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primaryContainer.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    _selectionMode
+                        ? Icons.checklist_rounded
+                        : Icons.analytics_outlined,
+                    size: 16,
+                    color: colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    showSelectedTotals
+                        ? '${_selectionMode ? '已选' : '所选'} $selectedCount 笔 / ${filtered.length} 笔'
+                        : '筛选结果 · ${filtered.length} 笔',
+                    style: Theme.of(context).textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                if (_selectionMode) ...[
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    onPressed: filtered.isEmpty
+                        ? null
+                        : () => _toggleSelectAll(filtered),
+                    child: Text(allVisibleSelected ? '取消全选' : '全选'),
+                  ),
+                  FilledButton.tonal(
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      minimumSize: const Size(0, 32),
+                    ),
+                    onPressed: _toggleSelectionMode,
+                    child: const Text('完成'),
+                  ),
+                ] else if (_hasCommittedSelection) ...[
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                    ),
+                    onPressed: _toggleSelectionMode,
+                    child: const Text('继续选择'),
+                  ),
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                    ),
+                    onPressed: _clearSelection,
+                    child: const Text('清除'),
+                  ),
+                ] else ...[
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    onPressed: _toggleSelectionMode,
+                    icon: const Icon(Icons.checklist_rounded, size: 16),
+                    label: const Text('选择账单'),
+                  ),
+                ],
+                const SizedBox(width: 2),
+                IconButton(
+                  key: const ValueKey('finance-ledger-summary-collapse'),
+                  tooltip: '收起账单合计',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: onCollapse,
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (amountLabels.isNotEmpty)
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  for (final label in amountLabels)
+                    _buildSummaryMetricChip(context, label),
+                ],
+              )
+            else if (selectedCount == 0)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(
+                  _selectionMode ? '勾选账单后查看所选合计' : '暂无可合计的账目',
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            if (plannedLabels.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.35,
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.schedule_rounded,
+                      size: 13,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        plannedLabels.join(' · '),
+                        style: TextStyle(
+                          color: colorScheme.onSurfaceVariant,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryMetricChip(BuildContext context, String label) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isIncome = label.startsWith('收入');
+    final isNetExpense = label.startsWith('净支出');
+    final isRefund = label.startsWith('退款');
+
+    final Color fgColor;
+    final Color bgColor;
+    final Color borderColor;
+    final IconData icon;
+
+    if (isNetExpense) {
+      fgColor = colorScheme.error;
+      bgColor = colorScheme.errorContainer.withValues(alpha: 0.28);
+      borderColor = colorScheme.error.withValues(alpha: 0.22);
+      icon = Icons.trending_down_rounded;
+    } else if (isIncome) {
+      fgColor = colorScheme.primary;
+      bgColor = colorScheme.primaryContainer.withValues(alpha: 0.32);
+      borderColor = colorScheme.primary.withValues(alpha: 0.22);
+      icon = Icons.trending_up_rounded;
+    } else if (isRefund) {
+      fgColor = colorScheme.tertiary;
+      bgColor = colorScheme.tertiaryContainer.withValues(alpha: 0.28);
+      borderColor = colorScheme.tertiary.withValues(alpha: 0.22);
+      icon = Icons.replay_rounded;
+    } else {
+      fgColor = colorScheme.onSurface;
+      bgColor = colorScheme.surfaceContainerHighest.withValues(alpha: 0.45);
+      borderColor = colorScheme.outlineVariant.withValues(alpha: 0.3);
+      icon = Icons.shopping_bag_outlined;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: borderColor, width: 0.8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: fgColor),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: fgColor,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.2,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDayHeader(
+    BuildContext context,
+    _FinanceDayGroup group, {
+    required bool hideAmountsDuplicatedByFooter,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     final hasExpenseFlow = group.expenseMinor > 0 || group.refundMinor > 0;
     final hasPlannedExpenseFlow =
         group.plannedExpenseMinor > 0 || group.plannedRefundMinor > 0;
     final amountLabels = <String>[
-      if (hasExpenseFlow) '净支出 ${formatFinanceAmount(group.netExpenseMinor)}',
+      if (hasExpenseFlow && !hideAmountsDuplicatedByFooter)
+        '净支出 ${formatFinanceAmount(group.netExpenseMinor)}',
       if (hasPlannedExpenseFlow)
         '计划净支出 ${formatFinanceAmount(group.plannedNetExpenseMinor)}',
-      if (group.incomeMinor > 0) '收入 ${formatFinanceAmount(group.incomeMinor)}',
-      if (group.plannedIncomeMinor > 0)
+      if (group.incomeMinor > 0 && !hideAmountsDuplicatedByFooter)
+        '收入 ${formatFinanceAmount(group.incomeMinor)}',
+      if (group.plannedIncomeMinor > 0 && !hideAmountsDuplicatedByFooter)
         '计划收入 ${formatFinanceAmount(group.plannedIncomeMinor)}',
     ];
-    if (amountLabels.isEmpty) {
+    if (amountLabels.isEmpty && !hideAmountsDuplicatedByFooter) {
       amountLabels.add('${group.transactions.length} 笔');
     }
     Color labelColor(String label) {
@@ -1906,14 +2797,21 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 10, 4, 6),
+      padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(
-            Icons.calendar_today_outlined,
-            size: 18,
-            color: colorScheme.primary,
+          Container(
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(
+              color: colorScheme.primaryContainer.withValues(alpha: 0.45),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              Icons.calendar_today_outlined,
+              size: 15,
+              color: colorScheme.primary,
+            ),
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -1948,7 +2846,8 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
                     style: TextStyle(
                       color: labelColor(label),
                       fontWeight: FontWeight.w700,
-                      fontSize: 12,
+                      fontSize: 12.5,
+                      letterSpacing: -0.2,
                     ),
                   ),
               ],
@@ -1962,8 +2861,11 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
   Widget _buildTransactionTile(
     BuildContext context,
     FinanceTransaction transaction,
-    int asOfAt,
-  ) {
+    int asOfAt, {
+    required bool selectionMode,
+    required bool selected,
+    required VoidCallback onToggleSelection,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     final category = categories[transaction.categoryUuid];
     final payment = paymentMethods[transaction.paymentMethodUuid];
@@ -1971,18 +2873,25 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
         ? null
         : _paymentMethodDisplayName(payment);
     final categoryName = _categoryDisplayName(transaction.categoryUuid);
-    final title = transaction.merchant?.isNotEmpty == true
-        ? transaction.merchant!
-        : category == null &&
-              (transaction.categoryUuid == null ||
-                  transaction.categoryUuid!.trim().isEmpty)
-        ? transaction.type.label
-        : categoryName;
+    final merchant = transaction.merchant?.trim();
+    final note = transaction.note?.trim();
+    final hasCategory =
+        category != null || transaction.categoryUuid?.trim().isNotEmpty == true;
+    final titleUsesCategory =
+        merchant?.isNotEmpty != true && note?.isNotEmpty != true && hasCategory;
+    final title = merchant?.isNotEmpty == true
+        ? merchant!
+        : note?.isNotEmpty == true
+        ? note!
+        : titleUsesCategory
+        ? categoryName
+        : transaction.type.label;
     final subtitleParts = <String>[
       if (transaction.balanceEventAt() > asOfAt) '待发生',
-      category == null
-          ? categoryName
-          : '${category.icon} $categoryName${category.isArchived ? '（已归档）' : ''}',
+      if (!titleUsesCategory)
+        category == null
+            ? categoryName
+            : '${category.icon} $categoryName${category.isArchived ? '（已归档）' : ''}',
       if (payment != null)
         '${payment.icon} $paymentName${payment.isArchived ? '（已归档）' : ''}'
       else if (transaction.paymentMethodUuid?.trim().isNotEmpty == true)
@@ -1993,7 +2902,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
         },
       if (transaction.installmentLabel != null)
         '分期 ${transaction.installmentLabel}',
-      if (transaction.note?.isNotEmpty == true) transaction.note!,
+      if (note?.isNotEmpty == true && note != title) note!,
     ];
     final amountColor = transaction.type == FinanceTransactionType.expense
         ? colorScheme.error
@@ -2001,22 +2910,62 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
     final sourceKey = _cardKeyFor(transaction);
     return Card(
       key: sourceKey,
-      child: ListTile(
-        onTap: () => onOpenDetail(transaction, sourceKey),
-        leading: CircleAvatar(
-          backgroundColor: colorScheme.secondaryContainer,
-          child: Text(
-            category?.icon ?? '💰',
-            style: const TextStyle(fontSize: 20),
-          ),
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      color: selected
+          ? colorScheme.primaryContainer.withValues(alpha: 0.25)
+          : colorScheme.surfaceContainerLowest,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: selected
+              ? colorScheme.primary.withValues(alpha: 0.8)
+              : colorScheme.outlineVariant.withValues(alpha: 0.35),
+          width: selected ? 1.5 : 1,
         ),
-        title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: ListTile(
+        onTap: selectionMode
+            ? onToggleSelection
+            : () => onOpenDetail(transaction, sourceKey),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
+        leading: selectionMode
+            ? Checkbox(
+                value: selected,
+                onChanged: (_) => onToggleSelection(),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              )
+            : Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: colorScheme.secondaryContainer.withValues(alpha: 0.7),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  category?.icon ?? '💰',
+                  style: const TextStyle(fontSize: 22),
+                ),
+              ),
+        title: Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.bodyLarge
+              ?.copyWith(fontWeight: FontWeight.w600, letterSpacing: -0.2),
+        ),
         subtitle: Text(
           subtitleParts.isEmpty
               ? transaction.type.label
               : subtitleParts.join(' · '),
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(color: colorScheme.onSurfaceVariant),
         ),
         trailing: ConstrainedBox(
           constraints: BoxConstraints(
@@ -2039,10 +2988,20 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
                   style: TextStyle(
                     color: amountColor,
                     fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                    letterSpacing: -0.3,
                   ),
                 ),
               ),
+              const SizedBox(width: 4),
               PopupMenuButton<String>(
+                icon: Icon(
+                  Icons.more_vert_rounded,
+                  size: 20,
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                ),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
                 onSelected: (value) {
                   if (value == 'refund') onRefund(transaction);
                   if (value == 'edit') onEdit(transaction);
@@ -2081,13 +3040,348 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
           ),
           const SizedBox(height: 12),
           Text(
-            keyword.trim().isEmpty && filterType == null && categoryUuid == null
+            keyword.trim().isEmpty &&
+                    filterType == null &&
+                    categoryUuids.isEmpty &&
+                    dateRange == null
                 ? '$monthLabel还没有账单'
                 : '没有匹配的账单',
             style: TextStyle(color: colorScheme.onSurfaceVariant),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildQueryError(BuildContext context, String error) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, size: 42, color: colorScheme.error),
+            const SizedBox(height: 10),
+            const Text('筛选账单加载失败'),
+            const SizedBox(height: 6),
+            Text(
+              error,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: colorScheme.onSurfaceVariant),
+            ),
+            if (widget.onRetry != null) ...[
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: widget.onRetry,
+                icon: const Icon(Icons.refresh),
+                label: const Text('重试'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FinanceLedgerCategoryPickerDialog extends StatefulWidget {
+  final Map<String, FinanceCategory> categories;
+  final Set<String> initialSelection;
+  final Map<String, int>? categoryCounts;
+
+  const _FinanceLedgerCategoryPickerDialog({
+    required this.categories,
+    required this.initialSelection,
+    required this.categoryCounts,
+  });
+
+  @override
+  State<_FinanceLedgerCategoryPickerDialog> createState() =>
+      _FinanceLedgerCategoryPickerDialogState();
+}
+
+class _FinanceLedgerCategoryPickerDialogState
+    extends State<_FinanceLedgerCategoryPickerDialog> {
+  late final Set<String> _selected = widget.initialSelection.toSet();
+  final Set<String> _expandedRootUuids = <String>{};
+
+  List<FinanceCategory> get _orderedCategories =>
+      widget.categories.values.toList()..sort((left, right) {
+        final typeOrder = left.type.index.compareTo(right.type.index);
+        if (typeOrder != 0) return typeOrder;
+        final parentOrder = (left.parentUuid ?? '').compareTo(
+          right.parentUuid ?? '',
+        );
+        if (parentOrder != 0) return parentOrder;
+        final sortOrder = left.sortOrder.compareTo(right.sortOrder);
+        return sortOrder != 0 ? sortOrder : left.uuid.compareTo(right.uuid);
+      });
+
+  List<FinanceCategory> _childrenOf(FinanceCategory parent) =>
+      _orderedCategories
+          .where((category) => category.parentUuid == parent.uuid)
+          .toList(growable: false);
+
+  bool _isRootSelected(FinanceCategory root) => _selected.contains(root.uuid);
+
+  bool _isChildSelected(FinanceCategory parent, FinanceCategory child) =>
+      _isRootSelected(parent) || _selected.contains(child.uuid);
+
+  void _toggleRoot(FinanceCategory root) {
+    final children = _childrenOf(root);
+    setState(() {
+      if (!_selected.add(root.uuid)) {
+        _selected.remove(root.uuid);
+        for (final child in children) {
+          _selected.remove(child.uuid);
+        }
+      } else {
+        for (final child in children) {
+          _selected.remove(child.uuid);
+        }
+      }
+    });
+  }
+
+  void _toggleRootExpansion(FinanceCategory root) {
+    setState(() {
+      if (!_expandedRootUuids.add(root.uuid)) {
+        _expandedRootUuids.remove(root.uuid);
+      }
+    });
+  }
+
+  void _toggleChild(FinanceCategory parent, FinanceCategory child) {
+    setState(() {
+      if (_selected.remove(parent.uuid)) {
+        for (final sibling in _childrenOf(parent)) {
+          if (sibling.uuid != child.uuid) _selected.add(sibling.uuid);
+        }
+        return;
+      }
+      if (!_selected.add(child.uuid)) _selected.remove(child.uuid);
+    });
+  }
+
+  String _categoryLabel(FinanceCategory category) {
+    final status = category.isDeleted
+        ? '（已删除）'
+        : category.isArchived
+        ? '（已归档）'
+        : '';
+    return '${category.icon} ${financeCategorySiblingDisplayName(category, _orderedCategories)}$status';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final categoryByUuid = widget.categories;
+    final roots = _orderedCategories
+        .where((category) {
+          final parentUuid = category.parentUuid?.trim();
+          if (parentUuid == null || parentUuid.isEmpty) return true;
+          final parent = categoryByUuid[parentUuid];
+          return parent == null || parent.type != category.type;
+        })
+        .toList(growable: false);
+    final expenseRoots = roots
+        .where((category) => category.type == FinanceCategoryType.expense)
+        .toList(growable: false);
+    final incomeRoots = roots
+        .where((category) => category.type == FinanceCategoryType.income)
+        .toList(growable: false);
+    return AlertDialog(
+      title: const Text('选择分类'),
+      content: SizedBox(
+        width: 420,
+        height: 480,
+        child: ListView(
+          children: [
+            CheckboxListTile(
+              value: _selected.contains(financeUncategorizedCategoryFilterUuid),
+              title: const Text('未分类'),
+              secondary: _countLabel(
+                widget.categoryCounts?[financeUncategorizedCategoryFilterUuid],
+              ),
+              onChanged: (_) => setState(() {
+                if (!_selected.add(financeUncategorizedCategoryFilterUuid)) {
+                  _selected.remove(financeUncategorizedCategoryFilterUuid);
+                }
+              }),
+              contentPadding: EdgeInsets.zero,
+            ),
+            for (final section in [
+              ('支出', expenseRoots),
+              ('收入', incomeRoots),
+            ]) ...[
+              Padding(
+                padding: const EdgeInsets.only(top: 12, bottom: 4),
+                child: Text(
+                  section.$1,
+                  style: Theme.of(context).textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
+              for (final root in section.$2) ...[
+                Builder(
+                  builder: (context) {
+                    final children = _childrenOf(root);
+                    final isExpanded = _expandedRootUuids.contains(root.uuid);
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(8),
+                                onTap: children.isEmpty
+                                    ? () => _toggleRoot(root)
+                                    : () => _toggleRootExpansion(root),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                    horizontal: 4,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(_categoryLabel(root)),
+                                      ),
+                                      if (widget.categoryCounts != null) ...[
+                                        const SizedBox(width: 8),
+                                        _countLabel(
+                                          widget.categoryCounts![root.uuid] ??
+                                              0,
+                                        )!,
+                                      ],
+                                      if (children.isNotEmpty)
+                                        Icon(
+                                          isExpanded
+                                              ? Icons.expand_less
+                                              : Icons.expand_more,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurfaceVariant,
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Checkbox(
+                              value: _isRootSelected(root),
+                              onChanged: (_) => _toggleRoot(root),
+                            ),
+                          ],
+                        ),
+                        if (isExpanded)
+                          for (final child in children)
+                            CheckboxListTile(
+                              value: _isChildSelected(root, child),
+                              title: Text(_categoryLabel(child)),
+                              secondary: _countLabel(
+                                widget.categoryCounts?[child.uuid],
+                              ),
+                              onChanged: (_) => _toggleChild(root, child),
+                              contentPadding: const EdgeInsets.only(left: 24),
+                              dense: true,
+                            ),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => setState(_selected.clear),
+          child: const Text('清空'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_selected.toSet()),
+          child: const Text('应用'),
+        ),
+      ],
+    );
+  }
+
+  Widget? _countLabel(int? count) {
+    if (count == null) return null;
+    return Text(
+      '$count笔',
+      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+    );
+  }
+}
+
+class _FinanceLedgerTotals {
+  final int expenseMinor;
+  final int refundMinor;
+  final int incomeMinor;
+  final int plannedExpenseMinor;
+  final int plannedRefundMinor;
+  final int plannedIncomeMinor;
+
+  const _FinanceLedgerTotals({
+    required this.expenseMinor,
+    required this.refundMinor,
+    required this.incomeMinor,
+    required this.plannedExpenseMinor,
+    required this.plannedRefundMinor,
+    required this.plannedIncomeMinor,
+  });
+
+  int get netExpenseMinor => expenseMinor - refundMinor;
+
+  factory _FinanceLedgerTotals.fromEntries(
+    Iterable<_FinanceLedgerOrderEntry> entries,
+    int nowAt,
+  ) {
+    var expenseMinor = 0;
+    var refundMinor = 0;
+    var incomeMinor = 0;
+    var plannedExpenseMinor = 0;
+    var plannedRefundMinor = 0;
+    var plannedIncomeMinor = 0;
+    for (final entry in entries) {
+      final isPlanned = entry.eventAt > nowAt;
+      final transaction = entry.transaction;
+      switch (transaction.type) {
+        case FinanceTransactionType.expense:
+          if (isPlanned) {
+            plannedExpenseMinor += transaction.amountMinor;
+          } else {
+            expenseMinor += transaction.amountMinor;
+          }
+        case FinanceTransactionType.refund:
+          if (isPlanned) {
+            plannedRefundMinor += transaction.amountMinor;
+          } else {
+            refundMinor += transaction.amountMinor;
+          }
+        case FinanceTransactionType.income:
+          if (isPlanned) {
+            plannedIncomeMinor += transaction.amountMinor;
+          } else {
+            incomeMinor += transaction.amountMinor;
+          }
+      }
+    }
+    return _FinanceLedgerTotals(
+      expenseMinor: expenseMinor,
+      refundMinor: refundMinor,
+      incomeMinor: incomeMinor,
+      plannedExpenseMinor: plannedExpenseMinor,
+      plannedRefundMinor: plannedRefundMinor,
+      plannedIncomeMinor: plannedIncomeMinor,
     );
   }
 }
@@ -2150,6 +3444,150 @@ class _FinancePieSlice {
   final Color color;
 
   const _FinancePieSlice({required this.value, required this.color});
+}
+
+class _FinanceCumulativeBalanceTrendPainter extends CustomPainter {
+  final List<FinanceCumulativeBalancePoint> points;
+  final int selectedIndex;
+  final ColorScheme colorScheme;
+
+  const _FinanceCumulativeBalanceTrendPainter({
+    required this.points,
+    required this.selectedIndex,
+    required this.colorScheme,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (points.isEmpty || size.width <= 0 || size.height <= 0) return;
+
+    const leftInset = 18.0;
+    const rightInset = 18.0;
+    const topInset = 10.0;
+    const bottomInset = 28.0;
+    final plot = Rect.fromLTRB(
+      leftInset,
+      topInset,
+      size.width - rightInset,
+      size.height - bottomInset,
+    );
+    if (plot.width <= 0 || plot.height <= 0) return;
+
+    var minimum = points.first.balanceMinor;
+    var maximum = minimum;
+    for (final point in points.skip(1)) {
+      minimum = math.min(minimum, point.balanceMinor);
+      maximum = math.max(maximum, point.balanceMinor);
+    }
+    minimum = math.min(minimum, 0);
+    maximum = math.max(maximum, 0);
+
+    double xFor(int index) => points.length == 1
+        ? plot.center.dx
+        : plot.left + plot.width * index / (points.length - 1);
+
+    double yFor(int value) {
+      if (minimum == maximum) return plot.center.dy;
+      return plot.top + (maximum - value) / (maximum - minimum) * plot.height;
+    }
+
+    final gridPaint = Paint()
+      ..color = colorScheme.outlineVariant.withValues(alpha: 0.45)
+      ..strokeWidth = 1;
+    canvas.drawLine(plot.topLeft, plot.topRight, gridPaint);
+    canvas.drawLine(plot.bottomLeft, plot.bottomRight, gridPaint);
+    if (minimum <= 0 && maximum >= 0) {
+      final zeroY = yFor(0);
+      canvas.drawLine(
+        Offset(plot.left, zeroY),
+        Offset(plot.right, zeroY),
+        gridPaint,
+      );
+    }
+
+    const baselineValue = 0;
+    final fillPath = Path()..moveTo(xFor(0), yFor(baselineValue));
+    final linePath = Path()..moveTo(xFor(0), yFor(points.first.balanceMinor));
+    for (var index = 1; index < points.length; index++) {
+      final point = points[index];
+      final x = xFor(index);
+      final y = yFor(point.balanceMinor);
+      linePath.lineTo(x, y);
+      fillPath.lineTo(x, y);
+    }
+    fillPath
+      ..lineTo(xFor(points.length - 1), yFor(baselineValue))
+      ..close();
+    canvas.drawPath(
+      fillPath,
+      Paint()
+        ..color = colorScheme.primary.withValues(alpha: 0.09)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawPath(
+      linePath,
+      Paint()
+        ..color = colorScheme.primary
+        ..strokeWidth = 2.5
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..style = PaintingStyle.stroke,
+    );
+
+    for (var index = 0; index < points.length; index++) {
+      final center = Offset(xFor(index), yFor(points[index].balanceMinor));
+      if (index == selectedIndex) {
+        canvas.drawCircle(
+          center,
+          6,
+          Paint()
+            ..color = colorScheme.surface
+            ..style = PaintingStyle.fill,
+        );
+        canvas.drawCircle(
+          center,
+          5,
+          Paint()
+            ..color = colorScheme.primary
+            ..style = PaintingStyle.fill,
+        );
+      } else {
+        canvas.drawCircle(
+          center,
+          3.25,
+          Paint()
+            ..color = colorScheme.primary
+            ..style = PaintingStyle.fill,
+        );
+      }
+
+      final showLabel =
+          index.isEven || index == points.length - 1 || index == selectedIndex;
+      if (!showLabel) continue;
+      final label = TextPainter(
+        text: TextSpan(
+          text: '${points[index].month.month}月',
+          style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant),
+        ),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+      )..layout(maxWidth: 34);
+      final labelX = (center.dx - label.width / 2).clamp(
+        0.0,
+        size.width - label.width,
+      );
+      label.paint(canvas, Offset(labelX, size.height - label.height));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _FinanceCumulativeBalanceTrendPainter old) =>
+      old.points != points ||
+      old.selectedIndex != selectedIndex ||
+      old.colorScheme.primary != colorScheme.primary ||
+      old.colorScheme.surface != colorScheme.surface ||
+      old.colorScheme.outlineVariant != colorScheme.outlineVariant ||
+      old.colorScheme.onSurfaceVariant != colorScheme.onSurfaceVariant;
 }
 
 class _FinancePiePainter extends CustomPainter {

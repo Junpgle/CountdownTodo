@@ -33,6 +33,9 @@ class WindowService extends WindowListener {
   static Rect? _startupBounds;
   static bool _suppressBoundsSave = false;
   static bool _macIslandInitialized = false;
+  static final ValueNotifier<bool> windowIsActiveListenable = ValueNotifier(
+    true,
+  );
 
   static final WindowService _instance = WindowService._internal();
   static TrayIcon? _trayIcon;
@@ -341,6 +344,7 @@ class WindowService extends WindowListener {
   static Future<void> _showWindowFromTray() async {
     await windowManager.show();
     await windowManager.focus();
+    windowIsActiveListenable.value = true;
   }
 
   static Future<void> _openSettingsFromTray() async {
@@ -552,12 +556,14 @@ class WindowService extends WindowListener {
 
       if (shouldExit) {
         debugPrint('[WindowService] User chose exit - terminating application');
+        windowIsActiveListenable.value = false;
         try {
           await windowManager.hide();
         } catch (_) {}
         exit(0);
       } else {
         debugPrint('[WindowService] User chose minimize - hiding window');
+        windowIsActiveListenable.value = false;
         try {
           await windowManager.hide();
         } catch (e) {
@@ -599,11 +605,19 @@ class WindowService extends WindowListener {
   @override
   void onWindowUnmaximize() {}
   @override
-  void onWindowMinimize() {}
+  void onWindowMinimize() {
+    windowIsActiveListenable.value = false;
+  }
   @override
-  void onWindowRestore() {}
+  void onWindowRestore() {
+    windowIsActiveListenable.value = true;
+  }
   @override
-  void onWindowFocus() {}
+  void onWindowFocus() {
+    windowIsActiveListenable.value = true;
+  }
   @override
-  void onWindowBlur() {}
+  void onWindowBlur() {
+    windowIsActiveListenable.value = false;
+  }
 }

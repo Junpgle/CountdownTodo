@@ -38,6 +38,8 @@ const String keySyncInterval = "app_sync_interval";
 const String _storageService_keySyncInterval = "app_sync_interval";
 const String keyThemeMode = "app_theme_mode";
 const String _storageService_keyThemeMode = "app_theme_mode";
+const String keyOledBlackMode = "app_oled_black_mode";
+const String _storageService_keyOledBlackMode = "app_oled_black_mode";
 const String keyThemeColorMode = "app_theme_color_mode";
 const String _storageService_keyThemeColorMode = "app_theme_color_mode";
 const String keyCustomThemeColor = "app_custom_theme_color";
@@ -172,6 +174,7 @@ abstract class _StorageServiceBase {
   final Set<String> _attemptedRecurrenceSeriesRepairUploads = {};
   bool _isCheckingRecurrence = false;
   ValueNotifier<String> themeNotifier = ValueNotifier('system');
+  ValueNotifier<bool> oledBlackModeNotifier = ValueNotifier(true);
   ValueNotifier<String> themeColorModeNotifier = ValueNotifier('default');
   ValueNotifier<Color?> customThemeColorNotifier = ValueNotifier(null);
   ValueNotifier<Color?> appWallpaperColorNotifier = ValueNotifier(null);
@@ -215,6 +218,14 @@ abstract class _StorageServiceBase {
     String username, {
     bool includeDeleted = false,
   });
+  Future<List<FixedScheduleItem>> getFixedSchedulesByRelatedTodo(
+    String username,
+    String todoId,
+  );
+  Future<List<FixedScheduleItem>> getFixedSchedulesByRelatedTodos(
+    String username,
+    Set<String> todoIds,
+  );
   Future<List<FixedScheduleItem>> getFixedSchedulesByDay(
     String username,
     DateTime day,
@@ -269,6 +280,10 @@ abstract class _StorageServiceBase {
     DateTime? from,
     DateTime? to,
   });
+  Future<List<TodoPlanBlock>> getPlanBlocksOverlappingFixedSchedules(
+    String username,
+    List<FixedScheduleItem> schedules,
+  );
   Future<List<TodoPlanBlock>> getPlanBlocksForReminderWindow(
     String username, {
     required DateTime now,
@@ -372,6 +387,13 @@ abstract class _StorageServiceBase {
     Map<String, TodoItem>? recurrenceBaselines,
     Map<String, TodoItem?>? recurrenceUploadBaselines,
     List<TodoItem>? bandSyncSnapshot,
+    Map<String, TodoItem>? expectedTodoBaselines,
+    Map<String, Set<String>>? expectedSeriesMembership,
+    bool expectedSeriesMembershipIncludesDeleted = false,
+    Set<String>? expectedFixedScheduleTodoIds,
+    List<FixedScheduleItem>? expectedFixedScheduleBaselines,
+    FixedScheduleItem? linkedFixedScheduleBaseline,
+    FixedScheduleItem? linkedFixedScheduleUpdate,
   });
   Future<bool> _saveRecurrenceMaintenance(
     String username,
@@ -414,6 +436,19 @@ abstract class _StorageServiceBase {
     bool sync = true,
   });
   Future<TodoItem?> getTodoByUuid(String username, String uuid);
+  Future<TodoTrashPurgePlan> previewPermanentTodoDelete(
+    String username,
+    String uuid,
+  );
+  Future<TodoTrashPurgePlan> previewPermanentTodoSeriesDelete(
+    String username,
+    String seriesId,
+  );
+  Future<TodoTrashPurgePlan> previewClearTodoRecycleBin(String username);
+  Future<TodoTrashPurgeResult> purgeTodoTrash(
+    String username,
+    TodoTrashPurgePlan plan,
+  );
   Future<void> permanentlyDeleteTodo(String username, String uuid);
   Future<void> clearTodoRecycleBin(String username);
   bool _isHistoricalTodo(TodoItem todo, DateTime today);
@@ -487,6 +522,9 @@ abstract class _StorageServiceBase {
     List<TodoItem> todos,
   );
   Set<String> _pruneRecurrenceOccurrencesAfterEndDates(List<TodoItem> todos);
+  Map<String, TodoItem> _recurrenceBoundaryRulesBySeries(
+    Iterable<TodoItem> todos,
+  );
   Future<int> mergeRecurrenceSeries(
     String username, {
     required String targetSeriesId,
@@ -532,11 +570,23 @@ abstract class _StorageServiceBase {
   TodoItem _copyForNextRecurrence(TodoItem source);
   void _rollRecurrenceDateByDays(TodoItem todo, int days);
   Future<bool> deleteTodoGlobally(String username, String idToDelete);
+  Future<TodoRecurrenceDeletePlan> deleteRecurringTodoWithScope(
+    String username,
+    String todoId,
+    TodoRecurrenceDeleteScope scope, {
+    bool sync = true,
+  });
+  Future<TodoRecurrenceRestorePlan> restoreRecurringTodoSeries(
+    String username,
+    String seriesId, {
+    bool sync = true,
+  });
   Future<void> saveTodoGroups(
     String username,
     List<TodoGroup> items, {
     bool sync = true,
     bool isSyncSource = false,
+    Map<String, TodoGroup>? expectedGroupBaselines,
   });
   Future<void> _clearTodoGroupPrefsMirror(String username);
   Future<List<TodoGroup>> getTodoGroups(

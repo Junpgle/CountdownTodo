@@ -151,7 +151,7 @@ class IslandSlotProvider {
     DateTime? selectedDueDay;
     var selectedUrgency = 4;
     for (final todo in todos) {
-      if (todo.isDone || todo.isDeleted) continue;
+      if (todo.isDone || todo.isDeleted || todo.isSkipped) continue;
 
       final dueDate = todo.dueDate;
       final dueDay = dueDate == null
@@ -440,7 +440,10 @@ class IslandSlotProvider {
       final todos = await StorageService.getTodos(username);
       final now = DateTime.now();
       final active = todos
-          .where((t) => !t.isDone && !t.isDeleted && t.dueDate != null)
+          .where(
+            (t) =>
+                !t.isDone && !t.isDeleted && !t.isSkipped && t.dueDate != null,
+          )
           .toList();
 
       for (var t in active) {

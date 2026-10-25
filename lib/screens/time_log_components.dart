@@ -37,6 +37,55 @@ ButtonStyle _timeLogPrimaryActionStyle({
   ),
 );
 
+class _OutsideSheetTapRegion extends SingleChildRenderObjectWidget {
+  const _OutsideSheetTapRegion({
+    required this.sheetBounds,
+    required this.onOutsideTap,
+    super.child,
+  });
+
+  final Rect? Function() sheetBounds;
+  final ValueChanged<PointerDownEvent> onOutsideTap;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _OutsideSheetTapRenderObject(sheetBounds, onOutsideTap);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _OutsideSheetTapRenderObject renderObject,
+  ) {
+    renderObject
+      ..sheetBounds = sheetBounds
+      ..onOutsideTap = onOutsideTap;
+  }
+}
+
+class _OutsideSheetTapRenderObject extends RenderProxyBox {
+  _OutsideSheetTapRenderObject(this.sheetBounds, this.onOutsideTap);
+
+  Rect? Function() sheetBounds;
+  ValueChanged<PointerDownEvent> onOutsideTap;
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    final bounds = sheetBounds();
+    if (bounds == null || bounds.contains(localToGlobal(position))) {
+      return false;
+    }
+    return super.hitTest(result, position: position);
+  }
+
+  @override
+  bool hitTestSelf(Offset position) => true;
+
+  @override
+  void handleEvent(PointerEvent event, BoxHitTestEntry entry) {
+    if (event is PointerDownEvent) onOutsideTap(event);
+  }
+}
+
 // ══════════════════════════════════════════════════════════
 // 日视图 — 补录模式（网格拖拽选时间段）
 // ══════════════════════════════════════════════════════════
@@ -54,7 +103,7 @@ class _DayView extends StatefulWidget {
   final VoidCallback onBack;
   final ValueChanged<_EntryMode> onEntryModeChanged;
   final ValueChanged<bool> onCrossDayChanged;
-  final void Function(TimeLogItem) onSaveLog;
+  final Future<TimeLogEditorSaveResult> Function(TimeLogItem) onSaveLog;
   final void Function(TodoPlanBlock) onSavePlanBlock;
   final void Function(PomodoroRecord) onPomodoroTap;
   final void Function(String) onDeleteLog;
@@ -242,16 +291,17 @@ class _DayViewState extends State<_DayView> {
     showAppModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
       backgroundColor: Colors.transparent,
-      builder: (_) => _LogEntrySheet(
+      builder: (_) => TimeLogEntrySheet(
         initialStart: st,
         initialEnd: en,
         initialTagId: _selectedTagId,
         tags: widget.tags,
-        onSave: (log) {
-          Navigator.pop(context);
-          widget.onSaveLog(log);
-        },
+        timeLogs: widget.logs,
+        pomodoros: widget.pomodoros,
+        onSave: widget.onSaveLog,
       ),
     );
   }
@@ -1717,29 +1767,66 @@ class _PlanEntrySheetState extends State<_PlanEntrySheet> {
 // ══════════════════════════════════════════════════════════
 // 补录详情面板 (兼容新增和编辑模式)
 // ══════════════════════════════════════════════════════════
-class _LogEntrySheet extends StatefulWidget {
+class TimeLogEntrySheet extends StatefulWidget {
   final DateTime initialStart, initialEnd;
   final String? initialTagId;
   final List<PomodoroTag> tags;
-  final void Function(TimeLogItem) onSave;
+  final List<TimeLogItem> timeLogs;
+  final List<PomodoroRecord> pomodoros;
+  final Future<TimeLogEditorSaveResult> Function(TimeLogItem) onSave;
   final TimeLogItem? existingLog;
 
-  const _LogEntrySheet({
+  const TimeLogEntrySheet({
+    super.key,
     required this.initialStart,
     required this.initialEnd,
     this.initialTagId,
     required this.tags,
+    required this.timeLogs,
+    required this.pomodoros,
     required this.onSave,
     this.existingLog,
   });
   @override
-  State<_LogEntrySheet> createState() => _LogEntrySheetState();
+  State<TimeLogEntrySheet> createState() => _TimeLogEntrySheetState();
 }
 
-class _LogEntrySheetState extends State<_LogEntrySheet> {
+enum _TimeLogExitChoice { keepEditing, discard, save }
+
+class _TimeLogEntrySheetState extends State<TimeLogEntrySheet> {
   late DateTime _start, _end;
   late String? _tagId;
   late TextEditingController _tc;
+  late DateTime _baselineStart, _baselineEnd;
+  late String? _baselineTagId;
+  late String _baselineTitle;
+  late String _draftId;
+  late int _draftCreatedAt;
+  TimeLogItem? _pendingSaveLog;
+  String? _saveError;
+  bool _isSaving = false;
+  bool _isExitDialogOpen = false;
+  bool _allowExit = false;
+  double _handleDragDistance = 0;
+  final GlobalKey _sheetKey = GlobalKey();
+  OverlayEntry? _outsideTapEntry;
+
+  bool get _hasUnsavedChanges =>
+      _start.millisecondsSinceEpoch != _baselineStart.millisecondsSinceEpoch ||
+      _end.millisecondsSinceEpoch != _baselineEnd.millisecondsSinceEpoch ||
+      _tagId != _baselineTagId ||
+      _tc.text != _baselineTitle;
+
+  void _invalidatePendingSave() {
+    _pendingSaveLog = null;
+    _saveError = null;
+  }
+
+  void _onTitleChanged() {
+    if (!mounted) return;
+    _invalidatePendingSave();
+    setState(() {});
+  }
 
   @override
   void initState() {
@@ -1760,12 +1847,50 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
       );
       _tc = TextEditingController(text: tag?.name ?? '');
     }
+    _baselineStart = _start;
+    _baselineEnd = _end;
+    _baselineTagId = _tagId;
+    _baselineTitle = _tc.text;
+    _draftId = widget.existingLog?.id ?? const Uuid().v4();
+    _draftCreatedAt =
+        widget.existingLog?.createdAt ?? DateTime.now().millisecondsSinceEpoch;
+    _tc.addListener(_onTitleChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final entry = OverlayEntry(
+        builder: (_) => Positioned.fill(
+          child: _OutsideSheetTapRegion(
+            sheetBounds: _sheetBounds,
+            onOutsideTap: _onOutsideTap,
+            child: const SizedBox.expand(),
+          ),
+        ),
+      );
+      _outsideTapEntry = entry;
+      Overlay.of(context, rootOverlay: true).insert(entry);
+    });
   }
 
   @override
   void dispose() {
+    _outsideTapEntry?.remove();
+    _tc.removeListener(_onTitleChanged);
     _tc.dispose();
     super.dispose();
+  }
+
+  Rect? _sheetBounds() {
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return null;
+    final renderObject = _sheetKey.currentContext?.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.hasSize) return null;
+    return renderObject.localToGlobal(Offset.zero) & renderObject.size;
+  }
+
+  void _onOutsideTap(PointerDownEvent event) {
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
+    final bounds = _sheetBounds();
+    if (bounds == null || bounds.contains(event.position)) return;
+    unawaited(_requestExit());
   }
 
   String _durLabel() {
@@ -1780,6 +1905,7 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
       initialTime: TimeOfDay.fromDateTime(isStart ? _start : _end),
     );
     if (t == null || !mounted) return;
+    _invalidatePendingSave();
     setState(() {
       if (isStart) {
         _start = DateTime(
@@ -1812,6 +1938,7 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
       lastDate: lastDate,
     );
     if (d == null || !mounted) return;
+    _invalidatePendingSave();
     setState(() {
       if (isStart) {
         _start = DateTime(d.year, d.month, d.day, _start.hour, _start.minute);
@@ -1821,7 +1948,93 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
     });
   }
 
+  TimeLogItem _buildPendingLog() {
+    final pending = _pendingSaveLog;
+    if (pending != null) return pending;
+
+    final existing = widget.existingLog;
+    final tagUuids = existing != null && _tagId == _baselineTagId
+        ? List<String>.of(existing.tagUuids)
+        : _tagId == null
+        ? <String>[]
+        : <String>[_tagId!];
+    final tag = widget.tags.cast<PomodoroTag?>().firstWhere(
+      (t) => t?.uuid == _tagId,
+      orElse: () => null,
+    );
+    final log = TimeLogItem(
+      id: _draftId,
+      title: _tc.text.isNotEmpty ? _tc.text : (tag?.name ?? '未命名补录'),
+      tagUuids: tagUuids,
+      startTime: _start.millisecondsSinceEpoch,
+      endTime: _end.millisecondsSinceEpoch,
+      remark: existing?.remark,
+      version: existing?.version ?? 1,
+      createdAt: existing?.createdAt ?? _draftCreatedAt,
+      isDeleted: existing?.isDeleted ?? false,
+      deviceId: existing?.deviceId,
+      teamUuid: existing?.teamUuid,
+    );
+    if (existing != null) log.markAsChanged();
+    _pendingSaveLog = log;
+    return log;
+  }
+
+  Future<void> _closeSheet() async {
+    if (!_allowExit && mounted) setState(() => _allowExit = true);
+    await WidgetsBinding.instance.endOfFrame;
+    if (mounted) await Navigator.of(context).maybePop();
+  }
+
+  Future<void> _requestExit() async {
+    if (!mounted || _isSaving || _isExitDialogOpen) return;
+    if (!_hasUnsavedChanges) {
+      await _closeSheet();
+      return;
+    }
+
+    _isExitDialogOpen = true;
+    final choice = await showDialog<_TimeLogExitChoice>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('保留这条时间日志？'),
+        content: const Text('当前补录有尚未保存的修改。'),
+        actions: [
+          TextButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_TimeLogExitChoice.keepEditing),
+            child: const Text('继续编辑'),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_TimeLogExitChoice.discard),
+            child: const Text('放弃修改'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_TimeLogExitChoice.save),
+            child: const Text('保存并退出'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    _isExitDialogOpen = false;
+
+    switch (choice) {
+      case _TimeLogExitChoice.discard:
+        await _closeSheet();
+      case _TimeLogExitChoice.save:
+        await _save();
+      case _TimeLogExitChoice.keepEditing:
+      case null:
+        break;
+    }
+  }
+
   Future<void> _save() async {
+    if (_isSaving) return;
     if (!_end.isAfter(_start)) {
       AppSnackBars.showSnackBar(
         context,
@@ -1829,238 +2042,331 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
       );
       return;
     }
-    if (_end.isAfter(DateTime.now())) {
-      final format = _timeLogComponentDateFormat('MM-dd HH:mm');
-      final isEditing = widget.existingLog != null;
-      final confirmed = await showAppDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          backgroundColor: _TC.card(dialogContext),
-          title: Text(isEditing ? '确认保存未来时间' : '确认补录未来时间'),
-          content: Text(
-            '所选时间段：${format.format(_start)} → ${format.format(_end)}\n'
-            '结束时间晚于当前时间，确定仍要${isEditing ? '保存这条时间日志' : '补录这段时间'}吗？',
-            style: TextStyle(color: _TC.textSub(dialogContext)),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('返回修改'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: Text(isEditing ? '确认保存' : '确认补录'),
-            ),
-          ],
-        ),
+    if (widget.existingLog != null && !_hasUnsavedChanges) {
+      await _closeSheet();
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+      _saveError = null;
+    });
+    try {
+      final overlaps = TimeLogOverlapService.find(
+        startTime: _start.millisecondsSinceEpoch,
+        endTime: _end.millisecondsSinceEpoch,
+        timeLogs: widget.timeLogs,
+        pomodoros: widget.pomodoros,
+        excludingTimeLogId: widget.existingLog?.id,
       );
-      if (confirmed != true || !mounted) return;
+      final isFuture = _end.isAfter(DateTime.now());
+      if (overlaps.isNotEmpty || isFuture) {
+        final confirmed = await showTimeLogSaveConfirmation(
+          context: context,
+          start: _start,
+          end: _end,
+          overlaps: overlaps,
+          isFuture: isFuture,
+          isEditing: widget.existingLog != null,
+        );
+        if (confirmed != true || !mounted) return;
+      }
+
+      final result = await widget.onSave(_buildPendingLog());
+      if (!mounted) return;
+      if (!result.isSaved) {
+        setState(() {
+          _saveError =
+              result.disposition == TimeLogEditorSaveDisposition.unknown
+              ? '保存结果暂时无法核实。输入已保留，再次保存会继续使用同一条记录。'
+              : '保存失败，输入已保留。请检查后重试。';
+        });
+        return;
+      }
+      await _closeSheet();
+    } catch (error) {
+      if (mounted) {
+        setState(() => _saveError = '保存失败，输入已保留。请检查后重试。');
+        debugPrint('Time log editor save failed: $error');
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
+  }
 
-    final tag = widget.tags.cast<PomodoroTag?>().firstWhere(
-      (t) => t?.uuid == _tagId,
-      orElse: () => null,
+  Widget _buildDragHandle(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      key: const ValueKey('time-log-dismiss-handle'),
+      behavior: HitTestBehavior.opaque,
+      onVerticalDragStart: (_) => _handleDragDistance = 0,
+      onVerticalDragUpdate: (details) {
+        _handleDragDistance += details.delta.dy;
+      },
+      onVerticalDragEnd: (details) {
+        final shouldClose =
+            _handleDragDistance > 40 || (details.primaryVelocity ?? 0) > 500;
+        _handleDragDistance = 0;
+        if (shouldClose) unawaited(_requestExit());
+      },
+      child: SizedBox(
+        height: 24,
+        child: Center(
+          child: Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+        ),
+      ),
     );
-
-    final log = TimeLogItem(
-      id: widget.existingLog?.id,
-      title: _tc.text.isNotEmpty ? _tc.text : (tag?.name ?? '未命名补录'),
-      tagUuids: _tagId != null ? [_tagId!] : [],
-      startTime: _start.millisecondsSinceEpoch,
-      endTime: _end.millisecondsSinceEpoch,
-      remark: widget.existingLog?.remark,
-      version: widget.existingLog?.version ?? 1,
-      createdAt: widget.existingLog?.createdAt,
-      deviceId: widget.existingLog?.deviceId,
-    );
-
-    if (widget.existingLog != null) {
-      log.markAsChanged();
-    }
-
-    widget.onSave(log);
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final accent = colorScheme.primary;
-    return OptionalLiquidGlassSheet(
-      topRadius: 20,
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-        left: 20,
-        right: 20,
-        top: 20,
-      ),
-      fallbackDecoration: BoxDecoration(
-        color: _TC.card(context),
-        border: Border(top: BorderSide(color: _TC.divider(context))),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return PopScope<Object?>(
+      canPop: _allowExit || (!_isSaving && !_hasUnsavedChanges),
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) unawaited(_requestExit());
+      },
+      child: OptionalLiquidGlassSheet(
+        key: _sheetKey,
+        topRadius: 20,
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+          left: 20,
+          right: 20,
+          top: 20,
+        ),
+        fallbackDecoration: BoxDecoration(
+          color: _TC.card(context),
+          border: Border(top: BorderSide(color: _TC.divider(context))),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                widget.existingLog != null ? '编辑记录' : '补录事件',
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  color: _TC.text(context),
-                ),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.cdtSuccess
-                      .withValues(alpha: 0.12),
-                  border: Border.all(
-                    color: Theme.of(context).colorScheme.cdtSuccess
-                        .withValues(alpha: 0.35),
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  _durLabel(),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(context).colorScheme.cdtSuccess,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'CATEGORY',
-            style: TextStyle(
-              fontSize: 9,
-              color: _TC.textHint(context),
-              letterSpacing: 2,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: widget.tags.map((t) {
-              final c = hexColor(t.color);
-              final sel = _tagId == t.uuid;
-              return GestureDetector(
-                onTap: () => setState(() {
-                  _tagId = t.uuid;
-                  _tc.text = t.name;
-                }),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 7,
-                  ),
-                  decoration: BoxDecoration(
-                    color: sel
-                        ? c.withValues(alpha: 0.2)
-                        : c.withValues(alpha: 0.06),
-                    border: Border.all(
-                      color: sel ? c : c.withValues(alpha: 0.3),
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    t.name,
+              _buildDragHandle(context),
+              Row(
+                children: [
+                  Text(
+                    widget.existingLog != null ? '编辑记录' : '补录事件',
                     style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: sel ? c : c.withValues(alpha: 0.7),
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: _TC.text(context),
                     ),
                   ),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'TITLE',
-            style: TextStyle(
-              fontSize: 9,
-              color: _TC.textHint(context),
-              letterSpacing: 2,
-            ),
-          ),
-          const SizedBox(height: 6),
-          TextField(
-            controller: _tc,
-            style: TextStyle(color: _TC.text(context), fontSize: 13),
-            decoration: InputDecoration(
-              hintText: '事件名称（留空使用标签名）',
-              hintStyle: TextStyle(color: _TC.textHint(context), fontSize: 13),
-              filled: true,
-              fillColor: _TC.inputFill(context),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: _TC.divider(context)),
+                  const Spacer(),
+                  IconButton(
+                    tooltip: '关闭补录',
+                    onPressed: _isSaving ? null : _requestExit,
+                    icon: const Icon(Icons.close_rounded, size: 20),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.cdtSuccess
+                          .withValues(alpha: 0.12),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.cdtSuccess
+                            .withValues(alpha: 0.35),
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      _durLabel(),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.cdtSuccess,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: _TC.divider(context)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: accent),
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 10,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _TimePickerCard(
-                  label: '开始时间',
-                  dt: _start,
-                  onTapTime: () => _pickTime(true),
-                  onTapDate: () => _pickDate(true),
+              const SizedBox(height: 16),
+              Text(
+                'CATEGORY',
+                style: TextStyle(
+                  fontSize: 9,
+                  color: _TC.textHint(context),
+                  letterSpacing: 2,
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _TimePickerCard(
-                  label: '结束时间',
-                  dt: _end,
-                  onTapTime: () => _pickTime(false),
-                  onTapDate: () => _pickDate(false),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: widget.tags.map((t) {
+                  final c = hexColor(t.color);
+                  final sel = _tagId == t.uuid;
+                  return GestureDetector(
+                    onTap: _isSaving
+                        ? null
+                        : () {
+                            _invalidatePendingSave();
+                            setState(() => _tagId = t.uuid);
+                            _tc.text = t.name;
+                          },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: sel
+                            ? c.withValues(alpha: 0.2)
+                            : c.withValues(alpha: 0.06),
+                        border: Border.all(
+                          color: sel ? c : c.withValues(alpha: 0.3),
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        t.name,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: sel ? c : c.withValues(alpha: 0.7),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'TITLE',
+                style: TextStyle(
+                  fontSize: 9,
+                  color: _TC.textHint(context),
+                  letterSpacing: 2,
+                ),
+              ),
+              const SizedBox(height: 6),
+              TextField(
+                key: const ValueKey('time-log-title'),
+                enabled: !_isSaving,
+                controller: _tc,
+                style: TextStyle(color: _TC.text(context), fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: '事件名称（留空使用标签名）',
+                  hintStyle: TextStyle(
+                    color: _TC.textHint(context),
+                    fontSize: 13,
+                  ),
+                  filled: true,
+                  fillColor: _TC.inputFill(context),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: _TC.divider(context)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: _TC.divider(context)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: accent),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: _TimePickerCard(
+                      label: '开始时间',
+                      dt: _start,
+                      onTapTime: _isSaving ? () {} : () => _pickTime(true),
+                      onTapDate: _isSaving ? () {} : () => _pickDate(true),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _TimePickerCard(
+                      label: '结束时间',
+                      dt: _end,
+                      onTapTime: _isSaving ? () {} : () => _pickTime(false),
+                      onTapDate: _isSaving ? () {} : () => _pickDate(false),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              if (_saveError != null) ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.error_outline_rounded,
+                      size: 18,
+                      color: colorScheme.error,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _saveError!,
+                        style: TextStyle(
+                          color: colorScheme.error,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+              ],
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: _isSaving ? null : _save,
+                  style: _timeLogPrimaryActionStyle(
+                    backgroundColor: accent,
+                    foregroundColor: colorScheme.onPrimary,
+                  ),
+                  child: _isSaving
+                      ? const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            SizedBox(width: 10),
+                            Text('保存中…'),
+                          ],
+                        )
+                      : const Text(
+                          '保存记录',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: ElevatedButton(
-              onPressed: _save,
-              style: _timeLogPrimaryActionStyle(
-                backgroundColor: accent,
-                foregroundColor: colorScheme.onPrimary,
-              ),
-              child: const Text(
-                '保存记录',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -2106,7 +2412,10 @@ class _TimePickerCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          Row(
+          Wrap(
+            spacing: 6,
+            runSpacing: 0,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
                 _timeLogComponentDateFormat('HH:mm').format(dt),
@@ -2116,7 +2425,6 @@ class _TimePickerCard extends StatelessWidget {
                   color: _TC.text(context),
                 ),
               ),
-              const SizedBox(width: 6),
               Icon(Icons.access_time, size: 14, color: _TC.textHint(context)),
             ],
           ),

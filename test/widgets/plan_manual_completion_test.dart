@@ -100,6 +100,8 @@ void main() {
                             id: 'todo-target',
                             title: '整理材料',
                             dueDate: DateTime(2026, 10, 9),
+                            teamUuid: 'team',
+                            collabType: 1,
                           ),
                         ],
                         todoGroups: const [],
@@ -141,6 +143,7 @@ void main() {
   setUp(() async {
     f = PlanAvailabilityFixture();
     await f.initialize();
+    await f.db.update('todos', {'team_uuid': 'team', 'collab_type': 1});
     debugDefaultTargetPlatformOverride = null;
     await initializeDateFormatting();
     await LiquidGlassEffectService.setEnabled(false);

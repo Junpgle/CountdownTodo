@@ -43,6 +43,7 @@ void main() {
   var maintenance = 0, cardTaps = 0;
   final day = DateTime(2026, 10, 8);
   Finder key(String s) => find.byKey(ValueKey(s));
+  Finder editAction(String id) => find.text('查看规划');
   Future<void> settle(WidgetTester t) async {
     for (var i = 0; i < 3; i++) {
       await t.runAsync(
@@ -162,7 +163,7 @@ void main() {
       await plan('p', 9, status: TodoPlanStatus.missed);
       await open(t);
       await action(t, key('plan-today-row-p'));
-      await action(t, key('plan-today-edit-p'));
+      await action(t, editAction('p'));
       await action(t, find.byTooltip('更多操作'));
       await action(t, find.text('确认规划已完成'));
       expect(find.text('10月8日 09:00 — 10月8日 10:00'), findsOneWidget);
@@ -266,7 +267,7 @@ void main() {
       expect(visible.length, 5);
       expect(find.textContaining('达成'), findsNothing);
       await action(t, key('plan-today-row-next'));
-      expect(key('plan-today-edit-next'), findsOneWidget);
+      expect(editAction('next'), findsOneWidget);
       expect(find.text('今日已核实投入 0分'), findsOneWidget);
       expect(cardTaps, 0);
       expect(maintenance, 1);
@@ -379,7 +380,7 @@ void main() {
       await plan('p', 14);
       await open(t);
       await action(t, key('plan-today-row-p'));
-      await action(t, key('plan-today-edit-p'));
+      await action(t, editAction('p'));
       expect(find.byType(PlanBlockEditorSheet), findsOneWidget);
       final editor = t.widget<PlanBlockEditorSheet>(
         find.byType(PlanBlockEditorSheet),
@@ -419,7 +420,7 @@ void main() {
       await open(t);
       await f.db.delete('todos');
       await action(t, key('plan-today-row-p'));
-      await action(t, key('plan-today-edit-p'));
+      await action(t, editAction('p'));
       expect(find.byType(PlanBlockEditorSheet), findsNothing);
       expect(find.textContaining('待办已不存在'), findsOneWidget);
       await action(t, key('plan-today-retry'));
@@ -474,7 +475,7 @@ void main() {
         brightness: setting.$3,
       );
       await action(t, key('plan-today-row-p0'));
-      await t.ensureVisible(key('plan-today-edit-p0'));
+      await t.ensureVisible(editAction('p0'));
       await t.pump();
       expect(t.takeException(), isNull);
       if (setting.$2 > 1 && setting.$1.width < 400) {

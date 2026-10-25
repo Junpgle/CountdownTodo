@@ -205,7 +205,7 @@ void main() {
     expect(c.overview.actual('unlinked'), 4000);
     expect(c.total, 100);
     expect(c.rows.length, 5);
-    expect(observed, [1, 1, 1, 1, 5]);
+    expect(observed, [1, 5]);
   });
   test(
     'cross-midnight ownership and deleted todo snapshots remain intact',

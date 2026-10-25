@@ -132,6 +132,10 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
           ),
         ),
         confirmDismiss: (_) async {
+          if (TodoRecurrenceDeleteService.isRecurring(todo)) {
+            await _deleteRecurringTodoWithScope(todo);
+            return false;
+          }
           return await showAppDialog<bool>(
             context: context,
             builder: (ctx) => AlertDialog(
@@ -411,6 +415,11 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                                 _invalidateTodoViewModel();
                                                 setState(() {
                                                   todo.isDone = val;
+                                                  if (val && todo.isSkipped) {
+                                                    todo.isSkipped = false;
+                                                    todo.isSkippedSyncPending =
+                                                        true;
+                                                  }
                                                   if (val) {
                                                     _isCompleting[todo.id] =
                                                         true;
@@ -991,7 +1000,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
   }
 
   Widget _buildTodoList() {
-    final DateTime now = DateTime.now();
+    final DateTime now = widget.clock();
     final DateTime today = DateTime(now.year, now.month, now.day);
     if (_cachedVmSignatureDate != today ||
         (_cachedVm != null && _cachedVm!.today != today)) {
@@ -1136,39 +1145,31 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                     _isTodayManuallyExpanded = true;
                     _isTodayExpanded = true;
                   }),
-                  child: Container(
+                  child: OptionalLiquidGlassCard(
                     margin: const EdgeInsets.symmetric(vertical: 10),
-                    decoration: BoxDecoration(
-                      color: widget.isLight
-                          ? (isDarkTheme
-                                ? Colors.grey[850]!.withValues(alpha: 0.95)
-                                : Colors.white.withValues(alpha: 0.95))
-                          : (allTodayDone
-                                ? (isDarkTheme
-                                      ? Colors.green.withValues(alpha: 0.15)
-                                      : Colors.green.withValues(alpha: 0.08))
-                                : (isDarkTheme
-                                      ? Colors.white.withValues(alpha: 0.08)
-                                      : Theme.of(context).colorScheme.primary
-                                            .withValues(alpha: 0.04))),
+                    borderRadius: 20,
+                    tint: allTodayDone
+                        ? Colors.green.withValues(alpha: 0.16)
+                        : Theme.of(context).colorScheme.primary
+                              .withValues(alpha: 0.14),
+                    isDark: isDarkTheme,
+                    fallbackDecoration: BoxDecoration(
+                      color: isDarkTheme
+                          ? Colors.grey[850]!.withValues(alpha: 0.95)
+                          : Colors.white.withValues(alpha: 0.95),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
                         color: allTodayDone
                             ? Colors.green.withValues(alpha: 0.4)
-                            : (widget.isLight
-                                  ? (isDarkTheme
-                                        ? Colors.white.withValues(alpha: 0.15)
-                                        : Colors.black.withValues(alpha: 0.1))
-                                  : (isDarkTheme
-                                        ? Colors.white.withValues(alpha: 0.22)
-                                        : Theme.of(context).colorScheme.primary
-                                              .withValues(alpha: 0.25))),
+                            : (isDarkTheme
+                                  ? Colors.white.withValues(alpha: 0.15)
+                                  : Colors.black.withValues(alpha: 0.1)),
                         width: 1.5,
                       ),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withValues(
-                            alpha: widget.isLight ? 0.15 : 0.08,
+                            alpha: isDarkTheme ? 0.25 : 0.08,
                           ),
                           blurRadius: 12,
                           offset: const Offset(0, 5),
@@ -1224,17 +1225,11 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                         ? (isDarkTheme
                                               ? Colors.green.shade200
                                               : Colors.green.shade900)
-                                        : (widget.isLight
-                                              ? (isDarkTheme
-                                                    ? Colors.white
-                                                    : Colors.black)
-                                              : (isDarkTheme
-                                                    ? Colors.white.withValues(
-                                                        alpha: 0.9,
-                                                      )
-                                                    : Colors.black.withValues(
-                                                        alpha: 0.85,
-                                                      ))),
+                                        : (isDarkTheme
+                                              ? Colors.white
+                                              : Colors.black.withValues(
+                                                  alpha: 0.85,
+                                                )),
                                     fontWeight: FontWeight.bold,
                                     fontSize: 16,
                                     letterSpacing: 0.2,
@@ -1250,17 +1245,13 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                         ? (isDarkTheme
                                               ? Colors.green[200]
                                               : Colors.green[800])
-                                        : (widget.isLight
-                                              ? (isDarkTheme
-                                                    ? Colors.white.withValues(
-                                                        alpha: 0.7,
-                                                      )
-                                                    : Colors.black.withValues(
-                                                        alpha: 0.6,
-                                                      ))
-                                              : (isDarkTheme
-                                                    ? Colors.white
-                                                    : Colors.black))),
+                                        : (isDarkTheme
+                                              ? Colors.white.withValues(
+                                                  alpha: 0.7,
+                                                )
+                                              : Colors.black.withValues(
+                                                  alpha: 0.6,
+                                                ))),
                                     fontSize: 12.5,
                                   ),
                                 ),
@@ -1544,7 +1535,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
     final bool separateFolders =
         _folderDisplayMode == _TodoFolderDisplayMode.separate;
 
-    final DateTime now = DateTime.now();
+    final DateTime now = widget.clock();
     final DateTime today = DateTime(now.year, now.month, now.day);
 
     final seriesOccurrences = <String, List<TodoItem>>{};
@@ -1591,7 +1582,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
     var activeTodoCount = 0;
     var undoneCount = 0;
     for (final t in widget.todos) {
-      if (t.isDeleted || _isHistoricalTodoAt(t, today)) continue;
+      if (t.isDeleted || t.isSkipped || _isHistoricalTodoAt(t, today)) continue;
       if (_habitOnlyRecurringSeriesIds.isNotEmpty) {
         final seriesId = t.recurrenceSeriesId;
         if (seriesId != null &&
@@ -1796,6 +1787,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
             identityHashCode(todo),
             todo.isDeleted,
             todo.isDone,
+            todo.isSkipped,
             todo.version,
             todo.teamUuid,
             todo.teamName,
@@ -1830,7 +1822,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
         onlyShowMostUrgentTodo: urgentFirstFolders,
         teamRoles: _teamRoles,
         recurrenceProgressBuilder: (todo) =>
-            _buildRecurrenceProgress(todo, DateTime.now()),
+            _buildRecurrenceProgress(todo, widget.clock()),
         onToggle: () {
           _invalidateTodoViewModel();
           setState(() {
@@ -1846,6 +1838,10 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
             PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
           }
           todo.isDone = !todo.isDone;
+          if (todo.isDone && todo.isSkipped) {
+            todo.isSkipped = false;
+            todo.isSkippedSyncPending = true;
+          }
           todo.markAsChanged();
           if (todo.isDone && !wasDone) {
             TodoCompletionCelebrationService.playCompletionImpact();
@@ -1897,6 +1893,10 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
         },
         onTodoTapWithContext: _editTodo,
         onTodoDelete: (todo) async {
+          if (TodoRecurrenceDeleteService.isRecurring(todo)) {
+            await _deleteRecurringTodoWithScope(todo);
+            return;
+          }
           _invalidateTodoViewModel();
           setState(() {
             PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
@@ -2051,6 +2051,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                       onGroupsChanged: widget.onGroupsChanged,
                       allTodos: widget.todos,
                       onTodosChanged: widget.onTodosChanged,
+                      onManualTodoSaved: widget.onManualTodoSaved,
                     ),
                     sourceKey: widget.folderKey ?? _folderManagementButtonKey,
                     placeholderIcon: Icons.folder_copy_outlined,

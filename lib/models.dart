@@ -174,6 +174,12 @@ enum RecurrenceType {
   weekdays,
 }
 
+/// The scope applied when editing a materialized fixed-schedule series.
+enum FixedScheduleEditScope { occurrence, future, series }
+
+/// The edit range chosen for an existing recurring todo.
+enum TodoRecurrenceEditScope { occurrence, future, series }
+
 /// 用户可理解的待办时间语义。
 ///
 /// [unscheduled] 没有完成日期；[dateOnly] 只要求在某天内完成；
@@ -188,6 +194,8 @@ class TodoItem {
   String id; // 核心：全局唯一 UUID
   String title;
   bool isDone;
+  bool isSkipped;
+  bool isSkippedSyncPending;
   bool isDeleted; // 核心：逻辑删除标记
   int version; // 核心：并发版本号
   int updatedAt; // 核心：最后修改时间戳 (毫秒)
@@ -218,6 +226,8 @@ class TodoItem {
     String? id,
     required this.title,
     this.isDone = false,
+    this.isSkipped = false,
+    this.isSkippedSyncPending = false,
     this.isDeleted = false,
     this.version = 1,
     int? updatedAt,
@@ -398,6 +408,8 @@ class TodoItem {
     'uuid': id,
     'content': title,
     'is_completed': isDone ? 1 : 0,
+    'is_skipped': isSkipped ? 1 : 0,
+    'is_skipped_sync_pending': isSkippedSyncPending ? 1 : 0,
     'is_deleted': isDeleted ? 1 : 0,
     'version': version,
     'updated_at': updatedAt, // UTC 毫秒时间戳
@@ -440,6 +452,8 @@ class TodoItem {
     id: id.contains('-') ? id : const Uuid().v4(),
     title: title,
     isDone: isDone,
+    isSkipped: isSkipped,
+    isSkippedSyncPending: isSkippedSyncPending,
     isDeleted: isDeleted,
     version: version,
     updatedAt: updatedAt,
@@ -482,13 +496,27 @@ class TodoItem {
         .clamp(0, RecurrenceType.values.length - 1)
         .toInt();
 
+    final isDone =
+        json['is_completed'] == 1 ||
+        json['is_completed'] == true ||
+        json['isDone'] == true;
+    final isSkipped =
+        json['is_skipped'] == 1 ||
+        json['is_skipped'] == true ||
+        json['isSkipped'] == true;
+    if (isDone && isSkipped) {
+      throw const FormatException('待办不能同时处于已完成和已跳过状态');
+    }
+
     return TodoItem(
       id: parsedId,
       title: json['content']?.toString() ?? json['title']?.toString() ?? '',
-      isDone:
-          json['is_completed'] == 1 ||
-          json['is_completed'] == true ||
-          json['isDone'] == true,
+      isDone: isDone,
+      isSkipped: isSkipped,
+      isSkippedSyncPending:
+          json['is_skipped_sync_pending'] == 1 ||
+          json['is_skipped_sync_pending'] == true ||
+          json['isSkippedSyncPending'] == true,
       isDeleted:
           json['is_deleted'] == 1 ||
           json['is_deleted'] == true ||

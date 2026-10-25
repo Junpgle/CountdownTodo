@@ -1192,6 +1192,9 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     if (data['is_completed'] == 1) {
       tags.add(_chip('已完成', colorScheme.cdtSuccess));
     }
+    if (data['is_skipped'] == 1) {
+      tags.add(_chip('已跳过本期', colorScheme.tertiary));
+    }
     if (data['team_name'] != null && (data['team_name'] as String).isNotEmpty) {
       tags.add(_chip('📌 ${data['team_name']}', colorScheme.secondary));
     }

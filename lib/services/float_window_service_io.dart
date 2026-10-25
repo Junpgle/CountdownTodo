@@ -98,6 +98,11 @@ class FloatWindowService {
       return;
     }
     try {
+      await IslandManager().reconcileExistingIslands(
+        IslandConfig.defaultIslandId,
+      );
+    } catch (_) {}
+    try {
       _initIslandChannelSubscription();
     } catch (_) {}
     _initClipboardListener();

@@ -17,6 +17,11 @@ void main() {
       occurrenceId: 'overdue',
     ),
     TodoRecurrenceProgressNode(
+      date: baseDate.subtract(const Duration(days: 1, hours: 4)),
+      state: TodoRecurrenceNodeState.skipped,
+      occurrenceId: 'skipped',
+    ),
+    TodoRecurrenceProgressNode(
       date: baseDate,
       state: TodoRecurrenceNodeState.current,
       occurrenceId: 'current',
@@ -56,6 +61,7 @@ void main() {
               completedCount: 1,
               totalCount: totalCount,
               overdueCount: 1,
+              skippedCount: 1,
               onNodeTap: onNodeTap,
               onManage: onManage,
             ),
@@ -72,15 +78,16 @@ void main() {
 
     expect(find.byIcon(Icons.check_rounded), findsOneWidget);
     expect(find.byIcon(Icons.priority_high_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.skip_next_rounded), findsOneWidget);
     expect(find.byIcon(Icons.more_horiz_rounded), findsOneWidget);
     expect(find.byIcon(Icons.remove_rounded), findsOneWidget);
-    expect(find.textContaining('已完成 1/4 期'), findsOneWidget);
+    expect(find.textContaining('已完成 1/4 期 · 1 逾期 · 1 已跳过'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('recurrence_progress_toggle')));
     await tester.pumpAndSettle();
 
     expect(find.byIcon(Icons.check_rounded), findsNothing);
-    expect(find.text('已完成 1/4 期 · 1 逾期'), findsOneWidget);
+    expect(find.text('已完成 1/4 期 · 1 逾期 · 1 已跳过'), findsOneWidget);
   });
 
   testWidgets('node tap and timeline long press trigger callbacks', (
@@ -96,7 +103,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byKey(ValueKey('recurrence_node_${nodes[2].key}')));
+    await tester.tap(find.byKey(ValueKey('recurrence_node_${nodes[3].key}')));
     await tester.pump();
     expect(tappedNode?.occurrenceId, 'current');
 

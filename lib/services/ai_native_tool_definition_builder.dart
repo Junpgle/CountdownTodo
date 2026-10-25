@@ -56,8 +56,8 @@ class AiNativeToolDefinitionBuilder {
     'recurrenceSeriesId': {'type': 'string'},
     'recurrenceScope': {
       'type': 'string',
-      'enum': ['occurrence', 'future'],
-      'description': '默认 occurrence；仅用户明确要求本期及以后时使用 future。',
+      'enum': ['occurrence', 'future', 'series'],
+      'description': '默认 occurrence；future 用于本期及以后；series 仅 update_todo 且用户明确要求整个系列时使用，保留各期完成/跳过状态且不修改重复规则。',
     },
     'customIntervalDays': {
       'type': ['integer', 'null'],
@@ -266,6 +266,7 @@ class AiNativeToolDefinitionBuilder {
   static const Set<String> _todoUpdateContainerActions = {
     'update_todo',
     'complete_todo',
+    'skip_todo',
     'delete_todo',
     'reschedule_todo',
     'bulk_reschedule',
@@ -329,6 +330,7 @@ class AiNativeToolDefinitionBuilder {
   /// second safety barrier after model output is parsed.
   static const Map<String, List<String>> _explicitCdtActionTriggers = {
     'complete_todo': AiTodoContextBuilder.todoCompletionMutationKeywords,
+    'skip_todo': AiTodoContextBuilder.todoSkipMutationKeywords,
     'delete_todo': ['删除', '删掉', '删了', '删', '移除', '清空', '清掉', '清除', '去掉', '取消'],
     'cancel_schedule': ['取消', '撤销'],
     'delete_schedule': ['删除', '删掉', '删', '移除', '清掉'],
@@ -1015,6 +1017,7 @@ class AiNativeToolDefinitionBuilder {
     'create_todo',
     'update_todo',
     'complete_todo',
+    'skip_todo',
     'delete_todo',
     'reschedule_todo',
     'bulk_reschedule',

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:countdown_todo/screens/help/help_center_screen.dart';
 import 'package:countdown_todo/screens/home_settings_screen.dart';
+import 'package:countdown_todo/screens/time_log_screen.dart';
 import 'package:countdown_todo/screens/settings/pages/preference_settings_page.dart';
 import 'package:countdown_todo/screens/settings/pages/interconnect_settings_page.dart';
 import 'package:countdown_todo/utils/page_transitions.dart';
@@ -253,15 +254,31 @@ void main() {
       MaterialApp(
         navigatorKey: navigatorKey,
         navigatorObservers: [observer],
-        home: const HelpCenterScreen(),
+        home: HelpCenterScreen(username: 'test-user'),
       ),
     );
-    for (final title in ['习惯中心', '小组件与桌面功能']) {
+    for (final title in ['习惯中心', '小组件与桌面功能', '常见问题']) {
       final source = find.ancestor(
         of: find.text(title),
         matching: find.byType(ListTile),
       );
       await _openFromSource(tester, source, observer);
+      if (title == '常见问题') {
+        await tester.pumpAndSettle();
+        expect(find.textContaining('进入时间日志页面'), findsOneWidget);
+        expect(find.text('前往时间日志'), findsOneWidget);
+        expect(find.textContaining('手动补录暂不支持'), findsNothing);
+        await (await SharedPreferences.getInstance()).setBool(
+          'tip_shown_time_log_guide',
+          true,
+        );
+        await tester.tap(find.text('前往时间日志'));
+        await tester.pumpAndSettle();
+        expect(find.byType(TimeLogScreen), findsOneWidget);
+        await tester.tap(find.text('补录'));
+        await tester.pumpAndSettle();
+        expect(find.text('退出补录'), findsOneWidget);
+      }
       navigatorKey.currentState!.pop();
       await tester.pumpAndSettle();
     }

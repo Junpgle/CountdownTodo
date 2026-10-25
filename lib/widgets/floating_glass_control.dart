@@ -238,10 +238,7 @@ class LiquidGlassSwitch extends StatelessWidget {
 
         final activeTrack = _resolveActiveColor(colorScheme);
         final inactiveTrack = _resolveInactiveColor(colorScheme);
-        final requestedQuality =
-            configuration.mode == LiquidGlassEffectMode.enhanced
-            ? GlassQuality.premium
-            : GlassQuality.standard;
+        final requestedQuality = liquidGlassQualityForMode(configuration.mode);
         return _OptimisticGlassSwitch(
           value: value,
           onChanged: onChanged,
@@ -453,9 +450,7 @@ class LiquidGlassSlider extends StatelessWidget {
         );
         final quality = GlassThemeHelpers.resolveQuality(
           context,
-          widgetQuality: enhanced
-              ? GlassQuality.premium
-              : GlassQuality.standard,
+          widgetQuality: liquidGlassQualityForMode(configuration.mode),
         );
         final slider = GlassSlider(
           value: value,
@@ -1346,7 +1341,9 @@ class _FloatingGlassPinnedHeaderLayoutState
           top: 0,
           left: 0,
           right: 0,
-          child: KeyedSubtree(key: _headerKey, child: widget.header),
+          child: FloatingGlassScrollAware(
+            child: KeyedSubtree(key: _headerKey, child: widget.header),
+          ),
         ),
       ],
     );
@@ -2712,7 +2709,7 @@ class FloatingGlassActionButton extends StatelessWidget {
             shadowElevation: 0.35,
           ),
           useOwnLayer: true,
-          quality: enhanced ? GlassQuality.premium : GlassQuality.standard,
+          quality: liquidGlassQualityForMode(configuration.mode),
           interactionScale: 1.04,
           stretch: _extended ? 0.28 : 0.4,
           resistance: 0.015,
@@ -2995,9 +2992,10 @@ class _FloatingGlassControlFallback extends StatelessWidget {
             fit: fit,
             clipBehavior: allowChildOverflow ? Clip.none : Clip.hardEdge,
             children: [
-              // Keep the Android fallback inexpensive while preserving a
-              // frosted surface elsewhere, where a small blur is cheap.
-              if (!AppPlatform.isAndroid)
+              // Avoid BackdropFilter in the Android and Windows fallback
+              // paths; its offscreen pass is costly and can expand across the
+              // transparent desktop window.
+              if (!AppPlatform.isAndroid && !AppPlatform.isWindows)
                 Positioned.fill(
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(borderRadius),

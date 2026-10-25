@@ -12,8 +12,6 @@ class CourseSection extends StatelessWidget {
   final VoidCallback? onWebViewImport;
   final VoidCallback onFetchFromCloud;
   final VoidCallback onCalendarAdjustment;
-  final String noCourseBehavior;
-  final ValueChanged<String?> onNoCourseBehaviorChanged;
 
   const CourseSection({
     super.key,
@@ -24,8 +22,6 @@ class CourseSection extends StatelessWidget {
     this.onWebViewImport,
     required this.onFetchFromCloud,
     required this.onCalendarAdjustment,
-    required this.noCourseBehavior,
-    required this.onNoCourseBehaviorChanged,
   });
 
   Widget _buildTile({
@@ -73,29 +69,6 @@ class CourseSection extends StatelessWidget {
           ),
           child: Column(
             children: [
-              // 1. 首页板块相关
-              _buildTile(
-                context: context,
-                targetId: 'no_course_behavior',
-                child: ListTile(
-                  leading: const Icon(
-                    Icons.layers_clear_outlined,
-                    color: Colors.blueGrey,
-                  ),
-                  title: const Text('无课时板块行为'),
-                  trailing: DropdownButton<String>(
-                    value: noCourseBehavior,
-                    underline: const SizedBox(),
-                    items: const [
-                      DropdownMenuItem(value: 'keep', child: Text('保持位置')),
-                      DropdownMenuItem(value: 'bottom', child: Text('排到最后')),
-                      DropdownMenuItem(value: 'hide', child: Text('自动隐藏')),
-                    ],
-                    onChanged: onNoCourseBehaviorChanged,
-                  ),
-                ),
-              ),
-              const Divider(height: 1, indent: 56),
               _buildTile(
                 context: context,
                 targetId: 'course_calendar_adjustment',

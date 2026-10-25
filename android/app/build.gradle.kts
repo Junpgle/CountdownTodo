@@ -6,11 +6,10 @@ plugins {
 }
 
 // Keep Android's versionCode deterministic and aligned with pubspec.yaml.
-// Encoded as major*10000 + minor*100 + patch.
-// For example: 5.6.18 -> 50618 and 5.7.0 -> 50700.
-// The extra major digit also keeps codes strictly above legacy installs that
-// shipped with the old major*1000 scheme (max ~78xx), so upgrades never
-// trigger INSTALL_FAILED_VERSION_DOWNGRADE on those devices.
+// Encoded as major*100000 + minor*100 + patch, allowing two-digit minor versions.
+// For example: 5.6.18 -> 500618 and 7.21.24 -> 702124.
+// This keeps codes above legacy installs that used major*1000 (max ~78xx), so
+// upgrades do not trigger INSTALL_FAILED_VERSION_DOWNGRADE on those devices.
 fun versionCodeFromVersionName(versionName: String): Int {
     val parts = versionName.substringBefore("+").substringBefore("-").split(".")
     val major = parts.getOrNull(0)?.toIntOrNull()
@@ -20,11 +19,11 @@ fun versionCodeFromVersionName(versionName: String): Int {
     require(major != null && minor != null && patch != null) {
         "Invalid versionName '$versionName'; expected major.minor.patch"
     }
-    require(major in 1..999 && minor in 0..9 && patch in 0..99) {
-        "Version '$versionName' cannot be encoded as major*10000 + minor*100 + patch"
+    require(major in 1..999 && minor in 0..99 && patch in 0..99) {
+        "Version '$versionName' cannot be encoded as major*100000 + minor*100 + patch"
     }
 
-    val versionCode = major * 10000 + minor * 100 + patch
+    val versionCode = major * 100000 + minor * 100 + patch
     require(versionCode > 0) { "versionCode must be greater than 0" }
     return versionCode
 }
@@ -119,6 +118,17 @@ android {
             reset()
             include("armeabi-v7a", "arm64-v8a", "x86_64")
             isUniversalApk = true  // 同时生成包含所有架构的通用 APK
+        }
+    }
+}
+
+// 统一所有 CPU 架构（arm64-v8a、armeabi-v7a、x86_64 以及 Universal）的 versionCode，
+// 取消 Flutter/Gradle 默认叠加的 ABI 架构偏移量（如 arm64 +2000、armv7 +1000），避免不同包之间版本冲突或降级拦截。
+androidComponents {
+    onVariants { variant ->
+        val targetVersionCode = versionCodeFromVersionName(flutter.versionName)
+        variant.outputs.forEach { output ->
+            output.versionCode.set(targetVersionCode)
         }
     }
 }

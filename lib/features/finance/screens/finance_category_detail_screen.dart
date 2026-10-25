@@ -23,6 +23,18 @@ class FinanceCategoryDetailScreen extends StatefulWidget {
     List<FinanceTransaction> periodTransactions,
   )?
   onCategorySelected;
+  final Future<void> Function(
+    String categoryUuid,
+    GlobalKey sourceKey,
+    List<FinanceTransaction> periodTransactions,
+    DateTimeRange periodRange,
+  )?
+  onCategorySelectedWithRange;
+  final Future<void> Function(
+    FinanceTransaction transaction,
+    GlobalKey sourceKey,
+  )?
+  onOpenTransaction;
 
   const FinanceCategoryDetailScreen({
     super.key,
@@ -36,6 +48,8 @@ class FinanceCategoryDetailScreen extends StatefulWidget {
     required this.transactions,
     required this.categories,
     this.onCategorySelected,
+    this.onCategorySelectedWithRange,
+    this.onOpenTransaction,
   });
 
   @override
@@ -46,7 +60,9 @@ class FinanceCategoryDetailScreen extends StatefulWidget {
 class _FinanceCategoryDetailScreenState
     extends State<FinanceCategoryDetailScreen> {
   final Map<String, GlobalKey> _itemSourceKeys = {};
+  final Map<String, GlobalKey> _billSourceKeys = {};
   bool _openingCategoryLedger = false;
+  bool _openingBillDetail = false;
   String? _expandedCategoryUuid;
   late List<FinanceTransaction> _transactions;
   late Map<String, FinanceCategory> _categories;
@@ -482,8 +498,8 @@ class _FinanceCategoryDetailScreenState
                       ? '点击分类即可进入计划账单筛选'
                       : '点击分类即可进入账单筛选'
                 : isPlanned
-                ? '点击分类可在当前页展开或收起计划账单'
-                : '点击分类可在当前页展开或收起对应账单',
+                ? '点击分类可在当前页展开或收起计划账单，点击账单查看详情'
+                : '点击分类可在当前页展开或收起对应账单，点击账单查看详情，详情页可编辑',
             textAlign: TextAlign.center,
             style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12),
           ),
@@ -517,14 +533,37 @@ class _FinanceCategoryDetailScreenState
                 return;
               }
               final onSelected = widget.onCategorySelected;
-              if (onSelected == null) {
+              final onSelectedWithRange = widget.onCategorySelectedWithRange;
+              if (onSelected == null && onSelectedWithRange == null) {
                 Navigator.of(context).pop(item.categoryUuid);
                 return;
               }
               if (_openingCategoryLedger) return;
               _openingCategoryLedger = true;
               try {
-                await onSelected(item.categoryUuid, sourceKey, transactions);
+                final from = widget.periodStart;
+                final to = widget.periodEnd;
+                if (onSelectedWithRange != null && from != null && to != null) {
+                  await onSelectedWithRange(
+                    item.categoryUuid,
+                    sourceKey,
+                    transactions,
+                    DateTimeRange(
+                      start: from,
+                      end: financeCalendarDayOffset(to, -1),
+                    ),
+                  );
+                } else {
+                  if (onSelected != null) {
+                    await onSelected(
+                      item.categoryUuid,
+                      sourceKey,
+                      transactions,
+                    );
+                  } else {
+                    Navigator.of(context).pop(item.categoryUuid);
+                  }
+                }
               } finally {
                 _openingCategoryLedger = false;
               }
@@ -635,6 +674,11 @@ class _FinanceCategoryDetailScreenState
     FinanceTransaction transaction,
     ColorScheme colorScheme,
   ) {
+    final sourceKey = _billSourceKeys.putIfAbsent(
+      transaction.uuid,
+      GlobalKey.new,
+    );
+    final onOpenTransaction = widget.onOpenTransaction;
     final merchant = transaction.merchant?.trim();
     final note = transaction.note?.trim();
     final title = merchant?.isNotEmpty == true
@@ -657,46 +701,75 @@ class _FinanceCategoryDetailScreenState
     final amount = isRefund
         ? '+${formatFinanceAmount(transaction.amountMinor)}'
         : '−${formatFinanceAmount(transaction.amountMinor)}';
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(72, 9, 16, 9),
-      child: Row(
-        children: [
-          Icon(
-            isRefund ? Icons.undo_rounded : Icons.receipt_long_outlined,
-            size: 18,
-            color: isRefund
-                ? colorScheme.primary
-                : colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                Text(
-                  subtitleParts.join(' · '),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: colorScheme.onSurfaceVariant,
-                    fontSize: 12,
+    return InkWell(
+      key: sourceKey,
+      onTap: onOpenTransaction == null
+          ? null
+          : () => _openBillDetail(transaction, sourceKey),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(72, 9, 16, 9),
+        child: Row(
+          children: [
+            Icon(
+              isRefund ? Icons.undo_rounded : Icons.receipt_long_outlined,
+              size: 18,
+              color: isRefund
+                  ? colorScheme.primary
+                  : colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(
+                    subtitleParts.join(' · '),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: colorScheme.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            amount,
-            style: TextStyle(
-              color: isRefund ? colorScheme.primary : colorScheme.error,
-              fontWeight: FontWeight.w600,
+            const SizedBox(width: 8),
+            Text(
+              amount,
+              style: TextStyle(
+                color: isRefund ? colorScheme.primary : colorScheme.error,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-          ),
-        ],
+            if (onOpenTransaction != null) ...[
+              const SizedBox(width: 2),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 18,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ],
+        ),
       ),
     );
+  }
+
+  Future<void> _openBillDetail(
+    FinanceTransaction transaction,
+    GlobalKey sourceKey,
+  ) async {
+    final onOpenTransaction = widget.onOpenTransaction;
+    if (onOpenTransaction == null || _openingBillDetail) return;
+
+    _openingBillDetail = true;
+    try {
+      await onOpenTransaction(transaction, sourceKey);
+    } finally {
+      _openingBillDetail = false;
+    }
   }
 }
 

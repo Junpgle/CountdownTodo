@@ -149,6 +149,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
   int _recurringCompletedCount = 0;
   int _recurringScheduledCount = 0;
   int _recurringMissedCount = 0;
+  int _recurringSkippedCount = 0;
   int _recurringPendingCount = 0;
   List<TimelineRecurrenceSeriesStatistics> _recurrenceSeries = [];
   TimelineRecurrenceSeriesStatistics? _bestRecurrenceSeries;
@@ -480,6 +481,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
           _recurringCompletedCount = rangeStatistics.recurringCompletedCount;
           _recurringScheduledCount = rangeStatistics.recurringScheduledCount;
           _recurringMissedCount = rangeStatistics.recurringMissedCount;
+          _recurringSkippedCount = rangeStatistics.recurringSkippedCount;
           _recurringPendingCount = rangeStatistics.recurringPendingCount;
           _recurrenceSeries = rangeStatistics.recurrenceSeries;
           _bestRecurrenceSeries = rangeStatistics.bestRecurrenceSeries;
@@ -1884,10 +1886,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
       width: size,
       height: size,
       decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      // Android 的 BackdropFilter 会把其后的整个滚动层带入离屏合成，
-      // 在首轮滚动时会产生数百毫秒的 Raster 峰值。这个 blob 只是装饰，
-      // 移动端保留半透明圆形即可，桌面端继续使用柔和模糊。
-      child: AppPlatform.isAndroid
+      // Android 和 Windows 的 BackdropFilter 会给滚动层增加离屏合成，
+      // 这个 blob 只是装饰，在这两个平台保留半透明圆形即可。
+      child: AppPlatform.isAndroid || AppPlatform.isWindows
           ? const SizedBox.shrink()
           : BackdropFilter(
               filter: AppImageFilters.blur80,
@@ -3174,6 +3175,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
             const SizedBox(height: 8),
             _buildRankItem(0, '按期完成', '$_recurringCompletedCount期', cs),
             _buildRankItem(0, '已逾期', '$_recurringMissedCount期', cs),
+            if (_recurringSkippedCount > 0)
+              _buildRankItem(0, '已跳过', '$_recurringSkippedCount期', cs),
             if (_recurringPendingCount > 0)
               _buildRankItem(0, '进行中', '$_recurringPendingCount期', cs),
             _buildRankItem(0, '阶段末连续完成', '$_recurringEndingStreak期', cs),

@@ -61,7 +61,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
     final filtered = <TodoItem>[];
     var teamLinkedTodoCount = 0;
     for (final todo in todos) {
-      if (todo.isDeleted || todo.isDone) continue;
+      if (todo.isDeleted || todo.isDone || todo.isSkipped) continue;
       filtered.add(todo);
       if (todo.teamUuid != null) teamLinkedTodoCount++;
     }

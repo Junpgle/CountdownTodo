@@ -13,6 +13,7 @@ Dependency/build output Markdown is intentionally excluded.
   `../lib/features/habits/` (check-ins, sleep coaching, widget check-in).
 - `features/plan-blocks.md` — plan-block model and current behavior.
 - `features/finance.md` — personal finance MVP, storage boundary and sync notes.
+- `features/data-backup.md` — JSON export, data-scope restore, merge and UUID semantics.
 - `features/global-search.md` — searchable data sources, result destinations,
   shared-container navigation and remote-source limits.
 - `features/captcha-verification.md` — Turnstile paths by platform.

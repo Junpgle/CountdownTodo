@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart';
 
 import '../models.dart';
 import '../storage_service.dart';
@@ -24,10 +26,13 @@ import 'dart:ui' as ui;
 import 'pomodoro_screen.dart';
 import 'pomodoro/pomodoro_entry_intent.dart';
 import '../services/feature_tip_service.dart';
+import '../services/time_log_overlap_service.dart';
+import '../services/time_log_editor_save_service.dart';
 import '../widgets/coach_mark_overlay.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 import 'pomodoro/unified_tag_manager_screen.dart';
+import 'time_log_save_confirmation.dart';
 
 part 'time_log_components.dart';
 
@@ -210,16 +215,17 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     showAppModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
       backgroundColor: Colors.transparent,
-      builder: (_) => _LogEntrySheet(
+      builder: (_) => TimeLogEntrySheet(
         initialStart: DateTime.fromMillisecondsSinceEpoch(log.startTime),
         initialEnd: DateTime.fromMillisecondsSinceEpoch(log.endTime),
         tags: _tags,
+        timeLogs: _allLogs,
+        pomodoros: _allPomodoros,
         existingLog: log,
-        onSave: (updatedLog) {
-          Navigator.pop(context);
-          _addLog(updatedLog);
-        },
+        onSave: _saveTimeLog,
       ),
     );
   }
@@ -334,20 +340,52 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     }
   }
 
-  Future<void> _addLog(TimeLogItem log) async {
+  late final TimeLogEditorSaveService _timeLogEditorSaveService =
+      TimeLogEditorSaveService(
+        (username, logs) =>
+            StorageService.saveTimeLogs(username, logs, sync: true),
+        (username) => StorageService.getTimeLogs(username),
+      );
+
+  Future<TimeLogEditorSaveResult> _saveTimeLog(TimeLogItem log) async {
+    final result = await _timeLogEditorSaveService.save(widget.username, log);
+    if (!result.isSaved || !mounted) return result;
+
     setState(() {
       _allLogs = [
         for (final existing in _allLogs)
           if (existing.id != log.id) existing,
         log,
-      ];
+      ]..sort((a, b) => b.startTime.compareTo(a.startTime));
     });
+
+    if (result.disposition == TimeLogEditorSaveDisposition.savedAfterReadBack) {
+      StorageService.triggerRefresh(const {DataRefreshDomain.timeLogs});
+      unawaited(_syncRecoveredTimeLog());
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('已确认保存在本机，云端同步状态尚未确认。')),
+      );
+    }
+    return result;
+  }
+
+  Future<void> _syncRecoveredTimeLog() async {
     try {
-      await StorageService.saveTimeLogs(widget.username, _allLogs, sync: true);
-      await _loadData();
-    } catch (e) {
-      if (!mounted) return;
-      AppSnackBars.error(context, '保存时间日志失败: $e');
+      await StorageService.syncData(
+        widget.username,
+        syncTimeLogs: true,
+        syncScreenTime: false,
+        syncTodos: false,
+        syncCountdowns: false,
+        syncPomodoro: false,
+        syncPlanBlocks: false,
+        syncFixedSchedules: false,
+        syncHabits: false,
+        syncFinance: false,
+      );
+    } catch (error) {
+      debugPrint('Recovered time log sync failed: $error');
     }
   }
 
@@ -398,14 +436,22 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
             ),
           ),
           const SizedBox(width: 4),
-          GestureDetector(
-            onTap: () => setState(
-              () =>
-                  _weekStart = CalendarDateMath.weekRange(DateTime.now()).start,
-            ),
-            child: Text(
-              '${AppTimeFormats.monthDaySlash(_weekStart)} - ${AppTimeFormats.monthDaySlash(we)}',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          Flexible(
+            child: GestureDetector(
+              onTap: () => setState(
+                () =>
+                    _weekStart = CalendarDateMath.weekRange(DateTime.now())
+                        .start,
+              ),
+              child: Text(
+                '${AppTimeFormats.monthDaySlash(_weekStart)} - ${AppTimeFormats.monthDaySlash(we)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
           ),
           const SizedBox(width: 4),
@@ -430,22 +476,26 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
             ),
           ),
         ),
-        GestureDetector(
-          onTap: () async {
-            final p = await showAppDatePicker(
-              context: context,
-              initialDate: _focusedDate,
-              firstDate: DateTime(2020),
-              lastDate: CalendarDateMath.addDays(
-                CalendarDateMath.dateOnly(DateTime.now()),
-                1,
-              ),
-            );
-            if (p != null) setState(() => _focusedDate = p);
-          },
-          child: Text(
-            AppTimeFormats.monthDayCn(_focusedDate),
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        Flexible(
+          child: GestureDetector(
+            onTap: () async {
+              final p = await showAppDatePicker(
+                context: context,
+                initialDate: _focusedDate,
+                firstDate: DateTime(2020),
+                lastDate: CalendarDateMath.addDays(
+                  CalendarDateMath.dateOnly(DateTime.now()),
+                  1,
+                ),
+              );
+              if (p != null) setState(() => _focusedDate = p);
+            },
+            child: Text(
+              AppTimeFormats.monthDayCn(_focusedDate),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
           ),
         ),
         _buildTitleChevron(
@@ -526,15 +576,26 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         timeLogs: _allLogs,
         pomodoroRecords: _allPomodoros,
         sourceKey: _aiAssistantActionKey,
-        onTodosBatchAction: (inserted, updated) async {
-          final allTodos = await StorageService.getTodos(widget.username);
-          final merged = AiTodoActionExecutor.mergeTodoUpdates(
-            allTodos,
-            inserted,
-            updated,
-          );
-          await StorageService.saveTodos(widget.username, merged);
-        },
+        onTodosBatchAction:
+            (
+              inserted,
+              updated, {
+              expectedTodoBaselines,
+              expectedSeriesMembership,
+            }) async {
+              final allTodos = await StorageService.getTodos(widget.username);
+              final merged = AiTodoActionExecutor.mergeTodoUpdates(
+                allTodos,
+                inserted,
+                updated,
+              );
+              await StorageService.saveTodos(
+                widget.username,
+                merged,
+                expectedTodoBaselines: expectedTodoBaselines,
+                expectedSeriesMembership: expectedSeriesMembership,
+              );
+            },
       );
     } catch (e) {
       if (mounted) {
@@ -643,9 +704,12 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                       setState(() => _entryMode = mode),
                   onBack: _goWeek,
                   onCrossDayChanged: (v) => setState(() => _crossDay = v),
-                  onSaveLog: (log) {
-                    _addLog(log);
-                    setState(() => _dayMode = _DayMode.view);
+                  onSaveLog: (log) async {
+                    final result = await _saveTimeLog(log);
+                    if (result.isSaved && mounted) {
+                      setState(() => _dayMode = _DayMode.view);
+                    }
+                    return result;
                   },
                   onSavePlanBlock: (block) {
                     _addPlanBlock(block);

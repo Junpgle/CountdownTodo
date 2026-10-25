@@ -41,6 +41,10 @@ class PlanTodoGuard {
       'CASE WHEN $t.collab_type = 1 AND $c.is_completed IS NOT NULL '
       'THEN $c.is_completed ELSE $t.is_completed END';
 
+  static String skippedSql(String t, String c) =>
+      'CASE WHEN $t.collab_type = 1 AND $c.is_skipped IS NOT NULL '
+      'THEN $c.is_skipped ELSE $t.is_skipped END';
+
   static Future<List<Map<String, Object?>>> projectedRows(
     DatabaseExecutor db,
     PlanTodoIdentity identity,
@@ -49,7 +53,8 @@ class PlanTodoGuard {
     await identity.check();
     final rows = await db.rawQuery(
       '''SELECT t.*,
-      ${completionSql('t', 'c')} AS member_completed FROM todos t
+      ${completionSql('t', 'c')} AS member_completed,
+      ${skippedSql('t', 'c')} AS member_skipped FROM todos t
       LEFT JOIN todo_completions c ON c.todo_uuid=t.uuid AND c.user_id=?
       WHERE t.uuid=? LIMIT 1''',
       [identity.userId, todoId],
@@ -70,10 +75,11 @@ class PlanTodoGuard {
     final row = {
       ...rows.single,
       'is_completed': rows.single['member_completed'],
+      'is_skipped': rows.single['member_skipped'],
     };
     final todo = TodoItem.fromSql(row)..id = todoId;
-    if (requireEligible && (todo.isDeleted || todo.isDone)) {
-      throw const PlanAvailabilityException('待办已完成或失效，请选择未完成的待办');
+    if (requireEligible && (todo.isDeleted || todo.isDone || todo.isSkipped)) {
+      throw const PlanAvailabilityException('待办已完成、已跳过或失效，请选择未完成的待办');
     }
     if (requireEligible &&
         (ConflictVisibilityService.blocksTodoPlanning(todo) ||

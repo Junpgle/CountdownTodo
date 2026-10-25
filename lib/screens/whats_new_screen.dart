@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../update_service.dart';
 import '../utils/page_transitions.dart';
+import 'help/feature_explorer_screen.dart';
 import 'home_dashboard.dart';
 import 'login_screen.dart';
 
@@ -46,19 +47,26 @@ class _WhatsNewScreenState extends State<WhatsNewScreen> {
     } catch (_) {}
 
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final lastVersion = prefs.getString('last_shown_whats_new_version') ?? '';
       final manifest = await UpdateService.checkManifest(
         preferCache: false,
         refreshInBackground: true,
       );
       if (manifest != null && mounted) {
+        final currentNorm = _normalizeVersion(_currentVersion);
+        final lastNorm = _normalizeVersion(lastVersion);
+        final filtered = manifest.changelogHistory.where((e) {
+          final norm = _normalizeVersion(e.versionName);
+          if (lastNorm.isNotEmpty &&
+              _compareVersionNames(lastNorm, currentNorm) < 0) {
+            return _compareVersionNames(norm, lastNorm) > 0 &&
+                _compareVersionNames(norm, currentNorm) <= 0;
+          }
+          return norm == currentNorm;
+        }).toList();
         setState(() {
-          _changelogHistory = manifest.changelogHistory
-              .where(
-                (e) =>
-                    _normalizeVersion(e.versionName) ==
-                    _normalizeVersion(_currentVersion),
-              )
-              .toList();
+          _changelogHistory = filtered;
           _loading = false;
         });
         return;
@@ -75,6 +83,24 @@ class _WhatsNewScreenState extends State<WhatsNewScreen> {
 
   String _normalizeVersion(String v) =>
       v.trim().split('+').first.split('-').first;
+
+  int _compareVersionNames(String a, String b) {
+    final left = _normalizeVersion(a)
+        .split('.')
+        .map((part) => int.tryParse(part) ?? 0)
+        .toList();
+    final right = _normalizeVersion(b)
+        .split('.')
+        .map((part) => int.tryParse(part) ?? 0)
+        .toList();
+    final maxLength = left.length > right.length ? left.length : right.length;
+    for (var i = 0; i < maxLength; i++) {
+      final l = i < left.length ? left[i] : 0;
+      final r = i < right.length ? right[i] : 0;
+      if (l != r) return l.compareTo(r);
+    }
+    return 0;
+  }
 
   Future<void> _done() async {
     final prefs = await SharedPreferences.getInstance();
@@ -111,16 +137,41 @@ class _WhatsNewScreenState extends State<WhatsNewScreen> {
             SafeArea(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: _done,
-                    icon: const Icon(Icons.check_rounded),
-                    label: const Text('开始使用'),
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            PageTransitions.slideHorizontal(
+                              FeatureExplorerScreen(
+                                username: widget.loggedInUser,
+                              ),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.explore_rounded),
+                        label: const Text('打开功能探索百宝箱'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _done,
+                        icon: const Icon(Icons.check_rounded),
+                        label: const Text('开始使用'),
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),

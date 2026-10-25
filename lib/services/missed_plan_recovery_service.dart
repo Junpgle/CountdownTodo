@@ -11,6 +11,7 @@ import 'plan_todo_guard.dart';
 import 'plan_availability_repository.dart';
 import 'plan_availability_service.dart';
 import 'pomodoro_service.dart';
+import 'plan_settings_compatibility.dart';
 
 /// A read-only, account-scoped source snapshot. No parent relation is persisted.
 class MissedPlanRecoveryContext {
@@ -47,14 +48,18 @@ class MissedPlanRecoveryContext {
     return interval > 0 && interval <= 1440 ? interval : 30;
   }
 
+  PlanSettingsCompatibility get settings => PlanSettingsCompatibility.normalize(
+    reminderMinutes: source.reminderMinutes,
+    pomodoroMinutes: source.pomodoroMinutes,
+    pomodoroRounds: source.pomodoroRounds,
+  );
+
   List<String> get notices => [
     if (source.plannedMinutes <= 0 || source.plannedMinutes > 1440)
       '原计划时长无效，已使用区间时长或30分钟，请检查。',
-    if (![0, 5, 10, 15, 30].contains(source.reminderMinutes) ||
-        ![15, 20, 25, 30, 45, 60].contains(source.pomodoroMinutes) ||
-        source.pomodoroRounds < 0 ||
-        source.pomodoroRounds > 6)
-      '原提醒或番茄配置不受支持，已使用默认值，请检查。',
+    ...settings.corrections.map(
+      (correction) => '${correction.summary}（仅应用于新规划）',
+    ),
   ];
 
   TodoPlanBlock draft(DateTime start) => TodoPlanBlock(
@@ -64,15 +69,9 @@ class MissedPlanRecoveryContext {
     endTime: start.add(Duration(minutes: minutes)).millisecondsSinceEpoch,
     plannedMinutes: minutes,
     remark: source.remark,
-    reminderMinutes: [0, 5, 10, 15, 30].contains(source.reminderMinutes)
-        ? source.reminderMinutes
-        : 5,
-    pomodoroMinutes: [15, 20, 25, 30, 45, 60].contains(source.pomodoroMinutes)
-        ? source.pomodoroMinutes
-        : 25,
-    pomodoroRounds: source.pomodoroRounds >= 0 && source.pomodoroRounds <= 6
-        ? source.pomodoroRounds
-        : 0,
+    reminderMinutes: settings.reminderMinutes,
+    pomodoroMinutes: settings.pomodoroMinutes,
+    pomodoroRounds: settings.pomodoroRounds,
   );
 }
 

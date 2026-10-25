@@ -1,9 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/models/plan_availability.dart';
+import 'package:countdown_todo/services/database_helper.dart';
 import 'package:countdown_todo/services/todo_overdue_triage_service.dart';
 import 'package:countdown_todo/storage_service.dart';
 
@@ -41,6 +44,13 @@ void main() {
           title: '已删除逾期任务',
           dueDate: DateTime(2026, 10, 8, 10, 0),
           isDeleted: true,
+        ),
+        TodoItem(
+          id: '3-skipped',
+          title: '已跳过逾期任务',
+          dueDate: DateTime(2026, 10, 8, 10, 0),
+          recurrenceSeriesId: 'series-skip',
+          isSkipped: true,
         ),
         TodoItem(id: '4', title: '未来任务', dueDate: DateTime(2026, 10, 9, 18, 0)),
         TodoItem(id: '5', title: '无截止时间任务'),
@@ -205,16 +215,19 @@ void main() {
         final todo1 = TodoItem(
           id: 't1',
           title: '待办1',
+          createdDate: DateTime(2026, 10, 8, 9).millisecondsSinceEpoch,
           dueDate: DateTime(2026, 10, 8, 10, 0),
         );
         final todo2 = TodoItem(
           id: 't2',
           title: '待办2',
+          createdDate: DateTime(2026, 10, 8, 10).millisecondsSinceEpoch,
           dueDate: DateTime(2026, 10, 8, 11, 0),
         );
         final normalTodo = TodoItem(
           id: 't3',
           title: '正常待办',
+          createdDate: DateTime(2026, 10, 15, 11).millisecondsSinceEpoch,
           dueDate: DateTime(2026, 10, 15, 12, 0),
         );
 
@@ -246,6 +259,7 @@ void main() {
         final todo = TodoItem(
           id: 't_plan',
           title: '待办准备排期',
+          createdDate: DateTime(2026, 10, 8, 9).millisecondsSinceEpoch,
           dueDate: DateTime(2026, 10, 8, 10, 0),
         );
         final allTodos = [todo];
@@ -326,6 +340,25 @@ void main() {
                     'conflict=${todo.hasConflict}',
               )
               .join('\n'),
+        );
+
+        final db = await DatabaseHelper.instance.databaseForUser(
+          'dst_conflict_test',
+        );
+        final pendingLogs = await db.query(
+          'op_logs',
+          where: 'target_uuid IN (?, ?)',
+          whereArgs: [firstId, secondId],
+        );
+        expect(pendingLogs, hasLength(2));
+        expect(
+          pendingLogs.every((log) {
+            final payload = jsonDecode(log['data_json']! as String) as Map;
+            return payload['has_conflict'] == 0 &&
+                payload['conflict_data'] == null;
+          }),
+          isTrue,
+          reason: '本地冲突标记不能改写待同步的用户操作',
         );
       },
     );

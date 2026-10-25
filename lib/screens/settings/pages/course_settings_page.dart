@@ -46,7 +46,6 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
   }
 
   final Map<String, GlobalKey> _itemKeys = {
-    'no_course_behavior': GlobalKey(),
     'webview_import': GlobalKey(),
     'smart_import': GlobalKey(),
     'course_sync': GlobalKey(),
@@ -68,7 +67,6 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
   String _username = '';
   int? _userId;
 
-  String _noCourseBehavior = 'keep';
   bool _semesterEnabled = false;
   DateTime? _semesterStart;
   DateTime? _semesterEnd;
@@ -163,11 +161,6 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     _semesters = await StorageService.getSemesters();
     _activeSemesterId = await StorageService.getActiveSemesterId();
 
-    String? noCourseBehaviorPref;
-    if (_username.isNotEmpty) {
-      noCourseBehaviorPref = prefs.getString('no_course_behavior_$_username');
-    }
-    noCourseBehaviorPref ??= prefs.getString('no_course_behavior') ?? 'keep';
     if (!mounted) return;
 
     _courseImportHandler = CourseImportHandler(
@@ -185,7 +178,6 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         _semesterEnabled = sEnabled;
         _semesterStart = sStart;
         _semesterEnd = sEnd;
-        _noCourseBehavior = noCourseBehaviorPref!;
         _isLoading = false;
       });
       unawaited(_openInitialEditor());
@@ -1080,7 +1072,9 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
               ),
               child: GridView.count(
                 shrinkWrap: true,
+                primary: false,
                 physics: const NeverScrollableScrollPhysics(),
+                padding: EdgeInsets.zero,
                 crossAxisCount: MediaQuery.of(context).size.width > 600 ? 4 : 2,
                 mainAxisSpacing: 12,
                 crossAxisSpacing: 12,
@@ -1124,58 +1118,6 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                     onTap: _uploadCoursesToCloud,
                   ),
                 ],
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
-              child: Text(
-                '无课时板块行为',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey,
-                ),
-              ),
-            ),
-            _buildTile(
-              targetId: 'no_course_behavior',
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16.0,
-                  vertical: 8.0,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildBehaviorCard(
-                            'keep',
-                            '保持原位',
-                            Icons.align_vertical_top_outlined,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildBehaviorCard(
-                            'bottom',
-                            '排到最后',
-                            Icons.align_vertical_bottom_outlined,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildBehaviorCard(
-                            'hide',
-                            '自动隐藏',
-                            Icons.visibility_off_outlined,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
               ),
             ),
             const Padding(
@@ -1289,55 +1231,6 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBehaviorCard(String value, String title, IconData icon) {
-    final isSelected = _noCourseBehavior == value;
-    final colorScheme = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: () {
-        setState(() => _noCourseBehavior = value);
-        SharedPreferences.getInstance().then((prefs) {
-          if (_username.isNotEmpty) {
-            prefs.setString('no_course_behavior_$_username', value);
-          }
-          prefs.setString('no_course_behavior', value);
-        });
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? colorScheme.primary.withValues(alpha: 0.1)
-              : (Theme.of(context).brightness == Brightness.dark
-                    ? Colors.grey.shade900
-                    : Colors.grey.shade100),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? colorScheme.primary : Colors.transparent,
-            width: 2,
-          ),
-        ),
-        child: Column(
-          children: [
-            Icon(
-              icon,
-              color: isSelected ? colorScheme.primary : Colors.grey,
-              size: 24,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: isSelected ? colorScheme.primary : Colors.grey.shade600,
-              ),
-            ),
-          ],
         ),
       ),
     );

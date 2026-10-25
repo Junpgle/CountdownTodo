@@ -26,6 +26,7 @@ import '../screens/pomodoro_screen.dart';
 import '../screens/pomodoro/pomodoro_entry_intent.dart';
 import '../services/plan_availability_repository.dart';
 import '../services/plan_availability_service.dart';
+import '../services/fixed_schedule_preparation_guard.dart';
 import '../services/plan_conflict_review_service.dart';
 import '../services/missed_plan_recovery_service.dart';
 import '../services/time_estimation_service.dart';
@@ -129,6 +130,8 @@ class PlanBlockEditorSheet extends StatefulWidget {
   final PlanReuseRepository? reuseRepository;
   final PlanManualCompletionService? manualCompletionService;
   final ValueChanged<PlanManualCompletionReceipt>? onManualCompleted;
+  final FixedSchedulePreparationContext? preparationContext;
+  final PlanAvailabilitySelection? preparationSelection;
 
   const PlanBlockEditorSheet({
     super.key,
@@ -167,6 +170,8 @@ class PlanBlockEditorSheet extends StatefulWidget {
     this.reuseRepository,
     this.manualCompletionService,
     this.onManualCompleted,
+    this.preparationContext,
+    this.preparationSelection,
   });
 
   @override
@@ -202,7 +207,10 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   PlanAvailabilityQuery? _singleQuery;
   bool _splitAdjusted = false, _splitStale = false;
   bool get _canSplit =>
-      widget.fullPage && _supportsDraft && _selectedTodo != null;
+      widget.fullPage &&
+      _supportsDraft &&
+      _selectedTodo != null &&
+      _preparationContext == null;
   bool get _splitPersisted => _split != null && _savedSplitBlocks.isNotEmpty;
 
   bool _autoRecommendationPending = false;
@@ -216,6 +224,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   PlanEditorDraft? _localDraft;
   PlanDraftSummary? _draftOffer;
   PlanBacklogSaveContext? _restoredBacklog;
+  FixedSchedulePreparationContext? _preparationContext;
   TodoItem? _restoredTodo;
   late String _targetPlanId, _baseline;
   bool _userTouched = false, _allowExit = false, _exitPrompt = false;
@@ -238,6 +247,13 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           widget.restoredDraft?.fields.origin ??
           (widget.reuse == null ? null : 'reuse')) ==
       'reuse';
+  List<String> get _reuseSettingsAdjustments =>
+      _localDraft?.fields.settingsAdjustments ??
+      widget.restoredDraft?.fields.settingsAdjustments ??
+      widget.reuse?.settings.corrections
+          .map((correction) => correction.summary)
+          .toList() ??
+      const [];
   PlanReuseRepository get _reuseRepository =>
       widget.reuseRepository ?? PlanReuseRepository(clock: widget.clock);
   bool get _supportsDraft =>
@@ -260,6 +276,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
             : _backlog != null
             ? 'backlog'
             : widget.draftOrigin),
+    settingsAdjustments: _reuseSettingsAdjustments,
     offsetMinutes: _start.timeZoneOffset.inMinutes,
     split: _split == null
         ? null
@@ -278,6 +295,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         : (_split?.query.base.weekly ?? _recommendation?.query.weekly)
                   ?.ignored ??
               false,
+    preparationContext: _preparationContext ?? widget.preparationContext,
   );
   bool get _dirty =>
       _reuseNeedsRetention ||
@@ -365,6 +383,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         _restoredTodo = prepared.todo;
         _selectedTodoId = f.todoId;
         _restoredBacklog = prepared.backlog;
+        _preparationContext = widget.preparationContext ?? f.preparationContext;
         _approvedArrangements = prepared.backlog == null ? null : '[]';
         _start = DateTime.fromMillisecondsSinceEpoch(f.start);
         _end = DateTime.fromMillisecondsSinceEpoch(f.end);
@@ -914,6 +933,8 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     );
     _start = widget.startTime;
     _end = widget.endTime;
+    _preparationContext = widget.preparationContext;
+    _recommendation = widget.preparationSelection;
     _persistedBlock = widget.block == null
         ? null
         : TodoPlanBlock.fromJson(widget.block!.toJson());
@@ -956,6 +977,74 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     }
   }
 
+  Future<void> _checkPreparationSchedule(
+    DatabaseExecutor executor,
+    String todoId,
+  ) async {
+    final context = _preparationContext ?? widget.preparationContext;
+    if (context == null) return;
+    await FixedSchedulePreparationGuard.validate(
+      executor,
+      context,
+      todoId,
+      now: widget.clock?.call() ?? DateTime.now(),
+    );
+  }
+
+  Future<PlanAvailabilitySelection> _verifyPreparationTime() async {
+    final context = _preparationContext ?? widget.preparationContext;
+    final todo = _selectedTodo;
+    if (context == null || todo == null || _selectedTodoId == null) {
+      throw const PlanAvailabilityException('准备安排上下文已失效，请重新打开固定日程');
+    }
+    final preferences = await PlanAvailabilityPreferences.load(widget.username);
+    if (preferences.bufferError != null) {
+      throw PlanAvailabilityException(preferences.bufferError!);
+    }
+    final weekly = await PlanWeeklyAvailabilityPreferences.load(
+      widget.username,
+    );
+    if (weekly.error != null || weekly.rules == null) {
+      throw PlanAvailabilityException(weekly.error ?? '每周可安排时间无法读取，请修复规则后重试');
+    }
+    final query = PlanAvailabilityQuery(
+      username: widget.username,
+      todoId: todo.id,
+      date: _start,
+      minutes: _end.difference(_start).inMinutes,
+      windowStart: 0,
+      windowEnd: 1440,
+      appOnly: context.appOnly,
+      bufferBefore: preferences.bufferBefore,
+      bufferAfter: preferences.bufferAfter,
+      bufferDefaultsKey: preferences.bufferKey,
+      avoidanceDefaultsKey: preferences.avoidanceKey,
+      avoidWindows: [
+        for (final index in preferences.selectedIndices)
+          preferences.options[index],
+      ],
+      preparationEnd: DateTime.fromMillisecondsSinceEpoch(context.startTime)
+          .toLocal(),
+      weekly: PlanWeeklyContext(weekly.rules),
+    );
+    final repository = PlanAvailabilityRepository(clock: widget.clock);
+    await PlanAvailabilityPreferences.validateQueryDefaults(query);
+    final fresh = await repository.read(query, forceRefresh: true);
+    final selection = PlanAvailabilitySelection(
+      query,
+      PlanTimeSlot(_start, _end),
+      fresh,
+    );
+    if (!PlanAvailabilityService.accepts(
+      selection,
+      fresh,
+      now: widget.clock?.call() ?? DateTime.now(),
+    )) {
+      throw const PlanAvailabilityException('准备时段已过期、被占用或越过固定日程开始时间，请重新查找');
+    }
+    return selection;
+  }
+
   Future<void> _prepareInitialEstimate() async {
     final revision = _draftRevision;
     final todoId = _selectedTodoId;
@@ -982,7 +1071,11 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         [
           for (final todo in widget.todos)
             if (_restoredTodo?.id == todo.id) _restoredTodo! else todo,
-        ].where((todo) => !todo.isDone || todo.id == widget.block?.todoId),
+        ].where(
+          (todo) =>
+              (!todo.isDone && !todo.isSkipped) ||
+              todo.id == widget.block?.todoId,
+        ),
         now: _start,
         preferredTodoId: _selectedTodoId,
       ),
@@ -1001,7 +1094,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         !_isReuse) {
       for (final entry in _todoEntries) {
         final todo = entry.todo;
-        if (todo != null && !todo.isDone) {
+        if (todo != null && !todo.isDone && !todo.isSkipped) {
           _selectedTodoId = todo.id;
           break;
         }
@@ -1295,6 +1388,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           if (existing == null || existing.todoId != draft.todoId) {
             await _checkLinkedTodo(executor, draft);
           }
+          await _checkPreparationSchedule(executor, draft.todoId);
         },
       );
     }
@@ -1312,6 +1406,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         if (existing == null || existing.todoId != draft.todoId) {
           await _checkLinkedTodo(executor, draft);
         }
+        await _checkPreparationSchedule(executor, draft.todoId);
       },
     );
   }
@@ -1616,8 +1711,8 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     }
     if (widget.block == null || widget.block!.todoId != _selectedTodoId) {
       final todo = _selectedTodo;
-      if (todo == null || todo.isDone || todo.isDeleted) {
-        throw const PlanAvailabilityException('待办已完成或失效，请选择未完成的待办');
+      if (todo == null || todo.isDone || todo.isDeleted || todo.isSkipped) {
+        throw const PlanAvailabilityException('待办已完成、已跳过或失效，请选择未完成的待办');
       }
     }
     if (_persistedBlock != null && _savedDraftRevision == _draftRevision) {
@@ -1635,6 +1730,9 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
       }
     }
     final TodoPlanBlock saved;
+    final preparationSelection = _preparationContext == null
+        ? null
+        : await _verifyPreparationTime();
     if (_split != null) {
       if (_restored) {
         final weekly = await _restoredWeeklyContext();
@@ -1707,7 +1805,10 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         saved = committed;
       } else {
         await _confirmNewArrangements(draft.todoId);
-        saved = await _persist(draft, _recommendation);
+        saved = await _persist(
+          draft,
+          _preparationContext == null ? _recommendation : preparationSelection,
+        );
       }
     }
     _persistedBlock = saved;
@@ -1808,7 +1909,8 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
             blocks.single['updated_at'] != block.updatedAt ||
             blocks.single['is_deleted'] == 1 ||
             freshTodo.isDone ||
-            freshTodo.isDeleted) {
+            freshTodo.isDeleted ||
+            freshTodo.isSkipped) {
           throw const PlanAvailabilityException('规划或待办已变化，请读取最新记录');
         }
         todo = freshTodo;
@@ -2044,6 +2146,11 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
       await seed.identity.check();
       await _saveIdentity!.check();
       if (!mounted) return;
+      if (!await _confirmReuseSettingsCorrections(seed)) return;
+      if (!mounted) return;
+      await seed.identity.check();
+      await _saveIdentity!.check();
+      if (!mounted) return;
       if (_dirty) throw StateError('请先保存修改，或放弃修改后重新打开');
       final todos = [
         for (final t in widget.todos)
@@ -2080,6 +2187,73 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     } finally {
       if (mounted) setState(() => _openingReuse = false);
     }
+  }
+
+  Future<bool> _confirmReuseSettingsCorrections(PlanReuseSeed seed) async {
+    final corrections = seed.settings.corrections;
+    if (corrections.isEmpty) return true;
+
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final colors = Theme.of(dialogContext).colorScheme;
+        return AlertDialog(
+          title: const Text('部分设置需要调整'),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420, maxHeight: 360),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('这些设置不在当前可选范围内。继续后只调整新规划，原规划保持不变。'),
+                  const SizedBox(height: 14),
+                  for (final correction in corrections)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: colors.secondaryContainer,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            correction.label,
+                            style: Theme.of(dialogContext).textTheme.labelLarge
+                                ?.copyWith(color: colors.onSecondaryContainer),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            '${correction.originalValue} → ${correction.replacementValue}',
+                            style: Theme.of(dialogContext).textTheme.bodyMedium
+                                ?.copyWith(color: colors.onSecondaryContainer),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('按建议继续'),
+            ),
+          ],
+        );
+      },
+    );
+    return accepted == true;
   }
 
   bool get _canManualComplete =>
@@ -2367,6 +2541,69 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
     );
   }
 
+  Widget _buildReuseNotice(ThemeData theme, ColorScheme colors) {
+    final duration = _split?.query.total ?? _end.difference(_start).inMinutes;
+    final unverified =
+        _recommendation == null && _split == null && _persistedBlock == null;
+    final corrections = _reuseSettingsAdjustments;
+    if (corrections.isEmpty) {
+      return Text(
+        unverified
+            ? '沿用已有规划设置 · $duration分钟\n时段尚未核实，请选择推荐或调整'
+            : '沿用已有规划设置 · $duration分钟',
+        key: const ValueKey('plan-reuse-notice'),
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: colors.onSurfaceVariant,
+        ),
+      );
+    }
+
+    return Container(
+      key: const ValueKey('plan-reuse-notice'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colors.secondaryContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '沿用已有规划设置 · $duration分钟',
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: colors.onSecondaryContainer,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (unverified) ...[
+            const SizedBox(height: 4),
+            Text(
+              '时段尚未核实，请选择推荐或调整',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colors.onSecondaryContainer,
+              ),
+            ),
+          ],
+          const SizedBox(height: 6),
+          for (final correction in corrections)
+            Text(
+              correction,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colors.onSecondaryContainer,
+              ),
+            ),
+          const SizedBox(height: 4),
+          Text(
+            '调整仅应用于新规划，原规划保持不变。',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.onSecondaryContainer,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _form(double width, double scale, EdgeInsets padding) {
     if (_draftRestoreFailed) {
       return Padding(padding: padding, child: _draftNotice());
@@ -2383,17 +2620,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           if (_isReuse)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: Text(
-                _recommendation == null &&
-                        _split == null &&
-                        _persistedBlock == null
-                    ? '沿用已有规划设置 · ${_end.difference(_start).inMinutes}分钟\n时段尚未核实，请选择推荐或调整'
-                    : '沿用已有规划设置 · ${_split?.query.total ?? _end.difference(_start).inMinutes}分钟',
-                key: const ValueKey('plan-reuse-notice'),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colors.onSurfaceVariant,
-                ),
-              ),
+              child: _buildReuseNotice(theme, colors),
             ),
           if (widget.recovery != null) ...[
             Text(
@@ -2403,7 +2630,35 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
             for (final notice in widget.recovery!.notices)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
-                child: Text(notice),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colors.tertiaryContainer,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.info_outline_rounded,
+                        size: 17,
+                        color: colors.onTertiaryContainer,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          notice,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colors.onTertiaryContainer,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             const SizedBox(height: 12),
           ],
@@ -2840,7 +3095,9 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
           _focusStarted
               ? '重试更新专注状态'
               : _splitPersisted
-              ? '进入第1段番茄钟'
+              ? _operationError?.startsWith('规划已保存，专注未启动') == true
+                    ? '重试开始第1段'
+                    : '进入第1段番茄钟'
               : _split != null
               ? '保存全部并进入番茄钟'
               : '保存并进入番茄钟',

@@ -180,6 +180,35 @@ void main() {
       );
     });
 
+    test('new instances do not inherit the anchor external event identity', () {
+      final template = FixedScheduleItem(
+        id: 'calendar-anchor',
+        title: '重复例会',
+        date: '2026-07-01',
+        recurrence: RecurrenceType.weekly,
+        recurrenceSeriesId: 'calendar-anchor',
+        externalSource: 'device-calendar',
+        externalId: 'external-event-1',
+      );
+
+      final result = FixedScheduleRecurrenceService.rebuildSeries(
+        template: template,
+        existingSeries: const [],
+        recurrence: RecurrenceType.weekly,
+        recurrenceEndDate: DateTime(2026, 7, 15),
+      );
+
+      expect(result.active.first.externalId, 'external-event-1');
+      expect(
+        result.active
+            .skip(1)
+            .every(
+              (item) => item.externalSource == null && item.externalId == null,
+            ),
+        isTrue,
+      );
+    });
+
     test('shortening a series emits tombstones for removed occurrences', () {
       final template = FixedScheduleItem(
         id: 'series-start',

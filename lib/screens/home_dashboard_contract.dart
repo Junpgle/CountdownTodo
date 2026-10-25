@@ -24,8 +24,10 @@ mixin _HomeDashboardContract {
 
   Future<void> _handleAiTodosBatchAction(
     List<TodoItem> inserted,
-    List<TodoItem> updated,
-  );
+    List<TodoItem> updated, {
+    Map<String, TodoItem>? expectedTodoBaselines,
+    Map<String, Set<String>>? expectedSeriesMembership,
+  });
 
   Future<void> _configureBackgroundNotificationPoll();
 
@@ -211,6 +213,11 @@ mixin _HomeDashboardContract {
 
   void _syncTodoNotification();
 
+  Future<FixedScheduleTodoSaveResult> _saveTodoLinkedToFixedSchedule(
+    TodoItem todo,
+    FixedScheduleItem baseline,
+  );
+
   void _debouncedSyncTodoNotification(bool needsSync);
 
   void _debouncedFetchTeamPending();
@@ -221,7 +228,7 @@ mixin _HomeDashboardContract {
 
   void _debouncedScheduleAllReminders(bool needsSync);
 
-  Future<void> _saveTodosToSharedFile(List<TodoItem> todos);
+  Future<bool> _saveTodosToSharedFile(List<TodoItem> todos);
 
   List<TodoItem> _cloneTodosForPersistence(List<TodoItem> todos);
 
@@ -229,7 +236,23 @@ mixin _HomeDashboardContract {
 
   Future<void> _handleTodosChanged(List<TodoItem> newTodos);
 
-  Future<void> _persistTodosSnapshot(List<TodoItem> todosSnapshot);
+  Future<TodoEditorSaveResult> _handleTodoEditorSave(
+    List<TodoItem> changedTodos,
+    Map<String, TodoItem> baselines, {
+    Map<String, Set<String>>? expectedSeriesMembership,
+    Set<String>? expectedFixedScheduleTodoIds,
+    List<FixedScheduleItem>? expectedFixedScheduleBaselines,
+  });
+
+  Future<void> _handleTodoEditorGroupsSave(
+    List<TodoGroup> changedGroups,
+    Map<String, TodoGroup> baselines,
+  );
+
+  Future<List<String>> _persistTodosSnapshot(
+    List<TodoItem> todosSnapshot, {
+    Map<String, TodoItem>? expectedTodoBaselines,
+  });
 
   Future<void> _handleManualSync({
     bool silent = false,

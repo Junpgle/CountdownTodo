@@ -161,6 +161,7 @@ class PlanBacklogRepository {
             WHEN COALESCE(t.created_date,t.created_at,0)<? THEN 3 ELSE 4 END AS priority
         FROM todos t LEFT JOIN todo_completions c ON c.todo_uuid=t.uuid AND c.user_id=?
         WHERE COALESCE(t.is_deleted,0)=0 AND COALESCE(${PlanTodoGuard.completionSql('t', 'c')},0)=0
+          AND COALESCE(${PlanTodoGuard.skippedSql('t', 'c')},0)=0
           AND LENGTH(TRIM(t.uuid))>0 AND LENGTH(TRIM(t.content))>0
       ), representatives AS (
         SELECT e.* FROM eligible e WHERE COALESCE(e.recurrence_series_id,'')='' OR NOT EXISTS (
@@ -330,7 +331,7 @@ class PlanBacklogRepository {
       (
         'todos',
         'uuid',
-        'uuid,version,updated_at,is_completed,is_deleted,has_conflict,collab_type,group_id,due_date,created_date,created_at,is_all_day,recurrence,recurrence_series_id,length(content) AS title_length,substr(content,1,128) AS title_prefix',
+        'uuid,version,updated_at,is_completed,is_skipped,is_deleted,has_conflict,collab_type,group_id,due_date,created_date,created_at,is_all_day,recurrence,recurrence_series_id,length(content) AS title_length,substr(content,1,128) AS title_prefix',
         '1=1',
         <Object?>[],
       ),
@@ -344,7 +345,7 @@ class PlanBacklogRepository {
       (
         'todo_completions',
         'todo_uuid',
-        'todo_uuid,is_completed,updated_at',
+        'todo_uuid,is_completed,is_skipped,updated_at',
         'user_id=?',
         <Object?>[identity.userId],
       ),

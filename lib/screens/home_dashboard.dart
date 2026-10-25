@@ -26,6 +26,8 @@ import '../utils/pomodoro_display_tick_schedule.dart';
 
 // 引入服务和模型
 import '../models.dart';
+import '../models/todo_editor_save_result.dart';
+import '../models/todo_create_save_result.dart';
 import '../models/chat_message.dart';
 import '../storage_service.dart';
 import '../update_service.dart';
@@ -34,6 +36,8 @@ import '../services/github_resource_service.dart';
 import '../services/background_notification_service.dart';
 import '../services/notification_service.dart';
 import '../services/todo_notification_policy.dart';
+import '../services/todo_editor_save_service.dart';
+import '../services/todo_lww_service.dart';
 import '../services/widget_service.dart';
 import '../services/screen_time_service.dart';
 import '../services/permission_request_coordinator.dart';
@@ -126,11 +130,14 @@ import '../widgets/coach_mark_overlay.dart';
 import '../widgets/home_bottom_navigation_content.dart';
 import '../widgets/app_status_toast.dart';
 import '../services/feature_tip_service.dart';
+import '../services/onboarding_checklist_service.dart';
 import '../services/device_calendar_read_service.dart';
 import '../services/home_layout_service.dart';
 import '../widgets/floating_bottom_bar.dart';
+import '../widgets/onboarding_checklist_card.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 import '../utils/app_dialogs.dart';
+import 'help/feature_explorer_screen.dart';
 
 part 'home_dashboard_ai.dart';
 part 'home_dashboard_contract.dart';
@@ -311,7 +318,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
 
   int _selectedTabIndex = 0;
   bool _focusTabVisited = false;
-  double _lastHomeHeaderExtent = 112.0;
+  double _lastHomeHeaderExtent = 156.0;
   double _lastFocusHeaderExtent = 0.0;
 
   // 待确认的事项数据（从图片识别来）

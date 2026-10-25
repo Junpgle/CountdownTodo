@@ -43,8 +43,20 @@ MultiWindowManager* MultiWindowManager::Instance() {
 MultiWindowManager::MultiWindowManager() : windows_() {}
 
 std::string MultiWindowManager::Create(const flutter::EncodableMap* args) {
-  std::string window_id = GenerateWindowId();
   WindowConfiguration config = WindowConfiguration::FromEncodableMap(args);
+
+  // CountDownTodo owns one always-on-top island window. Reuse it when another
+  // Dart engine asks for islandMain so Dart-side cache resets cannot create a
+  // second native window.
+  if (config.arguments == "islandMain") {
+    for (const auto& [existing_id, window] : windows_) {
+      if (window->GetWindowArgument() == config.arguments) {
+        return existing_id;
+      }
+    }
+  }
+
+  std::string window_id = GenerateWindowId();
 
   auto flutter_window = std::make_unique<FlutterWindow>(window_id, config);
 

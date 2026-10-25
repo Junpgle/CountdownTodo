@@ -2401,7 +2401,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             text = text,
             subText = subText,
             progress = 0,
-            isOngoing = true,
+            isOngoing = false,
             color = color,
             currentStep = 0,
             totalSteps = 0,
@@ -3032,7 +3032,38 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             .setColor(color)
             .setColorized(false)
             .setContentIntent(pendingIntent)
-            .setRequestPromotedOngoing(true)
+            .setAutoCancel(notificationId == COURSE_NOTIFICATION_ID)
+
+        val isCourseNotification = notificationId == COURSE_NOTIFICATION_ID
+        val courseArrivalPendingIntent = if (isCourseNotification) {
+            val arrivedIntent = Intent(this, CourseArrivalReceiver::class.java).apply {
+                action = CourseArrivalReceiver.ACTION_MARK_ARRIVED
+                putExtra(
+                    CourseArrivalReceiver.EXTRA_NOTIFICATION_ID,
+                    notificationId
+                )
+            }
+            PendingIntent.getBroadcast(
+                this,
+                notificationId,
+                arrivedIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        } else {
+            null
+        }
+        if (courseArrivalPendingIntent != null) {
+            builder.addAction(
+                NotificationCompat.Action.Builder(
+                    IconCompat.createWithResource(this, R.drawable.ic_done),
+                    "我已到达教室",
+                    courseArrivalPendingIntent
+                ).build()
+            )
+        }
+        if (!isCourseNotification) {
+            builder.setRequestPromotedOngoing(true)
+        }
 
         if (timerAnchorMs != null) {
             builder
@@ -3042,7 +3073,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
         // 🚨 显式要求系统提升为“推荐的持续通知”(Live Updates)
         val extras = Bundle()
-        extras.putBoolean("android.extra.requestPromotedOngoing", true)
+        if (!isCourseNotification) {
+            extras.putBoolean("android.extra.requestPromotedOngoing", true)
+        }
 
         // ==========================================
         // 🚀 构建完全对齐官方的 ProgressStyle / Short Text
@@ -3292,6 +3325,16 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         1
                     )
                     hyperBuilder.addAction(doneAction)
+                }
+
+                if (courseArrivalPendingIntent != null) {
+                    val arrivedAction = HyperAction(
+                        "btn_course_arrived",
+                        "我已到达教室",
+                        courseArrivalPendingIntent,
+                        1
+                    )
+                    hyperBuilder.addAction(arrivedAction)
                 }
 
                 if (pomodoroFinishPendingIntent != null) {

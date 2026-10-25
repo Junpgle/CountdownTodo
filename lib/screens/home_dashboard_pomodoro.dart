@@ -237,6 +237,7 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
       case 'STOP':
       case 'INTERRUPT':
       case 'FINISH':
+      case 'SYNC_RESET':
       case 'CLEAR_FOCUS':
       case 'FOCUS_DISCONNECTED':
         if (signal.sessionUuid != null &&

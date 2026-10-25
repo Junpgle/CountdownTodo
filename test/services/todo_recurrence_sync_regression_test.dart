@@ -336,6 +336,170 @@ void main() {
   );
 
   test(
+    'an ended fourteen-period series stays at fourteen across two syncs',
+    () async {
+      final now = DateTime.now();
+      final firstDay = DateTime(now.year, now.month, now.day - 20, 9);
+      final end = DateTime(firstDay.year, firstDay.month, firstDay.day + 13);
+      final userWriteTime = now
+          .subtract(const Duration(minutes: 1))
+          .millisecondsSinceEpoch;
+      final retained = List.generate(
+        14,
+        (index) => TodoItem(
+          id: 'ended-retained-$index',
+          title: '十四期循环',
+          recurrenceSeriesId: 'ended-fourteen',
+          createdDate: DateTime(
+            firstDay.year,
+            firstDay.month,
+            firstDay.day + index,
+            9,
+          ).millisecondsSinceEpoch,
+          recurrenceEndDate: end,
+          updatedAt: userWriteTime,
+          isDone: index == 0,
+          isSkipped: index == 1,
+        ),
+      );
+      final removed = TodoItem(
+        id: 'ended-fifteenth',
+        title: '十四期循环',
+        recurrenceSeriesId: 'ended-fourteen',
+        createdDate: DateTime(
+          firstDay.year,
+          firstDay.month,
+          firstDay.day + 14,
+          9,
+        ).millisecondsSinceEpoch,
+        recurrenceEndDate: end,
+        isDeleted: true,
+        updatedAt: userWriteTime - 2000,
+      );
+      await seed([...retained, removed]);
+      var serverItem = removed.detachedCopy()
+        ..isDeleted = false
+        ..recurrenceEndDate = DateTime(
+          firstDay.year,
+          firstDay.month,
+          firstDay.day + 14,
+        )
+        ..updatedAt = userWriteTime - 1000
+        ..version = 20;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('current_user_id', 42);
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      ApiService.setBaseUrlOverride('http://127.0.0.1:${server.port}');
+      var requests = 0;
+      Map? repair;
+      server.listen((request) async {
+        final body = jsonDecode(await utf8.decoder.bind(request).join()) as Map;
+        for (final raw in body['todos'] as List? ?? const []) {
+          final payload = raw as Map;
+          if (requests > 0 &&
+              payload['uuid'] == removed.id &&
+              payload['is_deleted'] == 1 &&
+              payload['_recurrence_maintenance'] != null) {
+            repair = payload;
+            serverItem = TodoItem.fromJson(Map<String, dynamic>.from(payload));
+          }
+        }
+        requests++;
+        request.response.headers.contentType = ContentType.json;
+        request.response.write(
+          jsonEncode({
+            'success': true,
+            'server_todos': [serverItem.toJson()],
+            'new_sync_time': DateTime.now().millisecondsSinceEpoch,
+          }),
+        );
+        await request.response.close();
+      });
+      try {
+        await HttpOverrides.runWithHttpOverrides(() async {
+          for (var round = 0; round < 2; round++) {
+            final result = await syncTodosOnly();
+            expect(result['success'], isTrue, reason: result.toString());
+            final todos = await StorageService.getTodos(
+              username,
+              includeDeleted: true,
+            );
+            expect(todos.where((todo) => !todo.isDeleted), hasLength(14));
+            expect(
+              todos.singleWhere((todo) => todo.id == removed.id).isDeleted,
+              isTrue,
+            );
+            expect(
+              todos.singleWhere((todo) => todo.id == retained.first.id).isDone,
+              isTrue,
+            );
+            expect(
+              todos.singleWhere((todo) => todo.id == retained[1].id).isSkipped,
+              isTrue,
+            );
+          }
+        }, _LocalHttpOverrides());
+        expect(requests, 2);
+        expect(repair, isNotNull);
+        expect((repair!['_recurrence_maintenance'] as Map)['rule'], isNotNull);
+      } finally {
+        await prefs.setInt('current_user_id', 0);
+        ApiService.clearBaseUrlOverride();
+        await server.close(force: true);
+      }
+    },
+  );
+
+  test('reading an ended series prunes a leftover beyond its cutoff', () async {
+    final now = DateTime.now();
+    final end = DateTime(now.year, now.month, now.day - 2);
+    final rule = TodoItem(
+      id: 'ended-local-rule',
+      title: '已结束循环',
+      recurrenceSeriesId: 'ended-local-series',
+      createdDate: end.millisecondsSinceEpoch,
+      recurrenceEndDate: end,
+      updatedAt: 2000,
+    );
+    final extra = TodoItem(
+      id: 'ended-local-extra',
+      title: rule.title,
+      recurrenceSeriesId: rule.recurrenceSeriesId,
+      createdDate: DateTime(
+        now.year,
+        now.month,
+        now.day - 1,
+      ).millisecondsSinceEpoch,
+      recurrenceEndDate: end,
+      updatedAt: 1000,
+    );
+    await seed([rule, extra]);
+
+    final loaded = await StorageService.getTodos(
+      username,
+      includeDeleted: true,
+    );
+
+    expect(loaded.singleWhere((todo) => todo.id == extra.id).isDeleted, isTrue);
+    expect(
+      (await StorageService.getTodoByUuid(username, extra.id))!.isDeleted,
+      isTrue,
+    );
+    final db = await DatabaseHelper.instance.databaseForUser(username);
+    final ops = await db.query(
+      'op_logs',
+      where: 'target_uuid = ?',
+      whereArgs: [extra.id],
+    );
+    final payload = jsonDecode(ops.single['data_json'] as String) as Map;
+    expect((payload['_recurrence_maintenance'] as Map)['rule'], {
+      'uuid': rule.id,
+      'version': rule.version,
+      'updated_at': rule.updatedAt,
+    });
+  });
+
+  test(
     'rejected insert-only generation restores the server row across two syncs',
     () async {
       final now = DateTime.now();

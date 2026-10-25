@@ -582,9 +582,7 @@ void main() {
         expect(
           (await FinanceStorage.getRecurringRule(old.uuid))!
               .lastGeneratedPeriod,
-          current.autoGenerate
-              ? '2026-09'
-              : current.generationPeriodBefore(DateTime.now()),
+          current.lastGeneratedPeriod,
         );
       });
     }

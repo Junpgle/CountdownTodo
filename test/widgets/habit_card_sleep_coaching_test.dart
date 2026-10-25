@@ -6,9 +6,17 @@ import 'package:countdown_todo/features/habits/services/habit_sleep_coaching_ser
 import 'package:countdown_todo/features/habits/widgets/habit_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 void main() {
   testWidgets('睡眠时长卡片展示当前阶段目标', (tester) async {
+    final visibilityController = VisibilityDetectorController.instance;
+    final previousUpdateInterval = visibilityController.updateInterval;
+    visibilityController.updateInterval = Duration.zero;
+    addTearDown(() {
+      visibilityController.updateInterval = previousUpdateInterval;
+    });
+
     final goal = HabitGoal(
       uuid: 'sleep-duration',
       name: '睡眠时长',
@@ -58,6 +66,9 @@ void main() {
 
     expect(find.textContaining('本期目标 7 小时 30 分'), findsOneWidget);
     expect(find.textContaining('本期目标 8 小时'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
   });
 }
 

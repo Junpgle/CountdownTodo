@@ -354,15 +354,17 @@ class SystemControlService {
           >('WindowsGetStringRawBuffer');
 
       final hr = _roInit(0);
-      if (kDebugMode)
+      if (kDebugMode) {
         debugPrint('[SCS] RoInitialize: 0x${hr.toRadixString(16)}');
+      }
 
       final className = 'Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager'
           .toNativeUtf16();
       final hstrPtr = calloc<IntPtr>();
       final hr2 = _winCreateStr(className, 138, hstrPtr);
-      if (kDebugMode)
+      if (kDebugMode) {
         debugPrint('[SCS] WindowsCreateString: 0x${hr2.toRadixString(16)}');
+      }
       _hstrSMTCClass = hstrPtr.value;
       calloc.free(hstrPtr);
       calloc.free(className);
@@ -748,8 +750,9 @@ class SystemControlService {
     try {
       // IAsyncInfo vtable: 3=get_Id, 4=get_Status, ...
       final getStatusAddr = asyncOp.value[4];
-      if (kDebugMode)
+      if (kDebugMode) {
         debugPrint('[SCS] get_Status vtable[4] addr: $getStatusAddr');
+      }
       final getStatusFn =
           Pointer<
                 NativeFunction<
@@ -808,8 +811,9 @@ class SystemControlService {
 
       // IAsyncOperation vtable: IUnknown(0-2), IAsyncInfo(3-7), GetResults(10)
       final getResultsAddr = asyncOp.value[10];
-      if (kDebugMode)
+      if (kDebugMode) {
         debugPrint('[SCS] GetResults vtable[10] addr: $getResultsAddr');
+      }
       final getResultsFn =
           Pointer<
                 NativeFunction<

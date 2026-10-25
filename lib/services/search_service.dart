@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../models.dart';
+import '../models/todo_create_save_result.dart';
 import '../models/search_scope.dart';
 import '../screens/about_screen.dart';
 import '../screens/team_management_screen.dart';
 import '../screens/team_announcement_screen.dart';
 import '../screens/team_message_center_screen.dart';
 import '../storage_service.dart';
+import 'todo_editor_save_service.dart';
 import 'database_helper.dart';
 import 'api_service.dart';
 import 'pomodoro_service.dart';
@@ -28,6 +30,11 @@ import '../screens/add_todo_screen.dart';
 import '../screens/fixed_schedule_editor_screen.dart';
 import '../screens/folder_manage_screen.dart';
 import '../screens/todo_plan_screen.dart';
+import '../screens/help/feature_explorer_screen.dart';
+import '../screens/historical_todos_screen.dart';
+import '../screens/ai_assistant_tutorial_screen.dart';
+import '../screens/conflict_inbox_screen.dart';
+import '../screens/math_menu_screen.dart';
 import '../utils/calendar_date_math.dart';
 import '../features/finance/models/finance_models.dart';
 import '../features/finance/screens/finance_transaction_detail_screen.dart';
@@ -97,6 +104,7 @@ class SearchService {
           (item) =>
               !item.isDeleted &&
               !item.isDone &&
+              !item.isSkipped &&
               item.isOverdueAt(before) &&
               !excludedRecurrenceSeriesIds.contains(item.recurrenceSeriesId),
         )
@@ -265,7 +273,83 @@ class SearchService {
       type: SearchResultType.log,
       extraData: {'route': '/time_log/manual'},
     ),
+    SearchResult(
+      id: 'feature_explorer_hub',
+      title: '功能探索百宝箱 / 功能大全 / 隐藏技巧 / 新手教程',
+      subtitle: '一图总览所有功能位置、30秒快速上手与版本更新亮点',
+      icon: Icons.explore_rounded,
+      type: SearchResultType.action,
+      extraData: {'route': '/feature_explorer'},
+    ),
+    SearchResult(
+      id: 'feature_historical_todos',
+      title: '历史待办 / 回收站 / 误删恢复 / 已完成归档',
+      subtitle: '查看已完成的待办或从回收站批量恢复误删任务',
+      icon: Icons.restore_from_trash_rounded,
+      type: SearchResultType.todo,
+      extraData: {'route': '/historical_todos'},
+    ),
+    SearchResult(
+      id: 'feature_ai_tutorial',
+      title: 'AI 助手教程 / 语音速记 / 截图识图 / 取件码识别',
+      subtitle: '了解如何按住 + 号说话速记、从相册分享截图识别待办与账单',
+      icon: Icons.smart_toy_outlined,
+      type: SearchResultType.chat,
+      extraData: {'route': '/ai_tutorial'},
+    ),
+    SearchResult(
+      id: 'feature_conflict_inbox',
+      title: '冲突收件箱 / 同步冲突处理 / 时间重叠检测',
+      subtitle: '查看并解决多设备同步冲突或日程时间重叠',
+      icon: Icons.sync_problem_rounded,
+      type: SearchResultType.action,
+      extraData: {'route': '/conflicts'},
+    ),
+    SearchResult(
+      id: 'feature_math_quiz',
+      title: '数学测验 / 心算口算 / 专注唤醒',
+      subtitle: '开始专注前用快速四则运算激活大脑状态',
+      icon: Icons.functions_rounded,
+      type: SearchResultType.action,
+      extraData: {'route': '/math_quiz'},
+    ),
   ];
+
+  /// Searches the same indexed setting entries used by global search without
+  /// querying user data or recording a search-history item.
+  List<SearchResult> searchSettings(String query) {
+    final searchTerms = _extractSearchTerms(query.trim().toLowerCase());
+    if (searchTerms.isEmpty) return const <SearchResult>[];
+
+    final matches =
+        _searchIndexedStaticResults(searchTerms, SearchScope.settings)
+            .where((match) => match.result.type == SearchResultType.setting)
+            .toList()
+          ..sort((a, b) => b.score.compareTo(a.score));
+    return matches.map((match) => match.result).toList(growable: false);
+  }
+
+  List<SearchResultWithScore> _searchIndexedStaticResults(
+    List<String> searchTerms,
+    SearchScope scope,
+  ) {
+    final matches = <SearchResultWithScore>[];
+    for (final indexed in _staticSettings) {
+      final result = indexed.result;
+      if (!scope.includes(result.type)) continue;
+
+      final score = _calculateScore(
+        indexed.title,
+        indexed.subtitle,
+        indexed.breadcrumb,
+        searchTerms,
+      );
+      if (score > 0) {
+        matches.add(SearchResultWithScore(result, score));
+      }
+    }
+    return matches;
+  }
 
   Future<List<SearchResult>> search(
     String query, {
@@ -340,21 +424,8 @@ class SearchService {
           ).catchError((_) => <SearchResult>[]);
         });
 
-    // 1. 静态索引扫描
-    for (final indexed in _staticSettings) {
-      final result = indexed.result;
-      if (!scope.includes(result.type)) continue;
-
-      final score = _calculateScore(
-        indexed.title,
-        indexed.subtitle,
-        indexed.breadcrumb,
-        searchTerms,
-      );
-      if (score > 0) {
-        scoredResults.add(SearchResultWithScore(result, score));
-      }
-    }
+    // 1. 静态索引扫描，共享设置页的目录搜索和相关度评分。
+    scoredResults.addAll(_searchIndexedStaticResults(searchTerms, scope));
 
     // 2. 习惯、挑战与数据库查询互不依赖，并行执行以缩短输入后的等待。
     final searchResults = await Future.wait<List<SearchResult>>([
@@ -686,6 +757,7 @@ class SearchService {
                   'uuid': t.id,
                   'content': t.title,
                   'is_completed': t.isDone ? 1 : 0,
+                  'is_skipped': t.isSkipped ? 1 : 0,
                   'is_deleted': 0,
                   'due_date': t.dueDate?.millisecondsSinceEpoch,
                   'created_date': t.createdDate,
@@ -742,12 +814,15 @@ class SearchService {
           if (metaParts.isNotEmpty) metaParts.join(' · '),
         ].join('  |  ');
         final displaySubtitle = subtitle.isNotEmpty ? subtitle : '个人待办';
+        final isSkipped = t['is_skipped'] == 1 || t['is_skipped'] == true;
         dbItems.add(
           SearchResult(
             id: 'db_todo_${t['uuid']}',
             title: t['content'] ?? '未命名任务',
             subtitle: displaySubtitle,
-            icon: t['is_completed'] == 1
+            icon: isSkipped
+                ? Icons.skip_next_rounded
+                : t['is_completed'] == 1
                 ? Icons.check_circle
                 : Icons.radio_button_unchecked,
             type: SearchResultType.todo,
@@ -755,6 +830,7 @@ class SearchService {
               'uuid': t['uuid'],
               'table': 'todos',
               'is_completed': t['is_completed'],
+              'is_skipped': isSkipped ? 1 : 0,
               'due_date': dueDateMs,
               'team_name': t['team_name'],
               'remark': remarkStr,
@@ -1467,6 +1543,18 @@ class SearchService {
       ),
     );
 
+    // 6. 探索维度：功能探索百宝箱
+    suggestions.add(
+      SearchResult(
+        id: 'guess_feature_explorer',
+        title: '功能探索百宝箱 · 隐藏技巧与新功能',
+        subtitle: '🧭 不知道某个功能在哪里？点击查看全景功能地图与操作指南',
+        icon: Icons.explore_rounded,
+        type: SearchResultType.recommend,
+        extraData: {'action': 'navigate', 'route': '/feature_explorer'},
+      ),
+    );
+
     return suggestions;
   }
 }
@@ -1647,6 +1735,19 @@ class SearchNavigationHandler {
               StorageService.saveTodoGroups(username, items),
           onTodosChanged: (items) async =>
               StorageService.saveTodos(username, items),
+          onManualTodoSaved: (todo) async {
+            final allTodos = await StorageService.getTodos(username);
+            final existingIndex = allTodos.indexWhere(
+              (item) => item.id == todo.id,
+            );
+            if (existingIndex < 0) {
+              allTodos.add(todo);
+            } else {
+              allTodos[existingIndex] = todo;
+            }
+            await StorageService.saveTodos(username, allTodos);
+            return const TodoCreateSaveResult();
+          },
         ),
       );
     } else {
@@ -1770,6 +1871,40 @@ class SearchNavigationHandler {
                 );
               }
             },
+            onEditorSave:
+                (
+                  changedTodos,
+                  baselines, {
+                  expectedSeriesMembership,
+                  expectedFixedScheduleTodoIds,
+                  expectedFixedScheduleBaselines,
+                }) async {
+                  final result = await TodoEditorSaveService.save(
+                    username: username,
+                    changedTodos: changedTodos,
+                    baselines: baselines,
+                    expectedSeriesMembership: expectedSeriesMembership,
+                    expectedFixedScheduleTodoIds: expectedFixedScheduleTodoIds,
+                    expectedFixedScheduleBaselines:
+                        expectedFixedScheduleBaselines,
+                  );
+                  if (context.mounted && result.warnings.isEmpty) {
+                    AppSnackBars.showSnackBar(
+                      context,
+                      const SnackBar(
+                        content: Text('待办已更新'),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                  return result;
+                },
+            onEditorGroupsSave: (changedGroups, baselines) =>
+                TodoEditorSaveService.saveGroups(
+                  username: username,
+                  changedGroups: changedGroups,
+                  baselines: baselines,
+                ),
             todoGroups: allGroups,
             onGroupsChanged: (newGroups) async {
               await StorageService.saveTodoGroups(username, newGroups);
@@ -2001,6 +2136,21 @@ class SearchNavigationHandler {
       case '/challenge':
         page = const ChallengeCenterScreen();
         break;
+      case '/feature_explorer':
+        page = FeatureExplorerScreen(username: username);
+        break;
+      case '/historical_todos':
+        page = HistoricalTodosScreen(username: username);
+        break;
+      case '/ai_tutorial':
+        page = const AiAssistantTutorialScreen();
+        break;
+      case '/conflicts':
+        page = ConflictInboxScreen(username: username);
+        break;
+      case '/math_quiz':
+        page = MathMenuScreen(username: username);
+        break;
     }
 
     if (page != null && context.mounted) {
@@ -2024,11 +2174,45 @@ class SearchNavigationHandler {
           todoGroups: groups,
           onTodoAdded: (todo) async {
             final todos = await StorageService.getTodos(username);
-            await StorageService.saveTodos(username, [...todos, todo]);
+            final existingIndex = todos.indexWhere(
+              (item) => item.id == todo.id,
+            );
+            if (existingIndex < 0) {
+              todos.add(todo);
+            } else {
+              todos[existingIndex] = todo;
+            }
+            await StorageService.saveTodos(username, todos);
+          },
+          onManualTodoSaved: (todo) async {
+            final todos = await StorageService.getTodos(username);
+            final existingIndex = todos.indexWhere(
+              (item) => item.id == todo.id,
+            );
+            if (existingIndex < 0) {
+              todos.add(todo);
+            } else {
+              todos[existingIndex] = todo;
+            }
+            await StorageService.saveTodos(username, todos);
+            return const TodoCreateSaveResult();
           },
           onTodosBatchAdded: (added) async {
             final todos = await StorageService.getTodos(username);
-            await StorageService.saveTodos(username, [...todos, ...added]);
+            final indexById = <String, int>{};
+            for (var index = 0; index < todos.length; index++) {
+              indexById.putIfAbsent(todos[index].id, () => index);
+            }
+            for (final todo in added) {
+              final index = indexById[todo.id];
+              if (index == null) {
+                indexById[todo.id] = todos.length;
+                todos.add(todo);
+              } else {
+                todos[index] = todo;
+              }
+            }
+            await StorageService.saveTodos(username, todos);
           },
           onFixedScheduleAdded: (item) =>
               StorageService.saveFixedSchedules(username, [item]),

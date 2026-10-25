@@ -166,9 +166,6 @@ class PlanManualCompletionService {
         todo.title.trim().isEmpty) {
       throw const PlanAvailabilityException('关联待办已失效或存在冲突，请先核对');
     }
-    if ((todo.teamUuid?.trim() ?? '').isNotEmpty || todo.collabType != 0) {
-      throw const PlanAvailabilityException('团队规划暂不支持手动确认完成');
-    }
     return _canonical(rows.single);
   }
 

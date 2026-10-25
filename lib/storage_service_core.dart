@@ -218,6 +218,7 @@ mixin _StorageCore on _StorageServiceBase {
   Future<void> initTheme() async {
     final prefs = await StorageService.prefs;
     themeNotifier.value = prefs.getString(keyThemeMode) ?? 'system';
+    oledBlackModeNotifier.value = prefs.getBool(keyOledBlackMode) ?? true;
     themeColorModeNotifier.value =
         prefs.getString(keyThemeColorMode) ?? 'default';
     int? colorVal = prefs.getInt(keyCustomThemeColor);

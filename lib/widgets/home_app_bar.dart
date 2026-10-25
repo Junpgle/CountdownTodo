@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:flutter_zoom_drawer/flutter_zoom_drawer.dart';
 
 import '../screens/course_screens.dart';
+import '../models/todo_create_save_result.dart';
 import '../utils/page_transitions.dart';
 import 'floating_glass_control.dart';
 
@@ -114,6 +115,7 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
   final bool showCourseButton;
   final int teamPendingCount; // 🚀 Uni-Sync 4.0: 团队待处理消息数
   final bool hasTeamConflictDot;
+  final FixedScheduleTodoLinkSaver? onCreateRelatedTodo;
 
   const HomeAppBar({
     super.key,
@@ -140,6 +142,7 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
     this.showCourseButton = false,
     this.teamPendingCount = 0,
     this.hasTeamConflictDot = false,
+    this.onCreateRelatedTodo,
   });
 
   @override
@@ -483,7 +486,10 @@ class _HomeAppBarState extends State<HomeAppBar>
                 onPressed: () async {
                   await PageTransitions.pushFromRect(
                     context: context,
-                    page: WeeklyCourseScreen(username: widget.username),
+                    page: WeeklyCourseScreen(
+                      username: widget.username,
+                      onCreateRelatedTodo: widget.onCreateRelatedTodo,
+                    ),
                     sourceKey: widget.courseKey ?? GlobalKey(),
                   );
                 },

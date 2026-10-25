@@ -36,7 +36,12 @@ class AiTodoChatLauncher {
     String? initialMessage,
     bool sendInitialMessage = true,
     ChatUsageSummary? initialVoiceUsageSummary,
-    FutureOr<void> Function(List<TodoItem> inserted, List<TodoItem> updated)?
+    FutureOr<void> Function(
+      List<TodoItem> inserted,
+      List<TodoItem> updated, {
+      Map<String, TodoItem>? expectedTodoBaselines,
+      Map<String, Set<String>>? expectedSeriesMembership,
+    })?
     onTodosBatchAction,
     void Function(List<TodoGroup> groups)? onTodoGroupsChanged,
     void Function(List<FixedScheduleItem> schedules)? onFixedSchedulesChanged,
@@ -122,7 +127,9 @@ class AiTodoChatLauncher {
 
   static List<Map<String, dynamic>> toChatTodoMaps(List<TodoItem> todos) {
     final recurrenceRuleBySeries = <String, TodoItem>{};
-    for (final todo in todos.where((todo) => !todo.isDeleted)) {
+    for (final todo in todos.where(
+      (todo) => !todo.isDeleted && !todo.isSkipped,
+    )) {
       final seriesId = todo.recurrenceSeriesId?.trim();
       if (seriesId == null || seriesId.isEmpty) continue;
       final existing = recurrenceRuleBySeries[seriesId];
@@ -154,6 +161,8 @@ class AiTodoChatLauncher {
         'timeMode': t.timeMode.name,
         'isAllDay': t.isAllDayTask,
         'isDone': t.isDone,
+        'isSkipped': t.isSkipped,
+        'isSkippedSyncPending': t.isSkippedSyncPending,
         'isDeleted': t.isDeleted,
         'recurrence': t.recurrence.name,
         'recurrenceRule': rule.recurrence.name,

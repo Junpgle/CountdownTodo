@@ -1,5 +1,10 @@
+import 'package:flutter/foundation.dart';
+
 class WindowService {
   static Future<bool> Function()? onShowCloseConfirm;
+  static final ValueNotifier<bool> windowIsActiveListenable = ValueNotifier(
+    true,
+  );
 
   static Future<void> init() async {}
 

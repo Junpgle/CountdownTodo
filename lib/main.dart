@@ -48,7 +48,9 @@ import 'services/minor_mode_service.dart';
 import 'services/liquid_glass_effect_service.dart';
 import 'services/power_save_mode_service.dart';
 import 'theme/app_liquid_glass_theme.dart';
+import 'widgets/liquid_glass_live_preview_dock.dart';
 import 'theme/dynamic_color_scheme_adapter.dart';
+import 'theme/oled_surface_color_scheme.dart';
 import 'widgets/island_debug_host.dart';
 import 'widgets/macos_window_chrome.dart';
 
@@ -333,8 +335,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    StorageService.oledBlackModeNotifier.addListener(
+      _handleOledBlackModeChanged,
+    );
+    WidgetsBinding.instance.addObserver(this);
+    final lifecycleState = WidgetsBinding.instance.lifecycleState;
+    WindowService.windowIsActiveListenable.value =
+        lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
     if (AppPlatform.isAndroid) {
-      WidgetsBinding.instance.addObserver(this);
       PowerSaveModeService.enabledListenable.addListener(
         _handlePowerSaveModeChanged,
       );
@@ -373,6 +381,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
   }
 
+  void _handleOledBlackModeChanged() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void didChangeMetrics() {
     _scheduleSystemUiRestore();
@@ -380,15 +392,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    WindowService.windowIsActiveListenable.value =
+        state == AppLifecycleState.resumed;
+
     if (state == AppLifecycleState.resumed) {
-      unawaited(PowerSaveModeService.refresh());
-      WidgetService.setAppForeground(true);
+      if (AppPlatform.isAndroid) {
+        unawaited(PowerSaveModeService.refresh());
+        WidgetService.setAppForeground(true);
+      }
       _scheduleSystemUiRestore();
     } else if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
-      WidgetService.setAppForeground(false);
+      if (AppPlatform.isAndroid) WidgetService.setAppForeground(false);
     }
   }
 
@@ -952,8 +969,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void dispose() {
     _defaultSplashFallbackTimer?.cancel();
     _systemUiRestoreTimer?.cancel();
+    StorageService.oledBlackModeNotifier.removeListener(
+      _handleOledBlackModeChanged,
+    );
+    WidgetsBinding.instance.removeObserver(this);
     if (AppPlatform.isAndroid) {
-      WidgetsBinding.instance.removeObserver(this);
       PowerSaveModeService.enabledListenable.removeListener(
         _handlePowerSaveModeChanged,
       );
@@ -1083,6 +1103,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                               );
                             }
 
+                            darkScheme = withOledBlackSurfacePalette(
+                              darkScheme,
+                              enabled:
+                                  StorageService.oledBlackModeNotifier.value,
+                            );
+
                             return ValueListenableBuilder<
                               LiquidGlassEffectConfiguration
                             >(
@@ -1105,6 +1131,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                   mode: liquidGlassConfiguration.mode,
                                   transparencyPercent: liquidGlassConfiguration
                                       .transparencyPercent,
+                                  scrimCoveragePercent: liquidGlassConfiguration
+                                      .scrimCoveragePercent,
+                                  blurSigma: liquidGlassConfiguration.blurSigma,
                                 );
                                 final darkTheme = applyAppLiquidGlassTheme(
                                   ThemeData(
@@ -1122,6 +1151,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                   mode: liquidGlassConfiguration.mode,
                                   transparencyPercent: liquidGlassConfiguration
                                       .transparencyPercent,
+                                  scrimCoveragePercent: liquidGlassConfiguration
+                                      .scrimCoveragePercent,
+                                  blurSigma: liquidGlassConfiguration.blurSigma,
                                 );
 
                                 return MacosMenuBar(
@@ -1250,12 +1282,37 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                                     )
                                                   : content;
 
-                                              return MacosWindowChrome(
-                                                child: AppSystemUiRegion(
-                                                  backgroundBrightness:
-                                                      Theme.of(context)
-                                                          .brightness,
-                                                  child: adaptedContent,
+                                              return ValueListenableBuilder<bool>(
+                                                valueListenable: WindowService
+                                                    .windowIsActiveListenable,
+                                                child: MacosWindowChrome(
+                                                  child: AppSystemUiRegion(
+                                                    backgroundBrightness:
+                                                        Theme.of(context)
+                                                            .brightness,
+                                                    child: Stack(
+                                                      children: [
+                                                        adaptedContent,
+                                                        const Positioned(
+                                                          left: 0,
+                                                          right: 0,
+                                                          bottom: 0,
+                                                          child:
+                                                              LiquidGlassLivePreviewDock(),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                                builder: (
+                                                  context,
+                                                  isWindowActive,
+                                                  child,
+                                                ) => TickerMode(
+                                                  enabled: isWindowActive,
+                                                  child:
+                                                      child ??
+                                                      const SizedBox.shrink(),
                                                 ),
                                               );
                                             },
@@ -1281,9 +1338,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                         : _isChecking
                                         ? Scaffold(
                                             backgroundColor:
-                                                currentThemeMode ==
-                                                    ThemeMode.dark
-                                                ? Colors.grey[900]
+                                                Theme.of(context).brightness ==
+                                                    Brightness.dark
+                                                ? Theme.of(context)
+                                                      .colorScheme
+                                                      .surface
                                                 : Theme.of(context)
                                                       .colorScheme
                                                       .primary,

@@ -1035,15 +1035,26 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
             .where((r) => !r.isDeleted)
             .toList(),
         teams: _teams,
-        onTodosBatchAction: (inserted, updated) async {
-          final allTodos = await StorageService.getTodos(widget.username);
-          final merged = AiTodoActionExecutor.mergeTodoUpdates(
-            allTodos,
-            inserted,
-            updated,
-          );
-          await StorageService.saveTodos(widget.username, merged);
-        },
+        onTodosBatchAction:
+            (
+              inserted,
+              updated, {
+              expectedTodoBaselines,
+              expectedSeriesMembership,
+            }) async {
+              final allTodos = await StorageService.getTodos(widget.username);
+              final merged = AiTodoActionExecutor.mergeTodoUpdates(
+                allTodos,
+                inserted,
+                updated,
+              );
+              await StorageService.saveTodos(
+                widget.username,
+                merged,
+                expectedTodoBaselines: expectedTodoBaselines,
+                expectedSeriesMembership: expectedSeriesMembership,
+              );
+            },
       );
     } catch (e) {
       if (mounted) {

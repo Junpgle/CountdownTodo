@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 enum AiTodoActionType {
   createTodo,
   createHabit,
@@ -5,6 +7,7 @@ enum AiTodoActionType {
   deleteHabit,
   updateTodo,
   completeTodo,
+  skipTodo,
   deleteTodo,
   createFixedSchedule,
   updateFixedSchedule,
@@ -143,7 +146,8 @@ class AiTodoAction {
   String recurrence;
   String? recurrenceSeriesId;
 
-  /// `occurrence` 只操作指定期次；`future` 操作该期及之后的同系列期次。
+  /// `occurrence` 只操作指定期次；`future` 操作该期及之后；`series`
+  /// 仅用于用户明确要求时的待办内容整系列编辑。
   String recurrenceScope;
   int? customIntervalDays;
   String? recurrenceEndDate;
@@ -216,6 +220,7 @@ class AiTodoAction {
       createsTodo ||
       type == AiTodoActionType.updateTodo ||
       type == AiTodoActionType.completeTodo ||
+      type == AiTodoActionType.skipTodo ||
       type == AiTodoActionType.deleteTodo ||
       type == AiTodoActionType.rescheduleTodo ||
       type == AiTodoActionType.bulkRescheduleTodo ||
@@ -268,6 +273,7 @@ class AiTodoAction {
   bool get mutatesExistingItem =>
       type == AiTodoActionType.updateTodo ||
       type == AiTodoActionType.completeTodo ||
+      type == AiTodoActionType.skipTodo ||
       type == AiTodoActionType.deleteTodo ||
       type == AiTodoActionType.updateFixedSchedule ||
       type == AiTodoActionType.cancelFixedSchedule ||
@@ -361,6 +367,11 @@ class AiTodoAction {
     'hasTagUuids': hasTagUuids,
     'metadata': metadata,
   };
+
+  /// Creates a detached draft, including nested lists and metadata.
+  AiTodoAction copy() => AiTodoAction.fromJson(
+    Map<String, dynamic>.from(jsonDecode(jsonEncode(toJson())) as Map),
+  );
 
   factory AiTodoAction.fromJson(Map<String, dynamic> json) {
     final typeName = json['actionType']?.toString();
@@ -575,6 +586,8 @@ class AiTodoAction {
         return AiTodoActionType.updateTodo;
       case 'complete_todo':
         return AiTodoActionType.completeTodo;
+      case 'skip_todo':
+        return AiTodoActionType.skipTodo;
       case 'delete_todo':
         return AiTodoActionType.deleteTodo;
       case 'create_schedule':
@@ -700,7 +713,11 @@ class AiTodoAction {
 
   static String _parseRecurrenceScope(dynamic value) {
     final scope = value?.toString();
-    return scope == 'future' ? 'future' : 'occurrence';
+    return switch (scope) {
+      'future' => 'future',
+      'series' => 'series',
+      _ => 'occurrence',
+    };
   }
 
   static bool _fieldWasProvided(

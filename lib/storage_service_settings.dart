@@ -68,6 +68,7 @@ mixin _StorageSettings on _StorageServiceBase {
     // 🚀 全局设置例外列表 (不进行账户隔离的设置)
     const List<String> globalSettings = [
       keyThemeMode,
+      keyOledBlackMode,
       keyServerChoice,
       keySystemStartupEnabled,
       keyDeviceId,
@@ -85,6 +86,7 @@ mixin _StorageSettings on _StorageServiceBase {
     if (value is String) await prefs.setString(finalKey, value);
     if (value is bool) await prefs.setBool(finalKey, value);
     if (key == keyThemeMode) themeNotifier.value = value;
+    if (key == keyOledBlackMode) oledBlackModeNotifier.value = value;
   }
 
   Future<int> getSyncInterval() async {

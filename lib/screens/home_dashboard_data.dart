@@ -50,7 +50,10 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
           block.startTime < tomorrowEndMs,
     );
     final hasActiveTodos = todos.any((todo) {
-      if (todo.isDeleted || todo.dueDate == null || todo.isAllDayTask) {
+      if (todo.isDeleted ||
+          todo.isSkipped ||
+          todo.dueDate == null ||
+          todo.isAllDayTask) {
         return false;
       }
       final startMs = todo.createdDate ?? todo.createdAt;

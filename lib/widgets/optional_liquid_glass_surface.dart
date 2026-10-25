@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../services/liquid_glass_effect_service.dart';
-import '../utils/app_image_filters.dart';
 import '../utils/app_platform.dart';
 
 @visibleForTesting
@@ -14,9 +13,7 @@ GlassQuality liquidGlassPanelQualityFor(LiquidGlassEffectMode mode) {
 
 @visibleForTesting
 GlassQuality liquidGlassSurfaceQualityFor(LiquidGlassEffectMode mode) {
-  return mode == LiquidGlassEffectMode.enhanced
-      ? GlassQuality.premium
-      : GlassQuality.standard;
+  return liquidGlassQualityForMode(mode);
 }
 
 @visibleForTesting
@@ -33,14 +30,14 @@ double liquidGlassPanelBackerOpacityFor(
 
 @visibleForTesting
 double liquidGlassAdaptiveStaticOpacityFor({required bool isDark}) {
-  return isDark ? 0.34 : 0.72;
+  return isDark ? 0.34 : 0.55;
 }
 
 @visibleForTesting
 double liquidGlassHighContrastStaticOpacityFor({required bool isDark}) {
   // Dense-content surfaces (folders, lists) need a stronger fill than chip-like
   // adaptive cards, while still staying translucent enough to read as glass.
-  return isDark ? 0.8 : 0.88;
+  return isDark ? 0.76 : 0.84;
 }
 
 @visibleForTesting
@@ -60,8 +57,9 @@ enum OptionalLiquidGlassPanelMode {
   /// A card that follows the user's quality preference.
   ///
   /// Standard mode uses a non-sampling translucent material. Enhanced mode
-  /// promotes the card to a live grouped blur. Android scrollables and wide
-  /// Android layouts use static material to avoid repeated backdrop sampling.
+  /// promotes the card to a live grouped blur where supported. Android
+  /// scrollables, wide Android layouts, and Windows use static
+  /// material to avoid repeated backdrop sampling.
   adaptiveRepeated,
 
   /// A translucent material treatment without backdrop sampling.
@@ -77,7 +75,8 @@ bool liquidGlassUsesGroupedBackdropFor(
   OptionalLiquidGlassPanelMode panelMode,
 ) {
   return effectMode == LiquidGlassEffectMode.enhanced &&
-      panelMode == OptionalLiquidGlassPanelMode.adaptiveRepeated;
+      panelMode == OptionalLiquidGlassPanelMode.adaptiveRepeated &&
+      !AppPlatform.isWindows;
 }
 
 /// Whether every corner of [radius] shares the same circular value, which is
@@ -225,10 +224,13 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
             AppPlatform.isAndroid &&
             (MediaQuery.sizeOf(context).width >= 768.0 ||
                 _OptionalGlassScrollableScope.contains(context));
+        final useStaticWindowsMaterial = AppPlatform.isWindows;
         final useStaticOverlayMaterial =
             OptionalLiquidGlassOverlayScope.isActive(context);
         final tintSource = tint ?? colorScheme.primary;
-        final neutralBase = dark ? colorScheme.scrim : colorScheme.surface;
+        final neutralBase = dark
+            ? const Color(0xFF16181D)
+            : colorScheme.surface;
         final resolvedTint = Color.alphaBlend(
           tintSource.withValues(
             alpha: tint == null ? 0.06 : (dark ? 0.12 : 0.1),
@@ -239,6 +241,7 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
         final useStaticMaterial =
             mode == OptionalLiquidGlassPanelMode.staticMaterial ||
             useStaticOverlayMaterial ||
+            useStaticWindowsMaterial ||
             (mode == OptionalLiquidGlassPanelMode.adaptiveRepeated &&
                 (!enhanced || useStaticAndroidMaterial));
         // Per-corner radii are only expressible by the tiers that clip with
@@ -249,13 +252,18 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
         if (useStaticMaterial) {
           final isAdaptiveCard =
               mode == OptionalLiquidGlassPanelMode.adaptiveRepeated;
+          // Windows surfaces use a static tinted material. Repeated live
+          // BackdropFilters caused excessive GPU sampling during scrolls.
+          final shouldBlur =
+              !useStaticOverlayMaterial && !useStaticWindowsMaterial;
+          final blurFilter = configuration.blurFilter;
           final originalOpacity =
               staticMaterialOpacity ??
               (isAdaptiveCard
                   ? (highContrast
                         ? liquidGlassHighContrastStaticOpacityFor(isDark: dark)
                         : liquidGlassAdaptiveStaticOpacityFor(isDark: dark))
-                  : (dark ? 0.86 : 0.9));
+                  : (dark ? 0.58 : 0.72));
           final materialOpacity = liquidGlassBackerOpacity(
             originalOpacity,
             configuration,
@@ -264,21 +272,28 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
             resolvedTint.withValues(alpha: dark ? 0.18 : 0.12),
             neutralBase,
           ).withValues(alpha: materialOpacity);
-          final highlightBase = dark
-              ? colorScheme.surfaceBright
-              : colorScheme.surfaceContainerHighest;
+          final highlightBase = dark ? Colors.white : Colors.white;
           final highlightColor =
               Color.alphaBlend(
-                highlightBase.withValues(alpha: dark ? 0.1 : 0.16),
+                highlightBase.withValues(alpha: dark ? 0.08 : 0.14),
                 baseColor.withValues(alpha: 1),
               ).withValues(
                 alpha: liquidGlassBackerOpacity(
-                  (originalOpacity + (dark ? 0.05 : 0.04))
+                  (originalOpacity + (dark ? 0.03 : 0.04))
                       .clamp(0.0, 1.0)
                       .toDouble(),
                   configuration,
                 ),
               );
+          final shadow = <BoxShadow>[
+            BoxShadow(
+              color: (dark ? Colors.black : colorScheme.shadow).withValues(
+                alpha: dark ? (shouldBlur ? 0.25 : 0.12) : 0.06,
+              ),
+              blurRadius: shouldBlur ? 16 : 12,
+              offset: const Offset(0, 4),
+            ),
+          ];
           final decoration = BoxDecoration(
             shape: circular ? BoxShape.circle : BoxShape.rectangle,
             borderRadius: circular ? null : resolvedRadius,
@@ -288,31 +303,59 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
               colors: <Color>[highlightColor, baseColor],
             ),
             border: Border.all(
-              color:
-                  (dark
-                          ? colorScheme.surfaceBright
-                          : colorScheme.outlineVariant)
-                      .withValues(alpha: dark ? 0.28 : 0.62),
+              color: (dark ? Colors.white : Colors.black).withValues(
+                alpha: dark ? 0.20 : 0.10,
+              ),
               width: 0.8,
             ),
-            boxShadow: <BoxShadow>[
-              BoxShadow(
-                color: colorScheme.shadow.withValues(alpha: dark ? 0.1 : 0.07),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
+            boxShadow: shouldBlur ? null : shadow,
           );
 
+          if (!shouldBlur) {
+            return Container(
+              key: const ValueKey<String>('optional-liquid-glass-static-panel'),
+              width: width,
+              height: height,
+              padding: padding,
+              margin: margin,
+              clipBehavior: clipBehavior,
+              decoration: decoration,
+              child: child,
+            );
+          }
+
+          final filtered = BackdropFilter(
+            filter: blurFilter,
+            child: Container(
+              key: const ValueKey<String>('optional-liquid-glass-static-panel'),
+              width: width,
+              height: height,
+              padding: padding,
+              decoration: decoration,
+              child: child,
+            ),
+          );
+          final clipped = circular
+              ? ClipOval(clipBehavior: clipBehavior, child: filtered)
+              : hasUniformRadius
+              ? ClipRSuperellipse(
+                  borderRadius: resolvedRadius as BorderRadius,
+                  clipBehavior: clipBehavior,
+                  child: filtered,
+                )
+              : ClipRRect(
+                  borderRadius: resolvedRadius,
+                  clipBehavior: clipBehavior,
+                  child: filtered,
+                );
           return Container(
-            key: const ValueKey<String>('optional-liquid-glass-static-panel'),
-            width: width,
-            height: height,
-            padding: padding,
             margin: margin,
-            clipBehavior: clipBehavior,
-            decoration: decoration,
-            child: child,
+            decoration: BoxDecoration(
+              shape: circular ? BoxShape.circle : BoxShape.rectangle,
+              borderRadius: circular ? null : resolvedRadius,
+              boxShadow: shadow,
+            ),
+            child: clipped,
           );
         }
 
@@ -353,16 +396,22 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
               colors: <Color>[highlightColor, baseColor],
             ),
             border: Border.all(
-              color:
-                  (dark
-                          ? colorScheme.surfaceBright
-                          : colorScheme.outlineVariant)
-                      .withValues(alpha: dark ? 0.42 : 0.58),
+              color: (dark ? Colors.white : colorScheme.outlineVariant)
+                  .withValues(alpha: dark ? 0.22 : 0.45),
               width: 0.8,
             ),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: (dark ? Colors.black : colorScheme.shadow).withValues(
+                  alpha: dark ? 0.25 : 0.08,
+                ),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
+              ),
+            ],
           );
-          final filtered = BackdropFilter.grouped(
-            filter: AppImageFilters.blur9Clamped,
+          final filtered = BackdropFilter(
+            filter: configuration.blurFilter,
             child: Container(
               key: const ValueKey<String>(
                 'optional-liquid-glass-grouped-panel',
@@ -405,7 +454,7 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
               bodyMode: GlassBodyMode.clear,
               glassColor: resolvedTint,
               thickness: enhanced ? 24 : 18,
-              blur: enhanced ? 16 : 12,
+              blur: configuration.blurSigma,
               chromaticAberration: enhanced ? 0.008 : 0.004,
               lightIntensity: enhanced
                   ? (dark ? 0.72 : 0.6)
@@ -502,13 +551,14 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
         if (!configuration.enabled) return fallback;
         final enhanced = configuration.mode == LiquidGlassEffectMode.enhanced;
         final useStaticAndroidMaterial = AppPlatform.isAndroid;
+        final useStaticWindowsMaterial = AppPlatform.isWindows;
 
-        if (useStaticAndroidMaterial) {
+        if (useStaticAndroidMaterial || useStaticWindowsMaterial) {
           // Floating controls stay fixed while dashboard content scrolls
           // behind them. A live glass pass therefore rerasterizes on every
           // scroll frame even though the controls themselves do not move. Use
-          // the cached material path on Android, retaining a
-          // lighter fill for compact top-bar lenses.
+          // the cached material path on Android and Windows, retaining
+          // a lighter fill for compact top-bar lenses.
           final staticShell = OptionalLiquidGlassPanel(
             height: height,
             borderRadius: borderRadius,
@@ -705,7 +755,7 @@ class _TopBarLiquidGlassSurface extends StatelessWidget {
         bodyMode: GlassBodyMode.clear,
         glassColor: glassColor,
         thickness: isDark ? 12 : 10,
-        blur: isDark ? 6 : 5,
+        blur: (configuration.blurSigma * 0.4).clamp(1.0, 15.0),
         chromaticAberration: 0.0015,
         lightIntensity: isDark ? 0.46 : 0.64,
         ambientStrength: isDark ? 0.08 : 0.11,
@@ -811,7 +861,7 @@ class _FrostedGlassSurface extends StatelessWidget {
       borderRadius: BorderRadius.circular(borderRadius),
       clipBehavior: Clip.antiAlias,
       child: BackdropFilter.grouped(
-        filter: AppImageFilters.blur16Clamped,
+        filter: configuration.blurFilter,
         child: DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(

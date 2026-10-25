@@ -25,7 +25,7 @@
   Cache-Control: no-cache
 
 /main.dart.js
-  Cache-Control: public, max-age=31536000, immutable
+  Cache-Control: no-cache
 
 /flutter.js
   Cache-Control: public, max-age=31536000, immutable

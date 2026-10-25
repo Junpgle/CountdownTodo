@@ -100,6 +100,8 @@ class FixedScheduleRecurrenceService {
     required RecurrenceType recurrence,
     required DateTime recurrenceEndDate,
     int customIntervalDays = 1,
+    bool applyTeamUuid = false,
+    bool applyRelatedTodoIds = false,
   }) {
     final templateDate = DateTime.tryParse(template.date)?.toLocal();
     if (templateDate == null) {
@@ -114,7 +116,10 @@ class FixedScheduleRecurrenceService {
     );
     final existingByDate = <String, FixedScheduleItem>{};
     final existingById = <String, FixedScheduleItem>{};
-    for (final item in existingSeries.where((item) => !item.isDeleted)) {
+    final activeExisting =
+        existingSeries.where((item) => !item.isDeleted).toList()
+          ..sort((left, right) => left.date.compareTo(right.date));
+    for (final item in activeExisting) {
       existingByDate.putIfAbsent(item.date, () => item);
       existingById[item.id] = item;
     }
@@ -132,9 +137,16 @@ class FixedScheduleRecurrenceService {
     for (var index = 0; index < dates.length; index++) {
       final date = dates[index];
       final dateKey = _dateKey(date);
-      final existing =
-          existingByDate[dateKey] ??
-          (index == 0 ? existingById[template.id] : null);
+      final preferredAnchor = index == 0 ? existingById[template.id] : null;
+      final byDate = existingByDate[dateKey];
+      final byOrdinal = index < activeExisting.length
+          ? activeExisting[index]
+          : null;
+      final existing = [preferredAnchor, byDate, byOrdinal].firstWhere(
+        (candidate) =>
+            candidate != null && !usedExistingIds.contains(candidate.id),
+        orElse: () => null,
+      );
       final item = existing == null
           ? _newOccurrence(template, index == 0 ? template.id : null)
           : FixedScheduleItem.fromJson(existing.toJson());
@@ -145,6 +157,10 @@ class FixedScheduleRecurrenceService {
         recurrence: recurrence,
         recurrenceSeriesId: seriesId,
         customIntervalDays: customIntervalDays,
+        isNew: existing == null,
+        preserveTemplateExternalIdentity: index == 0 && item.id == template.id,
+        applyTeamUuid: applyTeamUuid,
+        applyRelatedTodoIds: applyRelatedTodoIds,
       );
       if (existing != null) item.markAsChanged();
       if (existing != null) usedExistingIds.add(existing.id);
@@ -173,6 +189,10 @@ class FixedScheduleRecurrenceService {
     title: template.title,
     date: template.date,
     source: template.source,
+    relatedTodoIds: template.relatedTodoIds,
+    teamUuid: template.teamUuid,
+    ownerUserId: template.ownerUserId,
+    deviceId: template.deviceId,
   );
 
   static void _applyTemplate(
@@ -182,14 +202,16 @@ class FixedScheduleRecurrenceService {
     required RecurrenceType recurrence,
     required String? recurrenceSeriesId,
     required int customIntervalDays,
+    required bool isNew,
+    required bool preserveTemplateExternalIdentity,
+    required bool applyTeamUuid,
+    required bool applyRelatedTodoIds,
   }) {
     item
       ..title = template.title
       ..date = _dateKey(date)
       ..startTime = _moveTimeToDate(template.startTime, date)
       ..endTime = _moveTimeToDate(template.endTime, date)
-      ..status = template.status
-      ..source = template.source
       ..location = template.location
       ..remark = template.remark
       ..reminderMinutes = List<int>.from(template.reminderMinutes)
@@ -199,13 +221,30 @@ class FixedScheduleRecurrenceService {
           ? customIntervalDays.clamp(1, 3650).toInt()
           : null
       ..recurrenceSeriesId = recurrenceSeriesId
-      ..relatedTodoIds = List<String>.from(template.relatedTodoIds)
-      ..externalSource = template.externalSource
-      ..externalId = template.externalId
-      ..teamUuid = template.teamUuid
-      ..ownerUserId = template.ownerUserId
-      ..deviceId = template.deviceId
       ..isDeleted = false;
+    if (isNew) {
+      item
+        ..source = template.source
+        ..relatedTodoIds = List<String>.from(template.relatedTodoIds)
+        ..teamUuid = template.teamUuid
+        ..ownerUserId = template.ownerUserId
+        ..deviceId = template.deviceId;
+      if (preserveTemplateExternalIdentity) {
+        item
+          ..externalSource = template.externalSource
+          ..externalId = template.externalId;
+      } else {
+        // A generated occurrence must never reuse an external calendar ID.
+        item
+          ..externalSource = null
+          ..externalId = null;
+      }
+    } else if (applyTeamUuid) {
+      item.teamUuid = template.teamUuid;
+    }
+    if (!isNew && applyRelatedTodoIds) {
+      item.relatedTodoIds = List<String>.from(template.relatedTodoIds);
+    }
   }
 
   static int? _moveTimeToDate(int? value, DateTime date) {

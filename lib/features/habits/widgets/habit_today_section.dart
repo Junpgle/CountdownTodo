@@ -132,10 +132,13 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final displayLimit = widget.displayLimit.clamp(1, 5).toInt();
-    final textColor = widget.isLight ? Colors.white : null;
-    final subColor = widget.isLight
+    final isDark = colorScheme.brightness == Brightness.dark;
+    final useLightHeader = widget.isLight || isDark;
+    final textColor = useLightHeader ? Colors.white : null;
+    final subColor = useLightHeader
         ? Colors.white.withValues(alpha: 0.7)
         : colorScheme.onSurfaceVariant;
+    final iconColor = useLightHeader ? Colors.white : colorScheme.tertiary;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -159,7 +162,7 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
                   child: Icon(
                     Icons.repeat_rounded,
                     size: widget.compact ? 18 : 20,
-                    color: widget.isLight ? Colors.white : colorScheme.tertiary,
+                    color: iconColor,
                   ),
                 ),
                 SizedBox(width: widget.compact ? 8 : 10),
@@ -224,6 +227,8 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
 
   /// 今日达标汇总徽章（如「2/3 达标」）。
   Widget _buildSummaryBadge(ColorScheme colorScheme) {
+    final isDark = colorScheme.brightness == Brightness.dark;
+    final useLightHeader = widget.isLight || isDark;
     var planned = 0;
     var met = 0;
     for (final progress in _snapshot!.progressByHabit.values) {
@@ -235,7 +240,7 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: widget.isLight
+          color: useLightHeader
               ? Colors.white.withValues(alpha: 0.2)
               : colorScheme.tertiaryContainer,
           borderRadius: BorderRadius.circular(12),
@@ -245,7 +250,7 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w600,
-            color: widget.isLight
+            color: useLightHeader
                 ? Colors.white
                 : colorScheme.onTertiaryContainer,
           ),
@@ -255,7 +260,7 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: widget.isLight
+        color: useLightHeader
             ? Colors.white.withValues(alpha: 0.2)
             : met == planned
             ? colorScheme.tertiaryContainer
@@ -267,7 +272,7 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w700,
-          color: widget.isLight
+          color: useLightHeader
               ? Colors.white
               : met == planned
               ? colorScheme.onTertiaryContainer
@@ -279,8 +284,7 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
 
   Widget _buildEmpty(Color subColor) {
     final colorScheme = Theme.of(context).colorScheme;
-    final useDarkGlass =
-        widget.isLight || colorScheme.brightness == Brightness.dark;
+    final useDarkGlass = colorScheme.brightness == Brightness.dark;
     return OptionalLiquidGlassCard(
       width: double.infinity,
       padding: EdgeInsets.symmetric(
@@ -288,19 +292,31 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
         horizontal: 16,
       ),
       borderRadius: 24,
-      tint: (widget.isLight ? colorScheme.scrim : colorScheme.tertiary)
-          .withValues(alpha: 0.16),
+      tint: colorScheme.tertiary.withValues(alpha: 0.16),
       isDark: useDarkGlass,
       fallbackDecoration: BoxDecoration(
         color: widget.isLight
-            ? Colors.white.withValues(alpha: 0.15)
+            ? (useDarkGlass
+                ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
+                : colorScheme.surface.withValues(alpha: 0.92))
             : colorScheme.surfaceContainerLow.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
           color: widget.isLight
-              ? Colors.white.withValues(alpha: 0.2)
+              ? (useDarkGlass
+                  ? Colors.white.withValues(alpha: 0.15)
+                  : Colors.white.withValues(alpha: 0.6))
               : Theme.of(context).dividerColor.withValues(alpha: 0.4),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(
+              alpha: widget.isLight ? 0.08 : (useDarkGlass ? 0.2 : 0.04),
+            ),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         children: [

@@ -1112,11 +1112,20 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                             height: 24,
                             child: Checkbox(
                               value: isSelected,
-                              onChanged: (val) {
-                                setState(() {
-                                  todo.isSelected = val == true;
-                                });
-                                _saveHistorySilently();
+                              onChanged: (val) async {
+                                try {
+                                  await _updateTodoActionDraft(
+                                    todo,
+                                    (draft) => draft.isSelected = val == true,
+                                  );
+                                } catch (error) {
+                                  if (mounted) {
+                                    AppSnackBars.showSnackBar(
+                                      context,
+                                      SnackBar(content: Text('保存失败：$error')),
+                                    );
+                                  }
+                                }
                               },
                             ),
                           ),
@@ -1379,12 +1388,24 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                                           ),
                                         ),
                                       ],
-                                      onChanged: (val) {
-                                        setState(() {
-                                          todo.groupId = val;
-                                          todo.hasGroupId = true;
-                                        });
-                                        _saveHistorySilently();
+                                      onChanged: (val) async {
+                                        try {
+                                          await _updateTodoActionDraft(todo, (
+                                            draft,
+                                          ) {
+                                            draft.groupId = val;
+                                            draft.hasGroupId = true;
+                                          });
+                                        } catch (error) {
+                                          if (mounted) {
+                                            AppSnackBars.showSnackBar(
+                                              context,
+                                              SnackBar(
+                                                content: Text('保存失败：$error'),
+                                              ),
+                                            );
+                                          }
+                                        }
                                       },
                                     ),
                                   ),
@@ -1517,6 +1538,10 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         color = Theme.of(context).colorScheme.primary;
         label = '完成';
         break;
+      case AiTodoActionType.skipTodo:
+        color = Theme.of(context).colorScheme.tertiary;
+        label = '跳过本期';
+        break;
       case AiTodoActionType.deleteTodo:
         color = Colors.red;
         label = '删除';
@@ -1546,8 +1571,10 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         label = '批改';
         break;
       case AiTodoActionType.updateTodo:
-        color = Colors.orange;
-        label = '修改';
+        color = action.recurrenceScope == 'series'
+            ? Theme.of(context).colorScheme.tertiary
+            : Colors.orange;
+        label = action.recurrenceScope == 'series' ? '改系列' : '修改';
         break;
       case AiTodoActionType.categorizeTodo:
         color = Colors.orange;
@@ -1671,13 +1698,21 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     );
   }
 
-  void _ignoreAction(AiTodoAction action) {
-    setState(() {
-      action.isIgnored = true;
-      action.isSelected = false;
-    });
-    _recordIgnoreFeedback(action);
-    _saveHistorySilently();
+  Future<void> _ignoreAction(AiTodoAction action) async {
+    try {
+      await _updateTodoActionDraft(action, (draft) {
+        draft.isIgnored = true;
+        draft.isSelected = false;
+      });
+      _recordIgnoreFeedback(action);
+    } catch (error) {
+      if (mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(content: Text('保存失败：$error')),
+        );
+      }
+    }
   }
 
   void _recordIgnoreFeedback(AiTodoAction action) {
@@ -1735,6 +1770,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
   }
 
   Future<void> _editAction(AiTodoAction action) async {
+    final sourceAction = action;
+    action = action.copy();
     final titleCtrl = TextEditingController(text: action.title ?? '');
     final remarkCtrl = TextEditingController(text: action.remark ?? '');
     final startCtrl = TextEditingController(text: action.startTime ?? '');
@@ -1783,6 +1820,25 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
             ? TodoTimeMode.unscheduled.name
             : TodoTimeMode.deadline.name);
     var recurrenceScope = action.recurrenceScope;
+    final scopeTarget = _findExistingTodo(action.todoId);
+    final rawTargetRecurrence = scopeTarget?['recurrence'];
+    final targetHasRecurrence = switch (rawTargetRecurrence) {
+      num value => value.toInt() != RecurrenceType.none.index,
+      String value =>
+        value.trim().isNotEmpty &&
+            value.trim() != 'none' &&
+            value.trim() != '0',
+      _ => false,
+    };
+    final targetSeriesId = scopeTarget?['recurrenceSeriesId']
+        ?.toString()
+        .trim();
+    final canChooseWholeSeriesScope =
+        action.type == AiTodoActionType.updateTodo &&
+        (targetSeriesId?.isNotEmpty == true || targetHasRecurrence);
+    if (!canChooseWholeSeriesScope && recurrenceScope == 'series') {
+      recurrenceScope = 'occurrence';
+    }
     final initialRecurrence = recurrence;
     final initialIsAllDay = isAllDay;
     final initialTimeMode = timeMode;
@@ -1952,20 +2008,36 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                           isAllDay = timeMode == TodoTimeMode.dateOnly.name;
                         }),
                       ),
-                    DropdownButtonFormField<String>(
-                      initialValue: recurrence,
-                      decoration: const InputDecoration(labelText: '循环'),
-                      items: const [
-                        DropdownMenuItem(value: 'none', child: Text('不循环')),
-                        DropdownMenuItem(value: 'daily', child: Text('每天')),
-                        DropdownMenuItem(value: 'weekly', child: Text('每周')),
-                        DropdownMenuItem(value: 'monthly', child: Text('每月')),
-                        DropdownMenuItem(value: 'yearly', child: Text('每年')),
-                        DropdownMenuItem(value: 'weekdays', child: Text('工作日')),
-                      ],
-                      onChanged: (value) =>
-                          setDialogState(() => recurrence = value ?? 'none'),
-                    ),
+                    if (action.type == AiTodoActionType.updateTodo &&
+                        recurrenceScope == 'series')
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Text(
+                            '整个系列编辑会保留当前重复规则；需要修改频率时请切换到“本期及以后”。',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                      )
+                    else
+                      DropdownButtonFormField<String>(
+                        initialValue: recurrence,
+                        decoration: const InputDecoration(labelText: '循环'),
+                        items: const [
+                          DropdownMenuItem(value: 'none', child: Text('不循环')),
+                          DropdownMenuItem(value: 'daily', child: Text('每天')),
+                          DropdownMenuItem(value: 'weekly', child: Text('每周')),
+                          DropdownMenuItem(value: 'monthly', child: Text('每月')),
+                          DropdownMenuItem(value: 'yearly', child: Text('每年')),
+                          DropdownMenuItem(
+                            value: 'weekdays',
+                            child: Text('工作日'),
+                          ),
+                        ],
+                        onChanged: (value) =>
+                            setDialogState(() => recurrence = value ?? 'none'),
+                      ),
                     if (action.mutatesExistingItem ||
                         (action.isFixedScheduleAction &&
                             action.type !=
@@ -1973,7 +2045,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                       DropdownButtonFormField<String>(
                         initialValue: recurrenceScope,
                         decoration: const InputDecoration(labelText: '循环作用范围'),
-                        items: const [
+                        items: [
                           DropdownMenuItem(
                             value: 'occurrence',
                             child: Text('仅本期'),
@@ -1982,6 +2054,11 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                             value: 'future',
                             child: Text('本期及以后'),
                           ),
+                          if (canChooseWholeSeriesScope)
+                            const DropdownMenuItem(
+                              value: 'series',
+                              child: Text('整个系列'),
+                            ),
                         ],
                         onChanged: (value) => setDialogState(
                           () => recurrenceScope = value ?? 'occurrence',
@@ -1998,7 +2075,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
               child: const Text('取消'),
             ),
             FilledButton(
-              onPressed: () {
+              onPressed: () async {
                 if (action.type == AiTodoActionType.createCountdown &&
                     teamChoice == unselectedTeamChoice) {
                   AppSnackBars.showSnackBar(
@@ -2101,9 +2178,25 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                       timeMode != initialTimeMode;
                   action.hasRecurrence =
                       action.hasRecurrence || recurrence != initialRecurrence;
+                  if (action.type == AiTodoActionType.updateTodo &&
+                      recurrenceScope == 'series') {
+                    action
+                      ..hasRecurrence = false
+                      ..hasCustomIntervalDays = false
+                      ..hasRecurrenceEndDate = false;
+                  }
                 });
-                _saveHistorySilently();
-                Navigator.pop(ctx);
+                try {
+                  await _commitTodoActionDraft(sourceAction, action);
+                  if (ctx.mounted) Navigator.pop(ctx);
+                } catch (error) {
+                  if (context.mounted) {
+                    AppSnackBars.showSnackBar(
+                      context,
+                      SnackBar(content: Text('保存失败，草稿仍保留：$error')),
+                    );
+                  }
+                }
               },
               child: const Text('保存'),
             ),
@@ -2155,6 +2248,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
 
   bool _usesTitle(AiTodoAction action) =>
       action.type != AiTodoActionType.completeTodo &&
+      action.type != AiTodoActionType.skipTodo &&
       action.type != AiTodoActionType.deleteTodo &&
       action.type != AiTodoActionType.cancelFixedSchedule &&
       action.type != AiTodoActionType.deleteFixedSchedule &&
@@ -2167,19 +2261,19 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       action.type != AiTodoActionType.deleteHabit;
 
   bool _usesRemark(AiTodoAction action) =>
-      action.isTodoAction ||
+      (action.isTodoAction && action.type != AiTodoActionType.skipTodo) ||
       action.isFixedScheduleAction ||
       action.isTimeLogAction ||
       action.isPlanBlockAction;
 
   bool _usesStartTime(AiTodoAction action) =>
-      action.isTodoAction ||
+      (action.isTodoAction && action.type != AiTodoActionType.skipTodo) ||
       action.isFixedScheduleAction ||
       action.isTimeLogAction ||
       action.isPlanBlockAction;
 
   bool _usesDueTime(AiTodoAction action) =>
-      action.isTodoAction ||
+      (action.isTodoAction && action.type != AiTodoActionType.skipTodo) ||
       action.isFixedScheduleAction ||
       action.isTimeLogAction ||
       action.isCountdownAction ||
@@ -2191,7 +2285,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       action.type == AiTodoActionType.startPomodoro;
 
   bool _usesReminder(AiTodoAction action) =>
-      action.isTodoAction ||
+      (action.isTodoAction && action.type != AiTodoActionType.skipTodo) ||
       action.isFixedScheduleAction ||
       action.isPlanBlockAction;
 
@@ -2229,6 +2323,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     switch (action.type) {
       case AiTodoActionType.completeTodo:
         return '标记为已完成';
+      case AiTodoActionType.skipTodo:
+        return '仅跳过这一期，后续期次继续';
       case AiTodoActionType.deleteTodo:
         return '移动到已删除';
       case AiTodoActionType.createFixedSchedule:
@@ -2377,11 +2473,30 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     if (action.type == AiTodoActionType.completeTodo) {
       addRow('状态', existing['isDone'] == true ? '已完成' : '未完成', '已完成');
     }
+    if (action.type == AiTodoActionType.skipTodo) {
+      addRow('状态', '待处理', '已跳过本期');
+    }
     if (action.type == AiTodoActionType.deleteTodo) {
       addRow('删除', existing['isDeleted'] == true ? '已删除' : '未删除', '已删除');
     }
-    if (existing['recurrenceSeriesId']?.toString().isNotEmpty == true) {
-      rows.add(action.appliesToFutureOccurrences ? '范围: 本期及以后' : '范围: 仅本期');
+    final rawRecurrence = existing['recurrence'];
+    final isRecurringTodo = rawRecurrence is num
+        ? rawRecurrence.toInt() != RecurrenceType.none.index
+        : rawRecurrence?.toString().trim().isNotEmpty == true &&
+              rawRecurrence?.toString().trim() != 'none' &&
+              rawRecurrence?.toString().trim() != '0';
+    if (existing['recurrenceSeriesId']?.toString().isNotEmpty == true ||
+        isRecurringTodo) {
+      rows.add(
+        action.recurrenceScope == 'series'
+            ? '范围: 整个系列（执行前会再次确认期次数量）'
+            : action.appliesToFutureOccurrences
+            ? '范围: 本期及以后'
+            : '范围: 仅本期',
+      );
+    }
+    if (action.metadata['wholeSeriesScopeDowngraded'] == true) {
+      rows.add('范围提示: 用户请求未明确整个系列，已先限制为仅本期');
     }
 
     if (rows.isEmpty) return const SizedBox.shrink();
@@ -2518,6 +2633,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
 
   bool _isDangerousAction(AiTodoAction action) {
     return action.type == AiTodoActionType.deleteTodo ||
+        action.type == AiTodoActionType.skipTodo ||
         action.type == AiTodoActionType.deleteTimeLog ||
         action.type == AiTodoActionType.cancelFixedSchedule ||
         action.type == AiTodoActionType.deleteFixedSchedule ||
@@ -2541,6 +2657,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     switch (action.type) {
       case AiTodoActionType.deleteTodo:
         return '将删除已有待办，执行前请确认';
+      case AiTodoActionType.skipTodo:
+        return '只跳过此重复待办期次，不会完成或删除，也不会影响后续期次';
       case AiTodoActionType.cancelFixedSchedule:
         return '将取消已有日程，执行前请确认';
       case AiTodoActionType.deleteFixedSchedule:
@@ -2599,6 +2717,43 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
 
   Future<void> _saveHistorySilently() async {
     await ChatStorageService.saveHistory(_messages, _activeSessionId);
+  }
+
+  Future<void> _updateTodoActionDraft(
+    AiTodoAction source,
+    void Function(AiTodoAction draft) update,
+  ) async {
+    final draft = source.copy();
+    update(draft);
+    await _commitTodoActionDraft(source, draft);
+  }
+
+  Future<void> _commitTodoActionDraft(
+    AiTodoAction source,
+    AiTodoAction draft,
+  ) async {
+    final messageIndex = _messages.indexWhere(
+      (message) =>
+          message.todoActions?.any((action) => identical(action, source)) ??
+          false,
+    );
+    if (messageIndex < 0) {
+      throw StateError('找不到待更新的操作草稿');
+    }
+    final message = _messages[messageIndex];
+    final actions = List<AiTodoAction>.from(message.todoActions!);
+    final actionIndex = actions.indexWhere(
+      (action) => identical(action, source),
+    );
+    if (actionIndex < 0) throw StateError('操作草稿已变化，请重新打开后再试');
+    actions[actionIndex] = draft;
+
+    final stagedMessages = List<ChatMessage>.from(_messages);
+    stagedMessages[messageIndex] = message.copyWith(todoActions: actions);
+    await ChatStorageService.saveHistory(stagedMessages, _activeSessionId);
+    if (!mounted) return;
+    _messages = stagedMessages;
+    setState(() {});
   }
 
   Future<void> _addTodosForMessage(ChatMessage msg) async {
@@ -2717,6 +2872,57 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
               {...todo.toJson(), 'title': todo.title},
           ]
         : widget.todos;
+    final wholeSeriesActions = pendingActions
+        .where(
+          (action) =>
+              action.type == AiTodoActionType.updateTodo &&
+              action.recurrenceScope == 'series',
+        )
+        .toList(growable: false);
+    final wholeSeriesTodos = existingTodos
+        .map((todo) => TodoItem.fromJson(Map<String, dynamic>.from(todo)))
+        .toList(growable: false);
+    final expectedTodoBaselines = <String, TodoItem>{};
+    final expectedSeriesMembership = <String, Set<String>>{};
+    for (final action in wholeSeriesActions) {
+      final target = wholeSeriesTodos
+          .where((todo) => todo.id == action.todoId)
+          .firstOrNull;
+      final seriesId = target == null
+          ? null
+          : TodoRecurrenceSeriesEditService.seriesIdFor(target);
+      if (target == null ||
+          seriesId == null ||
+          (action.recurrenceSeriesId?.trim().isNotEmpty == true &&
+              action.recurrenceSeriesId!.trim() != seriesId)) {
+        if (mounted) {
+          AppSnackBars.showSnackBar(
+            context,
+            const SnackBar(content: Text('待办系列已不存在或范围不匹配，请重新查询后再操作')),
+          );
+        }
+        return;
+      }
+      final members = TodoRecurrenceSeriesEditService.activeMembers(
+        wholeSeriesTodos,
+        seriesId,
+      );
+      expectedSeriesMembership[seriesId] = members
+          .map((todo) => todo.id)
+          .toSet();
+      expectedTodoBaselines.addEntries(
+        members.map(
+          (todo) => MapEntry(todo.id, TodoItem.fromJson(todo.toJson())),
+        ),
+      );
+    }
+    if (wholeSeriesActions.isNotEmpty &&
+        !await _confirmWholeSeriesAiUpdates(
+          wholeSeriesActions,
+          wholeSeriesTodos,
+        )) {
+      return;
+    }
     final needsCurrentTimeLogCatalog = pendingActions.any(
       (action) => action.isTimeLogAction && action.mutatesExistingItem,
     );
@@ -2742,6 +2948,20 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       existingFixedSchedules: _fixedSchedules,
       categoryReminderDefaults: _categoryReminderDefaults,
     );
+
+    try {
+      await _validateTodoSkipActions(pendingActions);
+    } catch (error) {
+      if (mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(
+            content: Text(error.toString().replaceFirst('Bad state: ', '')),
+          ),
+        );
+      }
+      return;
+    }
 
     if (result.hasChanges) {
       final plannedNewTodos = result.newTodos
@@ -2785,6 +3005,12 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
           await widget.onTodosBatchAction!(
             result.newTodos,
             result.updatedTodos,
+            expectedTodoBaselines: expectedTodoBaselines.isEmpty
+                ? null
+                : expectedTodoBaselines,
+            expectedSeriesMembership: expectedSeriesMembership.isEmpty
+                ? null
+                : expectedSeriesMembership,
           );
           result.markWriteGroupAdded(AiTodoActionWriteGroup.newTodos);
           result.markWriteGroupAdded(AiTodoActionWriteGroup.updatedTodos);
@@ -2812,6 +3038,9 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
           await _saveHistorySilently();
         }
         if (result.updatedTodos.isNotEmpty) {
+          if (expectedSeriesMembership.isNotEmpty) {
+            throw StateError('当前入口不能对整个系列进行安全保存，请从待办列表打开 AI 助手');
+          }
           if (widget.onTodosUpdated == null) {
             throw StateError('当前页面没有待办更新回调');
           }
@@ -3012,6 +3241,108 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     }
   }
 
+  Future<bool> _confirmWholeSeriesAiUpdates(
+    List<AiTodoAction> actions,
+    List<TodoItem> todos,
+  ) async {
+    final seriesTargets = <String, TodoItem>{};
+    for (final action in actions) {
+      final target = todos
+          .where((todo) => todo.id == action.todoId && !todo.isDeleted)
+          .firstOrNull;
+      final seriesId = target == null
+          ? null
+          : TodoRecurrenceSeriesEditService.seriesIdFor(target);
+      if (target == null ||
+          seriesId == null ||
+          (action.recurrenceSeriesId?.trim().isNotEmpty == true &&
+              action.recurrenceSeriesId!.trim() != seriesId)) {
+        return false;
+      }
+      seriesTargets.putIfAbsent(seriesId, () => target);
+    }
+    final summaries = <String>[];
+    for (final entry in seriesTargets.entries) {
+      final counts = TodoRecurrenceSeriesEditService.countMembers(
+        todos,
+        entry.key,
+        now: DateTime.now(),
+      );
+      if (counts.total == 0) return false;
+      summaries.add(
+        '“${entry.value.title}”：${counts.total} 期（历史 ${counts.historical}、今天 ${counts.current}、未来 ${counts.future}）；已完成 ${counts.completed}、已跳过 ${counts.skipped}。',
+      );
+    }
+    final confirmed = await showAppDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('确认修改整个待办系列'),
+        content: Text(
+          '${summaries.join('\n\n')}\n\n只修改待办内容与时间；每期完成和跳过状态会保留。重复规则不变，已有规划块、时间日志和专注记录保留原时间。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('返回检查'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('确认修改'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
+  Future<void> _validateTodoSkipActions(Iterable<AiTodoAction> actions) async {
+    for (final action in actions.where(
+      (action) =>
+          action.type == AiTodoActionType.skipTodo &&
+          action.isSelected &&
+          !action.isAdded &&
+          !action.isIgnored,
+    )) {
+      if (action.recurrenceScope != 'occurrence') {
+        throw StateError('跳过操作只能针对一个具体期次');
+      }
+      final todoId = action.todoId?.trim();
+      if (todoId == null || todoId.isEmpty) {
+        throw StateError('跳过操作缺少具体待办ID，请重新查询');
+      }
+      final latest = await StorageService.getTodoByUuid(
+        widget.username,
+        todoId,
+      );
+      if (latest == null ||
+          latest.isDeleted ||
+          latest.isDone ||
+          latest.isSkipped ||
+          (latest.recurrenceSeriesId?.isNotEmpty != true &&
+              latest.recurrence == RecurrenceType.none)) {
+        throw StateError('这期待办状态已变化或已不存在，请重新查询后再操作');
+      }
+      final linkedPlans = await StorageService.getPlanBlocksByTodo(
+        widget.username,
+        todoId,
+      );
+      final run = await PomodoroService.loadRunState();
+      final runFocusesTodo =
+          run != null &&
+          {
+            PomodoroPhase.focusing,
+            PomodoroPhase.breaking,
+            PomodoroPhase.remoteWatching,
+          }.contains(run.phase) &&
+          (run.todoUuid == todoId ||
+              (run.planBlockId?.isNotEmpty == true &&
+                  linkedPlans.any((block) => block.id == run.planBlockId)));
+      if (runFocusesTodo) {
+        throw StateError('这期待办正在专注，请先结束当前专注再跳过');
+      }
+    }
+  }
+
   Future<bool> _executePomodoroAction(AiTodoAction action) async {
     switch (action.type) {
       case AiTodoActionType.startPlanBlockPomodoro:
@@ -3092,6 +3423,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       case AiTodoActionType.createTodo:
       case AiTodoActionType.updateTodo:
       case AiTodoActionType.completeTodo:
+      case AiTodoActionType.skipTodo:
       case AiTodoActionType.deleteTodo:
       case AiTodoActionType.createFixedSchedule:
       case AiTodoActionType.updateFixedSchedule:

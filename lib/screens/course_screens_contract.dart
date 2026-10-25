@@ -213,6 +213,7 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
     final page = FixedScheduleDetailScreen(
       username: widget.username,
       item: item,
+      onCreateRelatedTodo: widget.onCreateRelatedTodo,
     );
     final result = sourceKey == null
         ? await Navigator.of(context).push<FixedScheduleItem>(

@@ -423,7 +423,11 @@ class AiChatService {
       if (effective != 'mimo') {
         body['stream_options'] = {'include_usage': true};
       }
-      body['thinking'] = {'type': deepThinking ? 'enabled' : 'disabled'};
+      // First-party MiMo supports native tools, but tool-use rounds should not
+      // ask it to spend the same request in deep-thinking mode.
+      final enableThinking =
+          deepThinking && !(isMimo && (tools?.isNotEmpty ?? false));
+      body['thinking'] = {'type': enableThinking ? 'enabled' : 'disabled'};
     }
     return body;
   }

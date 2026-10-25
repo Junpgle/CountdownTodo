@@ -44,7 +44,7 @@ Future<void> widgetBackgroundCallback(Uri? uri) async {
       final username = await StorageService.getCurrentUsername();
       if (username != null && username.isNotEmpty) {
         final todo = await StorageService.getTodoByUuid(username, id);
-        if (todo != null && !todo.isDeleted) {
+        if (todo != null && !todo.isDeleted && !todo.isSkipped) {
           todo.isDone = !todo.isDone;
           todo.markAsChanged();
           await StorageService.updateSingleTodo(username, todo);
@@ -770,7 +770,7 @@ class WidgetService {
 
     // 2. 待办：未完成、未删除，按紧急度排序
     final todoItems =
-        actionableTodos.where((t) => !t.isDone && !t.isDeleted).map((t) {
+        actionableTodos.where((t) => !t.isDone && !t.isDeleted && !t.isSkipped).map((t) {
           String? timeText;
           int priority = 0;
           if (t.dueDate != null) {

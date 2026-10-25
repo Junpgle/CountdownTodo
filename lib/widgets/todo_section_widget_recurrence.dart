@@ -180,6 +180,8 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
           todo: todo,
           todos: widget.todos,
           onTodosChanged: widget.onTodosChanged,
+          onEditorSave: widget.onEditorSave,
+          onEditorGroupsSave: widget.onEditorGroupsSave,
           todoGroups: widget.todoGroups,
           onGroupsChanged: widget.onGroupsChanged,
           username: widget.username,
@@ -191,7 +193,10 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
     );
   }
 
-  void _openTodoEditor(TodoItem todo, {bool applyToFutureOccurrences = false}) {
+  void _openTodoEditor(
+    TodoItem todo, {
+    TodoRecurrenceEditScope scope = TodoRecurrenceEditScope.occurrence,
+  }) {
     Navigator.push(
       context,
       PageTransitions.material(
@@ -199,13 +204,90 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
           todo: todo,
           todos: widget.todos,
           onTodosChanged: widget.onTodosChanged,
+          onEditorSave: widget.onEditorSave,
+          onEditorGroupsSave: widget.onEditorGroupsSave,
           todoGroups: widget.todoGroups,
           onGroupsChanged: widget.onGroupsChanged,
           username: widget.username,
-          applyToFutureOccurrences: applyToFutureOccurrences,
+          recurrenceEditScope: scope,
         ),
       ),
     );
+  }
+
+  Future<void> _deleteRecurringTodoWithScope(TodoItem todo) async {
+    if (_isDeletingRecurringTodo || !mounted) return;
+    final scope = await showTodoRecurrenceDeleteDialog(
+      context: context,
+      todo: todo,
+      todos: widget.todos,
+    );
+    if (scope == null || !mounted) return;
+
+    _isDeletingRecurringTodo = true;
+    try {
+      final plan = await StorageService.deleteRecurringTodoWithScope(
+        widget.username,
+        todo.id,
+        scope,
+      );
+      final changedById = <String, TodoItem>{
+        for (final item in widget.todos) item.id: item,
+        for (final item in plan.changedItems) item.id: item,
+      };
+      _invalidateTodoViewModel();
+      widget.onTodosChanged(
+        changedById.values.where((item) => !item.isDeleted).toList(),
+      );
+      if (mounted) setState(() {});
+
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final cacheKey = 'deleted_todos_${widget.username}';
+        final cached = prefs.getString(cacheKey);
+        final deleted = cached == null
+            ? <TodoItem>[]
+            : (jsonDecode(cached) as Iterable)
+                  .map((item) => TodoItem.fromJson(item))
+                  .toList();
+        final deletedById = <String, TodoItem>{
+          for (final item in deleted) item.id: item,
+          for (final item in plan.changedItems.where((item) => item.isDeleted))
+            item.id: item,
+        };
+        await prefs.setString(
+          cacheKey,
+          jsonEncode(deletedById.values.map((item) => item.toJson()).toList()),
+        );
+      } catch (error) {
+        debugPrint('更新回收站缓存失败: $error');
+      }
+
+      if (!mounted) return;
+      final rangeLabel = switch (scope) {
+        TodoRecurrenceDeleteScope.occurrence => '本期',
+        TodoRecurrenceDeleteScope.future => '本期及以后',
+        TodoRecurrenceDeleteScope.series => '整个系列',
+      };
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(
+          content: Text('已将$rangeLabel ${plan.preview.occurrenceCount}期移入回收站'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(
+          content: Text('移入回收站失败：$error'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      _isDeletingRecurringTodo = false;
+    }
   }
 
   // ─────────────────────────────────────────────
@@ -309,6 +391,7 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
     final nodes = <TodoRecurrenceProgressNode>[];
     var completedCount = 0;
     var overdueCount = 0;
+    var skippedCount = 0;
     final currentStart = DateTime.fromMillisecondsSinceEpoch(
       todo.createdDate ?? todo.createdAt,
       isUtc: true,
@@ -339,7 +422,9 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
         isCurrent = item.id == todo.id;
         date = start;
         occurrenceId = item.id;
-        state = item.isDone
+        state = item.isSkipped
+            ? TodoRecurrenceNodeState.skipped
+            : item.isDone
             ? TodoRecurrenceNodeState.completed
             : isCurrent
             ? todo.recurrence == RecurrenceType.none
@@ -355,6 +440,7 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
       if (index < summaryEnd) {
         if (state == TodoRecurrenceNodeState.completed) completedCount++;
         if (state == TodoRecurrenceNodeState.overdue) overdueCount++;
+        if (state == TodoRecurrenceNodeState.skipped) skippedCount++;
       }
       if (index < displayStart) continue;
       nodes.add(
@@ -405,8 +491,10 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
       completedCount: summary.completedCount,
       totalCount: todo.recurrenceEndDate == null ? null : summary.totalCount,
       overdueCount: summary.overdueCount,
+      skippedCount: skippedCount,
       onNodeTap: (node) => _handleRecurrenceNodeTap(todo, node, dateStructure!),
       onManage: () => _showRecurrenceManagement(todo),
+      clock: widget.clock,
     );
   }
 
@@ -416,7 +504,12 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
     _TodoRecurrenceDateStructure dateStructure,
   ) async {
     if (node.isCurrent) {
-      _setTodoCompletion(current, !current.isDone);
+      if (current.recurrenceSeriesId?.isNotEmpty == true ||
+          current.recurrence != RecurrenceType.none) {
+        await _showRecurrenceOccurrenceActions(current, node.date);
+      } else {
+        _setTodoCompletion(current, !current.isDone);
+      }
       return;
     }
 
@@ -485,6 +578,25 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
                 _RecurrenceOccurrenceAction.toggleCompletion,
               ),
             ),
+            if (occurrence.recurrenceSeriesId?.isNotEmpty == true ||
+                occurrence.recurrence != RecurrenceType.none)
+              ListTile(
+                key: const ValueKey('recurrence_occurrence_skip'),
+                leading: Icon(
+                  occurrence.isSkipped
+                      ? Icons.restore_rounded
+                      : Icons.skip_next_rounded,
+                  color: colorScheme.tertiary,
+                ),
+                title: Text(occurrence.isSkipped ? '恢复本期' : '跳过本期'),
+                subtitle: Text(
+                  occurrence.isSkipped ? '恢复后重新进入待办与提醒' : '只跳过这一期，后续期次仍会继续',
+                ),
+                onTap: () => Navigator.pop(
+                  sheetContext,
+                  _RecurrenceOccurrenceAction.skip,
+                ),
+              ),
             ListTile(
               key: const ValueKey('recurrence_occurrence_edit'),
               leading: Icon(
@@ -504,15 +616,239 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
     switch (action) {
       case _RecurrenceOccurrenceAction.toggleCompletion:
         _setTodoCompletion(occurrence, !occurrence.isDone);
+      case _RecurrenceOccurrenceAction.skip:
+        await _toggleSkippedOccurrence(occurrence, occurrenceDate);
       case _RecurrenceOccurrenceAction.edit:
         _openTodoEditor(occurrence);
+    }
+  }
+
+  Future<void> _toggleSkippedOccurrence(
+    TodoItem occurrence,
+    DateTime occurrenceDate,
+  ) async {
+    if (occurrence.isSkipped) {
+      await _saveSkippedOccurrence(occurrence, skipped: false);
+      if (mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(content: Text('已恢复本期待办')),
+        );
+      }
+      return;
+    }
+    if (occurrence.isDone ||
+        occurrence.isDeleted ||
+        (occurrence.recurrenceSeriesId?.trim().isNotEmpty != true &&
+            occurrence.recurrence == RecurrenceType.none)) {
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('只有未完成的重复待办本期可以跳过')),
+      );
+      return;
+    }
+
+    List<TodoPlanBlock> linkedPlans;
+    PomodoroRunState? run;
+    try {
+      linkedPlans = await StorageService.getPlanBlocksByTodo(
+        widget.username,
+        occurrence.id,
+      );
+      run = await PomodoroService.loadRunState();
+    } catch (_) {
+      if (!mounted) return;
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('无法核对当前规划和专注状态，请重试')),
+      );
+      return;
+    }
+    if (!mounted) return;
+    if (_runFocusesOccurrence(run, occurrence.id, linkedPlans)) {
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('这期待办正在专注，请先结束当前专注再跳过')),
+      );
+      return;
+    }
+    final notStartedPlanCount = linkedPlans
+        .where(
+          (block) =>
+              !block.isDeleted &&
+              block.actualFocusSeconds == 0 &&
+              (block.status == TodoPlanStatus.planned ||
+                  block.status == TodoPlanStatus.reminded),
+        )
+        .length;
+    final dateLabel = _cachedDateFormat('yyyy年M月d日').format(occurrenceDate);
+    if (!mounted) return;
+    final confirmed = await showAppDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('跳过这一期？'),
+        content: Text(
+          '将「${occurrence.title}」($dateLabel) 标记为已跳过。它不会算作完成或逾期，后续期次仍会继续。'
+          '${notStartedPlanCount > 0 ? '\n\n关联的 $notStartedPlanCount 个未开始规划会保留，不会删除。' : ''}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton.tonal(
+            key: const ValueKey('confirm_skip_occurrence'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('跳过本期'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+
+    // Re-read the persisted instance before applying the confirmation so an
+    // old sheet cannot skip a completed, deleted, or newly focused period.
+    final latest = await StorageService.getTodoByUuid(
+      widget.username,
+      occurrence.id,
+    );
+    if (latest == null ||
+        latest.isDeleted ||
+        latest.isDone ||
+        latest.isSkipped) {
+      if (mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(content: Text('这期待办状态已变化，请重新打开后操作')),
+        );
+      }
+      return;
+    }
+    List<TodoPlanBlock> latestPlans;
+    PomodoroRunState? latestRun;
+    try {
+      latestPlans = await StorageService.getPlanBlocksByTodo(
+        widget.username,
+        latest.id,
+      );
+      latestRun = await PomodoroService.loadRunState();
+    } catch (_) {
+      if (!mounted) return;
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('无法核对当前规划和专注状态，请重试')),
+      );
+      return;
+    }
+    if (latest.recurrenceSeriesId?.isNotEmpty != true &&
+        latest.recurrence == RecurrenceType.none) {
+      if (mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(content: Text('这期待办已不再重复，无法跳过')),
+        );
+      }
+      return;
+    }
+    if (_runFocusesOccurrence(latestRun, latest.id, latestPlans)) {
+      if (mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(content: Text('这期待办已开始专注，暂不能跳过')),
+        );
+      }
+      return;
+    }
+    final saved = await _saveSkippedOccurrence(latest, skipped: true);
+    if (!saved) return;
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: const Text('已跳过本期，后续期次仍会继续'),
+          action: SnackBarAction(
+            label: '撤销',
+            onPressed: () => _restoreSkippedOccurrence(latest),
+          ),
+        ),
+      );
+  }
+
+  bool _runFocusesOccurrence(
+    PomodoroRunState? run,
+    String todoId,
+    List<TodoPlanBlock> plans,
+  ) {
+    if (run == null ||
+        !{
+          PomodoroPhase.focusing,
+          PomodoroPhase.breaking,
+          PomodoroPhase.remoteWatching,
+        }.contains(run.phase)) {
+      return false;
+    }
+    if (run.todoUuid == todoId) return true;
+    final blockId = run.planBlockId;
+    return blockId != null && plans.any((block) => block.id == blockId);
+  }
+
+  Future<void> _restoreSkippedOccurrence(TodoItem occurrence) async {
+    final latest = await StorageService.getTodoByUuid(
+      widget.username,
+      occurrence.id,
+    );
+    if (latest == null || latest.isDeleted || !latest.isSkipped) return;
+    final saved = await _saveSkippedOccurrence(latest, skipped: false);
+    if (!saved) return;
+    if (mounted) {
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('已撤销跳过')),
+      );
+    }
+  }
+
+  Future<bool> _saveSkippedOccurrence(
+    TodoItem occurrence, {
+    required bool skipped,
+  }) async {
+    final index = widget.todos.indexWhere((todo) => todo.id == occurrence.id);
+    if (index < 0) return false;
+    final updated = List<TodoItem>.from(widget.todos);
+    final current = occurrence.detachedCopy();
+    current.isDone = false;
+    current.isSkipped = skipped;
+    current.isSkippedSyncPending = true;
+    current.markAsChanged();
+    updated[index] = current;
+    _invalidateTodoViewModel();
+    setState(() {});
+    try {
+      await widget.onTodosChanged(updated);
+      return true;
+    } catch (_) {
+      if (mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(content: Text('保存跳过状态失败，请重试')),
+        );
+      }
+      widget.onRefreshRequested();
+      return false;
     }
   }
 
   void _setTodoCompletion(TodoItem todo, bool isDone) {
     if (todo.isDone == isDone) return;
     _invalidateTodoViewModel();
-    setState(() => todo.isDone = isDone);
+    setState(() {
+      todo.isDone = isDone;
+      if (isDone && todo.isSkipped) {
+        todo.isSkipped = false;
+        todo.isSkippedSyncPending = true;
+      }
+    });
     if (isDone) {
       PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
     }
@@ -522,81 +858,195 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
 
   Future<void> _showRecurrenceManagement(TodoItem todo) async {
     final colorScheme = Theme.of(context).colorScheme;
+    final seriesId = TodoRecurrenceSeriesEditService.seriesIdFor(todo);
+    final seriesCount = seriesId == null
+        ? 0
+        : TodoRecurrenceSeriesEditService.activeMembers(
+            widget.todos,
+            seriesId,
+          ).length;
     await showAppModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: Icon(
-                Icons.edit_calendar_rounded,
-                color: colorScheme.primary,
-              ),
-              title: const Text('只修改本期'),
-              subtitle: const Text('仅编辑当前显示的这一期待办'),
-              onTap: () {
-                Navigator.pop(sheetContext);
-                _openTodoEditor(todo);
-              },
-            ),
-            ListTile(
-              leading: Icon(
-                Icons.event_repeat_rounded,
-                color: colorScheme.secondary,
-              ),
-              title: const Text('修改后续所有周期'),
-              subtitle: const Text('本期及之后的实例同步采用修改内容'),
-              onTap: () {
-                Navigator.pop(sheetContext);
-                _openTodoEditor(todo, applyToFutureOccurrences: true);
-              },
-            ),
-            if (todo.recurrence != RecurrenceType.none)
-              ListTile(
-                leading: Icon(
-                  Icons.stop_circle_outlined,
-                  color: colorScheme.error,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.8,
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+                  child: Text(
+                    '编辑范围',
+                    style: Theme.of(sheetContext).textTheme.titleSmall
+                        ?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
                 ),
-                title: const Text('在本期结束循环'),
-                subtitle: const Text('保留已有记录，不再产生新的周期'),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  final start = DateTime.fromMillisecondsSinceEpoch(
-                    todo.createdDate ?? todo.createdAt,
-                    isUtc: true,
-                  ).toLocal();
-                  _invalidateTodoViewModel();
-                  setState(() {
-                    final currentStart = todo.createdDate ?? todo.createdAt;
-                    final seriesId = todo.recurrenceSeriesId;
-                    if (seriesId != null && seriesId.isNotEmpty) {
-                      for (final occurrence in widget.todos) {
-                        if (occurrence.id == todo.id ||
-                            occurrence.isDeleted ||
-                            occurrence.recurrenceSeriesId != seriesId ||
-                            (occurrence.createdDate ?? occurrence.createdAt) <=
-                                currentStart) {
-                          continue;
-                        }
-                        occurrence.isDeleted = true;
-                        occurrence.recurrence = RecurrenceType.none;
-                        occurrence.markAsChanged();
-                      }
-                    }
-                    todo.recurrence = RecurrenceType.none;
-                    todo.recurrenceEndDate = DateTime(
-                      start.year,
-                      start.month,
-                      start.day,
+                ListTile(
+                  leading: Icon(
+                    Icons.edit_calendar_rounded,
+                    color: colorScheme.primary,
+                  ),
+                  title: const Text('仅本期'),
+                  subtitle: const Text('只编辑当前这一期待办'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _openTodoEditor(todo);
+                  },
+                ),
+                ListTile(
+                  leading: Icon(
+                    Icons.event_repeat_rounded,
+                    color: colorScheme.secondary,
+                  ),
+                  title: const Text('本期及以后'),
+                  subtitle: const Text('当前和后续已生成期次采用新内容'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _openTodoEditor(
+                      todo,
+                      scope: TodoRecurrenceEditScope.future,
                     );
-                    todo.markAsChanged();
-                  });
-                  widget.onTodosChanged(List<TodoItem>.from(widget.todos));
-                },
-              ),
-          ],
+                  },
+                ),
+                if (seriesId != null)
+                  ListTile(
+                    leading: Icon(
+                      Icons.all_inclusive_rounded,
+                      color: colorScheme.tertiary,
+                    ),
+                    title: const Text('整个系列'),
+                    subtitle: Text('$seriesCount 期都会修改；完成和跳过状态保留'),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      _openTodoEditor(
+                        todo,
+                        scope: TodoRecurrenceEditScope.series,
+                      );
+                    },
+                  ),
+                if (seriesId != null) ...[
+                  const Divider(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+                    child: Text(
+                      '移至回收站',
+                      style: Theme.of(sheetContext).textTheme.titleSmall
+                          ?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                  ),
+                  ListTile(
+                    leading: Icon(
+                      Icons.delete_outline_rounded,
+                      color: colorScheme.error,
+                    ),
+                    title: const Text('按范围删除'),
+                    subtitle: Text('当前系列共 $seriesCount 期，可删除本期、后续或整个系列'),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      _deleteRecurringTodoWithScope(todo);
+                    },
+                  ),
+                ],
+                if (todo.recurrence != RecurrenceType.none) ...[
+                  const Divider(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+                    child: Text(
+                      '系列操作',
+                      style: Theme.of(sheetContext).textTheme.titleSmall
+                          ?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                  ),
+                  ListTile(
+                    leading: Icon(
+                      Icons.stop_circle_outlined,
+                      color: colorScheme.error,
+                    ),
+                    title: const Text('在本期结束重复'),
+                    subtitle: const Text('停止后续生成；本期之后已生成的关联期次移入回收站'),
+                    onTap: () async {
+                      final accepted = await showAppDialog<bool>(
+                        context: context,
+                        builder: (dialogContext) => AlertDialog(
+                          icon: Icon(
+                            Icons.stop_circle_outlined,
+                            color: Theme.of(dialogContext).colorScheme.error,
+                          ),
+                          title: const Text('在本期结束重复？'),
+                          content: const Text(
+                            '当前期和此前期次会保留，停止后续生成，并将本期之后已生成的期次移入回收站。',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.pop(dialogContext, false),
+                              child: const Text('返回'),
+                            ),
+                            FilledButton(
+                              onPressed: () =>
+                                  Navigator.pop(dialogContext, true),
+                              child: const Text('结束重复'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (accepted != true || !sheetContext.mounted) return;
+                      Navigator.pop(sheetContext);
+                      final start = DateTime.fromMillisecondsSinceEpoch(
+                        todo.createdDate ?? todo.createdAt,
+                        isUtc: true,
+                      ).toLocal();
+                      _invalidateTodoViewModel();
+                      setState(() {
+                        final currentStart = todo.createdDate ?? todo.createdAt;
+                        final currentSeriesId = todo.recurrenceSeriesId;
+                        if (currentSeriesId != null &&
+                            currentSeriesId.isNotEmpty) {
+                          for (final occurrence in widget.todos) {
+                            if (occurrence.id == todo.id ||
+                                occurrence.isDeleted ||
+                                occurrence.recurrenceSeriesId !=
+                                    currentSeriesId ||
+                                (occurrence.createdDate ??
+                                        occurrence.createdAt) <=
+                                    currentStart) {
+                              continue;
+                            }
+                            occurrence.isDeleted = true;
+                            occurrence.recurrence = RecurrenceType.none;
+                            occurrence.markAsChanged();
+                          }
+                        }
+                        todo.recurrence = RecurrenceType.none;
+                        todo.recurrenceEndDate = DateTime(
+                          start.year,
+                          start.month,
+                          start.day,
+                        );
+                        todo.markAsChanged();
+                      });
+                      widget.onTodosChanged(List<TodoItem>.from(widget.todos));
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );

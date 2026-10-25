@@ -6,6 +6,42 @@ int? _parseNullableIntForIsolate(dynamic raw) {
   return JsonValueParser.toNullableInt(raw);
 }
 
+Future<bool> _fixedScheduleTodoSnapshotsMatch(
+  DatabaseExecutor executor, {
+  required Set<String> todoIds,
+  required List<FixedScheduleItem> expectedSchedules,
+}) async {
+  final normalizedIds = todoIds
+      .map((id) => id.trim())
+      .where((id) => id.isNotEmpty)
+      .toSet();
+  final expectedById = <String, FixedScheduleItem>{};
+  for (final schedule in expectedSchedules) {
+    if (schedule.isDeleted ||
+        !schedule.relatedTodoIds.any(
+          (id) => normalizedIds.contains(id.trim()),
+        ) ||
+        expectedById.containsKey(schedule.id)) {
+      return false;
+    }
+    expectedById[schedule.id] = schedule;
+  }
+
+  final currentSchedules = await _queryFixedSchedulesLinkedToTodoIds(
+    executor,
+    normalizedIds,
+  );
+  if (currentSchedules.length != expectedById.length) return false;
+  for (final current in currentSchedules) {
+    final expected = expectedById[current.id];
+    if (expected == null ||
+        jsonEncode(current.toJson()) != jsonEncode(expected.toJson())) {
+      return false;
+    }
+  }
+  return true;
+}
+
 List<TodoItem> _parseTodoItemsIsolate(List<Map<String, dynamic>> maps) {
   return maps
       .map(
@@ -14,6 +50,10 @@ List<TodoItem> _parseTodoItemsIsolate(List<Map<String, dynamic>> maps) {
           title: m['content'] ?? '',
           remark: m['remark'],
           isDone: m['is_completed'] == 1,
+          isSkipped: m['is_skipped'] == 1 || m['is_skipped'] == true,
+          isSkippedSyncPending:
+              m['is_skipped_sync_pending'] == 1 ||
+              m['is_skipped_sync_pending'] == true,
           isDeleted: m['is_deleted'] == 1,
           version: m['version'] ?? 1,
           updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
@@ -114,6 +154,8 @@ mixin _StorageTodos on _StorageServiceBase {
     'content',
     'remark',
     'is_completed',
+    'is_skipped',
+    'is_skipped_sync_pending',
     'is_deleted',
     'created_date',
     'due_date',
@@ -148,12 +190,41 @@ mixin _StorageTodos on _StorageServiceBase {
     Map<String, TodoItem>? recurrenceBaselines,
     Map<String, TodoItem?>? recurrenceUploadBaselines,
     List<TodoItem>? bandSyncSnapshot,
+    Map<String, TodoItem>? expectedTodoBaselines,
+    Map<String, Set<String>>? expectedSeriesMembership,
+    bool expectedSeriesMembershipIncludesDeleted = false,
+    Set<String>? expectedFixedScheduleTodoIds,
+    List<FixedScheduleItem>? expectedFixedScheduleBaselines,
+    FixedScheduleItem? linkedFixedScheduleBaseline,
+    FixedScheduleItem? linkedFixedScheduleUpdate,
   }) async {
+    if ((expectedFixedScheduleTodoIds == null) !=
+        (expectedFixedScheduleBaselines == null)) {
+      throw ArgumentError('关联固定日程复核需要同时提供待办范围和日程快照');
+    }
+    if ((linkedFixedScheduleBaseline == null) !=
+        (linkedFixedScheduleUpdate == null)) {
+      throw ArgumentError('创建关联待办需要同时提供固定日程原快照与更新快照');
+    }
+    if (linkedFixedScheduleBaseline != null &&
+        (isSyncSource || expectedFixedScheduleTodoIds != null)) {
+      throw ArgumentError('当前写入模式不能与关联固定日程创建同时使用');
+    }
     final dedupeMap = <String, TodoItem>{};
     if (sync && !isSyncSource) _recurrenceCheckCache.clear();
     for (final source in items) {
       // Async reads must not share mutable UI objects with this write.
-      final item = source.detachedCopy();
+      var item = expectedTodoBaselines == null
+          ? source.detachedCopy()
+          : TodoItem.fromJson(source.toJson());
+      if (item.isDone && item.isSkipped) {
+        throw ArgumentError('待办不能同时处于已完成和已跳过状态');
+      }
+      if (item.isSkipped &&
+          item.recurrence == RecurrenceType.none &&
+          item.recurrenceSeriesId?.trim().isNotEmpty != true) {
+        throw ArgumentError('仅可跳过重复待办的本期');
+      }
       if (item.recurrence != RecurrenceType.none &&
           item.recurrenceSeriesId?.isNotEmpty != true) {
         item.recurrenceSeriesId = item.id;
@@ -170,17 +241,59 @@ mixin _StorageTodos on _StorageServiceBase {
       }
     }
     final candidates = dedupeMap.values.toList();
+    if (linkedFixedScheduleBaseline != null) {
+      final baseline = linkedFixedScheduleBaseline;
+      final update = linkedFixedScheduleUpdate!;
+      if (candidates.length != 1 ||
+          candidates.single.isDone ||
+          candidates.single.isSkipped ||
+          candidates.single.isDeleted ||
+          candidates.single.recurrence != RecurrenceType.none) {
+        throw ArgumentError('关联固定日程只支持保存一个单次未完成待办');
+      }
+      String? normalizeTeam(String? value) {
+        final normalized = value?.trim();
+        return normalized == null || normalized.isEmpty ? null : normalized;
+      }
+
+      final todo = candidates.single;
+      final relatedId = todo.id.trim();
+      final expectedSchedule = FixedScheduleItem.fromJson(baseline.toJson());
+      if (relatedId.isEmpty ||
+          baseline.isDeleted ||
+          baseline.status == FixedScheduleStatus.cancelled ||
+          normalizeTeam(todo.teamUuid) != normalizeTeam(baseline.teamUuid)) {
+        throw StateError('固定日程或待办范围已变化，请重新打开后再保存。');
+      }
+      if (!expectedSchedule.relatedTodoIds.any(
+        (id) => id.trim() == relatedId,
+      )) {
+        expectedSchedule.relatedTodoIds.add(relatedId);
+        if (update.version != baseline.version + 1 ||
+            update.updatedAt <= baseline.updatedAt) {
+          throw ArgumentError('固定日程关系版本无效');
+        }
+        expectedSchedule.version = update.version;
+        expectedSchedule.updatedAt = update.updatedAt;
+      }
+      if (update.id != baseline.id ||
+          jsonEncode(expectedSchedule.toJson()) !=
+              jsonEncode(update.toJson())) {
+        throw ArgumentError('固定日程关系更新只能加入当前新待办');
+      }
+    }
     final maintenanceSeries = candidates
         .map((item) => item.recurrenceSeriesId)
         .toSet();
     final ruleBaselines =
-        recurrenceBaselines?.values
-            .where(
-              (item) =>
-                  item.recurrence != RecurrenceType.none &&
-                  maintenanceSeries.contains(
-                    item.recurrenceSeriesId ?? item.id,
-                  ),
+        (recurrenceBaselines == null
+                ? null
+                : _recurrenceBoundaryRulesBySeries(recurrenceBaselines.values)
+                      .values)
+            ?.where(
+              (item) => maintenanceSeries.contains(
+                item.recurrenceSeriesId ?? item.id,
+              ),
             )
             .toList() ??
         const <TodoItem>[];
@@ -191,13 +304,25 @@ mixin _StorageTodos on _StorageServiceBase {
     final validationIds = {
       ...dedupeMap.keys,
       ...ruleBaselines.map((item) => item.id),
+      ...?expectedTodoBaselines?.keys,
     }.toList();
     final db = await DatabaseHelper.instance.databaseForUser(username);
+    if (expectedFixedScheduleTodoIds != null && username.trim() != 'default') {
+      await UserSessionStorage.ensureCurrentUsername(username);
+    }
     final localPrefs = await prefs;
     final userId = localPrefs.getInt('current_user_id') ?? 0;
     final affectedDays = <String>{};
     final writtenIds = <String>{};
     final persistedItems = <String, TodoItem>{};
+    UserSessionSnapshot? linkedScheduleSession;
+    if (linkedFixedScheduleBaseline != null) {
+      await UserSessionStorage.ensureCurrentUsername(username);
+      linkedScheduleSession = await UserSessionStorage.captureSession(username);
+      if (linkedScheduleSession == null) {
+        throw StateError('账户状态已变化，请重新打开固定日程后再保存。');
+      }
+    }
     if (username.trim() != 'default') {
       await UserSessionStorage.ensureCurrentUsername(username);
     }
@@ -205,6 +330,34 @@ mixin _StorageTodos on _StorageServiceBase {
     // The current row, pending operations, row write and oplog must share the
     // same transaction. A pre-transaction check leaves a second rollback race.
     await db.transaction((txn) async {
+      final linkBaseline = linkedFixedScheduleBaseline;
+      if (linkBaseline != null) {
+        await UserSessionStorage.ensureCurrentSession(linkedScheduleSession!);
+        final rows = await txn.query(
+          'fixed_schedules',
+          where: 'uuid = ?',
+          whereArgs: [linkBaseline.id],
+          limit: 1,
+        );
+        if (rows.length != 1 ||
+            jsonEncode(FixedScheduleItem.fromJson(rows.single).toJson()) !=
+                jsonEncode(linkBaseline.toJson())) {
+          throw StateError('固定日程已变化，请重新核对后再保存。');
+        }
+      }
+      if (expectedFixedScheduleTodoIds != null) {
+        if (username.trim() != 'default') {
+          await UserSessionStorage.ensureCurrentUsername(username);
+        }
+        final snapshotsMatch = await _fixedScheduleTodoSnapshotsMatch(
+          txn,
+          todoIds: expectedFixedScheduleTodoIds,
+          expectedSchedules: expectedFixedScheduleBaselines!,
+        );
+        if (!snapshotsMatch) {
+          throw StateError('关联固定日程已有变化，请重新核对后保存。');
+        }
+      }
       final existingById = <String, Map<String, dynamic>>{};
       final pendingIds = <String>{};
       const chunkSize = 400;
@@ -231,7 +384,57 @@ mixin _StorageTodos on _StorageServiceBase {
           pendingIds.addAll(ops.map((row) => row['target_uuid'].toString()));
         }
       }
+      final linkBaselineForTodoId = linkedFixedScheduleBaseline;
+      if (linkBaselineForTodoId != null) {
+        final todo = candidates.single;
+        final currentRow = existingById[todo.id];
+        final alreadyLinked = linkBaselineForTodoId.relatedTodoIds.any(
+          (id) => id.trim() == todo.id.trim(),
+        );
+        if (currentRow != null && !alreadyLinked) {
+          throw StateError('待办标识已存在，请重新创建准备待办。');
+        }
+      }
+      if (expectedSeriesMembership != null) {
+        for (final entry in expectedSeriesMembership.entries) {
+          final seriesId = entry.key.trim();
+          if (seriesId.isEmpty) {
+            throw StateError('循环系列标识无效，请重新打开后再编辑。');
+          }
+          final rows = await txn.query(
+            'todos',
+            columns: const ['uuid'],
+            where: expectedSeriesMembershipIncludesDeleted
+                ? "recurrence_series_id = ? OR "
+                      "(uuid = ? AND TRIM(COALESCE(recurrence_series_id, '')) = '')"
+                : "is_deleted = 0 AND (recurrence_series_id = ? OR "
+                      "(uuid = ? AND TRIM(COALESCE(recurrence_series_id, '')) = ''))",
+            whereArgs: [seriesId, seriesId],
+          );
+          final currentMembers = rows
+              .map((row) => row['uuid']?.toString())
+              .whereType<String>()
+              .toSet();
+          if (currentMembers.length != entry.value.length ||
+              !currentMembers.containsAll(entry.value)) {
+            throw StateError('循环系列已有变化，请重新打开后再编辑。');
+          }
+        }
+      }
       final staleRuleSeries = <String>{};
+      if (expectedTodoBaselines != null) {
+        for (final entry in expectedTodoBaselines.entries) {
+          final currentRow = existingById[entry.key];
+          if (currentRow == null ||
+              _hasSubstantialChange(
+                TodoItem.fromSql(currentRow).toJson(),
+                entry.value.toJson(),
+                _todoSnapshotFields,
+              )) {
+            throw StateError('待办「${entry.value.title}」已在其他位置更新，请重新打开后再编辑。');
+          }
+        }
+      }
       for (final rule in ruleBaselines) {
         final current = existingById[rule.id];
         if (current == null ||
@@ -244,10 +447,16 @@ mixin _StorageTodos on _StorageServiceBase {
         }
       }
       final batch = txn.batch();
-      for (final item in candidates) {
+      for (var item in candidates) {
         final oldData = existingById[item.id];
         final current = oldData == null ? null : TodoItem.fromSql(oldData);
         if (current != null) persistedItems[item.id] = current;
+        if (!isSyncSource &&
+            (current == null
+                ? item.isSkipped
+                : current.isSkipped != item.isSkipped)) {
+          item.isSkippedSyncPending = true;
+        }
         final baseline = recurrenceBaselines?[item.id];
         if (recurrenceBaselines != null) {
           // Missing baseline means insert-only automatic generation. Existing
@@ -280,8 +489,34 @@ mixin _StorageTodos on _StorageServiceBase {
             (pendingIds.contains(item.id) ||
                 _pendingSyncOplogUuids.contains(item.id) ||
                 _forceFlushProtectedUuids.contains(item.id))) {
-          // Protect dates, recurrence and LWW metadata as well as completion.
-          continue;
+          final hasLocalConflictChange =
+              current.hasConflict != item.hasConflict ||
+              jsonEncode(current.serverVersionData) !=
+                  jsonEncode(item.serverVersionData);
+          final nonConflictFields = _todoSnapshotFields
+              .where(
+                (field) => field != 'has_conflict' && field != 'conflict_data',
+              )
+              .toList();
+          final hasOtherChanges = _hasSubstantialChange(
+            current.toJson(),
+            item.toJson(),
+            nonConflictFields,
+          );
+          if (!hasLocalConflictChange || hasOtherChanges) {
+            // Protect pending user edits while rejecting any stale sync data.
+            continue;
+          }
+
+          // Schedule-conflict metadata is local-only. Merge just these fields
+          // onto the protected row so pending user content and its oplog stay
+          // untouched while the conflict remains visible after a reload.
+          final merged = current.detachedCopy();
+          merged.hasConflict = item.hasConflict;
+          merged.serverVersionData = item.serverVersionData == null
+              ? null
+              : JsonValueParser.toMap(jsonEncode(item.serverVersionData));
+          item = merged;
         }
         final data = item.toJson();
         final hasChanged =
@@ -353,6 +588,9 @@ mixin _StorageTodos on _StorageServiceBase {
           'creator_id': item.creatorId,
           'creator_name': item.creatorName,
           'is_completed': item.isDone ? 1 : 0,
+          'is_skipped': item.collabType == 1 || !item.isSkipped ? 0 : 1,
+          'is_skipped_sync_pending':
+              item.collabType == 1 || !item.isSkippedSyncPending ? 0 : 1,
           'is_deleted': item.isDeleted ? 1 : 0,
           'version': item.version,
           'due_date': item.dueDate?.millisecondsSinceEpoch ?? 0,
@@ -384,14 +622,40 @@ mixin _StorageTodos on _StorageServiceBase {
             'todo_uuid': item.id,
             'user_id': userId,
             'is_completed': item.isDone ? 1 : 0,
+            'is_skipped': item.isSkipped ? 1 : 0,
+            'is_skipped_sync_pending': item.isSkippedSyncPending ? 1 : 0,
             'updated_at': item.updatedAt,
           }, conflictAlgorithm: ConflictAlgorithm.replace);
         }
         writtenIds.add(item.id);
         persistedItems[item.id] = item;
       }
+      final linkedUpdate = linkedFixedScheduleUpdate;
+      if (linkedUpdate != null &&
+          jsonEncode(linkedUpdate.toJson()) !=
+              jsonEncode(linkedFixedScheduleBaseline!.toJson())) {
+        final data = linkedUpdate.toJson();
+        batch.insert('op_logs', {
+          'op_type': 'UPSERT',
+          'target_table': 'fixed_schedules',
+          'target_uuid': linkedUpdate.id,
+          'data_json': jsonEncode(data),
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'is_synced': 0,
+          'sync_error': '',
+        });
+        batch.insert(
+          'fixed_schedules',
+          data,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
       if (username.trim() != 'default') {
-        await UserSessionStorage.ensureCurrentUsername(username);
+        if (linkedScheduleSession != null) {
+          await UserSessionStorage.ensureCurrentSession(linkedScheduleSession);
+        } else {
+          await UserSessionStorage.ensureCurrentUsername(username);
+        }
       }
       await batch.commit(noResult: true);
     });
@@ -417,7 +681,13 @@ mixin _StorageTodos on _StorageServiceBase {
                 .toList();
       Future.microtask(() => _syncTodosToBand(bandItems));
     }
-    triggerRefresh(const {DataRefreshDomain.todos});
+    triggerRefresh({
+      DataRefreshDomain.todos,
+      if (linkedFixedScheduleUpdate != null &&
+          jsonEncode(linkedFixedScheduleUpdate.toJson()) !=
+              jsonEncode(linkedFixedScheduleBaseline!.toJson()))
+        DataRefreshDomain.fixedSchedules,
+    });
   }
 
   Future<bool> _saveRecurrenceMaintenance(
@@ -464,11 +734,9 @@ mixin _StorageTodos on _StorageServiceBase {
     final seriesIds = changed.map((item) => item.recurrenceSeriesId).toSet();
     final readIdSet = {
       ...changed.map((item) => item.id),
-      ...baselines.values
+      ..._recurrenceBoundaryRulesBySeries(baselines.values).values
           .where(
-            (item) =>
-                item.recurrence != RecurrenceType.none &&
-                seriesIds.contains(item.recurrenceSeriesId ?? item.id),
+            (item) => seriesIds.contains(item.recurrenceSeriesId ?? item.id),
           )
           .map((item) => item.id),
     };
@@ -1156,86 +1424,170 @@ mixin _StorageTodos on _StorageServiceBase {
     return _parseTodoItemsIsolate(rows).first;
   }
 
-  Future<void> permanentlyDeleteTodo(String username, String uuid) async {
+  Future<TodoTrashPurgePlan> previewPermanentTodoDelete(
+    String username,
+    String uuid,
+  ) async {
     final db = await DatabaseHelper.instance.databaseForUser(username);
-    final existingRows = await db.query(
+    final rows = await db.query('todos', where: 'uuid = ?', whereArgs: [uuid]);
+    final todos = _parseTodoItemsIsolate(rows);
+    if (todos.isEmpty) throw StateError('待办已不存在，请刷新后再试。');
+    return TodoTrashPurgeService.forItem(todos.single);
+  }
+
+  Future<TodoTrashPurgePlan> previewPermanentTodoSeriesDelete(
+    String username,
+    String seriesId,
+  ) async {
+    final normalizedId = seriesId.trim();
+    if (normalizedId.isEmpty) throw StateError('系列标识无效，无法批量清理。');
+    final db = await DatabaseHelper.instance.databaseForUser(username);
+    final rows = await db.query(
       'todos',
-      columns: const ['created_date', 'created_at', 'due_date', 'is_all_day'],
-      where: 'uuid = ?',
-      whereArgs: [uuid],
-      limit: 1,
+      where:
+          'recurrence_series_id = ? OR '
+          "(uuid = ? AND TRIM(COALESCE(recurrence_series_id, '')) = '')",
+      whereArgs: [normalizedId, normalizedId],
     );
-    final affectedDays = existingRows.isEmpty
-        ? <String>{}
-        : _scheduleConflictDayKeysForRow(existingRows.first);
-    await db.delete('todos', where: 'uuid = ?', whereArgs: [uuid]);
+    return TodoTrashPurgeService.forSeries(
+      _parseTodoItemsIsolate(rows),
+      normalizedId,
+    );
+  }
 
-    await _clearTodoPrefsMirror(username);
+  Future<TodoTrashPurgePlan> previewClearTodoRecycleBin(String username) async {
+    final db = await DatabaseHelper.instance.databaseForUser(username);
+    final rows = await db.query('todos', where: 'is_deleted = 1');
+    return TodoTrashPurgeService.forRecycleBin(_parseTodoItemsIsolate(rows));
+  }
 
-    // 记录删除操作到 Oplog (物理删除也需要同步给其它端)
-    await db.insert('op_logs', {
-      'op_type': 'DELETE',
-      'target_table': 'todos',
-      'target_uuid': uuid,
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-      'is_synced': 0,
-      'sync_error': '',
+  Future<TodoTrashPurgeResult> purgeTodoTrash(
+    String username,
+    TodoTrashPurgePlan plan,
+  ) async {
+    if (plan.targetEntries.isEmpty ||
+        plan.targetIds.length != plan.targetEntries.length) {
+      throw StateError('删除范围无效，请刷新后重新确认。');
+    }
+    final db = await DatabaseHelper.instance.databaseForUser(username);
+    final affectedDays = <String>{};
+    final deletedIds = <String>[];
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    await db.transaction((txn) async {
+      late List<Map<String, dynamic>> currentRows;
+      late TodoTrashPurgePlan currentPlan;
+      switch (plan.scope) {
+        case TodoTrashPurgeScope.item:
+          final id = plan.targetEntries.single.uuid;
+          currentRows = await txn.query(
+            'todos',
+            where: 'uuid = ?',
+            whereArgs: [id],
+          );
+          final currentTodos = _parseTodoItemsIsolate(currentRows);
+          if (currentTodos.isEmpty) {
+            throw StateError('待办已不存在，请刷新列表后重试。');
+          }
+          currentPlan = TodoTrashPurgeService.forItem(currentTodos.single);
+        case TodoTrashPurgeScope.series:
+          final seriesId = plan.seriesId?.trim();
+          if (seriesId == null || seriesId.isEmpty) {
+            throw StateError('系列标识无效，请刷新列表后重试。');
+          }
+          currentRows = await txn.query(
+            'todos',
+            where:
+                'recurrence_series_id = ? OR '
+                "(uuid = ? AND TRIM(COALESCE(recurrence_series_id, '')) = '')",
+            whereArgs: [seriesId, seriesId],
+          );
+          currentPlan = TodoTrashPurgeService.forSeries(
+            _parseTodoItemsIsolate(currentRows),
+            seriesId,
+          );
+        case TodoTrashPurgeScope.recycleBin:
+          currentRows = await txn.query('todos', where: 'is_deleted = 1');
+          currentPlan = TodoTrashPurgeService.forRecycleBin(
+            _parseTodoItemsIsolate(currentRows),
+          );
+      }
+
+      if (!TodoTrashPurgeService.sameSnapshot(
+            currentPlan.guardEntries,
+            plan.guardEntries,
+          ) ||
+          !TodoTrashPurgeService.sameSnapshot(
+            currentPlan.targetEntries,
+            plan.targetEntries,
+          )) {
+        throw StateError('回收站内容已变化，请刷新列表后重新确认。');
+      }
+
+      final rowsById = {
+        for (final row in currentRows) row['uuid']?.toString() ?? '': row,
+      };
+      for (final entry in plan.targetEntries) {
+        final row = rowsById[entry.uuid];
+        if (row == null || row['is_deleted'] != 1) {
+          throw StateError('部分待办已不在回收站，未执行删除，请刷新后重试。');
+        }
+        affectedDays.addAll(_scheduleConflictDayKeysForRow(row));
+        final deleted = await txn.delete(
+          'todos',
+          where: 'uuid = ? AND is_deleted = 1',
+          whereArgs: [entry.uuid],
+        );
+        if (deleted != 1) {
+          throw StateError('部分待办状态已变化，未执行删除，请刷新后重试。');
+        }
+        await txn.insert('op_logs', {
+          'op_type': 'DELETE',
+          'target_table': 'todos',
+          'target_uuid': entry.uuid,
+          'timestamp': now,
+          'is_synced': 0,
+          'sync_error': '',
+        });
+        deletedIds.add(entry.uuid);
+      }
     });
 
+    _recurrenceCheckCache.remove('recurrence_instances_v4_$username');
+    var cacheCleared = true;
+    try {
+      await _clearTodoPrefsMirror(username);
+    } catch (_) {
+      cacheCleared = false;
+    }
+
+    var conflictsRefreshed = true;
     if (affectedDays.isNotEmpty) {
-      await _refreshTodoScheduleConflicts(
-        username,
-        affectedDayKeys: affectedDays,
-      );
+      try {
+        await _refreshTodoScheduleConflicts(
+          username,
+          affectedDayKeys: affectedDays,
+        );
+      } catch (_) {
+        conflictsRefreshed = false;
+      }
     }
     triggerRefresh(const {DataRefreshDomain.todos});
+    return TodoTrashPurgeResult(
+      deletedCount: deletedIds.length,
+      cacheCleared: cacheCleared,
+      conflictsRefreshed: conflictsRefreshed,
+    );
+  }
+
+  Future<void> permanentlyDeleteTodo(String username, String uuid) async {
+    final plan = await previewPermanentTodoDelete(username, uuid);
+    await purgeTodoTrash(username, plan);
   }
 
   Future<void> clearTodoRecycleBin(String username) async {
-    final db = await DatabaseHelper.instance.databaseForUser(username);
-
-    // 1. 获取所有待删除的 UUID，用于记录 Oplog
-    final List<Map<String, dynamic>> deletedItems = await db.query(
-      'todos',
-      columns: const [
-        'uuid',
-        'created_date',
-        'created_at',
-        'due_date',
-        'is_all_day',
-      ],
-      where: 'is_deleted = 1',
-    );
-    final affectedDays = <String>{};
-    for (final item in deletedItems) {
-      affectedDays.addAll(_scheduleConflictDayKeysForRow(item));
-    }
-
-    final batch = db.batch();
-    for (var item in deletedItems) {
-      final uuid = item['uuid']?.toString();
-      if (uuid == null) continue;
-      batch.delete('todos', where: 'uuid = ?', whereArgs: [uuid]);
-      batch.insert('op_logs', {
-        'op_type': 'DELETE',
-        'target_table': 'todos',
-        'target_uuid': uuid,
-        'timestamp': DateTime.now().millisecondsSinceEpoch,
-        'is_synced': 0,
-        'sync_error': '',
-      });
-    }
-    await batch.commit(noResult: true);
-
-    await _clearTodoPrefsMirror(username);
-
-    if (affectedDays.isNotEmpty) {
-      await _refreshTodoScheduleConflicts(
-        username,
-        affectedDayKeys: affectedDays,
-      );
-    }
-    triggerRefresh(const {DataRefreshDomain.todos});
+    final plan = await previewClearTodoRecycleBin(username);
+    await purgeTodoTrash(username, plan);
   }
 
   bool _isHistoricalTodo(TodoItem todo, DateTime today) {
@@ -1359,6 +1711,117 @@ mixin _StorageTodos on _StorageServiceBase {
         _inflightTodoRequests.remove(requestKey);
       }
     }
+  }
+
+  /// Preserve the legacy preference migration performed by the normal read
+  /// path before strict fixed-schedule relationship reads.
+  Future<void> _ensureFixedScheduleRelationMigration(
+    String username, {
+    bool boundedRead = false,
+  }) async {
+    final migrationKey = 'migration_marker_${username}_v4';
+    final sharedPrefs = await prefs;
+    if (!(sharedPrefs.getBool(migrationKey) ?? false)) {
+      await getTodos(
+        username,
+        includeDeleted: true,
+        limit: boundedRead ? 1 : null,
+      );
+    }
+  }
+
+  /// Reads complete todo snapshots for compatibility with relationship callers.
+  /// The final database query deliberately remains strict and can throw.
+  Future<List<TodoItem>> getTodosForFixedScheduleRelations(
+    String username,
+  ) async {
+    await _ensureFixedScheduleRelationMigration(username);
+
+    final db = await DatabaseHelper.instance.databaseForUser(username);
+    final maps = await DatabaseHelper.instance.getTodoMaps(
+      includeDeleted: true,
+      includeConflictData: true,
+      databaseOverride: db,
+    );
+    return _parseTodoItemsIsolate(maps);
+  }
+
+  Future<({List<TodoItem> todos, bool hasMore})>
+  getTodosForFixedScheduleRelationPage(
+    String username, {
+    required String? teamUuid,
+    required String query,
+    required int limit,
+    required int offset,
+  }) async {
+    await _ensureFixedScheduleRelationMigration(username, boundedRead: true);
+
+    final safeLimit = limit.clamp(1, 100).toInt();
+    final safeOffset = offset < 0 ? 0 : offset;
+    final normalizedTeamUuid = teamUuid?.trim();
+    final teamValue = normalizedTeamUuid == null || normalizedTeamUuid.isEmpty
+        ? ''
+        : normalizedTeamUuid;
+    final whereParts = <String>[
+      't.is_deleted IS NOT 1',
+      "COALESCE(TRIM(t.team_uuid), '') = ?",
+    ];
+    final whereArgs = <Object?>[teamValue];
+    final normalizedQuery = query.trim().toLowerCase();
+    if (normalizedQuery.isNotEmpty) {
+      final escapedQuery = normalizedQuery
+          .replaceAll('!', '!!')
+          .replaceAll('%', '!%')
+          .replaceAll('_', '!_');
+      whereParts.add("LOWER(COALESCE(t.content, '')) LIKE ? ESCAPE '!'");
+      whereArgs.add('%$escapedQuery%');
+    }
+
+    final db = await DatabaseHelper.instance.databaseForUser(username);
+    final maps = await DatabaseHelper.instance.getTodoMaps(
+      where: whereParts.join(' AND '),
+      whereArgs: whereArgs,
+      limit: safeLimit + 1,
+      offset: safeOffset,
+      ordering: TodoMapsOrdering.fixedScheduleRelations,
+      includeConflictData: true,
+      databaseOverride: db,
+    );
+    final hasMore = maps.length > safeLimit;
+    final pageMaps = hasMore ? maps.take(safeLimit).toList() : maps;
+    return (todos: _parseTodoItemsIsolate(pageMaps), hasMore: hasMore);
+  }
+
+  Future<List<TodoItem>> getTodosForFixedScheduleRelationIds(
+    String username,
+    Set<String> todoIds,
+  ) async {
+    final normalizedIds = todoIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    if (normalizedIds.isEmpty) return const [];
+
+    await _ensureFixedScheduleRelationMigration(username, boundedRead: true);
+
+    final db = await DatabaseHelper.instance.databaseForUser(username);
+    final ids = normalizedIds.toList(growable: false);
+    final rowsById = <String, Map<String, dynamic>>{};
+    const chunkSize = 400;
+    for (var offset = 0; offset < ids.length; offset += chunkSize) {
+      final chunk = ids.skip(offset).take(chunkSize).toList(growable: false);
+      final maps = await DatabaseHelper.instance.getTodoMaps(
+        includeDeleted: true,
+        uuids: chunk,
+        includeConflictData: true,
+        databaseOverride: db,
+      );
+      for (final map in maps) {
+        final id = map['uuid']?.toString();
+        if (id != null && id.isNotEmpty) rowsById[id] = map;
+      }
+    }
+    return _parseTodoItemsIsolate(rowsById.values.toList(growable: false));
   }
 
   Future<List<TodoItem>> getTodosForWidget(String username) async {
@@ -1701,27 +2164,45 @@ mixin _StorageTodos on _StorageServiceBase {
         offset: offset,
         includeConflictData: true,
       );
-      if (limit != null && maps.isNotEmpty) {
-        final activeSeriesIds = maps
-            .where((map) => (_parseNullableInt(map['recurrence']) ?? 0) != 0)
-            .map((map) => map['recurrence_series_id']?.toString().trim())
+      if (maps.isNotEmpty) {
+        final recurrenceSeriesIds = maps
+            .where(
+              (map) =>
+                  (includeDeleted || map['is_deleted'] != 1) &&
+                  (_parseNullableInt(map['recurrence']) ?? 0) != 0,
+            )
+            .map((map) {
+              final seriesId = map['recurrence_series_id']?.toString().trim();
+              return seriesId == null || seriesId.isEmpty
+                  ? map['uuid']?.toString()
+                  : seriesId;
+            })
             .whereType<String>()
             .where((seriesId) => seriesId.isNotEmpty)
             .toSet();
-        if (activeSeriesIds.isNotEmpty) {
-          final seriesMaps = await dbHelper.getTodoMaps(
-            includeDeleted: includeDeleted,
-            recurrenceSeriesIds: activeSeriesIds,
-            limit: limit,
-            includeConflictData: true,
-          );
-          final mapsById = <String, Map<String, dynamic>>{
-            for (final map in maps) map['uuid'].toString(): map,
-          };
-          for (final map in seriesMaps) {
-            mapsById[map['uuid'].toString()] = map;
+        if (recurrenceSeriesIds.isNotEmpty) {
+          final loadCompleteSeries = limit != null;
+          final shouldLoadSeries = loadCompleteSeries || !includeDeleted;
+          if (shouldLoadSeries) {
+            // Unbounded list reads already include every row. Limited reads
+            // need complete series for progress summaries and safe recycle-bin
+            // restore previews, including series whose rule carrier is deleted.
+            // Non-deleted-only reads also add deleted tombstones for recurrence
+            // repair.
+            final seriesMaps = await dbHelper.getTodoMaps(
+              includeDeleted: true,
+              deletedOnly: !loadCompleteSeries,
+              recurrenceSeriesIds: recurrenceSeriesIds,
+              includeConflictData: true,
+            );
+            final mapsById = <String, Map<String, dynamic>>{
+              for (final map in maps) map['uuid'].toString(): map,
+            };
+            for (final map in seriesMaps) {
+              mapsById[map['uuid'].toString()] = map;
+            }
+            maps = mapsById.values.toList();
           }
-          maps = mapsById.values.toList();
         }
       }
       if (maps.isNotEmpty) {
@@ -1737,6 +2218,10 @@ mixin _StorageTodos on _StorageServiceBase {
                   title: m['content'] ?? '',
                   remark: m['remark'],
                   isDone: m['is_completed'] == 1,
+                  isSkipped: m['is_skipped'] == 1 || m['is_skipped'] == true,
+                  isSkippedSyncPending:
+                      m['is_skipped_sync_pending'] == 1 ||
+                      m['is_skipped_sync_pending'] == true,
                   isDeleted: m['is_deleted'] == 1,
                   version: m['version'] ?? 1,
                   updatedAt:
@@ -2084,6 +2569,15 @@ mixin _StorageTodos on _StorageServiceBase {
     _isCheckingRecurrence = true;
 
     try {
+      final recurrenceDb = await DatabaseHelper.instance.databaseForUser(
+        username,
+      );
+      final permanentlyDeletedIds = (await recurrenceDb.query(
+        'op_logs',
+        columns: const ['target_uuid'],
+        where: "target_table = 'todos' AND op_type = 'DELETE'",
+      )).map((row) => row['target_uuid']?.toString() ?? '').toSet();
+      permanentlyDeletedIds.remove('');
       final baselines = {
         for (final todo in todos) todo.id: todo.detachedCopy(),
       };
@@ -2156,6 +2650,7 @@ mixin _StorageTodos on _StorageServiceBase {
             todos: todos,
             generatedOccurrences: generatedOccurrences,
             occurrenceIndex: occurrenceIndex,
+            permanentlyDeletedTodoIds: permanentlyDeletedIds,
           );
           final occurrence = result.occurrence;
           final targetRecurrence =
@@ -2181,6 +2676,7 @@ mixin _StorageTodos on _StorageServiceBase {
           todos: todos,
           generatedOccurrences: generatedOccurrences,
           occurrenceIndex: occurrenceIndex,
+          permanentlyDeletedTodoIds: permanentlyDeletedIds,
         );
         if (repairedPastOccurrences.isNotEmpty) {
           seriesChain.addAll(repairedPastOccurrences);
@@ -2219,6 +2715,7 @@ mixin _StorageTodos on _StorageServiceBase {
               todos: todos,
               generatedOccurrences: generatedOccurrences,
               occurrenceIndex: occurrenceIndex,
+              permanentlyDeletedTodoIds: permanentlyDeletedIds,
             );
             final occurrence = result.occurrence;
             if (occurrence.recurrence != RecurrenceType.none) {
@@ -2240,6 +2737,12 @@ mixin _StorageTodos on _StorageServiceBase {
         );
       }
 
+      if (_pruneRecurrenceOccurrencesAfterEndDates([
+        ...todos,
+        ...generatedOccurrences,
+      ]).isNotEmpty) {
+        needSave = true;
+      }
       if (needSave) {
         todos.addAll(generatedOccurrences);
         if (generatedRecurrenceConflictKeys.isNotEmpty) {
@@ -2600,6 +3103,7 @@ mixin _StorageTodos on _StorageServiceBase {
     required List<TodoItem> todos,
     required List<TodoItem> generatedOccurrences,
     _TodoRecurrenceOccurrenceIndex? occurrenceIndex,
+    Set<String> permanentlyDeletedTodoIds = const {},
   }) {
     final candidate = _copyForNextRecurrence(source);
     candidate.recurrenceSeriesId = seriesId;
@@ -2635,11 +3139,28 @@ mixin _StorageTodos on _StorageServiceBase {
         .where((todo) => todo.id == candidate.id)
         .firstOrNull;
     if (deletedDeterministic != null) {
+      if (!_recurrenceDedupeTombstoneIds.contains(deletedDeterministic.id)) {
+        // A durable user deletion is a period-level tombstone. Do not turn it
+        // back into an active item merely because recurrence repair visits the
+        // same deterministic date again.
+        return (
+          occurrence: deletedDeterministic,
+          isNew: false,
+          didChange: false,
+        );
+      }
       _copyRecurrenceOccurrenceData(candidate, deletedDeterministic);
       deletedDeterministic.isDeleted = false;
       deletedDeterministic.markRecurrenceMaintenanceChanged();
       _recurrenceDedupeTombstoneIds.remove(deletedDeterministic.id);
       return (occurrence: deletedDeterministic, isNew: false, didChange: true);
+    }
+
+    if (permanentlyDeletedTodoIds.contains(candidate.id)) {
+      // A hard-deleted recurring period has no todo row left to act as its
+      // durable tombstone. Its DELETE oplog is the persisted suppression
+      // marker, so recurrence maintenance must not recreate that UUID.
+      return (occurrence: candidate, isNew: false, didChange: false);
     }
 
     generatedOccurrences.add(candidate);
@@ -2673,6 +3194,7 @@ mixin _StorageTodos on _StorageServiceBase {
     required List<TodoItem> todos,
     required List<TodoItem> generatedOccurrences,
     _TodoRecurrenceOccurrenceIndex? occurrenceIndex,
+    Set<String> permanentlyDeletedTodoIds = const {},
   }) {
     final knownByDay = <String, DateTime>{};
     final occurrences =
@@ -2725,6 +3247,7 @@ mixin _StorageTodos on _StorageServiceBase {
           todos: todos,
           generatedOccurrences: generatedOccurrences,
           occurrenceIndex: occurrenceIndex,
+          permanentlyDeletedTodoIds: permanentlyDeletedTodoIds,
         );
         if (!result.didChange) continue;
         result.occurrence.recurrence = RecurrenceType.none;
@@ -2853,24 +3376,43 @@ mixin _StorageTodos on _StorageServiceBase {
     return changed;
   }
 
-  Set<String> _pruneRecurrenceOccurrencesAfterEndDates(List<TodoItem> todos) {
+  Map<String, TodoItem> _recurrenceBoundaryRulesBySeries(
+    Iterable<TodoItem> todos,
+  ) {
     final activeRulesBySeries = <String, TodoItem>{};
+    final endedRulesBySeries = <String, TodoItem>{};
     for (final todo in todos) {
-      if (todo.isDeleted || todo.recurrence == RecurrenceType.none) continue;
-      final seriesId = todo.recurrenceSeriesId?.trim();
+      if (todo.isDeleted) continue;
+      final seriesId =
+          todo.recurrenceSeriesId?.trim() ??
+          (todo.recurrence != RecurrenceType.none ? todo.id : null);
       if (seriesId == null || seriesId.isEmpty) continue;
 
-      final current = activeRulesBySeries[seriesId];
+      final rules = todo.recurrence != RecurrenceType.none
+          ? activeRulesBySeries
+          : endedRulesBySeries;
+      if (todo.recurrence == RecurrenceType.none &&
+          todo.recurrenceEndDate == null) {
+        continue;
+      }
+      final current = rules[seriesId];
       if (current == null ||
           _compareRecurrenceOccurrenceLwwDescending(todo, current) < 0) {
-        activeRulesBySeries[seriesId] = todo;
+        rules[seriesId] = todo;
       }
     }
+    // Rollover clears recurrence after the final day, but the saved end date
+    // still bounds the series. An active rule (including an unlimited one)
+    // takes precedence so an explicit extension can resume the series.
+    return {...endedRulesBySeries, ...activeRulesBySeries};
+  }
 
+  Set<String> _pruneRecurrenceOccurrencesAfterEndDates(List<TodoItem> todos) {
+    final rulesBySeries = _recurrenceBoundaryRulesBySeries(todos);
     final changedIds = <String>{};
     final now = DateTime.now();
     final todayDay = DateTime(now.year, now.month, now.day);
-    final rulesToPrune = activeRulesBySeries.entries
+    final rulesToPrune = rulesBySeries.entries
         .where((entry) => entry.value.recurrenceEndDate != null)
         .toList(growable: false);
     Map<String, List<TodoItem>>? todosBySeries;
@@ -3153,11 +3695,102 @@ mixin _StorageTodos on _StorageServiceBase {
     return true;
   }
 
+  Future<TodoRecurrenceDeletePlan> deleteRecurringTodoWithScope(
+    String username,
+    String todoId,
+    TodoRecurrenceDeleteScope scope, {
+    bool sync = true,
+  }) async {
+    // Run normal materialization first so a rule owner has the app's usual
+    // look-ahead instances before resolving a deletion scope.
+    final snapshot = await getTodos(username, includeDeleted: true);
+    final plan = TodoRecurrenceDeleteService.plan(
+      todos: snapshot,
+      todoId: todoId,
+      scope: scope,
+    );
+    if (plan.changedItems.isEmpty) {
+      throw StateError('没有可保存的删除变更');
+    }
+
+    await saveTodos(
+      username,
+      plan.changedItems,
+      sync: sync,
+      expectedTodoBaselines: plan.baselines,
+      expectedSeriesMembership: {plan.seriesId: plan.expectedActiveMemberIds},
+    );
+    // Only duplicate repair may reactivate its own tombstones. A user deleting
+    // a logical period closes that exception for every same-day row.
+    _recurrenceDedupeTombstoneIds.removeAll(plan.revivalBarrierIds);
+    return plan;
+  }
+
+  Future<TodoRecurrenceRestorePlan> restoreRecurringTodoSeries(
+    String username,
+    String seriesId, {
+    bool sync = true,
+  }) async {
+    final snapshot = await getTodos(username, includeDeleted: true);
+    final groups = await getTodoGroups(username);
+    final activeGroupIds = groups
+        .where((group) => !group.isDeleted)
+        .map((group) => group.id)
+        .toSet();
+    final plan = TodoRecurrenceRestoreService.tryPlan(
+      todos: snapshot,
+      seriesId: seriesId,
+      activeGroupIds: activeGroupIds,
+    );
+    if (plan == null) {
+      throw StateError('系列状态已变化或无法安全整组恢复，请刷新后逐期恢复。');
+    }
+
+    await saveTodos(
+      username,
+      plan.restoredItems,
+      sync: sync,
+      expectedTodoBaselines: plan.baselines,
+      expectedSeriesMembership: {plan.seriesId: plan.expectedMemberIds},
+      expectedSeriesMembershipIncludesDeleted: true,
+    );
+    _recurrenceDedupeTombstoneIds.removeAll(plan.expectedMemberIds);
+    return plan;
+  }
+
+  Future<TodoTrashMultiRestorePlan> restoreTodoTrashSelection(
+    String username,
+    TodoTrashMultiRestorePlan plan, {
+    bool sync = true,
+  }) async {
+    final restoredIds = plan.restoredItems.map((todo) => todo.id).toSet();
+    if (plan.selectedTodoIds.isEmpty ||
+        restoredIds.length != plan.restoredItems.length ||
+        restoredIds.length != plan.selectedTodoIds.length ||
+        !restoredIds.containsAll(plan.selectedTodoIds) ||
+        plan.baselines.length != plan.selectedTodoIds.length ||
+        !plan.baselines.keys.toSet().containsAll(plan.selectedTodoIds) ||
+        plan.selectedTodoIds.any((id) => !plan.baselines[id]!.isDeleted) ||
+        plan.restoredItems.any((todo) => todo.isDeleted)) {
+      throw StateError('恢复范围无效，请重新选择回收站待办。');
+    }
+
+    await saveTodos(
+      username,
+      plan.restoredItems,
+      sync: sync,
+      expectedTodoBaselines: plan.baselines,
+    );
+    _recurrenceDedupeTombstoneIds.removeAll(plan.revivalBarrierIds);
+    return plan;
+  }
+
   Future<void> saveTodoGroups(
     String username,
     List<TodoGroup> items, {
     bool sync = true,
     bool isSyncSource = false,
+    Map<String, TodoGroup>? expectedGroupBaselines,
   }) async {
     final Map<String, TodoGroup> dedupeMap = {};
 
@@ -3169,60 +3802,93 @@ mixin _StorageTodos on _StorageServiceBase {
     }
 
     final db = await DatabaseHelper.instance.databaseForUser(username);
-    final existingRows = await db.query('todo_groups');
-    final existingItemsMap = <String, Map<String, dynamic>>{
-      for (final row in existingRows) row['uuid'].toString(): row,
-    };
-    final batch = db.batch();
-    for (var item in dedupeMap.values) {
-      bool hasChanged = true;
-      final oldData = existingItemsMap[item.id];
-      if (oldData != null) {
-        hasChanged = _hasSubstantialChange(oldData, item.toJson(), [
-          'name',
-          'is_expanded',
-          'is_deleted',
-          'team_uuid',
-          'version',
-          'updated_at',
-          'has_conflict',
-          'conflict_data',
-        ]);
-      }
-
-      if (!isSyncSource && hasChanged) {
-        batch.insert('op_logs', {
-          'op_type': 'UPSERT',
-          'target_table': 'todo_groups',
-          'target_uuid': item.id,
-          'data_json': jsonEncode(item.toJson()),
-          'timestamp': DateTime.now().millisecondsSinceEpoch,
-          'is_synced': 0,
-          'sync_error': '',
-        });
-      }
-
-      if (hasChanged || oldData == null) {
-        batch.insert('todo_groups', {
-          'uuid': item.id,
-          'team_uuid': item.teamUuid,
-          'team_name': item.teamName,
-          'creator_id': item.creatorId,
-          'creator_name': item.creatorName,
-          'name': item.name,
-          'is_expanded': item.isExpanded ? 1 : 0,
-          'is_deleted': item.isDeleted ? 1 : 0,
-          'version': item.version,
-          'updated_at': item.updatedAt,
-          'created_at': item.createdAt,
-          'has_conflict': item.hasConflict ? 1 : 0,
-          'conflict_data': item.conflictData != null
-              ? jsonEncode(item.conflictData)
-              : null,
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
-      }
+    if (expectedGroupBaselines != null && username.trim() != 'default') {
+      await UserSessionStorage.ensureCurrentUsername(username);
     }
-    await batch.commit(noResult: true);
+    await db.transaction((txn) async {
+      final existingRows = await txn.query('todo_groups');
+      final existingItemsMap = <String, Map<String, dynamic>>{
+        for (final row in existingRows) row['uuid'].toString(): row,
+      };
+      if (expectedGroupBaselines != null) {
+        for (final entry in expectedGroupBaselines.entries) {
+          final current = existingItemsMap[entry.key];
+          if (current == null ||
+              _hasSubstantialChange(current, entry.value.toJson(), [
+                'name',
+                'is_expanded',
+                'is_deleted',
+                'team_uuid',
+                'team_name',
+                'version',
+                'updated_at',
+                'created_at',
+                'creator_id',
+                'creator_name',
+                'has_conflict',
+                'conflict_data',
+              ])) {
+            throw StateError('文件夹「${entry.value.name}」已在其他位置更新，请重新打开后再修改。');
+          }
+        }
+      }
+      final batch = txn.batch();
+      for (final item in dedupeMap.values) {
+        final oldData = existingItemsMap[item.id];
+        final hasChanged =
+            oldData == null ||
+            _hasSubstantialChange(oldData, item.toJson(), [
+              'name',
+              'is_expanded',
+              'is_deleted',
+              'team_uuid',
+              'team_name',
+              'version',
+              'updated_at',
+              'created_at',
+              'creator_id',
+              'creator_name',
+              'has_conflict',
+              'conflict_data',
+            ]);
+
+        if (!isSyncSource && hasChanged) {
+          batch.insert('op_logs', {
+            'op_type': 'UPSERT',
+            'target_table': 'todo_groups',
+            'target_uuid': item.id,
+            'data_json': jsonEncode(item.toJson()),
+            'timestamp': DateTime.now().millisecondsSinceEpoch,
+            'is_synced': 0,
+            'sync_error': '',
+          });
+        }
+
+        if (hasChanged) {
+          batch.insert('todo_groups', {
+            'uuid': item.id,
+            'team_uuid': item.teamUuid,
+            'team_name': item.teamName,
+            'creator_id': item.creatorId,
+            'creator_name': item.creatorName,
+            'name': item.name,
+            'is_expanded': item.isExpanded ? 1 : 0,
+            'is_deleted': item.isDeleted ? 1 : 0,
+            'version': item.version,
+            'updated_at': item.updatedAt,
+            'created_at': item.createdAt,
+            'has_conflict': item.hasConflict ? 1 : 0,
+            'conflict_data': item.conflictData != null
+                ? jsonEncode(item.conflictData)
+                : null,
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+      }
+      if (expectedGroupBaselines != null && username.trim() != 'default') {
+        await UserSessionStorage.ensureCurrentUsername(username);
+      }
+      await batch.commit(noResult: true);
+    });
     _inflightTodoRequests.clear();
     _inflightTodoSearchDateRequests.clear();
     _inflightTimelineTodoRequests.clear();

@@ -253,6 +253,30 @@ void main() {
     expect(find.text('10-10 09:00 → 10-11 17:00'), findsOneWidget);
   });
 
+  testWidgets('文件夹移动只改副本，父级保存后提交新清单', (tester) async {
+    final sourceTodo = TodoItem(title: '待分组');
+    List<TodoItem>? committedTodos;
+    await pumpManagementPage(
+      tester,
+      FolderManageScreen(
+        username: 'ui-review',
+        todoGroups: [TodoGroup(id: 'work', name: '工作项目')],
+        allTodos: [sourceTodo],
+        onGroupsChanged: (_) {},
+        onTodosChanged: (todos) => committedTodos = todos,
+      ),
+    );
+
+    await tapVisible(tester, find.text('工作项目'));
+    await tapVisible(tester, find.text('移入独立待办'));
+    await tapVisible(tester, find.text('待分组'));
+    await tester.pumpAndSettle();
+
+    expect(sourceTodo.groupId, isNull);
+    expect(committedTodos, hasLength(1));
+    expect(committedTodos!.single.groupId, 'work');
+  });
+
   testWidgets('文件夹展示设置保存原有模式', (tester) async {
     await pumpManagementPage(tester, sampleFolders());
     await tapVisible(tester, find.text('首页展示方式'));

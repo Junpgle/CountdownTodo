@@ -614,7 +614,8 @@ mixin _StorageSync on _StorageServiceBase {
         !syncPlanBlocks &&
         !syncFixedSchedules &&
         !syncHabits &&
-        !syncFinance) {
+        !syncFinance &&
+        !syncScreenTime) {
       return {'success': false, 'hasChanges': false};
     }
     if (_isSyncing) {
@@ -1159,6 +1160,20 @@ mixin _StorageSync on _StorageServiceBase {
             .toList();
       }
 
+      // Re-send skip state until an explicitly capable server confirms it.
+      // The pending flag is local metadata and is removed by the sync payload
+      // sanitizer before this row leaves the device.
+      if (syncTodos) {
+        for (final item in allLocalTodos) {
+          if (!item.isSkippedSyncPending || item.hasConflict) continue;
+          final data = _stripClientOnlyConflictForSync(item.toJson());
+          data.remove('image_path');
+          data.remove('imagePath');
+          dedupTodos[item.id] = data;
+        }
+        dirtyTodos = dedupTodos.values.toList();
+      }
+
       // TimeLogs 暂时保持原有逻辑 (直到迁移至 SQL)
       if (syncTimeLogs) {
         dirtyTimeLogs = allLocalTimeLogs
@@ -1396,6 +1411,13 @@ mixin _StorageSync on _StorageServiceBase {
         }
       }
 
+      if (response['success'] != true) {
+        final error = response['error']?.toString().trim().isNotEmpty == true
+            ? response['error'].toString().trim()
+            : response['message']?.toString().trim();
+        throw Exception(error?.isNotEmpty == true ? error : '服务端未确认同步请求');
+      }
+
       // /api/sync 是待办、习惯和记账共用的请求。用户在请求期间关闭
       // 记账同步时，只忽略本轮记账 ACK/快照，不取消整个请求，以免误伤
       // 其他数据域。未确认的记账修改保持 pending，不会前移记账游标。
@@ -1435,6 +1457,10 @@ mixin _StorageSync on _StorageServiceBase {
       final financeSupported = SyncCapabilityService.supportsFinance(
         response['sync_capabilities'],
       );
+      final todoSkipStateSupported =
+          SyncCapabilityService.supportsTodoSkipState(
+            response['sync_capabilities'],
+          );
 
       // 🚀 提取当前团队列表，用于孤立检测和合并防御
       final List<dynamic>? joinedTeamUuids = response['joined_team_uuids'];
@@ -1662,9 +1688,32 @@ mixin _StorageSync on _StorageServiceBase {
                 rawCompleted == true ||
                 rawCompleted?.toString() == '1' ||
                 rawCompleted?.toString().toLowerCase() == 'true';
+            final rawSkipped = ic['is_skipped'];
+            final serverIsSkipped =
+                rawSkipped == 1 ||
+                rawSkipped == true ||
+                rawSkipped?.toString() == '1' ||
+                rawSkipped?.toString().toLowerCase() == 'true';
             final serverUpdatedAt =
                 int.tryParse(ic['updated_at']?.toString() ?? '') ?? 0;
             final existing = localCompletionsByTodoUuid[todoUuid];
+            final existingIsSkipped =
+                (existing?['is_skipped'] as num?)?.toInt() == 1;
+            final existingSkipPending =
+                (existing?['is_skipped_sync_pending'] as num?)?.toInt() == 1;
+            final hasServerSkipValue = ic.containsKey('is_skipped');
+            final skipAcknowledged =
+                todoSkipStateSupported &&
+                hasServerSkipValue &&
+                (!existingSkipPending || serverIsSkipped == existingIsSkipped);
+            final useServerSkipValue =
+                todoSkipStateSupported &&
+                hasServerSkipValue &&
+                (!existingSkipPending || skipAcknowledged);
+            final mergedIsSkipped = useServerSkipValue
+                ? serverIsSkipped
+                : existingIsSkipped;
+            final mergedSkipPending = existingSkipPending && !skipAcknowledged;
             final localUpdatedAt =
                 (existing?['updated_at'] as num?)?.toInt() ?? 0;
             // 🚀 时间戳比较修复：如果本地没有完成状态记录，判定为从未修改（localUpdatedAt=0），此时应接受服务端更新
@@ -1677,6 +1726,13 @@ mixin _StorageSync on _StorageServiceBase {
               final localIsCompleted = (existing?['is_completed'] as int?) ?? 0;
               final localTodo = localTodosById[todoUuid];
               if (localTodo != null && localTodo.collabType == 1) {
+                if (localTodo.isSkipped != existingIsSkipped ||
+                    localTodo.isSkippedSyncPending != existingSkipPending) {
+                  localTodo.isSkipped = existingIsSkipped;
+                  localTodo.isSkippedSyncPending = existingSkipPending;
+                  independentCompletionChanged = true;
+                  if (!localTodo.isDeleted) updatedTodoIds.add(todoUuid);
+                }
                 if (localTodo.isDone != (localIsCompleted == 1)) {
                   localTodo.isDone = localIsCompleted == 1;
                   independentCompletionChanged = true;
@@ -1695,12 +1751,21 @@ mixin _StorageSync on _StorageServiceBase {
               'todo_uuid': todoUuid,
               'user_id': userId,
               'is_completed': isCompleted ? 1 : 0,
+              'is_skipped': mergedIsSkipped ? 1 : 0,
+              'is_skipped_sync_pending': mergedSkipPending ? 1 : 0,
               'updated_at': serverUpdatedAt > 0
                   ? serverUpdatedAt
                   : DateTime.now().millisecondsSinceEpoch,
             }, conflictAlgorithm: ConflictAlgorithm.replace);
             final localTodo = localTodosById[todoUuid];
             if (localTodo != null && localTodo.collabType == 1) {
+              if (localTodo.isSkipped != mergedIsSkipped ||
+                  localTodo.isSkippedSyncPending != mergedSkipPending) {
+                localTodo.isSkipped = mergedIsSkipped;
+                localTodo.isSkippedSyncPending = mergedSkipPending;
+                independentCompletionChanged = true;
+                if (!localTodo.isDeleted) updatedTodoIds.add(todoUuid);
+              }
               if (localTodo.isDone != isCompleted) {
                 localTodo.isDone = isCompleted;
                 independentCompletionChanged = true;
@@ -1861,6 +1926,26 @@ mixin _StorageSync on _StorageServiceBase {
           raw: serverRaw,
           item: TodoItem.fromJson(sanitizedServerRaw),
         ));
+      }
+      for (final entry in remoteTodoEntries) {
+        final local = localTodosById[entry.item.id];
+        if (local == null || !local.isSkippedSyncPending) continue;
+        final hasServerSkipValue =
+            entry.raw.containsKey('is_skipped') ||
+            entry.raw.containsKey('isSkipped');
+        final acknowledged =
+            todoSkipStateSupported &&
+            hasServerSkipValue &&
+            entry.item.isSkipped == local.isSkipped;
+        if (acknowledged) {
+          local.isSkippedSyncPending = false;
+          entry.item.isSkippedSyncPending = false;
+        } else {
+          // An old server's missing field is not an acknowledgement and its
+          // snapshot cannot erase the user's local skip.
+          entry.item.isSkipped = local.isSkipped;
+          entry.item.isSkippedSyncPending = true;
+        }
       }
       final beforeRemoteRepair = {
         for (final todo in allLocalTodos) todo.id: todo.detachedCopy(),
@@ -2748,6 +2833,20 @@ mixin _StorageSync on _StorageServiceBase {
         final repairCandidates = allLocalTodos
             .where((todo) => repairIdsToUpload.contains(todo.id))
             .toList();
+        final boundaryRepairSeries = repairCandidates
+            .where((todo) => recurrenceBoundaryChangedIds.contains(todo.id))
+            .map((todo) => todo.recurrenceSeriesId)
+            .toSet();
+        final boundaryRules = _recurrenceBoundaryRulesBySeries(allLocalTodos)
+            .values
+            .where(
+              (rule) => boundaryRepairSeries.contains(rule.recurrenceSeriesId),
+            )
+            .toList();
+        final repairReadIds = {
+          ...repairCandidates.map((todo) => todo.id),
+          ...boundaryRules.map((rule) => rule.id),
+        }.toList();
         final repairBaselines = <String, TodoItem>{};
         final uploadBaselines = <String, TodoItem?>{};
         final repairedItems = <TodoItem>[];
@@ -2755,17 +2854,13 @@ mixin _StorageSync on _StorageServiceBase {
         const repairChunkSize = 400;
         for (
           var start = 0;
-          start < repairCandidates.length;
+          start < repairReadIds.length;
           start += repairChunkSize
         ) {
           final rows = await DatabaseHelper.instance.getTodoMaps(
             includeDeleted: true,
             includeConflictData: true,
-            uuids: repairCandidates
-                .skip(start)
-                .take(repairChunkSize)
-                .map((todo) => todo.id)
-                .toList(),
+            uuids: repairReadIds.skip(start).take(repairChunkSize).toList(),
             databaseOverride: db,
           );
           for (final row in rows) {
@@ -2774,7 +2869,27 @@ mixin _StorageSync on _StorageServiceBase {
             );
           }
         }
+        final staleBoundarySeries = <String?>{};
+        for (final rule in boundaryRules) {
+          final current = persistedRepairItems[rule.id];
+          if (current == null ||
+              _hasSubstantialChange(
+                current.toJson(),
+                rule.toJson(),
+                _StorageTodos._todoSnapshotFields,
+              )) {
+            staleBoundarySeries.add(rule.recurrenceSeriesId);
+            continue;
+          }
+          // A boundary repair depends on the rule as well as the extra row.
+          // Carry both snapshots through local/server CAS, even after expiry
+          // has cleared the rule's recurrence field.
+          repairBaselines[rule.id] = current;
+          uploadBaselines[rule.id] =
+              remoteRecurrenceBaselines[rule.id] ?? beforeRemoteRepair[rule.id];
+        }
         for (final todo in repairCandidates) {
+          if (staleBoundarySeries.contains(todo.recurrenceSeriesId)) continue;
           final current = persistedRepairItems[todo.id];
           if (current == null ||
               _hasSubstantialChange(

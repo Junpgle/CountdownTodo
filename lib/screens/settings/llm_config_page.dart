@@ -6,6 +6,7 @@ import '../../services/ai_chat_service.dart';
 import '../../services/llm_service.dart';
 import '../../services/minor_mode_policy.dart';
 import '../../services/minor_mode_service.dart';
+import '../../widgets/advanced_ai_tutorial_card.dart';
 import '../../widgets/floating_glass_control.dart';
 import '../../widgets/optional_liquid_glass_surface.dart';
 import '../../utils/app_dialogs.dart';
@@ -968,6 +969,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const AdvancedAiTutorialCard(),
             Text(
               '这里只管理服务商、API Key 和模型连接。助手行为、智能上下文和对话提示词请在“AI 助手设置”中调整。',
               style: TextStyle(
