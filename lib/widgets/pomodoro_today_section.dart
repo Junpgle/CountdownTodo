@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../screens/course_screens.dart';
 import '../screens/pomodoro_screen.dart';
+import '../services/home_dashboard_section_data_cache.dart';
 import '../services/pomodoro_service.dart';
 import '../utils/app_image_filters.dart';
 import '../utils/page_transitions.dart';
@@ -15,6 +16,11 @@ import 'platform_backdrop_filter.dart';
 // ============================================================
 // 首页「最近专注」一体化液态毛玻璃卡片
 // ============================================================
+typedef _PomodoroHomeRecordSnapshot = ({
+  List<PomodoroRecord> today,
+  List<PomodoroRecord> yesterday,
+});
+
 class PomodoroTodaySection extends StatefulWidget {
   final String username;
   final bool isLight;
@@ -94,11 +100,32 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
   /// 只读本地数据（云端同步由首页统一负责）
   Future<void> _loadData() async {
     if (!mounted) return;
-    setState(() => _loading = true);
+    final today = DateUtils.dateOnly(DateTime.now());
+    final cacheKey =
+        'pomodoro/${widget.username}/${today.year}-${today.month}-${today.day}'
+        '/${widget.refreshTrigger}';
+    final cached =
+        HomeDashboardSectionDataCache.get<_PomodoroHomeRecordSnapshot>(
+          cacheKey,
+        );
+    if (cached == null) {
+      setState(() => _loading = true);
+    } else {
+      _loading = false;
+    }
 
     try {
-      final todayRecords = await PomodoroService.getTodayRecords();
-      final yesterdayRecords = await PomodoroService.getYesterdayRecords();
+      final recordSnapshot =
+          cached ??
+          await HomeDashboardSectionDataCache.load(
+            cacheKey,
+            () async => (
+              today: await PomodoroService.getTodayRecords(),
+              yesterday: await PomodoroService.getYesterdayRecords(),
+            ),
+          );
+      final todayRecords = recordSnapshot.today;
+      final yesterdayRecords = recordSnapshot.yesterday;
       if (!mounted) return;
 
       var yesterdaySeconds = 0;
@@ -308,13 +335,11 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
       fallbackDecoration: fallbackDecoration,
       child: child,
     );
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(borderRadius),
-      child: PlatformBackdropFilter(
-        filter: AppImageFilters.blur10,
-        bypassWhenLiquidGlassEnabled: true,
-        child: card,
-      ),
+    return PlatformBackdropFilter(
+      filter: AppImageFilters.blur10,
+      bypassWhenLiquidGlassEnabled: true,
+      clipBorderRadius: BorderRadius.circular(borderRadius),
+      child: card,
     );
   }
 
@@ -445,8 +470,8 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
     final fallbackDecoration = BoxDecoration(
       color: widget.isLight
           ? (isDark
-              ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
-              : colorScheme.surface.withValues(alpha: 0.92))
+                ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
+                : colorScheme.surface.withValues(alpha: 0.92))
           : (isDark
                 ? colorScheme.surfaceContainerLow.withValues(alpha: 0.7)
                 : colorScheme.surface),
@@ -463,8 +488,8 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
       border: Border.all(
         color: widget.isLight
             ? (isDark
-                ? Colors.white.withValues(alpha: 0.15)
-                : Colors.white.withValues(alpha: 0.6))
+                  ? Colors.white.withValues(alpha: 0.15)
+                  : Colors.white.withValues(alpha: 0.6))
             : colorScheme.outlineVariant.withValues(alpha: isDark ? 0.25 : 0.4),
       ),
     );

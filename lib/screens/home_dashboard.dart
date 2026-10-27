@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
 import 'package:flutter_zoom_drawer/flutter_zoom_drawer.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -97,7 +98,7 @@ import '../features/journal/screens/journal_home_screen.dart';
 import '../widgets/home_sections.dart';
 import '../widgets/home_app_bar.dart';
 import '../widgets/home_dashboard_scroll_section.dart';
-import '../widgets/viewport_managed_content.dart';
+import '../widgets/windows_dashboard_scroll_coordinator.dart';
 import '../widgets/stable_image_decode_size.dart';
 import '../widgets/countdown_section_widget.dart';
 import '../widgets/todo_section_widget.dart';

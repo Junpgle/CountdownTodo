@@ -399,87 +399,85 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
       if (progress.goalMet) met++;
     }
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(28),
-      child: PlatformBackdropFilter(
-        filter: AppImageFilters.blur30,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                colorScheme.primaryContainer.withValues(alpha: 0.7),
-                colorScheme.tertiaryContainer.withValues(alpha: 0.3),
-              ],
-            ),
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(
-              color: colorScheme.onSurface.withValues(alpha: 0.08),
-              width: 1,
-            ),
+    return PlatformBackdropFilter(
+      filter: AppImageFilters.blur30,
+      clipBorderRadius: BorderRadius.circular(28),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              colorScheme.primaryContainer.withValues(alpha: 0.7),
+              colorScheme.tertiaryContainer.withValues(alpha: 0.3),
+            ],
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '今日进度',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(
+            color: colorScheme.onSurface.withValues(alpha: 0.08),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '今日进度',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.onSurfaceVariant,
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      planned == 0 ? '今天没有计划' : '$met / $planned 已完成',
-                      style: TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w800,
-                        color: colorScheme.onSurface,
-                        letterSpacing: -0.5,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    planned == 0 ? '今天没有计划' : '$met / $planned 已完成',
+                    style: TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
+                      color: colorScheme.onSurface,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (planned > 0)
+              SizedBox(
+                width: 64,
+                height: 64,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    CircularProgressIndicator(
+                      value: planned == 0 ? 0 : met / planned,
+                      strokeWidth: 8,
+                      strokeCap: StrokeCap.round,
+                      backgroundColor: colorScheme.onSurface.withValues(
+                        alpha: 0.1,
+                      ),
+                      valueColor: AlwaysStoppedAnimation(colorScheme.primary),
+                    ),
+                    Center(
+                      child: Text(
+                        planned == 0
+                            ? '0%'
+                            : '${(met / planned * 100).round()}%',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: colorScheme.onSurface,
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
-              if (planned > 0)
-                SizedBox(
-                  width: 64,
-                  height: 64,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      CircularProgressIndicator(
-                        value: planned == 0 ? 0 : met / planned,
-                        strokeWidth: 8,
-                        strokeCap: StrokeCap.round,
-                        backgroundColor: colorScheme.onSurface.withValues(
-                          alpha: 0.1,
-                        ),
-                        valueColor: AlwaysStoppedAnimation(colorScheme.primary),
-                      ),
-                      Center(
-                        child: Text(
-                          planned == 0
-                              ? '0%'
-                              : '${(met / planned * 100).round()}%',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            color: colorScheme.onSurface,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
+          ],
         ),
       ),
     );

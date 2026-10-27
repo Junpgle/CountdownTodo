@@ -244,9 +244,11 @@ mixin _HomeDashboardViewMixin
                               : LayoutBuilder(
                                   builder: (context, constraints) {
                                     Widget wrapSectionBoundary(Widget child) =>
-                                        showWallpaper
-                                        ? child
-                                        : RepaintBoundary(child: child);
+                                        showWallpaper || AppPlatform.isWindows
+                                            ? child
+                                            : RepaintBoundary(
+                                                child: child,
+                                              );
                                     Widget buildCountdown() =>
                                         ValueListenableBuilder<
                                           List<CountdownItem>
@@ -675,6 +677,7 @@ mixin _HomeDashboardViewMixin
                                       ) {
                                         return HomeDashboardScrollSection(
                                           key: ValueKey<String>(key),
+                                          keepAlive: !AppPlatform.isWindows,
                                           child: AppSystemUiRegion(
                                             backgroundBrightness:
                                                 cardBackgroundBrightness,
@@ -743,6 +746,12 @@ mixin _HomeDashboardViewMixin
                                             ),
                                             addRepaintBoundaries:
                                                 !showWallpaper,
+                                            scrollCacheExtent:
+                                                AppPlatform.isWindows
+                                                ? const ScrollCacheExtent.viewport(
+                                                    0.5,
+                                                  )
+                                                : null,
                                             padding: EdgeInsets.fromLTRB(
                                               16,
                                               listHeaderExtent + 16,
@@ -779,6 +788,8 @@ mixin _HomeDashboardViewMixin
                                                   key: const ValueKey<String>(
                                                     'onboarding_checklist',
                                                   ),
+                                                  keepAlive:
+                                                      !AppPlatform.isWindows,
                                                   child: AppSystemUiRegion(
                                                     backgroundBrightness:
                                                         cardBackgroundBrightness,
@@ -914,6 +925,97 @@ mixin _HomeDashboardViewMixin
                                     final currentLeft = _leftSections;
                                     final currentRight = _rightSections;
 
+                                    if (AppPlatform.isWindows) {
+                                      const estimatedHeights = <String, double>{
+                                        'banners': 184,
+                                        'agenda': 560,
+                                        'countdowns': 360,
+                                        'todos': 620,
+                                        'screenTime': 400,
+                                        'math': 280,
+                                        'pomodoro': 520,
+                                        'timeline': 480,
+                                        'finance': 400,
+                                        'habits': 480,
+                                      };
+
+                                      List<WindowsDashboardSection> buildSpecs(
+                                        List<String> keys,
+                                      ) => keys
+                                          .where(
+                                            (key) =>
+                                                (_sectionVisibility[key] ??
+                                                    true) &&
+                                                sectionBuilders.containsKey(
+                                                  key,
+                                                ),
+                                          )
+                                          .map((key) {
+                                            return WindowsDashboardSection(
+                                              id: key,
+                                              estimatedHeight:
+                                                  estimatedHeights[key] ?? 360,
+                                              builder: (context) {
+                                                final section =
+                                                    sectionBuilders[key]!();
+                                                return AppSystemUiRegion(
+                                                  backgroundBrightness:
+                                                      cardBackgroundBrightness,
+                                                  child: Padding(
+                                                    padding:
+                                                        const EdgeInsets.only(
+                                                          bottom: 24,
+                                                        ),
+                                                    child: section,
+                                                  ),
+                                                );
+                                              },
+                                            );
+                                          })
+                                          .toList(growable: false);
+
+                                      final footer = Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          AppSystemUiRegion(
+                                            backgroundBrightness:
+                                                cardBackgroundBrightness,
+                                            child: AnimatedBuilder(
+                                              animation:
+                                                  _bannerSectionListenable,
+                                              builder: (_, _) =>
+                                                  _buildOnboardingChecklistSection(
+                                                    isLight,
+                                                  ),
+                                            ),
+                                          ),
+                                          if (_wallpaperCopyright != null &&
+                                              _wallpaperCopyright!.isNotEmpty)
+                                            _buildWallpaperCopyright(isLight),
+                                        ],
+                                      );
+
+                                      return OptionalLiquidGlassScrollOptimizer(
+                                        child:
+                                            WindowsDashboardScrollCoordinator(
+                                              leftSections: buildSpecs(
+                                                currentLeft,
+                                              ),
+                                              rightSections: buildSpecs(
+                                                currentRight,
+                                              ),
+                                              footer: footer,
+                                              padding: EdgeInsets.fromLTRB(
+                                                32,
+                                                headerExtent + 16,
+                                                32,
+                                                16 + bottomSystemInset + 100.0,
+                                              ),
+                                              maxWidth: 1400,
+                                            ),
+                                      );
+                                    }
+
                                     List<Widget> buildColumnWidgets(
                                       List<String> keys,
                                     ) {
@@ -955,14 +1057,7 @@ mixin _HomeDashboardViewMixin
                                                         : section,
                                                   ),
                                                 );
-                                            return AppPlatform.isWindows
-                                                ? ViewportManagedContent(
-                                                    key: ValueKey<String>(
-                                                      'windows-dashboard-$key',
-                                                    ),
-                                                    child: columnSection,
-                                                  )
-                                                : columnSection;
+                                            return columnSection;
                                           })
                                           .toList();
                                     }

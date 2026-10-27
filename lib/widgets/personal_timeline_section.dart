@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../screens/personal_timeline_screen.dart';
+import '../services/home_dashboard_section_data_cache.dart';
 import '../services/timeline_service.dart';
 import '../utils/app_image_filters.dart';
 import '../utils/page_transitions.dart';
@@ -37,6 +38,7 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
   bool _isLoading = true;
   bool _collapsed = false;
   int _loadRequest = 0;
+  int _localCacheRevision = 0;
   final GlobalKey _cardKey = GlobalKey();
 
   static final RegExp _emojiRegExp = RegExp(
@@ -63,6 +65,20 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
     if (!mounted) return;
     final request = ++_loadRequest;
     final username = widget.username;
+    final today = DateUtils.dateOnly(DateTime.now());
+    final cacheKey =
+        'timeline/$username/${today.year}-${today.month}-${today.day}'
+        '/${widget.refreshTrigger}/$_localCacheRevision';
+    final cached = clearExisting
+        ? null
+        : HomeDashboardSectionDataCache.get<List<TimelineEvent>>(cacheKey);
+    if (cached != null) {
+      setState(() {
+        _events = cached;
+        _isLoading = false;
+      });
+      return;
+    }
     setState(() {
       _isLoading = true;
       if (clearExisting) _events = [];
@@ -70,9 +86,9 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
 
     try {
       final now = DateTime.now();
-      final events = await TimelineService.instance.getEventsForDay(
-        username,
-        now,
+      final events = await HomeDashboardSectionDataCache.load(
+        cacheKey,
+        () => TimelineService.instance.getEventsForDay(username, now),
       );
       if (!mounted || request != _loadRequest || username != widget.username) {
         return;
@@ -106,7 +122,10 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
       placeholderIcon: Icons.timeline_rounded,
       sourceBorderRadius: BorderRadius.circular(24),
     ).then((_) {
-      if (mounted) _loadData();
+      if (mounted) {
+        _localCacheRevision++;
+        _loadData();
+      }
     });
   }
 

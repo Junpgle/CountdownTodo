@@ -413,8 +413,8 @@ class _HomeAgendaCardState extends State<HomeAgendaCard> {
     final fallbackDecoration = BoxDecoration(
       color: light
           ? (isDark
-              ? colors.surfaceContainerLow.withValues(alpha: 0.75)
-              : colors.surface.withValues(alpha: 0.92))
+                ? colors.surfaceContainerLow.withValues(alpha: 0.75)
+                : colors.surface.withValues(alpha: 0.92))
           : colors.surface,
       borderRadius: BorderRadius.circular(24),
       boxShadow: [
@@ -429,8 +429,8 @@ class _HomeAgendaCardState extends State<HomeAgendaCard> {
       border: Border.all(
         color: light
             ? (isDark
-                ? Colors.white.withValues(alpha: 0.15)
-                : Colors.white.withValues(alpha: 0.6))
+                  ? Colors.white.withValues(alpha: 0.15)
+                  : Colors.white.withValues(alpha: 0.6))
             : Theme.of(context).dividerColor.withValues(alpha: 0.5),
       ),
     );
@@ -443,20 +443,18 @@ class _HomeAgendaCardState extends State<HomeAgendaCard> {
       );
     }
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: PlatformBackdropFilter(
-        filter: AppImageFilters.blur10,
-        bypassWhenLiquidGlassEnabled: true,
-        child: OptionalLiquidGlassCard(
-          padding: const EdgeInsets.all(12),
-          borderRadius: 24,
-          highContrast: false,
-          tint: colors.primary.withValues(alpha: 0.16),
-          isDark: isDark,
-          fallbackDecoration: fallbackDecoration,
-          child: child,
-        ),
+    return PlatformBackdropFilter(
+      filter: AppImageFilters.blur10,
+      bypassWhenLiquidGlassEnabled: true,
+      clipBorderRadius: BorderRadius.circular(24),
+      child: OptionalLiquidGlassCard(
+        padding: const EdgeInsets.all(12),
+        borderRadius: 24,
+        highContrast: false,
+        tint: colors.primary.withValues(alpha: 0.16),
+        isDark: isDark,
+        fallbackDecoration: fallbackDecoration,
+        child: child,
       ),
     );
   }

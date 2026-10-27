@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../services/home_dashboard_section_data_cache.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
@@ -67,19 +68,33 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
     _upcomingTransactionTimer?.cancel();
     _upcomingTransactionTimer = null;
     final generation = ++_loadGeneration;
-    setState(() {
-      _isLoading = true;
-      _hasError = false;
-    });
 
     final now = widget.clock();
     final monthStart = DateTime(now.year, now.month);
     final nextMonth = DateTime(now.year, now.month + 1);
+    final cacheKey =
+        'finance/${widget.username}/${monthStart.year}-${monthStart.month}'
+        '/${FinanceStorage.revision.value}';
+    final cachedTransactions =
+        HomeDashboardSectionDataCache.get<List<FinanceTransaction>>(cacheKey);
+    if (cachedTransactions == null) {
+      setState(() {
+        _isLoading = true;
+        _hasError = false;
+      });
+    } else {
+      _isLoading = false;
+      _hasError = false;
+    }
     try {
-      final transactions = await FinanceRepository.getTransactions(
-        from: monthStart,
-        to: nextMonth,
-      );
+      final transactions = cachedTransactions ??
+          await HomeDashboardSectionDataCache.load(
+            cacheKey,
+            () => FinanceRepository.getTransactions(
+              from: monthStart,
+              to: nextMonth,
+            ),
+          );
       if (!mounted || generation != _loadGeneration) return;
       final asOfAt = widget.clock().millisecondsSinceEpoch;
       final occurredTransactions = <FinanceTransaction>[];

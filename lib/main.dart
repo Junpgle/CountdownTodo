@@ -344,6 +344,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     final lifecycleState = WidgetsBinding.instance.lifecycleState;
     WindowService.windowIsActiveListenable.value =
         lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
+    WindowService.windowIsActiveListenable.addListener(
+      _handleWindowsWindowActivityChanged,
+    );
+    _handleWindowsWindowActivityChanged();
     if (AppPlatform.isAndroid) {
       PowerSaveModeService.enabledListenable.addListener(
         _handlePowerSaveModeChanged,
@@ -385,6 +389,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   void _handleOledBlackModeChanged() {
     if (mounted) setState(() {});
+  }
+
+  void _handleWindowsWindowActivityChanged() {
+    if (!AppPlatform.isWindows) return;
+    unawaited(
+      WindowsRenderCachePolicy.setMainWindowActive(
+        WindowService.windowIsActiveListenable.value,
+      ),
+    );
   }
 
   @override
@@ -973,6 +986,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     _systemUiRestoreTimer?.cancel();
     StorageService.oledBlackModeNotifier.removeListener(
       _handleOledBlackModeChanged,
+    );
+    WindowService.windowIsActiveListenable.removeListener(
+      _handleWindowsWindowActivityChanged,
     );
     WidgetsBinding.instance.removeObserver(this);
     if (AppPlatform.isAndroid) {

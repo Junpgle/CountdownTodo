@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../utils/page_transitions.dart';
+import '../../../services/home_dashboard_section_data_cache.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_progress.dart';
@@ -56,6 +57,7 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
   final Map<String, GlobalKey> _cardKeys = {};
   bool _loading = true;
   int _loadGeneration = 0;
+  int _localCacheRevision = 0;
 
   @override
   void initState() {
@@ -71,9 +73,29 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
     }
   }
 
+  String get _snapshotCacheKey {
+    final today = DateUtils.dateOnly(DateTime.now());
+    return 'habit/${widget.username}/${today.year}-${today.month}-${today.day}'
+        '/${widget.refreshTrigger}/$_localCacheRevision';
+  }
+
+  void _refreshData() {
+    _localCacheRevision++;
+    _loadData();
+  }
+
   Future<void> _loadData() async {
     if (!mounted) return;
     final loadGeneration = ++_loadGeneration;
+    final key = _snapshotCacheKey;
+    final cached = HomeDashboardSectionDataCache.get<HabitDaySnapshot>(key);
+    if (cached != null) {
+      setState(() {
+        _snapshot = cached;
+        _loading = false;
+      });
+      return;
+    }
     // Keep the last successful snapshot visible while a background refresh is
     // running.  The first load still shows the skeleton; subsequent refreshes
     // must not flash the whole section back to a spinner.
@@ -82,9 +104,12 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
     }
     HabitDaySnapshot snapshot;
     try {
-      snapshot = await HabitDayLoader.loadForDate(
-        DateTime.now(),
-        username: widget.username,
+      snapshot = await HomeDashboardSectionDataCache.load(
+        key,
+        () => HabitDayLoader.loadForDate(
+          DateTime.now(),
+          username: widget.username,
+        ),
       );
     } catch (error) {
       debugPrint('今日习惯加载失败: $error');
@@ -107,7 +132,7 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
     goal: goal,
     sourceKey: _cardKeyFor(goal),
     onReturned: () {
-      _loadData();
+      _refreshData();
     },
   );
 
@@ -358,7 +383,7 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
         sleepCoachingMetric: _snapshot!.sleepCoachingMetricFor(goal),
         username: widget.username,
         isLight: widget.isLight,
-        onChanged: _loadData,
+        onChanged: _refreshData,
         onStartFocus: widget.onStartFocus ?? _startFocus,
         onViewRecords: widget.onViewRecords ?? () => _viewRecords(goal),
         onTap: () => _viewRecords(goal),
