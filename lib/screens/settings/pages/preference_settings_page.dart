@@ -199,8 +199,17 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
       final XFile? image = await picker.pickImage(source: ImageSource.gallery);
       if (image != null) {
         try {
+          final imageBytes = await image.readAsBytes();
+          final ImageProvider<Object> imageProvider = AppPlatform.isWindows
+              ? ResizeImage(
+                  MemoryImage(imageBytes),
+                  width: 112,
+                  height: 112,
+                  policy: ResizeImagePolicy.fit,
+                )
+              : MemoryImage(imageBytes);
           final colorScheme = await ColorScheme.fromImageProvider(
-            provider: MemoryImage(await image.readAsBytes()),
+            provider: imageProvider,
           );
           await StorageService.setCustomThemeColor(colorScheme.primary);
           setState(() => _customThemeColor = colorScheme.primary);
