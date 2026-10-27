@@ -14,17 +14,19 @@ void main() {
 
   setUp(() {
     calls.clear();
-    SystemChannels.skia.setMockMethodCallHandler((call) async {
-      calls.add(call);
-      return true;
-    });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.skia, (call) async {
+          calls.add(call);
+          return true;
+        });
   });
 
   tearDown(() {
     imageCache.maximumSize = originalMaximumSize;
     imageCache.maximumSizeBytes = originalMaximumSizeBytes;
     imageCache.clear();
-    SystemChannels.skia.setMockMethodCallHandler(null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.skia, null);
   });
 
   test('bounds main and island caches on Windows', () async {
