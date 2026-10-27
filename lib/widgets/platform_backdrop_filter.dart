@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import '../services/liquid_glass_effect_service.dart';
 import '../utils/app_platform.dart';
 
-/// Avoids creating an offscreen blurred texture on Android and Windows.
+/// Avoids creating an offscreen blurred texture on Android and by default on
+/// Windows. Windows can opt into the standard blur through the Liquid Glass
+/// setting; Android retains its existing performance bypass.
 ///
 /// Backdrop blur is visually pleasant on desktop and iOS, but it can make a
 /// full-screen wallpaper or a scrolling card miss the 120Hz raster budget on
@@ -15,26 +17,62 @@ class PlatformBackdropFilter extends StatelessWidget {
   final ImageFilter filter;
   final Widget child;
   final bool bypassWhenLiquidGlassEnabled;
+  final BorderRadiusGeometry? clipBorderRadius;
+  final Clip clipBehavior;
 
   const PlatformBackdropFilter({
     super.key,
     required this.filter,
     required this.child,
     this.bypassWhenLiquidGlassEnabled = false,
+    this.clipBorderRadius,
+    this.clipBehavior = Clip.antiAlias,
   });
+
+  Widget _clipIfNeeded(Widget content) {
+    final borderRadius = clipBorderRadius;
+    if (borderRadius == null) return content;
+
+    // Windows Skia/ANGLE turns repeated anti-aliased rounded clips into
+    // software mask textures. A hard-edge clip keeps the card bounds without
+    // allocating those masks on every scroll frame.
+    final effectiveClipBehavior =
+        AppPlatform.isWindows && clipBehavior == Clip.antiAlias
+        ? Clip.hardEdge
+        : clipBehavior;
+    return ClipRRect(
+      borderRadius: borderRadius,
+      clipBehavior: effectiveClipBehavior,
+      child: content,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (AppPlatform.isAndroid || AppPlatform.isWindows) return child;
-    if (bypassWhenLiquidGlassEnabled) {
+    if (AppPlatform.isAndroid) return _clipIfNeeded(child);
+    if (AppPlatform.isWindows) {
       return ValueListenableBuilder<LiquidGlassEffectConfiguration>(
+        valueListenable: LiquidGlassEffectService.configurationListenable,
+        builder: (context, configuration, _) {
+          if (!configuration.enabled || bypassWhenLiquidGlassEnabled) {
+            return _clipIfNeeded(child);
+          }
+          return _clipIfNeeded(BackdropFilter(filter: filter, child: child));
+        },
+      );
+    }
+    late final Widget filtered;
+    if (bypassWhenLiquidGlassEnabled) {
+      filtered = ValueListenableBuilder<LiquidGlassEffectConfiguration>(
         valueListenable: LiquidGlassEffectService.configurationListenable,
         builder: (context, configuration, _) {
           if (configuration.enabled) return child;
           return BackdropFilter(filter: filter, child: child);
         },
       );
+    } else {
+      filtered = BackdropFilter(filter: filter, child: child);
     }
-    return BackdropFilter(filter: filter, child: child);
+    return _clipIfNeeded(filtered);
   }
 }

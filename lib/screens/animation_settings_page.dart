@@ -104,9 +104,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
 
   String get _liquidGlassModeDescription {
     if (AppPlatform.isWindows) {
-      return _liquidGlassMode == LiquidGlassEffectMode.standard
-          ? '高可读性和低功耗；Windows 使用静态半透明材质，避免重复背景模糊。'
-          : '增强材质层次与高光；Windows 使用静态玻璃和标准渲染，避免实时模糊拖慢动画。';
+      return '默认不启用模糊。开启 Liquid Glass 后使用标准玻璃与模糊效果；增强模式在 Windows 上不可用。';
     }
     return _liquidGlassMode == LiquidGlassEffectMode.standard
         ? '高可读性和低功耗；滚动卡片使用轻量玻璃材质，重点表面保留折射。'
@@ -655,30 +653,39 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                             ],
                           ),
                           const SizedBox(height: 12),
-                          SizedBox(
-                            width: double.infinity,
-                            child: SegmentedButton<LiquidGlassEffectMode>(
-                              segments: const [
-                                ButtonSegment(
-                                  value: LiquidGlassEffectMode.standard,
-                                  icon: Icon(Icons.speed_rounded),
-                                  label: Text('标准'),
-                                ),
-                                ButtonSegment(
-                                  value: LiquidGlassEffectMode.enhanced,
-                                  icon: Icon(Icons.auto_awesome_rounded),
-                                  label: Text('增强'),
-                                ),
-                              ],
-                              selected: {_liquidGlassMode},
-                              onSelectionChanged:
-                                  !effectiveLiquidGlassEnabled ||
-                                      _liquidGlassMutationPending
-                                  ? null
-                                  : (selection) =>
-                                        _setLiquidGlassMode(selection.first),
+                          if (AppPlatform.isWindows)
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Chip(
+                                avatar: const Icon(Icons.speed_rounded),
+                                label: const Text('标准模式'),
+                              ),
+                            )
+                          else
+                            SizedBox(
+                              width: double.infinity,
+                              child: SegmentedButton<LiquidGlassEffectMode>(
+                                segments: const [
+                                  ButtonSegment(
+                                    value: LiquidGlassEffectMode.standard,
+                                    icon: Icon(Icons.speed_rounded),
+                                    label: Text('标准'),
+                                  ),
+                                  ButtonSegment(
+                                    value: LiquidGlassEffectMode.enhanced,
+                                    icon: Icon(Icons.auto_awesome_rounded),
+                                    label: Text('增强'),
+                                  ),
+                                ],
+                                selected: {_liquidGlassMode},
+                                onSelectionChanged:
+                                    !effectiveLiquidGlassEnabled ||
+                                        _liquidGlassMutationPending
+                                    ? null
+                                    : (selection) =>
+                                          _setLiquidGlassMode(selection.first),
+                              ),
                             ),
-                          ),
                           const SizedBox(height: 10),
                           Text(
                             _liquidGlassModeDescription,

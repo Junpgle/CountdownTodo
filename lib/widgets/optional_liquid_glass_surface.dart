@@ -56,10 +56,10 @@ enum OptionalLiquidGlassPanelMode {
 
   /// A card that follows the user's quality preference.
   ///
-  /// Standard mode uses a non-sampling translucent material. Enhanced mode
-  /// promotes the card to a live grouped blur where supported. Android
-  /// scrollables, wide Android layouts, and Windows use static
-  /// material to avoid repeated backdrop sampling.
+  /// Standard mode uses a translucent material with the regular blur path.
+  /// Enhanced mode promotes the card to a live grouped blur where supported.
+  /// Android scrollables, wide Android layouts, and the disabled Windows
+  /// default use static material to avoid repeated backdrop sampling.
   adaptiveRepeated,
 
   /// A translucent material treatment without backdrop sampling.
@@ -215,16 +215,23 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
     return ValueListenableBuilder<LiquidGlassEffectConfiguration>(
       valueListenable: LiquidGlassEffectService.configurationListenable,
       builder: (context, configuration, _) {
-        if (!configuration.enabled) return fallback;
+        final useStaticWindowsMaterial =
+            AppPlatform.isWindows && !configuration.enabled;
+        if (!configuration.enabled && !useStaticWindowsMaterial) {
+          return fallback;
+        }
 
         final colorScheme = Theme.of(context).colorScheme;
         final dark = isDark ?? colorScheme.brightness == Brightness.dark;
         final enhanced = configuration.mode == LiquidGlassEffectMode.enhanced;
+        final effectiveClipBehavior =
+            AppPlatform.isWindows && clipBehavior == Clip.antiAlias
+            ? Clip.hardEdge
+            : clipBehavior;
         final useStaticAndroidMaterial =
             AppPlatform.isAndroid &&
             (MediaQuery.sizeOf(context).width >= 768.0 ||
                 _OptionalGlassScrollableScope.contains(context));
-        final useStaticWindowsMaterial = AppPlatform.isWindows;
         final useStaticOverlayMaterial =
             OptionalLiquidGlassOverlayScope.isActive(context);
         final tintSource = tint ?? colorScheme.primary;
@@ -252,8 +259,9 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
         if (useStaticMaterial) {
           final isAdaptiveCard =
               mode == OptionalLiquidGlassPanelMode.adaptiveRepeated;
-          // Windows surfaces use a static tinted material. Repeated live
-          // BackdropFilters caused excessive GPU sampling during scrolls.
+          // The Windows default keeps the static fallback while Liquid Glass
+          // is off. Turning the setting on restores the standard glass path;
+          // repeated standard cards still use their shared blur treatment.
           final shouldBlur =
               !useStaticOverlayMaterial && !useStaticWindowsMaterial;
           final blurFilter = configuration.blurFilter;
@@ -318,7 +326,7 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
               height: height,
               padding: padding,
               margin: margin,
-              clipBehavior: clipBehavior,
+              clipBehavior: effectiveClipBehavior,
               decoration: decoration,
               child: child,
             );
@@ -336,16 +344,16 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
             ),
           );
           final clipped = circular
-              ? ClipOval(clipBehavior: clipBehavior, child: filtered)
+              ? ClipOval(clipBehavior: effectiveClipBehavior, child: filtered)
               : hasUniformRadius
               ? ClipRSuperellipse(
                   borderRadius: resolvedRadius as BorderRadius,
-                  clipBehavior: clipBehavior,
+                  clipBehavior: effectiveClipBehavior,
                   child: filtered,
                 )
               : ClipRRect(
                   borderRadius: resolvedRadius,
-                  clipBehavior: clipBehavior,
+                  clipBehavior: effectiveClipBehavior,
                   child: filtered,
                 );
           return Container(
@@ -426,16 +434,16 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
           // ClipRSuperellipse only renders uniform radii faithfully; per-corner
           // shapes fall back to an anti-aliased rounded rect.
           final clipped = circular
-              ? ClipOval(clipBehavior: clipBehavior, child: filtered)
+              ? ClipOval(clipBehavior: effectiveClipBehavior, child: filtered)
               : hasUniformRadius
               ? ClipRSuperellipse(
                   borderRadius: resolvedRadius as BorderRadius,
-                  clipBehavior: clipBehavior,
+                  clipBehavior: effectiveClipBehavior,
                   child: filtered,
                 )
               : ClipRRect(
                   borderRadius: resolvedRadius,
-                  clipBehavior: clipBehavior,
+                  clipBehavior: effectiveClipBehavior,
                   child: filtered,
                 );
           return Container(margin: margin, child: clipped);
@@ -548,17 +556,18 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
     return ValueListenableBuilder<LiquidGlassEffectConfiguration>(
       valueListenable: LiquidGlassEffectService.configurationListenable,
       builder: (context, configuration, _) {
-        if (!configuration.enabled) return fallback;
+        final useStaticWindowsMaterial =
+            AppPlatform.isWindows && !configuration.enabled;
+        if (!configuration.enabled && !useStaticWindowsMaterial) {
+          return fallback;
+        }
         final enhanced = configuration.mode == LiquidGlassEffectMode.enhanced;
         final useStaticAndroidMaterial = AppPlatform.isAndroid;
-        final useStaticWindowsMaterial = AppPlatform.isWindows;
 
         if (useStaticAndroidMaterial || useStaticWindowsMaterial) {
-          // Floating controls stay fixed while dashboard content scrolls
-          // behind them. A live glass pass therefore rerasterizes on every
-          // scroll frame even though the controls themselves do not move. Use
-          // the cached material path on Android and Windows, retaining
-          // a lighter fill for compact top-bar lenses.
+          // Android keeps its static performance path. Windows uses this
+          // no-blur material only while Liquid Glass is disabled; opting in
+          // restores the standard glass implementation below.
           final staticShell = OptionalLiquidGlassPanel(
             height: height,
             borderRadius: borderRadius,

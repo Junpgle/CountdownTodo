@@ -10,11 +10,18 @@ import '../utils/app_platform.dart';
 
 enum LiquidGlassEffectMode { standard, enhanced }
 
+LiquidGlassEffectMode effectiveLiquidGlassModeForPlatform(
+  LiquidGlassEffectMode mode,
+) {
+  // Windows keeps the standard glass path available, but does not expose the
+  // enhanced mode because its stronger effects are not supported reliably.
+  return AppPlatform.isWindows ? LiquidGlassEffectMode.standard : mode;
+}
+
 /// Resolves the glass shader quality for the active platform.
 ///
-/// Windows' Flutter renderer is statically capped at standard quality by the
-/// Liquid Glass package. Keep enhanced mode's stronger colors and material
-/// treatment, but avoid requesting the unsupported premium capture pipeline.
+/// Keep a defensive standard-quality cap for direct Windows callers. The
+/// settings service also normalizes Windows preferences to standard mode.
 GlassQuality liquidGlassQualityForMode(LiquidGlassEffectMode mode) {
   if (mode == LiquidGlassEffectMode.enhanced && !AppPlatform.isWindows) {
     return GlassQuality.premium;
@@ -281,10 +288,14 @@ class LiquidGlassEffectService {
   static Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final enabled = prefs.getBool(_keyEnabled) ?? false;
-    final mode = LiquidGlassEffectMode.values.firstWhere(
+    final storedMode = LiquidGlassEffectMode.values.firstWhere(
       (candidate) => candidate.name == prefs.getString(_keyMode),
       orElse: () => LiquidGlassEffectMode.standard,
     );
+    final mode = effectiveLiquidGlassModeForPlatform(storedMode);
+    if (mode != storedMode) {
+      await prefs.setString(_keyMode, mode.name);
+    }
     final transparency =
           (prefs.getInt(_keyTransparency) ??
                   LiquidGlassEffectConfiguration.defaultTransparencyPercent)
@@ -353,19 +364,24 @@ class LiquidGlassEffectService {
   }
 
   static Future<void> setMode(LiquidGlassEffectMode mode) {
+    final effectiveMode = effectiveLiquidGlassModeForPlatform(mode);
     final revision = ++_modeMutationRevision;
     return _enqueueMutation(() async {
       if (revision != _modeMutationRevision) return;
       if (preferredConfiguration.enabled && !_systemPowerSaveMode) {
-        await _ensureRendererInitialized(mode: mode);
+        await _ensureRendererInitialized(mode: effectiveMode);
         if (revision != _modeMutationRevision) return;
       }
 
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_keyMode, mode.name);
+      await prefs.setString(_keyMode, effectiveMode.name);
       if (revision != _modeMutationRevision) return;
-      _preferredConfiguration = preferredConfiguration.copyWith(mode: mode);
-      _persistedConfiguration = _persistedConfiguration.copyWith(mode: mode);
+      _preferredConfiguration = preferredConfiguration.copyWith(
+        mode: effectiveMode,
+      );
+      _persistedConfiguration = _persistedConfiguration.copyWith(
+        mode: effectiveMode,
+      );
       _updateUnsavedChanges();
       _publishEffectiveConfiguration();
     });
@@ -481,7 +497,7 @@ class LiquidGlassEffectService {
     final preferred = preferredConfiguration;
     _configurationNotifier.value = LiquidGlassEffectConfiguration(
       enabled: preferred.enabled && !_systemPowerSaveMode,
-      mode: preferred.mode,
+      mode: effectiveLiquidGlassModeForPlatform(preferred.mode),
       transparencyPercent: preferred.transparencyPercent,
       scrimCoveragePercent: preferred.scrimCoveragePercent,
       blurSigma: preferred.blurSigma,
