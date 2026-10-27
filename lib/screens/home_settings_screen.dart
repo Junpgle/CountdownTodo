@@ -335,6 +335,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if (AppPlatform.isWeb &&
         {
           'permissions',
+          'windows_renderer',
           'float_window_style',
           'force_refresh',
           'island_priority',
@@ -402,6 +403,7 @@ class _SettingsPageState extends State<SettingsPage> {
       'feature_guide',
     ];
     final platformTargets = [
+      'windows_renderer',
       'float_window_style',
       'force_refresh',
       'island_priority',

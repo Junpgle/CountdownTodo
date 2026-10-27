@@ -4,12 +4,14 @@
 #include <optional>
 #include <string>
 #include <vector>
+#include <variant>
 
 #include <desktop_multi_window/desktop_multi_window_plugin.h>
 #include "flutter/generated_plugin_registrant.h"
 #include <flutter/method_channel.h>
 #include <flutter/standard_method_codec.h>
 #include <flutter/encodable_value.h>
+#include "windows_renderer_config.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
         : project_(project) {}
@@ -71,6 +73,48 @@ bool FlutterWindow::OnCreate() {
             flutter_controller_->engine()->messenger(),
             "com.math_quiz_app/deep_links",
             &flutter::StandardMethodCodec::GetInstance());
+    windows_renderer_channel_ =
+        std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+            flutter_controller_->engine()->messenger(),
+            "com.math_quiz_app/windows_renderer",
+            &flutter::StandardMethodCodec::GetInstance());
+    windows_renderer_channel_->SetMethodCallHandler(
+        [](const auto& call, auto result) {
+          if (call.method_name() == "getRenderer") {
+            const auto renderer = windows_renderer_config::ReadRenderer();
+            result->Success(flutter::EncodableValue(
+                windows_renderer_config::RendererName(renderer)));
+            return;
+          }
+
+          if (call.method_name() == "setRenderer") {
+            const auto* value =
+                std::get_if<std::string>(call.arguments());
+            if (value == nullptr) {
+              result->Error("invalid_arguments", "Expected a renderer name.");
+              return;
+            }
+
+            windows_renderer_config::Renderer renderer;
+            if (*value == "skia") {
+              renderer = windows_renderer_config::Renderer::kSkia;
+            } else if (*value == "impeller") {
+              renderer = windows_renderer_config::Renderer::kImpeller;
+            } else {
+              result->Error("invalid_renderer", "Unknown renderer name.");
+              return;
+            }
+
+            if (!windows_renderer_config::WriteRenderer(renderer)) {
+              result->Error("save_failed", "Could not save renderer setting.");
+              return;
+            }
+            result->Success(flutter::EncodableValue(true));
+            return;
+          }
+
+          result->NotImplemented();
+        });
     DesktopMultiWindowSetWindowCreatedCallback([](void *controller) {
         auto *flutter_view_controller =
                 reinterpret_cast<flutter::FlutterViewController *>(controller);
@@ -94,6 +138,7 @@ bool FlutterWindow::OnCreate() {
 void FlutterWindow::OnDestroy() {
 
     deep_link_channel_.reset();
+    windows_renderer_channel_.reset();
 
     if (flutter_controller_) {
         flutter_controller_ = nullptr;

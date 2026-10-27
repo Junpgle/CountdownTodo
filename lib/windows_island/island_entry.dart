@@ -14,6 +14,7 @@ import 'dart:convert';
 import 'island_ui.dart';
 import 'island_payload.dart';
 import 'island_config.dart';
+import 'island_channel.dart';
 import 'island_ipc_file_watcher.dart';
 import 'island_ipc_paths.dart';
 import 'island_win32.dart';
@@ -67,21 +68,40 @@ void _applyIncomingPayload(
   }
 }
 
-/// Launch a URL with fallback to Process
+/// Launch a URL with the default browser, falling back to Windows Explorer.
 Future<void> _launchUrl(String url) async {
+  final trimmedUrl = url.trim();
+  if (trimmedUrl.isEmpty) return;
+
+  var uri = Uri.tryParse(trimmedUrl);
+  if (uri != null && !uri.hasScheme) {
+    uri = Uri.tryParse('https://$trimmedUrl');
+  }
+  if (uri == null ||
+      !const {'http', 'https', 'ftp'}.contains(uri.scheme.toLowerCase()) ||
+      uri.host.isEmpty) {
+    debugPrint('[Island] ignoring invalid clipboard URL');
+    return;
+  }
+
   try {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      return;
     }
   } catch (e) {
-    debugPrint('[Island] url_launcher failed: $e, trying Process');
-    try {
-      final result = await Process.run('cmd', ['/c', 'start', '', url]);
-      debugPrint('[Island] Process.run result: ${result.exitCode}');
-    } catch (e2) {
-      debugPrint('[Island] Process.run failed: $e2');
+    debugPrint('[Island] url_launcher failed: $e');
+  }
+
+  if (!Platform.isWindows) return;
+  try {
+    final result = await Process.run('explorer.exe', [uri.toString()]);
+    if (result.exitCode != 0) {
+      debugPrint(
+        '[Island] Explorer could not open clipboard URL (exit ${result.exitCode})',
+      );
     }
+  } catch (e) {
+    debugPrint('[Island] Explorer URL fallback failed: $e');
   }
 }
 
@@ -179,6 +199,18 @@ Future<void> islandMain(List<String> args) async {
   WindowController? controller;
   final argWindowId = args.length > 1 ? args[1] : '';
   String currentWindowId() => controller?.windowId ?? argWindowId;
+  Future<void> requestIslandDrag() async {
+    if (Platform.isWindows) {
+      final started = await IslandChannel.startWindowDragging(
+        currentWindowId(),
+      );
+      if (!started) {
+        debugPrint('[Island] native window drag request failed');
+      }
+      return;
+    }
+    startWindowDragging();
+  }
 
   int lastPayloadFileSequence = 0;
   int lastPayloadFileTimestamp = 0;
@@ -364,7 +396,7 @@ Future<void> islandMain(List<String> args) async {
         }
 
         if (call.method == 'startDragging') {
-          startWindowDragging();
+          await requestIslandDrag();
           isDragging = true;
           needsSaveAfterDrag = true;
           Timer(const Duration(milliseconds: 500), () {
@@ -556,6 +588,7 @@ Future<void> islandMain(List<String> args) async {
                   IslandUI(
                     payloadNotifier: payloadNotifier,
                     initialPayload: payloadNotifier.value,
+                    onStartDrag: () => unawaited(requestIslandDrag()),
                     onAction: (action, [modifiedSecs, data]) async {
                       try {
                         if (action == 'reminder_ok') {
@@ -775,6 +808,7 @@ Future<void> islandMain(List<String> args) async {
                 child: IslandUI(
                   payloadNotifier: payloadNotifier,
                   initialPayload: payloadNotifier.value,
+                  onStartDrag: () => unawaited(requestIslandDrag()),
                 ),
               ),
             ),

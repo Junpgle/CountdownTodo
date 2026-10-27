@@ -1949,6 +1949,15 @@ abstract final class AppSettingsCatalog {
       platforms: {'native', 'windows'},
     ),
     AiSettingsDestination(
+      id: 'windows_renderer',
+      title: 'Windows 渲染引擎',
+      path: '设置 > Windows 专属设置 > 图形渲染',
+      description: 'Skia Impeller 图形后端 性能 显存 GPU 应用渲染器 重启生效',
+      page: SettingsPageId.platform,
+      labels: ['Windows 渲染引擎', '图形渲染'],
+      platforms: {'native', 'windows'},
+    ),
+    AiSettingsDestination(
       id: 'force_refresh',
       title: '强制刷新悬浮窗位置',
       path: '设置 > 平台专属 > 强制刷新悬浮窗位置',

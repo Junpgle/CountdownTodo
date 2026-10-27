@@ -23,6 +23,7 @@ class IslandUI extends StatefulWidget {
   onAction;
   final ValueNotifier<Map<String, dynamic>?>? payloadNotifier;
   final bool inLayoutDebugMode;
+  final VoidCallback? onStartDrag;
 
   const IslandUI({
     super.key,
@@ -30,6 +31,7 @@ class IslandUI extends StatefulWidget {
     this.onAction,
     this.payloadNotifier,
     this.inLayoutDebugMode = false,
+    this.onStartDrag,
   });
 
   @override
@@ -828,10 +830,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             );
             final glassSurface = AppPlatform.isWindows
                 ? surface
-                : BackdropFilter(
-                    filter: AppImageFilters.blur6,
-                    child: surface,
-                  );
+                : BackdropFilter(filter: AppImageFilters.blur6, child: surface);
 
             return Container(
               width: _sizeAnimation.value.width,
@@ -848,9 +847,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(borderRadius),
-                child: RepaintBoundary(
-                  child: glassSurface,
-                ),
+                child: RepaintBoundary(child: glassSurface),
               ),
             );
           },
@@ -2566,6 +2563,11 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   void _startDrag() {
     if (widget.inLayoutDebugMode) return;
+    final onStartDrag = widget.onStartDrag;
+    if (onStartDrag != null) {
+      onStartDrag();
+      return;
+    }
     try {
       startWindowDragging();
     } catch (_) {}

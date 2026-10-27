@@ -1,6 +1,7 @@
 #include "flutter_window.h"
 
 #include "flutter_windows.h"
+#include "windows_renderer_config.h"
 
 #include "tchar.h"
 
@@ -8,6 +9,7 @@
 
 #include "multi_window_manager.h"
 #include "multi_window_plugin_internal.h"
+#include "flutter_window_wrapper.h"
 
 FlutterWindow::FlutterWindow(const std::string& id,
                              const WindowConfiguration config)
@@ -18,6 +20,11 @@ bool FlutterWindow::OnCreate() {
   RECT frame = GetClientArea();
 
   flutter::DartProject project(L"data");
+  const auto renderer = windows_renderer_config::ReadRenderer();
+  project.set_impeller_switch(
+      renderer == windows_renderer_config::Renderer::kImpeller
+          ? flutter::ImpellerSwitch::Enabled
+          : flutter::ImpellerSwitch::Disabled);
   // Avoid Windows fullscreen freezes in recent Flutter engines when
   // window_manager changes styles from a platform-channel call.
   project.set_ui_thread_policy(flutter::UIThreadPolicy::RunOnSeparateThread);
@@ -50,6 +57,11 @@ LRESULT FlutterWindow::MessageHandler(HWND hwnd,
                                       UINT const message,
                                       WPARAM const wparam,
                                       LPARAM const lparam) noexcept {
+  if (message == kStartWindowDraggingMessage) {
+    ::ReleaseCapture();
+    return ::DefWindowProc(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, lparam);
+  }
+
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =
