@@ -97,6 +97,8 @@ import '../features/journal/screens/journal_home_screen.dart';
 import '../widgets/home_sections.dart';
 import '../widgets/home_app_bar.dart';
 import '../widgets/home_dashboard_scroll_section.dart';
+import '../widgets/viewport_managed_content.dart';
+import '../widgets/stable_image_decode_size.dart';
 import '../widgets/countdown_section_widget.dart';
 import '../widgets/todo_section_widget.dart';
 import '../widgets/pomodoro_today_section.dart';
@@ -509,6 +511,11 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
 
   @override
   Widget build(BuildContext context) {
+    if (AppPlatform.isWindows) {
+      return StableImageDecodeSize(
+        builder: (_, width, height) => _buildImage(width, height),
+      );
+    }
     final media = MediaQuery.sizeOf(context);
     final pixelRatio = MediaQuery.devicePixelRatioOf(context);
     final cacheWidth = (media.width * pixelRatio)
@@ -519,6 +526,10 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
         .round()
         .clamp(1, 4096)
         .toInt();
+    return _buildImage(cacheWidth, cacheHeight);
+  }
+
+  Widget _buildImage(int cacheWidth, int cacheHeight) {
     return CachedNetworkImage(
       imageUrl: widget.url,
       cacheManager: WallpaperCacheService.cacheManager,

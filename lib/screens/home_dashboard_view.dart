@@ -31,6 +31,26 @@ mixin _HomeDashboardViewMixin
     _scheduleRevision,
   ]);
 
+  Widget _buildWallpaperDisplay(ImageProvider<Object> provider) {
+    Widget display(ImageProvider<Object> imageProvider) => Image(
+      image: imageProvider,
+      fit: BoxFit.cover,
+      color: const Color(0x66000000),
+      colorBlendMode: BlendMode.srcOver,
+    );
+    if (!AppPlatform.isWindows) return display(provider);
+    return StableImageDecodeSize(
+      builder: (_, width, height) => display(
+        ResizeImage(
+          provider,
+          width: width,
+          height: height,
+          policy: ResizeImagePolicy.fit,
+        ),
+      ),
+    );
+  }
+
   Widget build(BuildContext context) {
     bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
     bool showWallpaper = !isDarkMode && _wallpaperShow && _wallpaperUrl != null;
@@ -65,16 +85,12 @@ mixin _HomeDashboardViewMixin
               child: wallpaperUrl.startsWith('assets/')
                   ? Builder(
                       builder: (context) {
+                        final provider = AssetImage(wallpaperUrl);
                         _scheduleWallpaperColorExtraction(
-                          AssetImage(wallpaperUrl),
+                          provider,
                           wallpaperUrl,
                         );
-                        return Image.asset(
-                          wallpaperUrl,
-                          fit: BoxFit.cover,
-                          color: const Color(0x66000000),
-                          colorBlendMode: BlendMode.srcOver,
-                        );
+                        return _buildWallpaperDisplay(provider);
                       },
                     )
                   : localWallpaperProvider != null
@@ -85,12 +101,7 @@ mixin _HomeDashboardViewMixin
                           provider,
                           wallpaperUrl,
                         );
-                        return Image(
-                          image: provider,
-                          fit: BoxFit.cover,
-                          color: const Color(0x66000000),
-                          colorBlendMode: BlendMode.srcOver,
-                        );
+                        return _buildWallpaperDisplay(provider);
                       },
                     )
                   : _WallpaperNetworkImage(
@@ -926,22 +937,32 @@ mixin _HomeDashboardViewMixin
                                                   'todos',
                                                   'timeline',
                                                 }.contains(key);
-                                            return AppSystemUiRegion(
-                                              backgroundBrightness:
-                                                  cardBackgroundBrightness,
-                                              child: Padding(
-                                                padding: const EdgeInsets.only(
-                                                  bottom: 24.0,
-                                                ),
-                                                child:
-                                                    isolateTabletSection &&
-                                                        !showWallpaper
-                                                    ? RepaintBoundary(
-                                                        child: section,
-                                                      )
-                                                    : section,
-                                              ),
-                                            );
+                                            final columnSection =
+                                                AppSystemUiRegion(
+                                                  backgroundBrightness:
+                                                      cardBackgroundBrightness,
+                                                  child: Padding(
+                                                    padding:
+                                                        const EdgeInsets.only(
+                                                          bottom: 24.0,
+                                                        ),
+                                                    child:
+                                                        isolateTabletSection &&
+                                                            !showWallpaper
+                                                        ? RepaintBoundary(
+                                                            child: section,
+                                                          )
+                                                        : section,
+                                                  ),
+                                                );
+                                            return AppPlatform.isWindows
+                                                ? ViewportManagedContent(
+                                                    key: ValueKey<String>(
+                                                      'windows-dashboard-$key',
+                                                    ),
+                                                    child: columnSection,
+                                                  )
+                                                : columnSection;
                                           })
                                           .toList();
                                     }

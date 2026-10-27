@@ -19,6 +19,7 @@ import 'island_ipc_paths.dart';
 import 'island_win32.dart';
 import 'island_reminder.dart';
 import '../storage_service.dart';
+import '../services/windows_render_cache_policy.dart';
 
 /// Get the action file for IPC
 Future<File> _getActionFile() async {
@@ -152,6 +153,7 @@ Future<void> islandMain(List<String> args) async {
   clearIslandHwndCache();
 
   WidgetsFlutterBinding.ensureInitialized();
+  await WindowsRenderCachePolicy.configure(island: true);
   const enableNativeChrome = bool.fromEnvironment(
     'ENABLE_WINDOWS_ISLAND_NATIVE_CHROME',
   );

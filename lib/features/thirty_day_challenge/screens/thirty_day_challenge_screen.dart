@@ -13,6 +13,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../services/browser_file_service.dart';
 import '../../../utils/app_platform.dart';
+import '../../../utils/base64_image_provider.dart';
 import '../../../utils/app_image_filters.dart';
 import '../../../../widgets/optional_liquid_glass_surface.dart';
 import '../../../widgets/floating_glass_control.dart';
@@ -1795,8 +1796,9 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       itemBuilder: (context, index) {
         final task = state.tasks[index];
         final isSelected = _currentIndex == index;
-        final hasImage =
-            task.imageBase64 != null && task.imageBase64!.isNotEmpty;
+        final overviewImageProvider = task.isCompleted
+            ? _challengeImageProvider(task.imageBase64)
+            : null;
         final taskColors = _challengeTaskGradientColors(task, scheme);
         final overviewColors = task.isCompleted
             ? [
@@ -1865,14 +1867,36 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
             child: Stack(
               fit: StackFit.expand,
               children: [
-                if (hasImage && task.isCompleted)
+                if (overviewImageProvider != null)
                   ClipRRect(
                     borderRadius: BorderRadius.circular(15),
                     child: Opacity(
                       opacity: 0.4,
-                      child: Image.memory(
-                        base64Decode(task.imageBase64!),
-                        fit: BoxFit.cover,
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final pixelRatio =
+                              MediaQuery.maybeDevicePixelRatioOf(context) ??
+                              1.0;
+                          final cacheWidth = (constraints.maxWidth * pixelRatio)
+                              .ceil()
+                              .clamp(1, 4096)
+                              .toInt();
+                          final cacheHeight =
+                              (constraints.maxHeight * pixelRatio)
+                                  .ceil()
+                                  .clamp(1, 4096)
+                                  .toInt();
+                          final ImageProvider<Object> imageProvider =
+                              AppPlatform.isWindows
+                              ? ResizeImage(
+                                  overviewImageProvider,
+                                  width: cacheWidth,
+                                  height: cacheHeight,
+                                  policy: ResizeImagePolicy.fit,
+                                )
+                              : overviewImageProvider;
+                          return Image(image: imageProvider, fit: BoxFit.cover);
+                        },
                       ),
                     ),
                   ),
@@ -2471,8 +2495,11 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     ThirtyDayChallengeTask task,
     ColorScheme scheme,
   ) {
-    final imageBytes = _decodeChallengeImage(task.imageBase64);
-    final hasImage = imageBytes != null;
+    final imageProvider = _challengeImageProvider(
+      task.imageBase64,
+      limitWindowsDecode: true,
+    );
+    final hasImage = imageProvider != null;
     final taskColors = _challengeTaskGradientColors(task, scheme);
     final cardColors = task.isCompleted
         ? [
@@ -2508,10 +2535,10 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                 ]
               : cardColors,
         ),
-        image: imageBytes == null
+        image: imageProvider == null
             ? null
             : DecorationImage(
-                image: MemoryImage(imageBytes),
+                image: imageProvider,
                 fit: BoxFit.cover,
                 filterQuality: FilterQuality.medium,
               ),
@@ -2983,10 +3010,23 @@ class _ChallengeTaskCard extends StatefulWidget {
   State<_ChallengeTaskCard> createState() => _ChallengeTaskCardState();
 }
 
-Uint8List? _decodeChallengeImage(String? encoded) {
+ImageProvider<Object>? _challengeImageProvider(
+  String? encoded, {
+  bool limitWindowsDecode = false,
+}) {
   if (encoded == null || encoded.isEmpty) return null;
   try {
-    return base64Decode(encoded);
+    if (!AppPlatform.isWindows) return MemoryImage(base64Decode(encoded));
+    // Validate without allocating another byte buffer on every card rebuild.
+    final provider = Base64ImageProvider(base64.normalize(encoded));
+    return limitWindowsDecode
+        ? ResizeImage(
+            provider,
+            width: 2048,
+            height: 2048,
+            policy: ResizeImagePolicy.fit,
+          )
+        : provider;
   } catch (_) {
     return null;
   }
@@ -3171,8 +3211,11 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
     final isCompactMobile =
         MediaQuery.sizeOf(context).width < 600 &&
         MediaQuery.of(context).orientation == Orientation.portrait;
-    final imageBytes = _decodeChallengeImage(task.imageBase64);
-    final hasImage = imageBytes != null;
+    final imageProvider = _challengeImageProvider(
+      task.imageBase64,
+      limitWindowsDecode: true,
+    );
+    final hasImage = imageProvider != null;
     final taskColors = _challengeTaskGradientColors(task, scheme);
     final cardColors = task.isCompleted
         ? [
@@ -3214,7 +3257,7 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
         ),
         image: hasImage
             ? DecorationImage(
-                image: MemoryImage(imageBytes),
+                image: imageProvider,
                 fit: BoxFit.cover,
                 alignment: Alignment.center,
                 filterQuality: FilterQuality.medium,

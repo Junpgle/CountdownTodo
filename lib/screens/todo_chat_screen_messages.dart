@@ -397,11 +397,34 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
     final Widget preview;
     if (attachment.kind == ChatAttachmentKind.image) {
       preview = attachment.bytes != null
-          ? Image.memory(
-              attachment.bytes!,
-              width: width,
-              height: height,
-              fit: BoxFit.cover,
+          ? Builder(
+              builder: (context) {
+                final pixelRatio =
+                    MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0;
+                final cacheWidth = (width * pixelRatio)
+                    .ceil()
+                    .clamp(1, 4096)
+                    .toInt();
+                final cacheHeight = (height * pixelRatio)
+                    .ceil()
+                    .clamp(1, 4096)
+                    .toInt();
+                final ImageProvider<Object> imageProvider =
+                    AppPlatform.isWindows
+                    ? ResizeImage(
+                        MemoryImage(attachment.bytes!),
+                        width: cacheWidth,
+                        height: cacheHeight,
+                        policy: ResizeImagePolicy.fit,
+                      )
+                    : MemoryImage(attachment.bytes!);
+                return Image(
+                  image: imageProvider,
+                  width: width,
+                  height: height,
+                  fit: BoxFit.cover,
+                );
+              },
             )
           : attachment.path.isNotEmpty && localImageExists(attachment.path)
           ? localImageWidget(
