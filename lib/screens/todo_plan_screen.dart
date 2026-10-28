@@ -437,6 +437,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
       final actualSeconds = records.isEmpty
           ? max(b.actualFocusSeconds, 0)
           : (actualRecordIndex ??= _PlanActualRecordIndex(
+              blocks,
               records,
             )).secondsFor(b);
       if (actualSeconds <= 0 && b.endTime < now) {
@@ -804,52 +805,24 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
 }
 
 class _PlanActualRecordIndex {
-  final Map<String, List<PomodoroRecord>> _byPlanBlockId = {};
-  final Map<String, PomodoroRecord> _byRecordId = {};
-  final Map<String, List<PomodoroRecord>> _legacyByTodoId = {};
+  late final Map<String, int> _secondsByPlanBlockId;
 
-  _PlanActualRecordIndex(Iterable<PomodoroRecord> records) {
-    for (final record in records) {
-      if (record.isDeleted) continue;
-      _byRecordId.putIfAbsent(record.uuid, () => record);
-
-      final planBlockId = record.planBlockId;
-      if (planBlockId?.isNotEmpty == true) {
-        (_byPlanBlockId[planBlockId!] ??= <PomodoroRecord>[]).add(record);
-      } else if (record.todoUuid != null) {
-        (_legacyByTodoId[record.todoUuid!] ??= <PomodoroRecord>[]).add(record);
-      }
-    }
+  _PlanActualRecordIndex(
+    List<TodoPlanBlock> blocks,
+    Iterable<PomodoroRecord> records,
+  ) {
+    final actualSeconds = PomodoroPlanFocusAllocator.actualSecondsByBlock(
+      blocks: blocks,
+      records: records.toList(),
+    );
+    _secondsByPlanBlockId = {
+      for (var index = 0; index < blocks.length; index++)
+        blocks[index].uuid: actualSeconds[index],
+    };
   }
 
-  int secondsFor(TodoPlanBlock block) {
-    if (block.isDeleted) return max(block.actualFocusSeconds, 0);
-
-    final matchedRecordIds = <String>{};
-    var linkedRecordSeconds = 0;
-    void addRecord(PomodoroRecord record) {
-      if (matchedRecordIds.add(record.uuid)) {
-        linkedRecordSeconds += record.effectiveDuration;
-      }
-    }
-
-    for (final record in _byPlanBlockId[block.uuid] ?? const []) {
-      addRecord(record);
-    }
-    for (final recordId in block.pomodoroRecordIds) {
-      final record = _byRecordId[recordId];
-      if (record != null) addRecord(record);
-    }
-
-    for (final record in _legacyByTodoId[block.todoId] ?? const []) {
-      final recordEnd =
-          record.endTime ?? record.startTime + record.effectiveDuration * 1000;
-      if (record.startTime < block.endTime && recordEnd > block.startTime) {
-        addRecord(record);
-      }
-    }
-    return max(block.actualFocusSeconds, linkedRecordSeconds);
-  }
+  int secondsFor(TodoPlanBlock block) =>
+      _secondsByPlanBlockId[block.uuid] ?? max(0, block.actualFocusSeconds);
 }
 
 class _PlanGridView extends StatefulWidget {
