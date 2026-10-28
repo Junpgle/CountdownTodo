@@ -9,6 +9,8 @@ import '../../../utils/page_transitions.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 import '../screens/finance_category_detail_screen.dart';
+import 'finance_calendar_panel.dart';
+import 'finance_glass_segment_selector.dart';
 
 import '../../../utils/app_dialogs.dart';
 
@@ -19,6 +21,8 @@ double financeBottomContentPaddingFor(BuildContext context) {
 }
 
 enum _FinanceOverviewView { month, week, day }
+
+enum _FinanceOverviewMode { report, calendar }
 
 typedef _FinanceOverviewPeriodCacheKey = ({
   List<FinanceTransaction> transactions,
@@ -63,6 +67,7 @@ class FinanceOverviewPanel extends StatefulWidget {
   final String? openingBalanceStartDate;
   final Map<String, FinanceCategory> categories;
   final VoidCallback onAdd;
+  final Future<void> Function(DateTime date, GlobalKey sourceKey)? onAddForDate;
   final VoidCallback? onEditOpeningBalance;
   final GlobalKey addActionKey;
   final bool categoryTapOpensLedger;
@@ -89,6 +94,7 @@ class FinanceOverviewPanel extends StatefulWidget {
     this.openingBalanceStartDate,
     required this.categories,
     required this.onAdd,
+    this.onAddForDate,
     this.onEditOpeningBalance,
     required this.addActionKey,
     this.categoryTapOpensLedger = true,
@@ -105,6 +111,7 @@ class FinanceOverviewPanel extends StatefulWidget {
 }
 
 class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
+  _FinanceOverviewMode _mode = _FinanceOverviewMode.report;
   _FinanceOverviewView _view = _FinanceOverviewView.month;
   late DateTime _focusedDate;
   int? _cumulativeBalanceMinor;
@@ -193,6 +200,25 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
 
   @override
   Widget build(BuildContext context) {
+    if (_mode == _FinanceOverviewMode.calendar) {
+      return FinanceCalendarPanel(
+        topPadding: widget.topPadding,
+        clock: clock,
+        month: month,
+        transactions: transactions,
+        cumulativeBalanceEvents: widget.cumulativeBalanceEvents,
+        openingBalanceMinor: widget.openingBalanceMinor,
+        openingBalanceStartDate: widget.openingBalanceStartDate,
+        categories: categories,
+        onRefresh: onRefresh,
+        onMonthChanged: (value) => onMonthChanged?.call(value),
+        onShowReport: () => setState(() => _mode = _FinanceOverviewMode.report),
+        onAdd: widget.onAddForDate == null
+            ? null
+            : (date, sourceKey) => widget.onAddForDate!(date, sourceKey),
+        onOpenTransaction: widget.onOpenTransaction,
+      );
+    }
     final colorScheme = Theme.of(context).colorScheme;
     final period = _currentPeriod;
     final analytics = _overviewAnalytics(period);
@@ -211,6 +237,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
           bottomPadding,
         ),
         children: [
+          _buildOverviewModeSelector(),
+          const SizedBox(height: 10),
           _buildViewSelector(context),
           const SizedBox(height: 10),
           _buildPeriodNavigator(context),
@@ -299,6 +327,26 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
           _buildCumulativeBalanceCard(context, colorScheme),
         ],
       ),
+    );
+  }
+
+  Widget _buildOverviewModeSelector() {
+    return FinanceGlassSegmentSelector<_FinanceOverviewMode>(
+      keyPrefix: 'finance-overview-mode-selector',
+      segments: const [
+        FinanceGlassSegment(
+          id: 'report',
+          label: '报表',
+          value: _FinanceOverviewMode.report,
+        ),
+        FinanceGlassSegment(
+          id: 'calendar',
+          label: '日历',
+          value: _FinanceOverviewMode.calendar,
+        ),
+      ],
+      selected: _mode,
+      onSelected: (value) => setState(() => _mode = value),
     );
   }
 

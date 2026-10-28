@@ -282,6 +282,7 @@ todo.md
 !/test/features/finance/
 /test/features/finance/*
 !/test/features/finance/finance_cumulative_balance_test.dart
+!/test/features/finance/finance_calendar_panel_test.dart
 !/test/features/finance/finance_models_test.dart
 !/test/features/finance/finance_schema_test.dart
 !/test/features/finance/finance_sync_test.dart

@@ -469,12 +469,15 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     final overviewFrom = financeCalendarDayOffset(from, -7);
     final overviewTo = financeCalendarDayOffset(to, 7);
     final now = widget.clock();
+    final balanceEventsThroughAt = overviewTo.isAfter(now)
+        ? overviewTo.millisecondsSinceEpoch - 1
+        : now.millisecondsSinceEpoch;
     final values = await Future.wait<dynamic>([
       // 这个范围已经包含本月，后续在内存中切出本月账单，避免重复查询。
       FinanceRepository.getTransactions(from: overviewFrom, to: overviewTo),
       refreshCumulativeBalanceEvents
           ? FinanceRepository.getCumulativeBalanceEvents(
-              throughAt: now.millisecondsSinceEpoch,
+              throughAt: balanceEventsThroughAt,
             )
           : Future.value(_cumulativeBalanceEvents),
       FinanceRepository.getCategories(
@@ -633,11 +636,13 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   Future<void> _openEntry({
     FinanceTransaction? transaction,
     FinanceEntryTemplate? initialTemplate,
+    DateTime? initialDate,
     GlobalKey? sourceKey,
   }) async {
     final page = FinanceEntryScreen(
       transaction: transaction,
       initialTemplate: initialTemplate,
+      initialDate: initialDate,
     );
     final result = sourceKey == null
         ? await Navigator.of(context).push<FinanceTransaction>(
@@ -993,10 +998,13 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   }
 
   void _setMonth(DateTime value) {
+    final selectedMonth = DateTime(value.year, value.month);
+    final now = widget.clock();
+    final isFutureMonth = selectedMonth.isAfter(DateTime(now.year, now.month));
     setState(() {
-      _month = DateTime(value.year, value.month);
+      _month = selectedMonth;
     });
-    _load(refreshCumulativeBalanceEvents: false);
+    _load(refreshCumulativeBalanceEvents: isFutureMonth);
   }
 
   Future<void> _setLedgerDateRange(DateTimeRange? value) async {
@@ -1355,6 +1363,10 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                           categoryTapOpensLedger: _categoryTapOpensLedger,
                           onAdd: () =>
                               _openEntry(sourceKey: _overviewAddActionKey),
+                          onAddForDate: (date, sourceKey) => _openEntry(
+                            initialDate: date,
+                            sourceKey: sourceKey,
+                          ),
                           addActionKey: _overviewAddActionKey,
                           onRefresh: _load,
                           onMonthChanged: _setMonth,
