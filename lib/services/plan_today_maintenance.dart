@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import '../models.dart';
 import '../storage_service.dart';
 import '../utils/calendar_date_math.dart';
@@ -44,11 +42,26 @@ class PlanTodayMaintenance {
               r.startTime < range.endExclusive.millisecondsSinceEpoch,
         )
         .toList();
-    for (final block in blocks) {
+    final actualSecondsByBlock =
+        PomodoroPlanFocusAllocator.actualSecondsByBlock(
+          blocks: blocks,
+          records: records,
+          legacyBlockMatcher: (record, block) {
+            if (record.todoUuid?.isNotEmpty == true &&
+                record.todoUuid == block.todoId) {
+              return true;
+            }
+            final recordTitle = _normalizeTitle(record.todoTitle);
+            final blockTitle = _normalizeTitle(block.titleSnapshot);
+            return recordTitle.isNotEmpty && recordTitle == blockTitle;
+          },
+        );
+    for (var blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
+      final block = blocks[blockIndex];
       if (block.isDeleted || block.endTime >= now.millisecondsSinceEpoch) {
         continue;
       }
-      final actualSeconds = _actualSecondsForBlock(block, records);
+      final actualSeconds = actualSecondsByBlock[blockIndex];
       TodoPlanStatus? nextStatus;
       if (block.status == TodoPlanStatus.planned && actualSeconds <= 0) {
         nextStatus = TodoPlanStatus.missed;
@@ -88,82 +101,8 @@ class PlanTodayMaintenance {
     return run.planBlockId == block.uuid || run.todoUuid == block.todoId;
   }
 
-  bool _timeRangesOverlap(
-    int startA,
-    int endAExclusive,
-    int startB,
-    int endBExclusive,
-  ) {
-    return endAExclusive > startB && startA < endBExclusive;
-  }
-
   String _normalizeTitle(String? s) {
     if (s == null) return '';
     return s.replaceAll(_titleWhitespacePattern, '').trim();
-  }
-
-  bool _isRecordAssociatedWithBlock(
-    PomodoroRecord record,
-    TodoPlanBlock block,
-  ) {
-    if (record.isDeleted || block.isDeleted) return false;
-
-    if (record.planBlockId != null &&
-        record.planBlockId!.isNotEmpty &&
-        record.planBlockId == block.uuid) {
-      return true;
-    }
-
-    if (block.pomodoroRecordIds.contains(record.uuid)) {
-      return true;
-    }
-
-    if (record.planBlockId?.isNotEmpty == true) {
-      return false;
-    }
-
-    if (record.todoUuid != null &&
-        record.todoUuid!.isNotEmpty &&
-        block.todoId.isNotEmpty &&
-        record.todoUuid == block.todoId) {
-      final recordEnd =
-          record.endTime ??
-          (record.startTime + record.effectiveDuration * 1000);
-      return _timeRangesOverlap(
-        record.startTime,
-        recordEnd,
-        block.startTime,
-        block.endTime,
-      );
-    }
-
-    final recordTitle = _normalizeTitle(record.todoTitle);
-    final blockTitle = _normalizeTitle(block.titleSnapshot);
-    if (recordTitle.isNotEmpty && blockTitle.isNotEmpty) {
-      final recordEnd =
-          record.endTime ??
-          (record.startTime + record.effectiveDuration * 1000);
-      if (_timeRangesOverlap(
-            record.startTime,
-            recordEnd,
-            block.startTime,
-            block.endTime,
-          ) &&
-          recordTitle == blockTitle) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  int _actualSecondsForBlock(
-    TodoPlanBlock block,
-    List<PomodoroRecord> records,
-  ) {
-    final linkedRecordSeconds = records
-        .where((record) => _isRecordAssociatedWithBlock(record, block))
-        .fold<int>(0, (sum, record) => sum + record.effectiveDuration);
-    return max(block.actualFocusSeconds, linkedRecordSeconds);
   }
 }

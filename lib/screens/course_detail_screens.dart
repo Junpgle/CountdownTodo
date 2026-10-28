@@ -343,8 +343,10 @@ class _PlanBlockDetailScreenState extends State<PlanBlockDetailScreen> {
       }
 
       final records = results[1] as List<PomodoroRecord>;
-      final progress = _PlanPomodoroProgressIndex(records)
-          .progressFor(latestBlock);
+      final progress = _PlanPomodoroProgressIndex(
+        planBlocks,
+        records,
+      ).progressFor(latestBlock);
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _block = latestBlock!;
@@ -1169,11 +1171,7 @@ class PomodoroDetailScreen extends StatelessWidget {
       endMs,
       totalPauseSeconds,
     );
-    final focusSeconds = _focusSeconds(
-      record,
-      totalElapsedSeconds,
-      totalPauseSeconds,
-    );
+    final focusSeconds = _focusSeconds(record);
     final hasPauseData = totalPauseSeconds > 0 || pauseIntervals.isNotEmpty;
 
     return AppDetailScreen(
@@ -1416,16 +1414,8 @@ class PomodoroDetailScreen extends StatelessWidget {
     return _clampDurationSeconds(elapsedSeconds);
   }
 
-  int _focusSeconds(
-    PomodoroRecord record,
-    int totalElapsedSeconds,
-    int totalPauseSeconds,
-  ) {
-    if (totalPauseSeconds <= 0) {
-      return _clampDurationSeconds(record.effectiveDuration);
-    }
-    return _clampDurationSeconds(totalElapsedSeconds - totalPauseSeconds);
-  }
+  int _focusSeconds(PomodoroRecord record) =>
+      _clampDurationSeconds(record.effectiveDuration);
 
   int _clampDurationSeconds(int seconds) => seconds.clamp(0, 24 * 3600).toInt();
 

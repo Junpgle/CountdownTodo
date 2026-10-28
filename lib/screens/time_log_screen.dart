@@ -751,7 +751,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         : null;
     final tc = tag != null ? hexColor(tag.color) : colorScheme.cdtFocus;
     final endMs = pom.endTime ?? (pom.startTime + pom.effectiveDuration * 1000);
-    final dur = (endMs - pom.startTime) ~/ 60000;
+    final dur = pom.effectiveDuration ~/ 60;
     final s = DateTime.fromMillisecondsSinceEpoch(pom.startTime);
     final e = DateTime.fromMillisecondsSinceEpoch(endMs);
     showAppModalBottomSheet(

@@ -281,102 +281,13 @@ class TimelineStatisticsService {
     return result;
   }
 
-  static int _actualSecondsForBlock(
-    TodoPlanBlock block,
-    List<PomodoroRecord> records,
-  ) {
-    final linkedRecordSeconds = records
-        .where((record) => _recordBelongsToBlock(record, block))
-        .fold<int>(0, (sum, record) => sum + record.effectiveDuration);
-    return math.max(block.actualFocusSeconds, linkedRecordSeconds);
-  }
-
   static List<int> _actualSecondsByBlock(
     List<TodoPlanBlock> blocks,
     List<PomodoroRecord> records,
-  ) {
-    if (blocks.isEmpty) return const <int>[];
-    if (blocks.length * records.length <= 64) {
-      return [
-        for (final block in blocks) _actualSecondsForBlock(block, records),
-      ];
-    }
-
-    final blocksById = <String, List<int>>{};
-    final blocksByTodoId = <String, List<int>>{};
-    final explicitBlocksByRecordId = <String, Set<int>>{};
-    for (var blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
-      final block = blocks[blockIndex];
-      blocksById.putIfAbsent(block.uuid, () => []).add(blockIndex);
-      blocksByTodoId.putIfAbsent(block.todoId, () => []).add(blockIndex);
-      for (final recordId in block.pomodoroRecordIds) {
-        explicitBlocksByRecordId
-            .putIfAbsent(recordId, () => <int>{})
-            .add(blockIndex);
-      }
-    }
-
-    final linkedSecondsByBlock = List<int>.filled(blocks.length, 0);
-    for (final record in records) {
-      final explicitlyLinked = explicitBlocksByRecordId[record.uuid];
-      if (explicitlyLinked != null) {
-        for (final blockIndex in explicitlyLinked) {
-          linkedSecondsByBlock[blockIndex] += record.effectiveDuration;
-        }
-      }
-
-      final planBlockId = record.planBlockId;
-      final directlyLinked = planBlockId == null
-          ? null
-          : blocksById[planBlockId];
-      if (directlyLinked != null) {
-        for (final blockIndex in directlyLinked) {
-          if (explicitlyLinked?.contains(blockIndex) == true) continue;
-          linkedSecondsByBlock[blockIndex] += record.effectiveDuration;
-        }
-      }
-
-      final todoUuid = record.todoUuid;
-      if (planBlockId?.isNotEmpty == true || todoUuid == null) continue;
-      final candidateBlocks = blocksByTodoId[todoUuid];
-      if (candidateBlocks == null) continue;
-
-      final recordEnd =
-          record.endTime ?? record.startTime + record.effectiveDuration * 1000;
-      for (final blockIndex in candidateBlocks) {
-        final block = blocks[blockIndex];
-        if (planBlockId == block.uuid ||
-            explicitlyLinked?.contains(blockIndex) == true) {
-          continue;
-        }
-        if (record.startTime < block.endTime && recordEnd > block.startTime) {
-          linkedSecondsByBlock[blockIndex] += record.effectiveDuration;
-        }
-      }
-    }
-    return [
-      for (var i = 0; i < blocks.length; i++)
-        math.max(blocks[i].actualFocusSeconds, linkedSecondsByBlock[i]),
-    ];
-  }
-
-  static bool _recordBelongsToBlock(
-    PomodoroRecord record,
-    TodoPlanBlock block,
-  ) {
-    if (record.planBlockId == block.uuid ||
-        block.pomodoroRecordIds.contains(record.uuid)) {
-      return true;
-    }
-    if (record.planBlockId?.isNotEmpty == true ||
-        record.todoUuid == null ||
-        record.todoUuid != block.todoId) {
-      return false;
-    }
-    final recordEnd =
-        record.endTime ?? record.startTime + record.effectiveDuration * 1000;
-    return record.startTime < block.endTime && recordEnd > block.startTime;
-  }
+  ) => PomodoroPlanFocusAllocator.actualSecondsByBlock(
+    blocks: blocks,
+    records: records,
+  );
 
   static List<TimelineRecurrenceSeriesStatistics> _calculateRecurrenceSeries({
     required List<TodoItem> todos,

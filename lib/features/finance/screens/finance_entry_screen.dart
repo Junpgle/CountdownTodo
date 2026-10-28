@@ -25,6 +25,7 @@ class FinanceEntryScreen extends StatefulWidget {
   final FinanceTransaction? originalTransaction;
   final FinanceEntryTemplate? initialTemplate;
   final FinanceEntryDraft? initialDraft;
+  final DateTime? initialDate;
 
   const FinanceEntryScreen({
     super.key,
@@ -32,6 +33,7 @@ class FinanceEntryScreen extends StatefulWidget {
     this.originalTransaction,
     this.initialTemplate,
     this.initialDraft,
+    this.initialDate,
   });
 
   @override
@@ -124,7 +126,13 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     }
     _date = transaction == null
         ? draft == null
-              ? now
+              ? widget.initialDate == null
+                    ? now
+                    : DateTime(
+                        widget.initialDate!.year,
+                        widget.initialDate!.month,
+                        widget.initialDate!.day,
+                      )
               : dateFromKey(draft.transactionDate)
         : dateFromKey(transaction.transactionDate);
     if (transaction == null) {

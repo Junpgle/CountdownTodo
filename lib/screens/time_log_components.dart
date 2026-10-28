@@ -2555,7 +2555,7 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
               : widget.tag.name,
           startTime: pomodoro.startTime,
           endTime: endTime,
-          durationMin: (endTime - pomodoro.startTime) ~/ 60000,
+          durationMin: pomodoro.effectiveDuration ~/ 60,
           id: pomodoro.uuid,
           timeRangeLabel: _tagDateTimeRange(start, end),
           isCompleted: pomodoro.isCompleted,
