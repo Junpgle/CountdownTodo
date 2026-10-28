@@ -1674,9 +1674,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       });
       await _clearRunStateSilently();
       await _askCompletionAndRecord(
-        sessionUuid: saved.sessionUuid,
+        runState: saved,
         durationSeconds: saved.focusSeconds,
-        startMs: saved.sessionStartMs,
         endMs: saved.targetEndMs,
       );
       await _proceedAfterRecord();
@@ -2192,25 +2191,40 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   Future<void> _switchTask(TodoItem? newTodo) async {
-    if (_phase != PomodoroPhase.focusing) return;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final actualSeconds = PomodoroRunState.computeActualSeconds(
-      _sessionStartMs,
-      _accumulatedMs,
-      endMs: now,
-    );
-
+    if (_phase != PomodoroPhase.focusing || _isHandlingEnd) return;
     final oldTodo = _boundTodo;
     final oldTagUuids = List<String>.from(_selectedTagUuids);
     final oldPlanBlockId = _planBlockId;
     final recommendedTagUuids = newTodo != null
         ? await _recommendedTagUuidsForTodo(newTodo)
         : <String>[];
+    if (!mounted || _phase != PomodoroPhase.focusing || _isHandlingEnd) return;
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final oldSessionStartMs = _sessionStartMs;
+    final wasPaused = _isPaused;
+    final pauseDurationMs = wasPaused && _pausedAtMs > 0
+        ? now - _pausedAtMs
+        : 0;
+    if (wasPaused) {
+      _finalizeOngoingPause(now);
+      _pauseTicker?.cancel();
+      _pauseTicker = null;
+    }
+    final actualSeconds = PomodoroRunState.computeActualSeconds(
+      oldSessionStartMs,
+      _accumulatedMs,
+      endMs: now,
+    );
+    final isCountUp = _settings.mode == TimerMode.countUp;
 
     setState(() {
       _boundTodo = newTodo;
       _planBlockId = null;
       _preparedFocusMinutes = null;
+      if (wasPaused && !isCountUp && pauseDurationMs > 0) {
+        _targetEndMs += pauseDurationMs;
+      }
       if (recommendedTagUuids.isNotEmpty) {
         _selectedTagUuids = recommendedTagUuids;
       }
@@ -2220,7 +2234,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _showLocalFloat(); // 🚀 关键：切换任务后刷新悬浮窗标题
 
     if (actualSeconds > 5) {
-      final isCountUp = _settings.mode == TimerMode.countUp;
       final pauseSecs = (_accumulatedMs / 1000).round();
       final intervals = List<PauseInterval>.from(_pauseIntervals);
       await PomodoroService.addRecord(
@@ -2229,7 +2242,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           todoUuid: oldTodo?.id,
           todoTitle: oldTodo?.title,
           tagUuids: oldTagUuids,
-          startTime: now - actualSeconds * 1000,
+          startTime: oldSessionStartMs,
           endTime: now,
           plannedDuration: isCountUp
               ? 0
@@ -2263,6 +2276,17 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       untilMs: isCountUpNow ? null : _targetEndMs,
     );
     await _saveCurrentRunState();
+    if (!isCountUpNow) {
+      _scheduleReminders(
+        _targetEndMs,
+        PomodoroPhase.focusing,
+        _boundTodo?.title,
+        _currentCycle,
+        _settings.cycles,
+        sessionUuid: _currentSessionUuid,
+      );
+    }
+    _startTicker();
 
     _syncService.sendSwitchSignal(
       todoUuid: newTodo?.id,
@@ -2328,9 +2352,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       );
 
       await _askCompletionAndRecord(
-        sessionUuid: _currentSessionUuid,
+        runState: _buildCurrentRunState(),
         durationSeconds: actualSeconds,
-        startMs: _sessionStartMs,
         endMs: now,
         isCountUp: isCountUp,
       );
@@ -2370,7 +2393,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         FloatWindowService.update(endMs: 0, isLocal: true),
       );
       await _askCompletionAndRecord(
-        sessionUuid: _currentSessionUuid,
+        runState: _buildCurrentRunState(),
         durationSeconds: isCountUp
             ? PomodoroRunState.computeActualSeconds(
                 _sessionStartMs,
@@ -2378,7 +2401,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                 endMs: now,
               )
             : (_activeFocusSeconds ?? _settings.focusMinutes * 60),
-        startMs: _sessionStartMs,
         endMs: now,
         isCountUp: isCountUp,
       );
@@ -2394,9 +2416,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   Future<bool> _askCompletionAndRecord({
-    required String sessionUuid,
+    required PomodoroRunState runState,
     required int durationSeconds,
-    required int startMs,
     required int endMs,
     bool isCountUp = false,
   }) async {
@@ -2469,9 +2490,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       ),
     );
     final record = PomodoroRecord.fromRunState(
-      state: _buildCurrentRunState(),
+      state: runState,
       status: PomodoroRecordStatus.completed,
-      endMs: isCountUp ? startMs + editedDuration * 1000 : endMs,
+      endMs: endMs,
       actualDuration: editedDuration,
       deviceId: _deviceId.isNotEmpty ? _deviceId : null,
     );
