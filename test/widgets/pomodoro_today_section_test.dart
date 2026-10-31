@@ -256,4 +256,49 @@ void main() {
       expect(find.textContaining('11:00 - 12:00 · 50分'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'PomodoroTodaySection preserves content without showing spinner during background refreshTrigger update',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: PomodoroTodaySection(
+                username: username,
+                refreshTrigger: 0,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await settle(tester);
+      expect(find.text('暂无专注记录'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+
+      // Trigger background reload
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: PomodoroTodaySection(
+                username: username,
+                refreshTrigger: 1,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Next frame should NOT switch to CircularProgressIndicator
+      await tester.pump();
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('暂无专注记录'), findsOneWidget);
+
+      await settle(tester);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('暂无专注记录'), findsOneWidget);
+    },
+  );
 }

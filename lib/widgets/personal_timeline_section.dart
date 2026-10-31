@@ -35,6 +35,7 @@ class PersonalTimelineSection extends StatefulWidget {
 class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
   List<TimelineEvent> _events = [];
   bool _isLoading = true;
+  bool _hasLoaded = false;
   bool _collapsed = false;
   int _loadRequest = 0;
   final GlobalKey _cardKey = GlobalKey();
@@ -63,10 +64,15 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
     if (!mounted) return;
     final request = ++_loadRequest;
     final username = widget.username;
-    setState(() {
-      _isLoading = true;
-      if (clearExisting) _events = [];
-    });
+    if (!_hasLoaded || clearExisting) {
+      setState(() {
+        _isLoading = true;
+        if (clearExisting) {
+          _events = [];
+          _hasLoaded = false;
+        }
+      });
+    }
 
     try {
       final now = DateTime.now();
@@ -81,11 +87,15 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
       setState(() {
         _events = events;
         _isLoading = false;
+        _hasLoaded = true;
       });
     } catch (e, stack) {
       debugPrint('PersonalTimelineSection _loadData error: $e\n$stack');
       if (mounted && request == _loadRequest && username == widget.username) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _hasLoaded = true;
+        });
       }
     }
   }
@@ -383,7 +393,7 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
       borderRadius: 24,
       fallbackDecoration: fallbackDecoration,
       padding: const EdgeInsets.all(18),
-      child: _isLoading
+      child: (_isLoading && !_hasLoaded)
           ? const Padding(
               padding: EdgeInsets.symmetric(vertical: 24),
               child: Center(child: CircularProgressIndicator(strokeWidth: 3)),

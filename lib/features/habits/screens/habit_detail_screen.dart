@@ -112,50 +112,68 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
         // 详情页仍可使用本地快照离线展示。
       }
     }
-    final sleepCoachingSnapshot = isSleepGoal
-        ? await HabitSleepCoachingService.load(username)
-        : null;
-    final rules = await HabitRepository.getRules(habitUuid: _goal.uuid);
+    final coachingFuture = isSleepGoal
+        ? HabitSleepCoachingService.load(username)
+        : Future<HabitSleepCoachingSnapshot?>.value(null);
+    final rulesFuture = HabitRepository.getRules(habitUuid: _goal.uuid);
+    final initialResults = await Future.wait([coachingFuture, rulesFuture]);
+    final sleepCoachingSnapshot =
+        initialResults[0] as HabitSleepCoachingSnapshot?;
+    final rules = initialResults[1] as List<HabitGoalRuleRevision>;
     final today = DateTime.now();
+    final todayDate = DateTime(today.year, today.month, today.day);
     final displayDate = HabitDayLoader.progressLogicalDateFor(
       goal: _goal,
       rules: rules,
       date: today,
     );
-    final progress = rules.isEmpty
-        ? null
-        : await HabitProgressCalculator.computePeriod(
+
+    // 并行拉取进度、连续概览、趋势分析与免扣卡，避免串行读库阻塞页面渲染。
+    final progressFuture = rules.isEmpty
+        ? Future<HabitProgress?>.value(null)
+        : HabitProgressCalculator.computePeriod(
             habit: _goal,
             rules: rules,
             logicalDate: displayDate,
           );
-    final summary = rules.isEmpty
-        ? null
-        : await HabitStreakService.summarize(habit: _goal, rules: rules);
-    final checkIns = progress?.checkIns ?? const <HabitCheckIn>[];
-    final todayDate = DateTime(today.year, today.month, today.day);
-    final timeTrend =
+    final summaryFuture = rules.isEmpty
+        ? Future<HabitStreakSummary?>.value(null)
+        : HabitStreakService.summarize(habit: _goal, rules: rules);
+    final timeTrendFuture =
         _goal.sourceType == HabitSourceType.timeCheckIn && rules.isNotEmpty
-        ? await HabitProgressCalculator.computeRange(
+        ? HabitProgressCalculator.computeRange(
             habit: _goal,
             rules: rules,
             from: HabitRuleResolver.addCalendarDays(todayDate, -29),
             to: todayDate,
           )
-        : const <HabitDayProgress>[];
-    // 时长型：今日专注记录（按绑定标签过滤）。
-    final focusRecords = _goal.sourceType == HabitSourceType.pomodoroTag
-        ? await HabitSourceResolver.recordsForTags(
+        : Future<List<HabitDayProgress>>.value(const <HabitDayProgress>[]);
+    final focusRecordsFuture = _goal.sourceType == HabitSourceType.pomodoroTag
+        ? HabitSourceResolver.recordsForTags(
             tagUuids: _goal.sourceIds,
-            from: DateTime(today.year, today.month, today.day),
+            from: todayDate,
             to: HabitRuleResolver.addCalendarDays(todayDate, 1),
           )
-        : const <PomodoroRecord>[];
-
-    final initialFreezeBalance = await HabitFreezeService.getAvailableCards(
+        : Future<List<PomodoroRecord>>.value(const <PomodoroRecord>[]);
+    final freezeBalanceFuture = HabitFreezeService.getAvailableCards(
       _goal.uuid,
     );
-    var freezeBalance = initialFreezeBalance;
+
+    final results = await Future.wait([
+      progressFuture,
+      summaryFuture,
+      timeTrendFuture,
+      focusRecordsFuture,
+      freezeBalanceFuture,
+    ]);
+
+    final progress = results[0] as HabitProgress?;
+    final summary = results[1] as HabitStreakSummary?;
+    final timeTrend = results[2] as List<HabitDayProgress>;
+    final focusRecords = results[3] as List<PomodoroRecord>;
+    var freezeBalance = results[4] as int;
+    final checkIns = progress?.checkIns ?? const <HabitCheckIn>[];
+
     if (summary != null && summary.currentStreak > 0) {
       final awarded = await HabitFreezeService.checkAndAwardCards(
         habit: _goal,

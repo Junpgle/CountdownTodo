@@ -34,6 +34,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
   FinanceTransaction? _latestTransaction;
   FinanceTransaction? _upcomingTransaction;
   bool _isLoading = true;
+  bool _hasLoaded = false;
   bool _hasError = false;
   int _loadGeneration = 0;
   Timer? _upcomingTransactionTimer;
@@ -67,10 +68,12 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
     _upcomingTransactionTimer?.cancel();
     _upcomingTransactionTimer = null;
     final generation = ++_loadGeneration;
-    setState(() {
-      _isLoading = true;
-      _hasError = false;
-    });
+    if (!_hasLoaded) {
+      setState(() {
+        _isLoading = true;
+        _hasError = false;
+      });
+    }
 
     final now = widget.clock();
     final monthStart = DateTime(now.year, now.month);
@@ -123,6 +126,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
         _upcomingTransaction = upcomingTransaction;
         _isLoading = false;
         _hasError = false;
+        _hasLoaded = true;
       });
       _scheduleUpcomingTransactionRefresh(
         asOfAt: asOfAt,
@@ -132,7 +136,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _isLoading = false;
-        _hasError = true;
+        _hasError = !_hasLoaded;
       });
     }
   }
@@ -255,7 +259,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
                   ),
                 ],
               ),
-              child: _isLoading
+              child: (_isLoading && !_hasLoaded)
                   ? SizedBox(
                       height: 78,
                       child: Center(

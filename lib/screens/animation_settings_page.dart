@@ -697,7 +697,9 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                             ),
                           ),
                           const SizedBox(height: 18),
-                          if (effectiveLiquidGlassEnabled) ...[
+                          if (effectiveLiquidGlassEnabled ||
+                              widget.initialTarget ==
+                                  'liquid_glass_transparency') ...[
                             _buildTransparencyPreviewBox(
                               isDark: isDark,
                               colorScheme: colorScheme,
@@ -836,7 +838,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                                     ),
                                     const SizedBox(width: 6),
                                     const Text(
-                                      '透光度',
+                                      '玻璃底色透明度',
                                       style: TextStyle(
                                         fontWeight: FontWeight.w600,
                                         fontSize: 13.5,

@@ -43,6 +43,8 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
   List<PomodoroRecord> _records = [];
   final Map<String, GlobalKey> _recordCardKeys = {};
   bool _loading = true;
+  bool _hasLoaded = false;
+  int _loadGeneration = 0;
   bool _collapsed = false;
   bool _showAllRecords = false;
   bool _isToday = true;
@@ -94,12 +96,19 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
   /// 只读本地数据（云端同步由首页统一负责）
   Future<void> _loadData() async {
     if (!mounted) return;
-    setState(() => _loading = true);
+    final loadGen = ++_loadGeneration;
+    if (!_hasLoaded) {
+      setState(() => _loading = true);
+    }
 
     try {
-      final todayRecords = await PomodoroService.getTodayRecords();
-      final yesterdayRecords = await PomodoroService.getYesterdayRecords();
-      if (!mounted) return;
+      final results = await Future.wait([
+        PomodoroService.getTodayRecords(),
+        PomodoroService.getYesterdayRecords(),
+      ]);
+      final todayRecords = results[0];
+      final yesterdayRecords = results[1];
+      if (!mounted || loadGen != _loadGeneration) return;
 
       var yesterdaySeconds = 0;
       for (final r in yesterdayRecords) {
@@ -158,6 +167,11 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
         (uuid, _) => !activeRecordUuids.contains(uuid),
       );
 
+      final recordsChanged =
+          !_hasLoaded ||
+          _records.length != records.length ||
+          _totalSeconds != totalSeconds;
+
       setState(() {
         _records = records;
         _isToday = isToday;
@@ -169,13 +183,19 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
         _maxHourlySeconds = maxHourlySeconds;
         _selectedHour = null;
         _loading = false;
+        _hasLoaded = true;
       });
 
-      _chartAnimationController.forward(from: 0.0);
+      if (recordsChanged) {
+        _chartAnimationController.forward(from: 0.0);
+      }
     } catch (e, stack) {
       debugPrint('PomodoroTodaySection _loadData error: $e\n$stack');
-      if (mounted) {
-        setState(() => _loading = false);
+      if (mounted && loadGen == _loadGeneration) {
+        setState(() {
+          _loading = false;
+          _hasLoaded = true;
+        });
       }
     }
   }
@@ -374,7 +394,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
               ),
               const SizedBox(width: 8),
               // 今日 / 昨日 标签
-              if (!_loading)
+              if (!_loading || _hasLoaded)
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
@@ -473,7 +493,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
       borderRadius: 24,
       fallbackDecoration: fallbackDecoration,
       padding: const EdgeInsets.all(18),
-      child: _loading
+      child: (_loading && !_hasLoaded)
           ? const Padding(
               padding: EdgeInsets.symmetric(vertical: 36),
               child: Center(child: CircularProgressIndicator(strokeWidth: 3)),

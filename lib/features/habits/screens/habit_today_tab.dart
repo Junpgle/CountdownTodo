@@ -53,6 +53,7 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
   HabitDaySnapshot? _groupedGoalsSnapshot;
   List<(String, IconData, List<HabitGoal>)> _groupedGoalsCache = const [];
   bool _loading = true;
+  int _loadGeneration = 0;
 
   @override
   void initState() {
@@ -70,6 +71,7 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
 
   Future<void> _loadData({bool showLoadingIndicator = false}) async {
     if (!mounted) return;
+    final loadGen = ++_loadGeneration;
     if (showLoadingIndicator || _snapshot == null) {
       setState(() => _loading = true);
     }
@@ -77,7 +79,7 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
       DateTime.now(),
       username: widget.username,
     );
-    if (mounted) {
+    if (mounted && loadGen == _loadGeneration) {
       setState(() {
         _snapshot = snapshot;
         _loading = false;

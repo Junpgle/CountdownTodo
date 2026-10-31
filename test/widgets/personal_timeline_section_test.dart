@@ -190,4 +190,49 @@ void main() {
       expect(decoration.color?.a, closeTo(0.92, 0.01));
     },
   );
+
+  testWidgets(
+    'PersonalTimelineSection preserves content without showing spinner during background refreshTrigger update',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: PersonalTimelineSection(
+                username: username,
+                refreshTrigger: 0,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await settle(tester);
+      expect(find.text('今日暂无时光轨迹'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+
+      // Trigger background reload
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: PersonalTimelineSection(
+                username: username,
+                refreshTrigger: 1,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Next frame should NOT switch to CircularProgressIndicator
+      await tester.pump();
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('今日暂无时光轨迹'), findsOneWidget);
+
+      await settle(tester);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('今日暂无时光轨迹'), findsOneWidget);
+    },
+  );
 }

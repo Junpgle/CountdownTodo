@@ -220,10 +220,11 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
         final colorScheme = Theme.of(context).colorScheme;
         final dark = isDark ?? colorScheme.brightness == Brightness.dark;
         final enhanced = configuration.mode == LiquidGlassEffectMode.enhanced;
+        final insideScrollable = _OptionalGlassScrollableScope.contains(context);
         final useStaticAndroidMaterial =
             AppPlatform.isAndroid &&
-            (MediaQuery.sizeOf(context).width >= 768.0 ||
-                _OptionalGlassScrollableScope.contains(context));
+            (MediaQuery.sizeOf(context).width >= 768.0 || insideScrollable);
+        final useStaticWebMaterial = AppPlatform.isWeb && insideScrollable;
         final useStaticWindowsMaterial = AppPlatform.isWindows;
         final useStaticOverlayMaterial =
             OptionalLiquidGlassOverlayScope.isActive(context);
@@ -243,7 +244,9 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
             useStaticOverlayMaterial ||
             useStaticWindowsMaterial ||
             (mode == OptionalLiquidGlassPanelMode.adaptiveRepeated &&
-                (!enhanced || useStaticAndroidMaterial));
+                (!enhanced ||
+                    useStaticAndroidMaterial ||
+                    useStaticWebMaterial));
         // Per-corner radii are only expressible by the tiers that clip with
         // BorderRadius; the superellipse shader shape needs a uniform radius.
         final resolvedRadius =
@@ -252,10 +255,16 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
         if (useStaticMaterial) {
           final isAdaptiveCard =
               mode == OptionalLiquidGlassPanelMode.adaptiveRepeated;
-          // Windows surfaces use a static tinted material. Repeated live
-          // BackdropFilters caused excessive GPU sampling during scrolls.
+          // Windows and Android scrollables use a static tinted material without
+          // live backdrop sampling. Repeated live BackdropFilters cause excessive
+          // GPU sampling and frame drops during scrolls. Static material mode and
+          // inner overlay panels also avoid repeated backdrop sampling.
           final shouldBlur =
-              !useStaticOverlayMaterial && !useStaticWindowsMaterial;
+              !useStaticOverlayMaterial &&
+              !useStaticWindowsMaterial &&
+              !useStaticAndroidMaterial &&
+              !useStaticWebMaterial &&
+              mode != OptionalLiquidGlassPanelMode.staticMaterial;
           final blurFilter = configuration.blurFilter;
           final originalOpacity =
               staticMaterialOpacity ??

@@ -191,11 +191,11 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
         SizedBox(height: widget.compact ? 2 : 4),
 
         // ── 内容 ──
-        if (_loading)
+        if (_loading && _snapshot == null)
           Center(
             child: Padding(
               padding: EdgeInsets.all(widget.compact ? 16 : 24),
-              child: CircularProgressIndicator(),
+              child: const CircularProgressIndicator(),
             ),
           )
         else if (_snapshot == null || _snapshot!.isEmpty)
