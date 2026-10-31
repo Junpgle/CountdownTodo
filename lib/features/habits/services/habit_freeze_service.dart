@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../models.dart';
+import '../../../services/pomodoro_service.dart';
 import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
@@ -133,13 +135,19 @@ abstract final class HabitFreezeService {
   /// 校验规则：
   /// 1. 当前习惯还有可用免扣卡；
   /// 2. 该日期属于计划打卡日；
-  /// 3. 该日期未达标且尚未被跳过或免扣保护；
-  /// 4. 绝不连续错过两次：前一个计划日不能也处于免扣状态，后一个计划日亦然。
+  /// 3. 该日期非未来日期；
+  /// 4. 该日期未达标（若当天已完成打卡达标则无需且不可使用免扣卡）；
+  /// 5. 该日期尚未被跳过或已被免扣保护；
+  /// 6. 绝不连续错过两次：前一个计划日不能也处于免扣状态，后一个计划日亦然。
   static Future<({bool canApply, String? reason})> canApplyFreeze({
     required HabitGoal goal,
     required HabitGoalRuleRevision rule,
     required DateTime logicalDate,
     required List<HabitCheckIn> checkIns,
+    List<HabitGoalRuleRevision>? rules,
+    List<TodoItem>? todos,
+    List<PomodoroRecord>? records,
+    DateTime? now,
   }) async {
     final balance = await getAvailableCards(goal.uuid);
     if (balance <= 0) {
@@ -149,6 +157,17 @@ abstract final class HabitFreezeService {
     final isPlanned = HabitRuleResolver.isPlannedDay(rule, logicalDate);
     if (!isPlanned) {
       return (canApply: false, reason: '该日期不是计划打卡日，无需使用免扣卡');
+    }
+
+    final nowVal = now ?? DateTime.now();
+    final today = DateTime(nowVal.year, nowVal.month, nowVal.day);
+    final targetDay = DateTime(
+      logicalDate.year,
+      logicalDate.month,
+      logicalDate.day,
+    );
+    if (targetDay.isAfter(today)) {
+      return (canApply: false, reason: '未来日期不可使用免扣卡');
     }
 
     final dateKey = HabitRuleResolver.dayKey(logicalDate);
@@ -161,6 +180,26 @@ abstract final class HabitFreezeService {
     );
     if (isAlreadyFrozen) {
       return (canApply: false, reason: '该日已经处于免扣卡守护中');
+    }
+
+    // 核心规则：当天已经完成打卡达标，则不可以使用免扣卡
+    final effectiveRules = rules != null && rules.isNotEmpty ? rules : [rule];
+    final progress = await HabitProgressCalculator.computePeriod(
+      habit: goal,
+      rules: effectiveRules,
+      logicalDate: logicalDate,
+      now: nowVal,
+      todos: todos,
+      records: records,
+      checkIns: checkIns,
+    );
+
+    if (progress.goalMet) {
+      return (canApply: false, reason: '当天已完成打卡达标，无需使用免扣卡');
+    }
+
+    if (progress.isSkipped) {
+      return (canApply: false, reason: '该日期已标记为跳过，无需使用免扣卡');
     }
 
     // 检查“绝不连续错过两次”原则：查找前一个计划日和后一个计划日
@@ -213,6 +252,10 @@ abstract final class HabitFreezeService {
     String? note,
     String? deviceId,
     String username = '',
+    List<HabitGoalRuleRevision>? rules,
+    List<TodoItem>? todos,
+    List<PomodoroRecord>? records,
+    DateTime? now,
   }) async {
     final allCheckIns = await HabitRepository.getCheckIns(habitUuid: goal.uuid);
 
@@ -221,6 +264,10 @@ abstract final class HabitFreezeService {
       rule: rule,
       logicalDate: logicalDate,
       checkIns: allCheckIns,
+      rules: rules,
+      todos: todos,
+      records: records,
+      now: now,
     );
 
     if (!validation.canApply) {
@@ -340,6 +387,8 @@ abstract final class HabitFreezeService {
         rule: rule,
         logicalDate: yesterday,
         checkIns: checkIns,
+        rules: [rule],
+        now: now,
       );
 
       if (validation.canApply) {
@@ -349,6 +398,8 @@ abstract final class HabitFreezeService {
           logicalDate: yesterday,
           note: '🛡️ 自动免扣卡守护 ($yesterdayKey)',
           username: username,
+          rules: [rule],
+          now: now,
         );
         if (applied) {
           protectedHabitNames.add(goal.name);

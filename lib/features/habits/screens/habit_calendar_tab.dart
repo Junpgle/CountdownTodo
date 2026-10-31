@@ -738,6 +738,7 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
             rule: rule,
             logicalDate: day.logicalDate,
             checkIns: checkIns,
+            rules: _rulesByHabit[goal.uuid],
           );
           if (!validation.canApply) {
             if (mounted) {
@@ -753,6 +754,7 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
             rule: rule,
             logicalDate: day.logicalDate,
             username: widget.username,
+            rules: _rulesByHabit[goal.uuid],
           );
           _loadData();
         }

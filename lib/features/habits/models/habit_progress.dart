@@ -96,9 +96,9 @@ class HabitProgress {
   /// 按设计文档规则推导单日状态。
   HabitDayStatus get dayStatus {
     if (!isPlanned) return HabitDayStatus.notPlanned;
+    if (goalMet) return HabitDayStatus.met;
     if (isFrozen) return HabitDayStatus.frozen;
     if (isSkipped) return HabitDayStatus.skipped;
-    if (goalMet) return HabitDayStatus.met;
     if (!isFinished) return HabitDayStatus.inProgress;
     return HabitDayStatus.missed;
   }

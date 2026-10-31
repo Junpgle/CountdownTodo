@@ -170,5 +170,76 @@ void main() {
       expect(validation.canApply, isFalse);
       expect(validation.reason, contains('没有可用的免扣卡'));
     });
+
+    test('当天已完成打卡达标时不可使用免扣卡', () async {
+      final goal = HabitGoal(
+        uuid: 'habit-test-9',
+        name: '喝水',
+        sourceType: HabitSourceType.quantityCheckIn,
+      );
+      final rule = HabitGoalRuleRevision(
+        uuid: 'rule-test-9',
+        habitUuid: goal.uuid,
+        effectiveFromDate: '2026-08-01',
+        periodType: HabitPeriodType.daily,
+        targetValue: 2000,
+      );
+
+      await HabitFreezeService.setAvailableCards(goal.uuid, 1);
+
+      final testDate = DateTime(2026, 8, 5);
+      final checkIns = [
+        HabitCheckIn(
+          habitUuid: goal.uuid,
+          ruleRevisionUuid: rule.uuid,
+          occurredAt: testDate.millisecondsSinceEpoch,
+          logicalDate: '2026-08-05',
+          value: 2000,
+          source: HabitCheckInSource.manual,
+        ),
+      ];
+
+      final validation = await HabitFreezeService.canApplyFreeze(
+        goal: goal,
+        rule: rule,
+        logicalDate: testDate,
+        checkIns: checkIns,
+        now: DateTime(2026, 8, 5, 20, 0),
+      );
+
+      expect(validation.canApply, isFalse);
+      expect(validation.reason, contains('已完成打卡达标'));
+    });
+
+    test('未来日期不可使用免扣卡', () async {
+      final goal = HabitGoal(
+        uuid: 'habit-test-10',
+        name: '早起',
+        sourceType: HabitSourceType.quantityCheckIn,
+      );
+      final rule = HabitGoalRuleRevision(
+        uuid: 'rule-test-10',
+        habitUuid: goal.uuid,
+        effectiveFromDate: '2026-08-01',
+        periodType: HabitPeriodType.daily,
+        targetValue: 1,
+      );
+
+      await HabitFreezeService.setAvailableCards(goal.uuid, 1);
+
+      final now = DateTime(2026, 8, 5, 10, 0);
+      final tomorrow = DateTime(2026, 8, 6);
+
+      final validation = await HabitFreezeService.canApplyFreeze(
+        goal: goal,
+        rule: rule,
+        logicalDate: tomorrow,
+        checkIns: const [],
+        now: now,
+      );
+
+      expect(validation.canApply, isFalse);
+      expect(validation.reason, contains('未来日期'));
+    });
   });
 }

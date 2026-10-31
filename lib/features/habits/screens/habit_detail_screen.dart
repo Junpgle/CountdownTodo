@@ -1289,6 +1289,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
       rule: effectiveRule,
       logicalDate: yesterday,
       checkIns: allCheckIns,
+      rules: _rules,
     );
     final canRemedyYesterday = validation.canApply;
 
@@ -1455,6 +1456,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                         rule: effectiveRule,
                         logicalDate: yesterday,
                         note: '🛡️ 手动补用免扣卡',
+                        rules: _rules,
                       );
                       if (applied && mounted) {
                         AppSnackBars.showSnackBar(
