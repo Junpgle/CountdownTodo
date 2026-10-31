@@ -416,32 +416,25 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                   isDesktop: isDesktop,
                 ),
                 SizedBox(height: isDesktop ? 20 : 16),
-                if (AppPlatform.isAndroid ||
-                    widget.powerSaveModeOverride != null) ...[
+                if ((AppPlatform.isAndroid ||
+                        widget.powerSaveModeOverride != null) &&
+                    powerSaveModeEnabled) ...[
                   Card(
                     elevation: 0,
-                    color: powerSaveModeEnabled
-                        ? colorScheme.primaryContainer.withValues(alpha: 0.72)
-                        : colorScheme.surfaceContainerLow,
+                    color: colorScheme.primaryContainer.withValues(alpha: 0.72),
                     child: ListTile(
                       leading: Icon(
                         Icons.battery_saver_rounded,
-                        color: powerSaveModeEnabled
-                            ? colorScheme.onPrimaryContainer
-                            : colorScheme.primary,
+                        color: colorScheme.onPrimaryContainer,
                       ),
                       title: const Text('应用省电模式'),
-                      subtitle: Text(
-                        powerSaveModeEnabled
-                            ? '已跟随 Android 系统自动开启：暂停装饰动画和玻璃特效，并降低传感器与后台探测频率。'
-                            : '自动跟随 Android 系统省电模式；退出系统省电后会恢复你的动效偏好。',
+                      subtitle: const Text(
+                        '已跟随 Android 系统自动开启：暂停装饰动画和玻璃特效，并降低传感器与后台探测频率。',
                       ),
                       trailing: Text(
-                        powerSaveModeEnabled ? '已开启' : '跟随系统',
+                        '已开启',
                         style: TextStyle(
-                          color: powerSaveModeEnabled
-                              ? colorScheme.onPrimaryContainer
-                              : colorScheme.onSurfaceVariant,
+                          color: colorScheme.onPrimaryContainer,
                           fontWeight: FontWeight.w700,
                         ),
                       ),

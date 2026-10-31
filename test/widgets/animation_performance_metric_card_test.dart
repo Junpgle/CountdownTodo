@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:countdown_todo/screens/animation_settings_page.dart';
 import 'package:countdown_todo/services/liquid_glass_effect_service.dart';
 import 'package:countdown_todo/widgets/animation_performance_metric_card.dart';
 
@@ -140,64 +141,77 @@ void main() {
   });
 
   group('AnimationPerformanceMetricCard Widget Tests', () {
-    testWidgets('renders all metric elements, caution note, and gauge', (
-      tester,
-    ) async {
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: SingleChildScrollView(
-              child: AnimationPerformanceMetricCard(
-                animationsEnabled: true,
-                motionBlurEnabled: false,
-                layerBlurEnabled: false,
-                liquidGlassEnabled: true,
-                liquidGlassMode: LiquidGlassEffectMode.standard,
-                liquidGlassBlur: 3,
-                liquidGlassTransparency: 35,
-                screenRadiusEnabled: true,
-                lazyLoadEnabled: true,
-                powerSaveModeEnabled: false,
-                testRefreshRate: 60.0,
+    testWidgets(
+      'initially collapsed showing only load pressure, expands to show all metrics',
+      (tester) async {
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: AnimationPerformanceMetricCard(
+                  animationsEnabled: true,
+                  motionBlurEnabled: false,
+                  layerBlurEnabled: false,
+                  liquidGlassEnabled: true,
+                  liquidGlassMode: LiquidGlassEffectMode.standard,
+                  liquidGlassBlur: 3,
+                  liquidGlassTransparency: 35,
+                  screenRadiusEnabled: true,
+                  lazyLoadEnabled: true,
+                  powerSaveModeEnabled: false,
+                  testRefreshRate: 60.0,
+                ),
               ),
             ),
           ),
-        ),
-      );
+        );
 
-      // 验证标题与刷新率指示
-      expect(find.text('流畅度与负载压力'), findsOneWidget);
-      expect(find.text('60 Hz 刷新率'), findsOneWidget);
+        // 验证初始状态：仅展示标题、刷新率以及综合负载压力指标
+        expect(find.text('流畅度与负载压力'), findsOneWidget);
+        expect(find.text('60 Hz 刷新率'), findsOneWidget);
+        expect(find.text('综合负载压力'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('animation-performance-pressure-text')),
+          findsOneWidget,
+        );
 
-      // 验证三大核心流畅度指标
-      expect(find.text('实时帧率'), findsOneWidget);
-      expect(find.text('渲染耗时'), findsOneWidget);
-      expect(find.text('流畅度达标率'), findsOneWidget);
+        // 验证未展开时详细数值与卡顿提示处于收起状态
+        expect(find.text('实时帧率'), findsNothing);
+        expect(find.text('渲染耗时'), findsNothing);
+        expect(find.text('流畅度达标率'), findsNothing);
+        expect(find.text('开启较多特效可能会导致卡顿'), findsNothing);
 
-      // 验证负载压力评估
-      expect(find.text('综合负载压力'), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('animation-performance-pressure-text')),
-        findsOneWidget,
-      );
+        // 验证滑动滑块已按需求移除，不再存在
+        expect(
+          find.byKey(const ValueKey('animation-performance-test-slider')),
+          findsNothing,
+        );
 
-      // 验证显式卡顿警示说明
-      expect(find.text('开启较多特效可能会导致卡顿'), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('animation-performance-caution-text')),
-        findsOneWidget,
-      );
+        // 点击展开按钮
+        final expandBtn = find.byKey(
+          const ValueKey('animation-performance-expand-btn'),
+        );
+        expect(expandBtn, findsOneWidget);
+        await tester.tap(expandBtn);
+        await tester.pumpAndSettle();
 
-      // 验证交互测试滑块
-      final sliderFinder = find.byKey(
-        const ValueKey('animation-performance-test-slider'),
-      );
-      expect(sliderFinder, findsOneWidget);
+        // 验证展开后所有详细数值与卡顿警示完全展示
+        expect(find.text('实时帧率'), findsOneWidget);
+        expect(find.text('渲染耗时'), findsOneWidget);
+        expect(find.text('流畅度达标率'), findsOneWidget);
+        expect(find.text('开启较多特效可能会导致卡顿'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('animation-performance-caution-text')),
+          findsOneWidget,
+        );
 
-      // 交互滑块操作测试
-      await tester.tap(sliderFinder);
-      await tester.pump();
-    });
+        // 点击收起按钮，回到仅展示综合负载压力状态
+        await tester.tap(expandBtn);
+        await tester.pumpAndSettle();
+        expect(find.text('实时帧率'), findsNothing);
+        expect(find.text('综合负载压力'), findsOneWidget);
+      },
+    );
 
     testWidgets('accurately reflects live frame timings and jank detection', (
       tester,
@@ -236,6 +250,7 @@ void main() {
                 screenRadiusEnabled: false,
                 lazyLoadEnabled: true,
                 powerSaveModeEnabled: false,
+                initiallyExpanded: true,
                 testRefreshRate: 60.0,
                 initialTimingsForTesting: [timingGood, timingBad],
               ),
@@ -277,6 +292,7 @@ void main() {
                   screenRadiusEnabled: true,
                   lazyLoadEnabled: false,
                   powerSaveModeEnabled: false,
+                  initiallyExpanded: true,
                   testRefreshRate: 120.0,
                 ),
               ),
@@ -293,6 +309,37 @@ void main() {
         expect(cautionTextFinder, findsOneWidget);
         final Text cautionText = tester.widget(cautionTextFinder);
         expect(cautionText.data, contains('卡顿'));
+      },
+    );
+  });
+
+  group('AnimationSettingsPage Power Save Mode Banner Tests', () {
+    testWidgets(
+      'power save mode banner is hidden when power save is disabled',
+      (tester) async {
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: AnimationSettingsPage(powerSaveModeOverride: false),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('应用省电模式'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'power save mode banner is shown only when power save is enabled',
+      (tester) async {
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: AnimationSettingsPage(powerSaveModeOverride: true),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('应用省电模式'), findsOneWidget);
+        expect(find.text('已开启'), findsOneWidget);
       },
     );
   });

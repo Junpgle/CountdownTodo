@@ -29,6 +29,9 @@ class AnimationPerformanceMetricCard extends StatefulWidget {
   final bool powerSaveModeEnabled;
   final bool isDesktop;
 
+  /// 初始是否展开详情数值（默认收起，仅展示综合负载压力）
+  final bool initiallyExpanded;
+
   /// 用于单元测试注入固定刷新率
   @visibleForTesting
   final double? testRefreshRate;
@@ -50,6 +53,7 @@ class AnimationPerformanceMetricCard extends StatefulWidget {
     required this.lazyLoadEnabled,
     required this.powerSaveModeEnabled,
     this.isDesktop = false,
+    this.initiallyExpanded = false,
     this.testRefreshRate,
     this.initialTimingsForTesting,
   });
@@ -65,16 +69,17 @@ class _AnimationPerformanceMetricCardState
   final List<FrameTiming> _recentTimings = [];
   Timer? _refreshTimer;
 
+  late bool _isExpanded;
   double _currentFps = 60.0;
   double _avgBuildMs = 1.8;
   double _avgRasterMs = 2.4;
   double _smoothnessPercent = 100.0;
   int _jankFrameCount = 0;
-  double _interactiveTestValue = 0.5;
 
   @override
   void initState() {
     super.initState();
+    _isExpanded = widget.initiallyExpanded;
     AnimationPerformanceMonitorService.registerConsumer();
     if (widget.initialTimingsForTesting != null) {
       _recentTimings.addAll(widget.initialTimingsForTesting!);
@@ -210,210 +215,78 @@ class _AnimationPerformanceMetricCardState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 顶栏：标题与当前屏幕刷新率
-            Row(
-              children: [
-                Icon(
-                  Icons.speed_rounded,
-                  color: pressure.getLevelColor(colorScheme),
-                  size: 22,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '流畅度与负载压力',
-                    style: TextStyle(
-                      fontSize: widget.isDesktop ? 17 : 15.5,
-                      fontWeight: FontWeight.bold,
-                      color: colorScheme.onSurface,
+            // 顶栏：标题、刷新率指示与展开/收起切换
+            InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: () {
+                setState(() {
+                  _isExpanded = !_isExpanded;
+                });
+              },
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.speed_rounded,
+                    color: pressure.getLevelColor(colorScheme),
+                    size: 22,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '流畅度与负载压力',
+                      style: TextStyle(
+                        fontSize: widget.isDesktop ? 17 : 15.5,
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.onSurface,
+                      ),
                     ),
                   ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primaryContainer.withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    '${targetRefreshRate.round()} Hz 刷新率',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: colorScheme.primary,
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
                     ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '实时监测界面渲染耗时与帧率稳定性，动态量化当前动效对系统与硬件的负载压力。',
-              style: TextStyle(
-                fontSize: 12,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // 悬浮监控操作栏：支持带到其他页面全局测试
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                ValueListenableBuilder<bool>(
-                  valueListenable: AnimationPerformanceMonitorService
-                      .isFloatingActiveListenable,
-                  builder: (context, isFloating, _) {
-                    return ActionChip(
-                      key: const ValueKey(
-                        'animation-performance-float-toggle-chip',
+                    decoration: BoxDecoration(
+                      color: colorScheme.primaryContainer.withValues(
+                        alpha: 0.5,
                       ),
-                      avatar: Icon(
-                        isFloating
-                            ? Icons.check_circle_rounded
-                            : Icons.picture_in_picture_alt_rounded,
-                        size: 15,
-                        color: isFloating
-                            ? colorScheme.primary
-                            : colorScheme.onSurfaceVariant,
-                      ),
-                      label: Text(
-                        isFloating ? '悬浮监控运行中 (点击关闭)' : '开启悬浮监控',
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: isFloating
-                              ? FontWeight.bold
-                              : FontWeight.w600,
-                          color: isFloating
-                              ? colorScheme.primary
-                              : colorScheme.onSurface,
-                        ),
-                      ),
-                      backgroundColor: isFloating
-                          ? colorScheme.primaryContainer.withValues(alpha: 0.5)
-                          : colorScheme.surfaceContainerHighest.withValues(
-                              alpha: 0.45,
-                            ),
-                      side: BorderSide(
-                        color: isFloating
-                            ? colorScheme.primary
-                            : colorScheme.outlineVariant.withValues(alpha: 0.5),
-                        width: 1,
-                      ),
-                      onPressed: () {
-                        AnimationPerformanceMonitorService.toggleFloating();
-                        if (!isFloating) {
-                          AppSnackBars.showSnackBar(
-                            context,
-                            const SnackBar(
-                              content: Text('已开启性能悬浮窗，可在全应用任意页面测试流畅度与负载压力'),
-                              duration: Duration(seconds: 2),
-                            ),
-                          );
-                        }
-                      },
-                    );
-                  },
-                ),
-                OutlinedButton.icon(
-                  key: const ValueKey(
-                    'animation-performance-float-navigate-btn',
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
+                    child: Text(
+                      '${targetRefreshRate.round()} Hz 刷新率',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.primary,
+                      ),
+                    ),
                   ),
-                  icon: const Icon(Icons.open_in_browser_rounded, size: 14),
-                  label: const Text(
-                    '带到其他界面测试',
-                    style: TextStyle(fontSize: 11.5),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    key: const ValueKey<String>(
+                      'animation-performance-expand-btn',
+                    ),
+                    visualDensity: VisualDensity.compact,
+                    tooltip: _isExpanded ? '收起详情' : '展开数值与详情',
+                    icon: Icon(
+                      _isExpanded
+                          ? Icons.expand_less_rounded
+                          : Icons.expand_more_rounded,
+                      color: colorScheme.onSurfaceVariant,
+                      size: 22,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _isExpanded = !_isExpanded;
+                      });
+                    },
                   ),
-                  onPressed: () {
-                    AnimationPerformanceMonitorService.showFloating();
-                    AppSnackBars.showSnackBar(
-                      context,
-                      const SnackBar(
-                        content: Text('已开启性能悬浮窗，可前往主页、课表或待办等界面实时测试'),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
-                    Navigator.of(context).maybePop();
-                  },
-                ),
-              ],
+                ],
+              ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
 
-            // 三项核心流畅度量化指标
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final isNarrow = constraints.maxWidth < 340;
-                final spacing = isNarrow ? 6.0 : 8.0;
-
-                return Row(
-                  children: [
-                    Expanded(
-                      child: _buildMetricTile(
-                        context: context,
-                        icon: Icons.insights_rounded,
-                        label: '实时帧率',
-                        value: '${_currentFps.toStringAsFixed(1)} FPS',
-                        valueKey: 'animation-performance-fps-text',
-                        subtext: '目标 ${targetRefreshRate.round()} Hz',
-                        accentColor: _currentFps >= (targetRefreshRate * 0.9)
-                            ? colorScheme.primary
-                            : colorScheme.error,
-                      ),
-                    ),
-                    SizedBox(width: spacing),
-                    Expanded(
-                      child: _buildMetricTile(
-                        context: context,
-                        icon: Icons.timer_outlined,
-                        label: '渲染耗时',
-                        value: '${totalRenderMs.toStringAsFixed(1)} ms',
-                        valueKey: 'animation-performance-render-time-text',
-                        subtext:
-                            '构建 ${_avgBuildMs.toStringAsFixed(1)} · 栅格 ${_avgRasterMs.toStringAsFixed(1)}',
-                        accentColor: totalRenderMs <= frameBudgetMs
-                            ? colorScheme.primary
-                            : colorScheme.error,
-                      ),
-                    ),
-                    SizedBox(width: spacing),
-                    Expanded(
-                      child: _buildMetricTile(
-                        context: context,
-                        icon: Icons.check_circle_outline_rounded,
-                        label: '流畅度达标率',
-                        value: '${_smoothnessPercent.toStringAsFixed(1)}%',
-                        valueKey: 'animation-performance-smoothness-text',
-                        subtext: _jankFrameCount == 0
-                            ? '近 60 帧无掉帧'
-                            : '$_jankFrameCount 帧超出预算',
-                        accentColor: _smoothnessPercent >= 90
-                            ? colorScheme.primary
-                            : colorScheme.tertiary,
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-
-            const SizedBox(height: 16),
-            const Divider(height: 1),
-            const SizedBox(height: 14),
-
-            // 综合负载压力评估条
+            // 综合负载压力评估条（收起时亦清晰展示整体负载量化）
             Row(
               children: [
                 Icon(
@@ -464,159 +337,294 @@ class _AnimationPerformanceMetricCardState
                 color: pressure.getLevelColor(colorScheme),
               ),
             ),
-            const SizedBox(height: 10),
 
-            // 特效负载构成细项
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: pressure.factors.map((factor) {
-                return Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest.withValues(
-                      alpha: 0.5,
-                    ),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    factor,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-
-            const SizedBox(height: 14),
-
-            // 明确注明：开启较多特效可能会导致卡顿
-            Container(
-              key: const ValueKey<String>('animation-performance-caution-card'),
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: pressure.isHighPressure
-                    ? colorScheme.errorContainer.withValues(alpha: 0.22)
-                    : colorScheme.surfaceContainerHighest.withValues(
-                        alpha: 0.45,
-                      ),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: pressure.isHighPressure
-                      ? colorScheme.error.withValues(alpha: 0.35)
-                      : colorScheme.outlineVariant.withValues(alpha: 0.35),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        pressure.isHighPressure
-                            ? Icons.warning_amber_rounded
-                            : Icons.info_outline_rounded,
-                        size: 18,
-                        color: pressure.isHighPressure
-                            ? colorScheme.error
-                            : colorScheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          pressure.cautionTitle, // 开启较多特效可能会导致卡顿
+            // 展开后展示所有详细数值指标与悬浮窗测试工具
+            AnimatedSize(
+              duration: const Duration(milliseconds: 240),
+              curve: Curves.easeInOutCubic,
+              child: _isExpanded
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 12),
+                        Text(
+                          '实时监测界面渲染耗时与帧率稳定性，动态量化当前动效对系统与硬件的负载压力。',
                           style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                            color: pressure.isHighPressure
-                                ? colorScheme.error
-                                : colorScheme.onSurface,
+                            fontSize: 12,
+                            color: colorScheme.onSurfaceVariant,
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    pressure.cautionDescription,
-                    key: const ValueKey<String>(
-                      'animation-performance-caution-text',
-                    ),
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      height: 1.45,
-                      color: pressure.isHighPressure
-                          ? colorScheme.onErrorContainer
-                          : colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+                        const SizedBox(height: 12),
 
-            const SizedBox(height: 12),
+                        // 悬浮监控操作栏：支持带到其他页面全局测试
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            ValueListenableBuilder<bool>(
+                              valueListenable:
+                                  AnimationPerformanceMonitorService
+                                      .isFloatingActiveListenable,
+                              builder: (context, isFloating, _) {
+                                return ActionChip(
+                                  key: const ValueKey(
+                                    'animation-performance-float-toggle-chip',
+                                  ),
+                                  avatar: Icon(
+                                    isFloating
+                                        ? Icons.check_circle_rounded
+                                        : Icons.picture_in_picture_alt_rounded,
+                                    size: 15,
+                                    color: isFloating
+                                        ? colorScheme.primary
+                                        : colorScheme.onSurfaceVariant,
+                                  ),
+                                  label: Text(
+                                    isFloating ? '悬浮监控运行中 (点击关闭)' : '开启悬浮监控',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: isFloating
+                                          ? FontWeight.bold
+                                          : FontWeight.w600,
+                                      color: isFloating
+                                          ? colorScheme.primary
+                                          : colorScheme.onSurface,
+                                    ),
+                                  ),
+                                  backgroundColor: isFloating
+                                      ? colorScheme.primaryContainer.withValues(
+                                          alpha: 0.5,
+                                        )
+                                      : colorScheme.surfaceContainerHighest
+                                            .withValues(alpha: 0.45),
+                                  side: BorderSide(
+                                    color: isFloating
+                                        ? colorScheme.primary
+                                        : colorScheme.outlineVariant.withValues(
+                                            alpha: 0.5,
+                                          ),
+                                    width: 1,
+                                  ),
+                                  onPressed: () {
+                                    AnimationPerformanceMonitorService.toggleFloating();
+                                    if (!isFloating) {
+                                      AppSnackBars.showSnackBar(
+                                        context,
+                                        const SnackBar(
+                                          content: Text(
+                                            '已开启性能悬浮窗，可在全应用任意页面测试流畅度与负载压力',
+                                          ),
+                                          duration: Duration(seconds: 2),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                );
+                              },
+                            ),
+                            OutlinedButton.icon(
+                              key: const ValueKey(
+                                'animation-performance-float-navigate-btn',
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              icon: const Icon(
+                                Icons.open_in_browser_rounded,
+                                size: 14,
+                              ),
+                              label: const Text(
+                                '带到其他界面测试',
+                                style: TextStyle(fontSize: 11.5),
+                              ),
+                              onPressed: () {
+                                AnimationPerformanceMonitorService.showFloating();
+                                AppSnackBars.showSnackBar(
+                                  context,
+                                  const SnackBar(
+                                    content: Text(
+                                      '已开启性能悬浮窗，可前往主页、课表或待办等界面实时测试',
+                                    ),
+                                    duration: Duration(seconds: 2),
+                                  ),
+                                );
+                                Navigator.of(context).maybePop();
+                              },
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
 
-            // 实时流畅度交互微调/测试带
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest.withValues(
-                  alpha: 0.3,
-                ),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.touch_app_outlined,
-                    size: 16,
-                    color: colorScheme.primary,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '滑动滑块即时产生连续帧，验证流畅度',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const Spacer(),
-                  SizedBox(
-                    width: widget.isDesktop ? 140 : 100,
-                    height: 24,
-                    child: SliderTheme(
-                      data: SliderTheme.of(context).copyWith(
-                        trackHeight: 3,
-                        thumbShape: const RoundSliderThumbShape(
-                          enabledThumbRadius: 6,
+                        // 三项核心流畅度量化指标
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final isNarrow = constraints.maxWidth < 340;
+                            final spacing = isNarrow ? 6.0 : 8.0;
+
+                            return Row(
+                              children: [
+                                Expanded(
+                                  child: _buildMetricTile(
+                                    context: context,
+                                    icon: Icons.insights_rounded,
+                                    label: '实时帧率',
+                                    value:
+                                        '${_currentFps.toStringAsFixed(1)} FPS',
+                                    valueKey: 'animation-performance-fps-text',
+                                    subtext:
+                                        '目标 ${targetRefreshRate.round()} Hz',
+                                    accentColor:
+                                        _currentFps >= (targetRefreshRate * 0.9)
+                                        ? colorScheme.primary
+                                        : colorScheme.error,
+                                  ),
+                                ),
+                                SizedBox(width: spacing),
+                                Expanded(
+                                  child: _buildMetricTile(
+                                    context: context,
+                                    icon: Icons.timer_outlined,
+                                    label: '渲染耗时',
+                                    value:
+                                        '${totalRenderMs.toStringAsFixed(1)} ms',
+                                    valueKey: 'animation-performance-render-time-text',
+                                    subtext:
+                                        '构建 ${_avgBuildMs.toStringAsFixed(1)} · 栅格 ${_avgRasterMs.toStringAsFixed(1)}',
+                                    accentColor: totalRenderMs <= frameBudgetMs
+                                        ? colorScheme.primary
+                                        : colorScheme.error,
+                                  ),
+                                ),
+                                SizedBox(width: spacing),
+                                Expanded(
+                                  child: _buildMetricTile(
+                                    context: context,
+                                    icon: Icons.check_circle_outline_rounded,
+                                    label: '流畅度达标率',
+                                    value:
+                                        '${_smoothnessPercent.toStringAsFixed(1)}%',
+                                    valueKey:
+                                        'animation-performance-smoothness-text',
+                                    subtext: _jankFrameCount == 0
+                                        ? '近 60 帧无掉帧'
+                                        : '$_jankFrameCount 帧超出预算',
+                                    accentColor: _smoothnessPercent >= 90
+                                        ? colorScheme.primary
+                                        : colorScheme.tertiary,
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
                         ),
-                        overlayShape: const RoundSliderOverlayShape(
-                          overlayRadius: 10,
+                        const SizedBox(height: 14),
+
+                        // 特效负载构成细项
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: pressure.factors.map((factor) {
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: colorScheme.surfaceContainerHighest
+                                    .withValues(alpha: 0.5),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                factor,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            );
+                          }).toList(),
                         ),
-                      ),
-                      child: Slider(
-                        key: const ValueKey<String>(
-                          'animation-performance-test-slider',
+                        const SizedBox(height: 14),
+
+                        // 明确注明：开启较多特效可能会导致卡顿
+                        Container(
+                          key: const ValueKey<String>(
+                            'animation-performance-caution-card',
+                          ),
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: pressure.isHighPressure
+                                ? colorScheme.errorContainer.withValues(
+                                    alpha: 0.22,
+                                  )
+                                : colorScheme.surfaceContainerHighest
+                                      .withValues(alpha: 0.45),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: pressure.isHighPressure
+                                  ? colorScheme.error.withValues(alpha: 0.35)
+                                  : colorScheme.outlineVariant.withValues(
+                                      alpha: 0.35,
+                                    ),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    pressure.isHighPressure
+                                        ? Icons.warning_amber_rounded
+                                        : Icons.info_outline_rounded,
+                                    size: 18,
+                                    color: pressure.isHighPressure
+                                        ? colorScheme.error
+                                        : colorScheme.onSurfaceVariant,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      pressure.cautionTitle, // 开启较多特效可能会导致卡顿
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: pressure.isHighPressure
+                                            ? colorScheme.error
+                                            : colorScheme.onSurface,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                pressure.cautionDescription,
+                                key: const ValueKey<String>(
+                                  'animation-performance-caution-text',
+                                ),
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  height: 1.45,
+                                  color: pressure.isHighPressure
+                                      ? colorScheme.onErrorContainer
+                                      : colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                        value: _interactiveTestValue,
-                        min: 0.0,
-                        max: 1.0,
-                        onChanged: (val) {
-                          setState(() {
-                            _interactiveTestValue = val;
-                          });
-                        },
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                      ],
+                    )
+                  : const SizedBox.shrink(),
             ),
           ],
         ),

@@ -300,7 +300,15 @@ void main() {
         await tester.tap(find.text('Open Settings'));
         await tester.pumpAndSettle();
 
-        // 验证悬浮控制按钮存在
+        // 默认处于收起状态，点击展开负载压力卡片展示操作与数值
+        final expandBtn = find.byKey(
+          const ValueKey('animation-performance-expand-btn'),
+        );
+        expect(expandBtn, findsOneWidget);
+        await tester.tap(expandBtn);
+        await tester.pumpAndSettle();
+
+        // 验证展开后悬浮控制按钮存在
         final toggleChip = find.byKey(
           const ValueKey('animation-performance-float-toggle-chip'),
         );
