@@ -51,6 +51,72 @@ class PlanExecutionEntry {
     return 1 + (hasFocus ? 1 : 0) + (hasLogs ? 1 : 0);
   }
 
+  /// 按小时（0..23）动态计算每小时所需的轨道数（1..3）。
+  ///
+  /// 仅在该小时内确实存在专注或时间日志记录时才分轨；
+  /// 无执行记录的小时返回 1，使规划/课程块占满整行高度。
+  static List<int> hourlyTimelineLaneCounts(
+    DateTime day,
+    Iterable<PlanExecutionEntry> entries,
+  ) {
+    final counts = List<int>.filled(24, 1);
+    for (var hour = 0; hour < 24; hour++) {
+      final rowStart = DateTime(
+        day.year,
+        day.month,
+        day.day,
+        hour,
+      ).millisecondsSinceEpoch;
+      final rowEnd = DateTime(
+        day.year,
+        day.month,
+        day.day,
+        hour + 1,
+      ).millisecondsSinceEpoch;
+      var hasFocus = false;
+      var hasLogs = false;
+      for (final entry in entries) {
+        if (entry.end <= rowStart || entry.start >= rowEnd) continue;
+        if (entry.isFocus) {
+          hasFocus = true;
+        } else {
+          hasLogs = true;
+        }
+        if (hasFocus && hasLogs) break;
+      }
+      counts[hour] = 1 + (hasFocus ? 1 : 0) + (hasLogs ? 1 : 0);
+    }
+    return counts;
+  }
+
+  static List<bool> hourlyHasFocus(
+    DateTime day,
+    Iterable<PlanExecutionEntry> entries,
+  ) {
+    final flags = List<bool>.filled(24, false);
+    for (var hour = 0; hour < 24; hour++) {
+      final rowStart = DateTime(
+        day.year,
+        day.month,
+        day.day,
+        hour,
+      ).millisecondsSinceEpoch;
+      final rowEnd = DateTime(
+        day.year,
+        day.month,
+        day.day,
+        hour + 1,
+      ).millisecondsSinceEpoch;
+      for (final entry in entries) {
+        if (!entry.isFocus) continue;
+        if (entry.end <= rowStart || entry.start >= rowEnd) continue;
+        flags[hour] = true;
+        break;
+      }
+    }
+    return flags;
+  }
+
   static List<PlanExecutionEntry> forDay(
     DateTime day,
     List<PomodoroRecord> records,
@@ -319,9 +385,14 @@ class _PlanExecutionTimelineLayerState
         widget.date.month,
         widget.date.day + 1,
       );
-      final hasFocus = widget.entries.any((entry) => entry.isFocus);
-      final laneCount = PlanExecutionEntry.timelineLaneCount(widget.entries);
-      final laneHeight = widget.hourHeight / laneCount;
+      final hourlyLaneCounts = PlanExecutionEntry.hourlyTimelineLaneCounts(
+        day,
+        widget.entries,
+      );
+      final hourlyFocusFlags = PlanExecutionEntry.hourlyHasFocus(
+        day,
+        widget.entries,
+      );
       final segments = <Widget>[];
       for (final entry in widget.entries) {
         final start = DateTime.fromMillisecondsSinceEpoch(entry.start);
@@ -345,6 +416,9 @@ class _PlanExecutionTimelineLayerState
           final from = clippedStart.isAfter(rowStart) ? clippedStart : rowStart;
           final to = clippedEnd.isBefore(rowEnd) ? clippedEnd : rowEnd;
           if (!to.isAfter(from)) continue;
+          final laneCount = hourlyLaneCounts[hour];
+          final laneHeight = widget.hourHeight / laneCount;
+          final hasFocusInHour = hourlyFocusFlags[hour];
           final left =
               constraints.maxWidth *
               from.difference(rowStart).inMilliseconds /
@@ -353,7 +427,7 @@ class _PlanExecutionTimelineLayerState
               constraints.maxWidth *
               to.difference(from).inMilliseconds /
               3600000;
-          final laneIndex = entry.isFocus || !hasFocus ? 1 : 2;
+          final laneIndex = entry.isFocus || !hasFocusInHour ? 1 : 2;
           final color = entry.color(context);
           final sourceKey = _sourceKeyFor(entry, hour);
           segments.add(
