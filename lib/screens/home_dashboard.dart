@@ -151,6 +151,7 @@ part 'home_dashboard_wallpaper.dart';
 part 'home_dashboard_view.dart';
 
 const _homeFocusTabIndex = 4;
+const String _defaultWallpaperAsset = 'assets/images/default_wallpaper.webp';
 
 class HomeDashboard extends StatefulWidget {
   final String username;
@@ -187,11 +188,11 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
 
   bool _hasUsagePermission = true;
   bool _isSyncing = false;
-  String? _wallpaperUrl;
+  String? _wallpaperUrl = _defaultWallpaperAsset;
   Color? _wallpaperDominantColor;
   String? _extractedWallpaperUrl;
   String? _wallpaperCopyright;
-  bool _wallpaperShow = false;
+  bool _wallpaperShow = true;
   bool _isLoadingScreenTime = true;
   bool _isThirtyDayChallengeActive = false;
   int _screenTimeLoadGeneration = 0;
@@ -501,9 +502,7 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       widget.onError();
-      widget.onImageProvider?.call(
-        const AssetImage('assets/images/default_wallpaper.webp'),
-      );
+      widget.onImageProvider?.call(const AssetImage(_defaultWallpaperAsset));
     });
   }
 
@@ -541,7 +540,7 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
         );
       },
       placeholder: (context, url) => Image.asset(
-        'assets/images/default_wallpaper.webp',
+        _defaultWallpaperAsset,
         fit: BoxFit.cover,
         cacheWidth: cacheWidth,
         cacheHeight: cacheHeight,
@@ -551,7 +550,7 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
       errorWidget: (context, url, error) {
         _reportFailure();
         return Image.asset(
-          'assets/images/default_wallpaper.webp',
+          _defaultWallpaperAsset,
           fit: BoxFit.cover,
           cacheWidth: cacheWidth,
           cacheHeight: cacheHeight,

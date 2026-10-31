@@ -286,13 +286,13 @@ mixin _HomeDashboardContract {
 
   void _tryAnotherRandomWallpaper();
 
-  Future<void> _fetchBingWallpaper();
+  Future<void> _fetchBingWallpaper({bool force = false});
 
   Future<void> _initManifestWallpaper();
 
   void _onWallpaperRefresh();
 
-  Future<void> _refreshWallpaper();
+  Future<void> _refreshWallpaper({bool force = false});
 
   void _setupWallpaperListeners();
 

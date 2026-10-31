@@ -813,6 +813,14 @@ abstract class _StorageServiceBase {
   Future<String?> getWallpaperCustomPath();
   Future<void> saveWallpaperCustomPath(String path);
   Future<void> clearWallpaperCustomPath();
+  Future<Map<String, String?>?> getCachedBingWallpaper();
+  Future<void> saveCachedBingWallpaper({
+    required String url,
+    String? copyright,
+    required String date,
+    required String params,
+  });
+  Future<void> clearCachedBingWallpaper();
   Future<bool> getTodoFoldersInline();
   Future<void> setTodoFoldersInline(bool inline);
   Future<String> getTodoFolderDisplayMode();
