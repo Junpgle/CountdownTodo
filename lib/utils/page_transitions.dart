@@ -166,6 +166,8 @@ class PageTransitions {
     ('DeviceCalendarEventDetailScreen', Icons.phone_android_rounded),
     ('CourseSettingsPage', Icons.calendar_month_rounded),
     ('FixedScheduleEditorScreen', Icons.calendar_month_rounded),
+    ('FixedScheduleDetailScreen', Icons.event_available_rounded),
+    ('FixedScheduleRelatedTodoPickerScreen', Icons.link_rounded),
     // ── 待办 ──
     ('AddTodoScreen', Icons.add_task_rounded),
     ('TodoConfirmScreen', Icons.add_task_rounded),

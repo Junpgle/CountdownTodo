@@ -1468,6 +1468,7 @@ mixin _HomeDashboardViewMixin
 
   Future<void> _openHomeTodo({GlobalKey? sourceKey}) async {
     final page = AddTodoScreen(
+      username: widget.username,
       todoGroups: _todoGroups,
       initialTeamUuid: _currentSelectedTeamUuid,
       initialTeamName: _currentSelectedTeamName,

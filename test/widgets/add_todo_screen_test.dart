@@ -1,6 +1,7 @@
 import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/models/todo_create_save_result.dart';
 import 'package:countdown_todo/screens/add_todo_screen.dart';
+import 'package:countdown_todo/screens/fixed_schedule_related_todo_picker_screen.dart';
 import 'package:countdown_todo/screens/todo_confirm_screen.dart';
 import 'package:countdown_todo/services/api_service.dart';
 import 'package:flutter/material.dart';
@@ -304,5 +305,103 @@ void main() {
     expect(ids, hasLength(2));
     expect(ids.first, isNotEmpty);
     expect(ids[1], ids.first);
+  });
+
+  testWidgets('新建日程支持关联已有待办并正确保存到日程模型', (tester) async {
+    FixedScheduleItem? savedSchedule;
+    final testTodos = [
+      TodoItem(id: 'todo-1', title: '打印准考证', dueDate: DateTime(2026, 11, 1)),
+      TodoItem(id: 'todo-2', title: '带身份证', dueDate: DateTime(2026, 11, 2)),
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AddTodoScreen(
+          username: 'tester',
+          initialMode: AddTodoInitialMode.fixedSchedule,
+          onTodoAdded: (_) {},
+          onFixedScheduleAdded: (item) async => savedSchedule = item,
+          loadRelatedTodoPage:
+              (username, {limit = 50, offset = 0, query = '', teamUuid}) async {
+                return (todos: testTodos, hasMore: false);
+              },
+          loadSelectedRelatedTodos: (username, todoIds) async {
+            return testTodos.where((t) => todoIds.contains(t.id)).toList();
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('fixed-schedule-related-todos')),
+      findsOneWidget,
+    );
+    expect(find.text('关联个人待办'), findsOneWidget);
+    expect(find.text('个人私有'), findsWidgets);
+    expect(find.textContaining('当前只展示个人待办'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).first, '期末考试');
+
+    // 打开待办选择器
+    await tester.tap(
+      find.byKey(const ValueKey('fixed-schedule-related-todos')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(FixedScheduleRelatedTodoPickerScreen), findsOneWidget);
+    expect(find.text('关联待办'), findsOneWidget);
+    expect(find.text('打印准考证'), findsOneWidget);
+    expect(find.text('带身份证'), findsOneWidget);
+
+    // 选中第一个待办
+    await tester.tap(find.byKey(const ValueKey('related-todo-todo-1')));
+    await tester.pumpAndSettle();
+
+    // 点击应用关联
+    await tester.tap(find.byKey(const ValueKey('apply-related-todos')));
+    await tester.pumpAndSettle();
+
+    // 返回 AddTodoScreen 后验证副标题更新
+    expect(find.textContaining('已关联 1 项'), findsOneWidget);
+
+    // 点击完成保存日程
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+
+    expect(savedSchedule, isNotNull);
+    expect(savedSchedule!.title, '期末考试');
+    expect(savedSchedule!.relatedTodoIds, ['todo-1']);
+  });
+
+  testWidgets('新建日程如果关联待办跨团队不匹配则阻止保存并提示', (tester) async {
+    FixedScheduleItem? savedSchedule;
+    final testTodos = [
+      TodoItem(id: 'todo-team', title: '团队待办', teamUuid: 'team-a'),
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AddTodoScreen(
+          username: 'tester',
+          initialMode: AddTodoInitialMode.fixedSchedule,
+          initialRelatedTodoIds: {'todo-team'},
+          onTodoAdded: (_) {},
+          onFixedScheduleAdded: (item) async => savedSchedule = item,
+          loadSelectedRelatedTodos: (username, todoIds) async => testTodos,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('已关联 1 项'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).first, '个人日程');
+
+    // 此时团队为个人私有，而 todo-team 属于 team-a
+    await tester.tap(find.text('完成'));
+    await tester.pump();
+
+    expect(savedSchedule, isNull);
+    expect(find.text('请在“关联待办”中移除已删除或当前日程不可见的项目后再保存'), findsOneWidget);
   });
 }

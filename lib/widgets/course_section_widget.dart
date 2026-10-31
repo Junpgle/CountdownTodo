@@ -466,6 +466,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
       await Navigator.of(context).push(
         PageTransitions.material(
           builder: (_) => AddTodoScreen(
+            username: widget.username,
             initialMode: AddTodoInitialMode.fixedSchedule,
             onTodoAdded: widget.onTodoAdded,
             onManualTodoSaved: widget.onManualTodoSaved,

@@ -511,17 +511,24 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
 
   Future<void> _openRelatedFixedSchedule(
     String username,
-    FixedScheduleItem item,
-  ) async {
-    await Navigator.of(context).push<void>(
-      PageTransitions.material(
-        builder: (_) => FixedScheduleDetailScreen(
-          username: username,
-          item: item,
-          onCreateRelatedTodo: widget.onCreateRelatedTodo,
-        ),
-      ),
+    FixedScheduleItem item, {
+    GlobalKey? sourceKey,
+  }) async {
+    final page = FixedScheduleDetailScreen(
+      username: username,
+      item: item,
+      onCreateRelatedTodo: widget.onCreateRelatedTodo,
     );
+    if (sourceKey != null) {
+      await PageTransitions.pushFromRect<void>(
+        context: context,
+        page: page,
+        sourceKey: sourceKey,
+      );
+    } else {
+      await Navigator.of(context)
+          .push<void>(PageTransitions.material(builder: (_) => page));
+    }
   }
 
   String _getRecurrenceText() {
