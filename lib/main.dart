@@ -240,9 +240,9 @@ void _configureRuntimeCaches({bool powerSaveMode = false}) {
   }
 
   if (AppPlatform.isMobile) {
-    final useAndroidPowerSaveCache = AppPlatform.isAndroid && powerSaveMode;
-    imageCache.maximumSize = useAndroidPowerSaveCache ? 64 : 100;
-    imageCache.maximumSizeBytes = (useAndroidPowerSaveCache ? 64 : 96) << 20;
+    final useMobilePowerSaveCache = powerSaveMode;
+    imageCache.maximumSize = useMobilePowerSaveCache ? 64 : 100;
+    imageCache.maximumSizeBytes = (useMobilePowerSaveCache ? 64 : 96) << 20;
   } else {
     imageCache.maximumSize = 180;
     imageCache.maximumSizeBytes = 192 << 20; // Desktop 192MB
@@ -406,16 +406,18 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       if (AppPlatform.isAndroid) WidgetService.setAppForeground(false);
+      if (state == AppLifecycleState.paused ||
+          state == AppLifecycleState.hidden) {
+        PaintingBinding.instance.imageCache.clearLiveImages();
+      }
     }
   }
 
   @override
   void didHaveMemoryPressure() {
-    if (!AppPlatform.isAndroid) return;
-
-    // Android 17 can terminate a process that exceeds the device-specific
-    // memory budget. Drop decoded images as soon as the framework signals
-    // pressure so the next frame can rebuild only what is visible.
+    // Drop decoded image cache as soon as the framework signals memory
+    // pressure so the next frame can rebuild only what is visible, avoiding
+    // OS termination across Android (LMK), iOS (Jetsam), desktop and web.
     final imageCache = PaintingBinding.instance.imageCache;
     imageCache.clear();
     imageCache.clearLiveImages();

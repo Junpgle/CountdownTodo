@@ -378,19 +378,21 @@ class _HabitCelebrationTriggerState extends State<HabitCelebrationTrigger>
               // 粒子爆发层
               Positioned.fill(
                 child: IgnorePointer(
-                  child: AnimatedBuilder(
-                    animation: _burstController,
-                    builder: (context, child) {
-                      if (!_burstController.isAnimating) {
-                        return const SizedBox.shrink();
-                      }
-                      return CustomPaint(
-                        painter: _BurstPainter(
-                          particles: _particles,
-                          progress: _burstController.value,
-                        ),
-                      );
-                    },
+                  child: RepaintBoundary(
+                    child: AnimatedBuilder(
+                      animation: _burstController,
+                      builder: (context, child) {
+                        if (!_burstController.isAnimating) {
+                          return const SizedBox.shrink();
+                        }
+                        return CustomPaint(
+                          painter: _BurstPainter(
+                            particles: _particles,
+                            progress: _burstController.value,
+                          ),
+                        );
+                      },
+                    ),
                   ),
                 ),
               ),

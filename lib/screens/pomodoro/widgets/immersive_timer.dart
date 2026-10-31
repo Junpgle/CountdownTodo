@@ -284,7 +284,7 @@ class _ImmersiveTimerState extends State<ImmersiveTimer>
               : '第 ${widget.currentCycle} / ${widget.totalCycles} 轮');
 
     final isLandscape =
-        MediaQuery.of(context).orientation == Orientation.landscape;
+        MediaQuery.orientationOf(context) == Orientation.landscape;
     final compactFactor = widget.isCompact ? 0.72 : 1.0;
 
     final double ringSize =
@@ -300,139 +300,143 @@ class _ImmersiveTimerState extends State<ImmersiveTimer>
         compactFactor;
     final double labelFontSize = (isActive ? 15.0 : 13.0) * compactFactor;
 
-    return AnimatedBuilder(
-      animation: _breathingController,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          SizedBox(
-            width: ringSize,
-            height: ringSize,
-            child: TweenAnimationBuilder<Color?>(
-              tween: ColorTween(begin: trackColor, end: trackColor),
-              duration: const Duration(milliseconds: 400),
-              builder: (context, color, child) => CircularProgressIndicator(
-                value: 1.0,
-                strokeWidth: strokeW,
-                valueColor: AlwaysStoppedAnimation<Color>(color ?? trackColor),
-              ),
-            ),
-          ),
-          SizedBox(
-            width: ringSize,
-            height: ringSize,
-            child: TweenAnimationBuilder<Color?>(
-              tween: ColorTween(begin: ringColor, end: ringColor),
-              duration: const Duration(milliseconds: 600),
-              curve: Curves.easeInOut,
-              builder: (context, color, child) => CircularProgressIndicator(
-                value: remoteProgress,
-                strokeWidth: strokeW,
-                strokeCap: StrokeCap.round,
-                valueColor: AlwaysStoppedAnimation<Color>(color ?? ringColor),
-              ),
-            ),
-          ),
-          if (isFinished)
-            CustomPaint(
-              size: Size.square(ringSize),
-              painter: _CelebrationRipplePainter(
-                animation: _celebrationController,
-                color: ringColor,
-                strokeWidth: 2.0 * compactFactor,
-              ),
-            ),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                child: Text(
-                  labelText,
-                  key: ValueKey(widget.phase),
-                  style: TextStyle(
-                    fontSize: labelFontSize,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1.2,
-                    color: labelColor,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(height: 2),
-              AnimatedDefaultTextStyle(
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _breathingController,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            SizedBox(
+              width: ringSize,
+              height: ringSize,
+              child: TweenAnimationBuilder<Color?>(
+                tween: ColorTween(begin: trackColor, end: trackColor),
                 duration: const Duration(milliseconds: 400),
+                builder: (context, color, child) => CircularProgressIndicator(
+                  value: 1.0,
+                  strokeWidth: strokeW,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    color ?? trackColor,
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(
+              width: ringSize,
+              height: ringSize,
+              child: TweenAnimationBuilder<Color?>(
+                tween: ColorTween(begin: ringColor, end: ringColor),
+                duration: const Duration(milliseconds: 600),
                 curve: Curves.easeInOut,
-                style: TextStyle(
-                  fontSize: timeFontSize,
-                  fontWeight: FontWeight.w200,
-                  color: timeColor,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                  letterSpacing: -1,
+                builder: (context, color, child) => CircularProgressIndicator(
+                  value: remoteProgress,
+                  strokeWidth: strokeW,
+                  strokeCap: StrokeCap.round,
+                  valueColor: AlwaysStoppedAnimation<Color>(color ?? ringColor),
                 ),
-                child: Text(timeStr),
               ),
-              const SizedBox(height: 2),
-              Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: 12 * compactFactor,
-                  vertical: 4 * compactFactor,
+            ),
+            if (isFinished)
+              CustomPaint(
+                size: Size.square(ringSize),
+                painter: _CelebrationRipplePainter(
+                  animation: _celebrationController,
+                  color: ringColor,
+                  strokeWidth: 2.0 * compactFactor,
                 ),
-                decoration: BoxDecoration(
-                  color: cycleBgColor.withValues(alpha: 0.6),
-                  borderRadius: BorderRadius.circular(12 * compactFactor),
-                  border: Border.all(
-                    color: cycleTextColor.withValues(alpha: 0.1),
-                    width: 1,
+              ),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  child: Text(
+                    labelText,
+                    key: ValueKey(widget.phase),
+                    style: TextStyle(
+                      fontSize: labelFontSize,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1.2,
+                      color: labelColor,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                child: Text(
-                  cycleText,
+                const SizedBox(height: 2),
+                AnimatedDefaultTextStyle(
+                  duration: const Duration(milliseconds: 400),
+                  curve: Curves.easeInOut,
                   style: TextStyle(
-                    fontSize: 12 * compactFactor,
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 0.5,
-                    color: cycleTextColor,
+                    fontSize: timeFontSize,
+                    fontWeight: FontWeight.w200,
+                    color: timeColor,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                    letterSpacing: -1,
+                  ),
+                  child: Text(timeStr),
+                ),
+                const SizedBox(height: 2),
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 12 * compactFactor,
+                    vertical: 4 * compactFactor,
+                  ),
+                  decoration: BoxDecoration(
+                    color: cycleBgColor.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(12 * compactFactor),
+                    border: Border.all(
+                      color: cycleTextColor.withValues(alpha: 0.1),
+                      width: 1,
+                    ),
+                  ),
+                  child: Text(
+                    cycleText,
+                    style: TextStyle(
+                      fontSize: 12 * compactFactor,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 0.5,
+                      color: cycleTextColor,
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-        ],
+              ],
+            ),
+          ],
+        ),
+        builder: (context, child) {
+          final breathValue = (isFocusing && !widget.isPaused)
+              ? _breathingController.value
+              : 0.0;
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeInOut,
+            width: ringSize,
+            height: ringSize,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: colorScheme.surface,
+              boxShadow: [
+                if (isActive)
+                  BoxShadow(
+                    color: ringColor.withValues(
+                      alpha: 0.15 + (breathValue * 0.15),
+                    ),
+                    blurRadius: (24 + (breathValue * 16)) * compactFactor,
+                    spreadRadius: (4 + (breathValue * 6)) * compactFactor,
+                  ),
+                if (isActive)
+                  BoxShadow(
+                    color: colorScheme.shadow.withValues(alpha: 0.08),
+                    blurRadius: 16 * compactFactor,
+                    offset: const Offset(0, 8),
+                  ),
+              ],
+            ),
+            child: child,
+          );
+        },
       ),
-      builder: (context, child) {
-        final breathValue = (isFocusing && !widget.isPaused)
-            ? _breathingController.value
-            : 0.0;
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 500),
-          curve: Curves.easeInOut,
-          width: ringSize,
-          height: ringSize,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: colorScheme.surface,
-            boxShadow: [
-              if (isActive)
-                BoxShadow(
-                  color: ringColor.withValues(
-                    alpha: 0.15 + (breathValue * 0.15),
-                  ),
-                  blurRadius: (24 + (breathValue * 16)) * compactFactor,
-                  spreadRadius: (4 + (breathValue * 6)) * compactFactor,
-                ),
-              if (isActive)
-                BoxShadow(
-                  color: colorScheme.shadow.withValues(alpha: 0.08),
-                  blurRadius: 16 * compactFactor,
-                  offset: const Offset(0, 8),
-                ),
-            ],
-          ),
-          child: child,
-        );
-      },
     );
   }
 }

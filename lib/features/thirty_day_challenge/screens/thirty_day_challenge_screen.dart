@@ -2107,15 +2107,23 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
               fit: StackFit.expand,
               children: [
                 if (hasImage && task.isCompleted)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(15),
-                    child: Opacity(
-                      opacity: 0.4,
-                      child: Image.memory(
-                        base64Decode(task.imageBase64!),
-                        fit: BoxFit.cover,
-                      ),
-                    ),
+                  Builder(
+                    builder: (context) {
+                      final bytes = _decodeChallengeImage(task.imageBase64);
+                      if (bytes == null) return const SizedBox.shrink();
+                      return ClipRRect(
+                        borderRadius: BorderRadius.circular(15),
+                        child: Opacity(
+                          opacity: 0.4,
+                          child: Image.memory(
+                            bytes,
+                            fit: BoxFit.cover,
+                            cacheWidth: 160,
+                            cacheHeight: 160,
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 Center(
                   child: task.isCompleted
@@ -2769,7 +2777,11 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
         image: imageBytes == null
             ? null
             : DecorationImage(
-                image: MemoryImage(imageBytes),
+                image: ResizeImage.resizeIfNeeded(
+                  800,
+                  800,
+                  MemoryImage(imageBytes),
+                ),
                 fit: BoxFit.cover,
                 filterQuality: FilterQuality.medium,
               ),
@@ -3243,10 +3255,20 @@ class _ChallengeTaskCard extends StatefulWidget {
   State<_ChallengeTaskCard> createState() => _ChallengeTaskCardState();
 }
 
+final Map<String, Uint8List> _challengeImageMemoryCache = {};
+const int _maxChallengeImageCacheEntries = 64;
+
 Uint8List? _decodeChallengeImage(String? encoded) {
   if (encoded == null || encoded.isEmpty) return null;
+  final cached = _challengeImageMemoryCache[encoded];
+  if (cached != null) return cached;
   try {
-    return base64Decode(encoded);
+    final decoded = base64Decode(encoded);
+    if (_challengeImageMemoryCache.length >= _maxChallengeImageCacheEntries) {
+      _challengeImageMemoryCache.remove(_challengeImageMemoryCache.keys.first);
+    }
+    _challengeImageMemoryCache[encoded] = decoded;
+    return decoded;
   } catch (_) {
     return null;
   }
@@ -3474,7 +3496,11 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
         ),
         image: hasImage
             ? DecorationImage(
-                image: MemoryImage(imageBytes),
+                image: ResizeImage.resizeIfNeeded(
+                  800,
+                  800,
+                  MemoryImage(imageBytes),
+                ),
                 fit: BoxFit.cover,
                 alignment: Alignment.center,
                 filterQuality: FilterQuality.medium,

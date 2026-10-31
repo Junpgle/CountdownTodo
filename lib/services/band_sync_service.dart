@@ -295,7 +295,7 @@ class BandSyncService {
           _addLog('收到消息: $data');
           try {
             final jsonData = jsonDecode(data) as Map<String, dynamic>;
-            _receivedMessages.add(jsonData);
+            _addReceivedMessage(jsonData);
 
             if (jsonData['type'] == 'pomodoro' &&
                 (jsonData['action'] == 'finish' ||
@@ -336,7 +336,7 @@ class BandSyncService {
               _onMessageReceived?.call(jsonData);
             }
           } catch (e) {
-            _receivedMessages.add({'raw': data});
+            _addReceivedMessage({'raw': data});
             _onMessageReceived?.call({'raw': data});
           }
         }
@@ -776,6 +776,14 @@ class BandSyncService {
     _logs.add('[$timestamp] $message');
     if (_logs.length > 100) {
       _logs.removeAt(0);
+    }
+  }
+
+  /// 添加接收的消息（保留最近 100 条，避免内存无界增长）
+  static void _addReceivedMessage(Map<String, dynamic> message) {
+    _receivedMessages.add(message);
+    if (_receivedMessages.length > 100) {
+      _receivedMessages.removeAt(0);
     }
   }
 

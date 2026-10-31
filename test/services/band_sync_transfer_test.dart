@@ -167,4 +167,18 @@ void main() {
     });
     expect(await syncing, isTrue);
   });
+
+  test(
+    'receivedMessages is capped to 100 entries to prevent memory growth',
+    () async {
+      for (var i = 0; i < 120; i++) {
+        await sendNativeEvent('onMessageReceived', {
+          'data': jsonEncode({'type': 'telemetry', 'seq': i}),
+        });
+      }
+      expect(BandSyncService.receivedMessages.length, 100);
+      expect(BandSyncService.receivedMessages.first['seq'], 20);
+      expect(BandSyncService.receivedMessages.last['seq'], 119);
+    },
+  );
 }

@@ -262,6 +262,7 @@ todo.md
 !/test/utils/page_transitions_test.dart
 !/test/utils/settings_navigation_test.dart
 !/test/utils/time_utils_test.dart
+!/test/utils/image_optimization_test.dart
 !/test/features/
 /test/features/*
 !/test/features/finance_cumulative_balance_trend_test.dart

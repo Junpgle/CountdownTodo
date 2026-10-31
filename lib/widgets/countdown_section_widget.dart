@@ -561,7 +561,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                   isLight: widget.isLight,
                 ),
               ),
-              if (MediaQuery.of(context).size.width >= 600)
+              if (MediaQuery.sizeOf(context).width >= 600)
                 IconButton(
                   style: floatingGlassPlainIconButtonStyle(),
                   icon: Icon(

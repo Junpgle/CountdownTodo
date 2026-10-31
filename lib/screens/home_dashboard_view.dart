@@ -62,49 +62,81 @@ mixin _HomeDashboardViewMixin
         children: [
           if (showWallpaper && wallpaperUrl != null)
             Positioned.fill(
-              child: wallpaperUrl.startsWith('assets/')
-                  ? Builder(
-                      builder: (context) {
-                        _scheduleWallpaperColorExtraction(
-                          AssetImage(wallpaperUrl),
-                          wallpaperUrl,
-                        );
-                        return Image.asset(
-                          wallpaperUrl,
-                          fit: BoxFit.cover,
-                          color: const Color(0x66000000),
-                          colorBlendMode: BlendMode.srcOver,
-                        );
-                      },
-                    )
-                  : localWallpaperProvider != null
-                  ? Builder(
-                      builder: (context) {
-                        final provider = localWallpaperProvider;
-                        _scheduleWallpaperColorExtraction(
-                          provider,
-                          wallpaperUrl,
-                        );
-                        return Image(
-                          image: provider,
-                          fit: BoxFit.cover,
-                          color: const Color(0x66000000),
-                          colorBlendMode: BlendMode.srcOver,
-                        );
-                      },
-                    )
-                  : _WallpaperNetworkImage(
-                      url: _wallpaperUrl!,
-                      onImageProvider: (provider) {
-                        _extractColorFromProvider(provider, _wallpaperUrl!);
-                      },
-                      onSuccess: () {
-                        _wallpaperRetryCount = 0;
-                      },
-                      onError: () {
-                        _handleWallpaperError();
-                      },
-                    ),
+              child: RepaintBoundary(
+                child: wallpaperUrl.startsWith('assets/')
+                    ? Builder(
+                        builder: (context) {
+                          _scheduleWallpaperColorExtraction(
+                            AssetImage(wallpaperUrl),
+                            wallpaperUrl,
+                          );
+                          final media = MediaQuery.sizeOf(context);
+                          final pixelRatio = MediaQuery.devicePixelRatioOf(
+                            context,
+                          );
+                          final cacheWidth = (media.width * pixelRatio)
+                              .round()
+                              .clamp(1, 4096)
+                              .toInt();
+                          final cacheHeight = (media.height * pixelRatio)
+                              .round()
+                              .clamp(1, 4096)
+                              .toInt();
+                          return Image.asset(
+                            wallpaperUrl,
+                            fit: BoxFit.cover,
+                            cacheWidth: cacheWidth,
+                            cacheHeight: cacheHeight,
+                            color: const Color(0x66000000),
+                            colorBlendMode: BlendMode.srcOver,
+                          );
+                        },
+                      )
+                    : localWallpaperProvider != null
+                    ? Builder(
+                        builder: (context) {
+                          final provider = localWallpaperProvider;
+                          _scheduleWallpaperColorExtraction(
+                            provider,
+                            wallpaperUrl,
+                          );
+                          final media = MediaQuery.sizeOf(context);
+                          final pixelRatio = MediaQuery.devicePixelRatioOf(
+                            context,
+                          );
+                          final cacheWidth = (media.width * pixelRatio)
+                              .round()
+                              .clamp(1, 4096)
+                              .toInt();
+                          final cacheHeight = (media.height * pixelRatio)
+                              .round()
+                              .clamp(1, 4096)
+                              .toInt();
+                          return Image(
+                            image: ResizeImage.resizeIfNeeded(
+                              cacheWidth,
+                              cacheHeight,
+                              provider,
+                            ),
+                            fit: BoxFit.cover,
+                            color: const Color(0x66000000),
+                            colorBlendMode: BlendMode.srcOver,
+                          );
+                        },
+                      )
+                    : _WallpaperNetworkImage(
+                        url: _wallpaperUrl!,
+                        onImageProvider: (provider) {
+                          _extractColorFromProvider(provider, _wallpaperUrl!);
+                        },
+                        onSuccess: () {
+                          _wallpaperRetryCount = 0;
+                        },
+                        onError: () {
+                          _handleWallpaperError();
+                        },
+                      ),
+              ),
             ),
           SafeArea(
             // 仅避让顶部状态栏。列表需要继续绘制到 Android 手势导航区

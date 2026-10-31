@@ -58,23 +58,25 @@ class _ShimmerWidgetState extends State<ShimmerWidget>
     final borderRadius = BorderRadius.circular(widget.borderRadius);
     final gradientColors = [baseColor, highlightColor, baseColor];
 
-    return AnimatedBuilder(
-      animation: _animation,
-      builder: (context, child) {
-        return Container(
-          width: width,
-          height: widget.height,
-          decoration: BoxDecoration(
-            borderRadius: borderRadius,
-            gradient: LinearGradient(
-              begin: Alignment(_animation.value, 0),
-              end: Alignment(_animation.value + 0.5, 0),
-              colors: gradientColors,
-              stops: const [0.0, 0.5, 1.0],
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _animation,
+        builder: (context, child) {
+          return Container(
+            width: width,
+            height: widget.height,
+            decoration: BoxDecoration(
+              borderRadius: borderRadius,
+              gradient: LinearGradient(
+                begin: Alignment(_animation.value, 0),
+                end: Alignment(_animation.value + 0.5, 0),
+                colors: gradientColors,
+                stops: const [0.0, 0.5, 1.0],
+              ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }
@@ -227,14 +229,16 @@ class _HomeAppBarState extends State<HomeAppBar>
           constraints: isSmall ? const BoxConstraints() : null,
           style: floatingGlassPlainIconButtonStyle(),
           icon: isLoading
-              ? RotationTransition(
-                  turns: _syncRotationController,
-                  child: Icon(
-                    icon,
-                    size: iconSize,
-                    color: widget.isLight
-                        ? colorScheme.onInverseSurface
-                        : colorScheme.primary,
+              ? RepaintBoundary(
+                  child: RotationTransition(
+                    turns: _syncRotationController,
+                    child: Icon(
+                      icon,
+                      size: iconSize,
+                      color: widget.isLight
+                          ? colorScheme.onInverseSurface
+                          : colorScheme.primary,
+                    ),
                   ),
                 )
               : Icon(
@@ -325,8 +329,8 @@ class _HomeAppBarState extends State<HomeAppBar>
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isLandscape =
-        MediaQuery.of(context).orientation == Orientation.landscape;
-    final bool isTablet = MediaQuery.of(context).size.width >= 768;
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    final bool isTablet = MediaQuery.sizeOf(context).width >= 768;
     final toolbarH = isLandscape ? 64.0 : 86.0;
     final titleSize = isLandscape ? 18.0 : 22.0;
     final dateSize = isLandscape ? 12.0 : 13.0;
