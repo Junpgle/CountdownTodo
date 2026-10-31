@@ -50,11 +50,23 @@ class LiquidGlassEffectConfiguration {
   final int scrimCoveragePercent;
   final double blurSigma;
 
-  ui.ImageFilter get blurFilter => ui.ImageFilter.blur(
-    sigmaX: blurSigma.clamp(0.001, 50.0),
-    sigmaY: blurSigma.clamp(0.001, 50.0),
-    tileMode: ui.TileMode.clamp,
-  );
+  static final Map<int, ui.ImageFilter> _blurFilterCache = {};
+
+  /// Clears cached native ImageFilter instances on memory pressure or background pause.
+  static void clearFilterCache() => _blurFilterCache.clear();
+
+  ui.ImageFilter get blurFilter {
+    final clamped = blurSigma.clamp(0.001, 50.0);
+    final key = (clamped * 100).round();
+    return _blurFilterCache.putIfAbsent(
+      key,
+      () => ui.ImageFilter.blur(
+        sigmaX: clamped,
+        sigmaY: clamped,
+        tileMode: ui.TileMode.clamp,
+      ),
+    );
+  }
 
   LiquidGlassEffectConfiguration copyWith({
     bool? enabled,

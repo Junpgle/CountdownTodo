@@ -326,6 +326,8 @@ class _BrandLogo extends StatelessWidget {
         'assets/icon/app_icon.png',
         width: size,
         height: size,
+        cacheWidth: (size * 3).toInt(),
+        cacheHeight: (size * 3).toInt(),
         fit: BoxFit.contain,
         filterQuality: FilterQuality.high,
       ),

@@ -1323,10 +1323,13 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       addRange(ranges, rangeEnd - post, rangeEnd);
     }
 
+    // 早间空闲折叠按整小时收窄：如果某个整小时内存在日程，则保留该整小时为活动时段，
+    // 不进行部分小时折叠，避免压缩成过窄区间导致时间刻度与卡片挤压遮挡。
+    final collapsedEarlyEnd = (minEarly / 60).floor() * 60.0;
     final early = buildHideLengths(
       earlyStart,
       earlyEnd,
-      minEarly,
+      collapsedEarlyEnd,
       maxEarly,
       onlyHideBefore: true,
     );

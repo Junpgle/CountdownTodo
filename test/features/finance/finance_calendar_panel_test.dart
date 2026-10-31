@@ -219,6 +219,62 @@ void main() {
       isTrue,
     );
   });
+
+  testWidgets('overview mode selector animates smoothly when switching modes', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FinanceOverviewPanel(
+            month: DateTime(2026, 10),
+            clock: () => now,
+            summary: FinanceSummary.fromTransactions([expense]),
+            transactions: [expense],
+            categories: const {},
+            onAdd: () {},
+            addActionKey: GlobalKey(),
+            onRefresh: () async {},
+          ),
+        ),
+      ),
+    );
+
+    final modeSelectorTrack = find.byKey(
+      const ValueKey('finance-overview-mode-selector-track'),
+    );
+    final modeIndicatorFinder = find.descendant(
+      of: modeSelectorTrack,
+      matching: find.byType(AnimatedPositioned),
+    );
+    expect(modeIndicatorFinder, findsOneWidget);
+
+    final initialDx = tester.getTopLeft(modeIndicatorFinder).dx;
+
+    // Tap '日历' to initiate mode switch.
+    await tester.tap(find.text('日历'));
+    await tester.pump(); // starts the animation frame
+
+    // Mid-animation frame: mode indicator is animating
+    await tester.pump(const Duration(milliseconds: 100));
+    final midDx = tester.getTopLeft(modeIndicatorFinder).dx;
+    expect(midDx, greaterThan(initialDx));
+
+    await tester.pumpAndSettle();
+    final calendarDx = tester.getTopLeft(modeIndicatorFinder).dx;
+    expect(calendarDx, greaterThan(midDx));
+
+    // Tap '报表' to animate back
+    await tester.tap(find.text('报表'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    final returningDx = tester.getTopLeft(modeIndicatorFinder).dx;
+    expect(returningDx, lessThan(calendarDx));
+
+    await tester.pumpAndSettle();
+    final finalDx = tester.getTopLeft(modeIndicatorFinder).dx;
+    expect(finalDx, closeTo(initialDx, 0.001));
+  });
 }
 
 FinanceTransaction _transaction({

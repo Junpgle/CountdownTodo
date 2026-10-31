@@ -543,6 +543,8 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
       placeholder: (context, url) => Image.asset(
         'assets/images/default_wallpaper.webp',
         fit: BoxFit.cover,
+        cacheWidth: cacheWidth,
+        cacheHeight: cacheHeight,
         color: const Color(0x66000000),
         colorBlendMode: BlendMode.srcOver,
       ),
@@ -551,6 +553,8 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
         return Image.asset(
           'assets/images/default_wallpaper.webp',
           fit: BoxFit.cover,
+          cacheWidth: cacheWidth,
+          cacheHeight: cacheHeight,
           color: const Color(0x66000000),
           colorBlendMode: BlendMode.srcOver,
         );

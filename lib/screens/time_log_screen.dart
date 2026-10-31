@@ -1253,6 +1253,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
 
     return ListView.builder(
       padding: const EdgeInsets.all(16),
+      itemExtent: 72.0,
       itemCount: 8,
       itemBuilder: (context, index) => Container(
         height: 60,

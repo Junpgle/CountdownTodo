@@ -401,6 +401,8 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
               attachment.bytes!,
               width: width,
               height: height,
+              cacheWidth: (width * 3).toInt(),
+              cacheHeight: (height * 3).toInt(),
               fit: BoxFit.cover,
             )
           : attachment.path.isNotEmpty && localImageExists(attachment.path)

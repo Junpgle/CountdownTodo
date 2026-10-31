@@ -176,6 +176,9 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                   .toList();
             }
             deleted.insert(0, todo);
+            if (deleted.length > 100) {
+              deleted = deleted.sublist(0, 100);
+            }
             await prefs.setString(
               cacheKey,
               jsonEncode(deleted.map((e) => e.toJson()).toList()),

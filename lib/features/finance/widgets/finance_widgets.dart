@@ -200,45 +200,77 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
 
   @override
   Widget build(BuildContext context) {
-    if (_mode == _FinanceOverviewMode.calendar) {
-      return FinanceCalendarPanel(
-        topPadding: widget.topPadding,
-        clock: clock,
-        month: month,
-        transactions: transactions,
-        cumulativeBalanceEvents: widget.cumulativeBalanceEvents,
-        openingBalanceMinor: widget.openingBalanceMinor,
-        openingBalanceStartDate: widget.openingBalanceStartDate,
-        categories: categories,
-        onRefresh: onRefresh,
-        onMonthChanged: (value) => onMonthChanged?.call(value),
-        onShowReport: () => setState(() => _mode = _FinanceOverviewMode.report),
-        onAdd: widget.onAddForDate == null
-            ? null
-            : (date, sourceKey) => widget.onAddForDate!(date, sourceKey),
-        onOpenTransaction: widget.onOpenTransaction,
-      );
-    }
     final colorScheme = Theme.of(context).colorScheme;
+    final bottomPadding = financeBottomContentPaddingFor(context);
+
+    return Column(
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(16, widget.topPadding + 8, 16, 8),
+          child: _buildOverviewModeSelector(),
+        ),
+        Expanded(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 260),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeOutCubic,
+            transitionBuilder: (child, animation) {
+              return FadeTransition(opacity: animation, child: child);
+            },
+            child: _mode == _FinanceOverviewMode.calendar
+                ? KeyedSubtree(
+                    key: const ValueKey('finance-overview-calendar-view'),
+                    child: FinanceCalendarPanel(
+                      topPadding: 0,
+                      clock: clock,
+                      month: month,
+                      transactions: transactions,
+                      cumulativeBalanceEvents: widget.cumulativeBalanceEvents,
+                      openingBalanceMinor: widget.openingBalanceMinor,
+                      openingBalanceStartDate: widget.openingBalanceStartDate,
+                      categories: categories,
+                      onRefresh: onRefresh,
+                      onMonthChanged: (value) => onMonthChanged?.call(value),
+                      onShowReport: () =>
+                          setState(() => _mode = _FinanceOverviewMode.report),
+                      onAdd: widget.onAddForDate == null
+                          ? null
+                          : (date, sourceKey) =>
+                                widget.onAddForDate!(date, sourceKey),
+                      onOpenTransaction: widget.onOpenTransaction,
+                      showModeSelector: false,
+                    ),
+                  )
+                : KeyedSubtree(
+                    key: const ValueKey('finance-overview-report-view'),
+                    child: _buildReportBody(
+                      context,
+                      colorScheme,
+                      bottomPadding,
+                    ),
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReportBody(
+    BuildContext context,
+    ColorScheme colorScheme,
+    double bottomPadding,
+  ) {
     final period = _currentPeriod;
     final analytics = _overviewAnalytics(period);
     final topCategories = analytics.topExpenseCategories;
     final categoryExpenseShares = analytics.categoryExpenseShares;
-    final bottomPadding = financeBottomContentPaddingFor(context);
 
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: ListView(
         scrollCacheExtent: ScrollCacheExtent.pixels(2500),
-        padding: EdgeInsets.fromLTRB(
-          16,
-          widget.topPadding + 8,
-          16,
-          bottomPadding,
-        ),
+        padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPadding),
         children: [
-          _buildOverviewModeSelector(),
-          const SizedBox(height: 8),
           _buildViewSelector(context),
           const SizedBox(height: 8),
           _buildPeriodNavigator(context),
@@ -328,6 +360,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   Widget _buildOverviewModeSelector() {
     return FinanceGlassSegmentSelector<_FinanceOverviewMode>(
       keyPrefix: 'finance-overview-mode-selector',
+      alternateKeyPrefixes: const ['finance-calendar-mode-selector'],
       height: 44,
       segments: const [
         FinanceGlassSegment(
@@ -1401,13 +1434,19 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
                       fontSize: 13,
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Text(
-                    formatFinanceAmount(entry.value),
-                    style: TextStyle(
-                      color: colorScheme.onSurfaceVariant,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        formatFinanceAmount(entry.value),
+                        style: TextStyle(
+                          color: colorScheme.onSurfaceVariant,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 2),

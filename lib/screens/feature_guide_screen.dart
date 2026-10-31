@@ -811,7 +811,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.45,
+          maxHeight: MediaQuery.sizeOf(context).height * 0.45,
         ),
         child: Container(
           decoration: BoxDecoration(
@@ -827,7 +827,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
               assetPath.toLowerCase().endsWith('.mp4') ||
                   assetPath.toLowerCase().endsWith('.webm')
               ? AssetVideoPlayer(assetPath: assetPath)
-              : Image.asset(assetPath, fit: fit),
+              : Image.asset(assetPath, fit: fit, cacheWidth: 1080),
         ),
       ),
     );

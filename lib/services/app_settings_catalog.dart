@@ -816,11 +816,11 @@ abstract final class AppSettingsCatalog {
     ),
     AiSettingsDestination(
       id: 'animation_performance_metric',
-      title: '流畅度与渲染压力',
-      path: '设置 > 动画与特效 > 流畅度与渲染压力',
-      description: '流畅度 帧率 FPS 渲染压力 掉帧 卡顿 性能指标',
+      title: '流畅度与负载压力',
+      path: '设置 > 动画与特效 > 流畅度与负载压力',
+      description: '流畅度 负载压力 帧率 FPS 渲染压力 掉帧 卡顿 性能指标 悬浮窗 悬浮监控',
       page: SettingsPageId.animation,
-      labels: ['流畅度', '帧率', 'FPS', '渲染压力', '卡顿'],
+      labels: ['流畅度', '负载压力', '帧率', 'FPS', '渲染压力', '卡顿', '悬浮窗', '悬浮监控'],
       platforms: {},
     ),
     AiSettingsDestination(

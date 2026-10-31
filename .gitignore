@@ -106,6 +106,7 @@ todo.md
 !/test/screens/plan_preparation_screen_test.dart
 !/test/screens/plan_split_screen_test.dart
 !/test/screens/course_calendar_adjustment_screen_test.dart
+!/test/screens/weekly_course_collapse_test.dart
 !/test/screens/team_management_invite_test.dart
 !/test/screens/feature_explorer_and_onboarding_test.dart
 !/test/app_performance_monitor_test.dart
@@ -397,3 +398,4 @@ todo.md
 !/test/widgets/todo_edit_exit_protection_test.dart
 !/test/widgets/animation_performance_metric_card_test.dart
 !/test/widgets/liquid_glass_manual_adjustments_test.dart
+!/test/widgets/animation_performance_floating_window_test.dart

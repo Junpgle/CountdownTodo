@@ -8,9 +8,9 @@ import 'package:countdown_todo/widgets/animation_performance_metric_card.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  group('RenderingPressureEvaluation Unit Tests', () {
-    test('power save mode clamps rendering pressure to minimal', () {
-      final evaluation = evaluateRenderingPressure(
+  group('LoadPressureEvaluation Unit Tests', () {
+    test('power save mode clamps load pressure to minimal', () {
+      final evaluation = evaluateLoadPressure(
         powerSaveModeEnabled: true,
         animationsEnabled: true,
         motionBlurEnabled: true,
@@ -30,8 +30,8 @@ void main() {
       expect(evaluation.factors.first, contains('系统省电模式已介入'));
     });
 
-    test('all effects disabled yields minimal rendering pressure', () {
-      final evaluation = evaluateRenderingPressure(
+    test('all effects disabled yields minimal load pressure', () {
+      final evaluation = evaluateLoadPressure(
         powerSaveModeEnabled: false,
         animationsEnabled: false,
         motionBlurEnabled: false,
@@ -51,7 +51,7 @@ void main() {
     });
 
     test('balanced effects yields moderate or light pressure', () {
-      final evaluation = evaluateRenderingPressure(
+      final evaluation = evaluateLoadPressure(
         powerSaveModeEnabled: false,
         animationsEnabled: true,
         motionBlurEnabled: false,
@@ -69,8 +69,8 @@ void main() {
       expect(evaluation.factors, anyElement(contains('Liquid Glass 标准模式')));
     });
 
-    test('enabling many heavy effects produces high rendering pressure', () {
-      final evaluation = evaluateRenderingPressure(
+    test('enabling many heavy effects produces high load pressure', () {
+      final evaluation = evaluateLoadPressure(
         powerSaveModeEnabled: false,
         animationsEnabled: true,
         motionBlurEnabled: true,
@@ -101,7 +101,7 @@ void main() {
         errorContainer: Color(0xFF8899AA),
       );
 
-      final lowEval = evaluateRenderingPressure(
+      final lowEval = evaluateLoadPressure(
         powerSaveModeEnabled: true,
         animationsEnabled: false,
         motionBlurEnabled: false,
@@ -119,7 +119,7 @@ void main() {
         colorScheme.primaryContainer,
       );
 
-      final highEval = evaluateRenderingPressure(
+      final highEval = evaluateLoadPressure(
         powerSaveModeEnabled: false,
         animationsEnabled: true,
         motionBlurEnabled: true,
@@ -166,7 +166,7 @@ void main() {
       );
 
       // 验证标题与刷新率指示
-      expect(find.text('流畅度与渲染压力'), findsOneWidget);
+      expect(find.text('流畅度与负载压力'), findsOneWidget);
       expect(find.text('60 Hz 刷新率'), findsOneWidget);
 
       // 验证三大核心流畅度指标
@@ -174,8 +174,8 @@ void main() {
       expect(find.text('渲染耗时'), findsOneWidget);
       expect(find.text('流畅度达标率'), findsOneWidget);
 
-      // 验证渲染压力评估
-      expect(find.text('综合渲染压力'), findsOneWidget);
+      // 验证负载压力评估
+      expect(find.text('综合负载压力'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('animation-performance-pressure-text')),
         findsOneWidget,

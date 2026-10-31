@@ -223,10 +223,24 @@ class _GitHubResourceImageState extends State<GitHubResourceImage> {
         if (!snapshot.hasData) {
           return SizedBox(width: widget.width, height: widget.height);
         }
+        int? cacheWidth;
+        int? cacheHeight;
+        if (widget.width != null &&
+            widget.width!.isFinite &&
+            widget.width! > 0) {
+          cacheWidth = (widget.width! * 3).round().clamp(1, 4096);
+        }
+        if (widget.height != null &&
+            widget.height!.isFinite &&
+            widget.height! > 0) {
+          cacheHeight = (widget.height! * 3).round().clamp(1, 4096);
+        }
         return Image.memory(
           snapshot.data!,
           width: widget.width,
           height: widget.height,
+          cacheWidth: cacheWidth,
+          cacheHeight: cacheHeight,
           fit: widget.fit,
           errorBuilder: widget.errorBuilder,
         );

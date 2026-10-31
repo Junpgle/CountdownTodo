@@ -255,9 +255,12 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
           for (final item in plan.changedItems.where((item) => item.isDeleted))
             item.id: item,
         };
+        final cappedDeleted = deletedById.values.length > 100
+            ? deletedById.values.toList().sublist(0, 100)
+            : deletedById.values;
         await prefs.setString(
           cacheKey,
-          jsonEncode(deletedById.values.map((item) => item.toJson()).toList()),
+          jsonEncode(cappedDeleted.map((item) => item.toJson()).toList()),
         );
       } catch (error) {
         debugPrint('更新回收站缓存失败: $error');

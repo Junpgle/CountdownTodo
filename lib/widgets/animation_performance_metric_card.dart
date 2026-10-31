@@ -4,180 +4,18 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../services/animation_performance_monitor_service.dart';
 import '../services/liquid_glass_effect_service.dart';
+import '../utils/app_dialogs.dart';
 
-/// 渲染压力评估结果
-class RenderingPressureEvaluation {
-  const RenderingPressureEvaluation({
-    required this.scorePercent,
-    required this.levelLabel,
-    required this.factors,
-    required this.cautionTitle,
-    required this.cautionDescription,
-    required this.isHighPressure,
-  });
+export '../services/animation_performance_monitor_service.dart'
+    show
+        LoadPressureEvaluation,
+        RenderingPressureEvaluation,
+        evaluateLoadPressure,
+        evaluateRenderingPressure;
 
-  /// 综合渲染压力得分 (0 - 100)
-  final int scorePercent;
-
-  /// 压力等级描述 (极低、轻度、适中、较高、极高)
-  final String levelLabel;
-
-  /// 激活的渲染负载细项
-  final List<String> factors;
-
-  /// 警示标题
-  final String cautionTitle;
-
-  /// 详细说明与建议
-  final String cautionDescription;
-
-  /// 是否属于较高或重度渲染压力
-  final bool isHighPressure;
-
-  /// 依据主题色彩规范获取等级指示色
-  Color getLevelColor(ColorScheme colorScheme) {
-    if (scorePercent <= 28) {
-      return colorScheme.primary;
-    } else if (scorePercent <= 52) {
-      return colorScheme.secondary;
-    } else if (scorePercent <= 74) {
-      return colorScheme.tertiary;
-    } else {
-      return colorScheme.error;
-    }
-  }
-
-  /// 依据主题色彩规范获取背景容器色
-  Color getLevelContainerColor(ColorScheme colorScheme) {
-    if (scorePercent <= 28) {
-      return colorScheme.primaryContainer;
-    } else if (scorePercent <= 52) {
-      return colorScheme.secondaryContainer;
-    } else if (scorePercent <= 74) {
-      return colorScheme.tertiaryContainer;
-    } else {
-      return colorScheme.errorContainer;
-    }
-  }
-}
-
-/// 计算当前特效配置下的渲染压力量化评估
-RenderingPressureEvaluation evaluateRenderingPressure({
-  required bool powerSaveModeEnabled,
-  required bool animationsEnabled,
-  required bool motionBlurEnabled,
-  required bool layerBlurEnabled,
-  required bool liquidGlassEnabled,
-  required LiquidGlassEffectMode liquidGlassMode,
-  required double liquidGlassBlur,
-  required int liquidGlassTransparency,
-  required bool screenRadiusEnabled,
-  required bool lazyLoadEnabled,
-  double? frameBudgetUtilizationPercent,
-}) {
-  if (powerSaveModeEnabled) {
-    return const RenderingPressureEvaluation(
-      scorePercent: 12,
-      levelLabel: '极低',
-      factors: ['系统省电模式已介入 (全应用装饰特效已暂停)', '渲染负荷已压至最低'],
-      cautionTitle: '开启较多特效可能会导致卡顿',
-      cautionDescription: '当前处于系统省电模式，已自动限制高开销动效与玻璃折射以降低功耗。退出省电模式后将自动恢复原设定。',
-      isHighPressure: false,
-    );
-  }
-
-  int staticScore = 6; // Flutter 引擎基准开销
-  final factors = <String>[];
-
-  if (animationsEnabled) {
-    staticScore += 10;
-    factors.add('页面转场动画 (+10%)');
-  } else {
-    factors.add('转场动画已关闭 (0%)');
-  }
-
-  if (motionBlurEnabled) {
-    staticScore += 26;
-    factors.add('运动模糊 (+26% 动态插值开销)');
-  }
-
-  if (layerBlurEnabled) {
-    staticScore += 24;
-    factors.add('层级模糊 (+24% GPU背景滤镜开销)');
-  }
-
-  if (liquidGlassEnabled) {
-    if (liquidGlassMode == LiquidGlassEffectMode.enhanced) {
-      staticScore += 34;
-      factors.add('Liquid Glass 增强模式 (+34% 折射高光)');
-    } else {
-      staticScore += 20;
-      factors.add('Liquid Glass 标准模式 (+20% 玻璃材质)');
-    }
-    if (liquidGlassBlur > 14) {
-      staticScore += 8;
-      factors.add('深度磨砂 (${liquidGlassBlur.round()}px, +8%)');
-    }
-  }
-
-  if (screenRadiusEnabled) {
-    staticScore += 8;
-    factors.add('屏幕圆角裁切 (+8%)');
-  }
-
-  if (!lazyLoadEnabled) {
-    staticScore += 15;
-    factors.add('关闭懒加载 (+15% 突发开销)');
-  } else {
-    factors.add('懒加载优化已开启 (削峰填谷)');
-  }
-
-  // 结合实测帧预算占用率微调压力指数
-  double combinedScore = staticScore.toDouble();
-  if (frameBudgetUtilizationPercent != null &&
-      frameBudgetUtilizationPercent > 0) {
-    combinedScore = staticScore * 0.75 + frameBudgetUtilizationPercent * 0.25;
-  }
-  final clampedScore = combinedScore.round().clamp(6, 100);
-
-  final String levelLabel;
-  final bool isHighPressure;
-  final String cautionDesc;
-
-  if (clampedScore <= 28) {
-    levelLabel = '极低';
-    isHighPressure = false;
-    cautionDesc = '当前渲染压力极低，各特效负担轻微，适合任何设备或长续航场景。请注意：若后续开启较多高级特效，渲染压力将随之增加。';
-  } else if (clampedScore <= 52) {
-    levelLabel = '轻度';
-    isHighPressure = false;
-    cautionDesc = '当前渲染压力适中偏低，可在绝大多数现代设备上保持稳定满帧。开启较多高负载特效可能会导致低配设备卡顿。';
-  } else if (clampedScore <= 74) {
-    levelLabel = '适中';
-    isHighPressure = false;
-    cautionDesc = '当前启用了部分视觉特效，视觉表现丰富。若在部分中低端设备或高刷新率屏幕上遇到滑动掉帧，可适当调减模糊或玻璃特效。';
-  } else if (clampedScore <= 88) {
-    levelLabel = '较高';
-    isHighPressure = true;
-    cautionDesc = '已开启较多高负载特效（如 Liquid Glass、模糊效果等）。在高分屏或 120Hz 刷新率下可能导致 GPU 渲染负载过重出现掉帧与发热，中低端设备建议选用「平衡」预设。';
-  } else {
-    levelLabel = '极高';
-    isHighPressure = true;
-    cautionDesc = '多项重度渲染特效同时处于开启状态，GPU 渲染与图层混合处于满载边缘，中低端机型极易出现明显卡顿、发热与掉帧。强烈建议关闭部分高耗特效或切换至「性能」预设。';
-  }
-
-  return RenderingPressureEvaluation(
-    scorePercent: clampedScore,
-    levelLabel: levelLabel,
-    factors: factors,
-    cautionTitle: '开启较多特效可能会导致卡顿',
-    cautionDescription: cautionDesc,
-    isHighPressure: isHighPressure,
-  );
-}
-
-/// 动画与特效设置顶部的流畅度量化指标与渲染压力仪表卡片
+/// 动画与特效设置顶部的流畅度量化指标与负载压力仪表卡片
 class AnimationPerformanceMetricCard extends StatefulWidget {
   final bool animationsEnabled;
   final bool motionBlurEnabled;
@@ -237,6 +75,7 @@ class _AnimationPerformanceMetricCardState
   @override
   void initState() {
     super.initState();
+    AnimationPerformanceMonitorService.registerConsumer();
     if (widget.initialTimingsForTesting != null) {
       _recentTimings.addAll(widget.initialTimingsForTesting!);
     }
@@ -255,6 +94,7 @@ class _AnimationPerformanceMetricCardState
 
   @override
   void dispose() {
+    AnimationPerformanceMonitorService.unregisterConsumer();
     _refreshTimer?.cancel();
     try {
       SchedulerBinding.instance.removeTimingsCallback(_handleTimings);
@@ -339,7 +179,7 @@ class _AnimationPerformanceMetricCardState
     final frameBudgetUtilization = (totalRenderMs / frameBudgetMs * 100.0)
         .clamp(0.0, 100.0);
 
-    final pressure = evaluateRenderingPressure(
+    final pressure = evaluateLoadPressure(
       powerSaveModeEnabled: widget.powerSaveModeEnabled,
       animationsEnabled: widget.animationsEnabled,
       motionBlurEnabled: widget.motionBlurEnabled,
@@ -381,7 +221,7 @@ class _AnimationPerformanceMetricCardState
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '流畅度与渲染压力',
+                    '流畅度与负载压力',
                     style: TextStyle(
                       fontSize: widget.isDesktop ? 17 : 15.5,
                       fontWeight: FontWeight.bold,
@@ -411,13 +251,106 @@ class _AnimationPerformanceMetricCardState
             ),
             const SizedBox(height: 6),
             Text(
-              '实时监测界面渲染耗时与帧率稳定性，动态量化当前动效对 GPU/CPU 的压力。',
+              '实时监测界面渲染耗时与帧率稳定性，动态量化当前动效对系统与硬件的负载压力。',
               style: TextStyle(
                 fontSize: 12,
                 color: colorScheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
+
+            // 悬浮监控操作栏：支持带到其他页面全局测试
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                ValueListenableBuilder<bool>(
+                  valueListenable: AnimationPerformanceMonitorService
+                      .isFloatingActiveListenable,
+                  builder: (context, isFloating, _) {
+                    return ActionChip(
+                      key: const ValueKey(
+                        'animation-performance-float-toggle-chip',
+                      ),
+                      avatar: Icon(
+                        isFloating
+                            ? Icons.check_circle_rounded
+                            : Icons.picture_in_picture_alt_rounded,
+                        size: 15,
+                        color: isFloating
+                            ? colorScheme.primary
+                            : colorScheme.onSurfaceVariant,
+                      ),
+                      label: Text(
+                        isFloating ? '悬浮监控运行中 (点击关闭)' : '开启悬浮监控',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: isFloating
+                              ? FontWeight.bold
+                              : FontWeight.w600,
+                          color: isFloating
+                              ? colorScheme.primary
+                              : colorScheme.onSurface,
+                        ),
+                      ),
+                      backgroundColor: isFloating
+                          ? colorScheme.primaryContainer.withValues(alpha: 0.5)
+                          : colorScheme.surfaceContainerHighest.withValues(
+                              alpha: 0.45,
+                            ),
+                      side: BorderSide(
+                        color: isFloating
+                            ? colorScheme.primary
+                            : colorScheme.outlineVariant.withValues(alpha: 0.5),
+                        width: 1,
+                      ),
+                      onPressed: () {
+                        AnimationPerformanceMonitorService.toggleFloating();
+                        if (!isFloating) {
+                          AppSnackBars.showSnackBar(
+                            context,
+                            const SnackBar(
+                              content: Text('已开启性能悬浮窗，可在全应用任意页面测试流畅度与负载压力'),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      },
+                    );
+                  },
+                ),
+                OutlinedButton.icon(
+                  key: const ValueKey(
+                    'animation-performance-float-navigate-btn',
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  icon: const Icon(Icons.open_in_browser_rounded, size: 14),
+                  label: const Text(
+                    '带到其他界面测试',
+                    style: TextStyle(fontSize: 11.5),
+                  ),
+                  onPressed: () {
+                    AnimationPerformanceMonitorService.showFloating();
+                    AppSnackBars.showSnackBar(
+                      context,
+                      const SnackBar(
+                        content: Text('已开启性能悬浮窗，可前往主页、课表或待办等界面实时测试'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                    Navigator.of(context).maybePop();
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
 
             // 三项核心流畅度量化指标
             LayoutBuilder(
@@ -480,7 +413,7 @@ class _AnimationPerformanceMetricCardState
             const Divider(height: 1),
             const SizedBox(height: 14),
 
-            // 综合渲染压力评估条
+            // 综合负载压力评估条
             Row(
               children: [
                 Icon(
@@ -490,7 +423,7 @@ class _AnimationPerformanceMetricCardState
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  '综合渲染压力',
+                  '综合负载压力',
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,

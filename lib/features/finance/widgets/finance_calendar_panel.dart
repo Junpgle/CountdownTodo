@@ -26,6 +26,7 @@ class FinanceCalendarPanel extends StatefulWidget {
     GlobalKey sourceKey,
   )?
   onOpenTransaction;
+  final bool showModeSelector;
 
   const FinanceCalendarPanel({
     super.key,
@@ -42,6 +43,7 @@ class FinanceCalendarPanel extends StatefulWidget {
     required this.onShowReport,
     this.onAdd,
     this.onOpenTransaction,
+    this.showModeSelector = true,
   });
 
   @override
@@ -94,13 +96,15 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
       child: ListView(
         padding: EdgeInsets.fromLTRB(
           16,
-          widget.topPadding + 12,
+          widget.showModeSelector ? widget.topPadding + 12 : 0,
           16,
           floatingBottomNavigationContentPaddingFor(context),
         ),
         children: [
-          _buildModeSelector(),
-          const SizedBox(height: 12),
+          if (widget.showModeSelector) ...[
+            _buildModeSelector(),
+            const SizedBox(height: 12),
+          ],
           _buildFilterAndMetricSelectors(colorScheme),
           const SizedBox(height: 12),
           _buildCalendarCard(context),
@@ -1047,45 +1051,48 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
     final sourceKey = GlobalKey(
       debugLabel: 'finance-calendar-${transaction.uuid}',
     );
-    return ListTile(
-      key: ValueKey('finance-calendar-transaction-${transaction.uuid}'),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
-      onTap: widget.onOpenTransaction == null
-          ? null
-          : () => widget.onOpenTransaction!(transaction, sourceKey),
-      leading: Container(
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          color: colorScheme.secondaryContainer.withValues(alpha: 0.75),
-          borderRadius: BorderRadius.circular(13),
+    return Material(
+      type: MaterialType.transparency,
+      child: ListTile(
+        key: ValueKey('finance-calendar-transaction-${transaction.uuid}'),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+        onTap: widget.onOpenTransaction == null
+            ? null
+            : () => widget.onOpenTransaction!(transaction, sourceKey),
+        leading: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: colorScheme.secondaryContainer.withValues(alpha: 0.75),
+            borderRadius: BorderRadius.circular(13),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            category?.icon ?? '💰',
+            style: const TextStyle(fontSize: 21),
+          ),
         ),
-        alignment: Alignment.center,
-        child: Text(
-          category?.icon ?? '💰',
-          style: const TextStyle(fontSize: 21),
+        title: Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5),
         ),
-      ),
-      title: Text(
-        title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5),
-      ),
-      subtitle: Text(
-        subtitle,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12),
-      ),
-      trailing: Text(
-        formatSignedFinanceAmount(transaction.amountMinor, transaction.type),
-        style: TextStyle(
-          color: transaction.type == FinanceTransactionType.expense
-              ? colorScheme.error
-              : colorScheme.primary,
-          fontSize: 15.5,
-          fontWeight: FontWeight.w800,
+        subtitle: Text(
+          subtitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12),
+        ),
+        trailing: Text(
+          formatSignedFinanceAmount(transaction.amountMinor, transaction.type),
+          style: TextStyle(
+            color: transaction.type == FinanceTransactionType.expense
+                ? colorScheme.error
+                : colorScheme.primary,
+            fontSize: 15.5,
+            fontWeight: FontWeight.w800,
+          ),
         ),
       ),
     );
