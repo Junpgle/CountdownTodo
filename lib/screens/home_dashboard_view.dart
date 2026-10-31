@@ -146,7 +146,7 @@ mixin _HomeDashboardViewMixin
             child: FloatingGlassPinnedHeaderLayout(
               initialHeaderExtent:
                   (_selectedTabIndex != _homeFocusTabIndex || isTablet)
-                  ? (112.0 + MediaQuery.paddingOf(context).top)
+                  ? (78.0 + MediaQuery.paddingOf(context).top)
                   : 0.0,
               fadeContent: !showWallpaper,
               header: Column(
@@ -260,7 +260,7 @@ mixin _HomeDashboardViewMixin
                                       .isEmpty)
                               ? _buildDashboardSkeleton(
                                   isLight,
-                                  topPadding: headerExtent + 16,
+                                  topPadding: headerExtent + 6,
                                 )
                               : LayoutBuilder(
                                   builder: (context, constraints) {
@@ -700,8 +700,10 @@ mixin _HomeDashboardViewMixin
                                             backgroundBrightness:
                                                 cardBackgroundBrightness,
                                             child: Padding(
-                                              padding: const EdgeInsets.only(
-                                                bottom: 24.0,
+                                              padding: EdgeInsets.only(
+                                                bottom: key == 'banners'
+                                                    ? 0.0
+                                                    : 24.0,
                                               ),
                                               child: sectionBuilders[key]!(),
                                             ),
@@ -766,7 +768,7 @@ mixin _HomeDashboardViewMixin
                                                 !showWallpaper,
                                             padding: EdgeInsets.fromLTRB(
                                               16,
-                                              listHeaderExtent + 16,
+                                              listHeaderExtent + 6,
                                               16,
                                               16,
                                             ),
@@ -962,8 +964,10 @@ mixin _HomeDashboardViewMixin
                                               backgroundBrightness:
                                                   cardBackgroundBrightness,
                                               child: Padding(
-                                                padding: const EdgeInsets.only(
-                                                  bottom: 24.0,
+                                                padding: EdgeInsets.only(
+                                                  bottom: key == 'banners'
+                                                      ? 0.0
+                                                      : 24.0,
                                                 ),
                                                 child:
                                                     isolateTabletSection &&
@@ -987,7 +991,7 @@ mixin _HomeDashboardViewMixin
                                       child: SingleChildScrollView(
                                         padding: EdgeInsets.fromLTRB(
                                           isTablet ? 32 : 16,
-                                          headerExtent + 16,
+                                          headerExtent + 6,
                                           isTablet ? 32 : 16,
                                           16 +
                                               bottomSystemInset +

@@ -156,7 +156,7 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
     final dpr = view.devicePixelRatio;
     final logical = view.physicalSize / dpr;
     final landscape = logical.width > logical.height;
-    return Size.fromHeight(landscape ? 64.0 : 112.0);
+    return Size.fromHeight(landscape ? 64.0 : 78.0);
   }
 }
 
@@ -331,7 +331,7 @@ class _HomeAppBarState extends State<HomeAppBar>
     final isLandscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
     final bool isTablet = MediaQuery.sizeOf(context).width >= 768;
-    final toolbarH = isLandscape ? 64.0 : 86.0;
+    final toolbarH = isLandscape ? 64.0 : 78.0;
     final titleSize = isLandscape ? 18.0 : 22.0;
     final dateSize = isLandscape ? 12.0 : 13.0;
     final greetingSize = isLandscape ? 11.0 : 12.0;

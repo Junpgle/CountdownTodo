@@ -710,7 +710,7 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
     return GestureDetector(
       onTap: event.onTap,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
+        margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: baseColor.withValues(alpha: isLight ? 0.85 : 0.15),

@@ -46,7 +46,7 @@ class SectionHeader extends StatelessWidget {
         : Theme.of(context).colorScheme.primary;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
           Container(
