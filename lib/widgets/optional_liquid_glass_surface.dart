@@ -96,8 +96,7 @@ bool _hasUniformRadius(BorderRadiusGeometry radius) {
 /// Isolates a glass-heavy scrollable and provides one shared backdrop group.
 ///
 /// Any grouped backdrop filters in the subtree share the engine's single
-/// backdrop input instead of creating independent captures. Adaptive repeated
-/// cards use static material on Android while this scrollable is active.
+/// backdrop input instead of creating independent captures.
 class OptionalLiquidGlassScrollOptimizer extends StatelessWidget {
   const OptionalLiquidGlassScrollOptimizer({super.key, required this.child});
 
@@ -105,22 +104,8 @@ class OptionalLiquidGlassScrollOptimizer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BackdropGroup(child: _OptionalGlassScrollableScope(child: child));
+    return BackdropGroup(child: child);
   }
-}
-
-class _OptionalGlassScrollableScope extends InheritedWidget {
-  const _OptionalGlassScrollableScope({required super.child});
-
-  static bool contains(BuildContext context) =>
-      context
-          .dependOnInheritedWidgetOfExactType<
-            _OptionalGlassScrollableScope
-          >() !=
-      null;
-
-  @override
-  bool updateShouldNotify(_OptionalGlassScrollableScope oldWidget) => false;
 }
 
 /// Marks content rendered inside one of the app's modal overlay surfaces.
@@ -220,11 +205,6 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
         final colorScheme = Theme.of(context).colorScheme;
         final dark = isDark ?? colorScheme.brightness == Brightness.dark;
         final enhanced = configuration.mode == LiquidGlassEffectMode.enhanced;
-        final insideScrollable = _OptionalGlassScrollableScope.contains(context);
-        final useStaticAndroidMaterial =
-            AppPlatform.isAndroid &&
-            (MediaQuery.sizeOf(context).width >= 768.0 || insideScrollable);
-        final useStaticWebMaterial = AppPlatform.isWeb && insideScrollable;
         final useStaticWindowsMaterial = AppPlatform.isWindows;
         final useStaticOverlayMaterial =
             OptionalLiquidGlassOverlayScope.isActive(context);
@@ -243,10 +223,7 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
             mode == OptionalLiquidGlassPanelMode.staticMaterial ||
             useStaticOverlayMaterial ||
             useStaticWindowsMaterial ||
-            (mode == OptionalLiquidGlassPanelMode.adaptiveRepeated &&
-                (!enhanced ||
-                    useStaticAndroidMaterial ||
-                    useStaticWebMaterial));
+            (mode == OptionalLiquidGlassPanelMode.adaptiveRepeated && !enhanced);
         // Per-corner radii are only expressible by the tiers that clip with
         // BorderRadius; the superellipse shader shape needs a uniform radius.
         final resolvedRadius =
@@ -255,15 +232,9 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
         if (useStaticMaterial) {
           final isAdaptiveCard =
               mode == OptionalLiquidGlassPanelMode.adaptiveRepeated;
-          // Windows and Android scrollables use a static tinted material without
-          // live backdrop sampling. Repeated live BackdropFilters cause excessive
-          // GPU sampling and frame drops during scrolls. Static material mode and
-          // inner overlay panels also avoid repeated backdrop sampling.
           final shouldBlur =
               !useStaticOverlayMaterial &&
               !useStaticWindowsMaterial &&
-              !useStaticAndroidMaterial &&
-              !useStaticWebMaterial &&
               mode != OptionalLiquidGlassPanelMode.staticMaterial;
           final blurFilter = configuration.blurFilter;
           final originalOpacity =

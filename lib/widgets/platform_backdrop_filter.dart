@@ -5,12 +5,12 @@ import 'package:flutter/material.dart';
 import '../services/liquid_glass_effect_service.dart';
 import '../utils/app_platform.dart';
 
-/// Avoids creating an offscreen blurred texture on Android, Windows, and Web.
+/// Avoids creating an offscreen blurred texture on Android and Windows.
 ///
 /// Backdrop blur is visually pleasant on desktop and iOS, but it can make a
 /// full-screen wallpaper or a scrolling card miss the 120Hz raster budget on
-/// Android, Windows, and Web browsers. The caller still supplies the same child,
-/// so the platform change only removes the expensive compositing step.
+/// Android and Windows. The caller still supplies the same child, so the
+/// platform change only removes the expensive compositing step.
 class PlatformBackdropFilter extends StatelessWidget {
   final ImageFilter filter;
   final Widget child;
@@ -25,9 +25,7 @@ class PlatformBackdropFilter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (AppPlatform.isAndroid || AppPlatform.isWindows || AppPlatform.isWeb) {
-      return child;
-    }
+    if (AppPlatform.isAndroid || AppPlatform.isWindows) return child;
     if (bypassWhenLiquidGlassEnabled) {
       return ValueListenableBuilder<LiquidGlassEffectConfiguration>(
         valueListenable: LiquidGlassEffectService.configurationListenable,

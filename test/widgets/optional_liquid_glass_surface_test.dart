@@ -239,6 +239,35 @@ void main() {
     },
   );
 
+  testWidgets(
+    'adaptive cards maintain BackdropFilter blur effect on scrollables',
+    (tester) async {
+      await LiquidGlassEffectService.setEnabled(true);
+      await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: OptionalLiquidGlassScrollOptimizer(
+              child: ListView(
+                children: const [
+                  OptionalLiquidGlassCard(
+                    fallbackDecoration: BoxDecoration(),
+                    child: Text('Card with live blur'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 16));
+
+      expect(find.byType(BackdropFilter), findsWidgets);
+      expect(find.text('Card with live blur'), findsOneWidget);
+    },
+  );
+
   testWidgets('scroll optimizer keeps descendants mounted during a gesture', (
     tester,
   ) async {
