@@ -15,7 +15,7 @@ CountDownTodo 是一个基于 Flutter 的跨平台效率工具，覆盖待办规
 
 Countdown Todo is a Flutter productivity app combining todos, recurring todo series, habit tracking, countdowns, courses, focus sessions, plan blocks, collaboration, statistics, calendar integration and AI-assisted actions.
 
-当前应用版本：`7.22.6`
+当前应用版本：`7.22.8`
 文档更新时间：`2026-10-31`
 
 ## 支持平台
