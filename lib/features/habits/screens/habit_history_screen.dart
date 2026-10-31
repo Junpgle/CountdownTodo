@@ -143,20 +143,28 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
         final completedTodos = linkedTodos
             .where((todo) => todo.isDone)
             .toList(growable: false);
-        rows.add(
-          _HabitHistorySectionHeader(
-            '关联待办完成记录',
-            detail: '已完成 ${completedTodos.length}/${linkedTodos.length} 期',
-          ),
-        );
+        final hasRecords = checkIns.isNotEmpty || completedTodos.isNotEmpty;
+        final totalCount = checkIns.length + completedTodos.length;
+        rows.add(_HabitHistorySectionHeader('打卡记录', detail: '共 $totalCount 条'));
         rows.add(const _HabitHistoryGap(10));
-        if (completedTodos.isEmpty) {
-          rows.add(const _HabitHistoryEmptyState('暂无已完成的关联待办'));
+        if (!hasRecords) {
+          rows.add(const _HabitHistoryEmptyState('暂无打卡记录'));
         } else {
-          final grouped = _groupByHistoryDay(completedTodos, _todoDateKey);
-          for (final entry in grouped.entries) {
-            rows.add(_HabitHistoryDateHeader(entry.key));
-            rows.addAll(entry.value);
+          final grouped = <String, List<Object>>{};
+          for (final checkIn in checkIns) {
+            grouped.putIfAbsent(checkIn.logicalDate, () => []).add(checkIn);
+          }
+          for (final todo in completedTodos) {
+            final key = _todoDateKey(todo);
+            if (!grouped.containsKey(key)) {
+              grouped.putIfAbsent(key, () => []).add(todo);
+            }
+          }
+          final sortedKeys = grouped.keys.toList()
+            ..sort((a, b) => b.compareTo(a));
+          for (final key in sortedKeys) {
+            rows.add(_HabitHistoryDateHeader(key));
+            rows.addAll(grouped[key]!);
           }
         }
       case HabitSourceType.quantityCheckIn:
@@ -469,7 +477,7 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
         '${HabitAdaptationService.forHabit(widget.goal)?.kind == HabitAdaptationKind.sleepDuration ? '睡眠' : '时长'} '
             '${HabitText.formatDuration(checkIn.value.round())}',
       HabitSourceType.timeCheckIn => '打卡 ${HabitText.timeOfDay(local)}',
-      HabitSourceType.recurringTodo ||
+      HabitSourceType.recurringTodo => '完成打卡',
       HabitSourceType.pomodoroTag => HabitText.timeOfDay(local),
     };
 

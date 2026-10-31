@@ -381,26 +381,58 @@ class _HabitCardState extends State<HabitCard> {
   }
 
   String _subtitle(HabitDayStatus status, HabitProgress progress) {
+    final String base;
     switch (widget.goal.sourceType) {
       case HabitSourceType.recurringTodo:
-        return HabitText.periodLabel(widget.rule);
+        base = HabitText.periodLabel(widget.rule);
       case HabitSourceType.pomodoroTag:
-        return '${HabitText.periodLabel(widget.rule)} · '
+        base =
+            '${HabitText.periodLabel(widget.rule)} · '
             '${HabitText.durationProgress(progress)}';
       case HabitSourceType.durationCheckIn:
         final coachingTarget = _sleepCoachingTargetLabel;
-        return '${HabitText.periodLabel(widget.rule)} · '
+        base =
+            '${HabitText.periodLabel(widget.rule)} · '
             '${coachingTarget == null ? HabitText.durationProgressForGoal(widget.goal, progress) : '${HabitText.formatDuration(progress.currentValue.round())} · '
                       '本期目标 $coachingTarget'}';
       case HabitSourceType.quantityCheckIn:
         final unit = widget.rule.unit;
-        return '${HabitText.periodLabel(widget.rule)} · '
+        base =
+            '${HabitText.periodLabel(widget.rule)} · '
             '${HabitText.amountProgress(progress, unit)}';
       case HabitSourceType.timeCheckIn:
         final coachingTarget = _sleepCoachingTargetLabel;
-        return '${HabitText.periodLabel(widget.rule)} · '
+        base =
+            '${HabitText.periodLabel(widget.rule)} · '
             '目标 ${coachingTarget ?? HabitText.targetTime(widget.rule.targetTimeMinute)}';
     }
+    if (widget.rule.hasPlanningBlock(widget.goal)) {
+      final startText = HabitText.targetTime(
+        widget.rule.effectivePreferredStartMinute(),
+      );
+      final minutes = widget.rule.effectivePlannedMinutes(widget.goal);
+      return '$base · 预留 $startText (${minutes}m)';
+    }
+    return base;
+  }
+
+  bool get _canQuickFocus =>
+      widget.onStartFocus != null &&
+      (widget.rule.hasPlanningBlock(widget.goal) ||
+          widget.rule.reminderPolicy.focusTagUuids.isNotEmpty ||
+          widget.goal.defaultFocusMinutes != null);
+
+  Widget _buildQuickFocusButton() {
+    return IconButton.filledTonal(
+      tooltip: '开始专注（达标自动打卡）',
+      onPressed: _busy ? null : _startFocus,
+      icon: Icon(Icons.timer_outlined, size: widget.compact ? 16 : 18),
+      style: IconButton.styleFrom(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(widget.compact ? 10 : 12),
+        ),
+      ),
+    );
   }
 
   String? get _sleepCoachingTargetLabel {
@@ -613,6 +645,10 @@ class _HabitCardState extends State<HabitCard> {
                   ),
                 ),
         ),
+        if (!done && _canQuickFocus) ...[
+          const SizedBox(width: 8),
+          _buildQuickFocusButton(),
+        ],
         if (done) ...[
           const SizedBox(width: 8),
           TextButton(
@@ -868,6 +904,8 @@ class _HabitCardState extends State<HabitCard> {
           ),
           child: const Text('自定义'),
         ),
+        if (status != HabitDayStatus.met && _canQuickFocus)
+          _buildQuickFocusButton(),
       ],
     );
   }
@@ -1011,6 +1049,10 @@ class _HabitCardState extends State<HabitCard> {
           ),
         ),
         if (actual == null) ...[
+          if (_canQuickFocus) ...[
+            const SizedBox(width: 8),
+            _buildQuickFocusButton(),
+          ],
           const SizedBox(width: 8),
           IconButton.filledTonal(
             tooltip: '指定时间打卡',

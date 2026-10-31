@@ -9,6 +9,7 @@ import 'package:countdown_todo/services/pomodoro_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   final now = DateTime(2026, 8, 5, 14, 0); // 周三 14:00
 
   HabitGoal goal(HabitSourceType type, List<String> sourceIds) => HabitGoal(
@@ -296,6 +297,29 @@ void main() {
       isDone: done,
       recurrenceSeriesId: 'series-1',
     );
+
+    test('打卡记录完成则达标', () async {
+      final habit = goal(HabitSourceType.recurringTodo, const []);
+      final rule = dailyRule();
+      final results = await HabitProgressCalculator.computeRange(
+        habit: habit,
+        rules: [rule],
+        from: DateTime(2026, 8, 5),
+        to: DateTime(2026, 8, 5),
+        now: now,
+        checkIns: [
+          HabitCheckIn(
+            habitUuid: habit.uuid,
+            ruleRevisionUuid: rule.uuid,
+            logicalDate: '2026-08-05',
+            occurredAt: DateTime(2026, 8, 5, 10).millisecondsSinceEpoch,
+            value: 1,
+          ),
+        ],
+      );
+      expect(results.first.progress.goalMet, true);
+      expect(results.first.progress.dayStatus, HabitDayStatus.met);
+    });
 
     test('对应日期实例完成则达标', () async {
       final habit = goal(HabitSourceType.recurringTodo, ['series-1']);

@@ -820,6 +820,7 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
           }
         } else if (action == 'fixed') {
           final page = AddTodoScreen(
+            username: widget.username,
             initialMode: AddTodoInitialMode.fixedSchedule,
             onTodoAdded: widget.onTodoAdded,
             onManualTodoSaved: widget.onManualTodoSaved,

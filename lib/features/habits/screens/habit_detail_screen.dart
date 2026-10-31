@@ -1119,7 +1119,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                   '${summary.completedCount}/${summary.plannedCount}',
                 ),
               ),
-              Expanded(child: _statCell('逾期', '${summary.overdueCount}')),
+              Expanded(child: _statCell('未达标', '${summary.overdueCount}')),
             ],
           ),
           if (summary.weakestWeekday != null) ...[
@@ -1808,6 +1808,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     ];
     switch (_goal.sourceType) {
       case HabitSourceType.recurringTodo:
+        items.add(('目标', '完成 1 次 / 周期'));
         break;
       case HabitSourceType.pomodoroTag:
         items.add(('目标', '${(rule.targetValue / 60).round()} 分钟 / 周期'));
@@ -1952,7 +1953,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                       '${summary.completedCount}/${summary.plannedCount}',
                     ),
                   ),
-                  Expanded(child: _statCell('逾期', '${summary.overdueCount}')),
+                  Expanded(child: _statCell('未达标', '${summary.overdueCount}')),
                   Expanded(
                     child: _statCell(
                       '目标',

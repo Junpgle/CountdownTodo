@@ -384,7 +384,7 @@ class AiTodoContextBuilder {
           '- create_habit: {"action":"create_habit","habits":[{"name":"习惯名称","icon":"🎯","sourceType":"quantityCheckIn|timeCheckIn|durationCheckIn|pomodoroTag|recurringTodo","periodType":"daily|weekly|weekdays|monthly|custom","targetValue":1600,"unit":"ml","durationMinutes":30,"targetTimeMinute":420,"timeComparison":"before|after","timeToleranceMinutes":0,"weekdaysMask":127,"customIntervalDays":null,"dayBoundaryMinute":0,"quickValues":[200,500],"sourceIds":[],"displayMode":"habitOnly|todoOnly|both","defaultFocusMinutes":25,"reminderPolicy":{"fixedTimes":[480],"progressReminder":false,"nearEndReminder":false,"dailySummaryReminder":false}}]}',
         );
         add(
-          '- 习惯创建规则：明确创建习惯时必须使用create_habit，不能用普通待办动作代替。数量目标使用quantityCheckIn并填写targetValue/unit；时间点目标使用timeCheckIn并填写targetTimeMinute（分钟数）和timeComparison；时长目标使用durationCheckIn并填写durationMinutes；只有上下文提供真实番茄标签UUID时才使用pomodoroTag并填写sourceIds，否则使用durationCheckIn；完成一次型目标使用recurringTodo，sourceIds为空时由应用创建并绑定循环待办。periodType为weekdays时用weekdaysMask（周一bit0至周日bit6），custom时必须填写customIntervalDays。',
+          '- 习惯创建规则：明确创建习惯时必须使用create_habit，不能用普通待办动作代替。数量目标使用quantityCheckIn并填写targetValue/unit；时间点目标使用timeCheckIn并填写targetTimeMinute（分钟数）和timeComparison；时长目标使用durationCheckIn并填写durationMinutes；只有上下文提供真实番茄标签UUID时才使用pomodoroTag并填写sourceIds，否则使用durationCheckIn；完成一次型目标使用recurringTodo，独立打卡不再创建循环待办。periodType为weekdays时用weekdaysMask（周一bit0至周日bit6），custom时必须填写customIntervalDays。',
         );
         if (habitCreationFollowUp) {
           add('- 习惯草案续答：上一条助手正在收集创建习惯的参数，本轮是该习惯的补充信息；不要转成一次性的专注记录或普通待办。');

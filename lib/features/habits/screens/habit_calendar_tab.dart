@@ -668,9 +668,11 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
             ),
           ),
           const SizedBox(width: 8),
-          if (goal.sourceType == HabitSourceType.recurringTodo)
-            _buildMakeUpButton(goal, day)
-          else
+          if (goal.sourceType == HabitSourceType.recurringTodo) ...[
+            _buildMakeUpButton(goal, day),
+            const SizedBox(width: 8),
+            _buildSkipButton(goal, day, colorScheme, label),
+          ] else
             _buildSkipButton(goal, day, colorScheme, label),
         ],
       ),
