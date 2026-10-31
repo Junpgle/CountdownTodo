@@ -825,7 +825,12 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
                   alignment: Alignment.topCenter,
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 1400),
-                    child: _buildMainContent(),
+                    child: MediaQuery.removePadding(
+                      context: context,
+                      removeTop: true,
+                      removeBottom: true,
+                      child: _buildMainContent(),
+                    ),
                   ),
                 ),
         ),
@@ -1113,6 +1118,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       height: 42,
       child: ListView(
         scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.zero,
         children: ScreenTimeRange.values.map(buildRangeChip).toList(),
       ),
     );
@@ -1155,6 +1161,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       height: 42,
       child: ListView(
         scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.zero,
         children: DeviceFilter.values.map(buildDeviceChip).toList(),
       ),
     );
@@ -1375,6 +1382,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
         crossAxisSpacing: 10,
@@ -1387,6 +1395,11 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
         final String name = cat['name'];
         final int dur = cat['duration'];
         final Color color = _catColor(name);
+        final cs = Theme.of(context).colorScheme;
+        final opaqueCardColor = Color.alphaBlend(
+          color.withValues(alpha: 0.08),
+          cs.surfaceContainerLowest,
+        );
 
         return _ExpandableCard(
           pageBuilder: (_) => CategoryDetailScreen(
@@ -1403,7 +1416,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
               _todayNormalized,
             ),
           ),
-          sourceColor: color.withValues(alpha: 0.06),
+          sourceColor: opaqueCardColor,
           borderRadius: BorderRadius.circular(18),
           child: Container(
             decoration: BoxDecoration(
@@ -1472,6 +1485,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
         crossAxisSpacing: 10,
@@ -1583,6 +1597,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
         child: ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
+          padding: EdgeInsets.zero,
           itemCount: apps.length - skipCount,
           separatorBuilder: (_, _) => Divider(
             height: 1,

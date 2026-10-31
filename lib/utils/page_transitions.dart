@@ -303,7 +303,10 @@ class PageTransitions {
     final position = renderBox.localToGlobal(Offset.zero);
     final rect = position & renderBox.size;
     final theme = Theme.of(context);
-    final color = sourceColor ?? theme.colorScheme.surface;
+    final rawColor = sourceColor ?? theme.colorScheme.surface;
+    final color = rawColor.a < 1.0
+        ? Color.alphaBlend(rawColor, theme.colorScheme.surface)
+        : rawColor;
 
     return Navigator.push<T>(
       context,
@@ -348,6 +351,10 @@ class PageTransitions {
       );
     }
 
+    final effectiveSourceColor = sourceColor.a < 1.0
+        ? Color.alphaBlend(sourceColor, Colors.white)
+        : sourceColor;
+
     return navigator.push<T>(
       ContainerTransformRoute<T>(
         page: page,
@@ -355,7 +362,7 @@ class PageTransitions {
         sourceRect: sourceRect,
         targetRect: targetRect,
         targetBorderRadius: targetBorderRadius,
-        sourceColor: sourceColor,
+        sourceColor: effectiveSourceColor,
         placeholderIcon: placeholderIcon,
         placeholderBuilder: placeholderBuilder,
         sourceBorderRadius: sourceBorderRadius,
@@ -1244,6 +1251,11 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
           content = Opacity(opacity: fadeIn, child: content);
         }
 
+        final surfaceColor = Theme.of(context).colorScheme.surface;
+        final effectiveSourceColor = widget.sourceColor.a < 1.0
+            ? Color.alphaBlend(widget.sourceColor, surfaceColor)
+            : widget.sourceColor;
+
         return Stack(
           fit: StackFit.expand,
           children: [
@@ -1262,7 +1274,7 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
                 clipBehavior: Clip.hardEdge,
                 borderRadius: borderRadius,
                 child: ColoredBox(
-                  color: widget.sourceColor,
+                  color: effectiveSourceColor,
                   // 懒加载遮罩阶段：中央显示目标页面语义图标。
                   child: !_contentVisible
                       ? Center(child: _buildPlaceholder(context))
