@@ -1337,13 +1337,15 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
               child: SizedBox(
                 width: double.infinity,
                 height: height,
-                child: CustomPaint(
-                  painter: BarChartPainter(
-                    data: totals,
-                    labels: labels,
-                    primaryColor: Theme.of(context).colorScheme.primary,
-                    textColor: Theme.of(context).colorScheme.onSurfaceVariant,
-                    selectedIndex: selectedIndex,
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: BarChartPainter(
+                      data: totals,
+                      labels: labels,
+                      primaryColor: Theme.of(context).colorScheme.primary,
+                      textColor: Theme.of(context).colorScheme.onSurfaceVariant,
+                      selectedIndex: selectedIndex,
+                    ),
                   ),
                 ),
               ),
@@ -2249,12 +2251,14 @@ class AppDetailScreen extends StatelessWidget {
                           SizedBox(
                             width: double.infinity,
                             height: 180,
-                            child: CustomPaint(
-                              painter: LineChartPainter(
-                                data: trend,
-                                labels: labels,
-                                primaryColor: cs.primary,
-                                textColor: cs.onSurfaceVariant,
+                            child: RepaintBoundary(
+                              child: CustomPaint(
+                                painter: LineChartPainter(
+                                  data: trend,
+                                  labels: labels,
+                                  primaryColor: cs.primary,
+                                  textColor: cs.onSurfaceVariant,
+                                ),
                               ),
                             ),
                           ),

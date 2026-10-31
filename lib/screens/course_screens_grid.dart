@@ -2533,10 +2533,12 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               left: timeColumnWidth,
               width: cellWidth * 7,
               height: 1,
-              child: CustomPaint(
-                painter: _CurrentTimeRulePainter(
-                  animation: _pulseAnimation,
-                  color: focusColor,
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: _CurrentTimeRulePainter(
+                    animation: _pulseAnimation,
+                    color: focusColor,
+                  ),
                 ),
               ),
             ),
@@ -2547,10 +2549,12 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               left: lineLeft,
               width: cellWidth,
               height: 2,
-              child: CustomPaint(
-                painter: _CurrentTimeMarkerPainter(
-                  animation: _pulseAnimation,
-                  color: focusColor,
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: _CurrentTimeMarkerPainter(
+                    animation: _pulseAnimation,
+                    color: focusColor,
+                  ),
                 ),
               ),
             ),

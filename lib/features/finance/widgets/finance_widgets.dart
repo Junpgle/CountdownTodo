@@ -229,7 +229,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: ListView(
-        scrollCacheExtent: ScrollCacheExtent.pixels(2500), padding: EdgeInsets.fromLTRB(
+        scrollCacheExtent: ScrollCacheExtent.pixels(2500),
+        padding: EdgeInsets.fromLTRB(
           16,
           widget.topPadding + 8,
           16,
@@ -913,12 +914,14 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
                           );
                           _selectCumulativeTrendPoint(points, index);
                         },
-                        child: CustomPaint(
-                          size: Size(constraints.maxWidth, 148),
-                          painter: _FinanceCumulativeBalanceTrendPainter(
-                            points: points,
-                            selectedIndex: selectedIndex,
-                            colorScheme: colorScheme,
+                        child: RepaintBoundary(
+                          child: CustomPaint(
+                            size: Size(constraints.maxWidth, 148),
+                            painter: _FinanceCumulativeBalanceTrendPainter(
+                              points: points,
+                              selectedIndex: selectedIndex,
+                              colorScheme: colorScheme,
+                            ),
                           ),
                         ),
                       ),
@@ -1283,12 +1286,14 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
                 child: SizedBox(
                   height: pieSize + 8,
                   child: Center(
-                    child: CustomPaint(
-                      size: Size.square(pieSize),
-                      painter: _FinancePiePainter(
-                        slices: slices,
-                        total: total,
-                        separatorColor: colorScheme.surface,
+                    child: RepaintBoundary(
+                      child: CustomPaint(
+                        size: Size.square(pieSize),
+                        painter: _FinancePiePainter(
+                          slices: slices,
+                          total: total,
+                          separatorColor: colorScheme.surface,
+                        ),
                       ),
                     ),
                   ),
@@ -3691,6 +3696,16 @@ class _FinanceCumulativeBalanceTrendPainter extends CustomPainter {
   final int selectedIndex;
   final ColorScheme colorScheme;
 
+  static final Paint _gridPaint = Paint()..strokeWidth = 1;
+  static final Paint _fillPaint = Paint()..style = PaintingStyle.fill;
+  static final Paint _linePaint = Paint()
+    ..strokeWidth = 2.5
+    ..strokeCap = StrokeCap.round
+    ..strokeJoin = StrokeJoin.round
+    ..style = PaintingStyle.stroke;
+  static final Paint _pointSurfacePaint = Paint()..style = PaintingStyle.fill;
+  static final Paint _pointPrimaryPaint = Paint()..style = PaintingStyle.fill;
+
   const _FinanceCumulativeBalanceTrendPainter({
     required this.points,
     required this.selectedIndex,
@@ -3731,17 +3746,15 @@ class _FinanceCumulativeBalanceTrendPainter extends CustomPainter {
       return plot.top + (maximum - value) / (maximum - minimum) * plot.height;
     }
 
-    final gridPaint = Paint()
-      ..color = colorScheme.outlineVariant.withValues(alpha: 0.45)
-      ..strokeWidth = 1;
-    canvas.drawLine(plot.topLeft, plot.topRight, gridPaint);
-    canvas.drawLine(plot.bottomLeft, plot.bottomRight, gridPaint);
+    _gridPaint.color = colorScheme.outlineVariant.withValues(alpha: 0.45);
+    canvas.drawLine(plot.topLeft, plot.topRight, _gridPaint);
+    canvas.drawLine(plot.bottomLeft, plot.bottomRight, _gridPaint);
     if (minimum <= 0 && maximum >= 0) {
       final zeroY = yFor(0);
       canvas.drawLine(
         Offset(plot.left, zeroY),
         Offset(plot.right, zeroY),
-        gridPaint,
+        _gridPaint,
       );
     }
 
@@ -3758,47 +3771,22 @@ class _FinanceCumulativeBalanceTrendPainter extends CustomPainter {
     fillPath
       ..lineTo(xFor(points.length - 1), yFor(baselineValue))
       ..close();
-    canvas.drawPath(
-      fillPath,
-      Paint()
-        ..color = colorScheme.primary.withValues(alpha: 0.09)
-        ..style = PaintingStyle.fill,
-    );
-    canvas.drawPath(
-      linePath,
-      Paint()
-        ..color = colorScheme.primary
-        ..strokeWidth = 2.5
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..style = PaintingStyle.stroke,
-    );
+    _fillPaint.color = colorScheme.primary.withValues(alpha: 0.09);
+    canvas.drawPath(fillPath, _fillPaint);
+
+    _linePaint.color = colorScheme.primary;
+    canvas.drawPath(linePath, _linePaint);
+
+    _pointSurfacePaint.color = colorScheme.surface;
+    _pointPrimaryPaint.color = colorScheme.primary;
 
     for (var index = 0; index < points.length; index++) {
       final center = Offset(xFor(index), yFor(points[index].balanceMinor));
       if (index == selectedIndex) {
-        canvas.drawCircle(
-          center,
-          6,
-          Paint()
-            ..color = colorScheme.surface
-            ..style = PaintingStyle.fill,
-        );
-        canvas.drawCircle(
-          center,
-          5,
-          Paint()
-            ..color = colorScheme.primary
-            ..style = PaintingStyle.fill,
-        );
+        canvas.drawCircle(center, 6, _pointSurfacePaint);
+        canvas.drawCircle(center, 5, _pointPrimaryPaint);
       } else {
-        canvas.drawCircle(
-          center,
-          3.25,
-          Paint()
-            ..color = colorScheme.primary
-            ..style = PaintingStyle.fill,
-        );
+        canvas.drawCircle(center, 3.25, _pointPrimaryPaint);
       }
 
       final showLabel =
@@ -3835,6 +3823,13 @@ class _FinancePiePainter extends CustomPainter {
   final int total;
   final Color separatorColor;
 
+  static final Paint _fillPaint = Paint()
+    ..style = PaintingStyle.fill
+    ..isAntiAlias = true;
+  static final Paint _separatorPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..isAntiAlias = true;
+
   const _FinancePiePainter({
     required this.slices,
     required this.total,
@@ -3848,31 +3843,26 @@ class _FinancePiePainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = math.min(size.width, size.height) / 2 - 1;
     final bounds = Rect.fromCircle(center: center, radius: radius);
-    final fillPaint = Paint()
-      ..style = PaintingStyle.fill
-      ..isAntiAlias = true;
-    final separatorPaint = Paint()
+    _separatorPaint
       ..color = separatorColor
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke
-      ..isAntiAlias = true;
+      ..strokeWidth = 2;
     var startAngle = -math.pi / 2;
 
     for (final slice in slices) {
       final sweepAngle = math.pi * 2 * slice.value / total;
-      fillPaint.color = slice.color;
-      canvas.drawArc(bounds, startAngle, sweepAngle, true, fillPaint);
+      _fillPaint.color = slice.color;
+      canvas.drawArc(bounds, startAngle, sweepAngle, true, _fillPaint);
       if (slices.length > 1) {
         final edge = Offset(
           center.dx + radius * math.cos(startAngle),
           center.dy + radius * math.sin(startAngle),
         );
-        canvas.drawLine(center, edge, separatorPaint);
+        canvas.drawLine(center, edge, _separatorPaint);
       }
       startAngle += sweepAngle;
     }
 
-    canvas.drawCircle(center, radius, separatorPaint..strokeWidth = 1);
+    canvas.drawCircle(center, radius, _separatorPaint..strokeWidth = 1);
   }
 
   @override

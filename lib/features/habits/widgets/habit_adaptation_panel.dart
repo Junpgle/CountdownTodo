@@ -1562,13 +1562,15 @@ class _HabitSleepClockState extends State<HabitSleepClock> {
                       onPanCancel: widget.onTargetChanged == null
                           ? null
                           : () => setState(() => _dragMode = null),
-                      child: CustomPaint(
-                        painter: _SleepScheduleClockPainter(
-                          goalMinute: widget.goalMinute,
-                          counterpartMinute: widget.counterpartMinute,
-                          goalIsSleep: widget.goalIsSleep,
-                          activeMode: _dragMode,
-                          colorScheme: colorScheme,
+                      child: RepaintBoundary(
+                        child: CustomPaint(
+                          painter: _SleepScheduleClockPainter(
+                            goalMinute: widget.goalMinute,
+                            counterpartMinute: widget.counterpartMinute,
+                            goalIsSleep: widget.goalIsSleep,
+                            activeMode: _dragMode,
+                            colorScheme: colorScheme,
+                          ),
                         ),
                       ),
                     );

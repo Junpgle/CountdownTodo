@@ -41,6 +41,7 @@ class TimeLogSaveConfirmationDialog extends StatelessWidget {
   final bool isEditing;
 
   static final DateFormat _timeFormat = DateFormat('MM-dd HH:mm');
+  static final DateFormat _hourMinuteFormat = DateFormat('HH:mm');
 
   @override
   Widget build(BuildContext context) {
@@ -253,7 +254,10 @@ class _OverlapTimeline extends StatelessWidget {
     final dateTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
     final style = TextStyle(color: color, fontSize: 10);
     if (!crossesDate) {
-      return Text(DateFormat('HH:mm').format(dateTime), style: style);
+      return Text(
+        TimeLogSaveConfirmationDialog._hourMinuteFormat.format(dateTime),
+        style: style,
+      );
     }
 
     return Column(
@@ -266,7 +270,10 @@ class _OverlapTimeline extends StatelessWidget {
           DateFormat(dateFormat.split(' ').first).format(dateTime),
           style: style,
         ),
-        Text(DateFormat('HH:mm').format(dateTime), style: style),
+        Text(
+          TimeLogSaveConfirmationDialog._hourMinuteFormat.format(dateTime),
+          style: style,
+        ),
       ],
     );
   }
@@ -528,7 +535,7 @@ class _TimelineMarkerLabel extends StatelessWidget {
     );
     if (!crossesDate) {
       return Text(
-        DateFormat('HH:mm').format(dateTime),
+        TimeLogSaveConfirmationDialog._hourMinuteFormat.format(dateTime),
         textAlign: TextAlign.center,
         style: style,
       );
@@ -543,7 +550,7 @@ class _TimelineMarkerLabel extends StatelessWidget {
           style: style,
         ),
         Text(
-          DateFormat('HH:mm').format(dateTime),
+          TimeLogSaveConfirmationDialog._hourMinuteFormat.format(dateTime),
           textAlign: TextAlign.center,
           style: style,
         ),
@@ -590,17 +597,19 @@ class _TimelineTrack extends StatelessWidget {
       Expanded(
         child: SizedBox(
           height: 14,
-          child: CustomPaint(
-            painter: _TimelineTrackPainter(
-              axisStart: axisStart,
-              axisEnd: axisEnd,
-              rangeStart: rangeStart,
-              rangeEnd: rangeEnd,
-              overlapIntervals: overlapIntervals,
-              rangeColor: rangeColor,
-              trackColor: colors.surfaceContainerHighest,
-              overlapColor: colors.error,
-              markerColor: colors.onSurface,
+          child: RepaintBoundary(
+            child: CustomPaint(
+              painter: _TimelineTrackPainter(
+                axisStart: axisStart,
+                axisEnd: axisEnd,
+                rangeStart: rangeStart,
+                rangeEnd: rangeEnd,
+                overlapIntervals: overlapIntervals,
+                rangeColor: rangeColor,
+                trackColor: colors.surfaceContainerHighest,
+                overlapColor: colors.error,
+                markerColor: colors.onSurface,
+              ),
             ),
           ),
         ),
@@ -632,18 +641,22 @@ class _TimelineTrackPainter extends CustomPainter {
   final Color overlapColor;
   final Color markerColor;
 
+  static final Paint _backgroundPaint = Paint();
+  static final Paint _intervalPaint = Paint();
+  static final Paint _markerPaint = Paint()..strokeWidth = 1.5;
+
   @override
   void paint(Canvas canvas, Size size) {
     const barHeight = 10.0;
     final top = (size.height - barHeight) / 2;
     final radius = Radius.circular(barHeight / 2);
-    final background = Paint()..color = trackColor;
+    _backgroundPaint.color = trackColor;
     canvas.drawRRect(
       RRect.fromRectAndRadius(
         Rect.fromLTWH(0, top, size.width, barHeight),
         radius,
       ),
-      background,
+      _backgroundPaint,
     );
 
     final duration = axisEnd - axisStart;
@@ -655,12 +668,13 @@ class _TimelineTrackPainter extends CustomPainter {
       final left = xFor(start);
       final right = xFor(end);
       if (right <= left) return;
+      _intervalPaint.color = color;
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           Rect.fromLTWH(left, top, right - left, barHeight),
           radius,
         ),
-        Paint()..color = color,
+        _intervalPaint,
       );
     }
 
@@ -668,16 +682,14 @@ class _TimelineTrackPainter extends CustomPainter {
     for (final interval in overlapIntervals) {
       drawInterval(interval.startTime, interval.endTime, overlapColor);
     }
-    final markerPaint = Paint()
-      ..color = markerColor
-      ..strokeWidth = 1.5;
+    _markerPaint.color = markerColor;
     for (final interval in overlapIntervals) {
       for (final timestamp in [interval.startTime, interval.endTime]) {
         final x = xFor(timestamp);
         canvas.drawLine(
           Offset(x, top - 2),
           Offset(x, top + barHeight + 2),
-          markerPaint,
+          _markerPaint,
         );
       }
     }

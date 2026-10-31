@@ -846,21 +846,23 @@ class _DayViewState extends State<_DayView> {
                     ),
                     Positioned.fill(
                       child: IgnorePointer(
-                        child: CustomPaint(
-                          size: Size(w, totalH),
-                          painter: _DayGridInteractionPainter(
-                            minutesPerBlock: _minutesPerBlock,
-                            dragStart: _dragStart,
-                            dragEnd: _dragEnd,
-                            gridStart: _gridStart,
-                            selColor: selTag != null
-                                ? hexColor(selTag.color, opacity: 0.48)
-                                : accent.withValues(alpha: 0.45),
-                            nowColor: colorScheme.cdtFocus,
-                            hourH: hourH,
-                            selectionPaint: _selectionPaint,
-                            currentTimeLinePaint: _currentTimeLinePaint,
-                            currentTimeDotPaint: _currentTimeDotPaint,
+                        child: RepaintBoundary(
+                          child: CustomPaint(
+                            size: Size(w, totalH),
+                            painter: _DayGridInteractionPainter(
+                              minutesPerBlock: _minutesPerBlock,
+                              dragStart: _dragStart,
+                              dragEnd: _dragEnd,
+                              gridStart: _gridStart,
+                              selColor: selTag != null
+                                  ? hexColor(selTag.color, opacity: 0.48)
+                                  : accent.withValues(alpha: 0.45),
+                              nowColor: colorScheme.cdtFocus,
+                              hourH: hourH,
+                              selectionPaint: _selectionPaint,
+                              currentTimeLinePaint: _currentTimeLinePaint,
+                              currentTimeDotPaint: _currentTimeDotPaint,
+                            ),
                           ),
                         ),
                       ),
@@ -3358,12 +3360,14 @@ class _MiniLineChartState extends State<_MiniLineChart> {
                     painter: _LineChartPathPainter(geometry: geometry),
                   ),
                 ),
-                CustomPaint(
-                  painter: _LineChartPainter(
-                    geometry: geometry,
-                    xLabels: widget.xLabels,
-                    xLabelPainters: _xLabelPainters,
-                    touchPos: _touchPos,
+                RepaintBoundary(
+                  child: CustomPaint(
+                    painter: _LineChartPainter(
+                      geometry: geometry,
+                      xLabels: widget.xLabels,
+                      xLabelPainters: _xLabelPainters,
+                      touchPos: _touchPos,
+                    ),
                   ),
                 ),
               ],

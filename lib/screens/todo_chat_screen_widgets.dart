@@ -368,16 +368,21 @@ class _ThinkingLoaderState extends State<_ThinkingLoader>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          ...List.generate(
-            3,
-            (index) => Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
-              child: CustomPaint(
-                size: const Size.square(6),
-                painter: _ThinkingDotPainter(
-                  animation: _controller,
-                  color: colorScheme.primary,
-                  index: index,
+          RepaintBoundary(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(
+                3,
+                (index) => Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: CustomPaint(
+                    size: const Size.square(6),
+                    painter: _ThinkingDotPainter(
+                      animation: _controller,
+                      color: colorScheme.primary,
+                      index: index,
+                    ),
+                  ),
                 ),
               ),
             ),

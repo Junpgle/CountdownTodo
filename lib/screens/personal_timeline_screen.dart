@@ -3444,18 +3444,20 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
               SizedBox(
                 height: 48,
                 width: 48,
-                child: CustomPaint(
-                  painter: _DonutPainter(
-                    [
-                      MapEntry('HW', _summary!.homeworkRatio),
-                      MapEntry('EX', _summary!.examRatio),
-                      MapEntry(
-                        'OT',
-                        (1.0 - _summary!.homeworkRatio - _summary!.examRatio)
-                            .clamp(0.0, 1.0),
-                      ),
-                    ],
-                    [cs.primary, cs.secondary, cs.outlineVariant],
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: _DonutPainter(
+                      [
+                        MapEntry('HW', _summary!.homeworkRatio),
+                        MapEntry('EX', _summary!.examRatio),
+                        MapEntry(
+                          'OT',
+                          (1.0 - _summary!.homeworkRatio - _summary!.examRatio)
+                              .clamp(0.0, 1.0),
+                        ),
+                      ],
+                      [cs.primary, cs.secondary, cs.outlineVariant],
+                    ),
                   ),
                 ),
               ),
@@ -3966,8 +3968,13 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
             SizedBox(
               height: 44,
               width: double.infinity,
-              child: CustomPaint(
-                painter: _SparklinePainter(trend, color.withValues(alpha: 0.5)),
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: _SparklinePainter(
+                    trend,
+                    color.withValues(alpha: 0.5),
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -4397,9 +4404,11 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
             child: Stack(
               children: [
                 Center(
-                  child: CustomPaint(
-                    size: const Size(120, 120),
-                    painter: _DonutPainter(sorted, palette),
+                  child: RepaintBoundary(
+                    child: CustomPaint(
+                      size: const Size(120, 120),
+                      painter: _DonutPainter(sorted, palette),
+                    ),
                   ),
                 ),
                 Center(

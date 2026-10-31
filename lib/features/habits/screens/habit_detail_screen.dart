@@ -2095,25 +2095,27 @@ class _TrendLegendPainter extends CustomPainter {
   final Color color;
   final bool dashed;
 
+  static final Paint _paint = Paint()
+    ..strokeWidth = 2
+    ..strokeCap = StrokeCap.round;
+
   const _TrendLegendPainter({required this.color, required this.dashed});
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
+    _paint
       ..color = color
-      ..strokeWidth = 2
-      ..strokeCap = StrokeCap.round
       ..style = dashed ? PaintingStyle.stroke : PaintingStyle.fill;
     if (dashed) {
       canvas.drawLine(
         Offset.zero.translate(0, size.height / 2),
         Offset(size.width, size.height / 2),
-        paint,
+        _paint,
       );
     } else {
       canvas.drawRRect(
         RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(2)),
-        paint,
+        _paint,
       );
     }
   }

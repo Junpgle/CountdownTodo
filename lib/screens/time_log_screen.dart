@@ -1846,20 +1846,22 @@ class _WeekViewState extends State<_WeekView>
                                 ),
                               ),
                             ),
-                            CustomPaint(
-                              size: Size(dW, totalH),
-                              painter: _WeekColPainter(
-                                dayLogs: dLogs,
-                                dayPoms: dPoms,
-                                daySchedules: dSchedules,
-                                tags: widget.tags,
-                                dayStartMs: ds,
-                                dayEndMs: de,
-                                isDark: isDark,
-                                hourH: hourH,
-                                animation: _heatAnim,
-                                focusColor: colorScheme.cdtFocus,
-                                logColor: colorScheme.cdtInfo,
+                            RepaintBoundary(
+                              child: CustomPaint(
+                                size: Size(dW, totalH),
+                                painter: _WeekColPainter(
+                                  dayLogs: dLogs,
+                                  dayPoms: dPoms,
+                                  daySchedules: dSchedules,
+                                  tags: widget.tags,
+                                  dayStartMs: ds,
+                                  dayEndMs: de,
+                                  isDark: isDark,
+                                  hourH: hourH,
+                                  animation: _heatAnim,
+                                  focusColor: colorScheme.cdtFocus,
+                                  logColor: colorScheme.cdtInfo,
+                                ),
                               ),
                             ),
                             ...dSchedules.map((schedule) {
@@ -3345,6 +3347,12 @@ class _GridBgPainter extends CustomPainter {
   final Color labelMajorColor;
   final Color labelMinorColor;
 
+  static final Paint _rowMajor = Paint()..strokeWidth = 0.9;
+  static final Paint _rowNormal = Paint()..strokeWidth = 0.5;
+  static final Paint _colHour = Paint()..strokeWidth = 0.9;
+  static final Paint _colHalf = Paint()..strokeWidth = 0.5;
+  static final Paint _colCell = Paint()..strokeWidth = 0.3;
+
   const _GridBgPainter({
     required this.colW,
     required this.rowH,
@@ -3359,41 +3367,31 @@ class _GridBgPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final rowMajor = Paint()
-      ..color = rowMajorColor
-      ..strokeWidth = 0.9;
-    final rowNormal = Paint()
-      ..color = rowNormalColor
-      ..strokeWidth = 0.5;
+    _rowMajor.color = rowMajorColor;
+    _rowNormal.color = rowNormalColor;
 
     for (int r = 0; r <= kTotalRows; r++) {
       final y = r * rowH;
       canvas.drawLine(
         Offset(0, y),
         Offset(size.width, y),
-        r % 6 == 0 ? rowMajor : rowNormal,
+        r % 6 == 0 ? _rowMajor : _rowNormal,
       );
     }
 
-    final colHour = Paint()
-      ..color = colHourColor
-      ..strokeWidth = 0.9;
-    final colHalf = Paint()
-      ..color = colHalfColor
-      ..strokeWidth = 0.5;
-    final colCell = Paint()
-      ..color = colCellColor
-      ..strokeWidth = 0.3;
+    _colHour.color = colHourColor;
+    _colHalf.color = colHalfColor;
+    _colCell.color = colCellColor;
 
     for (int c = 0; c <= kTotalCols; c++) {
       final x = c * colW;
       final Paint p;
       if (c % kColsPerH == 0) {
-        p = colHour;
+        p = _colHour;
       } else if (c % 5 == 0) {
-        p = colHalf;
+        p = _colHalf;
       } else {
-        p = colCell;
+        p = _colCell;
       }
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), p);
     }
