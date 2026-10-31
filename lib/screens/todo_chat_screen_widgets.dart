@@ -259,7 +259,9 @@ class _PulseAvatar extends StatefulWidget {
 
 class _PulseAvatarState extends State<_PulseAvatar>
     with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
+  late final AnimationController _controller;
+  late final Animation<double> _scaleAnimation;
+
   @override
   void initState() {
     super.initState();
@@ -267,6 +269,10 @@ class _PulseAvatarState extends State<_PulseAvatar>
       vsync: this,
       duration: const Duration(seconds: 2),
     );
+    _scaleAnimation = Tween<double>(
+      begin: 0.95,
+      end: 1.05,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
     PowerSaveModeService.enabledListenable.addListener(_syncAnimation);
     _syncAnimation();
   }
@@ -295,12 +301,8 @@ class _PulseAvatarState extends State<_PulseAvatar>
 
   @override
   Widget build(BuildContext context) {
-    return ScaleTransition(
-      scale: Tween<double>(
-        begin: 0.95,
-        end: 1.05,
-      ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut)),
-      child: widget.child,
+    return RepaintBoundary(
+      child: ScaleTransition(scale: _scaleAnimation, child: widget.child),
     );
   }
 }
@@ -368,16 +370,21 @@ class _ThinkingLoaderState extends State<_ThinkingLoader>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          ...List.generate(
-            3,
-            (index) => Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
-              child: CustomPaint(
-                size: const Size.square(6),
-                painter: _ThinkingDotPainter(
-                  animation: _controller,
-                  color: colorScheme.primary,
-                  index: index,
+          RepaintBoundary(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(
+                3,
+                (index) => Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: CustomPaint(
+                    size: const Size.square(6),
+                    painter: _ThinkingDotPainter(
+                      animation: _controller,
+                      color: colorScheme.primary,
+                      index: index,
+                    ),
+                  ),
                 ),
               ),
             ),

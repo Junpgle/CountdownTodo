@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 
 import 'api_service.dart';
+import '../utils/app_platform.dart';
 
 /// 访问 GitHub 公开资源的统一入口。
 ///
@@ -207,6 +208,30 @@ class _GitHubResourceImageState extends State<GitHubResourceImage> {
     return response.bodyBytes;
   }
 
+  ImageProvider<Object> _imageProvider(BuildContext context, Uint8List bytes) {
+    final provider = MemoryImage(bytes);
+    if (widget.width == null && widget.height == null) return provider;
+
+    final pixelRatio = AppPlatform.isWindows
+        ? (MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0)
+        : 3.0;
+    int? decodeDimension(double? logicalSize) {
+      if (logicalSize == null || !logicalSize.isFinite || logicalSize <= 0) {
+        return null;
+      }
+      return (logicalSize * pixelRatio).ceil().clamp(1, 4096).toInt();
+    }
+
+    final cacheWidth = decodeDimension(widget.width);
+    final cacheHeight = decodeDimension(widget.height);
+    return ResizeImage(
+      provider,
+      width: cacheWidth,
+      height: cacheHeight,
+      policy: ResizeImagePolicy.fit,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<Uint8List>(
@@ -223,8 +248,8 @@ class _GitHubResourceImageState extends State<GitHubResourceImage> {
         if (!snapshot.hasData) {
           return SizedBox(width: widget.width, height: widget.height);
         }
-        return Image.memory(
-          snapshot.data!,
+        return Image(
+          image: _imageProvider(context, snapshot.data!),
           width: widget.width,
           height: widget.height,
           fit: widget.fit,

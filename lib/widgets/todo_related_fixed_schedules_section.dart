@@ -151,10 +151,21 @@ class _TodoRelatedFixedSchedulesSectionState
     }
   }
 
-  Future<void> _openSchedule(FixedScheduleItem item) async {
+  Future<void> _openSchedule(
+    FixedScheduleItem item, {
+    GlobalKey? sourceKey,
+  }) async {
     final username = _username;
     if (username == null || username.isEmpty) return;
-    await widget.onOpenSchedule(username, item);
+    try {
+      await (widget.onOpenSchedule as dynamic)(
+        username,
+        item,
+        sourceKey: sourceKey,
+      );
+    } catch (_) {
+      await widget.onOpenSchedule(username, item);
+    }
     if (mounted) await _load();
   }
 
@@ -253,27 +264,34 @@ class _TodoRelatedFixedSchedulesSectionState
       FixedSchedulePhase.upcoming => colors.secondary,
       FixedSchedulePhase.timeTbd => colors.tertiary,
     };
-    return Card(
+    final cardKey = GlobalKey();
+    return KeyedSubtree(
       key: ValueKey('related-fixed-schedule-${item.id}'),
-      margin: compact
-          ? const EdgeInsets.fromLTRB(12, 0, 12, 8)
-          : const EdgeInsets.only(bottom: 8),
-      color: colors.surfaceContainerLow,
-      child: ListTile(
-        onTap: () => _openSchedule(item),
-        leading: Icon(Icons.event_available_rounded, color: statusColor),
-        title: Text(item.title, maxLines: 2, overflow: TextOverflow.ellipsis),
-        subtitle: Text(
-          _occurrenceDetails(item),
-          maxLines: 3,
-          overflow: TextOverflow.ellipsis,
+      child: Card(
+        key: cardKey,
+        margin: compact
+            ? const EdgeInsets.fromLTRB(12, 0, 12, 8)
+            : const EdgeInsets.only(bottom: 8),
+        color: colors.surfaceContainerLow,
+        child: ListTile(
+          onTap: () => _openSchedule(item, sourceKey: cardKey),
+          leading: Icon(Icons.event_available_rounded, color: statusColor),
+          title: Text(item.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+          subtitle: Text(
+            _occurrenceDetails(item),
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: Icon(
+            Icons.chevron_right_rounded,
+            color: colors.onSurfaceVariant,
+          ),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 2,
+          ),
+          visualDensity: VisualDensity.compact,
         ),
-        trailing: Icon(
-          Icons.chevron_right_rounded,
-          color: colors.onSurfaceVariant,
-        ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-        visualDensity: VisualDensity.compact,
       ),
     );
   }

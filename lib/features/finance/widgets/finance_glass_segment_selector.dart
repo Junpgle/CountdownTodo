@@ -21,6 +21,7 @@ class FinanceGlassSegmentSelector<T> extends StatelessWidget {
   final T selected;
   final ValueChanged<T> onSelected;
   final String keyPrefix;
+  final List<String> alternateKeyPrefixes;
   final double height;
 
   const FinanceGlassSegmentSelector({
@@ -29,6 +30,7 @@ class FinanceGlassSegmentSelector<T> extends StatelessWidget {
     required this.selected,
     required this.onSelected,
     required this.keyPrefix,
+    this.alternateKeyPrefixes = const [],
     this.height = 52,
   });
 
@@ -160,7 +162,7 @@ class FinanceGlassSegmentSelector<T> extends StatelessWidget {
     required bool isSelected,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Semantics(
+    Widget result = Semantics(
       key: ValueKey('$keyPrefix-${segment.id}'),
       button: true,
       selected: isSelected,
@@ -206,5 +208,17 @@ class FinanceGlassSegmentSelector<T> extends StatelessWidget {
         ),
       ),
     );
+
+    for (final altPrefix in alternateKeyPrefixes) {
+      result = Semantics(
+        key: ValueKey('$altPrefix-${segment.id}'),
+        button: true,
+        selected: isSelected,
+        inMutuallyExclusiveGroup: true,
+        child: result,
+      );
+    }
+
+    return result;
   }
 }

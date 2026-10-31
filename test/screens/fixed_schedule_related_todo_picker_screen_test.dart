@@ -142,7 +142,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('复习考试范围'), findsOneWidget);
     expect(find.text('打印准考证'), findsOneWidget);
-    expect(find.textContaining('已完成'), findsOneWidget);
+    expect(find.text('未完成'), findsOneWidget);
+    expect(find.text('已完成'), findsOneWidget);
+    expect(find.textContaining('已完成 · 11月1日'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField), '打印');
     await tester.pump(const Duration(milliseconds: 300));

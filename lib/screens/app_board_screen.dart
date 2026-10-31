@@ -272,7 +272,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
 
   @override
   Widget build(BuildContext context) {
-    final isDesktop = MediaQuery.of(context).size.width >= 1024;
+    final isDesktop = MediaQuery.sizeOf(context).width >= 1024;
 
     return Scaffold(
       backgroundColor: const Color(0xFF020617),
@@ -1149,6 +1149,10 @@ class _GanttDayGridPainter extends CustomPainter {
   final double dayWidth;
   final Color color;
 
+  static final Paint _paint = Paint()
+    ..strokeWidth = 1
+    ..style = PaintingStyle.stroke;
+
   @override
   void paint(Canvas canvas, Size size) {
     if (dayCount <= 0 || size.height <= 0) return;
@@ -1160,13 +1164,8 @@ class _GanttDayGridPainter extends CustomPainter {
         ..moveTo(x, 0)
         ..lineTo(x, size.height);
     }
-    canvas.drawPath(
-      grid,
-      Paint()
-        ..color = color
-        ..strokeWidth = 1
-        ..style = PaintingStyle.stroke,
-    );
+    _paint.color = color;
+    canvas.drawPath(grid, _paint);
   }
 
   @override
@@ -1621,13 +1620,15 @@ class _GanttChartState extends State<GanttChart> {
                       }),
                     ),
                     Expanded(
-                      child: CustomPaint(
-                        painter: _GanttDayGridPainter(
-                          dayCount: totalDays,
-                          dayWidth: effectiveDayWidth,
-                          color: Colors.white.withValues(alpha: 0.02),
+                      child: RepaintBoundary(
+                        child: CustomPaint(
+                          painter: _GanttDayGridPainter(
+                            dayCount: totalDays,
+                            dayWidth: effectiveDayWidth,
+                            color: Colors.white.withValues(alpha: 0.02),
+                          ),
+                          child: const SizedBox.expand(),
                         ),
-                        child: const SizedBox.expand(),
                       ),
                     ),
                   ],
@@ -1895,10 +1896,10 @@ class TaskDetailModal extends StatelessWidget {
   Widget build(BuildContext context) {
     final double sheetWidth = math.min(
       600,
-      MediaQuery.of(context).size.width * 0.9,
+      MediaQuery.sizeOf(context).width * 0.9,
     );
     final sheetConstraints = BoxConstraints(
-      maxHeight: MediaQuery.of(context).size.height * 0.8,
+      maxHeight: MediaQuery.sizeOf(context).height * 0.8,
     );
     final sheet = Stack(
       children: [

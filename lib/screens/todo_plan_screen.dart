@@ -35,6 +35,14 @@ import '../widgets/missed_plan_recovery_flow.dart';
 import '../widgets/plan_conflict_review.dart';
 import '../services/plan_drag_service.dart';
 import '../services/conflict_visibility_service.dart';
+import '../services/database_helper.dart';
+import '../features/habits/models/habit_goal.dart';
+import '../features/habits/screens/habit_detail_screen.dart';
+import '../features/habits/services/habit_challenge_planning_service.dart';
+import '../features/habits/services/habit_focus_launcher.dart';
+import '../features/habits/services/habit_rule_resolver.dart';
+import '../features/thirty_day_challenge/repositories/thirty_day_challenge_repository.dart';
+import '../features/thirty_day_challenge/screens/thirty_day_challenge_screen.dart';
 
 // 复用 TimeLog 的颜色和基础常量
 const double kTimeAxisW = 46.0;
@@ -82,6 +90,8 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   List<PomodoroTag> _tags = [];
   List<PomodoroRecord> _pomodoroRecords = [];
   List<TimeLogItem> _timeLogs = [];
+  HabitChallengePlanningSnapshot _habitChallenge =
+      const HabitChallengePlanningSnapshot();
   String? _loadError;
   final Set<String> _mappedBlockIds = <String>{};
   int _loadGeneration = 0, _overviewRevision = 0;
@@ -111,6 +121,9 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     final initial = widget.initialDate ?? now;
     _focusedDate = DateTime(initial.year, initial.month, initial.day);
     StorageService.scopedDataRefreshNotifier.addListener(_onScopedDataRefresh);
+    ThirtyDayChallengeRepository.activityRevision.addListener(
+      _onChallengeActivityChanged,
+    );
     _loadData();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -165,6 +178,9 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     WidgetsBinding.instance.removeObserver(this);
     StorageService.scopedDataRefreshNotifier.removeListener(
       _onScopedDataRefresh,
+    );
+    ThirtyDayChallengeRepository.activityRevision.removeListener(
+      _onChallengeActivityChanged,
     );
     super.dispose();
   }
@@ -337,6 +353,11 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     }
   }
 
+  void _onChallengeActivityChanged() {
+    if (!mounted) return;
+    unawaited(_loadData());
+  }
+
   void _onScopedDataRefresh() {
     if (!mounted) return;
     final signal = StorageService.scopedDataRefreshNotifier.value;
@@ -352,6 +373,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
         signal.affects(DataRefreshDomain.fixedSchedules) ||
         signal.affects(DataRefreshDomain.planBlocks) ||
         signal.affects(DataRefreshDomain.pomodoro) ||
+        signal.affects(DataRefreshDomain.habits) ||
         signal.affects(DataRefreshDomain.timeLogs)) {
       unawaited(_loadData());
     }
@@ -387,6 +409,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
         _planningTagsRead ??= PomodoroService.getTags(),
         const PlanExecutionRepository().read(widget.username, focusedDate),
         PomodoroService.loadRunState(),
+        _loadHabitChallengeSnapshot(),
       ]);
       if ((await StorageService.getLoginSession() ?? 'default') !=
           widget.username) {
@@ -452,7 +475,13 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
 
     if (!mounted || loadGeneration != _loadGeneration) return;
 
-    final mappedBlocks = _buildMappedBlocks(todos, courses, blocks);
+    final habitChallenge = results[7] as HabitChallengePlanningSnapshot;
+    final mappedBlocks = _buildMappedBlocks(
+      todos,
+      courses,
+      blocks,
+      habitChallenge,
+    );
     final mappedBlockIds = mappedBlocks.map((block) => block.id).toSet();
     final displayBlocks = [...blocks, ...mappedBlocks]
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
@@ -465,6 +494,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
       _tags = tags;
       _pomodoroRecords = records;
       _timeLogs = execution.logs;
+      _habitChallenge = habitChallenge;
       final run = results[6] as PomodoroRunState?;
       _runningPlanId = run?.phase == PomodoroPhase.focusing
           ? run?.planBlockId
@@ -480,10 +510,23 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     unawaited(_checkUndo());
   }
 
+  Future<HabitChallengePlanningSnapshot> _loadHabitChallengeSnapshot() async {
+    try {
+      final db = await DatabaseHelper.instance.databaseForUser(widget.username);
+      return await HabitChallengePlanningService.readFromDatabase(
+        db,
+        username: widget.username,
+      );
+    } catch (_) {
+      return const HabitChallengePlanningSnapshot();
+    }
+  }
+
   List<TodoPlanBlock> _buildMappedBlocks(
     List<TodoItem> todos,
     List<CourseItem> courses,
     List<TodoPlanBlock> existingBlocks,
+    HabitChallengePlanningSnapshot habitChallenge,
   ) {
     final mapped = <TodoPlanBlock>[];
     final plannedTodoIds = existingBlocks
@@ -544,6 +587,14 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
         ),
       );
     }
+
+    mapped.addAll(
+      HabitChallengePlanningService.buildMappedBlocksForDay(
+        dayStart: _focusedDate,
+        snapshot: habitChallenge,
+        todos: todos,
+      ),
+    );
 
     return mapped;
   }
@@ -784,6 +835,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
                         tags: _tags,
                         pomodoroRecords: _pomodoroRecords,
                         timeLogs: _timeLogs,
+                        habitChallenge: _habitChallenge,
                         username: widget.username,
                         initialTodoId: widget.initialTodoId,
                         onRefresh: _loadData,
@@ -835,6 +887,7 @@ class _PlanGridView extends StatefulWidget {
   final List<PomodoroTag> tags;
   final List<PomodoroRecord> pomodoroRecords;
   final List<TimeLogItem> timeLogs;
+  final HabitChallengePlanningSnapshot habitChallenge;
   final String username;
   final String? initialTodoId;
   final VoidCallback onRefresh;
@@ -855,6 +908,7 @@ class _PlanGridView extends StatefulWidget {
     required this.tags,
     required this.pomodoroRecords,
     required this.timeLogs,
+    this.habitChallenge = const HabitChallengePlanningSnapshot(),
     required this.username,
     this.initialTodoId,
     required this.onRefresh,
@@ -896,7 +950,7 @@ class _PlanGridViewState extends State<_PlanGridView>
   List<PomodoroRecord>? _executionRecordsSource;
   List<TimeLogItem>? _executionLogsSource;
   List<PlanExecutionEntry>? _executionEntriesCache;
-  int _executionLaneCountCache = 1;
+  List<int> _hourlyExecutionLaneCountsCache = List<int>.filled(24, 1);
 
   @override
   void initState() {
@@ -969,7 +1023,8 @@ class _PlanGridViewState extends State<_PlanGridView>
     _executionRecordsSource = widget.pomodoroRecords;
     _executionLogsSource = widget.timeLogs;
     _executionEntriesCache = entries;
-    _executionLaneCountCache = PlanExecutionEntry.timelineLaneCount(entries);
+    _hourlyExecutionLaneCountsCache =
+        PlanExecutionEntry.hourlyTimelineLaneCounts(widget.date, entries);
     return entries;
   }
 
@@ -1158,7 +1213,7 @@ class _PlanGridViewState extends State<_PlanGridView>
   @override
   Widget build(BuildContext context) {
     final executionEntries = _executionEntries();
-    final executionLaneCount = _executionLaneCountCache;
+    final hourlyExecutionLaneCounts = _hourlyExecutionLaneCountsCache;
 
     return PlanManualCompletionHost(
       key: _manualHostKey,
@@ -1215,7 +1270,7 @@ class _PlanGridViewState extends State<_PlanGridView>
                                   block,
                                   gridW,
                                   hourH,
-                                  executionLaneCount,
+                                  hourlyExecutionLaneCounts,
                                 ),
                               ),
                               if (_gesture != null && _preview != null)
@@ -1228,7 +1283,7 @@ class _PlanGridViewState extends State<_PlanGridView>
                                     ..plannedMinutes = _preview!.minutes,
                                   gridW,
                                   hourH,
-                                  executionLaneCount,
+                                  hourlyExecutionLaneCounts,
                                   previewOnly: true,
                                 ),
                               if (executionEntries.isNotEmpty)
@@ -1465,7 +1520,7 @@ class _PlanGridViewState extends State<_PlanGridView>
     TodoPlanBlock block,
     double width,
     double hourH,
-    int laneCount, {
+    List<int> hourlyLaneCounts, {
     bool previewOnly = false,
   }) {
     final start = DateTime.fromMillisecondsSinceEpoch(block.startTime);
@@ -1495,16 +1550,33 @@ class _PlanGridViewState extends State<_PlanGridView>
         !ConflictVisibilityService.blocksTodoPlanning(todo);
     final hiddenAnchor = !previewOnly && _gesture?.block.id == block.id;
     final isMappedCourse = block.id.startsWith('mapped_course_');
+    final isMappedHabit = HabitChallengePlanningService.isMappedHabitBlock(
+      block,
+    );
+    final isMappedChallenge =
+        HabitChallengePlanningService.isMappedChallengeBlock(block);
+    final scheme = Theme.of(context).colorScheme;
     final color = isMappedCourse
         ? Colors.teal
-        : (isMappedBlock
-              ? Colors.amber.shade700
-              : Theme.of(context).colorScheme.primary);
+        : isMappedHabit
+        ? scheme.tertiary
+        : isMappedChallenge
+        ? scheme.secondary
+        : (isMappedBlock ? Colors.amber.shade700 : scheme.primary);
     final icon = isMappedCourse
         ? Icons.school_rounded
+        : isMappedHabit
+        ? Icons.repeat_rounded
+        : isMappedChallenge
+        ? Icons.emoji_events_outlined
         : (isMappedBlock ? Icons.task_alt_rounded : Icons.event_note);
-    final segmentHeight = max(1.0, hourH / laneCount - 2);
-    final contentFontSize = min(10.0, max(6.0, segmentHeight * 0.72));
+    final mappedBadgeLabel = isMappedCourse
+        ? '课程'
+        : isMappedHabit
+        ? '习惯'
+        : isMappedChallenge
+        ? '挑战'
+        : '待办';
     final widgets = <Widget>[];
 
     final endHour = clippedEnd.isAtSameMomentAs(dayEnd) ? 23 : clippedEnd.hour;
@@ -1523,6 +1595,9 @@ class _PlanGridViewState extends State<_PlanGridView>
       if (!segmentEnd.isAfter(segmentStart) || hour >= 24) continue;
       final isStartSegment = segmentStart.isAtSameMomentAs(clippedStart);
       final isEndSegment = segmentEnd.isAtSameMomentAs(clippedEnd);
+      final laneCount = hourlyLaneCounts[hour];
+      final segmentHeight = max(1.0, hourH / laneCount - 2);
+      final contentFontSize = min(11.0, max(6.0, segmentHeight * 0.72));
 
       final left = width * segmentStart.minute / 60;
       final segmentW = max(
@@ -1537,7 +1612,7 @@ class _PlanGridViewState extends State<_PlanGridView>
           top: hour * hourH + 1,
           left: left + 1,
           width: max(1.0, segmentW - 2),
-          height: max(1.0, hourH / laneCount - 2),
+          height: segmentHeight,
           child: Opacity(
             opacity: hiddenAnchor ? 0 : 1,
             child: IgnorePointer(
@@ -1623,7 +1698,7 @@ class _PlanGridViewState extends State<_PlanGridView>
                                     isMappedBlock) ...[
                                   const SizedBox(width: 4),
                                   Text(
-                                    isMappedCourse ? '课程' : '待办',
+                                    mappedBadgeLabel,
                                     style: TextStyle(
                                       fontSize: min(8.0, contentFontSize),
                                       fontWeight: FontWeight.w700,
@@ -1822,6 +1897,197 @@ class _PlanGridViewState extends State<_PlanGridView>
           ),
         );
       }
+      return;
+    }
+
+    if (HabitChallengePlanningService.isMappedHabitBlock(block)) {
+      final habitUuid = HabitChallengePlanningService.habitUuidFromBlock(block);
+      final goal = widget.habitChallenge.goals.cast<HabitGoal?>().firstWhere(
+        (g) => g?.uuid == habitUuid,
+        orElse: () => null,
+      );
+      if (goal == null) return;
+      final rules =
+          widget.habitChallenge.rulesByHabitUuid[goal.uuid] ?? const [];
+      final rule = HabitRuleResolver.effectiveRule(rules, widget.date);
+      final start = DateTime.fromMillisecondsSinceEpoch(block.startTime);
+      final end = DateTime.fromMillisecondsSinceEpoch(block.endTime);
+      showAppModalBottomSheet<void>(
+        context: context,
+        builder: (sheetCtx) {
+          final cs = Theme.of(sheetCtx).colorScheme;
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(goal.icon, style: const TextStyle(fontSize: 28)),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              goal.name,
+                              style: Theme.of(sheetCtx).textTheme.titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '习惯软预留 · ${_todoPlanDateFormat('HH:mm').format(start)}–${_todoPlanDateFormat('HH:mm').format(end)} (${block.plannedMinutes} 分钟)',
+                              style: Theme.of(sheetCtx).textTheme.bodySmall
+                                  ?.copyWith(color: cs.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.insights_outlined, size: 18),
+                          label: const Text('习惯详情'),
+                          onPressed: () async {
+                            Navigator.pop(sheetCtx);
+                            await Navigator.of(context).push(
+                              PageTransitions.material(
+                                builder: (_) => HabitDetailScreen(
+                                  goal: goal,
+                                  username: widget.username,
+                                ),
+                              ),
+                            );
+                            widget.onRefresh();
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton.icon(
+                          icon: const Icon(Icons.timer_outlined, size: 18),
+                          label: const Text('开始专注'),
+                          onPressed: () {
+                            Navigator.pop(sheetCtx);
+                            HabitFocusLauncher.open(
+                              context: context,
+                              username: widget.username,
+                              goal: goal,
+                              rule: rule,
+                              onReturned: widget.onRefresh,
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+      return;
+    }
+
+    if (HabitChallengePlanningService.isMappedChallengeBlock(block)) {
+      final taskId = HabitChallengePlanningService.challengeTaskIdFromBlock(
+        block,
+      );
+      final challenge = widget.habitChallenge.challengeState;
+      if (challenge == null || taskId == null) return;
+      final task = challenge.tasks.where((t) => t.id == taskId).firstOrNull;
+      if (task == null) return;
+      final start = DateTime.fromMillisecondsSinceEpoch(block.startTime);
+      final end = DateTime.fromMillisecondsSinceEpoch(block.endTime);
+      showAppModalBottomSheet<void>(
+        context: context,
+        builder: (sheetCtx) {
+          final cs = Theme.of(sheetCtx).colorScheme;
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Text('🎯', style: TextStyle(fontSize: 28)),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              task.title,
+                              style: Theme.of(sheetCtx).textTheme.titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${challenge.challengeTitle} · ${_todoPlanDateFormat('HH:mm').format(start)}–${_todoPlanDateFormat('HH:mm').format(end)} (${block.plannedMinutes} 分钟)',
+                              style: Theme.of(sheetCtx).textTheme.bodySmall
+                                  ?.copyWith(color: cs.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(
+                            Icons.emoji_events_outlined,
+                            size: 18,
+                          ),
+                          label: const Text('打开挑战'),
+                          onPressed: () async {
+                            Navigator.pop(sheetCtx);
+                            await Navigator.of(context).push(
+                              PageTransitions.material(
+                                builder: (_) =>
+                                    const ThirtyDayChallengeScreen(),
+                              ),
+                            );
+                            widget.onRefresh();
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton.icon(
+                          icon: const Icon(Icons.timer_outlined, size: 18),
+                          label: const Text('开始专注'),
+                          onPressed: () {
+                            Navigator.pop(sheetCtx);
+                            HabitFocusLauncher.openForChallenge(
+                              context: context,
+                              username: widget.username,
+                              challengeState: challenge,
+                              task: task,
+                              onReturned: widget.onRefresh,
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
     }
   }
 

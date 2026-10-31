@@ -23,7 +23,7 @@ class SyncStatusBanner extends StatefulWidget {
 
 class _SyncStatusBannerState extends State<SyncStatusBanner>
     with WidgetsBindingObserver {
-  SyncPathStatus _status = SyncPathStatus.connecting;
+  SyncPathStatus _status = SyncPathStatus.online;
   SyncPathStatus _pendingStatus = SyncPathStatus.connecting;
   String _detailMessage = "正在确认同步链路...";
   String _pendingMessage = "正在确认同步链路...";

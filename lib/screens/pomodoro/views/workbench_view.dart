@@ -31,6 +31,7 @@ import '../../../utils/app_color_utils.dart';
 import '../../../utils/app_platform.dart';
 import '../../../utils/page_transitions.dart';
 import '../../../utils/todo_recurrence_picker.dart';
+import '../../../features/habits/services/habit_focus_completion_service.dart';
 import '../pomodoro_entry_intent.dart';
 import '../unified_tag_manager_screen.dart';
 import '../widgets/immersive_timer.dart';
@@ -78,6 +79,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   int? _activeFocusSeconds;
   int? _preparedFocusMinutes;
   String? _planBlockId;
+  String? _habitUuid;
+  int? _challengeTaskId;
+  String? _targetLabel;
   (TodoPlanBlock, TodoPlanStatus)? _strictWaitPlanStatusReceipt;
   bool _initialEntryApplied = false;
 
@@ -408,13 +412,15 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         unawaited(_syncService.suspendForBackground());
       }
       if (_isHandlingEnd) return;
-      if (_strictWaitingForFlip) {
-        StrictFocusSessionCoordinator.instance.pauseForBackground();
-      } else if (_isStrictFreeFocus &&
-          _phase == PomodoroPhase.focusing &&
-          !_isPaused) {
-        // 严格模式在前台失去传感器数据时安全暂停，避免把后台时间算进专注。
-        StrictFocusSessionCoordinator.instance.pauseForBackground();
+      if (state != AppLifecycleState.inactive) {
+        if (_strictWaitingForFlip) {
+          StrictFocusSessionCoordinator.instance.pauseForBackground();
+        } else if (_isStrictFreeFocus &&
+            _phase == PomodoroPhase.focusing &&
+            !_isPaused) {
+          // 严格模式在前台失去传感器数据时安全暂停，避免把后台时间算进专注。
+          StrictFocusSessionCoordinator.instance.pauseForBackground();
+        }
       }
       return;
     }
@@ -425,7 +431,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       unawaited(_syncService.resumeFromBackground());
       if (_isStrictFreeFocus && _phase == PomodoroPhase.focusing && _isPaused) {
         if (!StrictFocusSessionCoordinator.instance.isMonitoring) {
-          StrictFocusSessionCoordinator.instance.startMonitoring();
+          StrictFocusSessionCoordinator.instance.startMonitoring(
+            requireInitialFaceUp: false,
+          );
         }
       }
     }
@@ -504,6 +512,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         currentCycle: _currentCycle,
         durationMinutes: _preparedFocusMinutes,
         planBlockId: _planBlockId,
+        habitUuid: _habitUuid,
+        challengeTaskId: _challengeTaskId,
         deviceId: _deviceId,
         note: _currentNote.isNotEmpty ? _currentNote : null,
         notify: false,
@@ -565,7 +575,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
     // The coordinator owns this subscription, so the waiting state survives
     // popping the workbench route or switching back to the app home page.
-    await StrictFocusSessionCoordinator.instance.startMonitoring();
+    await StrictFocusSessionCoordinator.instance.startMonitoring(
+      requireInitialFaceUp: true,
+    );
   }
 
   Future<void> _cancelStrictWaiting() async {
@@ -657,6 +669,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     final preservedTodo = _boundTodo;
     final preservedTags = List<String>.from(_selectedTagUuids);
     final preservedPlanBlockId = _planBlockId;
+    final preservedHabitUuid = _habitUuid;
+    final preservedChallengeTaskId = _challengeTaskId;
+    final preservedTargetLabel = _targetLabel;
     final preservedFocusMinutes = _preparedFocusMinutes;
     final initStart = DateTime.now();
     // debugPrint(
@@ -787,6 +802,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           _boundTodo = preservedTodo;
           _selectedTagUuids = preservedTags;
           _planBlockId = preservedPlanBlockId;
+          _habitUuid = preservedHabitUuid;
+          _challengeTaskId = preservedChallengeTaskId;
+          _targetLabel = preservedTargetLabel;
           _preparedFocusMinutes = preservedFocusMinutes;
           _remainingSeconds = _settings.mode == TimerMode.countUp
               ? 0
@@ -1373,6 +1391,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       _boundTodo = boundTodo;
       _selectedTagUuids = tagUuids;
       _planBlockId = entry.planBlockId;
+      _habitUuid = entry.habitUuid;
+      _challengeTaskId = entry.challengeTaskId;
+      _targetLabel = entry.targetLabel;
       _preparedFocusMinutes = focusMinutes;
       _activeFocusSeconds = null;
       _remainingSeconds = _settings.mode == TimerMode.countUp
@@ -1440,7 +1461,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     final bool forceStrictPause =
         isStrictFreeFocus &&
         !saved.isPaused &&
-        !StrictFocusSessionCoordinator.instance.isMonitoring;
+        !StrictFocusSessionCoordinator.instance.isMonitoringOrStarting;
     final int savedAccumulated = saved.accumulatedMs;
     int remaining;
     if (isCountUp) {
@@ -1507,6 +1528,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           _boundTodo = boundTodo;
           _selectedTagUuids = saved.tagUuids;
           _planBlockId = saved.planBlockId;
+          _habitUuid = saved.habitUuid;
+          _challengeTaskId = saved.challengeTaskId;
           _activeFocusSeconds = saved.focusSeconds;
           _preparedFocusMinutes = null;
           _sessionStartMs = saved.sessionStartMs;
@@ -1539,7 +1562,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         _pushPomodoroNotification(overrideRemaining: remaining);
         _showLocalFloat();
         if (isStrictFreeFocus) {
-          await StrictFocusSessionCoordinator.instance.startMonitoring();
+          await StrictFocusSessionCoordinator.instance.startMonitoring(
+            requireInitialFaceUp: false,
+          );
         }
         if (saved.isPaused == true || forceStrictPause) {
           _ticker?.cancel();
@@ -1669,6 +1694,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         _boundTodo = boundTodo;
         _selectedTagUuids = saved.tagUuids;
         _planBlockId = saved.planBlockId;
+        _habitUuid = saved.habitUuid;
+        _challengeTaskId = saved.challengeTaskId;
         _activeFocusSeconds = saved.focusSeconds;
         _remainingSeconds = _settings.focusMinutes * 60;
       });
@@ -2132,6 +2159,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         currentCycle: _currentCycle,
         durationMinutes: _preparedFocusMinutes,
         planBlockId: _planBlockId,
+        habitUuid: _habitUuid,
+        challengeTaskId: _challengeTaskId,
         deviceId: _deviceId,
         note: _currentNote.isNotEmpty ? _currentNote : null,
         updateFloat: false,
@@ -2173,7 +2202,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     widget.onPhaseChanged(_phase);
     if (_isStrictFreeFocus) {
       // 工作台只负责展示，传感器监听交给跨页面协调器。
-      await StrictFocusSessionCoordinator.instance.startMonitoring();
+      await StrictFocusSessionCoordinator.instance.startMonitoring(
+        requireInitialFaceUp: false,
+      );
     }
     _startTicker();
     _showLocalFloat();
@@ -2428,6 +2459,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       text: (durationSeconds ~/ 60).toString(),
     );
 
+    final targetTitle =
+        _boundTodo?.title ??
+        (_targetLabel != null && _targetLabel!.trim().isNotEmpty
+            ? _targetLabel!.trim()
+            : null);
+
     final completed = await showAppDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -2438,8 +2475,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              _boundTodo != null
-                  ? '"${_boundTodo!.title}" 是否已完成？'
+              targetTitle != null
+                  ? '"$targetTitle" 是否已完成？'
                   : '专注时段已结束，该任务是否已完成？',
             ),
             if (isCountUp) ...[
@@ -2521,6 +2558,23 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           ),
         );
       }
+    }
+    final autoCheckInMessages =
+        await HabitFocusCompletionService.onFocusRecorded(
+          username: widget.username,
+          record: record,
+          explicitHabitUuid: runState.habitUuid ?? _habitUuid,
+          explicitChallengeTaskId: runState.challengeTaskId ?? _challengeTaskId,
+          userConfirmedCompleted: completed == true,
+        );
+    if (autoCheckInMessages.isNotEmpty && mounted) {
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(
+          content: Text(autoCheckInMessages.join('\n')),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
     return completed ?? false;
   }
@@ -3181,6 +3235,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     pauseStartMs: _pauseStartMs,
     pauseIntervals: _pauseIntervals,
     planBlockId: _planBlockId,
+    habitUuid: _habitUuid,
+    challengeTaskId: _challengeTaskId,
     note: _currentNote.isNotEmpty ? _currentNote : null,
   );
 
@@ -3601,7 +3657,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     bool isLandscape,
   ) {
     final isGlobalLandscape =
-        MediaQuery.of(context).orientation == Orientation.landscape;
+        MediaQuery.orientationOf(context) == Orientation.landscape;
 
     return SizedBox(
       height: kToolbarHeight,
@@ -3806,7 +3862,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     return IconButton(
       key: serverConnKey,
       tooltip: message,
-      visualDensity: MediaQuery.of(context).orientation == Orientation.landscape
+      visualDensity: MediaQuery.orientationOf(context) == Orientation.landscape
           ? VisualDensity.compact
           : VisualDensity.standard,
       onPressed: () {

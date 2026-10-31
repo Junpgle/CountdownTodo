@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../screens/personal_timeline_screen.dart';
+import '../services/home_dashboard_section_data_cache.dart';
 import '../services/timeline_service.dart';
 import '../utils/app_image_filters.dart';
 import '../utils/page_transitions.dart';
@@ -35,8 +36,10 @@ class PersonalTimelineSection extends StatefulWidget {
 class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
   List<TimelineEvent> _events = [];
   bool _isLoading = true;
+  bool _hasLoaded = false;
   bool _collapsed = false;
   int _loadRequest = 0;
+  int _localCacheRevision = 0;
   final GlobalKey _cardKey = GlobalKey();
 
   static final RegExp _emojiRegExp = RegExp(
@@ -63,16 +66,36 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
     if (!mounted) return;
     final request = ++_loadRequest;
     final username = widget.username;
-    setState(() {
-      _isLoading = true;
-      if (clearExisting) _events = [];
-    });
+    final today = DateUtils.dateOnly(DateTime.now());
+    final cacheKey =
+        'timeline/$username/${today.year}-${today.month}-${today.day}'
+        '/${widget.refreshTrigger}/$_localCacheRevision';
+    final cached = clearExisting
+        ? null
+        : HomeDashboardSectionDataCache.get<List<TimelineEvent>>(cacheKey);
+    if (cached != null) {
+      setState(() {
+        _events = cached;
+        _isLoading = false;
+        _hasLoaded = true;
+      });
+      return;
+    }
+    if (!_hasLoaded || clearExisting) {
+      setState(() {
+        _isLoading = true;
+        if (clearExisting) {
+          _events = [];
+          _hasLoaded = false;
+        }
+      });
+    }
 
     try {
       final now = DateTime.now();
-      final events = await TimelineService.instance.getEventsForDay(
-        username,
-        now,
+      final events = await HomeDashboardSectionDataCache.load(
+        cacheKey,
+        () => TimelineService.instance.getEventsForDay(username, now),
       );
       if (!mounted || request != _loadRequest || username != widget.username) {
         return;
@@ -81,11 +104,15 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
       setState(() {
         _events = events;
         _isLoading = false;
+        _hasLoaded = true;
       });
     } catch (e, stack) {
       debugPrint('PersonalTimelineSection _loadData error: $e\n$stack');
       if (mounted && request == _loadRequest && username == widget.username) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _hasLoaded = true;
+        });
       }
     }
   }
@@ -106,7 +133,10 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
       placeholderIcon: Icons.timeline_rounded,
       sourceBorderRadius: BorderRadius.circular(24),
     ).then((_) {
-      if (mounted) _loadData();
+      if (mounted) {
+        _localCacheRevision++;
+        _loadData();
+      }
     });
   }
 
@@ -286,8 +316,8 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
                           ? Colors.white
                           : colorScheme.onPrimaryContainer,
                     ),
+                  ),
                 ),
-              ),
               const Spacer(),
               // 跳转完整时间轴报告
               GestureDetector(
@@ -338,9 +368,9 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
     EdgeInsetsGeometry padding = const EdgeInsets.all(18),
   }) {
     return PlatformBackdropFilter(
-              filter: AppImageFilters.blur10,
-              bypassWhenLiquidGlassEnabled: true,
-              child: OptionalLiquidGlassCard(
+      filter: AppImageFilters.blur10,
+      bypassWhenLiquidGlassEnabled: true,
+      child: OptionalLiquidGlassCard(
         padding: padding,
         borderRadius: borderRadius,
         fallbackDecoration: fallbackDecoration,
@@ -353,41 +383,41 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
 
   Widget _buildUnifiedCard(ColorScheme colorScheme, bool isDark) {
     final fallbackDecoration = BoxDecoration(
-                  color: widget.isLight
+      color: widget.isLight
           ? (isDark
-              ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
-              : colorScheme.surface.withValues(alpha: 0.92))
+                ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
+                : colorScheme.surface.withValues(alpha: 0.92))
           : (isDark
                 ? colorScheme.surfaceContainerLow.withValues(alpha: 0.7)
                 : colorScheme.surface),
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(
+      borderRadius: BorderRadius.circular(24),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(
             alpha: widget.isLight ? 0.08 : (isDark ? 0.2 : 0.04),
-                      ),
+          ),
           blurRadius: 16,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                  border: Border.all(
-                    color: widget.isLight
+          offset: const Offset(0, 4),
+        ),
+      ],
+      border: Border.all(
+        color: widget.isLight
             ? (isDark
-                ? Colors.white.withValues(alpha: 0.15)
-                : Colors.white.withValues(alpha: 0.6))
+                  ? Colors.white.withValues(alpha: 0.15)
+                  : Colors.white.withValues(alpha: 0.6))
             : colorScheme.outlineVariant.withValues(alpha: isDark ? 0.25 : 0.4),
-                ),
+      ),
     );
 
     return _buildGlassCard(
       borderRadius: 24,
       fallbackDecoration: fallbackDecoration,
       padding: const EdgeInsets.all(18),
-                  child: _isLoading
+      child: (_isLoading && !_hasLoaded)
           ? const Padding(
               padding: EdgeInsets.symmetric(vertical: 24),
               child: Center(child: CircularProgressIndicator(strokeWidth: 3)),
-                        )
+            )
           : _events.isEmpty
           ? _buildEmptyState(colorScheme, isDark)
           : Column(
@@ -414,17 +444,17 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
                                     ? Colors.white.withValues(alpha: 0.08)
                                     : colorScheme.outlineVariant.withValues(
                                         alpha: 0.35,
-                ),
-              ),
-            ),
+                                      ),
+                              ),
+                            ),
                             // 垂直微型时光流
                             _buildTimelineStream(colorScheme, isDark),
                             // 底部进入完整报告按钮
                             _buildBottomAction(colorScheme, isDark),
                           ],
-          ),
-        ),
-      ],
+                        ),
+                ),
+              ],
             ),
     );
   }
@@ -460,8 +490,8 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
                 fontSize: 12.5,
                 fontWeight: FontWeight.bold,
                 color: isDark ? Colors.white : colorScheme.onSurface,
-        ),
-        ),
+              ),
+            ),
             const SizedBox(width: 8),
             Container(
               width: 3.5,
@@ -489,9 +519,9 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
             ),
           ],
         ),
-        ),
-      );
-    }
+      ),
+    );
+  }
 
   // ==========================================
   // 垂直微型时光流（展示最近发生的 3~4 条事件）
@@ -509,10 +539,10 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
             isLast: i == displayEvents.length - 1,
             colorScheme: colorScheme,
             isDark: isDark,
-        ),
+          ),
       ],
-      );
-    }
+    );
+  }
 
   Widget _buildTimelineItem({
     required TimelineEvent event,
@@ -577,14 +607,14 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
               child: InkWell(
                 borderRadius: BorderRadius.circular(8),
                 onTap: _openTodayReport,
-        child: Padding(
+                child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 4,
                     vertical: 2,
                   ),
-          child: Column(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+                    children: [
                       Row(
                         children: [
                           Text(
@@ -618,13 +648,13 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
                                 fontSize: 10.5,
                                 fontWeight: FontWeight.w600,
                                 color: nodeColor,
-              ),
+                              ),
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 3),
-              Text(
+                      Text(
                         details.content,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -635,17 +665,17 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
                               ? Colors.white.withValues(alpha: 0.9)
                               : colorScheme.onSurface,
                         ),
-              ),
-            ],
-          ),
-        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
         ],
       ),
-      );
-    }
+    );
+  }
 
   // ==========================================
   // 底部进入完整时间轴入口
@@ -694,41 +724,41 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
         child: Column(
-      children: [
-        Container(
+          children: [
+            Container(
               width: 48,
               height: 48,
-          decoration: BoxDecoration(
+              decoration: BoxDecoration(
                 color: colorScheme.primary.withValues(alpha: 0.1),
-            shape: BoxShape.circle,
-          ),
+                shape: BoxShape.circle,
+              ),
               child: Icon(
                 Icons.history_toggle_off_rounded,
                 size: 24,
                 color: colorScheme.primary,
-        ),
+              ),
             ),
             const SizedBox(height: 10),
-              Text(
+            Text(
               '今日暂无时光轨迹',
-                style: TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.bold,
                 color: isDark ? Colors.white : colorScheme.onSurface,
-                ),
               ),
+            ),
             const SizedBox(height: 4),
-              Text(
+            Text(
               '完成待办、习惯打卡或记录账单后，将在此刻画今日生活脉络',
               textAlign: TextAlign.center,
-                style: TextStyle(
+              style: TextStyle(
                 fontSize: 11.5,
                 color: isDark ? Colors.white60 : colorScheme.onSurfaceVariant,
-                ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
+      ),
     );
   }
 }

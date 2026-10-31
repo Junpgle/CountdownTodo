@@ -156,13 +156,15 @@ class _AiChatComposerState extends State<AiChatComposer> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final media = MediaQuery.of(context);
-    final keyboardInset = widget.keyboardInset ?? media.viewInsets.bottom;
+    final keyboardInset =
+        widget.keyboardInset ?? MediaQuery.viewInsetsOf(context).bottom;
     final keyboardVisible = keyboardInset > 0;
     final availableHeight =
-        media.size.height - keyboardInset - media.padding.vertical;
+        MediaQuery.sizeOf(context).height -
+        keyboardInset -
+        MediaQuery.paddingOf(context).vertical;
     final minLines = keyboardVisible && availableHeight < 240 ? 1 : 2;
-    final lineHeight = media.textScaler.scale(15) * 1.4;
+    final lineHeight = MediaQuery.textScalerOf(context).scale(15) * 1.4;
     final maxLines = keyboardVisible
         ? (availableHeight * 0.32 / lineHeight).floor().clamp(minLines, 6)
         : 6;

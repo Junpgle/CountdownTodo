@@ -212,11 +212,13 @@ class _AnimatedWaterCupState extends State<_AnimatedWaterCup>
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _WaterProgressCupPainter(
-        ratio: widget.ratio,
-        animation: _waveController,
-        colorScheme: widget.colorScheme,
+    return RepaintBoundary(
+      child: CustomPaint(
+        painter: _WaterProgressCupPainter(
+          ratio: widget.ratio,
+          animation: _waveController,
+          colorScheme: widget.colorScheme,
+        ),
       ),
     );
   }

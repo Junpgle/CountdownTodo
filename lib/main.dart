@@ -34,6 +34,7 @@ import 'services/band_sync_service.dart';
 import 'services/notification_service.dart';
 import 'services/reminder_schedule_service.dart';
 import 'services/android_window_rendering_policy.dart';
+import 'services/windows_render_cache_policy.dart';
 import 'services/pomodoro_service.dart';
 import 'services/focus_do_not_disturb_service.dart';
 import 'widgets/macos_menu_bar.dart';
@@ -48,7 +49,9 @@ import 'services/minor_mode_service.dart';
 import 'services/liquid_glass_effect_service.dart';
 import 'services/power_save_mode_service.dart';
 import 'theme/app_liquid_glass_theme.dart';
+import 'utils/app_image_filters.dart';
 import 'widgets/liquid_glass_live_preview_dock.dart';
+import 'widgets/animation_performance_floating_window.dart';
 import 'theme/dynamic_color_scheme_adapter.dart';
 import 'theme/oled_surface_color_scheme.dart';
 import 'widgets/island_debug_host.dart';
@@ -240,9 +243,9 @@ void _configureRuntimeCaches({bool powerSaveMode = false}) {
   }
 
   if (AppPlatform.isMobile) {
-    final useAndroidPowerSaveCache = AppPlatform.isAndroid && powerSaveMode;
-    imageCache.maximumSize = useAndroidPowerSaveCache ? 64 : 100;
-    imageCache.maximumSizeBytes = (useAndroidPowerSaveCache ? 64 : 96) << 20;
+    final useMobilePowerSaveCache = powerSaveMode;
+    imageCache.maximumSize = useMobilePowerSaveCache ? 64 : 100;
+    imageCache.maximumSizeBytes = (useMobilePowerSaveCache ? 64 : 96) << 20;
   } else {
     imageCache.maximumSize = 180;
     imageCache.maximumSizeBytes = 192 << 20; // Desktop 192MB
@@ -270,6 +273,7 @@ Future<void> main(List<String> args) async {
   }
 
   _configureRuntimeCaches();
+  await WindowsRenderCachePolicy.configure();
 
   final platformReady = _initializePlatformBeforeHome(args);
 
@@ -342,6 +346,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     final lifecycleState = WidgetsBinding.instance.lifecycleState;
     WindowService.windowIsActiveListenable.value =
         lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
+    WindowService.windowIsActiveListenable.addListener(
+      _handleWindowsWindowActivityChanged,
+    );
+    _handleWindowsWindowActivityChanged();
     if (AppPlatform.isAndroid) {
       PowerSaveModeService.enabledListenable.addListener(
         _handlePowerSaveModeChanged,
@@ -385,6 +393,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     if (mounted) setState(() {});
   }
 
+  void _handleWindowsWindowActivityChanged() {
+    if (!AppPlatform.isWindows) return;
+    unawaited(
+      WindowsRenderCachePolicy.setMainWindowActive(
+        WindowService.windowIsActiveListenable.value,
+      ),
+    );
+  }
+
   @override
   void didChangeMetrics() {
     _scheduleSystemUiRestore();
@@ -406,19 +423,25 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       if (AppPlatform.isAndroid) WidgetService.setAppForeground(false);
+      if (state == AppLifecycleState.paused ||
+          state == AppLifecycleState.hidden) {
+        PaintingBinding.instance.imageCache.clearLiveImages();
+        LiquidGlassEffectConfiguration.clearFilterCache();
+        AppImageFilters.clearFilterCache();
+      }
     }
   }
 
   @override
   void didHaveMemoryPressure() {
-    if (!AppPlatform.isAndroid) return;
-
-    // Android 17 can terminate a process that exceeds the device-specific
-    // memory budget. Drop decoded images as soon as the framework signals
-    // pressure so the next frame can rebuild only what is visible.
+    // Drop decoded image cache as soon as the framework signals memory
+    // pressure so the next frame can rebuild only what is visible, avoiding
+    // OS termination across Android (LMK), iOS (Jetsam), desktop and web.
     final imageCache = PaintingBinding.instance.imageCache;
     imageCache.clear();
     imageCache.clearLiveImages();
+    LiquidGlassEffectConfiguration.clearFilterCache();
+    AppImageFilters.clearFilterCache();
   }
 
   void _handlePowerSaveModeChanged() {
@@ -972,6 +995,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     StorageService.oledBlackModeNotifier.removeListener(
       _handleOledBlackModeChanged,
     );
+    WindowService.windowIsActiveListenable.removeListener(
+      _handleWindowsWindowActivityChanged,
+    );
     WidgetsBinding.instance.removeObserver(this);
     if (AppPlatform.isAndroid) {
       PowerSaveModeService.enabledListenable.removeListener(
@@ -1282,7 +1308,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                                     )
                                                   : content;
 
-                                              return ValueListenableBuilder<bool>(
+                                              return ValueListenableBuilder<
+                                                bool
+                                              >(
                                                 valueListenable: WindowService
                                                     .windowIsActiveListenable,
                                                 child: MacosWindowChrome(
@@ -1300,20 +1328,25 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                                           child:
                                                               LiquidGlassLivePreviewDock(),
                                                         ),
+                                                        const Positioned.fill(
+                                                          child:
+                                                              AnimationPerformanceFloatingWindow(),
+                                                        ),
                                                       ],
                                                     ),
                                                   ),
                                                 ),
-                                                builder: (
-                                                  context,
-                                                  isWindowActive,
-                                                  child,
-                                                ) => TickerMode(
-                                                  enabled: isWindowActive,
-                                                  child:
-                                                      child ??
-                                                      const SizedBox.shrink(),
-                                                ),
+                                                builder:
+                                                    (
+                                                      context,
+                                                      isWindowActive,
+                                                      child,
+                                                    ) => TickerMode(
+                                                      enabled: isWindowActive,
+                                                      child:
+                                                          child ??
+                                                          const SizedBox.shrink(),
+                                                    ),
                                               );
                                             },
                                           );

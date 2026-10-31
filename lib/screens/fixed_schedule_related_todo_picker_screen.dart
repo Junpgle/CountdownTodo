@@ -60,6 +60,9 @@ class _FixedScheduleRelatedTodoPickerScreenState
   int _nextOffset = 0;
   int _loadGeneration = 0;
   Timer? _searchDebounce;
+  bool _uncompletedExpanded = true;
+  bool _completedExpanded = true;
+  bool _unavailableExpanded = true;
 
   String? get _normalizedTeamUuid {
     final value = widget.teamUuid?.trim();
@@ -292,8 +295,10 @@ class _FixedScheduleRelatedTodoPickerScreenState
     final statusCompare = statusOrder(left).compareTo(statusOrder(right));
     if (statusCompare != 0) return statusCompare;
 
-    final leftDue = left.todo?.dueDate?.millisecondsSinceEpoch;
-    final rightDue = right.todo?.dueDate?.millisecondsSinceEpoch;
+    final leftDue =
+        left.todo?.dueDate?.millisecondsSinceEpoch ?? left.todo?.createdDate;
+    final rightDue =
+        right.todo?.dueDate?.millisecondsSinceEpoch ?? right.todo?.createdDate;
     if (leftDue == null && rightDue != null) return 1;
     if (leftDue != null && rightDue == null) return -1;
     if (leftDue != null && rightDue != null && leftDue != rightDue) {
@@ -451,47 +456,202 @@ class _FixedScheduleRelatedTodoPickerScreenState
         ),
       );
     }
+    final uncompletedRows = <_RelatedTodoRow>[];
+    final completedRows = <_RelatedTodoRow>[];
+    final unavailableRows = <_RelatedTodoRow>[];
+
+    for (final row in rows) {
+      final todo = row.todo;
+      if (!row.canAdd ||
+          todo == null ||
+          todo.isDeleted ||
+          !_sameVisibility(todo)) {
+        unavailableRows.add(row);
+      } else if (todo.isDone || todo.isSkipped) {
+        completedRows.add(row);
+      } else {
+        uncompletedRows.add(row);
+      }
+    }
+
+    final items = <_PickerListItem>[];
+
+    if (uncompletedRows.isNotEmpty) {
+      items.add(
+        _PickerHeaderItem(
+          title: '未完成',
+          count: uncompletedRows.length,
+          icon: Icons.pending_actions_rounded,
+          color: scheme.primary,
+          isExpanded: _uncompletedExpanded,
+          onToggle: () =>
+              setState(() => _uncompletedExpanded = !_uncompletedExpanded),
+        ),
+      );
+      if (_uncompletedExpanded) {
+        for (final row in uncompletedRows) {
+          items.add(_PickerRowItem(row));
+        }
+      }
+    }
+
+    if (completedRows.isNotEmpty) {
+      items.add(
+        _PickerHeaderItem(
+          title: '已完成',
+          count: completedRows.length,
+          icon: Icons.task_alt_rounded,
+          color: Colors.green,
+          isExpanded: _completedExpanded,
+          onToggle: () =>
+              setState(() => _completedExpanded = !_completedExpanded),
+        ),
+      );
+      if (_completedExpanded) {
+        for (final row in completedRows) {
+          items.add(_PickerRowItem(row));
+        }
+      }
+    }
+
+    if (unavailableRows.isNotEmpty) {
+      items.add(
+        _PickerHeaderItem(
+          title: '不可用待办',
+          count: unavailableRows.length,
+          icon: Icons.link_off_rounded,
+          color: scheme.onSurfaceVariant,
+          isExpanded: _unavailableExpanded,
+          onToggle: () =>
+              setState(() => _unavailableExpanded = !_unavailableExpanded),
+        ),
+      );
+      if (_unavailableExpanded) {
+        for (final row in unavailableRows) {
+          items.add(_PickerRowItem(row));
+        }
+      }
+    }
+
     final hasFooter = _hasMore || _isLoadingMore || _loadMoreError != null;
-    return ListView.separated(
+
+    return ListView.builder(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-      itemCount: rows.length + (hasFooter ? 1 : 0),
-      separatorBuilder: (_, _) => const SizedBox(height: 4),
+      itemCount: items.length + (hasFooter ? 1 : 0),
       itemBuilder: (context, index) {
-        if (index == rows.length) return _buildPageFooter(context, scheme);
-        final row = rows[index];
+        if (index == items.length) return _buildPageFooter(context, scheme);
+        final item = items[index];
+        if (item is _PickerHeaderItem) {
+          return _buildSectionHeader(item, scheme);
+        }
+        final row = (item as _PickerRowItem).row;
         final selected = _selectedIds.contains(row.id);
         final disabled = !row.canAdd && !selected;
-        return Card(
-          color: selected
-              ? scheme.secondaryContainer.withValues(alpha: 0.55)
-              : scheme.surfaceContainerLow,
-          clipBehavior: Clip.antiAlias,
-          child: CheckboxListTile(
-            key: ValueKey('related-todo-${row.id}'),
-            value: selected,
-            onChanged: disabled
-                ? null
-                : (_) => _toggle(row.id, canAdd: row.canAdd),
-            title: Text(
-              row.title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Card(
+            elevation: 0,
+            margin: EdgeInsets.zero,
+            color: selected
+                ? scheme.secondaryContainer.withValues(alpha: 0.55)
+                : scheme.surfaceContainerLow,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(
+                color: selected
+                    ? scheme.primary.withValues(alpha: 0.3)
+                    : Colors.black.withValues(alpha: 0.04),
+              ),
             ),
-            subtitle: Text(row.subtitle),
-            secondary: Icon(
-              row.todo?.isDone == true
-                  ? Icons.task_alt_rounded
-                  : row.todo?.isSkipped == true
-                  ? Icons.skip_next_rounded
-                  : row.canAdd
-                  ? Icons.checklist_rounded
-                  : Icons.link_off_rounded,
-              color: row.canAdd ? scheme.primary : scheme.onSurfaceVariant,
+            clipBehavior: Clip.antiAlias,
+            child: CheckboxListTile(
+              key: ValueKey('related-todo-${row.id}'),
+              value: selected,
+              onChanged: disabled
+                  ? null
+                  : (_) => _toggle(row.id, canAdd: row.canAdd),
+              title: Text(
+                row.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                ),
+              ),
+              subtitle: Text(row.subtitle),
+              secondary: Icon(
+                row.todo?.isDone == true
+                    ? Icons.task_alt_rounded
+                    : row.todo?.isSkipped == true
+                    ? Icons.skip_next_rounded
+                    : row.canAdd
+                    ? Icons.checklist_rounded
+                    : Icons.link_off_rounded,
+                color: row.canAdd ? scheme.primary : scheme.onSurfaceVariant,
+              ),
+              controlAffinity: ListTileControlAffinity.trailing,
             ),
-            controlAffinity: ListTileControlAffinity.trailing,
           ),
         );
       },
+    );
+  }
+
+  Widget _buildSectionHeader(_PickerHeaderItem header, ColorScheme scheme) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          onTap: header.onToggle,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+            child: Row(
+              children: [
+                Icon(header.icon, size: 18, color: header.color),
+                const SizedBox(width: 8),
+                Text(
+                  header.title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: scheme.onSurface,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: header.color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '${header.count}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: header.color,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Icon(
+                  header.isExpanded
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
+                  size: 20,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -541,4 +701,30 @@ class _RelatedTodoRow {
   final String subtitle;
   final bool canAdd;
   final TodoItem? todo;
+}
+
+sealed class _PickerListItem {}
+
+class _PickerHeaderItem extends _PickerListItem {
+  _PickerHeaderItem({
+    required this.title,
+    required this.count,
+    required this.icon,
+    required this.color,
+    required this.isExpanded,
+    required this.onToggle,
+  });
+
+  final String title;
+  final int count;
+  final IconData icon;
+  final Color color;
+  final bool isExpanded;
+  final VoidCallback onToggle;
+}
+
+class _PickerRowItem extends _PickerListItem {
+  _PickerRowItem(this.row);
+
+  final _RelatedTodoRow row;
 }

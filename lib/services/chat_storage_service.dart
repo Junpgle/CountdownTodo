@@ -270,22 +270,31 @@ class ChatStorageService {
       return [];
     }
     try {
-      final List<dynamic> jsonList = jsonDecode(historyStr);
-      final history = jsonList
-          .map((json) => ChatMessage.fromJson(json as Map<String, dynamic>))
-          .toList();
+      final decoded = jsonDecode(historyStr);
+      if (decoded is! List) return [];
+
+      final history = <ChatMessage>[];
       var changed = false;
-      final migratedHistory = history.map((message) {
-        if (message.role != ChatRole.assistant) return message;
-        final cleanedContent = AiActionParser.cleanActionContent(
-          message.content,
-        );
-        if (cleanedContent == message.content) return message;
-        changed = true;
-        return message.copyWith(content: cleanedContent);
-      }).toList();
-      if (changed) await saveHistory(migratedHistory, sid);
-      return migratedHistory;
+      for (var index = 0; index < decoded.length; index++) {
+        final rawMessage = decoded[index];
+        // Drop each decoded map as soon as its model has been created. Long
+        // histories otherwise keep every map alive beside the full model list.
+        decoded[index] = null;
+        var message = ChatMessage.fromJson(rawMessage as Map<String, dynamic>);
+        if (message.role == ChatRole.assistant) {
+          final cleanedContent = AiActionParser.cleanActionContent(
+            message.content,
+          );
+          if (cleanedContent != message.content) {
+            changed = true;
+            message = message.copyWith(content: cleanedContent);
+          }
+        }
+        history.add(message);
+      }
+      decoded.clear();
+      if (changed) await saveHistory(history, sid);
+      return history;
     } catch (e) {
       return [];
     }

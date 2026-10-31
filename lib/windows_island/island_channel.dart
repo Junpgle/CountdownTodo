@@ -251,6 +251,18 @@ class IslandChannel {
     }
   }
 
+  static Future<bool> startWindowDragging(String windowId) async {
+    try {
+      final res = await _dmw
+          .invokeMethod<bool>('window_startDragging', {'windowId': windowId})
+          .timeout(_nativeCallTimeout);
+      return res == true;
+    } catch (e) {
+      debugPrint('[IslandChannel] startWindowDragging failed: $e');
+      return false;
+    }
+  }
+
   static Future<bool> setWindowTransparent(
     String windowId,
     bool transparent,

@@ -815,6 +815,15 @@ abstract final class AppSettingsCatalog {
       platforms: {},
     ),
     AiSettingsDestination(
+      id: 'animation_performance_metric',
+      title: '流畅度与负载压力',
+      path: '设置 > 动画与特效 > 流畅度与负载压力',
+      description: '流畅度 负载压力 帧率 FPS 渲染压力 掉帧 卡顿 性能指标 悬浮窗 悬浮监控',
+      page: SettingsPageId.animation,
+      labels: ['流畅度', '负载压力', '帧率', 'FPS', '渲染压力', '卡顿', '悬浮窗', '悬浮监控'],
+      platforms: {},
+    ),
+    AiSettingsDestination(
       id: 'animation_presets',
       title: '性能预设',
       path: '设置 > 动画与特效 > 性能预设',
@@ -1946,6 +1955,15 @@ abstract final class AppSettingsCatalog {
       description: 'Windows浮动窗口开关 样式 悬浮窗与灵动岛 动态岛',
       page: SettingsPageId.platform,
       labels: ['桌面灵动岛'],
+      platforms: {'native', 'windows'},
+    ),
+    AiSettingsDestination(
+      id: 'windows_renderer',
+      title: 'Windows 渲染引擎',
+      path: '设置 > Windows 专属设置 > 图形渲染',
+      description: 'Skia Impeller 图形后端 性能 显存 GPU 应用渲染器 重启生效',
+      page: SettingsPageId.platform,
+      labels: ['Windows 渲染引擎', '图形渲染'],
       platforms: {'native', 'windows'},
     ),
     AiSettingsDestination(

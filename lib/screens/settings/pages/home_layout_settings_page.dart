@@ -59,7 +59,7 @@ class _HomeLayoutSettingsPageState extends State<HomeLayoutSettingsPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final isWide = MediaQuery.of(context).size.width >= 768;
+    final isWide = MediaQuery.sizeOf(context).width >= 768;
     if (_isWide == isWide) return;
     _isWide = isWide;
     _loadOrders(isWide);

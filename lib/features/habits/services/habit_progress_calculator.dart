@@ -14,6 +14,7 @@ typedef _IndexedHabitCheckIn = ({int sourceIndex, HabitCheckIn checkIn});
 class _HabitCheckInIndex {
   final Map<String, List<_IndexedHabitCheckIn>> _byLogicalDate = {};
   final Set<String> _skipDates = {};
+  final Set<String> _freezeDates = {};
 
   _HabitCheckInIndex(List<HabitCheckIn> checkIns) {
     for (var index = 0; index < checkIns.length; index++) {
@@ -26,12 +27,17 @@ class _HabitCheckInIndex {
           .add((sourceIndex: index, checkIn: checkIn));
       if (checkIn.source == HabitCheckInSource.skip) {
         _skipDates.add(logicalDate);
+      } else if (checkIn.source == HabitCheckInSource.freeze) {
+        _freezeDates.add(logicalDate);
       }
     }
   }
 
   bool hasSkipOn(DateTime logicalDate) =>
       _skipDates.contains(HabitRuleResolver.dayKey(logicalDate));
+
+  bool hasFreezeOn(DateTime logicalDate) =>
+      _freezeDates.contains(HabitRuleResolver.dayKey(logicalDate));
 
   List<HabitCheckIn> inPeriod(DateTime start, DateTime end) {
     final endDay = DateTime(end.year, end.month, end.day);
@@ -45,7 +51,9 @@ class _HabitCheckInIndex {
           const <_IndexedHabitCheckIn>[];
       return <HabitCheckIn>[
         for (final item in indexedDay)
-          if (item.checkIn.source != HabitCheckInSource.skip) item.checkIn,
+          if (item.checkIn.source != HabitCheckInSource.skip &&
+              item.checkIn.source != HabitCheckInSource.freeze)
+            item.checkIn,
       ];
     }
 
@@ -62,7 +70,9 @@ class _HabitCheckInIndex {
     }
     return <HabitCheckIn>[
       for (final item in indexed)
-        if (item.checkIn.source != HabitCheckInSource.skip) item.checkIn,
+        if (item.checkIn.source != HabitCheckInSource.skip &&
+            item.checkIn.source != HabitCheckInSource.freeze)
+          item.checkIn,
     ];
   }
 }
@@ -300,6 +310,30 @@ abstract final class HabitProgressCalculator {
         rule.periodType == HabitPeriodType.weekly ||
         rule.periodType == HabitPeriodType.monthly;
     if (!isAggregated) {
+      // 免扣卡守护：该日未达标但免扣卡守护，不中断连续（仅每日类周期适用）。
+      final hasFreeze =
+          checkInIndex?.hasFreezeOn(logicalDate) ??
+          checkIns.any(
+            (c) =>
+                !c.isDeleted &&
+                c.source == HabitCheckInSource.freeze &&
+                c.logicalDate == HabitRuleResolver.dayKey(logicalDate),
+          );
+      if (hasFreeze) {
+        return HabitProgress(
+          period: HabitRuleResolver.periodStart(rule, logicalDate),
+          currentValue: 0,
+          targetValue: rule.targetValue <= 0 ? 1.0 : rule.targetValue,
+          completionRatio: 0,
+          hasRecord: true,
+          goalMet: false,
+          isPlanned: HabitRuleResolver.isPlannedDay(rule, logicalDate),
+          isSkipped: false,
+          isFrozen: true,
+          isFinished: true,
+        );
+      }
+
       // 手动跳过：该日不执行也不中断连续（仅每日类周期适用）。
       final hasSkip =
           checkInIndex?.hasSkipOn(logicalDate) ??
@@ -319,6 +353,7 @@ abstract final class HabitProgressCalculator {
           goalMet: false,
           isPlanned: HabitRuleResolver.isPlannedDay(rule, logicalDate),
           isSkipped: true,
+          isFrozen: false,
           isFinished: true,
         );
       }
@@ -337,6 +372,8 @@ abstract final class HabitProgressCalculator {
           now: now,
           todos: todos,
           todoIndex: todoIndex,
+          checkIns: checkIns,
+          checkInIndex: checkInIndex,
         ),
         HabitSourceType.pomodoroTag => _computeDuration(
           habit: habit,
@@ -384,6 +421,8 @@ abstract final class HabitProgressCalculator {
           now: now,
           todos: todos,
           todoIndex: todoIndex,
+          checkIns: checkIns,
+          checkInIndex: checkInIndex,
         );
       case HabitSourceType.pomodoroTag:
         return _computeDuration(
@@ -424,7 +463,7 @@ abstract final class HabitProgressCalculator {
     }
   }
 
-  // ── 完成型：循环待办实例 ─────────────────────────────
+  // ── 完成型：打卡事件（兼容旧循环待办实例）─────────────────
 
   static HabitProgress _computeCompletion({
     required HabitGoal habit,
@@ -433,25 +472,49 @@ abstract final class HabitProgressCalculator {
     required DateTime now,
     required List<TodoItem> todos,
     required HabitTodoIndex? todoIndex,
+    required List<HabitCheckIn> checkIns,
+    required _HabitCheckInIndex? checkInIndex,
   }) {
     final isAggregated =
         rule.periodType == HabitPeriodType.weekly ||
         rule.periodType == HabitPeriodType.monthly;
     final planned = HabitRuleResolver.isPlannedDay(rule, logicalDate);
     final finished = HabitRuleResolver.isPeriodFinished(rule, logicalDate, now);
+    final start = HabitRuleResolver.periodStart(rule, logicalDate);
+    final end = HabitRuleResolver.periodEndExclusive(rule, logicalDate);
+    final periodCheckIns =
+        checkInIndex?.inPeriod(start, end) ??
+        _checkInsInPeriod(checkIns, start, end);
+
+    DateTime? firstRecordAt;
+    DateTime? lastRecordAt;
+    for (final checkIn in periodCheckIns) {
+      final local = checkIn.localOccurredAt;
+      if (firstRecordAt == null || local.isBefore(firstRecordAt)) {
+        firstRecordAt = local;
+      }
+      if (lastRecordAt == null || local.isAfter(lastRecordAt)) {
+        lastRecordAt = local;
+      }
+    }
 
     if (isAggregated) {
-      // 周期累计：统计周期内所有已完成实例数量。
-      final start = HabitRuleResolver.periodStart(rule, logicalDate);
-      final end = HabitRuleResolver.periodEndExclusive(rule, logicalDate);
-      final doneCount =
-          todoIndex?.completedCountInRange(start, end) ??
-          todos.where((t) {
-            if (t.isDeleted || !t.isDone) return false;
-            final day = _todoLocalDay(t);
-            if (day == null) return false;
-            return !day.isBefore(start) && day.isBefore(end);
-          }).length;
+      // 周期累计：按已完成日期去重统计（兼容未迁移的旧待办实例）。
+      final completedDays = <String>{
+        for (final checkIn in periodCheckIns) checkIn.logicalDate,
+      };
+      if (todos.isNotEmpty) {
+        for (final todo in todos) {
+          if (todo.isDeleted || !todo.isDone) continue;
+          final day = _todoLocalDay(todo);
+          if (day == null) continue;
+          final dayDate = DateTime(day.year, day.month, day.day);
+          if (!dayDate.isBefore(start) && dayDate.isBefore(end)) {
+            completedDays.add(HabitRuleResolver.dayKey(dayDate));
+          }
+        }
+      }
+      final doneCount = completedDays.length;
       final target = rule.targetValue <= 0 ? 1.0 : rule.targetValue;
       final met = doneCount >= target;
       return HabitProgress(
@@ -463,16 +526,25 @@ abstract final class HabitProgressCalculator {
         goalMet: met,
         isPlanned: planned,
         isFinished: finished,
-        recordCount: doneCount,
+        recordCount: periodCheckIns.isNotEmpty
+            ? periodCheckIns.length
+            : doneCount,
+        firstRecordAt: firstRecordAt,
+        lastRecordAt: lastRecordAt,
+        checkIns: periodCheckIns,
       );
     }
 
-    final done =
-        todoIndex?.isTodoDoneOn(logicalDate) ??
-        HabitSourceResolver.isTodoDoneOn(todos, logicalDate);
+    final doneFromCheckIns = periodCheckIns.isNotEmpty;
+    final doneFromTodos =
+        !doneFromCheckIns &&
+        todos.isNotEmpty &&
+        (todoIndex?.isTodoDoneOn(logicalDate) ??
+            HabitSourceResolver.isTodoDoneOn(todos, logicalDate));
+    final done = doneFromCheckIns || doneFromTodos;
     final target = rule.targetValue <= 0 ? 1.0 : rule.targetValue;
     return HabitProgress(
-      period: HabitRuleResolver.periodStart(rule, logicalDate),
+      period: start,
       currentValue: done ? 1.0 : 0.0,
       targetValue: target,
       completionRatio: done ? 1.0 : 0.0,
@@ -480,7 +552,12 @@ abstract final class HabitProgressCalculator {
       goalMet: done,
       isPlanned: planned,
       isFinished: finished,
-      recordCount: done ? 1 : 0,
+      recordCount: periodCheckIns.isNotEmpty
+          ? periodCheckIns.length
+          : (done ? 1 : 0),
+      firstRecordAt: firstRecordAt,
+      lastRecordAt: lastRecordAt,
+      checkIns: periodCheckIns,
     );
   }
 
@@ -552,7 +629,9 @@ abstract final class HabitProgressCalculator {
       HabitRuleResolver.addCalendarDays(end, -1),
     );
     return checkIns.where((checkIn) {
-      if (checkIn.isDeleted || checkIn.source == HabitCheckInSource.skip) {
+      if (checkIn.isDeleted ||
+          checkIn.source == HabitCheckInSource.skip ||
+          checkIn.source == HabitCheckInSource.freeze) {
         return false;
       }
       if (checkIn.logicalDate.compareTo(startKey) < 0) return false;

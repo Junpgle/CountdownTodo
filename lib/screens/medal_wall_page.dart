@@ -173,7 +173,7 @@ class _MedalWallPageState extends State<MedalWallPage>
 
   Widget _buildHeader(BuildContext context) {
     final theme = Theme.of(context);
-    final screenWidth = MediaQuery.of(context).size.width;
+    final screenWidth = MediaQuery.sizeOf(context).width;
     final isWide = screenWidth > 600;
 
     return Center(
@@ -298,7 +298,7 @@ class _MedalWallPageState extends State<MedalWallPage>
       return _buildEmptyState(context, emptyMessage);
     }
 
-    final screenWidth = MediaQuery.of(context).size.width;
+    final screenWidth = MediaQuery.sizeOf(context).width;
     final crossAxisCount = _getResponsiveColumnCount(screenWidth);
 
     return CustomScrollView(
@@ -411,7 +411,7 @@ class _MedalWallPageState extends State<MedalWallPage>
     String? reason,
   }) {
     final theme = Theme.of(context);
-    final isWide = MediaQuery.of(context).size.width > 600;
+    final isWide = MediaQuery.sizeOf(context).width > 600;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -769,7 +769,7 @@ class _MedalWallPageState extends State<MedalWallPage>
 
   void _showMedalDetail(BuildContext context, MedalProgress medal) {
     final theme = Theme.of(context);
-    final screenWidth = MediaQuery.of(context).size.width;
+    final screenWidth = MediaQuery.sizeOf(context).width;
     final isWide = screenWidth > 600;
 
     Widget buildContent(bool embedded) {
@@ -1091,7 +1091,7 @@ class _MedalWallPageState extends State<MedalWallPage>
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
         builder: (context) => Container(
-          height: MediaQuery.of(context).size.height * 0.75,
+          height: MediaQuery.sizeOf(context).height * 0.75,
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),

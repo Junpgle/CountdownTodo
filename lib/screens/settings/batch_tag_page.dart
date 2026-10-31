@@ -756,7 +756,7 @@ class _BatchTagPageState extends State<BatchTagPage>
         16,
         12,
         16,
-        useFloating ? 12 : MediaQuery.of(context).padding.bottom + 12,
+        useFloating ? 12 : MediaQuery.paddingOf(context).bottom + 12,
       ),
       decoration: useFloating
           ? null

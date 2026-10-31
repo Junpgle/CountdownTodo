@@ -223,6 +223,8 @@ class _DetailGallery extends StatelessWidget {
           itemBuilder: (_, index) {
             final provider = JournalMediaService.instance.provider(
               attachments[index],
+              width: 800,
+              height: 800,
             );
             return ClipRRect(
               borderRadius: BorderRadius.circular(22),

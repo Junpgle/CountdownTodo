@@ -7,9 +7,10 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
     final isUser = msg.role == ChatRole.user;
     final timeStr = _todoChatDateFormat('HH:mm').format(msg.timestamp);
     final colorScheme = Theme.of(context).colorScheme;
-    final maxBubbleWidth = MediaQuery.of(context).size.width >= 900
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final maxBubbleWidth = screenWidth >= 900
         ? (isUser ? 560.0 : 720.0)
-        : MediaQuery.of(context).size.width * (isUser ? 0.82 : 0.9);
+        : screenWidth * (isUser ? 0.82 : 0.9);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -256,9 +257,9 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
           Flexible(
             child: ConstrainedBox(
               constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width >= 900
+                maxWidth: MediaQuery.sizeOf(context).width >= 900
                     ? 720
-                    : MediaQuery.of(context).size.width * 0.9,
+                    : MediaQuery.sizeOf(context).width * 0.9,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -397,11 +398,27 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
     final Widget preview;
     if (attachment.kind == ChatAttachmentKind.image) {
       preview = attachment.bytes != null
-          ? Image.memory(
-              attachment.bytes!,
-              width: width,
-              height: height,
-              fit: BoxFit.cover,
+          ? Builder(
+              builder: (context) {
+                final pixelRatio =
+                    MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0;
+                final cacheWidth = (width * pixelRatio)
+                    .ceil()
+                    .clamp(1, 4096)
+                    .toInt();
+                final cacheHeight = (height * pixelRatio)
+                    .ceil()
+                    .clamp(1, 4096)
+                    .toInt();
+                return Image.memory(
+                  attachment.bytes!,
+                  width: width,
+                  height: height,
+                  cacheWidth: cacheWidth,
+                  cacheHeight: cacheHeight,
+                  fit: BoxFit.cover,
+                );
+              },
             )
           : attachment.path.isNotEmpty && localImageExists(attachment.path)
           ? localImageWidget(

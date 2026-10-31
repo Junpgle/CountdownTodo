@@ -42,6 +42,8 @@ String _sourceName(PlanBusySource source) => switch (source) {
   PlanBusySource.planBlock => '另一规划',
   PlanBusySource.legacyTodo => '待办执行区间',
   PlanBusySource.deviceCalendar => '手机日历',
+  PlanBusySource.habit => '习惯预留',
+  PlanBusySource.challenge => '30天挑战',
 };
 
 /// A compact foreground indicator. A failure or unknown source is never shown
@@ -573,7 +575,9 @@ class _PlanConflictReviewSheetState extends State<PlanConflictReviewSheet>
 
   @override
   Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
+    final size = MediaQuery.sizeOf(context);
+    final viewInsets = MediaQuery.viewInsetsOf(context);
+    final padding = MediaQuery.paddingOf(context);
     final colors = Theme.of(context).colorScheme;
     final result = _result;
     final conflictDateFormat = _planConflictReviewDateFormat('M月d日');
@@ -592,16 +596,12 @@ class _PlanConflictReviewSheetState extends State<PlanConflictReviewSheet>
     }
     return SafeArea(
       child: Padding(
-        padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
+        padding: EdgeInsets.only(bottom: viewInsets.bottom),
         child: ConstrainedBox(
           constraints: BoxConstraints(
             maxWidth: 680,
-            maxHeight:
-                (media.size.height -
-                        media.viewInsets.bottom -
-                        media.padding.vertical -
-                        24)
-                    .clamp(0.0, double.infinity),
+            maxHeight: (size.height - viewInsets.bottom - padding.vertical - 24)
+                .clamp(0.0, double.infinity),
           ),
           child: OptionalLiquidGlassSheet(
             topRadius: 28,

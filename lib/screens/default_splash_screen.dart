@@ -49,7 +49,8 @@ class _DefaultSplashScreenState extends State<DefaultSplashScreen>
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
+    final size = MediaQuery.sizeOf(context);
+    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
     final colorScheme = Theme.of(context).colorScheme;
     final isWide = size.width > 600;
     final assetName = isWide
@@ -69,6 +70,8 @@ class _DefaultSplashScreenState extends State<DefaultSplashScreen>
                 assetName,
                 width: size.width,
                 height: size.height,
+                cacheWidth: (size.width * pixelRatio).round().clamp(1, 4096),
+                cacheHeight: (size.height * pixelRatio).round().clamp(1, 4096),
                 fit: BoxFit.cover,
               ),
             ),

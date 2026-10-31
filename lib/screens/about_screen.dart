@@ -39,6 +39,7 @@ class AboutScreen extends StatefulWidget {
 class _AboutScreenState extends State<AboutScreen> {
   static const _appIconAsset = 'assets/icon/app_icon.png';
   static final GitHubResourceService _resourceService = GitHubResourceService();
+  static final RegExp _privacyDatePattern = RegExp(r'\*\*版本日期：(.+?)\*\*');
   final Map<String, GlobalKey> _navigationKeys = {};
   String _version = '加载中...';
   List<ChangelogEntry> _changelogEntries = [];
@@ -309,7 +310,7 @@ class _AboutScreenState extends State<AboutScreen> {
       if (response.statusCode == 200) {
         final content = response.body;
         String? date;
-        final dateMatch = RegExp(r'\*\*版本日期：(.+?)\*\*').firstMatch(content);
+        final dateMatch = _privacyDatePattern.firstMatch(content);
         if (dateMatch != null) {
           date = dateMatch.group(1)?.trim();
         }
@@ -446,7 +447,7 @@ class _AboutScreenState extends State<AboutScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
+    final screenWidth = MediaQuery.sizeOf(context).width;
     final isWide = screenWidth > 800;
     final standalone = !widget.isEmbedded && !isWide;
 
@@ -496,6 +497,8 @@ class _AboutScreenState extends State<AboutScreen> {
                           _appIconAsset,
                           width: 80,
                           height: 80,
+                          cacheWidth: 240,
+                          cacheHeight: 240,
                           fit: BoxFit.cover,
                           semanticLabel: 'CountDownTodo',
                         ),
@@ -640,6 +643,8 @@ class _AboutScreenState extends State<AboutScreen> {
                 _appIconAsset,
                 width: 100,
                 height: 100,
+                cacheWidth: 300,
+                cacheHeight: 300,
                 fit: BoxFit.cover,
                 semanticLabel: 'CountDownTodo',
               ),

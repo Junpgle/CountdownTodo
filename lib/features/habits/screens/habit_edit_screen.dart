@@ -76,6 +76,13 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
   /// 时长型：开始专注时的默认时长（分钟），为空使用专注设置默认值。
   int? _defaultFocusMinutes;
 
+  /// 今日容量与规划块联动配置。
+  bool _includeInPlanning = false;
+  TimeOfDay _preferredStartTime = const TimeOfDay(hour: 20, minute: 0);
+  int _plannedDurationMinutes = 25;
+  List<String> _focusTagUuids = [];
+  bool _autoCheckInOnFocus = true;
+
   /// 编辑模式：规则生效时间（'today' | 'nextPeriod' | 'all'）。
   String _effectiveFromOption = 'today';
 
@@ -308,6 +315,23 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         _progressReminder = rule.reminderPolicy.progressReminder;
         _nearEndReminder = rule.reminderPolicy.nearEndReminder;
         _dailySummaryReminder = rule.reminderPolicy.dailySummaryReminder;
+        _includeInPlanning = rule.reminderPolicy.includeInPlanning;
+        final preferredStart = rule.reminderPolicy.preferredStartMinute;
+        if (preferredStart != null) {
+          _preferredStartTime = TimeOfDay(
+            hour: (preferredStart ~/ 60) % 24,
+            minute: preferredStart % 60,
+          );
+        } else if (fixedTimes.isNotEmpty) {
+          _preferredStartTime = fixedTimes.first;
+        }
+        _plannedDurationMinutes =
+            (rule.reminderPolicy.plannedDurationMinutes ??
+                    goal.defaultFocusMinutes ??
+                    25)
+                .clamp(5, 240);
+        _focusTagUuids = List<String>.from(rule.reminderPolicy.focusTagUuids);
+        _autoCheckInOnFocus = rule.reminderPolicy.autoCheckInOnFocus;
       });
     } catch (e) {
       // 加载失败不阻塞编辑；保存时仍会基于当前输入生成规则。
@@ -443,6 +467,11 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       _dailySummaryReminder = false;
       _toleranceMinutes = 0;
       _defaultFocusMinutes = null;
+      _includeInPlanning = false;
+      _preferredStartTime = const TimeOfDay(hour: 20, minute: 0);
+      _plannedDurationMinutes = 25;
+      _focusTagUuids.clear();
+      _autoCheckInOnFocus = true;
       if (template.adaptationKind == HabitAdaptationKind.hydration) {
         // 饮水适合少量多次；默认提供 3 个分散时段，用户仍可在下一步修改。
         _reminderEnabled = true;
@@ -539,6 +568,11 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       _progressReminder = false;
       _nearEndReminder = false;
       _dailySummaryReminder = false;
+      _includeInPlanning = false;
+      _preferredStartTime = const TimeOfDay(hour: 20, minute: 0);
+      _plannedDurationMinutes = 25;
+      _focusTagUuids.clear();
+      _autoCheckInOnFocus = true;
     });
   }
 
@@ -724,6 +758,17 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         progressReminder: _progressReminder,
         nearEndReminder: _nearEndReminder,
         dailySummaryReminder: _dailySummaryReminder,
+        includeInPlanning: _includeInPlanning,
+        preferredStartMinute: _includeInPlanning
+            ? _preferredStartTime.hour * 60 + _preferredStartTime.minute
+            : null,
+        plannedDurationMinutes: _includeInPlanning
+            ? _plannedDurationMinutes
+            : null,
+        focusTagUuids: _sourceType == HabitSourceType.pomodoroTag
+            ? const []
+            : List<String>.from(_focusTagUuids),
+        autoCheckInOnFocus: _autoCheckInOnFocus,
       ),
     );
   }
@@ -741,20 +786,8 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       final goal = widget.goal;
       var recurringSourceIds =
           _selectedRecurringSeriesId == _autoCreateRecurringSeries
-          ? (goal?.sourceType == HabitSourceType.recurringTodo
-                ? List<String>.from(goal!.sourceIds)
-                : const <String>[])
+          ? const <String>[]
           : <String>[_selectedRecurringSeriesId];
-      if (goal != null &&
-          goal.sourceType == HabitSourceType.recurringTodo &&
-          recurringSourceIds.isEmpty) {
-        final seriesId = await HabitRepository.createRecurringTodoBinding(
-          name: _nameController.text.trim(),
-          rule: rule,
-          username: username,
-        );
-        recurringSourceIds = [seriesId];
-      }
       if (goal == null) {
         await HabitRepository.createGoal(
           name: _nameController.text.trim(),
@@ -766,10 +799,12 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
               ? _selectedTagUuids
               : const <String>[],
           rule: rule,
-          displayMode: _displayMode,
+          displayMode: HabitDisplayMode.habitOnly,
           defaultFocusMinutes: _sourceType == HabitSourceType.pomodoroTag
               ? _defaultFocusMinutes
-              : null,
+              : (_includeInPlanning
+                    ? _plannedDurationMinutes
+                    : _defaultFocusMinutes),
           username: username,
         );
       } else {
@@ -782,10 +817,14 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
           goal.defaultFocusMinutes = _defaultFocusMinutes;
         } else if (goal.sourceType == HabitSourceType.durationCheckIn) {
           goal.sourceIds = [];
-          goal.defaultFocusMinutes = null;
-        } else if (goal.sourceType == HabitSourceType.recurringTodo &&
-            recurringSourceIds.isNotEmpty) {
-          goal.sourceIds = recurringSourceIds;
+          goal.defaultFocusMinutes = _includeInPlanning
+              ? _plannedDurationMinutes
+              : _defaultFocusMinutes;
+        } else {
+          goal.sourceIds = [];
+          goal.defaultFocusMinutes = _includeInPlanning
+              ? _plannedDurationMinutes
+              : _defaultFocusMinutes;
         }
         final allRules = await HabitRepository.getRules(habitUuid: goal.uuid);
         await HabitRepository.updateGoal(goal, username: username);
@@ -1093,7 +1132,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
   Widget _buildBottomBar({required bool isWide}) {
     final colorScheme = Theme.of(context).colorScheme;
     final lastStep = 3;
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final bottomPadding = MediaQuery.paddingOf(context).bottom;
     final useFloating = !isWide && floatingBottomBarShouldFloat(context);
 
     final child = Container(
@@ -1101,7 +1140,9 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         16,
         12,
         16,
-        isWide ? 12 : (bottomPadding > 0 ? bottomPadding : 12),
+        useFloating
+            ? 12
+            : (isWide ? 12 : (bottomPadding > 0 ? bottomPadding : 12)),
       ),
       decoration: useFloating
           ? null
@@ -1123,7 +1164,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       child: Row(
         mainAxisSize: useFloating ? MainAxisSize.min : MainAxisSize.max,
         children: [
-          if (_step > 0)
+          if (_step > 0) ...[
             OutlinedButton.icon(
               onPressed: _saving ? null : () => setState(() => _step--),
               icon: const Icon(Icons.arrow_back_rounded, size: 18),
@@ -1137,10 +1178,9 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-            )
-          else
-            const SizedBox(width: 0),
-          if (_step > 0 && useFloating) const SizedBox(width: 12),
+            ),
+            if (useFloating) const SizedBox(width: 12),
+          ],
           if (!useFloating) const Spacer(),
           if (_step < lastStep)
             FilledButton.icon(
@@ -1203,7 +1243,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     final control = FloatingGlassControl(
       height: useFloating ? null : 88,
       margin: useFloating
-          ? const EdgeInsets.fromLTRB(16, 8, 16, 24)
+          ? const EdgeInsets.fromLTRB(16, 8, 16, 12)
           : EdgeInsets.zero,
       borderRadius: useFloating ? 28 : 0,
       mobilePortraitOnly: true,
@@ -1211,7 +1251,14 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     );
 
     return useFloating
-        ? Align(alignment: Alignment.centerRight, child: control)
+        ? SafeArea(
+            top: false,
+            child: Align(
+              alignment: Alignment.centerRight,
+              heightFactor: 1.0,
+              child: control,
+            ),
+          )
         : control;
   }
 
@@ -1638,8 +1685,6 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         if (_sourceType == HabitSourceType.recurringTodo) ...[
           const SizedBox(height: 20),
           _buildRecurringTodoBinding(colorScheme),
-          const SizedBox(height: 16),
-          _buildDisplayModeSection(colorScheme),
         ],
       ],
     );
@@ -1928,73 +1973,6 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: () => setState(() => _effectiveFromOption = option),
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: selected
-                    ? colorScheme.primary
-                    : colorScheme.outlineVariant,
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  selected
-                      ? Icons.radio_button_checked_rounded
-                      : Icons.radio_button_off_rounded,
-                  size: 20,
-                  color: selected ? colorScheme.primary : colorScheme.outline,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: colorScheme.onSurface,
-                        ),
-                      ),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _displayModeChip(
-    HabitDisplayMode mode,
-    String title,
-    String subtitle,
-  ) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final selected = _displayMode == mode;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: selected
-            ? colorScheme.primaryContainer
-            : colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          onTap: () => setState(() => _displayMode = mode),
           borderRadius: BorderRadius.circular(12),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -2989,7 +2967,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '关联循环待办',
+            '从循环待办导入（可选）',
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
@@ -2998,7 +2976,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            '完成型的进度和提醒都来自这条循环待办。',
+            '习惯独立打卡，不再生成循环待办。可选择现有循环待办转入本习惯。',
             style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 10),
@@ -3013,7 +2991,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
             items: [
               const DropdownMenuItem(
                 value: _autoCreateRecurringSeries,
-                child: Text('自动创建新的循环待办'),
+                child: Text('不从待办导入（直接作为独立习惯）'),
               ),
               ..._recurringTodos.map((todo) {
                 final seriesId = todo.recurrenceSeriesId ?? todo.id;
@@ -3032,40 +3010,15 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
               _selectRecurringTodo(value);
             },
           ),
-          if (selectedValue == _autoCreateRecurringSeries) ...[
-            const SizedBox(height: 6),
-            Text(
-              _recurringTodos.isEmpty
-                  ? '未找到可用的循环待办，保存后会自动创建并绑定。'
-                  : '未选择已有待办，保存后会自动创建并绑定。',
-              style: TextStyle(
-                fontSize: 12,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
+          const SizedBox(height: 6),
+          Text(
+            selectedValue == _autoCreateRecurringSeries
+                ? '直接在习惯模块中打卡，漏打卡不会在待办中显示逾期。'
+                : '将导入该循环待办的历史期次作为打卡记录，原循环待办系列将移入回收站。',
+            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+          ),
         ],
       ),
-    );
-  }
-
-  Widget _buildDisplayModeSection(ColorScheme colorScheme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '首页展示位置',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 10),
-        _displayModeChip(HabitDisplayMode.habitOnly, '仅习惯', '只在首页习惯卡片展示'),
-        _displayModeChip(HabitDisplayMode.todoOnly, '仅待办', '只按普通循环待办展示'),
-        _displayModeChip(HabitDisplayMode.both, '同时展示', '习惯与待办都显示'),
-      ],
     );
   }
 
@@ -3167,6 +3120,8 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
             ),
           ),
         ],
+        const SizedBox(height: 16),
+        _buildPlanningAndFocusSection(colorScheme),
       ],
     );
   }
@@ -3223,7 +3178,176 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
           '提醒是辅助，不代表需要为了赶上目标而牺牲睡眠时长。',
           style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
         ),
+        const SizedBox(height: 16),
+        _buildPlanningAndFocusSection(colorScheme),
       ],
+    );
+  }
+
+  Widget _buildPlanningAndFocusSection(ColorScheme colorScheme) {
+    final preferredTimeText =
+        '${_preferredStartTime.hour.toString().padLeft(2, '0')}:'
+        '${_preferredStartTime.minute.toString().padLeft(2, '0')}';
+    final isPomodoroHabit = _sourceType == HabitSourceType.pomodoroTag;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.calendar_view_day_rounded,
+                size: 18,
+                color: colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '今日容量与专注联动',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '开启后，未完成的习惯会自动作为软时间块计入「今日容量」并展示在日程规划时间轴，避免待办排得过满。',
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.4,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 8),
+          LiquidGlassSwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('纳入今日容量与规划块'),
+            subtitle: const Text('今日未达标时自动预留习惯执行时段'),
+            value: _includeInPlanning,
+            onChanged: (v) {
+              setState(() {
+                _includeInPlanning = v;
+                if (v && _fixedTimes.isNotEmpty) {
+                  _preferredStartTime = _fixedTimes.first;
+                }
+              });
+            },
+          ),
+          if (_includeInPlanning) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '偏好执行时段',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: () async {
+                    final picked = await showAppTimePicker(
+                      context: context,
+                      initialTime: _preferredStartTime,
+                    );
+                    if (picked != null && mounted) {
+                      setState(() => _preferredStartTime = picked);
+                    }
+                  },
+                  icon: const Icon(Icons.schedule_rounded, size: 16),
+                  label: Text(preferredTimeText),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '预计耗时（分钟）',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [15, 25, 30, 45, 60].map((minutes) {
+                return ChoiceChip(
+                  label: Text('$minutes 分钟'),
+                  selected: _plannedDurationMinutes == minutes,
+                  onSelected: (_) {
+                    setState(() {
+                      _plannedDurationMinutes = minutes;
+                      if (!isPomodoroHabit) {
+                        _defaultFocusMinutes = minutes;
+                      }
+                    });
+                  },
+                );
+              }).toList(),
+            ),
+          ],
+          if (!isPomodoroHabit) ...[
+            const Divider(height: 24),
+            LiquidGlassSwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('专注达标后自动完成打卡'),
+              subtitle: const Text('从习惯卡片或规划块一键开启番茄钟，专注完成后自动打卡'),
+              value: _autoCheckInOnFocus,
+              onChanged: (v) => setState(() => _autoCheckInOnFocus = v),
+            ),
+            if (_tags.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                '关联专注标签（可选）',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _tags.map((tag) {
+                  final selected = _focusTagUuids.contains(tag.uuid);
+                  return FilterChip(
+                    avatar: _TagColorDot(color: _parseTagColor(tag.color)),
+                    label: Text(tag.name),
+                    selected: selected,
+                    onSelected: (v) {
+                      setState(() {
+                        if (v) {
+                          _focusTagUuids.add(tag.uuid);
+                        } else {
+                          _focusTagUuids.remove(tag.uuid);
+                        }
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+            ],
+          ],
+        ],
+      ),
     );
   }
 }

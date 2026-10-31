@@ -8,6 +8,9 @@ class PomodoroEntryIntent {
     this.planBlockId,
     this.tagUuids,
     this.focusMinutes,
+    this.habitUuid,
+    this.challengeTaskId,
+    this.targetLabel,
   });
 
   factory PomodoroEntryIntent.forPlanBlock({
@@ -35,4 +38,13 @@ class PomodoroEntryIntent {
 
   /// One-time focus duration override for the next start.
   final int? focusMinutes;
+
+  /// Optional bound habit UUID for automatic check-in upon focus completion.
+  final String? habitUuid;
+
+  /// Optional bound 30-day challenge task ID for automatic completion upon focus completion.
+  final int? challengeTaskId;
+
+  /// Optional display title when focusing on a habit or challenge without a TodoItem.
+  final String? targetLabel;
 }

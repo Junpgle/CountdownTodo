@@ -2,6 +2,9 @@ part of 'todo_chat_screen.dart';
 
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
+final RegExp _contextInjectionPrefixPattern = RegExp(r'^将注入：');
+final RegExp _cjkCharPattern = RegExp(r'[\u4E00-\u9FFF]');
+
 mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   @override
   void initState() {
@@ -229,7 +232,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
             ]
             .whereType<String>()
             .map((summary) {
-              return summary.replaceFirst(RegExp(r'^将注入：'), '');
+              return summary.replaceFirst(_contextInjectionPrefixPattern, '');
             })
             .where((summary) => summary.isNotEmpty)
             .toList();
@@ -388,7 +391,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
 
   int _estimateTextTokens(String text) {
     if (text.isEmpty) return 0;
-    final cjk = RegExp(r'[\u4E00-\u9FFF]').allMatches(text).length;
+    final cjk = _cjkCharPattern.allMatches(text).length;
     final other = text.length - cjk;
     final cjkTokens = (cjk / 1.6).ceil();
     final otherTokens = (other / 4).ceil();

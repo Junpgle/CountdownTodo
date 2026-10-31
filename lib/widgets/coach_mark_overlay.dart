@@ -195,15 +195,17 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
           // 1. Cutout Mask
           GestureDetector(
             onTap: _nextStep,
-            child: CustomPaint(
-              painter: _HolePainter(_isCalculating ? null : _targetRect),
-              child: Container(),
+            child: RepaintBoundary(
+              child: CustomPaint(
+                painter: _HolePainter(_isCalculating ? null : _targetRect),
+                child: Container(),
+              ),
             ),
           ),
 
           // 2. Skip Button
           Positioned(
-            top: MediaQuery.of(context).padding.top + 16,
+            top: MediaQuery.paddingOf(context).top + 16,
             right: 16,
             child: TextButton(
               onPressed: widget.onSkip,
@@ -368,13 +370,15 @@ class _CoachMarkTooltipLayoutDelegate extends SingleChildLayoutDelegate {
 class _HolePainter extends CustomPainter {
   final Rect? targetRect;
 
+  static final Paint _holePaint = Paint();
+
   _HolePainter(this.targetRect);
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = Colors.black.withValues(alpha: 0.65);
+    _holePaint.color = Colors.black.withValues(alpha: 0.65);
     if (targetRect == null) {
-      canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paint);
+      canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), _holePaint);
       return;
     }
 
@@ -384,7 +388,7 @@ class _HolePainter extends CustomPainter {
       ..addRRect(RRect.fromRectAndRadius(holeRect, const Radius.circular(16)))
       ..fillType = PathFillType.evenOdd;
 
-    canvas.drawPath(path, paint);
+    canvas.drawPath(path, _holePaint);
   }
 
   @override

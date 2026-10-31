@@ -137,20 +137,12 @@ class CourseSectionWidget extends StatelessWidget {
             isLight: isLight,
           )
         else
-          ListView.builder(
-            padding: EdgeInsets.zero,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: courses.length,
-            itemBuilder: (context, index) {
-              final course = courses[index];
-              return _CourseCompactCard(
-                course: course,
-                isLight: isLight,
-                onTap: (cardKey) => _showCourseDetail(context, course, cardKey),
-              );
-            },
-          ),
+          for (final course in courses)
+            _CourseCompactCard(
+              course: course,
+              isLight: isLight,
+              onTap: (cardKey) => _showCourseDetail(context, course, cardKey),
+            ),
       ],
     );
   }
@@ -466,6 +458,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
       await Navigator.of(context).push(
         PageTransitions.material(
           builder: (_) => AddTodoScreen(
+            username: widget.username,
             initialMode: AddTodoInitialMode.fixedSchedule,
             onTodoAdded: widget.onTodoAdded,
             onManualTodoSaved: widget.onManualTodoSaved,

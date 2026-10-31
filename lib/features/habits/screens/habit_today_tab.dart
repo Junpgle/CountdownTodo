@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../utils/page_transitions.dart';
 import '../../../utils/app_image_filters.dart';
+import '../../../utils/app_dialogs.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../widgets/platform_backdrop_filter.dart';
 import '../models/habit_goal.dart';
@@ -10,6 +11,7 @@ import '../models/habit_progress.dart';
 import '../services/habit_day_loader.dart';
 import '../services/habit_sleep_duration_service.dart';
 import '../services/habit_focus_launcher.dart';
+import '../services/habit_freeze_service.dart';
 import '../widgets/habit_card.dart';
 import 'habit_detail_screen.dart';
 import 'habit_edit_screen.dart';
@@ -51,6 +53,7 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
   HabitDaySnapshot? _groupedGoalsSnapshot;
   List<(String, IconData, List<HabitGoal>)> _groupedGoalsCache = const [];
   bool _loading = true;
+  int _loadGeneration = 0;
 
   @override
   void initState() {
@@ -68,6 +71,7 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
 
   Future<void> _loadData({bool showLoadingIndicator = false}) async {
     if (!mounted) return;
+    final loadGen = ++_loadGeneration;
     if (showLoadingIndicator || _snapshot == null) {
       setState(() => _loading = true);
     }
@@ -75,11 +79,34 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
       DateTime.now(),
       username: widget.username,
     );
-    if (mounted) {
+    if (mounted && loadGen == _loadGeneration) {
       setState(() {
         _snapshot = snapshot;
         _loading = false;
       });
+    }
+
+    // 检查并自动守护昨日遗漏打卡的习惯
+    if (snapshot.goals.isNotEmpty) {
+      final protected = await HabitFreezeService.autoProtectMissedDays(
+        goals: snapshot.goals,
+        username: widget.username,
+      );
+      if (protected.isNotEmpty && mounted) {
+        final notice = await HabitFreezeService.popPendingAutoProtectNotice();
+        if (notice != null && mounted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            AppSnackBars.showSnackBar(
+              context,
+              SnackBar(
+                content: Text(notice),
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          });
+        }
+      }
     }
   }
 
@@ -338,6 +365,7 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
           : ValueKey(goal.uuid),
       width: width,
       child: HabitCard(
+        key: ValueKey('habit-today-tab-${goal.uuid}'),
         goal: goal,
         rule: snapshot.ruleOf(goal),
         dayProgress: _dayProgress(snapshot, goal),
@@ -399,87 +427,85 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
       if (progress.goalMet) met++;
     }
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(28),
-      child: PlatformBackdropFilter(
-        filter: AppImageFilters.blur30,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                colorScheme.primaryContainer.withValues(alpha: 0.7),
-                colorScheme.tertiaryContainer.withValues(alpha: 0.3),
-              ],
-            ),
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(
-              color: colorScheme.onSurface.withValues(alpha: 0.08),
-              width: 1,
-            ),
+    return PlatformBackdropFilter(
+      filter: AppImageFilters.blur30,
+      clipBorderRadius: BorderRadius.circular(28),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              colorScheme.primaryContainer.withValues(alpha: 0.7),
+              colorScheme.tertiaryContainer.withValues(alpha: 0.3),
+            ],
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '今日进度',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(
+            color: colorScheme.onSurface.withValues(alpha: 0.08),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '今日进度',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.onSurfaceVariant,
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      planned == 0 ? '今天没有计划' : '$met / $planned 已完成',
-                      style: TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w800,
-                        color: colorScheme.onSurface,
-                        letterSpacing: -0.5,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    planned == 0 ? '今天没有计划' : '$met / $planned 已完成',
+                    style: TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
+                      color: colorScheme.onSurface,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (planned > 0)
+              SizedBox(
+                width: 64,
+                height: 64,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    CircularProgressIndicator(
+                      value: planned == 0 ? 0 : met / planned,
+                      strokeWidth: 8,
+                      strokeCap: StrokeCap.round,
+                      backgroundColor: colorScheme.onSurface.withValues(
+                        alpha: 0.1,
+                      ),
+                      valueColor: AlwaysStoppedAnimation(colorScheme.primary),
+                    ),
+                    Center(
+                      child: Text(
+                        planned == 0
+                            ? '0%'
+                            : '${(met / planned * 100).round()}%',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: colorScheme.onSurface,
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
-              if (planned > 0)
-                SizedBox(
-                  width: 64,
-                  height: 64,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      CircularProgressIndicator(
-                        value: planned == 0 ? 0 : met / planned,
-                        strokeWidth: 8,
-                        strokeCap: StrokeCap.round,
-                        backgroundColor: colorScheme.onSurface.withValues(
-                          alpha: 0.1,
-                        ),
-                        valueColor: AlwaysStoppedAnimation(colorScheme.primary),
-                      ),
-                      Center(
-                        child: Text(
-                          planned == 0
-                              ? '0%'
-                              : '${(met / planned * 100).round()}%',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            color: colorScheme.onSurface,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
+          ],
         ),
       ),
     );

@@ -19,6 +19,7 @@ import 'plan_todo_guard.dart';
 import 'device_calendar_read_service.dart';
 import 'plan_availability_service.dart';
 import 'plan_availability_preferences.dart';
+import '../features/habits/services/habit_challenge_planning_service.dart';
 
 typedef PlanAvailabilityLoader = Future<PlanAvailabilitySnapshot> Function(
   PlanAvailabilityQuery query, {
@@ -46,11 +47,16 @@ class PlanAvailabilityRepository {
         prefs
             .getKeys()
             .where(
-              (key) => [
-                'course_calendar_adjustments_v1',
-                StorageService.keySemesters,
-                StorageService.keySemesterStart,
-              ].any((base) => key == base || key == '${base}_$username'),
+              (key) =>
+                  [
+                    'course_calendar_adjustments_v1',
+                    StorageService.keySemesters,
+                    StorageService.keySemesterStart,
+                  ].any((base) => key == base || key == '${base}_$username') ||
+                  HabitChallengePlanningService.isPlanningPreferenceKey(
+                    key,
+                    username,
+                  ),
             )
             .toList()
           ..sort();
@@ -148,6 +154,10 @@ class PlanAvailabilityRepository {
     await identity.check();
     final fixedRows = await _rows(db, 'fixed_schedules');
     final planRows = await _rows(db, 'todo_plan_blocks');
+    final habitChallenge = await HabitChallengePlanningService.readFromDatabase(
+      db,
+      username: identity.username,
+    );
     try {
       return _LocalAvailabilityData(
         courses: courses,
@@ -164,6 +174,7 @@ class PlanAvailabilityRepository {
         }).toList(),
         schedules: fixedRows.map(FixedScheduleItem.fromJson).toList(),
         blocks: planRows.map(TodoPlanBlock.fromJson).toList(),
+        habitChallenge: habitChallenge,
       );
     } catch (_) {
       throw const PlanAvailabilityException('安排数据无法解析，请检查记录后重试');
@@ -354,6 +365,22 @@ class PlanAvailabilityRepository {
         continue;
       }
       add(start, end, PlanBusySource.legacyTodo, item.id, item.title, item);
+    }
+    final softIntervals =
+        HabitChallengePlanningService.buildBusyIntervalsForDay(
+          dayStart: query.dayStart,
+          snapshot: local.habitChallenge,
+          todos: local.todos,
+        );
+    for (final item in softIntervals) {
+      add(
+        item.start,
+        item.end,
+        item.source,
+        item.id,
+        item.title ?? '',
+        item.record ?? item,
+      );
     }
     return PlanAvailabilityDaySources(
       date: query.dayStart,
@@ -984,12 +1011,14 @@ class _LocalAvailabilityData {
     required this.todos,
     required this.schedules,
     required this.blocks,
+    this.habitChallenge = const HabitChallengePlanningSnapshot(),
   });
   final List<CourseItem> courses;
   final String courseFingerprint;
   final List<TodoItem> todos;
   final List<FixedScheduleItem> schedules;
   final List<TodoPlanBlock> blocks;
+  final HabitChallengePlanningSnapshot habitChallenge;
   String? _cachedTodoId;
   TodoItem? _cachedTodo;
   bool _hasCachedTodo = false;

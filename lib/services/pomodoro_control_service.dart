@@ -30,6 +30,8 @@ class PomodoroControlService {
     int currentCycle = 1,
     int? durationMinutes,
     String? planBlockId,
+    String? habitUuid,
+    int? challengeTaskId,
     String? note,
     String? deviceId,
     bool notify = true,
@@ -116,6 +118,8 @@ class PomodoroControlService {
       pauseStartMs: isStrictWaiting ? now : 0,
       pauseIntervals: isStrictWaiting ? [PauseInterval(startMs: now)] : null,
       planBlockId: activePlanBlockId,
+      habitUuid: habitUuid,
+      challengeTaskId: challengeTaskId,
       note: note,
     );
 

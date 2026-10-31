@@ -5,6 +5,7 @@
 #include <string>
 #include "flutter_window.h"
 #include "utils.h"
+#include "windows_renderer_config.h"
 
 namespace {
 constexpr ULONG_PTR kDeepLinkCopyData = 0x43445444;  // CDTD
@@ -75,6 +76,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
   flutter::DartProject project(L"data");
+  const auto renderer = windows_renderer_config::ReadRenderer();
+  project.set_impeller_switch(
+      renderer == windows_renderer_config::Renderer::kImpeller
+          ? flutter::ImpellerSwitch::Enabled
+          : flutter::ImpellerSwitch::Disabled);
 
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();

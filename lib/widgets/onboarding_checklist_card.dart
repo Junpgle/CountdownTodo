@@ -270,137 +270,135 @@ class _OnboardingChecklistCardState extends State<OnboardingChecklistCard> {
           const SizedBox(height: 6),
 
           // ── 主体毛玻璃卡片 ──
-          ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: PlatformBackdropFilter(
-              filter: AppImageFilters.blur10,
-              bypassWhenLiquidGlassEnabled: true,
-              child: OptionalLiquidGlassCard(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-                borderRadius: 20,
-                tint: scheme.primary.withValues(alpha: 0.14),
-                isDark: isDark,
-                fallbackDecoration: BoxDecoration(
-                  color: widget.isLight
-                      ? (isDark
+          PlatformBackdropFilter(
+            filter: AppImageFilters.blur10,
+            bypassWhenLiquidGlassEnabled: true,
+            clipBorderRadius: BorderRadius.circular(20),
+            child: OptionalLiquidGlassCard(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+              borderRadius: 20,
+              tint: scheme.primary.withValues(alpha: 0.14),
+              isDark: isDark,
+              fallbackDecoration: BoxDecoration(
+                color: widget.isLight
+                    ? (isDark
                           ? scheme.surfaceContainerLow.withValues(alpha: 0.75)
                           : scheme.surface.withValues(alpha: 0.92))
-                      : scheme.surfaceContainerHighest.withValues(alpha: 0.32),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: widget.isLight
-                        ? (isDark
+                    : scheme.surfaceContainerHighest.withValues(alpha: 0.32),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: widget.isLight
+                      ? (isDark
                             ? Colors.white.withValues(alpha: 0.15)
                             : Colors.white.withValues(alpha: 0.6))
-                        : Theme.of(context).dividerColor.withValues(alpha: 0.5),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(
-                        alpha: widget.isLight ? 0.08 : (isDark ? 0.2 : 0.04),
-                      ),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+                      : Theme.of(context).dividerColor.withValues(alpha: 0.5),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 进度说明与细进度条
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            snap.isAllCompleted
-                                ? '你已掌握核心功能，可随时进入「百宝箱」查看隐藏技巧'
-                                : '跟着清单体验一遍，1分钟搞懂核心功能在哪里',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 12, color: cardSubColor),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '${(snap.progress * 100).round()}%',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: accentColor,
-                          ),
-                        ),
-                      ],
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(
+                      alpha: widget.isLight ? 0.08 : (isDark ? 0.2 : 0.04),
                     ),
-                    const SizedBox(height: 8),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: LinearProgressIndicator(
-                        value: snap.progress,
-                        minHeight: 5,
-                        backgroundColor: widget.isLight
-                            ? Colors.white.withValues(alpha: 0.16)
-                            : scheme.surfaceContainerHighest,
-                        valueColor: AlwaysStoppedAnimation<Color>(accentColor),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 进度说明与细进度条
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          snap.isAllCompleted
+                              ? '你已掌握核心功能，可随时进入「百宝箱」查看隐藏技巧'
+                              : '跟着清单体验一遍，1分钟搞懂核心功能在哪里',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 12, color: cardSubColor),
+                        ),
                       ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${(snap.progress * 100).round()}%',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: accentColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: LinearProgressIndicator(
+                      value: snap.progress,
+                      minHeight: 5,
+                      backgroundColor: widget.isLight
+                          ? Colors.white.withValues(alpha: 0.16)
+                          : scheme.surfaceContainerHighest,
+                      valueColor: AlwaysStoppedAnimation<Color>(accentColor),
                     ),
-                    const SizedBox(height: 10),
+                  ),
+                  const SizedBox(height: 10),
 
-                    if (snap.isExpanded) ...[
-                      for (var i = 0; i < snap.tasks.length; i++) ...[
-                        if (i > 0)
-                          Divider(
-                            height: 1,
-                            thickness: 0.5,
-                            color: widget.isLight
-                                ? Colors.white.withValues(alpha: 0.12)
-                                : scheme.outlineVariant.withValues(alpha: 0.45),
-                          ),
-                        _buildTaskRow(
-                          context,
-                          snap.tasks[i],
-                          scheme,
-                          cardTextColor: cardTextColor,
-                          cardSubColor: cardSubColor,
-                          accentColor: accentColor,
+                  if (snap.isExpanded) ...[
+                    for (var i = 0; i < snap.tasks.length; i++) ...[
+                      if (i > 0)
+                        Divider(
+                          height: 1,
+                          thickness: 0.5,
+                          color: widget.isLight
+                              ? Colors.white.withValues(alpha: 0.12)
+                              : scheme.outlineVariant.withValues(alpha: 0.45),
                         ),
-                      ],
-                      const SizedBox(height: 4),
-                      _buildExpandFooter(
-                        label: '收起引导清单',
-                        icon: Icons.keyboard_arrow_up_rounded,
-                        color: cardSubColor,
-                      ),
-                    ] else if (nextPendingTask != null) ...[
                       _buildTaskRow(
                         context,
-                        nextPendingTask,
+                        snap.tasks[i],
                         scheme,
                         cardTextColor: cardTextColor,
                         cardSubColor: cardSubColor,
                         accentColor: accentColor,
-                        isNextSpotlight: true,
-                      ),
-                      Divider(
-                        height: 12,
-                        thickness: 0.5,
-                        color: widget.isLight
-                            ? Colors.white.withValues(alpha: 0.12)
-                            : scheme.outlineVariant.withValues(alpha: 0.45),
-                      ),
-                      _buildExpandFooter(
-                        label: '展开查看全部 ${snap.totalCount} 项功能引导',
-                        icon: Icons.keyboard_arrow_down_rounded,
-                        color: accentColor,
-                      ),
-                    ] else ...[
-                      _buildExpandFooter(
-                        label: '查看全部 ${snap.totalCount} 项已完成引导',
-                        icon: Icons.keyboard_arrow_down_rounded,
-                        color: accentColor,
                       ),
                     ],
+                    const SizedBox(height: 4),
+                    _buildExpandFooter(
+                      label: '收起引导清单',
+                      icon: Icons.keyboard_arrow_up_rounded,
+                      color: cardSubColor,
+                    ),
+                  ] else if (nextPendingTask != null) ...[
+                    _buildTaskRow(
+                      context,
+                      nextPendingTask,
+                      scheme,
+                      cardTextColor: cardTextColor,
+                      cardSubColor: cardSubColor,
+                      accentColor: accentColor,
+                      isNextSpotlight: true,
+                    ),
+                    Divider(
+                      height: 12,
+                      thickness: 0.5,
+                      color: widget.isLight
+                          ? Colors.white.withValues(alpha: 0.12)
+                          : scheme.outlineVariant.withValues(alpha: 0.45),
+                    ),
+                    _buildExpandFooter(
+                      label: '展开查看全部 ${snap.totalCount} 项功能引导',
+                      icon: Icons.keyboard_arrow_down_rounded,
+                      color: accentColor,
+                    ),
+                  ] else ...[
+                    _buildExpandFooter(
+                      label: '查看全部 ${snap.totalCount} 项已完成引导',
+                      icon: Icons.keyboard_arrow_down_rounded,
+                      color: accentColor,
+                    ),
                   ],
-                ),
+                ],
               ),
             ),
           ),

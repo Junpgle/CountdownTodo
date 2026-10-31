@@ -728,15 +728,15 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
               child: Material(
                 color: Colors.transparent,
                 child: OptionalLiquidGlassPanel(
-                  width: MediaQuery.of(context).size.width * 0.75,
-                  height: MediaQuery.of(context).size.height,
+                  width: MediaQuery.sizeOf(context).width * 0.75,
+                  height: MediaQuery.sizeOf(context).height,
                   margin: EdgeInsets.only(top: historyPanelTopMargin),
                   borderRadius: 16,
                   highContrast: true,
                   tint: Theme.of(context).colorScheme.surface,
                   fallback: Container(
-                    width: MediaQuery.of(context).size.width * 0.75,
-                    height: MediaQuery.of(context).size.height,
+                    width: MediaQuery.sizeOf(context).width * 0.75,
+                    height: MediaQuery.sizeOf(context).height,
                     margin: EdgeInsets.only(top: historyPanelTopMargin),
                     decoration: BoxDecoration(
                       color: Theme.of(context).colorScheme.surface,
@@ -1169,7 +1169,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
         builder: (context, setDialogState) => AlertDialog(
           title: const Text('聊天模型配置'),
           content: SizedBox(
-            width: MediaQuery.of(context).size.width * 0.85,
+            width: MediaQuery.sizeOf(context).width * 0.85,
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,

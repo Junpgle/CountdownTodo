@@ -39,12 +39,14 @@ class HabitWaterTargetPicker extends StatelessWidget {
               SizedBox(
                 width: 144,
                 height: 250,
-                child: CustomPaint(
-                  painter: _WaterBottlePainter(
-                    value: safeValue,
-                    min: min,
-                    max: max,
-                    colorScheme: colorScheme,
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: _WaterBottlePainter(
+                      value: safeValue,
+                      min: min,
+                      max: max,
+                      colorScheme: colorScheme,
+                    ),
                   ),
                 ),
               ),
@@ -192,13 +194,15 @@ class _WaterRuler extends StatelessWidget {
               child: SizedBox(
                 height: 78,
                 width: double.infinity,
-                child: CustomPaint(
-                  painter: _WaterRulerPainter(
-                    value: value,
-                    min: min,
-                    max: max,
-                    step: step,
-                    colorScheme: colorScheme,
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: _WaterRulerPainter(
+                      value: value,
+                      min: min,
+                      max: max,
+                      step: step,
+                      colorScheme: colorScheme,
+                    ),
                   ),
                 ),
               ),
@@ -216,6 +220,15 @@ class _WaterBottlePainter extends CustomPainter {
   final int max;
   final ColorScheme colorScheme;
 
+  static final Paint _outlinePaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 2.2;
+  static final Paint _glassPaint = Paint();
+  static final Paint _waterPaint = Paint();
+  static final Paint _shinePaint = Paint()
+    ..strokeWidth = 3
+    ..strokeCap = StrokeCap.round;
+
   _WaterBottlePainter({
     required this.value,
     required this.min,
@@ -231,22 +244,18 @@ class _WaterBottlePainter extends CustomPainter {
       Rect.fromLTWH(size.width / 2 - 20, 14, 40, 28),
       const Radius.circular(8),
     );
-    final outline = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.2
-      ..color = colorScheme.primary.withValues(alpha: 0.55);
-    final glass = Paint()..color = colorScheme.primary.withValues(alpha: 0.08);
-    canvas.drawRRect(body, glass);
-    canvas.drawRRect(body, outline);
-    canvas.drawRRect(neck, glass);
-    canvas.drawRRect(neck, outline);
+    _outlinePaint.color = colorScheme.primary.withValues(alpha: 0.55);
+    _glassPaint.color = colorScheme.primary.withValues(alpha: 0.08);
+    canvas.drawRRect(body, _glassPaint);
+    canvas.drawRRect(body, _outlinePaint);
+    canvas.drawRRect(neck, _glassPaint);
+    canvas.drawRRect(neck, _outlinePaint);
 
     final ratio = ((value - min) / (max - min)).clamp(0.0, 1.0);
     final fillTop = bottle.bottom - bottle.height * ratio;
     canvas.save();
     canvas.clipRRect(body);
-    final waterPaint = Paint()
-      ..color = colorScheme.primary.withValues(alpha: 0.82);
+    _waterPaint.color = colorScheme.primary.withValues(alpha: 0.82);
     final wave = Path()
       ..moveTo(bottle.left, fillTop)
       ..cubicTo(
@@ -268,14 +277,11 @@ class _WaterBottlePainter extends CustomPainter {
       ..lineTo(bottle.right, bottle.bottom)
       ..lineTo(bottle.left, bottle.bottom)
       ..close();
-    canvas.drawPath(wave, waterPaint);
+    canvas.drawPath(wave, _waterPaint);
     canvas.restore();
 
-    final shine = Paint()
-      ..color = colorScheme.onPrimary.withValues(alpha: 0.38)
-      ..strokeWidth = 3
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(const Offset(50, 75), const Offset(50, 125), shine);
+    _shinePaint.color = colorScheme.onPrimary.withValues(alpha: 0.38);
+    canvas.drawLine(const Offset(50, 75), const Offset(50, 125), _shinePaint);
   }
 
   @override
@@ -293,6 +299,13 @@ class _WaterRulerPainter extends CustomPainter {
   final int max;
   final int step;
   final ColorScheme colorScheme;
+
+  static final Paint _linePaint = Paint()
+    ..strokeWidth = 3
+    ..strokeCap = StrokeCap.round;
+  static final Paint _tickPaint = Paint();
+  static final Paint _thumbPaint = Paint();
+  static final Paint _thumbInnerPaint = Paint();
 
   _WaterRulerPainter({
     required this.value,
@@ -312,14 +325,11 @@ class _WaterRulerPainter extends CustomPainter {
     final ratio = ((value - min) / range).clamp(0.0, 1.0);
     final thumbX = left + usable * ratio;
 
-    final line = Paint()
-      ..color = colorScheme.outlineVariant
-      ..strokeWidth = 3
-      ..strokeCap = StrokeCap.round;
+    _linePaint.color = colorScheme.outlineVariant;
     canvas.drawLine(
       Offset(left, lineY),
       Offset(size.width - right, lineY),
-      line,
+      _linePaint,
     );
 
     final totalSteps = (range / step).round();
@@ -327,26 +337,23 @@ class _WaterRulerPainter extends CustomPainter {
       final x = left + usable * i / totalSteps;
       final amount = min + i * step;
       final major = amount % 500 == 0;
-      final tick = Paint()
+      _tickPaint
         ..color = major ? colorScheme.onSurfaceVariant : colorScheme.outline
         ..strokeWidth = major ? 2 : 1;
       canvas.drawLine(
         Offset(x, lineY - (major ? 14 : 8)),
         Offset(x, lineY + (major ? 14 : 8)),
-        tick,
+        _tickPaint,
       );
       if (major) {
         _drawLabel(canvas, '$amount', Offset(x, 53), colorScheme);
       }
     }
 
-    final thumb = Paint()..color = colorScheme.primary;
-    canvas.drawCircle(Offset(thumbX, lineY), 10, thumb);
-    canvas.drawCircle(
-      Offset(thumbX, lineY),
-      4,
-      Paint()..color = colorScheme.onPrimary,
-    );
+    _thumbPaint.color = colorScheme.primary;
+    _thumbInnerPaint.color = colorScheme.onPrimary;
+    canvas.drawCircle(Offset(thumbX, lineY), 10, _thumbPaint);
+    canvas.drawCircle(Offset(thumbX, lineY), 4, _thumbInnerPaint);
   }
 
   void _drawLabel(

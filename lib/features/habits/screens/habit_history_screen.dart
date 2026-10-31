@@ -11,6 +11,7 @@ import '../repositories/habit_repository.dart';
 import '../services/habit_adaptation_service.dart';
 import '../services/habit_source_resolver.dart';
 import '../services/habit_sleep_duration_service.dart';
+import '../services/habit_freeze_service.dart';
 import '../widgets/habit_checkin_editor.dart';
 import '../widgets/habit_format.dart';
 import '../../../utils/app_dialogs.dart';
@@ -143,20 +144,28 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
         final completedTodos = linkedTodos
             .where((todo) => todo.isDone)
             .toList(growable: false);
-        rows.add(
-          _HabitHistorySectionHeader(
-            '关联待办完成记录',
-            detail: '已完成 ${completedTodos.length}/${linkedTodos.length} 期',
-          ),
-        );
+        final hasRecords = checkIns.isNotEmpty || completedTodos.isNotEmpty;
+        final totalCount = checkIns.length + completedTodos.length;
+        rows.add(_HabitHistorySectionHeader('打卡记录', detail: '共 $totalCount 条'));
         rows.add(const _HabitHistoryGap(10));
-        if (completedTodos.isEmpty) {
-          rows.add(const _HabitHistoryEmptyState('暂无已完成的关联待办'));
+        if (!hasRecords) {
+          rows.add(const _HabitHistoryEmptyState('暂无打卡记录'));
         } else {
-          final grouped = _groupByHistoryDay(completedTodos, _todoDateKey);
-          for (final entry in grouped.entries) {
-            rows.add(_HabitHistoryDateHeader(entry.key));
-            rows.addAll(entry.value);
+          final grouped = <String, List<Object>>{};
+          for (final checkIn in checkIns) {
+            grouped.putIfAbsent(checkIn.logicalDate, () => []).add(checkIn);
+          }
+          for (final todo in completedTodos) {
+            final key = _todoDateKey(todo);
+            if (!grouped.containsKey(key)) {
+              grouped.putIfAbsent(key, () => []).add(todo);
+            }
+          }
+          final sortedKeys = grouped.keys.toList()
+            ..sort((a, b) => b.compareTo(a));
+          for (final key in sortedKeys) {
+            rows.add(_HabitHistoryDateHeader(key));
+            rows.addAll(grouped[key]!);
           }
         }
       case HabitSourceType.quantityCheckIn:
@@ -261,11 +270,12 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
   }
 
   Future<void> _deleteCheckIn(HabitCheckIn checkIn) async {
+    final isFreeze = checkIn.source == HabitCheckInSource.freeze;
     final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('删除打卡'),
-        content: const Text('确定删除这条打卡记录吗？'),
+        title: Text(isFreeze ? '撤销免扣守护' : '删除打卡'),
+        content: Text(isFreeze ? '确定撤销该日的免扣卡守护吗？免扣卡将自动退回背包。' : '确定删除这条打卡记录吗？'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -276,13 +286,20 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.error,
             ),
-            child: const Text('删除'),
+            child: Text(isFreeze ? '撤销守护' : '删除'),
           ),
         ],
       ),
     );
     if (confirmed != true || !mounted) return;
-    await HabitRepository.deleteCheckIn(checkIn);
+    if (isFreeze) {
+      await HabitFreezeService.revokeFreeze(
+        goal: widget.goal,
+        freezeCheckIn: checkIn,
+      );
+    } else {
+      await HabitRepository.deleteCheckIn(checkIn);
+    }
     _loadData();
   }
 
@@ -462,16 +479,23 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
     final local = checkIn.localOccurredAt;
     final rule = _ruleFor(checkIn.ruleRevisionUuid);
     final unit = rule?.unit ?? '';
-    final valueText = switch (widget.goal.sourceType) {
-      HabitSourceType.quantityCheckIn =>
-        '+${_trimNumber(checkIn.value)}${unit.isNotEmpty ? ' $unit' : ''}',
-      HabitSourceType.durationCheckIn =>
-        '${HabitAdaptationService.forHabit(widget.goal)?.kind == HabitAdaptationKind.sleepDuration ? '睡眠' : '时长'} '
-            '${HabitText.formatDuration(checkIn.value.round())}',
-      HabitSourceType.timeCheckIn => '打卡 ${HabitText.timeOfDay(local)}',
-      HabitSourceType.recurringTodo ||
-      HabitSourceType.pomodoroTag => HabitText.timeOfDay(local),
-    };
+    final String valueText;
+    if (checkIn.source == HabitCheckInSource.freeze) {
+      valueText = '🛡️ 免扣卡守护';
+    } else if (checkIn.source == HabitCheckInSource.skip) {
+      valueText = '已跳过';
+    } else {
+      valueText = switch (widget.goal.sourceType) {
+        HabitSourceType.quantityCheckIn =>
+          '+${_trimNumber(checkIn.value)}${unit.isNotEmpty ? ' $unit' : ''}',
+        HabitSourceType.durationCheckIn =>
+          '${HabitAdaptationService.forHabit(widget.goal)?.kind == HabitAdaptationKind.sleepDuration ? '睡眠' : '时长'} '
+              '${HabitText.formatDuration(checkIn.value.round())}',
+        HabitSourceType.timeCheckIn => '打卡 ${HabitText.timeOfDay(local)}',
+        HabitSourceType.recurringTodo => '完成打卡',
+        HabitSourceType.pomodoroTag => HabitText.timeOfDay(local),
+      };
+    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
@@ -483,11 +507,15 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
       child: Row(
         children: [
           Icon(
-            HabitSourceType.timeCheckIn == widget.goal.sourceType
-                ? Icons.schedule_rounded
-                : Icons.add_circle_outline_rounded,
+            checkIn.source == HabitCheckInSource.freeze
+                ? Icons.shield_outlined
+                : (HabitSourceType.timeCheckIn == widget.goal.sourceType
+                      ? Icons.schedule_rounded
+                      : Icons.add_circle_outline_rounded),
             size: 18,
-            color: colorScheme.primary,
+            color: checkIn.source == HabitCheckInSource.freeze
+                ? colorScheme.secondary
+                : colorScheme.primary,
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -518,6 +546,7 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
             style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
           ),
           if (checkIn.source != HabitCheckInSource.skip &&
+              checkIn.source != HabitCheckInSource.freeze &&
               (widget.goal.sourceType == HabitSourceType.quantityCheckIn ||
                   widget.goal.sourceType == HabitSourceType.timeCheckIn ||
                   widget.goal.sourceType == HabitSourceType.durationCheckIn))

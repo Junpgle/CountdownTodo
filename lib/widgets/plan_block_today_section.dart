@@ -26,6 +26,7 @@ import 'plan_manual_completion_host.dart';
 import '../services/plan_manual_completion_service.dart';
 import 'plan_day_overview.dart' show planOverviewDuration;
 import '../services/home_agenda_repository.dart';
+import '../services/home_dashboard_section_data_cache.dart';
 import '../services/device_calendar_read_service.dart';
 import '../screens/course_screens.dart';
 import '../screens/fixed_schedule_detail_screen.dart';
@@ -108,6 +109,15 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
   DateTime? _expiredBoundary;
   DateTime get _now => widget.clock?.call() ?? DateTime.now();
   DateTime get _today => DateUtils.dateOnly(_now);
+  String get _agendaCacheKey {
+    final day = _today;
+    return 'agenda/${widget.username}/${day.year}-${day.month}-${day.day}'
+        '/${widget.includeSchedules}/${widget.includePlans}'
+        '/${widget.refreshTrigger}/${identityHashCode(widget.todos)}'
+        '/${DeviceCalendarReadService.revision.value}'
+        '/${identityHashCode(StorageService.scopedDataRefreshNotifier.value)}';
+  }
+
   bool get _active => _foreground && _visible && _ticker && widget.enabled;
   bool get _canOpen =>
       _active && !_loading && !_opening && _data != null && _error == null;
@@ -332,6 +342,25 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
     if (!_active || _opening || _maintenanceRunning) return;
     final request = ++_sequence, day = _today;
     final username = widget.username;
+    if (widget.unifiedAgenda &&
+        onlySources == null &&
+        _agenda == null &&
+        _data == null) {
+      final cached = HomeDashboardSectionDataCache.get<HomeAgendaSnapshot>(
+        _agendaCacheKey,
+      );
+      if (cached != null) {
+        setState(() {
+          _agenda = cached;
+          _identity = cached.identity;
+          _data = cached.plans?.card;
+          _loading = false;
+          _error = null;
+        });
+        _schedule(cached.nextBoundary);
+        return;
+      }
+    }
     _wake?.cancel();
     setState(() {
       if (_data?.overview.start != day) {
@@ -392,6 +421,7 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
             _expandedBlockId = null;
           }
         });
+        HomeDashboardSectionDataCache.put(_agendaCacheKey, agenda);
         _schedule(agenda.nextBoundary);
         return;
       }
@@ -820,6 +850,7 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
           }
         } else if (action == 'fixed') {
           final page = AddTodoScreen(
+            username: widget.username,
             initialMode: AddTodoInitialMode.fixedSchedule,
             onTodoAdded: widget.onTodoAdded,
             onManualTodoSaved: widget.onManualTodoSaved,

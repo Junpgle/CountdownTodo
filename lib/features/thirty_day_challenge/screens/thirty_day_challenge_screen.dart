@@ -12,10 +12,14 @@ import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../services/browser_file_service.dart';
+import '../../../services/pomodoro_service.dart';
+import '../../../storage_service.dart';
 import '../../../utils/app_platform.dart';
+import '../../../utils/base64_image_provider.dart';
 import '../../../utils/app_image_filters.dart';
 import '../../../../widgets/optional_liquid_glass_surface.dart';
 import '../../../widgets/floating_glass_control.dart';
+import '../../habits/services/habit_focus_launcher.dart';
 import '../models/thirty_day_challenge.dart';
 import '../repositories/thirty_day_challenge_repository.dart';
 import '../services/challenge_share_codec.dart';
@@ -670,6 +674,244 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     if (mounted) setState(() {});
   }
 
+  Future<void> _startTaskFocus(ThirtyDayChallengeTask task) async {
+    final state = _state;
+    if (state == null || _isShuffling) return;
+    final username = (await StorageService.getLoginSession() ?? '').trim();
+    if (!mounted) return;
+    await HabitFocusLauncher.openForChallenge(
+      context: context,
+      challengeState: state,
+      task: task,
+      username: username,
+    );
+    if (!mounted) return;
+    final refreshed = await ThirtyDayChallengeRepository.load();
+    if (!mounted) return;
+    setState(() => _state = refreshed);
+  }
+
+  Future<void> _openPlanningSettings(ThirtyDayChallengeState state) async {
+    final tags = (await PomodoroService.getTags())
+        .where((t) => !t.isDeleted && !t.isArchived)
+        .toList();
+    if (!mounted) return;
+
+    var includeInPlanning = state.includeInPlanning;
+    var preferredMinute = state.effectivePreferredStartMinute ?? (20 * 60);
+    var plannedMinutes = state.effectivePlannedMinutes;
+    final selectedTagUuids = List<String>.from(state.focusTagUuids);
+    var autoCompleteOnFocus = state.autoCompleteOnFocus;
+
+    Color parseTagColor(String hex) {
+      var value = hex.replaceAll('#', '');
+      if (value.length == 6) value = 'FF$value';
+      final parsed = int.tryParse(value, radix: 16);
+      return parsed == null ? const Color(0xFF607D8B) : Color(parsed);
+    }
+
+    final saved = await showAppModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final scheme = Theme.of(context).colorScheme;
+            final timeText =
+                '${(preferredMinute ~/ 60).toString().padLeft(2, '0')}:'
+                '${(preferredMinute % 60).toString().padLeft(2, '0')}';
+
+            return SafeArea(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  4,
+                  20,
+                  20 + MediaQuery.viewInsetsOf(context).bottom,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.calendar_view_day_rounded,
+                          color: scheme.primary,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            '今日容量与专注联动',
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '将 30 天挑战接入「今日容量与日程规划块」，每天自动为下一项未完成挑战预留专属时段，并支持一键开启番茄钟专注。',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    LiquidGlassSwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('纳入今日容量与规划块'),
+                      subtitle: const Text('当天尚未完成挑战时，自动在日程时间轴预留软时间块'),
+                      value: includeInPlanning,
+                      onChanged: (v) =>
+                          setModalState(() => includeInPlanning = v),
+                    ),
+                    if (includeInPlanning) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '偏好执行时段',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                          FilledButton.tonalIcon(
+                            onPressed: () async {
+                              final picked = await showAppTimePicker(
+                                context: context,
+                                initialTime: TimeOfDay(
+                                  hour: (preferredMinute ~/ 60) % 24,
+                                  minute: preferredMinute % 60,
+                                ),
+                              );
+                              if (picked != null) {
+                                setModalState(() {
+                                  preferredMinute =
+                                      picked.hour * 60 + picked.minute;
+                                });
+                              }
+                            },
+                            icon: const Icon(Icons.schedule_rounded, size: 16),
+                            label: Text(timeText),
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    Text(
+                      '预计专注耗时（分钟）',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [15, 25, 30, 45, 60].map((minutes) {
+                        return ChoiceChip(
+                          label: Text('$minutes 分钟'),
+                          selected: plannedMinutes == minutes,
+                          onSelected: (_) =>
+                              setModalState(() => plannedMinutes = minutes),
+                        );
+                      }).toList(),
+                    ),
+                    const Divider(height: 24),
+                    LiquidGlassSwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('专注完成后自动打卡'),
+                      subtitle: const Text('完成专注计时后自动将当前挑战任务标记为已完成'),
+                      value: autoCompleteOnFocus,
+                      onChanged: (v) =>
+                          setModalState(() => autoCompleteOnFocus = v),
+                    ),
+                    if (tags.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '关联专注标签（可选）',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: tags.map((tag) {
+                          final selected = selectedTagUuids.contains(tag.uuid);
+                          return FilterChip(
+                            avatar: Container(
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(
+                                color: parseTagColor(tag.color),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            label: Text(tag.name),
+                            selected: selected,
+                            onSelected: (v) {
+                              setModalState(() {
+                                if (v) {
+                                  selectedTagUuids.add(tag.uuid);
+                                } else {
+                                  selectedTagUuids.remove(tag.uuid);
+                                }
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: () => Navigator.of(sheetContext).pop(true),
+                        child: const Text('保存设置'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (saved != true || !mounted) return;
+    await ThirtyDayChallengeRepository.updatePlanningConfig(
+      state,
+      includeInPlanning: includeInPlanning,
+      preferredStartMinute: preferredMinute,
+      plannedDurationMinutes: plannedMinutes,
+      focusTagUuids: selectedTagUuids,
+      autoCompleteOnFocus: autoCompleteOnFocus,
+    );
+    if (!mounted) return;
+    setState(() {});
+    AppSnackBars.showSnackBar(
+      context,
+      SnackBar(
+        content: Text(
+          includeInPlanning ? '已将 30 天挑战接入今日容量与规划块' : '已更新 30 天挑战专注设置',
+        ),
+      ),
+    );
+  }
+
   Future<void> _showRandomTask() async {
     final state = _state;
     if (state == null) return;
@@ -891,7 +1133,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                   ),
                 ),
                 Positioned.fill(
-                  child: AppPlatform.isAndroid
+                  child: AppPlatform.isWindows
                       ? const SizedBox.shrink()
                       : BackdropFilter(
                           filter: AppImageFilters.blur60,
@@ -1367,7 +1609,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
             ),
           ),
           Positioned.fill(
-            child: AppPlatform.isAndroid
+            child: AppPlatform.isWindows
                 ? const SizedBox.shrink()
                 : BackdropFilter(
                     filter: AppImageFilters.blur48,
@@ -1711,7 +1953,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
 
   Widget _buildBody(ThirtyDayChallengeState state) {
     final isLandscape =
-        MediaQuery.of(context).orientation == Orientation.landscape;
+        MediaQuery.orientationOf(context) == Orientation.landscape;
     return isLandscape ? _buildLandscapeBody(state) : _buildPortraitBody(state);
   }
 
@@ -1795,8 +2037,9 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       itemBuilder: (context, index) {
         final task = state.tasks[index];
         final isSelected = _currentIndex == index;
-        final hasImage =
-            task.imageBase64 != null && task.imageBase64!.isNotEmpty;
+        final overviewImageProvider = task.isCompleted
+            ? _challengeImageProvider(task.imageBase64)
+            : null;
         final taskColors = _challengeTaskGradientColors(task, scheme);
         final overviewColors = task.isCompleted
             ? [
@@ -1865,14 +2108,33 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
             child: Stack(
               fit: StackFit.expand,
               children: [
-                if (hasImage && task.isCompleted)
+                if (overviewImageProvider != null)
                   ClipRRect(
                     borderRadius: BorderRadius.circular(15),
                     child: Opacity(
                       opacity: 0.4,
-                      child: Image.memory(
-                        base64Decode(task.imageBase64!),
-                        fit: BoxFit.cover,
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final pixelRatio =
+                              MediaQuery.maybeDevicePixelRatioOf(context) ??
+                              1.0;
+                          final cacheWidth = (constraints.maxWidth * pixelRatio)
+                              .ceil()
+                              .clamp(1, 4096)
+                              .toInt();
+                          final cacheHeight =
+                              (constraints.maxHeight * pixelRatio)
+                                  .ceil()
+                                  .clamp(1, 4096)
+                                  .toInt();
+                          final imageProvider = ResizeImage(
+                            overviewImageProvider,
+                            width: cacheWidth,
+                            height: cacheHeight,
+                            policy: ResizeImagePolicy.fit,
+                          );
+                          return Image(image: imageProvider, fit: BoxFit.cover);
+                        },
                       ),
                     ),
                   ),
@@ -1925,6 +2187,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                   onComplete: (completed) => _setCompleted(task.id, completed),
                   onSaveFeeling: (feeling) => _saveFeeling(task.id, feeling),
                   onEdit: () => _editTask(task),
+                  onStartFocus: () => _startTaskFocus(task),
                   isImageLoading: _imageTaskId == task.id,
                   onPickImage: () => _pickTaskImage(task),
                 ),
@@ -2081,6 +2344,22 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
+                FilledButton.tonalIcon(
+                  onPressed: _isExportingReport || _isShuffling
+                      ? null
+                      : () => _openPlanningSettings(state),
+                  icon: Icon(
+                    state.includeInPlanning
+                        ? Icons.event_available_rounded
+                        : Icons.calendar_view_day_rounded,
+                  ),
+                  label: Text(
+                    state.includeInPlanning
+                        ? '已接入规划 · ${((state.effectivePreferredStartMinute ?? (20 * 60)) ~/ 60).toString().padLeft(2, '0')}:${((state.effectivePreferredStartMinute ?? (20 * 60)) % 60).toString().padLeft(2, '0')}'
+                        : '容量与专注',
+                  ),
+                ),
+                const SizedBox(width: 8),
                 TextButton.icon(
                   onPressed: _isExportingReport || _isShuffling
                       ? null
@@ -2471,8 +2750,11 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     ThirtyDayChallengeTask task,
     ColorScheme scheme,
   ) {
-    final imageBytes = _decodeChallengeImage(task.imageBase64);
-    final hasImage = imageBytes != null;
+    final imageProvider = _challengeImageProvider(
+      task.imageBase64,
+      limitWindowsDecode: true,
+    );
+    final hasImage = imageProvider != null;
     final taskColors = _challengeTaskGradientColors(task, scheme);
     final cardColors = task.isCompleted
         ? [
@@ -2508,10 +2790,10 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                 ]
               : cardColors,
         ),
-        image: imageBytes == null
+        image: imageProvider == null
             ? null
             : DecorationImage(
-                image: MemoryImage(imageBytes),
+                image: imageProvider,
                 fit: BoxFit.cover,
                 filterQuality: FilterQuality.medium,
               ),
@@ -2861,7 +3143,7 @@ class _ShuffleCardSurface extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final isCompact =
-        MediaQuery.of(context).orientation == Orientation.landscape;
+        MediaQuery.orientationOf(context) == Orientation.landscape;
     final taskColors = _challengeTaskGradientColors(task, scheme);
     final cardTextColor = isFront
         ? scheme.onPrimaryContainer
@@ -2967,6 +3249,7 @@ class _ChallengeTaskCard extends StatefulWidget {
   final ValueChanged<bool> onComplete;
   final Future<void> Function(String) onSaveFeeling;
   final VoidCallback onEdit;
+  final VoidCallback? onStartFocus;
   final bool isImageLoading;
   final Future<void> Function() onPickImage;
 
@@ -2975,6 +3258,7 @@ class _ChallengeTaskCard extends StatefulWidget {
     required this.onComplete,
     required this.onSaveFeeling,
     required this.onEdit,
+    this.onStartFocus,
     required this.isImageLoading,
     required this.onPickImage,
   });
@@ -2983,10 +3267,51 @@ class _ChallengeTaskCard extends StatefulWidget {
   State<_ChallengeTaskCard> createState() => _ChallengeTaskCardState();
 }
 
+final Map<String, Uint8List> _challengeImageMemoryCache = {};
+const int _maxChallengeImageCacheEntries = 64;
+
 Uint8List? _decodeChallengeImage(String? encoded) {
   if (encoded == null || encoded.isEmpty) return null;
+  final cached = _challengeImageMemoryCache[encoded];
+  if (cached != null) return cached;
   try {
-    return base64Decode(encoded);
+    final decoded = base64Decode(encoded);
+    if (_challengeImageMemoryCache.length >= _maxChallengeImageCacheEntries) {
+      _challengeImageMemoryCache.remove(_challengeImageMemoryCache.keys.first);
+    }
+    _challengeImageMemoryCache[encoded] = decoded;
+    return decoded;
+  } catch (_) {
+    return null;
+  }
+}
+
+ImageProvider<Object>? _challengeImageProvider(
+  String? encoded, {
+  bool limitWindowsDecode = false,
+}) {
+  if (encoded == null || encoded.isEmpty) return null;
+  try {
+    if (AppPlatform.isWindows) {
+      // Validate the base64 string without allocating another byte buffer on
+      // every card rebuild. The provider key lets Flutter reuse its decode.
+      final provider = Base64ImageProvider(base64.normalize(encoded));
+      return limitWindowsDecode
+          ? ResizeImage(
+              provider,
+              width: 2048,
+              height: 2048,
+              policy: ResizeImagePolicy.fit,
+            )
+          : provider;
+    }
+
+    final bytes = _decodeChallengeImage(encoded);
+    if (bytes == null) return null;
+    final provider = MemoryImage(bytes);
+    return limitWindowsDecode
+        ? ResizeImage.resizeIfNeeded(800, 800, provider)
+        : provider;
   } catch (_) {
     return null;
   }
@@ -3170,9 +3495,12 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
     final task = widget.task;
     final isCompactMobile =
         MediaQuery.sizeOf(context).width < 600 &&
-        MediaQuery.of(context).orientation == Orientation.portrait;
-    final imageBytes = _decodeChallengeImage(task.imageBase64);
-    final hasImage = imageBytes != null;
+        MediaQuery.orientationOf(context) == Orientation.portrait;
+    final imageProvider = _challengeImageProvider(
+      task.imageBase64,
+      limitWindowsDecode: true,
+    );
+    final hasImage = imageProvider != null;
     final taskColors = _challengeTaskGradientColors(task, scheme);
     final cardColors = task.isCompleted
         ? [
@@ -3214,7 +3542,7 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
         ),
         image: hasImage
             ? DecorationImage(
-                image: MemoryImage(imageBytes),
+                image: imageProvider,
                 fit: BoxFit.cover,
                 alignment: Alignment.center,
                 filterQuality: FilterQuality.medium,
@@ -3238,7 +3566,7 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
           children: [
             if (hasImage)
               Positioned.fill(
-                child: AppPlatform.isAndroid
+                child: AppPlatform.isWindows
                     ? DecoratedBox(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
@@ -3346,6 +3674,29 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                                   ),
                                   Row(
                                     children: [
+                                      if (!task.isCompleted &&
+                                          widget.onStartFocus != null) ...[
+                                        IconButton(
+                                          tooltip: '开始专注（完成自动打卡）',
+                                          onPressed: widget.onStartFocus,
+                                          icon: const Icon(
+                                            Icons.timer_outlined,
+                                          ),
+                                          style: IconButton.styleFrom(
+                                            backgroundColor: hasImage
+                                                ? Colors.white.withValues(
+                                                    alpha: 0.25,
+                                                  )
+                                                : scheme.surface.withValues(
+                                                    alpha: 0.4,
+                                                  ),
+                                            foregroundColor: hasImage
+                                                ? Colors.white
+                                                : scheme.onSurface,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                      ],
                                       IconButton(
                                         tooltip: '调整任务',
                                         onPressed: widget.onEdit,

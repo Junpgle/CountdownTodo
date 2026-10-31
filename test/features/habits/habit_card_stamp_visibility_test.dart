@@ -248,6 +248,119 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
   });
+
+  testWidgets(
+    'card reused for a different met habit does not trigger stamp animation',
+    (tester) async {
+      final goal2 = HabitGoal(
+        uuid: 'different-met-goal',
+        name: '夜间冥想',
+        icon: '🧘',
+        sourceType: HabitSourceType.quantityCheckIn,
+      );
+      final rule2 = HabitGoalRuleRevision(
+        habitUuid: goal2.uuid,
+        targetValue: 1,
+        unit: '次',
+      );
+
+      // Card initially renders goal1 (in progress)
+      Widget buildHarness(
+        HabitGoal currentGoal,
+        HabitGoalRuleRevision currentRule,
+        bool met,
+      ) => MaterialApp(
+        home: Scaffold(
+          body: _buildCard(
+            currentGoal,
+            currentRule,
+            met: met,
+            key: const ValueKey('reusable-card-slot'),
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(buildHarness(goal, rule, false));
+      await tester.pump();
+      expect(find.byType(HabitStampBadge), findsNothing);
+
+      // Card slot is re-rendered with goal2 which is already met
+      await tester.pumpWidget(buildHarness(goal2, rule2, true));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+
+      // Must render static stamp watermark without animate: true
+      expect(_stamp(tester).animate, isFalse);
+      expect(
+        HabitStampAnimationQueue.hasPending(
+          habitUuid: goal2.uuid,
+          logicalDate: DateTime(2026, 10, 22),
+        ),
+        isFalse,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    },
+  );
+
+  testWidgets(
+    'card in ListView cache extent below screen does not claim stamp until scrolled into viewport',
+    (tester) async {
+      final scrollController = ScrollController();
+      HabitStampAnimationQueue.request(
+        habitUuid: goal.uuid,
+        logicalDate: DateTime(2026, 10, 22),
+      );
+
+      Widget buildHarness() => MaterialApp(
+        home: Scaffold(
+          body: ListView.builder(
+            controller: scrollController,
+            itemCount: 2,
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                // Takes up full screen height
+                return const SizedBox(height: 1200);
+              }
+              return _buildCard(goal, rule, met: true);
+            },
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(buildHarness());
+      await tester.pump();
+
+      // Card is offscreen below viewport - stamp request must remain pending
+      expect(
+        HabitStampAnimationQueue.hasPending(
+          habitUuid: goal.uuid,
+          logicalDate: DateTime(2026, 10, 22),
+        ),
+        isTrue,
+      );
+
+      // Scroll card into view
+      scrollController.jumpTo(1150);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      await tester.pump();
+
+      // Now card is visible, stamp animation should claim and animate
+      expect(
+        HabitStampAnimationQueue.hasPending(
+          habitUuid: goal.uuid,
+          logicalDate: DateTime(2026, 10, 22),
+        ),
+        isFalse,
+      );
+      expect(_stamp(tester).animate, isTrue);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      scrollController.dispose();
+    },
+  );
 }
 
 HabitCard _buildCard(

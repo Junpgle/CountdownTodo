@@ -24,6 +24,8 @@ Widget localImageWidget(
   BoxFit? fit,
   double? width,
   double? height,
+  int? cacheWidth,
+  int? cacheHeight,
 }) {
   if (!_isBrowserImagePath(path)) {
     return const SizedBox.shrink();
@@ -37,5 +39,22 @@ Widget localImageWidget(
       height: height,
     );
   }
-  return Image.network(path, fit: fit, width: width, height: height);
+  int? effectiveCacheWidth = cacheWidth;
+  int? effectiveCacheHeight = cacheHeight;
+  if (effectiveCacheWidth == null && effectiveCacheHeight == null) {
+    if (width != null && width.isFinite && width > 0) {
+      effectiveCacheWidth = (width * 3).round().clamp(1, 4096);
+    }
+    if (height != null && height.isFinite && height > 0) {
+      effectiveCacheHeight = (height * 3).round().clamp(1, 4096);
+    }
+  }
+  return Image.network(
+    path,
+    fit: fit,
+    width: width,
+    height: height,
+    cacheWidth: effectiveCacheWidth,
+    cacheHeight: effectiveCacheHeight,
+  );
 }

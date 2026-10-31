@@ -68,6 +68,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
   List<int> _monthTrend = [];
 
   bool _loading = true;
+  int _loadGeneration = 0;
 
   @override
   void initState() {
@@ -85,7 +86,10 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
 
   Future<void> _loadData() async {
     if (!mounted) return;
-    setState(() => _loading = true);
+    final loadGen = ++_loadGeneration;
+    if (_goals.isEmpty) {
+      setState(() => _loading = true);
+    }
     final goals = HabitSleepGoalResolver.forDisplay(
       await HabitRepository.getActiveGoals(),
     );
@@ -168,7 +172,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
     _weekMet = statistics.weekMet;
     _monthTrend = statistics.monthTrend;
 
-    if (mounted) {
+    if (mounted && loadGen == _loadGeneration) {
       setState(() {
         _goals = goals;
         _rulesByHabit = rulesByHabit;
@@ -228,26 +232,41 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
 
     var weekPlanned = 0;
     var weekMet = 0;
-    for (final goal in goals) {
-      final rules = rulesByHabit[goal.uuid] ?? const [];
-      if (rules.isEmpty) continue;
-      final todos = inputs.todosByHabit?[goal.uuid];
-      final records = inputs.recordsByHabit[goal.uuid] ?? const [];
-      final habitCheckIns = inputs.checkInsByHabit[goal.uuid] ?? const [];
-      final range = await HabitProgressCalculator.computeRange(
-        habit: goal,
-        rules: rules,
-        from: from,
-        to: today,
-        now: now,
-        todos: goal.sourceType == HabitSourceType.recurringTodo
-            ? todos
-            : const [],
-        records: goal.sourceType == HabitSourceType.pomodoroTag
-            ? records
-            : const [],
-        checkIns: habitCheckIns,
-      );
+
+    // 并行计算所有习惯近 30 天进度范围，避免逐个习惯串行计算阻塞分析页。
+    final computedResults = await Future.wait(
+      goals.map((goal) async {
+        final rules = rulesByHabit[goal.uuid] ?? const [];
+        if (rules.isEmpty) {
+          return (goal: goal, rules: rules, range: const <HabitDayProgress>[]);
+        }
+        final todos = inputs.todosByHabit?[goal.uuid];
+        final records = inputs.recordsByHabit[goal.uuid] ?? const [];
+        final habitCheckIns = inputs.checkInsByHabit[goal.uuid] ?? const [];
+        final range = await HabitProgressCalculator.computeRange(
+          habit: goal,
+          rules: rules,
+          from: from,
+          to: today,
+          now: now,
+          todos: goal.sourceType == HabitSourceType.recurringTodo
+              ? todos
+              : const [],
+          records: goal.sourceType == HabitSourceType.pomodoroTag
+              ? records
+              : const [],
+          checkIns: habitCheckIns,
+        );
+        return (goal: goal, rules: rules, range: range);
+      }),
+    );
+
+    for (final result in computedResults) {
+      final goal = result.goal;
+      final rules = result.rules;
+      final range = result.range;
+      if (range.isEmpty) continue;
+
       final weekPlan = weekPlans[goal.uuid];
       final weekEndOffset = weekPlan == null
           ? -1
@@ -394,7 +413,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
+    if (_loading && _goals.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
     if (_goals.isEmpty) {

@@ -293,7 +293,7 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
       builder: (ctx) {
         final isDark = Theme.of(context).brightness == Brightness.dark;
         return SizedBox(
-          height: MediaQuery.of(context).size.height * 0.75,
+          height: MediaQuery.sizeOf(ctx).height * 0.75,
           child: OptionalLiquidGlassSheet(
             topRadius: 24,
             fallbackDecoration: BoxDecoration(

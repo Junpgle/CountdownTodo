@@ -582,6 +582,21 @@ mixin _StorageSettings on _StorageServiceBase {
       AppSettingsStorage.saveWallpaperCustomPath(path);
   Future<void> clearWallpaperCustomPath() =>
       AppSettingsStorage.clearWallpaperCustomPath();
+  Future<Map<String, String?>?> getCachedBingWallpaper() =>
+      AppSettingsStorage.getCachedBingWallpaper();
+  Future<void> saveCachedBingWallpaper({
+    required String url,
+    String? copyright,
+    required String date,
+    required String params,
+  }) => AppSettingsStorage.saveCachedBingWallpaper(
+    url: url,
+    copyright: copyright,
+    date: date,
+    params: params,
+  );
+  Future<void> clearCachedBingWallpaper() =>
+      AppSettingsStorage.clearCachedBingWallpaper();
   Future<bool> getTodoFoldersInline() =>
       AppSettingsStorage.getTodoFoldersInline();
   Future<void> setTodoFoldersInline(bool inline) =>

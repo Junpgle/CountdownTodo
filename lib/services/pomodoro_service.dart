@@ -885,6 +885,8 @@ class PomodoroRunState {
   int pauseStartMs;
   List<PauseInterval> pauseIntervals; // 暂停区间列表
   String? planBlockId; // 🚀 新增：关联规划块 ID
+  String? habitUuid; // 🚀 新增：关联习惯 UUID
+  int? challengeTaskId; // 🚀 新增：关联30天挑战任务 ID
   String? note; // 专注备注
 
   PomodoroRunState({
@@ -911,6 +913,8 @@ class PomodoroRunState {
     this.pauseStartMs = 0,
     List<PauseInterval>? pauseIntervals,
     this.planBlockId,
+    this.habitUuid,
+    this.challengeTaskId,
     this.note,
   }) : sessionUuid = sessionUuid ?? const Uuid().v4(),
        tagUuids = tagUuids ?? [],
@@ -956,6 +960,8 @@ class PomodoroRunState {
     'pause_start_ms': pauseStartMs,
     'pause_intervals': pauseIntervals,
     'plan_block_id': planBlockId,
+    if (habitUuid != null) 'habit_uuid': habitUuid,
+    if (challengeTaskId != null) 'challenge_task_id': challengeTaskId,
     'note': note,
   };
 
@@ -1018,6 +1024,10 @@ class PomodoroRunState {
       ),
       pauseIntervals: _parsePauseIntervals(j['pause_intervals']),
       planBlockId: (j['plan_block_id'] ?? j['planBlockId'])?.toString(),
+      habitUuid: (j['habit_uuid'] ?? j['habitUuid'])?.toString(),
+      challengeTaskId: JsonValueParser.toNullableInt(
+        j['challenge_task_id'] ?? j['challengeTaskId'],
+      ),
       note: j['note']?.toString(),
     );
   }

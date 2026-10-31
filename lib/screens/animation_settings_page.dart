@@ -8,6 +8,7 @@ import '../services/liquid_glass_effect_service.dart';
 import '../services/power_save_mode_service.dart';
 import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
+import '../widgets/animation_performance_metric_card.dart';
 import '../widgets/settings_toggle_card.dart';
 import '../widgets/floating_glass_control.dart';
 import '../utils/app_dialogs.dart';
@@ -104,9 +105,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
 
   String get _liquidGlassModeDescription {
     if (AppPlatform.isWindows) {
-      return _liquidGlassMode == LiquidGlassEffectMode.standard
-          ? '高可读性和低功耗；Windows 使用静态半透明材质，避免重复背景模糊。'
-          : '增强材质层次与高光；Windows 使用静态玻璃和标准渲染，避免实时模糊拖慢动画。';
+      return '默认不启用模糊。开启 Liquid Glass 后使用标准玻璃与模糊效果；增强模式在 Windows 上不可用。';
     }
     return _liquidGlassMode == LiquidGlassEffectMode.standard
         ? '高可读性和低功耗；滚动卡片使用轻量玻璃材质，重点表面保留折射。'
@@ -401,32 +400,39 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                 isDesktop ? 32 : 16,
               ),
               children: [
-                if (AppPlatform.isAndroid ||
-                    widget.powerSaveModeOverride != null) ...[
+                AnimationPerformanceMetricCard(
+                  animationsEnabled: effectiveAnimationsEnabled,
+                  motionBlurEnabled: effectiveMotionBlurEnabled,
+                  layerBlurEnabled: effectiveLayerBlurEnabled,
+                  liquidGlassEnabled: effectiveLiquidGlassEnabled,
+                  liquidGlassMode: _liquidGlassMode,
+                  liquidGlassBlur: _liquidGlassBlur,
+                  liquidGlassTransparency: _liquidGlassTransparency,
+                  screenRadiusEnabled: effectiveScreenRadiusEnabled,
+                  lazyLoadEnabled: _lazyLoadEnabled,
+                  powerSaveModeEnabled: powerSaveModeEnabled,
+                  isDesktop: isDesktop,
+                ),
+                SizedBox(height: isDesktop ? 20 : 16),
+                if ((AppPlatform.isAndroid ||
+                        widget.powerSaveModeOverride != null) &&
+                    powerSaveModeEnabled) ...[
                   Card(
                     elevation: 0,
-                    color: powerSaveModeEnabled
-                        ? colorScheme.primaryContainer.withValues(alpha: 0.72)
-                        : colorScheme.surfaceContainerLow,
+                    color: colorScheme.primaryContainer.withValues(alpha: 0.72),
                     child: ListTile(
                       leading: Icon(
                         Icons.battery_saver_rounded,
-                        color: powerSaveModeEnabled
-                            ? colorScheme.onPrimaryContainer
-                            : colorScheme.primary,
+                        color: colorScheme.onPrimaryContainer,
                       ),
                       title: const Text('应用省电模式'),
-                      subtitle: Text(
-                        powerSaveModeEnabled
-                            ? '已跟随 Android 系统自动开启：暂停装饰动画和玻璃特效，并降低传感器与后台探测频率。'
-                            : '自动跟随 Android 系统省电模式；退出系统省电后会恢复你的动效偏好。',
+                      subtitle: const Text(
+                        '已跟随 Android 系统自动开启：暂停装饰动画和玻璃特效，并降低传感器与后台探测频率。',
                       ),
                       trailing: Text(
-                        powerSaveModeEnabled ? '已开启' : '跟随系统',
+                        '已开启',
                         style: TextStyle(
-                          color: powerSaveModeEnabled
-                              ? colorScheme.onPrimaryContainer
-                              : colorScheme.onSurfaceVariant,
+                          color: colorScheme.onPrimaryContainer,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -655,30 +661,39 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                             ],
                           ),
                           const SizedBox(height: 12),
-                          SizedBox(
-                            width: double.infinity,
-                            child: SegmentedButton<LiquidGlassEffectMode>(
-                              segments: const [
-                                ButtonSegment(
-                                  value: LiquidGlassEffectMode.standard,
-                                  icon: Icon(Icons.speed_rounded),
-                                  label: Text('标准'),
-                                ),
-                                ButtonSegment(
-                                  value: LiquidGlassEffectMode.enhanced,
-                                  icon: Icon(Icons.auto_awesome_rounded),
-                                  label: Text('增强'),
-                                ),
-                              ],
-                              selected: {_liquidGlassMode},
-                              onSelectionChanged:
-                                  !effectiveLiquidGlassEnabled ||
-                                      _liquidGlassMutationPending
-                                  ? null
-                                  : (selection) =>
-                                        _setLiquidGlassMode(selection.first),
+                          if (AppPlatform.isWindows)
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Chip(
+                                avatar: const Icon(Icons.speed_rounded),
+                                label: const Text('标准模式'),
+                              ),
+                            )
+                          else
+                            SizedBox(
+                              width: double.infinity,
+                              child: SegmentedButton<LiquidGlassEffectMode>(
+                                segments: const [
+                                  ButtonSegment(
+                                    value: LiquidGlassEffectMode.standard,
+                                    icon: Icon(Icons.speed_rounded),
+                                    label: Text('标准'),
+                                  ),
+                                  ButtonSegment(
+                                    value: LiquidGlassEffectMode.enhanced,
+                                    icon: Icon(Icons.auto_awesome_rounded),
+                                    label: Text('增强'),
+                                  ),
+                                ],
+                                selected: {_liquidGlassMode},
+                                onSelectionChanged:
+                                    !effectiveLiquidGlassEnabled ||
+                                        _liquidGlassMutationPending
+                                    ? null
+                                    : (selection) =>
+                                          _setLiquidGlassMode(selection.first),
+                              ),
                             ),
-                          ),
                           const SizedBox(height: 10),
                           Text(
                             _liquidGlassModeDescription,
@@ -689,7 +704,9 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                             ),
                           ),
                           const SizedBox(height: 18),
-                          if (effectiveLiquidGlassEnabled) ...[
+                          if (effectiveLiquidGlassEnabled ||
+                              widget.initialTarget ==
+                                  'liquid_glass_transparency') ...[
                             _buildTransparencyPreviewBox(
                               isDark: isDark,
                               colorScheme: colorScheme,
@@ -828,7 +845,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                                     ),
                                     const SizedBox(width: 6),
                                     const Text(
-                                      '透光度',
+                                      '玻璃底色透明度',
                                       style: TextStyle(
                                         fontWeight: FontWeight.w600,
                                         fontSize: 13.5,
@@ -1155,9 +1172,8 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                                                     LiquidGlassEffectService.startLivePreview(
                                                       expand: true,
                                                     );
-                                                    Navigator.of(
-                                                      context,
-                                                    ).maybePop();
+                                                    Navigator.of(context)
+                                                        .maybePop();
                                                   },
                                           ),
                                           if (hasUnsaved) ...[

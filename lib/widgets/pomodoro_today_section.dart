@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../screens/course_screens.dart';
 import '../screens/pomodoro_screen.dart';
+import '../services/home_dashboard_section_data_cache.dart';
 import '../services/pomodoro_service.dart';
 import '../utils/app_image_filters.dart';
 import '../utils/page_transitions.dart';
@@ -15,6 +16,11 @@ import 'platform_backdrop_filter.dart';
 // ============================================================
 // 首页「最近专注」一体化液态毛玻璃卡片
 // ============================================================
+typedef _PomodoroHomeRecordSnapshot = ({
+  List<PomodoroRecord> today,
+  List<PomodoroRecord> yesterday,
+});
+
 class PomodoroTodaySection extends StatefulWidget {
   final String username;
   final bool isLight;
@@ -43,6 +49,8 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
   List<PomodoroRecord> _records = [];
   final Map<String, GlobalKey> _recordCardKeys = {};
   bool _loading = true;
+  bool _hasLoaded = false;
+  int _loadGeneration = 0;
   bool _collapsed = false;
   bool _showAllRecords = false;
   bool _isToday = true;
@@ -94,12 +102,34 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
   /// 只读本地数据（云端同步由首页统一负责）
   Future<void> _loadData() async {
     if (!mounted) return;
-    setState(() => _loading = true);
+    final loadGen = ++_loadGeneration;
+    final today = DateUtils.dateOnly(DateTime.now());
+    final cacheKey =
+        'pomodoro/${widget.username}/${today.year}-${today.month}-${today.day}'
+        '/${widget.refreshTrigger}';
+    final cached =
+        HomeDashboardSectionDataCache.get<_PomodoroHomeRecordSnapshot>(
+          cacheKey,
+        );
+    if (cached == null) {
+      if (!_hasLoaded) setState(() => _loading = true);
+    } else {
+      _loading = false;
+    }
 
     try {
-      final todayRecords = await PomodoroService.getTodayRecords();
-      final yesterdayRecords = await PomodoroService.getYesterdayRecords();
-      if (!mounted) return;
+      final recordSnapshot =
+          cached ??
+          await HomeDashboardSectionDataCache.load(cacheKey, () async {
+            final results = await Future.wait([
+              PomodoroService.getTodayRecords(),
+              PomodoroService.getYesterdayRecords(),
+            ]);
+            return (today: results[0], yesterday: results[1]);
+          });
+      final todayRecords = recordSnapshot.today;
+      final yesterdayRecords = recordSnapshot.yesterday;
+      if (!mounted || loadGen != _loadGeneration) return;
 
       var yesterdaySeconds = 0;
       for (final r in yesterdayRecords) {
@@ -158,6 +188,11 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
         (uuid, _) => !activeRecordUuids.contains(uuid),
       );
 
+      final recordsChanged =
+          !_hasLoaded ||
+          _records.length != records.length ||
+          _totalSeconds != totalSeconds;
+
       setState(() {
         _records = records;
         _isToday = isToday;
@@ -169,13 +204,19 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
         _maxHourlySeconds = maxHourlySeconds;
         _selectedHour = null;
         _loading = false;
+        _hasLoaded = true;
       });
 
-      _chartAnimationController.forward(from: 0.0);
+      if (recordsChanged) {
+        _chartAnimationController.forward(from: 0.0);
+      }
     } catch (e, stack) {
       debugPrint('PomodoroTodaySection _loadData error: $e\n$stack');
-      if (mounted) {
-        setState(() => _loading = false);
+      if (mounted && loadGen == _loadGeneration) {
+        setState(() {
+          _loading = false;
+          _hasLoaded = true;
+        });
       }
     }
   }
@@ -308,13 +349,11 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
       fallbackDecoration: fallbackDecoration,
       child: child,
     );
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(borderRadius),
-      child: PlatformBackdropFilter(
-        filter: AppImageFilters.blur10,
-        bypassWhenLiquidGlassEnabled: true,
-        child: card,
-      ),
+    return PlatformBackdropFilter(
+      filter: AppImageFilters.blur10,
+      bypassWhenLiquidGlassEnabled: true,
+      clipBorderRadius: BorderRadius.circular(borderRadius),
+      child: card,
     );
   }
 
@@ -374,7 +413,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
               ),
               const SizedBox(width: 8),
               // 今日 / 昨日 标签
-              if (!_loading)
+              if (!_loading || _hasLoaded)
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
@@ -445,8 +484,8 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
     final fallbackDecoration = BoxDecoration(
       color: widget.isLight
           ? (isDark
-              ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
-              : colorScheme.surface.withValues(alpha: 0.92))
+                ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
+                : colorScheme.surface.withValues(alpha: 0.92))
           : (isDark
                 ? colorScheme.surfaceContainerLow.withValues(alpha: 0.7)
                 : colorScheme.surface),
@@ -463,8 +502,8 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
       border: Border.all(
         color: widget.isLight
             ? (isDark
-                ? Colors.white.withValues(alpha: 0.15)
-                : Colors.white.withValues(alpha: 0.6))
+                  ? Colors.white.withValues(alpha: 0.15)
+                  : Colors.white.withValues(alpha: 0.6))
             : colorScheme.outlineVariant.withValues(alpha: isDark ? 0.25 : 0.4),
       ),
     );
@@ -473,7 +512,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
       borderRadius: 24,
       fallbackDecoration: fallbackDecoration,
       padding: const EdgeInsets.all(18),
-      child: _loading
+      child: (_loading && !_hasLoaded)
           ? const Padding(
               padding: EdgeInsets.symmetric(vertical: 36),
               child: Center(child: CircularProgressIndicator(strokeWidth: 3)),
@@ -614,19 +653,21 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
           return Stack(
             alignment: Alignment.center,
             children: [
-              CustomPaint(
-                size: const Size(68, 68),
-                painter: _FocusRingPainter(
-                  progress: animatedProgress,
-                  trackColor: isDark
-                      ? Colors.white.withValues(alpha: 0.08)
-                      : primaryColor.withValues(alpha: 0.12),
-                  gradientColors: [
-                    primaryColor.withValues(alpha: 0.8),
-                    tertiaryColor,
-                  ],
-                  overflowColor: Colors.amber,
-                  strokeWidth: 6.0,
+              RepaintBoundary(
+                child: CustomPaint(
+                  size: const Size(68, 68),
+                  painter: _FocusRingPainter(
+                    progress: animatedProgress,
+                    trackColor: isDark
+                        ? Colors.white.withValues(alpha: 0.08)
+                        : primaryColor.withValues(alpha: 0.12),
+                    gradientColors: [
+                      primaryColor.withValues(alpha: 0.8),
+                      tertiaryColor,
+                    ],
+                    overflowColor: Colors.amber,
+                    strokeWidth: 6.0,
+                  ),
                 ),
               ),
               Column(
@@ -1499,6 +1540,16 @@ class _FocusRingPainter extends CustomPainter {
   final Color? overflowColor;
   final double strokeWidth;
 
+  final Paint _trackPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
+  final Paint _basePaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
+  final Paint _overflowPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
+
   _FocusRingPainter({
     required this.progress,
     required this.trackColor,
@@ -1513,12 +1564,10 @@ class _FocusRingPainter extends CustomPainter {
     final radius = (size.width - strokeWidth) / 2;
 
     // 1. 底层轨道圆环
-    final trackPaint = Paint()
+    _trackPaint
       ..color = trackColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
-    canvas.drawCircle(center, radius, trackPaint);
+      ..strokeWidth = strokeWidth;
+    canvas.drawCircle(center, radius, _trackPaint);
 
     if (progress <= 0.001) return;
 
@@ -1528,34 +1577,30 @@ class _FocusRingPainter extends CustomPainter {
     final baseProgress = progress.clamp(0.0, 1.0);
     final baseSweep = 2 * pi * baseProgress;
 
-    final basePaint = Paint()
+    _basePaint
       ..shader = SweepGradient(colors: gradientColors).createShader(rect)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
+      ..strokeWidth = strokeWidth;
 
     canvas.save();
     canvas.translate(center.dx, center.dy);
     canvas.rotate(-pi / 2);
     canvas.translate(-center.dx, -center.dy);
-    canvas.drawArc(rect, 0, baseSweep, false, basePaint);
+    canvas.drawArc(rect, 0, baseSweep, false, _basePaint);
     canvas.restore();
 
     // 3. 超额达成金色弧线（progress > 1.0）
     if (progress > 1.0 && overflowColor != null) {
       final overflowProgress = (progress - 1.0).clamp(0.0, 1.0);
       final overflowSweep = 2 * pi * overflowProgress;
-      final overflowPaint = Paint()
+      _overflowPaint
         ..color = overflowColor!
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = strokeWidth
-        ..strokeCap = StrokeCap.round;
+        ..strokeWidth = strokeWidth;
 
       canvas.save();
       canvas.translate(center.dx, center.dy);
       canvas.rotate(-pi / 2);
       canvas.translate(-center.dx, -center.dy);
-      canvas.drawArc(rect, 0, overflowSweep, false, overflowPaint);
+      canvas.drawArc(rect, 0, overflowSweep, false, _overflowPaint);
       canvas.restore();
     }
   }

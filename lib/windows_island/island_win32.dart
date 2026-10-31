@@ -335,8 +335,28 @@ void startWindowDragging() {
     if (hwnd != null) {
       const int wmNclbuttondown = 0x00A1;
       const int htCaption = 2;
-      ReleaseCapture();
-      PostMessage(hwnd, wmNclbuttondown, WPARAM(htCaption), LPARAM(0));
+      using((arena) {
+        final cursorPosition = arena<POINT>();
+        if (!GetCursorPos(cursorPosition).value) {
+          debugPrint('[IslandWin32] could not read cursor position for drag');
+          return;
+        }
+
+        // WM_NCLBUTTONDOWN expects screen coordinates in lParam. Passing (0, 0)
+        // can make Windows reject the synthetic caption drag when the island is
+        // elsewhere on the desktop.
+        final x = cursorPosition.ref.x & 0xFFFF;
+        final y = cursorPosition.ref.y & 0xFFFF;
+        final screenPoint = (y << 16) | x;
+
+        ReleaseCapture();
+        PostMessage(
+          hwnd,
+          wmNclbuttondown,
+          WPARAM(htCaption),
+          LPARAM(screenPoint),
+        );
+      });
     }
   } catch (e) {
     debugPrint('[IslandWin32] startWindowDragging error: $e');

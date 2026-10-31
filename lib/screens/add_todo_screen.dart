@@ -27,6 +27,7 @@ import '../services/suggestion_feedback_service.dart';
 import '../services/feature_tip_service.dart';
 import '../services/fixed_schedule_recurrence_service.dart';
 import '../services/reminder_schedule_service.dart';
+import 'fixed_schedule_related_todo_picker_screen.dart';
 import '../widgets/coach_mark_overlay.dart';
 import '../widgets/floating_bottom_bar.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
@@ -71,9 +72,17 @@ class AddTodoScreen extends StatefulWidget {
     String username,
   )?
   estimate;
+  final String? username;
+  final Set<String>? initialRelatedTodoIds;
+  final FixedScheduleRelatedTodoPageLoader? loadRelatedTodoPage;
+  final FixedScheduleRelatedTodoIdsLoader? loadSelectedRelatedTodos;
 
   const AddTodoScreen({
     super.key,
+    this.username,
+    this.initialRelatedTodoIds,
+    this.loadRelatedTodoPage,
+    this.loadSelectedRelatedTodos,
     this.onTodoAdded,
     this.onManualTodoSaved,
     this.onTodosBatchAdded,
@@ -116,6 +125,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   late TimeOfDay _scheduleEndTime;
   bool _scheduleTimeTbd = false;
   bool _scheduleEndTimeTbd = false;
+  Set<String> _scheduleRelatedTodoIds = {};
+  final GlobalKey _relatedTodosTileKey = GlobalKey();
   SemesterWeekContext? _semesterWeekContext;
   final Map<(String?, String), DateFormat> _dateFormatters = {};
 
@@ -207,6 +218,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     'scheduleEnd': '${_scheduleEndTime.hour}:${_scheduleEndTime.minute}',
     'scheduleTimeTbd': _scheduleTimeTbd,
     'scheduleEndTimeTbd': _scheduleEndTimeTbd,
+    'scheduleRelatedTodoIds': (_scheduleRelatedTodoIds.toList()..sort()),
     'selectedTeam': _selectedTeamUuid,
     'collabType': _collabType,
     'image': _selectedImagePath,
@@ -250,6 +262,14 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     _manualCaptureKind = widget.initialMode == AddTodoInitialMode.fixedSchedule
         ? _ManualCaptureKind.fixedSchedule
         : _ManualCaptureKind.todo;
+    if (widget.username != null && widget.username!.trim().isNotEmpty) {
+      _username = widget.username!.trim();
+    }
+    _scheduleRelatedTodoIds = {
+      ...?widget.initialRelatedTodoIds
+          ?.map((id) => id.trim())
+          .where((id) => id.isNotEmpty),
+    };
     final now = DateTime.now();
     _scheduleDate = DateTime(now.year, now.month, now.day);
     _scheduleStartTime = const TimeOfDay(hour: 9, minute: 0);
@@ -1091,6 +1111,79 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     }
   }
 
+  Future<String?> _resolveUsername() async {
+    if (widget.username?.trim().isNotEmpty == true) {
+      return widget.username!.trim();
+    }
+    if (_username?.trim().isNotEmpty == true) {
+      return _username!.trim();
+    }
+    final session = await StorageService.getLoginSession();
+    if (session?.trim().isNotEmpty == true) {
+      return session!.trim();
+    }
+    final active = await _estimateAccount;
+    if (active.trim().isNotEmpty) {
+      return active.trim();
+    }
+    return null;
+  }
+
+  String? _normalizeTeamUuid(String? value) {
+    final normalized = value?.trim();
+    return normalized == null || normalized.isEmpty ? null : normalized;
+  }
+
+  String get _currentTeamScopeLabel {
+    if (_selectedTeamUuid == null) return '个人私有';
+    return _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull?.name ??
+        '团队';
+  }
+
+  Future<void> _chooseScheduleRelatedTodos() async {
+    final username = await _resolveUsername();
+    if (username == null || !mounted) return;
+    final page = FixedScheduleRelatedTodoPickerScreen(
+      username: username,
+      teamUuid: _selectedTeamUuid,
+      initialSelectedIds: Set<String>.from(_scheduleRelatedTodoIds),
+      loadTodoPage: widget.loadRelatedTodoPage,
+      loadSelectedTodos: widget.loadSelectedRelatedTodos,
+    );
+    final selected = await PageTransitions.pushFromRect<Set<String>>(
+      context: context,
+      sourceKey: _relatedTodosTileKey,
+      page: page,
+    );
+    if (selected == null || !mounted) return;
+    setState(() => _scheduleRelatedTodoIds = Set<String>.from(selected));
+  }
+
+  Future<String?> _invalidRelatedTodoMessage() async {
+    if (_scheduleRelatedTodoIds.isEmpty) return null;
+    final username = await _resolveUsername();
+    if (username == null) return null;
+    final todos =
+        await (widget.loadSelectedRelatedTodos?.call(
+              username,
+              _scheduleRelatedTodoIds,
+            ) ??
+            StorageService.getTodosForFixedScheduleRelationIds(
+              username,
+              _scheduleRelatedTodoIds,
+            ));
+    final todosById = {for (final todo in todos) todo.id: todo};
+    final targetTeamUuid = _normalizeTeamUuid(_selectedTeamUuid);
+    final invalidIds = _scheduleRelatedTodoIds.where((id) {
+      final todo = todosById[id];
+      return todo == null ||
+          todo.isDeleted ||
+          _normalizeTeamUuid(todo.teamUuid) != targetTeamUuid;
+    });
+    if (invalidIds.isEmpty) return null;
+    return '请在“关联待办”中移除已删除或当前日程不可见的项目后再保存';
+  }
+
   Future<bool> _saveManualFixedSchedule() async {
     final start = _scheduleTimeTbd ? null : _scheduleAt(_scheduleStartTime);
     final end = _scheduleTimeTbd || _scheduleEndTimeTbd
@@ -1101,6 +1194,17 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         context,
         const SnackBar(content: Text('结束时间必须晚于开始时间')),
       );
+      return false;
+    }
+
+    final invalidMessage = await _invalidRelatedTodoMessage();
+    if (invalidMessage != null) {
+      if (mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(content: Text(invalidMessage)),
+        );
+      }
       return false;
     }
 
@@ -1123,6 +1227,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       _currentOriginalText ?? _titleCtrl.text,
       parsedResult: parsed,
       source: FixedScheduleSource.manual,
+      relatedTodoIds: _scheduleRelatedTodoIds.toList(),
     );
   }
 
@@ -1340,6 +1445,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     String sourceText, {
     ParsedTodoResult? parsedResult,
     FixedScheduleSource? source,
+    List<String>? relatedTodoIds,
   }) async {
     final callback = widget.onFixedScheduleAdded;
     if (callback == null) return false;
@@ -1397,6 +1503,11 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       recurrence: parsed.recurrence,
       recurrenceSeriesId: null,
       teamUuid: _selectedTeamUuid,
+      relatedTodoIds:
+          relatedTodoIds ??
+          (_manualCaptureKind == _ManualCaptureKind.fixedSchedule
+              ? _scheduleRelatedTodoIds.toList()
+              : const []),
     );
     if (item.recurrence != RecurrenceType.none) {
       item.recurrenceSeriesId = item.id;
@@ -2251,7 +2362,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   Widget _buildResponsiveGrid(List<Widget> children) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        bool isWide = MediaQuery.of(context).size.width > 600;
+        bool isWide = constraints.maxWidth > 600;
         if (!isWide) {
           List<Widget> colChildren = [];
           for (int i = 0; i < children.length; i++) {
@@ -2280,7 +2391,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     final parsedDate = DateTime.tryParse(schedule.date)?.toLocal();
     final dateLabel = parsedDate == null
         ? schedule.date
-        : DateFormat('yyyy年M月d日').format(parsedDate);
+        : _cachedDateFormat('yyyy年M月d日').format(parsedDate);
     final start = schedule.startTime == null
         ? null
         : DateTime.fromMillisecondsSinceEpoch(schedule.startTime!).toLocal();
@@ -2290,8 +2401,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     final timeLabel = start == null
         ? '时间待定'
         : end == null
-        ? '${DateFormat('HH:mm').format(start)} · 结束待定'
-        : '${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)}';
+        ? '${_cachedDateFormat('HH:mm').format(start)} · 结束待定'
+        : '${_cachedDateFormat('HH:mm').format(start)} - ${_cachedDateFormat('HH:mm').format(end)}';
 
     return Container(
       key: const ValueKey('related-fixed-schedule-context'),
@@ -2670,6 +2781,68 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                                 : _pickScheduleEndTime,
                           ),
                         ],
+                        KeyedSubtree(
+                          key: const ValueKey('fixed-schedule-related-todos'),
+                          child: Container(
+                            key: _relatedTodosTileKey,
+                            child: ListTile(
+                              leading: const Icon(Icons.link_rounded),
+                              title: Row(
+                                children: [
+                                  Text(
+                                    _selectedTeamUuid == null
+                                        ? '关联个人待办'
+                                        : '关联团队待办',
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color:
+                                          (_selectedTeamUuid == null
+                                                  ? Theme.of(context)
+                                                        .colorScheme
+                                                        .surfaceContainerHighest
+                                                  : Theme.of(context)
+                                                        .colorScheme
+                                                        .primaryContainer)
+                                              .withValues(alpha: 0.6),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      _currentTeamScopeLabel,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: _selectedTeamUuid == null
+                                            ? Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurfaceVariant
+                                            : Theme.of(context)
+                                                  .colorScheme
+                                                  .onPrimaryContainer,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              subtitle: Text(
+                                _scheduleRelatedTodoIds.isEmpty
+                                    ? (_selectedTeamUuid == null
+                                          ? '未关联 · 当前只展示个人待办（如需团队待办请在下方切换归属）'
+                                          : '未关联 · 当前只展示【$_currentTeamScopeLabel】待办')
+                                    : '已关联 ${_scheduleRelatedTodoIds.length} 项（$_currentTeamScopeLabel）',
+                              ),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: _isSaving
+                                  ? null
+                                  : _chooseScheduleRelatedTodos,
+                            ),
+                          ),
+                        ),
                       ],
                       ListTile(
                         leading: const Icon(Icons.notifications_outlined),

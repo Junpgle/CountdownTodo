@@ -271,7 +271,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final bool isDesktop = MediaQuery.of(context).size.width >= 768;
+    final bool isDesktop = MediaQuery.sizeOf(context).width >= 768;
     final topBarHeight = floatingGlassTopBarHeight(context);
 
     return Scaffold(
@@ -561,8 +561,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                               });
                             },
                             onHorizontalDragEnd: (details) {
-                              final screenWidth = MediaQuery.of(context)
-                                  .size
+                              final screenWidth = MediaQuery.sizeOf(context)
                                   .width;
                               final threshold = screenWidth * 0.2; // 20% 宽度触发切换
 

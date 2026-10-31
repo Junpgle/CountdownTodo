@@ -588,6 +588,8 @@ class _JournalCard extends StatelessWidget {
                   attachment: entry.attachments.first,
                   fit: BoxFit.cover,
                   accountId: accountId,
+                  cacheWidth: 420,
+                  cacheHeight: 580,
                 ),
               ),
             Expanded(
@@ -699,6 +701,8 @@ class _PhotoWallCard extends StatelessWidget {
                       attachment: entry.attachments.first,
                       fit: BoxFit.cover,
                       accountId: accountId,
+                      cacheWidth: 600,
+                      cacheHeight: 700,
                     ),
             ),
             Padding(
@@ -739,11 +743,15 @@ class _JournalImage extends StatefulWidget {
   final JournalAttachment attachment;
   final BoxFit fit;
   final String? accountId;
+  final int? cacheWidth;
+  final int? cacheHeight;
 
   const _JournalImage({
     required this.attachment,
     required this.fit,
     this.accountId,
+    this.cacheWidth,
+    this.cacheHeight,
   });
 
   @override
@@ -803,7 +811,11 @@ class _JournalImageState extends State<_JournalImage> {
   }
 
   Widget _buildImage(BuildContext context, JournalAttachment attachment) {
-    final provider = JournalMediaService.instance.provider(attachment);
+    final provider = JournalMediaService.instance.provider(
+      attachment,
+      width: widget.cacheWidth,
+      height: widget.cacheHeight,
+    );
     if (provider == null) {
       return ColoredBox(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,

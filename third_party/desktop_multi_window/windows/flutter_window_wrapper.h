@@ -8,6 +8,8 @@
 #include <memory>
 #include <string>
 
+constexpr UINT kStartWindowDraggingMessage = WM_APP + 0x351;
+
 class FlutterWindowWrapper {
  public:
   FlutterWindowWrapper(const std::string& window_id,
@@ -51,6 +53,29 @@ class FlutterWindowWrapper {
         ::ShowWindow(hwnd_, SW_HIDE);
       }
       result->Success();
+    } else if (method == "window_startDragging") {
+      if (!hwnd_ || !::IsWindow(hwnd_)) {
+        result->Error("-1", "failed to find target window");
+        return;
+      }
+
+      POINT cursor_position{};
+      if (!::GetCursorPos(&cursor_position)) {
+        result->Error("-1", "failed to read cursor position");
+        return;
+      }
+
+      // Let the target HWND's own message thread release capture and begin
+      // the caption drag. ReleaseCapture is thread scoped, so doing it in the
+      // Dart UI isolate can leave Flutter's mouse capture in place.
+      const LPARAM cursor_coordinates =
+          MAKELPARAM(cursor_position.x, cursor_position.y);
+      if (!::PostMessage(hwnd_, kStartWindowDraggingMessage, 0,
+                         cursor_coordinates)) {
+        result->Error("-1", "failed to post window drag request");
+        return;
+      }
+      result->Success(flutter::EncodableValue(true));
     } else {
       result->Error("-1", "unknown method: " + method);
     }

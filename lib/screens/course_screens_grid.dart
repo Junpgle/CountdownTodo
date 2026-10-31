@@ -337,7 +337,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           child: Container(
             padding: const EdgeInsets.all(16),
             constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.5,
+              maxHeight: MediaQuery.sizeOf(ctx).height * 0.5,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -837,7 +837,14 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     _prepareHiddenTimeRangeIndex();
     final upperBound = _hiddenRangeUpperBound(m);
     if (upperBound == 0) return false;
-    return _hiddenTimeRanges[upperBound - 1].contains(m);
+    final range = _hiddenTimeRanges[upperBound - 1];
+    if (range.startMinute <= startHour * 60.0) {
+      return m >= range.startMinute && m < range.endMinute;
+    }
+    if (range.endMinute >= endHour * 60.0) {
+      return m > range.startMinute && m <= range.endMinute;
+    }
+    return range.contains(m);
   }
 
   String _formatMinute(double minute) {
@@ -955,28 +962,30 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
         }
         double slotHeight = _timeToY(nextHour, 0, minuteHeight) - y;
 
-        children.add(
-          Positioned(
-            top: y,
-            left: 0,
-            width: timeColumnWidth,
-            height: slotHeight,
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 2.0),
-                child: Text(
-                  '${hour.toString().padLeft(2, '0')}:00',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: textColor,
-                    fontWeight: FontWeight.w500,
+        if (nextHour <= endHour && slotHeight >= 14.0) {
+          children.add(
+            Positioned(
+              top: y,
+              left: 0,
+              width: timeColumnWidth,
+              height: slotHeight,
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2.0),
+                  child: Text(
+                    '${hour.toString().padLeft(2, '0')}:00',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: textColor,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        );
+          );
+        }
       }
     }
 
@@ -1134,10 +1143,10 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 final animationProgressScale = 1.0 / (1.0 - animationDelay);
 
                 return Positioned(
-                  top: top,
+                  top: top + 1,
                   left: left,
                   width: width,
-                  height: height,
+                  height: (height - 2).clamp(18.0, double.infinity),
                   child: AnimatedBuilder(
                     animation: _courseExpandAnim,
                     builder: (ctx, child) {
@@ -1372,10 +1381,10 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 final animationProgressScale = 1.0 / (1.0 - animationDelay);
 
                 return Positioned(
-                  top: top,
+                  top: top + 1,
                   left: left,
                   width: width,
-                  height: height,
+                  height: (height - 2).clamp(18.0, double.infinity),
                   child: AnimatedBuilder(
                     animation: _courseExpandAnim,
                     builder: (ctx, child) {
@@ -1553,10 +1562,10 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 final animationProgressScale = 1.0 / (1.0 - animationDelay);
 
                 return Positioned(
-                  top: top,
+                  top: top + 1,
                   left: left + 3,
                   width: width > 6 ? width - 6 : width,
-                  height: height,
+                  height: (height - 2).clamp(16.0, double.infinity),
                   child: AnimatedBuilder(
                     animation: _courseExpandAnim,
                     builder: (ctx, child) {
@@ -1843,10 +1852,10 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                       (height * 0.3 * (width / (cellWidth - 2)).clamp(0.4, 1.0))
                           .clamp(9.0, 10.5);
                   return Positioned(
-                    top: top,
+                    top: top + 1,
                     left: left,
                     width: width,
-                    height: height,
+                    height: (height - 2).clamp(16.0, double.infinity),
                     child: GestureDetector(
                       onTap: () => _openFixedScheduleDetail(
                         schedule,
@@ -2056,10 +2065,10 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                   final animationProgressScale = 1.0 / (1.0 - animationDelay);
 
                   return Positioned(
-                    top: top,
+                    top: top + 1,
                     left: left,
                     width: width,
-                    height: height,
+                    height: (height - 2).clamp(18.0, double.infinity),
                     child: AnimatedBuilder(
                       animation: _courseExpandAnim,
                       builder: (ctx, child) {
@@ -2232,10 +2241,10 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                               (width / (cellWidth - 2)).clamp(0.4, 1.0))
                           .clamp(9.0, 10.5);
                   return Positioned(
-                    top: top,
+                    top: top + 1,
                     left: left,
                     width: width,
-                    height: height,
+                    height: (height - 2).clamp(16.0, double.infinity),
                     child: GestureDetector(
                       onTap: () => _showDeviceCalendarEventDetail(
                         context,
@@ -2533,10 +2542,12 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               left: timeColumnWidth,
               width: cellWidth * 7,
               height: 1,
-              child: CustomPaint(
-                painter: _CurrentTimeRulePainter(
-                  animation: _pulseAnimation,
-                  color: focusColor,
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: _CurrentTimeRulePainter(
+                    animation: _pulseAnimation,
+                    color: focusColor,
+                  ),
                 ),
               ),
             ),
@@ -2547,10 +2558,12 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               left: lineLeft,
               width: cellWidth,
               height: 2,
-              child: CustomPaint(
-                painter: _CurrentTimeMarkerPainter(
-                  animation: _pulseAnimation,
-                  color: focusColor,
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: _CurrentTimeMarkerPainter(
+                    animation: _pulseAnimation,
+                    color: focusColor,
+                  ),
                 ),
               ),
             ),

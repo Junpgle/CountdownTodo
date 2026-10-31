@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 import '../../../utils/app_dialogs.dart';
@@ -84,17 +87,110 @@ class _HabitCardState extends State<HabitCard> {
   bool _justStamped = false;
   double _visibleFraction = 0;
   int? _stampClaimToken;
+  Timer? _stampSettleTimer;
+  ScrollNotificationObserverState? _scrollObserver;
+  Animation<double>? _routeAnimation;
 
   ColorScheme get _colors => Theme.of(context).colorScheme;
 
   bool get _canPlayStampAnimation =>
       TickerMode.valuesOf(context).enabled &&
-      _visibleFraction >= _stampAnimationVisibleFraction;
+      _visibleFraction >= _stampAnimationVisibleFraction &&
+      _isTrulyVisibleOnScreen();
+
+  bool _isTrulyVisibleOnScreen() {
+    if (!mounted) return false;
+    if (!TickerMode.valuesOf(context).enabled) return false;
+
+    // Route transition must be completely completed before running celebrations.
+    final route = ModalRoute.of(context);
+    if (route != null &&
+        route.animation != null &&
+        !route.animation!.isCompleted) {
+      return false;
+    }
+
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.hasSize || !renderBox.attached) {
+      return false;
+    }
+
+    // 1. Ancestor Viewport check (ListView / SingleChildScrollView / CustomScrollView)
+    final viewport = RenderAbstractViewport.maybeOf(renderBox);
+    if (viewport != null) {
+      try {
+        final transform = renderBox.getTransformTo(viewport);
+        final boundsInViewport = MatrixUtils.transformRect(
+          transform,
+          renderBox.paintBounds,
+        );
+        final visibleInViewport = boundsInViewport.intersect(
+          viewport.paintBounds,
+        );
+        if (visibleInViewport.isEmpty ||
+            visibleInViewport.height <
+                renderBox.size.height * _stampAnimationVisibleFraction) {
+          return false;
+        }
+      } catch (_) {
+        return false;
+      }
+    }
+
+    // 2. Physical screen window check (cannot be below the fold or above the top)
+    try {
+      final origin = renderBox.localToGlobal(Offset.zero);
+      final cardRect = origin & renderBox.size;
+      final screenSize = MediaQuery.sizeOf(context);
+      final screenRect = Offset.zero & screenSize;
+      final visibleOnScreen = cardRect.intersect(screenRect);
+      if (visibleOnScreen.isEmpty ||
+          visibleOnScreen.height <
+              renderBox.size.height * _stampAnimationVisibleFraction) {
+        return false;
+      }
+    } catch (_) {
+      return false;
+    }
+
+    return true;
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _playQueuedStampAnimationIfReady();
+    final nextObserver = ScrollNotificationObserver.maybeOf(context);
+    if (_scrollObserver != nextObserver) {
+      _scrollObserver?.removeListener(_handleScrollNotification);
+      _scrollObserver = nextObserver;
+      _scrollObserver?.addListener(_handleScrollNotification);
+    }
+
+    final route = ModalRoute.of(context);
+    final routeAnimation = route?.animation;
+    if (_routeAnimation != routeAnimation) {
+      _routeAnimation?.removeStatusListener(_handleRouteStatus);
+      _routeAnimation = routeAnimation;
+      if (routeAnimation != null && !routeAnimation.isCompleted) {
+        routeAnimation.addStatusListener(_handleRouteStatus);
+      }
+    }
+
+    _scheduleStampAnimationCheck();
+  }
+
+  void _handleRouteStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed) {
+      _routeAnimation?.removeStatusListener(_handleRouteStatus);
+      _scheduleStampAnimationCheck();
+    }
+  }
+
+  void _handleScrollNotification(ScrollNotification notification) {
+    if (notification is ScrollEndNotification ||
+        notification is UserScrollNotification) {
+      _scheduleStampAnimationCheck();
+    }
   }
 
   @override
@@ -110,6 +206,7 @@ class _HabitCardState extends State<HabitCard> {
         habitUuid: oldWidget.goal.uuid,
         logicalDate: oldWidget.dayProgress.logicalDate,
       );
+      _stampSettleTimer?.cancel();
       _justStamped = false;
       _visibleFraction = 0;
     }
@@ -120,12 +217,15 @@ class _HabitCardState extends State<HabitCard> {
         habitUuid: widget.goal.uuid,
         logicalDate: widget.dayProgress.logicalDate,
       );
+      _stampSettleTimer?.cancel();
       _releaseStampClaim();
       if (_justStamped) {
         setState(() => _justStamped = false);
       }
     }
-    if (oldWidget.dayProgress.status != HabitDayStatus.met &&
+    if (!habitChanged &&
+        !dateChanged &&
+        oldWidget.dayProgress.status != HabitDayStatus.met &&
         widget.dayProgress.status == HabitDayStatus.met &&
         !_justStamped) {
       _triggerStampAnimation();
@@ -135,7 +235,37 @@ class _HabitCardState extends State<HabitCard> {
   void _onVisibilityChanged(VisibilityInfo info) {
     if (!mounted) return;
     _visibleFraction = info.visibleFraction;
-    _playQueuedStampAnimationIfReady();
+    _scheduleStampAnimationCheck();
+  }
+
+  void _scheduleStampAnimationCheck() {
+    if (!mounted || _justStamped) return;
+
+    if (!HabitStampAnimationQueue.hasPending(
+      habitUuid: widget.goal.uuid,
+      logicalDate: widget.dayProgress.logicalDate,
+    )) {
+      return;
+    }
+
+    _stampSettleTimer?.cancel();
+
+    if (!_canPlayStampAnimation) return;
+
+    // Unit test environments zero out the updateInterval for immediate verification.
+    final isSynchronousTest =
+        VisibilityDetectorController.instance.updateInterval == Duration.zero;
+    if (isSynchronousTest) {
+      _playQueuedStampAnimationIfReady();
+      return;
+    }
+
+    // Give a comfortable 320ms visual settle delay after coming stably into view
+    // so the user's eye locates the card before the stamp slams down.
+    _stampSettleTimer = Timer(const Duration(milliseconds: 320), () {
+      if (!mounted || _justStamped) return;
+      _playQueuedStampAnimationIfReady();
+    });
   }
 
   void _playQueuedStampAnimationIfReady() {
@@ -173,7 +303,7 @@ class _HabitCardState extends State<HabitCard> {
       habitUuid: widget.goal.uuid,
       logicalDate: widget.dayProgress.logicalDate,
     );
-    _playQueuedStampAnimationIfReady();
+    _scheduleStampAnimationCheck();
   }
 
   void _startStampAnimation() {
@@ -199,6 +329,9 @@ class _HabitCardState extends State<HabitCard> {
 
   @override
   void dispose() {
+    _stampSettleTimer?.cancel();
+    _scrollObserver?.removeListener(_handleScrollNotification);
+    _routeAnimation?.removeStatusListener(_handleRouteStatus);
     _releaseStampClaim();
     super.dispose();
   }
@@ -381,26 +514,58 @@ class _HabitCardState extends State<HabitCard> {
   }
 
   String _subtitle(HabitDayStatus status, HabitProgress progress) {
+    final String base;
     switch (widget.goal.sourceType) {
       case HabitSourceType.recurringTodo:
-        return HabitText.periodLabel(widget.rule);
+        base = HabitText.periodLabel(widget.rule);
       case HabitSourceType.pomodoroTag:
-        return '${HabitText.periodLabel(widget.rule)} · '
+        base =
+            '${HabitText.periodLabel(widget.rule)} · '
             '${HabitText.durationProgress(progress)}';
       case HabitSourceType.durationCheckIn:
         final coachingTarget = _sleepCoachingTargetLabel;
-        return '${HabitText.periodLabel(widget.rule)} · '
+        base =
+            '${HabitText.periodLabel(widget.rule)} · '
             '${coachingTarget == null ? HabitText.durationProgressForGoal(widget.goal, progress) : '${HabitText.formatDuration(progress.currentValue.round())} · '
                       '本期目标 $coachingTarget'}';
       case HabitSourceType.quantityCheckIn:
         final unit = widget.rule.unit;
-        return '${HabitText.periodLabel(widget.rule)} · '
+        base =
+            '${HabitText.periodLabel(widget.rule)} · '
             '${HabitText.amountProgress(progress, unit)}';
       case HabitSourceType.timeCheckIn:
         final coachingTarget = _sleepCoachingTargetLabel;
-        return '${HabitText.periodLabel(widget.rule)} · '
+        base =
+            '${HabitText.periodLabel(widget.rule)} · '
             '目标 ${coachingTarget ?? HabitText.targetTime(widget.rule.targetTimeMinute)}';
     }
+    if (widget.rule.hasPlanningBlock(widget.goal)) {
+      final startText = HabitText.targetTime(
+        widget.rule.effectivePreferredStartMinute(),
+      );
+      final minutes = widget.rule.effectivePlannedMinutes(widget.goal);
+      return '$base · 预留 $startText (${minutes}m)';
+    }
+    return base;
+  }
+
+  bool get _canQuickFocus =>
+      widget.onStartFocus != null &&
+      (widget.rule.hasPlanningBlock(widget.goal) ||
+          widget.rule.reminderPolicy.focusTagUuids.isNotEmpty ||
+          widget.goal.defaultFocusMinutes != null);
+
+  Widget _buildQuickFocusButton() {
+    return IconButton.filledTonal(
+      tooltip: '开始专注（达标自动打卡）',
+      onPressed: _busy ? null : _startFocus,
+      icon: Icon(Icons.timer_outlined, size: widget.compact ? 16 : 18),
+      style: IconButton.styleFrom(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(widget.compact ? 10 : 12),
+        ),
+      ),
+    );
   }
 
   String? get _sleepCoachingTargetLabel {
@@ -425,6 +590,8 @@ class _HabitCardState extends State<HabitCard> {
         return _colors.error;
       case HabitDayStatus.inProgress:
         return _colors.primary;
+      case HabitDayStatus.frozen:
+        return _colors.secondary;
       default:
         return _colors.outlineVariant;
     }
@@ -448,6 +615,9 @@ class _HabitCardState extends State<HabitCard> {
         break;
       case HabitDayStatus.skipped:
         text = '已跳过';
+        break;
+      case HabitDayStatus.frozen:
+        text = '免扣保护';
         break;
     }
     return AnimatedSwitcher(
@@ -479,6 +649,13 @@ class _HabitCardState extends State<HabitCard> {
             if (status == HabitDayStatus.met) ...[
               Icon(
                 Icons.check_circle_rounded,
+                size: widget.compact ? 11 : 12,
+                color: color,
+              ),
+              const SizedBox(width: 3),
+            ] else if (status == HabitDayStatus.frozen) ...[
+              Icon(
+                Icons.shield_outlined,
                 size: widget.compact ? 11 : 12,
                 color: color,
               ),
@@ -613,6 +790,10 @@ class _HabitCardState extends State<HabitCard> {
                   ),
                 ),
         ),
+        if (!done && _canQuickFocus) ...[
+          const SizedBox(width: 8),
+          _buildQuickFocusButton(),
+        ],
         if (done) ...[
           const SizedBox(width: 8),
           TextButton(
@@ -868,6 +1049,8 @@ class _HabitCardState extends State<HabitCard> {
           ),
           child: const Text('自定义'),
         ),
+        if (status != HabitDayStatus.met && _canQuickFocus)
+          _buildQuickFocusButton(),
       ],
     );
   }
@@ -1011,6 +1194,10 @@ class _HabitCardState extends State<HabitCard> {
           ),
         ),
         if (actual == null) ...[
+          if (_canQuickFocus) ...[
+            const SizedBox(width: 8),
+            _buildQuickFocusButton(),
+          ],
           const SizedBox(width: 8),
           IconButton.filledTonal(
             tooltip: '指定时间打卡',

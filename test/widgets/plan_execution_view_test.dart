@@ -54,6 +54,47 @@ void main() {
     tags: const [],
   );
 
+  test('按小时动态分轨：无执行记录的小时保持 1 轨，仅重叠小时分 2 或 3 轨', () {
+    final entries = PlanExecutionEntry.forDay(
+      day,
+      [
+        focus, // 01:00–02:00
+        PomodoroRecord(
+          uuid: 'focus-overlap',
+          todoTitle: '重叠专注',
+          startTime: at(15, 0),
+          endTime: at(15, 30),
+          plannedDuration: 1800,
+          actualDuration: 1800,
+        ),
+      ],
+      [
+        log, // 00:00–00:30
+        TimeLogItem(
+          id: 'log-overlap',
+          title: '重叠日志',
+          startTime: at(15, 20),
+          endTime: at(15, 50),
+        ),
+      ],
+    );
+
+    final hourlyCounts = PlanExecutionEntry.hourlyTimelineLaneCounts(
+      day,
+      entries,
+    );
+    // 00:00 仅有日志 -> 2 轨
+    expect(hourlyCounts[0], 2);
+    // 01:00 仅有专注 -> 2 轨
+    expect(hourlyCounts[1], 2);
+    // 08:00–14:00 无专注也无日志 -> 保持 1 轨（课程/规划占满整行高度）
+    for (var h = 8; h <= 14; h++) {
+      expect(hourlyCounts[h], 1, reason: 'hour $h should use 1 lane');
+    }
+    // 15:00 同时有专注与日志 -> 3 轨
+    expect(hourlyCounts[15], 3);
+  });
+
   testWidgets('当天未关联规划的专注和跨天日志可见，列表进入原生详情', (tester) async {
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: summary())));
     expect(find.text('专注'), findsOneWidget);

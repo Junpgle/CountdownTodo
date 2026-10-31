@@ -358,6 +358,81 @@ void main() {
 
       expect(summary.averageTimeMinute, closeTo(0, 1e-9));
     });
+
+    test('免扣卡守护：中途遇到免扣守护日不中断连续天数', () async {
+      final habit = HabitGoal(
+        uuid: 'h1',
+        name: 't',
+        sourceType: HabitSourceType.quantityCheckIn,
+      );
+      final rule = HabitGoalRuleRevision(
+        uuid: 'r1',
+        habitUuid: 'h1',
+        effectiveFromDate: '2026-08-01',
+        periodType: HabitPeriodType.daily,
+        targetValue: 100,
+      );
+      final now = DateTime(2026, 8, 5, 14, 0);
+      final days = _days([
+        // 8/1 达标
+        _day(DateTime(2026, 8, 1), met: true),
+        // 8/2 达标
+        _day(DateTime(2026, 8, 2), met: true),
+        // 8/3 未达标但免扣卡守护（isFrozen = true）
+        _day(DateTime(2026, 8, 3), met: false, isFrozen: true),
+        // 8/4 达标
+        _day(DateTime(2026, 8, 4), met: true),
+        // 8/5 今天达标
+        _day(DateTime(2026, 8, 5), met: true, finished: true),
+      ]);
+
+      final summary = HabitStreakService.summarizeFromDays(
+        habit: habit,
+        days: days,
+        rule: rule,
+        now: now,
+      );
+      // 8/1、8/2、8/4、8/5 共 4 天达标，中途 8/3 免扣守护不打断，总连续为 4 天
+      expect(summary.currentStreak, 4);
+      expect(summary.longestStreak, 4);
+      expect(summary.freezeProtectedCount, 1);
+      // 免扣日不计入逾期次数
+      expect(summary.overdueCount, 0);
+    });
+
+    test('免扣卡守护后若后续未完成且未受保护，连续正常中断', () async {
+      final habit = HabitGoal(
+        uuid: 'h1',
+        name: 't',
+        sourceType: HabitSourceType.quantityCheckIn,
+      );
+      final rule = HabitGoalRuleRevision(
+        uuid: 'r1',
+        habitUuid: 'h1',
+        effectiveFromDate: '2026-08-01',
+        periodType: HabitPeriodType.daily,
+        targetValue: 100,
+      );
+      final now = DateTime(2026, 8, 5, 14, 0);
+      final days = _days([
+        _day(DateTime(2026, 8, 1), met: true),
+        _day(DateTime(2026, 8, 2), met: true),
+        _day(DateTime(2026, 8, 3), met: false, isFrozen: true), // 免扣
+        _day(DateTime(2026, 8, 4), met: false, isFrozen: false), // 未打卡中断
+        _day(DateTime(2026, 8, 5), met: false, finished: false), // 今天进行中
+      ]);
+
+      final summary = HabitStreakService.summarizeFromDays(
+        habit: habit,
+        days: days,
+        rule: rule,
+        now: now,
+      );
+      // 8/4 中断后，当前连续归零
+      expect(summary.currentStreak, 0);
+      // 最长连续包含 8/1、8/2 加上免扣跨接
+      expect(summary.longestStreak, 2);
+    });
   });
 }
 
@@ -367,6 +442,8 @@ HabitDayProgress _day(
   bool met = false,
   bool finished = true,
   bool hasRecord = false,
+  bool isFrozen = false,
+  bool isSkipped = false,
   DateTime? firstAt,
   double? currentValue,
 }) {
@@ -379,6 +456,8 @@ HabitDayProgress _day(
     goalMet: met,
     isPlanned: planned,
     isFinished: finished,
+    isFrozen: isFrozen,
+    isSkipped: isSkipped,
     firstRecordAt: firstAt,
     lastRecordAt: firstAt,
   );

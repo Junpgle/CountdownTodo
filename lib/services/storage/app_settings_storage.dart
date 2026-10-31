@@ -49,6 +49,11 @@ class AppSettingsStorage {
   static const String _wallpaperCacheCleanupTime =
       "app_wallpaper_cache_cleanup_time";
   static const String _wallpaperCustomPath = "app_wallpaper_custom_path";
+  static const String _bingWallpaperCacheUrl = "bing_wallpaper_cache_url";
+  static const String _bingWallpaperCacheCopyright =
+      "bing_wallpaper_cache_copyright";
+  static const String _bingWallpaperCacheDate = "bing_wallpaper_cache_date";
+  static const String _bingWallpaperCacheParams = "bing_wallpaper_cache_params";
 
   static const String _todoFoldersInline = "todo_folders_inline";
   static const String _todoFolderDisplayMode = "todo_folder_display_mode";
@@ -480,6 +485,44 @@ class AppSettingsStorage {
   static Future<void> clearWallpaperCustomPath() async {
     final prefs = await _prefs;
     await prefs.remove(_wallpaperCustomPath);
+  }
+
+  static Future<Map<String, String?>?> getCachedBingWallpaper() async {
+    final prefs = await _prefs;
+    final url = prefs.getString(_bingWallpaperCacheUrl);
+    final date = prefs.getString(_bingWallpaperCacheDate);
+    if (url == null || url.isEmpty || date == null) return null;
+    return {
+      'url': url,
+      'copyright': prefs.getString(_bingWallpaperCacheCopyright),
+      'date': date,
+      'params': prefs.getString(_bingWallpaperCacheParams),
+    };
+  }
+
+  static Future<void> saveCachedBingWallpaper({
+    required String url,
+    String? copyright,
+    required String date,
+    required String params,
+  }) async {
+    final prefs = await _prefs;
+    await prefs.setString(_bingWallpaperCacheUrl, url);
+    if (copyright != null && copyright.isNotEmpty) {
+      await prefs.setString(_bingWallpaperCacheCopyright, copyright);
+    } else {
+      await prefs.remove(_bingWallpaperCacheCopyright);
+    }
+    await prefs.setString(_bingWallpaperCacheDate, date);
+    await prefs.setString(_bingWallpaperCacheParams, params);
+  }
+
+  static Future<void> clearCachedBingWallpaper() async {
+    final prefs = await _prefs;
+    await prefs.remove(_bingWallpaperCacheUrl);
+    await prefs.remove(_bingWallpaperCacheCopyright);
+    await prefs.remove(_bingWallpaperCacheDate);
+    await prefs.remove(_bingWallpaperCacheParams);
   }
 
   static Future<bool> getTodoFoldersInline() async {

@@ -1,12 +1,17 @@
 import 'package:flutter/widgets.dart';
 
-/// Keeps a visited homepage section's loaded content and height when it leaves
-/// the list cache. Recreating an async section with its loading placeholder can
-/// otherwise make the sliver correct the scroll offset during a gentle drag.
+/// Optionally keeps a visited homepage section mounted after it leaves the list
+/// cache. Platforms that opt out can reuse their loaded data through the
+/// dashboard section cache and let the list release the section subtree.
 class HomeDashboardScrollSection extends StatefulWidget {
-  const HomeDashboardScrollSection({super.key, required this.child});
+  const HomeDashboardScrollSection({
+    super.key,
+    required this.child,
+    this.keepAlive = true,
+  });
 
   final Widget child;
+  final bool keepAlive;
 
   @override
   State<HomeDashboardScrollSection> createState() =>
@@ -16,7 +21,13 @@ class HomeDashboardScrollSection extends StatefulWidget {
 class _HomeDashboardScrollSectionState extends State<HomeDashboardScrollSection>
     with AutomaticKeepAliveClientMixin<HomeDashboardScrollSection> {
   @override
-  bool get wantKeepAlive => true;
+  bool get wantKeepAlive => widget.keepAlive;
+
+  @override
+  void didUpdateWidget(covariant HomeDashboardScrollSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.keepAlive != widget.keepAlive) updateKeepAlive();
+  }
 
   @override
   Widget build(BuildContext context) {

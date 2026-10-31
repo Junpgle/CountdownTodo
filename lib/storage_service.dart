@@ -1292,6 +1292,24 @@ class StorageService {
   static Future<void> clearWallpaperCustomPath() =>
       _storage.clearWallpaperCustomPath();
 
+  static Future<Map<String, String?>?> getCachedBingWallpaper() =>
+      _storage.getCachedBingWallpaper();
+
+  static Future<void> saveCachedBingWallpaper({
+    required String url,
+    String? copyright,
+    required String date,
+    required String params,
+  }) => _storage.saveCachedBingWallpaper(
+    url: url,
+    copyright: copyright,
+    date: date,
+    params: params,
+  );
+
+  static Future<void> clearCachedBingWallpaper() =>
+      _storage.clearCachedBingWallpaper();
+
   static Future<bool> getTodoFoldersInline() => _storage.getTodoFoldersInline();
 
   static Future<void> setTodoFoldersInline(bool inline) =>

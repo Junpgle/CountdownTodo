@@ -13,6 +13,7 @@ class JournalMediaService {
   JournalMediaService._();
 
   static final instance = JournalMediaService._();
+  static const int _windowsMaxDecodeDimension = 2048;
 
   Future<JournalAttachment> importImage({
     required String accountId,
@@ -204,13 +205,32 @@ class JournalMediaService {
     }
   }
 
-  ImageProvider<Object>? provider(JournalAttachment attachment) {
+  ImageProvider<Object>? provider(
+    JournalAttachment attachment, {
+    int? width,
+    int? height,
+  }) {
     final path = attachment.localPath;
+    ImageProvider<Object>? baseProvider;
     if (path != null && path.isNotEmpty && File(path).existsSync()) {
-      return FileImage(File(path));
+      baseProvider = FileImage(File(path));
+    } else {
+      final bytes = attachment.imageData;
+      if (bytes != null && bytes.isNotEmpty) {
+        baseProvider = MemoryImage(bytes);
+      }
     }
-    final bytes = attachment.imageData;
-    return bytes == null || bytes.isEmpty ? null : MemoryImage(bytes);
+    if (baseProvider == null) return null;
+    if (width != null || height != null) {
+      return ResizeImage.resizeIfNeeded(width, height, baseProvider);
+    }
+    if (!Platform.isWindows) return baseProvider;
+    return ResizeImage(
+      baseProvider,
+      width: _windowsMaxDecodeDimension,
+      height: _windowsMaxDecodeDimension,
+      policy: ResizeImagePolicy.fit,
+    );
   }
 
   Future<void> delete(JournalAttachment attachment) async {

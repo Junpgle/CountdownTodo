@@ -32,15 +32,16 @@ class LiquidGlassLivePreviewDock extends StatelessWidget {
                   duration: const Duration(milliseconds: 280),
                   transitionBuilder: (child, animation) {
                     return SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(0, 0.4),
-                        end: Offset.zero,
-                      ).animate(
-                        CurvedAnimation(
-                          parent: animation,
-                          curve: Curves.easeOutCubic,
-                        ),
-                      ),
+                      position:
+                          Tween<Offset>(
+                            begin: const Offset(0, 0.4),
+                            end: Offset.zero,
+                          ).animate(
+                            CurvedAnimation(
+                              parent: animation,
+                              curve: Curves.easeOutCubic,
+                            ),
+                          ),
                       child: FadeTransition(opacity: animation, child: child),
                     );
                   },
@@ -87,7 +88,7 @@ class _DockContent extends StatelessWidget {
                     child: Container(
                       constraints: BoxConstraints(
                         maxWidth: 480,
-                        maxHeight: MediaQuery.of(context).size.height * 0.72,
+                        maxHeight: MediaQuery.sizeOf(context).height * 0.72,
                       ),
                       decoration: BoxDecoration(
                         color: (isDark ? const Color(0xFF1E222B) : Colors.white)

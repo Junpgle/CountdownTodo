@@ -610,7 +610,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
       scale: scale,
       child: Container(
         height: 7,
-        width: MediaQuery.of(context).size.width * 0.88,
+        width: MediaQuery.sizeOf(context).width * 0.88,
         decoration: BoxDecoration(
           color: (isDark ? Colors.grey[800] : Colors.white)!.withValues(
             alpha: opacity,
@@ -1210,7 +1210,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
       feedback: Material(
         color: Colors.transparent,
         child: Container(
-          width: MediaQuery.of(context).size.width * 0.8,
+          width: MediaQuery.sizeOf(context).width * 0.8,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: isDark ? Colors.grey[900] : Colors.white,

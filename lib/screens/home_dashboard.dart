@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
 import 'package:flutter_zoom_drawer/flutter_zoom_drawer.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -97,6 +98,8 @@ import '../features/journal/screens/journal_home_screen.dart';
 import '../widgets/home_sections.dart';
 import '../widgets/home_app_bar.dart';
 import '../widgets/home_dashboard_scroll_section.dart';
+import '../widgets/windows_dashboard_scroll_coordinator.dart';
+import '../widgets/stable_image_decode_size.dart';
 import '../widgets/countdown_section_widget.dart';
 import '../widgets/todo_section_widget.dart';
 import '../widgets/pomodoro_today_section.dart';
@@ -151,6 +154,7 @@ part 'home_dashboard_wallpaper.dart';
 part 'home_dashboard_view.dart';
 
 const _homeFocusTabIndex = 4;
+const String _defaultWallpaperAsset = 'assets/images/default_wallpaper.webp';
 
 class HomeDashboard extends StatefulWidget {
   final String username;
@@ -187,11 +191,11 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
 
   bool _hasUsagePermission = true;
   bool _isSyncing = false;
-  String? _wallpaperUrl;
+  String? _wallpaperUrl = _defaultWallpaperAsset;
   Color? _wallpaperDominantColor;
   String? _extractedWallpaperUrl;
   String? _wallpaperCopyright;
-  bool _wallpaperShow = false;
+  bool _wallpaperShow = true;
   bool _isLoadingScreenTime = true;
   bool _isThirtyDayChallengeActive = false;
   int _screenTimeLoadGeneration = 0;
@@ -318,7 +322,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
 
   int _selectedTabIndex = 0;
   bool _focusTabVisited = false;
-  double _lastHomeHeaderExtent = 156.0;
+  double _lastHomeHeaderExtent = 122.0;
   double _lastFocusHeaderExtent = 0.0;
 
   // 待确认的事项数据（从图片识别来）
@@ -501,14 +505,17 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       widget.onError();
-      widget.onImageProvider?.call(
-        const AssetImage('assets/images/default_wallpaper.webp'),
-      );
+      widget.onImageProvider?.call(const AssetImage(_defaultWallpaperAsset));
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    if (AppPlatform.isWindows) {
+      return StableImageDecodeSize(
+        builder: (_, width, height) => _buildImage(width, height),
+      );
+    }
     final media = MediaQuery.sizeOf(context);
     final pixelRatio = MediaQuery.devicePixelRatioOf(context);
     final cacheWidth = (media.width * pixelRatio)
@@ -519,6 +526,10 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
         .round()
         .clamp(1, 4096)
         .toInt();
+    return _buildImage(cacheWidth, cacheHeight);
+  }
+
+  Widget _buildImage(int cacheWidth, int cacheHeight) {
     return CachedNetworkImage(
       imageUrl: widget.url,
       cacheManager: WallpaperCacheService.cacheManager,
@@ -541,16 +552,20 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
         );
       },
       placeholder: (context, url) => Image.asset(
-        'assets/images/default_wallpaper.webp',
+        _defaultWallpaperAsset,
         fit: BoxFit.cover,
+        cacheWidth: cacheWidth,
+        cacheHeight: cacheHeight,
         color: const Color(0x66000000),
         colorBlendMode: BlendMode.srcOver,
       ),
       errorWidget: (context, url, error) {
         _reportFailure();
         return Image.asset(
-          'assets/images/default_wallpaper.webp',
+          _defaultWallpaperAsset,
           fit: BoxFit.cover,
+          cacheWidth: cacheWidth,
+          cacheHeight: cacheHeight,
           color: const Color(0x66000000),
           colorBlendMode: BlendMode.srcOver,
         );

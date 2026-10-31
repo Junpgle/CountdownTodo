@@ -225,16 +225,19 @@ class _ReviewEntry extends StatelessWidget {
   }
 }
 
+final DateFormat _reviewDayFormat = DateFormat('M月d日');
+final DateFormat _reviewTimeFormat = DateFormat('M月d日 HH:mm');
+
 String _deadlineLabel(TodoItem todo) {
   final due = todo.dueDate?.toLocal();
   if (due == null) return '未设置期限';
   return todo.isDateOnly
-      ? '${DateFormat('M月d日').format(due)} 内完成'
-      : '${DateFormat('M月d日 HH:mm').format(due)} 前完成';
+      ? '${_reviewDayFormat.format(due)} 内完成'
+      : '${_reviewTimeFormat.format(due)} 前完成';
 }
 
 String _formatDay(DateTime? value) =>
-    value == null ? '日期待定' : DateFormat('M月d日').format(value);
+    value == null ? '日期待定' : _reviewDayFormat.format(value);
 
 String _formatTime(DateTime? value) =>
-    value == null ? '时间待定' : DateFormat('M月d日 HH:mm').format(value);
+    value == null ? '时间待定' : _reviewTimeFormat.format(value);
