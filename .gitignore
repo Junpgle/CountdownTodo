@@ -279,6 +279,7 @@ todo.md
 !/test/features/habits/habit_streak_service_test.dart
 !/test/features/habits/habit_repository_test.dart
 !/test/features/habits/habit_time_point_chart_test.dart
+!/test/features/habits/habit_edit_screen_layout_test.dart
 !/test/features/finance/
 /test/features/finance/*
 !/test/features/finance/finance_cumulative_balance_test.dart

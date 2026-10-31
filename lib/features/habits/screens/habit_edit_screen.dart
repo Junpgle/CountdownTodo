@@ -1140,7 +1140,9 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         16,
         12,
         16,
-        isWide ? 12 : (bottomPadding > 0 ? bottomPadding : 12),
+        useFloating
+            ? 12
+            : (isWide ? 12 : (bottomPadding > 0 ? bottomPadding : 12)),
       ),
       decoration: useFloating
           ? null
@@ -1162,7 +1164,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       child: Row(
         mainAxisSize: useFloating ? MainAxisSize.min : MainAxisSize.max,
         children: [
-          if (_step > 0)
+          if (_step > 0) ...[
             OutlinedButton.icon(
               onPressed: _saving ? null : () => setState(() => _step--),
               icon: const Icon(Icons.arrow_back_rounded, size: 18),
@@ -1176,10 +1178,9 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-            )
-          else
-            const SizedBox(width: 0),
-          if (_step > 0 && useFloating) const SizedBox(width: 12),
+            ),
+            if (useFloating) const SizedBox(width: 12),
+          ],
           if (!useFloating) const Spacer(),
           if (_step < lastStep)
             FilledButton.icon(
@@ -1242,7 +1243,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     final control = FloatingGlassControl(
       height: useFloating ? null : 88,
       margin: useFloating
-          ? const EdgeInsets.fromLTRB(16, 8, 16, 24)
+          ? const EdgeInsets.fromLTRB(16, 8, 16, 12)
           : EdgeInsets.zero,
       borderRadius: useFloating ? 28 : 0,
       mobilePortraitOnly: true,
@@ -1250,7 +1251,14 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     );
 
     return useFloating
-        ? Align(alignment: Alignment.centerRight, child: control)
+        ? SafeArea(
+            top: false,
+            child: Align(
+              alignment: Alignment.centerRight,
+              heightFactor: 1.0,
+              child: control,
+            ),
+          )
         : control;
   }
 
