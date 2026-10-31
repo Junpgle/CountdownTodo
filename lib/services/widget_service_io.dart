@@ -806,8 +806,9 @@ class WidgetService {
             .toList()
           ..sort((a, b) {
             if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
-            if (a.priority != b.priority)
+            if (a.priority != b.priority) {
               return b.priority.compareTo(a.priority);
+            }
             return 0;
           });
 

@@ -1364,8 +1364,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                                   lastDate: DateTime(2100),
                                   initialDate: _createdDate,
                                 );
-                                if (!context.mounted || pickedDate == null)
+                                if (!context.mounted || pickedDate == null) {
                                   return;
+                                }
                                 if (_isAllDay) {
                                   setState(() {
                                     _createdDate = DateTime(
@@ -1417,8 +1418,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                                   lastDate: DateTime(2100),
                                   initialDate: _createdDate,
                                 );
-                                if (!context.mounted || pickedDate == null)
+                                if (!context.mounted || pickedDate == null) {
                                   return;
+                                }
                                 final pickedTime = await showAppTimePicker(
                                   context: context,
                                   initialTime: TimeOfDay.fromDateTime(
@@ -1460,8 +1462,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                                   lastDate: DateTime(2100),
                                   initialDate: _dueDate ?? _createdDate,
                                 );
-                                if (!context.mounted || pickedDate == null)
+                                if (!context.mounted || pickedDate == null) {
                                   return;
+                                }
                                 if (_isAllDay) {
                                   setState(
                                     () => _dueDate = DateTime(

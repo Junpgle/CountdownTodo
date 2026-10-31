@@ -44,8 +44,9 @@ class TodoOverdueTriageService {
       if (item.isDeleted ||
           item.isDone ||
           item.isSkipped ||
-          item.dueDate == null)
+          item.dueDate == null) {
         return false;
+      }
       if (excludedRecurrenceSeriesIds.contains(item.recurrenceSeriesId)) {
         return false;
       }

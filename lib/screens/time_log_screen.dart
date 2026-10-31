@@ -3124,7 +3124,7 @@ class _GridCanvas extends StatelessWidget {
       final fillColor = base.withValues(alpha: isDark ? 0.16 : 0.10);
       final barColor = base.withValues(alpha: 0.75);
       final borderColor = base.withValues(alpha: isDark ? 0.40 : 0.30);
-      final onTap = () => onScheduleTap(schedule);
+      void onTap() => onScheduleTap(schedule);
 
       int row = startMinF ~/ 60;
       bool isFirst = true;

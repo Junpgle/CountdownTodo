@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
+import 'package:flutter/rendering.dart';
 
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../utils/page_transitions.dart';
@@ -229,8 +229,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: ListView(
-        cacheExtent: 2500,
-        padding: EdgeInsets.fromLTRB(
+        scrollCacheExtent: ScrollCacheExtent.pixels(2500), padding: EdgeInsets.fromLTRB(
           16,
           widget.topPadding + 8,
           16,
