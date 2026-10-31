@@ -213,10 +213,6 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
             AppPlatform.isWindows && clipBehavior == Clip.antiAlias
             ? Clip.hardEdge
             : clipBehavior;
-        final useStaticAndroidMaterial =
-            AppPlatform.isAndroid &&
-            (MediaQuery.sizeOf(context).width >= 768.0 ||
-                _OptionalGlassScrollableScope.contains(context));
         final useStaticOverlayMaterial =
             OptionalLiquidGlassOverlayScope.isActive(context);
         final tintSource = tint ?? colorScheme.primary;
@@ -233,7 +229,6 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
         final useStaticMaterial =
             mode == OptionalLiquidGlassPanelMode.staticMaterial ||
             useStaticOverlayMaterial ||
-            useStaticAndroidMaterial ||
             useStaticWindowsMaterial ||
             (mode == OptionalLiquidGlassPanelMode.adaptiveRepeated &&
                 !enhanced);
