@@ -487,7 +487,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
       );
     }
 
-    final isWideScreen = MediaQuery.of(context).size.width > 768;
+    final isWideScreen = MediaQuery.sizeOf(context).width > 768;
     final standalone = !widget.isEmbedded && !isWideScreen;
 
     return Scaffold(
@@ -1336,7 +1336,7 @@ class _SalutationSlotEditDialogState extends State<_SalutationSlotEditDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final isWideScreen = MediaQuery.of(context).size.width > 500;
+    final isWideScreen = MediaQuery.sizeOf(context).width > 500;
 
     return AlertDialog(
       title: const Text('编辑时间问候语'),
@@ -1492,7 +1492,7 @@ class _TimeSlotEditDialogState extends State<_TimeSlotEditDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final isWideScreen = MediaQuery.of(context).size.width > 500;
+    final isWideScreen = MediaQuery.sizeOf(context).width > 500;
 
     return AlertDialog(
       title: const Text('编辑时段'),

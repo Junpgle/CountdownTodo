@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:uuid/uuid.dart';
 
 import '../../../utils/json_value_parser.dart';
+import 'habit_goal.dart';
 
 /// 目标周期类型。
 enum HabitPeriodType {
@@ -31,7 +32,7 @@ enum HabitTimeComparison {
   after,
 }
 
-/// 提醒策略（第一版仅保存配置，调度由提醒服务负责）。
+/// 提醒与规划策略（保存在 `reminder_policy_json` 中，兼容多端同步）。
 class HabitReminderPolicy {
   /// 固定提醒时刻（一天内的分钟数，0..1439）。
   final List<int> fixedTimes;
@@ -45,18 +46,75 @@ class HabitReminderPolicy {
   /// 当日汇总提醒。
   final bool dailySummaryReminder;
 
+  /// 是否作为软日程预留接入「今日容量与规划块」。
+  final bool includeInPlanning;
+
+  /// 偏好执行开始时刻（一天内的分钟数，0..1439）。
+  final int? preferredStartMinute;
+
+  /// 预计执行耗时（分钟）。
+  final int? plannedDurationMinutes;
+
+  /// 绑定的番茄钟专注标签 UUID（供非专注时长型习惯一键启动专注使用）。
+  final List<String> focusTagUuids;
+
+  /// 番茄钟专注达标后是否自动完成今日习惯打卡。
+  final bool autoCheckInOnFocus;
+
   const HabitReminderPolicy({
     this.fixedTimes = const [],
     this.progressReminder = false,
     this.nearEndReminder = false,
     this.dailySummaryReminder = false,
+    this.includeInPlanning = false,
+    this.preferredStartMinute,
+    this.plannedDurationMinutes,
+    this.focusTagUuids = const [],
+    this.autoCheckInOnFocus = true,
   });
+
+  HabitReminderPolicy copyWith({
+    List<int>? fixedTimes,
+    bool? progressReminder,
+    bool? nearEndReminder,
+    bool? dailySummaryReminder,
+    bool? includeInPlanning,
+    int? preferredStartMinute,
+    bool clearPreferredStartMinute = false,
+    int? plannedDurationMinutes,
+    bool clearPlannedDurationMinutes = false,
+    List<String>? focusTagUuids,
+    bool? autoCheckInOnFocus,
+  }) {
+    return HabitReminderPolicy(
+      fixedTimes: fixedTimes ?? this.fixedTimes,
+      progressReminder: progressReminder ?? this.progressReminder,
+      nearEndReminder: nearEndReminder ?? this.nearEndReminder,
+      dailySummaryReminder: dailySummaryReminder ?? this.dailySummaryReminder,
+      includeInPlanning: includeInPlanning ?? this.includeInPlanning,
+      preferredStartMinute: clearPreferredStartMinute
+          ? null
+          : (preferredStartMinute ?? this.preferredStartMinute),
+      plannedDurationMinutes: clearPlannedDurationMinutes
+          ? null
+          : (plannedDurationMinutes ?? this.plannedDurationMinutes),
+      focusTagUuids: focusTagUuids ?? this.focusTagUuids,
+      autoCheckInOnFocus: autoCheckInOnFocus ?? this.autoCheckInOnFocus,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
     'fixed_times': fixedTimes,
     'progress_reminder': progressReminder ? 1 : 0,
     'near_end_reminder': nearEndReminder ? 1 : 0,
     'daily_summary_reminder': dailySummaryReminder ? 1 : 0,
+    if (includeInPlanning) 'include_in_planning': 1,
+    if (preferredStartMinute != null)
+      'preferred_start_minute': preferredStartMinute,
+    if (plannedDurationMinutes != null)
+      'planned_duration_minutes': plannedDurationMinutes,
+    if (focusTagUuids.isNotEmpty) 'focus_tag_uuids': focusTagUuids,
+    if (!autoCheckInOnFocus) 'auto_checkin_on_focus': 0,
   };
 
   factory HabitReminderPolicy.fromJson(Map<String, dynamic> json) {
@@ -68,6 +126,21 @@ class HabitReminderPolicy {
           .where((e) => e >= 0 && e < 1440)
           .toList();
     }
+    List<String> focusTags = [];
+    final rawTags = json['focus_tag_uuids'];
+    if (rawTags is List) {
+      focusTags = rawTags
+          .map((e) => e.toString().trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+    }
+    final rawStart = int.tryParse(
+      json['preferred_start_minute']?.toString() ?? '',
+    );
+    final rawDuration = int.tryParse(
+      json['planned_duration_minutes']?.toString() ?? '',
+    );
+    final rawAutoCheckIn = json['auto_checkin_on_focus'];
     return HabitReminderPolicy(
       fixedTimes: times,
       progressReminder:
@@ -77,6 +150,19 @@ class HabitReminderPolicy {
       dailySummaryReminder:
           json['daily_summary_reminder'] == 1 ||
           json['daily_summary_reminder'] == true,
+      includeInPlanning:
+          json['include_in_planning'] == 1 ||
+          json['include_in_planning'] == true,
+      preferredStartMinute: rawStart != null && rawStart >= 0 && rawStart < 1440
+          ? rawStart
+          : null,
+      plannedDurationMinutes: rawDuration != null && rawDuration > 0
+          ? rawDuration
+          : null,
+      focusTagUuids: focusTags,
+      autoCheckInOnFocus: rawAutoCheckIn == null
+          ? true
+          : (rawAutoCheckIn == 1 || rawAutoCheckIn == true),
     );
   }
 }
@@ -184,6 +270,56 @@ class HabitGoalRuleRevision {
       return false;
     }
     return true;
+  }
+
+  /// 解析习惯的预计耗时（分钟）。
+  int effectivePlannedMinutes(HabitGoal goal) {
+    final configured = reminderPolicy.plannedDurationMinutes;
+    if (configured != null && configured > 0) {
+      return configured.clamp(5, 720);
+    }
+    final defaultFocus = goal.defaultFocusMinutes;
+    if (defaultFocus != null && defaultFocus > 0) {
+      return defaultFocus.clamp(5, 720);
+    }
+    if (goal.sourceType == HabitSourceType.pomodoroTag ||
+        goal.sourceType == HabitSourceType.durationCheckIn) {
+      final mins = (targetValue / 60).round();
+      if (mins > 0) return mins.clamp(5, 720);
+    }
+    return 25;
+  }
+
+  /// 解析习惯的偏好执行开始时刻（一天内的分钟数，0..1439）。
+  int? effectivePreferredStartMinute() {
+    final configured = reminderPolicy.preferredStartMinute;
+    if (configured != null && configured >= 0 && configured < 1440) {
+      return configured;
+    }
+    if (targetTimeMinute != null &&
+        targetTimeMinute! >= 0 &&
+        targetTimeMinute! < 1440) {
+      return targetTimeMinute;
+    }
+    if (reminderPolicy.fixedTimes.isNotEmpty) {
+      return reminderPolicy.fixedTimes.first;
+    }
+    return null;
+  }
+
+  /// 是否已启用且具备生成今日容量与规划软块的完整时间参数。
+  bool hasPlanningBlock(HabitGoal goal) {
+    return reminderPolicy.includeInPlanning &&
+        effectivePreferredStartMinute() != null &&
+        effectivePlannedMinutes(goal) > 0;
+  }
+
+  /// 解析习惯关联的番茄钟标签 UUID 列表。
+  List<String> effectiveFocusTagUuids(HabitGoal goal) {
+    if (goal.sourceType == HabitSourceType.pomodoroTag) {
+      return goal.sourceIds;
+    }
+    return reminderPolicy.focusTagUuids;
   }
 
   Map<String, dynamic> toJson() => {

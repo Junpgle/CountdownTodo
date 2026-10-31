@@ -257,7 +257,7 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
                               child: ConstrainedBox(
                                 constraints: BoxConstraints(
                                   maxHeight:
-                                      MediaQuery.of(context).size.height * 0.45,
+                                      MediaQuery.sizeOf(context).height * 0.45,
                                 ),
                                 child: AspectRatio(
                                   aspectRatio: _controller.value.aspectRatio,

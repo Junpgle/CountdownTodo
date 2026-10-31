@@ -216,11 +216,11 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
         SizedBox(height: widget.compact ? 2 : 4),
 
         // ── 内容 ──
-        if (_loading)
+        if (_loading && _snapshot == null)
           Center(
             child: Padding(
               padding: EdgeInsets.all(widget.compact ? 16 : 24),
-              child: CircularProgressIndicator(),
+              child: const CircularProgressIndicator(),
             ),
           )
         else if (_snapshot == null || _snapshot!.isEmpty)
@@ -322,15 +322,15 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
       fallbackDecoration: BoxDecoration(
         color: widget.isLight
             ? (useDarkGlass
-                ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
-                : colorScheme.surface.withValues(alpha: 0.92))
+                  ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
+                  : colorScheme.surface.withValues(alpha: 0.92))
             : colorScheme.surfaceContainerLow.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
           color: widget.isLight
               ? (useDarkGlass
-                  ? Colors.white.withValues(alpha: 0.15)
-                  : Colors.white.withValues(alpha: 0.6))
+                    ? Colors.white.withValues(alpha: 0.15)
+                    : Colors.white.withValues(alpha: 0.6))
               : Theme.of(context).dividerColor.withValues(alpha: 0.4),
         ),
         boxShadow: [
@@ -373,20 +373,24 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
       progress: progress,
     );
     return Padding(
+      key: ValueKey('habit-today-wrap-${goal.uuid}'),
       padding: EdgeInsets.only(bottom: widget.compact ? 4 : 10),
-      child: HabitCard(
-        animationKey: _cardKeyFor(goal),
-        compact: widget.compact,
-        goal: goal,
-        rule: rule,
-        dayProgress: dayProgress,
-        sleepCoachingMetric: _snapshot!.sleepCoachingMetricFor(goal),
-        username: widget.username,
-        isLight: widget.isLight,
-        onChanged: _refreshData,
-        onStartFocus: widget.onStartFocus ?? _startFocus,
-        onViewRecords: widget.onViewRecords ?? () => _viewRecords(goal),
-        onTap: () => _viewRecords(goal),
+      child: RepaintBoundary(
+        child: HabitCard(
+          key: ValueKey('habit-today-card-${goal.uuid}'),
+          animationKey: _cardKeyFor(goal),
+          compact: widget.compact,
+          goal: goal,
+          rule: rule,
+          dayProgress: dayProgress,
+          sleepCoachingMetric: _snapshot!.sleepCoachingMetricFor(goal),
+          username: widget.username,
+          isLight: widget.isLight,
+          onChanged: _refreshData,
+          onStartFocus: widget.onStartFocus ?? _startFocus,
+          onViewRecords: widget.onViewRecords ?? () => _viewRecords(goal),
+          onTap: () => _viewRecords(goal),
+        ),
       ),
     );
   }

@@ -449,7 +449,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
                 padding: EdgeInsets.zero,
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: MediaQuery.of(context).size.width > 600 ? 3 : 2,
+                crossAxisCount: MediaQuery.sizeOf(context).width > 600 ? 3 : 2,
                 mainAxisSpacing: 16,
                 crossAxisSpacing: 16,
                 childAspectRatio: 0.95,

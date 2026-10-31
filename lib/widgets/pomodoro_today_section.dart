@@ -49,6 +49,8 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
   List<PomodoroRecord> _records = [];
   final Map<String, GlobalKey> _recordCardKeys = {};
   bool _loading = true;
+  bool _hasLoaded = false;
+  int _loadGeneration = 0;
   bool _collapsed = false;
   bool _showAllRecords = false;
   bool _isToday = true;
@@ -100,6 +102,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
   /// 只读本地数据（云端同步由首页统一负责）
   Future<void> _loadData() async {
     if (!mounted) return;
+    final loadGen = ++_loadGeneration;
     final today = DateUtils.dateOnly(DateTime.now());
     final cacheKey =
         'pomodoro/${widget.username}/${today.year}-${today.month}-${today.day}'
@@ -109,7 +112,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
           cacheKey,
         );
     if (cached == null) {
-      setState(() => _loading = true);
+      if (!_hasLoaded) setState(() => _loading = true);
     } else {
       _loading = false;
     }
@@ -117,16 +120,16 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
     try {
       final recordSnapshot =
           cached ??
-          await HomeDashboardSectionDataCache.load(
-            cacheKey,
-            () async => (
-              today: await PomodoroService.getTodayRecords(),
-              yesterday: await PomodoroService.getYesterdayRecords(),
-            ),
-          );
+          await HomeDashboardSectionDataCache.load(cacheKey, () async {
+            final results = await Future.wait([
+              PomodoroService.getTodayRecords(),
+              PomodoroService.getYesterdayRecords(),
+            ]);
+            return (today: results[0], yesterday: results[1]);
+          });
       final todayRecords = recordSnapshot.today;
       final yesterdayRecords = recordSnapshot.yesterday;
-      if (!mounted) return;
+      if (!mounted || loadGen != _loadGeneration) return;
 
       var yesterdaySeconds = 0;
       for (final r in yesterdayRecords) {
@@ -185,6 +188,11 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
         (uuid, _) => !activeRecordUuids.contains(uuid),
       );
 
+      final recordsChanged =
+          !_hasLoaded ||
+          _records.length != records.length ||
+          _totalSeconds != totalSeconds;
+
       setState(() {
         _records = records;
         _isToday = isToday;
@@ -196,13 +204,19 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
         _maxHourlySeconds = maxHourlySeconds;
         _selectedHour = null;
         _loading = false;
+        _hasLoaded = true;
       });
 
-      _chartAnimationController.forward(from: 0.0);
+      if (recordsChanged) {
+        _chartAnimationController.forward(from: 0.0);
+      }
     } catch (e, stack) {
       debugPrint('PomodoroTodaySection _loadData error: $e\n$stack');
-      if (mounted) {
-        setState(() => _loading = false);
+      if (mounted && loadGen == _loadGeneration) {
+        setState(() {
+          _loading = false;
+          _hasLoaded = true;
+        });
       }
     }
   }
@@ -399,7 +413,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
               ),
               const SizedBox(width: 8),
               // 今日 / 昨日 标签
-              if (!_loading)
+              if (!_loading || _hasLoaded)
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
@@ -498,7 +512,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
       borderRadius: 24,
       fallbackDecoration: fallbackDecoration,
       padding: const EdgeInsets.all(18),
-      child: _loading
+      child: (_loading && !_hasLoaded)
           ? const Padding(
               padding: EdgeInsets.symmetric(vertical: 36),
               child: Center(child: CircularProgressIndicator(strokeWidth: 3)),
@@ -639,19 +653,21 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
           return Stack(
             alignment: Alignment.center,
             children: [
-              CustomPaint(
-                size: const Size(68, 68),
-                painter: _FocusRingPainter(
-                  progress: animatedProgress,
-                  trackColor: isDark
-                      ? Colors.white.withValues(alpha: 0.08)
-                      : primaryColor.withValues(alpha: 0.12),
-                  gradientColors: [
-                    primaryColor.withValues(alpha: 0.8),
-                    tertiaryColor,
-                  ],
-                  overflowColor: Colors.amber,
-                  strokeWidth: 6.0,
+              RepaintBoundary(
+                child: CustomPaint(
+                  size: const Size(68, 68),
+                  painter: _FocusRingPainter(
+                    progress: animatedProgress,
+                    trackColor: isDark
+                        ? Colors.white.withValues(alpha: 0.08)
+                        : primaryColor.withValues(alpha: 0.12),
+                    gradientColors: [
+                      primaryColor.withValues(alpha: 0.8),
+                      tertiaryColor,
+                    ],
+                    overflowColor: Colors.amber,
+                    strokeWidth: 6.0,
+                  ),
                 ),
               ),
               Column(
@@ -1524,6 +1540,16 @@ class _FocusRingPainter extends CustomPainter {
   final Color? overflowColor;
   final double strokeWidth;
 
+  final Paint _trackPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
+  final Paint _basePaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
+  final Paint _overflowPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
+
   _FocusRingPainter({
     required this.progress,
     required this.trackColor,
@@ -1538,12 +1564,10 @@ class _FocusRingPainter extends CustomPainter {
     final radius = (size.width - strokeWidth) / 2;
 
     // 1. 底层轨道圆环
-    final trackPaint = Paint()
+    _trackPaint
       ..color = trackColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
-    canvas.drawCircle(center, radius, trackPaint);
+      ..strokeWidth = strokeWidth;
+    canvas.drawCircle(center, radius, _trackPaint);
 
     if (progress <= 0.001) return;
 
@@ -1553,34 +1577,30 @@ class _FocusRingPainter extends CustomPainter {
     final baseProgress = progress.clamp(0.0, 1.0);
     final baseSweep = 2 * pi * baseProgress;
 
-    final basePaint = Paint()
+    _basePaint
       ..shader = SweepGradient(colors: gradientColors).createShader(rect)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
+      ..strokeWidth = strokeWidth;
 
     canvas.save();
     canvas.translate(center.dx, center.dy);
     canvas.rotate(-pi / 2);
     canvas.translate(-center.dx, -center.dy);
-    canvas.drawArc(rect, 0, baseSweep, false, basePaint);
+    canvas.drawArc(rect, 0, baseSweep, false, _basePaint);
     canvas.restore();
 
     // 3. 超额达成金色弧线（progress > 1.0）
     if (progress > 1.0 && overflowColor != null) {
       final overflowProgress = (progress - 1.0).clamp(0.0, 1.0);
       final overflowSweep = 2 * pi * overflowProgress;
-      final overflowPaint = Paint()
+      _overflowPaint
         ..color = overflowColor!
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = strokeWidth
-        ..strokeCap = StrokeCap.round;
+        ..strokeWidth = strokeWidth;
 
       canvas.save();
       canvas.translate(center.dx, center.dy);
       canvas.rotate(-pi / 2);
       canvas.translate(-center.dx, -center.dy);
-      canvas.drawArc(rect, 0, overflowSweep, false, overflowPaint);
+      canvas.drawArc(rect, 0, overflowSweep, false, _overflowPaint);
       canvas.restore();
     }
   }

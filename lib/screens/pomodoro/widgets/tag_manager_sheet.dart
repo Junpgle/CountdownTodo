@@ -126,7 +126,7 @@ class _TagManagerSheetState extends State<TagManagerSheet>
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: MediaQuery.of(context).viewInsets,
+      padding: MediaQuery.viewInsetsOf(context),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

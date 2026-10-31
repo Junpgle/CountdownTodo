@@ -1862,7 +1862,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
             ],
           ),
           content: SizedBox(
-            width: MediaQuery.of(context).size.width * 0.86,
+            width: MediaQuery.sizeOf(context).width * 0.86,
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -3527,7 +3527,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       builder: (ctx) => AlertDialog(
         title: const Text('模型原始回复'),
         content: SizedBox(
-          width: MediaQuery.of(context).size.width * 0.82,
+          width: MediaQuery.sizeOf(ctx).width * 0.82,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 720, maxHeight: 560),
             child: SingleChildScrollView(

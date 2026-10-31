@@ -94,6 +94,7 @@ class _DayView extends StatefulWidget {
   final bool crossDay;
   final List<TimeLogItem> logs;
   final List<TodoPlanBlock> planBlocks;
+  final List<TimeLogMappedSchedule> schedules;
   final List<PomodoroRecord> pomodoros;
   final List<PomodoroTag> tags;
   final List<TodoItem> todos;
@@ -114,6 +115,7 @@ class _DayView extends StatefulWidget {
     required this.crossDay,
     required this.logs,
     required this.planBlocks,
+    this.schedules = const [],
     required this.pomodoros,
     required this.tags,
     required this.todos,
@@ -144,11 +146,13 @@ class _DayViewState extends State<_DayView> {
   Map<String, int> _tagIndicesByUuid = const {};
   List<TimeLogItem>? _dayLogsSource;
   List<TodoPlanBlock>? _dayPlanBlocksSource;
+  List<TimeLogMappedSchedule>? _daySchedulesSource;
   List<PomodoroRecord>? _dayPomodorosSource;
   int? _dayRecordsStartMs;
   int? _dayRecordsEndMs;
   List<TimeLogItem> _dayLogs = const [];
   List<TodoPlanBlock> _dayPlanBlocks = const [];
+  List<TimeLogMappedSchedule> _daySchedules = const [];
   List<PomodoroRecord> _dayPomodoros = const [];
   final Paint _selectionPaint = Paint();
   final Paint _currentTimeLinePaint = Paint();
@@ -176,6 +180,7 @@ class _DayViewState extends State<_DayView> {
     final gridEndMs = _dayEndMs(_gridStart);
     if (identical(_dayLogsSource, widget.logs) &&
         identical(_dayPlanBlocksSource, widget.planBlocks) &&
+        identical(_daySchedulesSource, widget.schedules) &&
         identical(_dayPomodorosSource, widget.pomodoros) &&
         _dayRecordsStartMs == gridStartMs &&
         _dayRecordsEndMs == gridEndMs) {
@@ -184,6 +189,7 @@ class _DayViewState extends State<_DayView> {
 
     _dayLogsSource = widget.logs;
     _dayPlanBlocksSource = widget.planBlocks;
+    _daySchedulesSource = widget.schedules;
     _dayPomodorosSource = widget.pomodoros;
     _dayRecordsStartMs = gridStartMs;
     _dayRecordsEndMs = gridEndMs;
@@ -194,6 +200,11 @@ class _DayViewState extends State<_DayView> {
     _dayPlanBlocks = [
       for (final block in widget.planBlocks)
         if (block.endTime > gridStartMs && block.startTime < gridEndMs) block,
+    ];
+    _daySchedules = [
+      for (final schedule in widget.schedules)
+        if (schedule.endTime > gridStartMs && schedule.startTime < gridEndMs)
+          schedule,
     ];
     _dayPomodoros = [
       for (final pomodoro in widget.pomodoros)
@@ -817,6 +828,7 @@ class _DayViewState extends State<_DayView> {
                           minutesPerBlock: _minutesPerBlock,
                           logs: _dayLogs,
                           planBlocks: _dayPlanBlocks,
+                          schedules: _daySchedules,
                           showPlans: widget.entryMode == _EntryMode.plan,
                           tags: widget.tags,
                           tagIndicesByUuid: _tagIndicesFor(widget.tags),
@@ -834,21 +846,23 @@ class _DayViewState extends State<_DayView> {
                     ),
                     Positioned.fill(
                       child: IgnorePointer(
-                        child: CustomPaint(
-                          size: Size(w, totalH),
-                          painter: _DayGridInteractionPainter(
-                            minutesPerBlock: _minutesPerBlock,
-                            dragStart: _dragStart,
-                            dragEnd: _dragEnd,
-                            gridStart: _gridStart,
-                            selColor: selTag != null
-                                ? hexColor(selTag.color, opacity: 0.48)
-                                : accent.withValues(alpha: 0.45),
-                            nowColor: colorScheme.cdtFocus,
-                            hourH: hourH,
-                            selectionPaint: _selectionPaint,
-                            currentTimeLinePaint: _currentTimeLinePaint,
-                            currentTimeDotPaint: _currentTimeDotPaint,
+                        child: RepaintBoundary(
+                          child: CustomPaint(
+                            size: Size(w, totalH),
+                            painter: _DayGridInteractionPainter(
+                              minutesPerBlock: _minutesPerBlock,
+                              dragStart: _dragStart,
+                              dragEnd: _dragEnd,
+                              gridStart: _gridStart,
+                              selColor: selTag != null
+                                  ? hexColor(selTag.color, opacity: 0.48)
+                                  : accent.withValues(alpha: 0.45),
+                              nowColor: colorScheme.cdtFocus,
+                              hourH: hourH,
+                              selectionPaint: _selectionPaint,
+                              currentTimeLinePaint: _currentTimeLinePaint,
+                              currentTimeDotPaint: _currentTimeDotPaint,
+                            ),
                           ),
                         ),
                       ),
@@ -1014,7 +1028,7 @@ class _DayViewState extends State<_DayView> {
         16,
         14,
         16,
-        MediaQuery.of(context).padding.bottom + 14,
+        MediaQuery.paddingOf(context).bottom + 14,
       ),
       fallbackDecoration: BoxDecoration(
         color: _TC.card(context),
@@ -1084,6 +1098,7 @@ class _DayGridPainter extends CustomPainter {
   final int minutesPerBlock;
   final List<TimeLogItem> logs;
   final List<TodoPlanBlock> planBlocks;
+  final List<TimeLogMappedSchedule> schedules;
   final bool showPlans;
   final List<PomodoroTag> tags;
   final DateTime gridStart;
@@ -1099,6 +1114,7 @@ class _DayGridPainter extends CustomPainter {
     required this.minutesPerBlock,
     required this.logs,
     required this.planBlocks,
+    this.schedules = const [],
     required this.showPlans,
     required this.tags,
     required this.tagIndicesByUuid,
@@ -1160,6 +1176,46 @@ class _DayGridPainter extends CustomPainter {
         Offset(c * bw, size.height),
         c % 4 == 0 ? mj : mn,
       );
+    }
+
+    for (final schedule in schedules) {
+      if (schedule.endTime <= gsMs || schedule.startTime >= geMs) continue;
+      final sMs = max(schedule.startTime, gsMs);
+      final eMs = min(schedule.endTime, geMs);
+      final sIdx = (sMs - gsMs) ~/ (60000 * minutesPerBlock);
+      final eIdx = ((eMs - gsMs - 1) ~/ (60000 * minutesPerBlock)).clamp(
+        0,
+        24 * bpr - 1,
+      );
+      final base = schedule.isCourse
+          ? (isDark ? const Color(0xFF64B5F6) : const Color(0xFF1E88E5))
+          : (isDark ? const Color(0xFFFFB74D) : const Color(0xFFFB8C00));
+      final fill = base.withValues(alpha: isDark ? 0.16 : 0.10);
+      final bar = base.withValues(alpha: 0.65);
+      eventFillPaint.color = fill;
+      eventBarPaint.color = bar;
+      for (int i = sIdx; i <= eIdx; i++) {
+        final rowStartMs = gsMs + i * 60 * minutesPerBlock * 1000;
+        final rowEndMs = rowStartMs + 60 * minutesPerBlock * 1000;
+        final segStart = max(sMs, rowStartMs);
+        final segEnd = min(eMs, rowEndMs);
+        final startOffset =
+            (segStart - rowStartMs) / (60 * minutesPerBlock * 1000);
+        final endOffset = (segEnd - rowStartMs) / (60 * minutesPerBlock * 1000);
+        final left = i % bpr * bw + startOffset * bw;
+        final width = ((endOffset - startOffset) * bw).clamp(1.0, bw);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(left, i ~/ bpr * hourH + 1, width, hourH - 2),
+            const Radius.circular(3),
+          ),
+          eventFillPaint,
+        );
+        canvas.drawRect(
+          Rect.fromLTWH(left, i ~/ bpr * hourH + 1, 2.5, hourH - 2),
+          eventBarPaint,
+        );
+      }
     }
 
     for (final log in logs) {
@@ -1256,6 +1312,7 @@ class _DayGridPainter extends CustomPainter {
       o.minutesPerBlock != minutesPerBlock ||
       !identical(o.logs, logs) ||
       !identical(o.planBlocks, planBlocks) ||
+      !identical(o.schedules, schedules) ||
       o.showPlans != showPlans ||
       !identical(o.tags, tags) ||
       o.gridStart != gridStart ||
@@ -1592,7 +1649,7 @@ class _PlanEntrySheetState extends State<_PlanEntrySheet> {
     return OptionalLiquidGlassSheet(
       topRadius: 20,
       padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
         left: 20,
         right: 20,
         top: 20,
@@ -2138,7 +2195,7 @@ class _TimeLogEntrySheetState extends State<TimeLogEntrySheet> {
         key: _sheetKey,
         topRadius: 20,
         padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+          bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
           left: 20,
           right: 20,
           top: 20,
@@ -2555,7 +2612,7 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
               : widget.tag.name,
           startTime: pomodoro.startTime,
           endTime: endTime,
-          durationMin: (endTime - pomodoro.startTime) ~/ 60000,
+          durationMin: pomodoro.effectiveDuration ~/ 60,
           id: pomodoro.uuid,
           timeRangeLabel: _tagDateTimeRange(start, end),
           isCompleted: pomodoro.isCompleted,
@@ -2950,7 +3007,7 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
               },
             ),
           ),
-          SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
+          SizedBox(height: MediaQuery.paddingOf(context).bottom + 16),
         ],
       ),
     );
@@ -3271,7 +3328,7 @@ class _MiniLineChartState extends State<_MiniLineChart> {
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width - 40;
+    final screenWidth = MediaQuery.sizeOf(context).width - 40;
     const double itemW = 55.0; // 固定间距
     final double chartContentW = (widget.data.length - 1) * itemW + 40;
     final double scrollWidth = max(screenWidth, chartContentW);
@@ -3303,12 +3360,14 @@ class _MiniLineChartState extends State<_MiniLineChart> {
                     painter: _LineChartPathPainter(geometry: geometry),
                   ),
                 ),
-                CustomPaint(
-                  painter: _LineChartPainter(
-                    geometry: geometry,
-                    xLabels: widget.xLabels,
-                    xLabelPainters: _xLabelPainters,
-                    touchPos: _touchPos,
+                RepaintBoundary(
+                  child: CustomPaint(
+                    painter: _LineChartPainter(
+                      geometry: geometry,
+                      xLabels: widget.xLabels,
+                      xLabelPainters: _xLabelPainters,
+                      touchPos: _touchPos,
+                    ),
                   ),
                 ),
               ],

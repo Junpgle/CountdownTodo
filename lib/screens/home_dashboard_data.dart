@@ -683,9 +683,8 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
     }
     if (mounted) {
       _showCoachMarks = true;
-      final isTablet =
-          MediaQuery.of(context).size.shortestSide >= 600 ||
-          MediaQuery.of(context).size.width > 800;
+      final screenSize = MediaQuery.sizeOf(context);
+      final isTablet = screenSize.shortestSide >= 600 || screenSize.width > 800;
 
       final finished = await CoachMarkOverlay.show(
         context: context,

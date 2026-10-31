@@ -559,7 +559,11 @@ class _AttachmentEditor extends StatelessWidget {
         },
         itemBuilder: (context, index) {
           final attachment = attachments[index];
-          final provider = JournalMediaService.instance.provider(attachment);
+          final provider = JournalMediaService.instance.provider(
+            attachment,
+            width: 360,
+            height: 360,
+          );
           return Padding(
             key: ValueKey(attachment.id),
             padding: const EdgeInsets.only(right: 10),

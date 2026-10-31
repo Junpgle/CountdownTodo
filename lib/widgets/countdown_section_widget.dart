@@ -561,7 +561,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                   isLight: widget.isLight,
                 ),
               ),
-              if (MediaQuery.of(context).size.width >= 600)
+              if (MediaQuery.sizeOf(context).width >= 600)
                 IconButton(
                   style: floatingGlassPlainIconButtonStyle(),
                   icon: Icon(
@@ -663,7 +663,11 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
       child: ClipRect(
         clipper: _HorizontalClipper(),
         child: ListView.builder(
-          addRepaintBoundaries: !widget.isLight,
+          itemExtent: 142.0,
+          physics: const BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
+          ),
+          addRepaintBoundaries: true,
           scrollCacheExtent: ScrollCacheExtent.pixels(1000),
           controller: _listScrollController,
           padding: const EdgeInsets.only(right: 12),

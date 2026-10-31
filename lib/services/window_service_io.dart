@@ -608,14 +608,17 @@ class WindowService extends WindowListener {
   void onWindowMinimize() {
     windowIsActiveListenable.value = false;
   }
+
   @override
   void onWindowRestore() {
     windowIsActiveListenable.value = true;
   }
+
   @override
   void onWindowFocus() {
     windowIsActiveListenable.value = true;
   }
+
   @override
   void onWindowBlur() {
     windowIsActiveListenable.value = false;

@@ -207,6 +207,39 @@ abstract final class ThirtyDayChallengeRepository {
     await _save(prefs, state);
   }
 
+  static Future<void> updatePlanningConfig(
+    ThirtyDayChallengeState state, {
+    bool? includeInPlanning,
+    int? preferredStartMinute,
+    bool clearPreferredStartMinute = false,
+    int? plannedDurationMinutes,
+    bool clearPlannedDurationMinutes = false,
+    List<String>? focusTagUuids,
+    bool? autoCompleteOnFocus,
+  }) async {
+    if (includeInPlanning != null) {
+      state.includeInPlanning = includeInPlanning;
+    }
+    if (clearPreferredStartMinute) {
+      state.preferredStartMinute = null;
+    } else if (preferredStartMinute != null) {
+      state.preferredStartMinute = preferredStartMinute;
+    }
+    if (clearPlannedDurationMinutes) {
+      state.plannedDurationMinutes = null;
+    } else if (plannedDurationMinutes != null) {
+      state.plannedDurationMinutes = plannedDurationMinutes;
+    }
+    if (focusTagUuids != null) {
+      state.focusTagUuids = List<String>.from(focusTagUuids);
+    }
+    if (autoCompleteOnFocus != null) {
+      state.autoCompleteOnFocus = autoCompleteOnFocus;
+    }
+    await save(state);
+    activityRevision.value++;
+  }
+
   /// 用新的自定义内容开启一场挑战，并将其设为当前设备上的活动挑战。
   static Future<ThirtyDayChallengeState> startNewChallenge({
     required String title,

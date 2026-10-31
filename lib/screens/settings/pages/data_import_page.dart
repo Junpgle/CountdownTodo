@@ -265,9 +265,9 @@ class _DataImportPageState extends State<DataImportPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final screenWidth = MediaQuery.of(context).size.width;
+    final screenWidth = MediaQuery.sizeOf(context).width;
     final isLandscape =
-        MediaQuery.of(context).orientation == Orientation.landscape;
+        MediaQuery.orientationOf(context) == Orientation.landscape;
     final isWideScreen = screenWidth > 600;
     final standalone = !widget.isEmbedded && !isWideScreen;
 

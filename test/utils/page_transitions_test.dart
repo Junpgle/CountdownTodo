@@ -456,5 +456,52 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       expect(_containerTransformWidth(tester), lessThan(500.0));
     });
+
+    testWidgets(
+      'container transform blends translucent sourceColor into opaque background',
+      (WidgetTester tester) async {
+        SharedPreferences.setMockInitialValues(<String, Object>{
+          'enable_lazy_load': true,
+        });
+        await PageTransitions.init();
+
+        final navigatorKey = GlobalKey<NavigatorState>();
+        await tester.pumpWidget(
+          MaterialApp(
+            navigatorKey: navigatorKey,
+            theme: ThemeData(
+              colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+              pageTransitionsTheme: PageTransitions.theme,
+            ),
+            home: Builder(
+              builder: (context) => Center(
+                child: TextButton(
+                  onPressed: () => navigatorKey.currentState!.push(
+                    ContainerTransformRoute<void>(
+                      page: const SizedBox.expand(),
+                      sourceRect: const Rect.fromLTWH(40, 40, 120, 80),
+                      sourceColor: Colors.pink.withValues(alpha: 0.06),
+                    ),
+                  ),
+                  child: const Text('go'),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('go'));
+        await tester.pump();
+
+        final coloredBoxes = tester
+            .widgetList<ColoredBox>(
+              find.byType(ColoredBox, skipOffstage: false),
+            )
+            .where((box) => box.color.a == 1.0)
+            .toList();
+        expect(coloredBoxes, isNotEmpty);
+      },
+    );
   });
 }

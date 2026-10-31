@@ -379,6 +379,31 @@ class PomodoroStatsState extends State<PomodoroStats> {
     _loadLocal();
   }
 
+  Future<void> _pickYear() async {
+    final now = DateTime.now();
+    final pickerYear = _selected.year.clamp(1970, now.year);
+    final year = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('选择年份'),
+        content: SizedBox(
+          width: 320,
+          height: 360,
+          child: YearPicker(
+            firstDate: DateTime(1970),
+            lastDate: DateTime(now.year),
+            currentDate: now,
+            selectedDate: DateTime(pickerYear),
+            onChanged: (date) => Navigator.of(dialogContext).pop(date.year),
+          ),
+        ),
+      ),
+    );
+    if (!mounted || year == null || year == _selected.year) return;
+    setState(() => _selected = DateTime(year, 1, 1));
+    _loadLocal();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) return _buildSkeleton();
@@ -448,9 +473,15 @@ class PomodoroStatsState extends State<PomodoroStats> {
                   onPressed: _prev,
                 ),
                 InkWell(
-                  onTap: () => setState(
-                    () => _showDimensionPicker = !_showDimensionPicker,
-                  ),
+                  onTap: () async {
+                    if (_dimension == 3) {
+                      await _pickYear();
+                    } else {
+                      setState(
+                        () => _showDimensionPicker = !_showDimensionPicker,
+                      );
+                    }
+                  },
                   borderRadius: BorderRadius.circular(8),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
@@ -467,10 +498,12 @@ class PomodoroStatsState extends State<PomodoroStats> {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        if (widget.isCompact) ...[
+                        if (_dimension == 3 || widget.isCompact) ...[
                           const SizedBox(width: 4),
                           Icon(
-                            _showDimensionPicker
+                            _dimension == 3
+                                ? Icons.arrow_drop_down_rounded
+                                : _showDimensionPicker
                                 ? Icons.expand_less_rounded
                                 : Icons.expand_more_rounded,
                             size: 16,

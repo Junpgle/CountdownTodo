@@ -569,6 +569,8 @@ class _PlanAvailabilityExplanationScreenState
                                 PlanBusySource.planBlock => '规划',
                                 PlanBusySource.legacyTodo => '旧执行区间',
                                 PlanBusySource.deviceCalendar => '手机日历',
+                                PlanBusySource.habit => '习惯预留',
+                                PlanBusySource.challenge => '30天挑战',
                               }}',
                               style: theme.textTheme.bodySmall,
                             ),

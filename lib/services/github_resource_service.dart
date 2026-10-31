@@ -210,12 +210,11 @@ class _GitHubResourceImageState extends State<GitHubResourceImage> {
 
   ImageProvider<Object> _imageProvider(BuildContext context, Uint8List bytes) {
     final provider = MemoryImage(bytes);
-    if (!AppPlatform.isWindows ||
-        (widget.width == null && widget.height == null)) {
-      return provider;
-    }
+    if (widget.width == null && widget.height == null) return provider;
 
-    final pixelRatio = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0;
+    final pixelRatio = AppPlatform.isWindows
+        ? (MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0)
+        : 3.0;
     int? decodeDimension(double? logicalSize) {
       if (logicalSize == null || !logicalSize.isFinite || logicalSize <= 0) {
         return null;

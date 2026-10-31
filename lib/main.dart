@@ -49,7 +49,9 @@ import 'services/minor_mode_service.dart';
 import 'services/liquid_glass_effect_service.dart';
 import 'services/power_save_mode_service.dart';
 import 'theme/app_liquid_glass_theme.dart';
+import 'utils/app_image_filters.dart';
 import 'widgets/liquid_glass_live_preview_dock.dart';
+import 'widgets/animation_performance_floating_window.dart';
 import 'theme/dynamic_color_scheme_adapter.dart';
 import 'theme/oled_surface_color_scheme.dart';
 import 'widgets/island_debug_host.dart';
@@ -241,9 +243,9 @@ void _configureRuntimeCaches({bool powerSaveMode = false}) {
   }
 
   if (AppPlatform.isMobile) {
-    final useAndroidPowerSaveCache = AppPlatform.isAndroid && powerSaveMode;
-    imageCache.maximumSize = useAndroidPowerSaveCache ? 64 : 100;
-    imageCache.maximumSizeBytes = (useAndroidPowerSaveCache ? 64 : 96) << 20;
+    final useMobilePowerSaveCache = powerSaveMode;
+    imageCache.maximumSize = useMobilePowerSaveCache ? 64 : 100;
+    imageCache.maximumSizeBytes = (useMobilePowerSaveCache ? 64 : 96) << 20;
   } else {
     imageCache.maximumSize = 180;
     imageCache.maximumSizeBytes = 192 << 20; // Desktop 192MB
@@ -421,19 +423,25 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       if (AppPlatform.isAndroid) WidgetService.setAppForeground(false);
+      if (state == AppLifecycleState.paused ||
+          state == AppLifecycleState.hidden) {
+        PaintingBinding.instance.imageCache.clearLiveImages();
+        LiquidGlassEffectConfiguration.clearFilterCache();
+        AppImageFilters.clearFilterCache();
+      }
     }
   }
 
   @override
   void didHaveMemoryPressure() {
-    if (!AppPlatform.isAndroid) return;
-
-    // Android 17 can terminate a process that exceeds the device-specific
-    // memory budget. Drop decoded images as soon as the framework signals
-    // pressure so the next frame can rebuild only what is visible.
+    // Drop decoded image cache as soon as the framework signals memory
+    // pressure so the next frame can rebuild only what is visible, avoiding
+    // OS termination across Android (LMK), iOS (Jetsam), desktop and web.
     final imageCache = PaintingBinding.instance.imageCache;
     imageCache.clear();
     imageCache.clearLiveImages();
+    LiquidGlassEffectConfiguration.clearFilterCache();
+    AppImageFilters.clearFilterCache();
   }
 
   void _handlePowerSaveModeChanged() {
@@ -1300,7 +1308,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                                     )
                                                   : content;
 
-                                              return ValueListenableBuilder<bool>(
+                                              return ValueListenableBuilder<
+                                                bool
+                                              >(
                                                 valueListenable: WindowService
                                                     .windowIsActiveListenable,
                                                 child: MacosWindowChrome(
@@ -1318,20 +1328,25 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                                           child:
                                                               LiquidGlassLivePreviewDock(),
                                                         ),
+                                                        const Positioned.fill(
+                                                          child:
+                                                              AnimationPerformanceFloatingWindow(),
+                                                        ),
                                                       ],
                                                     ),
                                                   ),
                                                 ),
-                                                builder: (
-                                                  context,
-                                                  isWindowActive,
-                                                  child,
-                                                ) => TickerMode(
-                                                  enabled: isWindowActive,
-                                                  child:
-                                                      child ??
-                                                      const SizedBox.shrink(),
-                                                ),
+                                                builder:
+                                                    (
+                                                      context,
+                                                      isWindowActive,
+                                                      child,
+                                                    ) => TickerMode(
+                                                      enabled: isWindowActive,
+                                                      child:
+                                                          child ??
+                                                          const SizedBox.shrink(),
+                                                    ),
                                               );
                                             },
                                           );

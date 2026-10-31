@@ -91,7 +91,7 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + bottomInset),

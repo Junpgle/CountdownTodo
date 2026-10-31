@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:countdown_todo/services/liquid_glass_effect_service.dart';
 import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/screens/animation_settings_page.dart';
@@ -8,6 +10,7 @@ import 'package:countdown_todo/widgets/course_section_widget.dart';
 import 'package:countdown_todo/widgets/floating_glass_control.dart';
 import 'package:countdown_todo/widgets/home_sections.dart';
 import 'package:countdown_todo/widgets/optional_liquid_glass_surface.dart';
+import 'package:countdown_todo/widgets/platform_backdrop_filter.dart';
 import 'package:countdown_todo/widgets/todo_group_widget.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:flutter/material.dart';
@@ -66,13 +69,13 @@ void main() {
 
     expect(find.text('Liquid Glass'), findsOneWidget);
     expect(find.text('全应用玻璃材质、折射与半透明层次 (可选)'), findsOneWidget);
-    expect(find.text('Liquid Glass 模式'), findsOneWidget);
-    expect(find.text('标准'), findsOneWidget);
-    expect(find.text('增强'), findsOneWidget);
-    expect(find.text('动画速度预设', skipOffstage: false), findsOneWidget);
-    expect(find.text('优雅 500ms', skipOffstage: false), findsOneWidget);
-    expect(find.text('均衡 320ms', skipOffstage: false), findsOneWidget);
-    expect(find.text('快速 220ms', skipOffstage: false), findsOneWidget);
+    expect(find.text('Liquid Glass 模式', skipOffstage: false), findsOneWidget);
+    expect(find.text('标准', skipOffstage: false), findsOneWidget);
+    expect(find.text('增强', skipOffstage: false), findsOneWidget);
+    expect(find.text('性能预设'), findsOneWidget);
+    expect(find.text('极致流畅'), findsOneWidget);
+    expect(find.text('均衡模式'), findsOneWidget);
+    expect(find.text('完整动效'), findsOneWidget);
     expect(find.byType(Switch), findsWidgets);
   });
 
@@ -206,6 +209,68 @@ void main() {
     expect(find.byType(GlassContainer), findsNothing);
     expect(find.text('Shared settings content'), findsOneWidget);
   });
+
+  testWidgets(
+    'staticMaterial mode inside overlay avoids redundant BackdropFilter',
+    (tester) async {
+      await LiquidGlassEffectService.setEnabled(true);
+      await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: OptionalLiquidGlassOverlayScope(
+              child: OptionalLiquidGlassPanel(
+                mode: OptionalLiquidGlassPanelMode.staticMaterial,
+                fallback: SizedBox(),
+                child: Text('Pure static panel'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 16));
+
+      expect(find.byType(OptionalLiquidGlassPanel), findsOneWidget);
+      expect(
+        find.byKey(
+          const ValueKey<String>('optional-liquid-glass-static-panel'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byType(BackdropFilter), findsNothing);
+      expect(find.text('Pure static panel'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'adaptive cards maintain BackdropFilter blur effect on scrollables',
+    (tester) async {
+      await LiquidGlassEffectService.setEnabled(true);
+      await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: OptionalLiquidGlassScrollOptimizer(
+              child: ListView(
+                children: const [
+                  OptionalLiquidGlassCard(
+                    fallbackDecoration: BoxDecoration(),
+                    child: Text('Card with live blur'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 16));
+
+      expect(find.byType(BackdropFilter), findsWidgets);
+      expect(find.text('Card with live blur'), findsOneWidget);
+    },
+  );
 
   testWidgets('scroll optimizer keeps descendants mounted during a gesture', (
     tester,
@@ -452,55 +517,56 @@ void main() {
     },
   );
 
-  testWidgets('wallpaper dashboard cards adapt harmoniously to light UI and dark mode', (
-    tester,
-  ) async {
-    await LiquidGlassEffectService.setEnabled(true);
-    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
-    final colorScheme = ColorScheme.fromSeed(seedColor: Colors.green);
+  testWidgets(
+    'wallpaper dashboard cards adapt harmoniously to light UI and dark mode',
+    (tester) async {
+      await LiquidGlassEffectService.setEnabled(true);
+      await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+      final colorScheme = ColorScheme.fromSeed(seedColor: Colors.green);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: ThemeData(colorScheme: colorScheme, useMaterial3: true),
-        home: Scaffold(
-          body: Column(
-            children: [
-              ScreenTimeCard(
-                stats: const [],
-                hasPermission: false,
-                isLight: true,
-                onOpenSettings: () {},
-                onViewDetail: () {},
-              ),
-              MathStatsCard(stats: const {}, isLight: true, onTap: () {}),
-            ],
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(colorScheme: colorScheme, useMaterial3: true),
+          home: Scaffold(
+            body: Column(
+              children: [
+                ScreenTimeCard(
+                  stats: const [],
+                  hasPermission: false,
+                  isLight: true,
+                  onOpenSettings: () {},
+                  onViewDetail: () {},
+                ),
+                MathStatsCard(stats: const {}, isLight: true, onTap: () {}),
+              ],
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pump(const Duration(milliseconds: 16));
+      );
+      await tester.pump(const Duration(milliseconds: 16));
 
-    final cards = tester
-        .widgetList<Container>(
-          find.byKey(
-            const ValueKey<String>('optional-liquid-glass-static-panel'),
-          ),
-        )
-        .toList();
-    expect(cards, hasLength(2));
-    for (final card in cards) {
-      final decoration = card.decoration! as BoxDecoration;
-      final gradient = decoration.gradient! as LinearGradient;
-      expect(decoration.borderRadius, BorderRadius.circular(24));
-      // In light theme, cards use light frosted glass treatment (> 0.8 luminance)
-      expect(gradient.colors.first.computeLuminance(), greaterThan(0.8));
-    }
+      final cards = tester
+          .widgetList<Container>(
+            find.byKey(
+              const ValueKey<String>('optional-liquid-glass-static-panel'),
+            ),
+          )
+          .toList();
+      expect(cards, hasLength(2));
+      for (final card in cards) {
+        final decoration = card.decoration! as BoxDecoration;
+        final gradient = decoration.gradient! as LinearGradient;
+        expect(decoration.borderRadius, BorderRadius.circular(24));
+        // In light theme, cards use light frosted glass treatment (> 0.8 luminance)
+        expect(gradient.colors.first.computeLuminance(), greaterThan(0.8));
+      }
 
-    final screenTimeTitle = tester.widget<Text>(find.text('未开启屏幕时间统计'));
-    final mathTitle = tester.widget<Text>(find.text('今日还未完成测验'));
-    expect(screenTimeTitle.style?.color, colorScheme.onSurface);
-    expect(mathTitle.style?.color, colorScheme.onSurface);
-  });
+      final screenTimeTitle = tester.widget<Text>(find.text('未开启屏幕时间统计'));
+      final mathTitle = tester.widget<Text>(find.text('今日还未完成测验'));
+      expect(screenTimeTitle.style?.color, colorScheme.onSurface);
+      expect(mathTitle.style?.color, colorScheme.onSurface);
+    },
+  );
 
   testWidgets('folder header taps keep toggling expand and collapse', (
     tester,
@@ -1016,5 +1082,23 @@ void main() {
       LiquidGlassEffectService.configuration.mode,
       LiquidGlassEffectMode.enhanced,
     );
+  });
+
+  testWidgets('PlatformBackdropFilter wraps child with BackdropFilter', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PlatformBackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: const Text('Test Child'),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Test Child'), findsOneWidget);
+    expect(find.byType(BackdropFilter), findsOneWidget);
   });
 }

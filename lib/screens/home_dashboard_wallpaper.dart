@@ -57,8 +57,7 @@ mixin _HomeDashboardWallpaperMixin on _HomeDashboardStateBase {
 
   Future<void> _triggerNextWallpaperFallback() async {
     // Priority: Manifest -> Bing -> Random List -> Asset Fallback -> None
-    final prefs = await SharedPreferences.getInstance();
-    final provider = prefs.getString('wallpaper_provider') ?? 'bing';
+    final provider = await StorageService.getWallpaperProvider();
 
     // 自定义壁纸模式：不执行任何 fallback
     if (provider == 'custom') return;
@@ -66,7 +65,8 @@ mixin _HomeDashboardWallpaperMixin on _HomeDashboardStateBase {
     if (_wallpaperRetryCount == 1) {
       // If manifest failed (or was first), try provider
       if (provider == 'bing') {
-        _fetchBingWallpaper();
+        await StorageService.clearCachedBingWallpaper();
+        _fetchBingWallpaper(force: true);
       } else {
         _fetchRandomWallpaper();
       }
@@ -129,7 +129,7 @@ mixin _HomeDashboardWallpaperMixin on _HomeDashboardStateBase {
       _wallpaperCopyright = null;
       _wallpaperRetryCount = 0;
       StorageService.setAppWallpaperColor(null);
-      _wallpaperUrl = 'assets/images/default_wallpaper.webp';
+      _wallpaperUrl = _defaultWallpaperAsset;
       _isWallpaperLoadingError = false;
     });
   }
@@ -174,11 +174,36 @@ mixin _HomeDashboardWallpaperMixin on _HomeDashboardStateBase {
     }
   }
 
-  Future<void> _fetchBingWallpaper() async {
+  Future<void> _fetchBingWallpaper({bool force = false}) async {
     final format = await StorageService.getWallpaperImageFormat();
     final index = await StorageService.getWallpaperIndex();
     final mkt = await StorageService.getWallpaperMkt();
     final resolution = await StorageService.getWallpaperResolution();
+    final paramsKey = '$resolution:$format:$index:$mkt';
+
+    final now = DateTime.now();
+    final today =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+
+    if (!force) {
+      final cached = await StorageService.getCachedBingWallpaper();
+      if (cached != null &&
+          cached['date'] == today &&
+          cached['params'] == paramsKey &&
+          cached['url'] != null &&
+          cached['url']!.isNotEmpty) {
+        if (mounted) {
+          setState(() {
+            _wallpaperShow = true;
+            _wallpaperDominantColor = null;
+            StorageService.setAppWallpaperColor(null);
+            _wallpaperUrl = cached['url'];
+            _wallpaperCopyright = cached['copyright'];
+          });
+        }
+        return;
+      }
+    }
 
     final String bingApiUrl =
         "https://bing.biturl.top/?resolution=$resolution&format=json&index=$index&mkt=$mkt&image_format=$format";
@@ -223,6 +248,12 @@ mixin _HomeDashboardWallpaperMixin on _HomeDashboardStateBase {
     }
 
     if (url != null && url.isNotEmpty && mounted) {
+      await StorageService.saveCachedBingWallpaper(
+        url: url,
+        copyright: copyright,
+        date: today,
+        params: paramsKey,
+      );
       setState(() {
         _wallpaperShow = true;
         _wallpaperDominantColor = null;
@@ -245,10 +276,10 @@ mixin _HomeDashboardWallpaperMixin on _HomeDashboardStateBase {
   }
 
   void _onWallpaperRefresh() {
-    if (mounted) _refreshWallpaper();
+    if (mounted) _refreshWallpaper(force: true);
   }
 
-  Future<void> _refreshWallpaper() async {
+  Future<void> _refreshWallpaper({bool force = false}) async {
     final provider = await StorageService.getWallpaperProvider();
 
     // 自定义壁纸模式：直接从本地加载，跳过所有网络逻辑和 manifest 推送
@@ -296,7 +327,7 @@ mixin _HomeDashboardWallpaperMixin on _HomeDashboardStateBase {
       });
     } else {
       if (provider == 'bing') {
-        await _fetchBingWallpaper();
+        await _fetchBingWallpaper(force: force);
       } else {
         await _fetchRandomWallpaper();
       }

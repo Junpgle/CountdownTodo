@@ -7,9 +7,10 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
     final isUser = msg.role == ChatRole.user;
     final timeStr = _todoChatDateFormat('HH:mm').format(msg.timestamp);
     final colorScheme = Theme.of(context).colorScheme;
-    final maxBubbleWidth = MediaQuery.of(context).size.width >= 900
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final maxBubbleWidth = screenWidth >= 900
         ? (isUser ? 560.0 : 720.0)
-        : MediaQuery.of(context).size.width * (isUser ? 0.82 : 0.9);
+        : screenWidth * (isUser ? 0.82 : 0.9);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -256,9 +257,9 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
           Flexible(
             child: ConstrainedBox(
               constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width >= 900
+                maxWidth: MediaQuery.sizeOf(context).width >= 900
                     ? 720
-                    : MediaQuery.of(context).size.width * 0.9,
+                    : MediaQuery.sizeOf(context).width * 0.9,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -409,19 +410,12 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                     .ceil()
                     .clamp(1, 4096)
                     .toInt();
-                final ImageProvider<Object> imageProvider =
-                    AppPlatform.isWindows
-                    ? ResizeImage(
-                        MemoryImage(attachment.bytes!),
-                        width: cacheWidth,
-                        height: cacheHeight,
-                        policy: ResizeImagePolicy.fit,
-                      )
-                    : MemoryImage(attachment.bytes!);
-                return Image(
-                  image: imageProvider,
+                return Image.memory(
+                  attachment.bytes!,
                   width: width,
                   height: height,
+                  cacheWidth: cacheWidth,
+                  cacheHeight: cacheHeight,
                   fit: BoxFit.cover,
                 );
               },

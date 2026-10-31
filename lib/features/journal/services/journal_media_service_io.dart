@@ -205,20 +205,28 @@ class JournalMediaService {
     }
   }
 
-  ImageProvider<Object>? provider(JournalAttachment attachment) {
+  ImageProvider<Object>? provider(
+    JournalAttachment attachment, {
+    int? width,
+    int? height,
+  }) {
     final path = attachment.localPath;
-    ImageProvider<Object>? imageProvider;
+    ImageProvider<Object>? baseProvider;
     if (path != null && path.isNotEmpty && File(path).existsSync()) {
-      imageProvider = FileImage(File(path));
+      baseProvider = FileImage(File(path));
     } else {
       final bytes = attachment.imageData;
-      if (bytes == null || bytes.isEmpty) return null;
-      imageProvider = MemoryImage(bytes);
+      if (bytes != null && bytes.isNotEmpty) {
+        baseProvider = MemoryImage(bytes);
+      }
     }
-
-    if (!Platform.isWindows) return imageProvider;
+    if (baseProvider == null) return null;
+    if (width != null || height != null) {
+      return ResizeImage.resizeIfNeeded(width, height, baseProvider);
+    }
+    if (!Platform.isWindows) return baseProvider;
     return ResizeImage(
-      imageProvider,
+      baseProvider,
       width: _windowsMaxDecodeDimension,
       height: _windowsMaxDecodeDimension,
       policy: ResizeImagePolicy.fit,

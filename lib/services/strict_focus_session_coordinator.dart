@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 
@@ -48,12 +49,13 @@ class StrictFocusSessionCoordinator with WidgetsBindingObserver {
   bool _isInBackground = false;
 
   bool get isMonitoring => _monitoring;
+  bool get isMonitoringOrStarting => _monitoring || _startFuture != null;
 
   /// UI can observe this stream without owning the sensor subscription.
   Stream<StrictFocusSensorEvent> get sensorEvents =>
       _sensorStateController.stream;
 
-  Future<void> startMonitoring() async {
+  Future<void> startMonitoring({bool requireInitialFaceUp = false}) async {
     if (!AppPlatform.isAndroid && !AppPlatform.isIOS) return;
     if (_isInBackground) return;
 
@@ -81,7 +83,7 @@ class StrictFocusSessionCoordinator with WidgetsBindingObserver {
       return;
     }
 
-    final future = _startMonitoring();
+    final future = _startMonitoring(requireInitialFaceUp: requireInitialFaceUp);
     _startFuture = future;
     try {
       await future;
@@ -90,11 +92,13 @@ class StrictFocusSessionCoordinator with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _startMonitoring() async {
+  Future<void> _startMonitoring({bool requireInitialFaceUp = false}) async {
     final generation = ++_generation;
     _monitoring = true;
     _sensorSub = _sensorService.events.listen(_handleSensorEvent);
-    final started = await _sensorService.start();
+    final started = await _sensorService.start(
+      requireInitialFaceUp: requireInitialFaceUp,
+    );
     if (generation != _generation) return;
     if (!started) {
       _monitoring = false;
@@ -267,10 +271,8 @@ class StrictFocusSessionCoordinator with WidgetsBindingObserver {
     );
 
     if (!_canResume(resumeEpoch)) return;
-    await StrictFocusHapticService.notifyFocusStarted();
-    if (!_canResume(resumeEpoch)) return;
-
     await PomodoroService.saveRunState(resumed);
+    unawaited(StrictFocusHapticService.notifyFocusStarted());
     unawaited(_updateFloat(resumed));
 
     await FocusDoNotDisturbService.setActive(
@@ -392,26 +394,25 @@ class StrictFocusSessionCoordinator with WidgetsBindingObserver {
 
   void _scheduleSensorRestart() {
     if (_isInBackground || _sensorRestartTimer != null) return;
-    if (_sensorRestartAttempts >= 3) return;
-    final delaySeconds = 1 << _sensorRestartAttempts;
+    if (_sensorRestartAttempts >= 5) return;
+    final delaySeconds = math.min(1 << _sensorRestartAttempts, 4);
     _sensorRestartAttempts += 1;
     _sensorRestartTimer = Timer(Duration(seconds: delaySeconds), () {
       _sensorRestartTimer = null;
-      unawaited(startMonitoring());
+      unawaited(startMonitoring(requireInitialFaceUp: false));
     });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.hidden ||
+    if (state == AppLifecycleState.hidden ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       pauseForBackground();
     } else if (state == AppLifecycleState.resumed) {
       _isInBackground = false;
       _sensorRestartAttempts = 0;
-      unawaited(startMonitoring());
+      unawaited(startMonitoring(requireInitialFaceUp: false));
     }
   }
 

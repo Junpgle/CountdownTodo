@@ -1,6 +1,6 @@
 # Project architecture
 
-Last reconciled with code: 2026-10-07. Flutter package version: **6.6.117**.
+Last reconciled with code: 2026-10-31. Flutter package version: **7.22.8**.
 
 ## Repository map
 
@@ -11,7 +11,7 @@ lib/                    Flutter application
   services/             persistence, sync and platform services
     storage/            extracted StorageService responsibilities
   features/             self-contained modules: habits, private journal,
-                        thirty-day challenge (models/repositories/services/UI)
+                        thirty-day challenge, finance (models/repositories/services/UI)
   theme/                theme extensions, including the Liquid Glass theme
   windows_island/       Windows-only island UI/state/IPC
 android/                Kotlin host, widgets, notifications, HyperOS, band
@@ -49,7 +49,7 @@ as part of normal client work.
 
 ## Local data
 
-- SQLite schema version: **57** in `DatabaseSchemaHistory`
+- SQLite schema version: **60** in `DatabaseSchemaHistory`
   (`DatabaseSchemaHistory.currentVersion`).
 - Per-user database: `uni_sync_<username>.db`.
 - Main tables include todos, groups, countdowns, courses, plan blocks, time logs,
@@ -72,8 +72,8 @@ as part of normal client work.
   without implying an immediate change to the current payment balance.
 - Deleting a finance entry already covered by the latest account snapshot
   explains that it changes ledger statistics without changing the saved balance.
-- Global search combines FTS5/FTS4/`LIKE` database search with feature-module and
-  remote catalog adapters. See [`features/global-search.md`](features/global-search.md)
+- Global search combines FTS5/FTS4/`LIKE` database search with feature-module,
+  settings catalog (`AppSettingsCatalog`) and remote catalog adapters. See [`features/global-search.md`](features/global-search.md)
   for coverage, openable destinations, animation behavior and server limits.
 - SharedPreferences holds lightweight settings and session information; it is
   not the primary store for full synchronized datasets.
@@ -81,20 +81,31 @@ as part of normal client work.
 ## Todo and planning semantics
 
 - `TodoTimeMode` distinguishes unscheduled, date-only and deadline todos.
+  Database schema v60 allows unscheduled start time nullability to preserve explicit unscheduled semantics.
 - `ItemSemanticsService` classifies capture text as todo, fixed schedule, plan
   block or confirmation-required. Fixed schedules use the dedicated
   `FixedScheduleItem` model with creation/editing, recurrence-series
   materialization, conflict detection, calendar export, backup support and a
   capability-gated sync path (`fixed_schedules v1`).
+- Fixed schedules and todos support bidirectional linkage (`FixedScheduleTodoRelation`),
+  direct todo creation from schedule details, reschedule impact reviews, and preparation time buffer recommendations.
 - Recurrence uses per-occurrence UUIDs plus `recurrence_series_id`; repair,
-  aliasing and deduplication protect older and cross-device data.
+  aliasing and deduplication protect older and cross-device data. Recurrence instances
+  support an independent skip-this-period state (schema v59) and series-level trash restoration/purge.
 - `TodoPlanBlock` represents an execution window independently of a todo's due
   semantics. Blocks support planned/finished/delayed/cancelled/reminded/focusing/
-  missed/skipped states, reminders, Pomodoro linkage and calendar event IDs.
+  missed/skipped states, reminders, Pomodoro linkage, calendar event IDs, availability buffers,
+  and local drafts isolated per account/member (schema v58).
 - Habits are an independent check-in model under `lib/features/habits/`, not a
-  recurring-todo inference; see `docs/habits.md`.
-- `docs/features/todo-semantics.md` defines additional approved semantics that
-  are not all implemented yet.
+  recurring-todo inference; see `docs/habits.md`. Includes hold-to-checkin guard against
+  accidental triggers, focus habit Pomodoro binding, and capacity planning.
+- Private journal is an offline-only local feature under `lib/features/journal/`
+  with trash bin lifecycle (restoration and permanent disk media deletion).
+- Backup & restore provides JSON v2 envelope export and domain-selective restore
+  (todos/schedules, courses, focus, habits, challenge, finance, preferences) with pre-restore review and domain receipts.
+- Performance & rendering architecture includes real-time FPS & delivery rate metrics,
+  dynamic GPU/CPU rendering pressure assessment, `AnimationPerformanceFloatingWindow`,
+  downsampled image memory management, and wallpaper caching.
 
 ## Sync and backend
 

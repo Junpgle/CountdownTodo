@@ -35,6 +35,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
   FinanceTransaction? _latestTransaction;
   FinanceTransaction? _upcomingTransaction;
   bool _isLoading = true;
+  bool _hasLoaded = false;
   bool _hasError = false;
   int _loadGeneration = 0;
   Timer? _upcomingTransactionTimer;
@@ -68,7 +69,12 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
     _upcomingTransactionTimer?.cancel();
     _upcomingTransactionTimer = null;
     final generation = ++_loadGeneration;
-
+    if (!_hasLoaded) {
+      setState(() {
+        _isLoading = true;
+        _hasError = false;
+      });
+    }
     final now = widget.clock();
     final monthStart = DateTime(now.year, now.month);
     final nextMonth = DateTime(now.year, now.month + 1);
@@ -87,7 +93,8 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
       _hasError = false;
     }
     try {
-      final transactions = cachedTransactions ??
+      final transactions =
+          cachedTransactions ??
           await HomeDashboardSectionDataCache.load(
             cacheKey,
             () => FinanceRepository.getTransactions(
@@ -138,6 +145,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
         _upcomingTransaction = upcomingTransaction;
         _isLoading = false;
         _hasError = false;
+        _hasLoaded = true;
       });
       _scheduleUpcomingTransactionRefresh(
         asOfAt: asOfAt,
@@ -147,7 +155,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _isLoading = false;
-        _hasError = true;
+        _hasError = !_hasLoaded;
       });
     }
   }
@@ -247,15 +255,17 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
               fallbackDecoration: BoxDecoration(
                 color: widget.isLight
                     ? (isDark
-                        ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
-                        : colorScheme.surface.withValues(alpha: 0.92))
+                          ? colorScheme.surfaceContainerLow.withValues(
+                              alpha: 0.75,
+                            )
+                          : colorScheme.surface.withValues(alpha: 0.92))
                     : colorScheme.surfaceContainerLow.withValues(alpha: 0.6),
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(
                   color: widget.isLight
                       ? (isDark
-                          ? Colors.white.withValues(alpha: 0.15)
-                          : Colors.white.withValues(alpha: 0.6))
+                            ? Colors.white.withValues(alpha: 0.15)
+                            : Colors.white.withValues(alpha: 0.6))
                       : colorScheme.outlineVariant.withValues(alpha: 0.5),
                 ),
                 boxShadow: [
@@ -268,15 +278,13 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
                   ),
                 ],
               ),
-              child: _isLoading
+              child: (_isLoading && !_hasLoaded)
                   ? SizedBox(
                       height: 78,
                       child: Center(
                         child: CircularProgressIndicator(
                           strokeWidth: 2.5,
-                          color: isDark
-                              ? Colors.white
-                              : colorScheme.tertiary,
+                          color: isDark ? Colors.white : colorScheme.tertiary,
                         ),
                       ),
                     )

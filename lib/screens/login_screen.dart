@@ -326,6 +326,8 @@ class _BrandLogo extends StatelessWidget {
         'assets/icon/app_icon.png',
         width: size,
         height: size,
+        cacheWidth: (size * 3).toInt(),
+        cacheHeight: (size * 3).toInt(),
         fit: BoxFit.contain,
         filterQuality: FilterQuality.high,
       ),
@@ -1196,11 +1198,13 @@ class _LoginScreenState extends State<LoginScreen>
       body: Stack(
         children: [
           Positioned.fill(
-            child: CustomPaint(
-              painter: _OrbPainter(
-                dark: t._dark,
-                primary: t.primary,
-                accent: t.accent,
+            child: RepaintBoundary(
+              child: CustomPaint(
+                painter: _OrbPainter(
+                  dark: t._dark,
+                  primary: t.primary,
+                  accent: t.accent,
+                ),
               ),
             ),
           ),
@@ -1244,7 +1248,7 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Widget _buildNarrowLayout() {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     return SafeArea(
       child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(24, 16, 24, 32 + bottomInset),

@@ -14,6 +14,10 @@ import 'ai_water_border.dart';
 import 'quick_voice_container_transition.dart';
 import 'quick_voice_gesture.dart';
 
+final RegExp _exceptionPrefixPattern = RegExp(
+  r'^(Exception|FormatException): ',
+);
+
 class HeldQuickVoiceResult {
   const HeldQuickVoiceResult(
     this.text,
@@ -271,10 +275,7 @@ class _QuickVoiceChatSheetState extends State<QuickVoiceChatSheet>
     if (!mounted || _closing) return;
     setState(() {
       _phase = _VoicePhase.failed;
-      _error = error.toString().replaceFirst(
-        RegExp(r'^(Exception|FormatException): '),
-        '',
-      );
+      _error = error.toString().replaceFirst(_exceptionPrefixPattern, '');
     });
   }
 

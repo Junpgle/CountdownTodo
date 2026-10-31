@@ -7,6 +7,8 @@ enum PlanBusySource {
   planBlock,
   legacyTodo,
   deviceCalendar,
+  habit,
+  challenge,
 }
 
 class PlanBusyInterval {

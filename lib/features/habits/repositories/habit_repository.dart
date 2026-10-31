@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../models.dart';
 import '../../../services/storage/habit_storage.dart';
@@ -88,7 +87,8 @@ abstract final class HabitRepository {
 
   /// 创建习惯（含首个规则版本）。
   ///
-  /// 完成型习惯会同时创建一条循环待办系列（除非指定已有待办系列）。
+  /// 完成型习惯直接在习惯模块内通过 [HabitCheckIn] 记录打卡，不再自动新建循环待办；
+  /// 若传入已有循环待办系列 [sourceIds]，则会导入其历史完成/跳过记录并将原循环待办移入回收站。
   /// 返回创建后的 [HabitGoal]。
   static Future<HabitGoal> createGoal({
     required String name,
@@ -104,20 +104,25 @@ abstract final class HabitRepository {
   }) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     final deviceId = await UserSessionStorage.getDeviceId();
+    final pendingImportSeriesIds = sourceType == HabitSourceType.recurringTodo
+        ? sourceIds
+              .map((id) => id.trim())
+              .where((id) => id.isNotEmpty)
+              .toList(growable: false)
+        : const <String>[];
 
-    if (sourceType == HabitSourceType.recurringTodo && sourceIds.isEmpty) {
-      final seriesTodo = await _createRecurringTodoFromRule(
-        username: username,
-        name: name,
-        rule: rule,
-      );
-      sourceIds = [seriesTodo.recurrenceSeriesId ?? seriesTodo.id];
+    if (sourceType == HabitSourceType.recurringTodo) {
       rule.effectiveFromDate ??= HabitRuleResolver.dayKey(
         HabitRuleResolver.logicalDateFor(
           DateTime.now(),
           rule.dayBoundaryMinute,
         ),
       );
+      if (rule.targetValue <= 0) {
+        rule.targetValue = 1;
+      }
+      sourceIds = const [];
+      displayMode = HabitDisplayMode.habitOnly;
     }
 
     final goal = HabitGoal(
@@ -155,64 +160,311 @@ abstract final class HabitRepository {
 
     await HabitStorage.saveRuleRevisions([ruleForGoal]);
     await HabitStorage.saveHabitGoals([goal]);
+    if (pendingImportSeriesIds.isNotEmpty) {
+      await _importAndRetireRecurringTodoSeries(
+        goal: goal,
+        rule: ruleForGoal,
+        seriesIds: pendingImportSeriesIds,
+        username: username,
+      );
+    }
     await _requestSync(username);
     StorageService.triggerRefresh(const {DataRefreshDomain.habits});
+    unawaited(HabitReminderService.rescheduleAll().catchError((_) {}));
     return goal;
   }
 
-  /// 设计文档 4.3：已有循环待办加入习惯追踪。
-  ///
-  /// 不复制待办数据，仅创建绑定关系（sourceId = 待办系列 ID）；
-  /// 默认保留原有显示方式（仅显示在待办模块）。
-  /// 该系列已绑定习惯时返回 null。
+  /// 将已有循环待办系列转为独立完成型习惯：
+  /// 导入周期规则与历史已完成/已跳过期次，并将原循环待办整组移入回收站。
   static Future<HabitGoal?> createGoalFromSeries({
     required TodoItem todo,
     String username = '',
   }) async {
-    final seriesId = todo.recurrenceSeriesId ?? todo.id;
-    final existing = await HabitStorage.getHabitGoals();
-    if (existing.any((g) => !g.isDeleted && g.sourceIds.contains(seriesId))) {
-      return null;
+    final seriesId = (todo.recurrenceSeriesId ?? todo.id).trim();
+    if (seriesId.isEmpty) return null;
+
+    final seriesTodos = await _loadSeriesTodosForImport(
+      [seriesId],
+      username: username,
+      fallbackTodos: [todo],
+    );
+    final now = DateTime.now();
+    var earliestLogicalDate = HabitRuleResolver.logicalDateFor(now, 0);
+    for (final item in seriesTodos) {
+      if (item.isDeleted) continue;
+      final day = _todoLocalDay(item);
+      if (day != null && day.isBefore(earliestLogicalDate)) {
+        earliestLogicalDate = day;
+      }
     }
 
-    final now = DateTime.now();
+    var reminderPolicy = const HabitReminderPolicy();
+    if (!todo.isAllDay &&
+        todo.reminderMinutes != null &&
+        todo.reminderMinutes! >= 0 &&
+        todo.createdDate != null) {
+      final triggerLocal = DateTime.fromMillisecondsSinceEpoch(
+        todo.createdDate!,
+      ).toLocal().subtract(Duration(minutes: todo.reminderMinutes!));
+      final minuteOfDay = (triggerLocal.hour * 60 + triggerLocal.minute).clamp(
+        0,
+        1439,
+      );
+      reminderPolicy = HabitReminderPolicy(fixedTimes: [minuteOfDay]);
+    }
+
     final rule = HabitGoalRuleRevision(
       habitUuid: '',
-      effectiveFromDate: HabitRuleResolver.dayKey(
-        HabitRuleResolver.logicalDateFor(now, 0),
-      ),
+      effectiveFromDate: HabitRuleResolver.dayKey(earliestLogicalDate),
       periodType: _periodFromRecurrence(todo),
       weekdaysMask: todo.recurrence == RecurrenceType.weekdays ? 31 : 127,
       customIntervalDays: todo.recurrence == RecurrenceType.customDays
           ? (todo.customIntervalDays ?? 0)
           : null,
+      targetValue: 1,
+      reminderPolicy: reminderPolicy,
     );
     return createGoal(
       name: todo.title,
-      icon: '🎯',
+      icon: defaultIconForName(todo.title),
       sourceType: HabitSourceType.recurringTodo,
       sourceIds: [seriesId],
       rule: rule,
-      displayMode: HabitDisplayMode.todoOnly,
+      displayMode: HabitDisplayMode.habitOnly,
       username: username,
     );
   }
 
-  /// 为缺少数据源的完成型习惯补建并返回循环待办系列 ID。
-  ///
-  /// 正常新建流程会在 [createGoal] 内自动完成这一步；该入口用于修复
-  /// 旧数据或编辑时发现 sourceIds 为空的完成型习惯。
-  static Future<String> createRecurringTodoBinding({
-    required String name,
-    required HabitGoalRuleRevision rule,
+  /// 自动迁移旧版绑定了循环待办系列的完成型习惯：
+  /// 将已完成/已跳过的待办期次转为独立 [HabitCheckIn]，软删除原循环待办系列，
+  /// 并清空习惯上的 [HabitGoal.sourceIds]。
+  static Future<void> migrateLegacyRecurringTodoHabits({
     String username = '',
   }) async {
-    final todo = await _createRecurringTodoFromRule(
-      username: username,
-      name: name,
-      rule: rule,
+    final goals = await HabitStorage.getHabitGoals();
+    final legacyGoals = goals
+        .where(
+          (goal) =>
+              !goal.isDeleted &&
+              goal.sourceType == HabitSourceType.recurringTodo &&
+              goal.sourceIds.any((id) => id.trim().isNotEmpty),
+        )
+        .toList(growable: false);
+    if (legacyGoals.isEmpty) return;
+
+    final rulesByHabit = <String, List<HabitGoalRuleRevision>>{};
+    final allRules = await HabitStorage.getRuleRevisionsForHabits(
+      legacyGoals.map((goal) => goal.uuid),
     );
-    return todo.recurrenceSeriesId ?? todo.id;
+    for (final rule in allRules) {
+      if (rule.isDeleted) continue;
+      (rulesByHabit[rule.habitUuid] ??= <HabitGoalRuleRevision>[]).add(rule);
+    }
+
+    final updatedGoals = <HabitGoal>[];
+    for (final goal in legacyGoals) {
+      final rules = rulesByHabit[goal.uuid] ?? const <HabitGoalRuleRevision>[];
+      HabitGoalRuleRevision rule;
+      if (rules.isNotEmpty) {
+        rules.sort(
+          (a, b) =>
+              (a.effectiveFromDate ?? '').compareTo(b.effectiveFromDate ?? ''),
+        );
+        rule = rules.first;
+      } else {
+        rule = HabitGoalRuleRevision(
+          habitUuid: goal.uuid,
+          effectiveFromDate: HabitRuleResolver.dayKey(DateTime.now()),
+          periodType: HabitPeriodType.daily,
+          targetValue: 1,
+        );
+        goal.currentRuleUuid = rule.uuid;
+        await HabitStorage.saveRuleRevisions([rule]);
+      }
+
+      await _importAndRetireRecurringTodoSeries(
+        goal: goal,
+        rule: rule,
+        seriesIds: List<String>.of(goal.sourceIds),
+        username: username,
+      );
+      goal
+        ..sourceIds = const []
+        ..displayMode = HabitDisplayMode.habitOnly
+        ..markAsChanged();
+      updatedGoals.add(goal);
+    }
+
+    if (updatedGoals.isNotEmpty) {
+      await HabitStorage.saveHabitGoals(updatedGoals);
+      await _requestSync(username);
+      StorageService.triggerRefresh(const {
+        DataRefreshDomain.habits,
+        DataRefreshDomain.todos,
+      });
+    }
+  }
+
+  static Future<void> _importAndRetireRecurringTodoSeries({
+    required HabitGoal goal,
+    required HabitGoalRuleRevision rule,
+    required List<String> seriesIds,
+    String username = '',
+  }) async {
+    final cleanSeriesIds = seriesIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    if (cleanSeriesIds.isEmpty) return;
+
+    final resolvedUsername = await _resolveUsername(username);
+    final seriesTodos = await _loadSeriesTodosForImport(
+      cleanSeriesIds,
+      username: resolvedUsername,
+    );
+    if (seriesTodos.isEmpty) return;
+
+    final deviceId = await UserSessionStorage.getDeviceId();
+    final existingCheckIns = await HabitStorage.getCheckIns(
+      habitUuid: goal.uuid,
+    );
+    final existingDoneDates = <String>{};
+    final existingSkipDates = <String>{};
+    for (final checkIn in existingCheckIns) {
+      if (checkIn.isDeleted) continue;
+      if (checkIn.source == HabitCheckInSource.skip) {
+        existingSkipDates.add(checkIn.logicalDate);
+      } else {
+        existingDoneDates.add(checkIn.logicalDate);
+      }
+    }
+
+    final newCheckIns = <HabitCheckIn>[];
+    String? earliestDateKey = rule.effectiveFromDate;
+    for (final todo in seriesTodos) {
+      if (todo.isDeleted) continue;
+      final localDay = _todoLocalDay(todo);
+      if (localDay == null) continue;
+      final dayKey = HabitRuleResolver.dayKey(localDay);
+      if (earliestDateKey == null ||
+          earliestDateKey.isEmpty ||
+          dayKey.compareTo(earliestDateKey) < 0) {
+        earliestDateKey = dayKey;
+      }
+
+      final occurredMs = todo.createdDate ?? todo.createdAt;
+      final localOccurred = DateTime.fromMillisecondsSinceEpoch(occurredMs)
+          .toLocal();
+      if (todo.isDone && existingDoneDates.add(dayKey)) {
+        newCheckIns.add(
+          HabitCheckIn(
+            habitUuid: goal.uuid,
+            ruleRevisionUuid: rule.uuid,
+            occurredAt: localOccurred.toUtc().millisecondsSinceEpoch,
+            logicalDate: dayKey,
+            timezoneOffsetMinutes: localOccurred.timeZoneOffset.inMinutes,
+            value: 1,
+            note: todo.remark?.trim().isNotEmpty == true
+                ? todo.remark!.trim()
+                : null,
+            source: HabitCheckInSource.manual,
+            dedupeKey: HabitCheckIn.buildDedupeKey(
+              goal.uuid,
+              'completion/$dayKey',
+            ),
+            deviceId: deviceId,
+          ),
+        );
+      } else if (todo.isSkipped &&
+          !existingDoneDates.contains(dayKey) &&
+          existingSkipDates.add(dayKey)) {
+        newCheckIns.add(
+          HabitCheckIn(
+            habitUuid: goal.uuid,
+            ruleRevisionUuid: rule.uuid,
+            occurredAt: localOccurred.toUtc().millisecondsSinceEpoch,
+            logicalDate: dayKey,
+            timezoneOffsetMinutes: localOccurred.timeZoneOffset.inMinutes,
+            value: 0,
+            source: HabitCheckInSource.skip,
+            dedupeKey: HabitCheckIn.buildDedupeKey(goal.uuid, 'skip/$dayKey'),
+            deviceId: deviceId,
+          ),
+        );
+      }
+    }
+
+    if (earliestDateKey != null &&
+        earliestDateKey.isNotEmpty &&
+        earliestDateKey != rule.effectiveFromDate) {
+      rule
+        ..effectiveFromDate = earliestDateKey
+        ..markAsChanged();
+      await HabitStorage.saveRuleRevisions([rule]);
+    }
+    if (newCheckIns.isNotEmpty) {
+      await HabitStorage.saveCheckIns(newCheckIns);
+    }
+
+    final activeTodos = seriesTodos
+        .where((todo) => !todo.isDeleted)
+        .toList(growable: false);
+    if (activeTodos.isNotEmpty) {
+      final deletedItems = <TodoItem>[];
+      for (final todo in activeTodos) {
+        final copy = todo.detachedCopy()
+          ..isDeleted = true
+          ..markAsChanged();
+        deletedItems.add(copy);
+      }
+      try {
+        await StorageService.saveTodos(resolvedUsername, deletedItems);
+      } catch (e) {
+        debugPrint('⚠️ 迁移循环待办至回收站失败: $e');
+      }
+    }
+  }
+
+  static Future<List<TodoItem>> _loadSeriesTodosForImport(
+    List<String> seriesIds, {
+    String username = '',
+    List<TodoItem> fallbackTodos = const [],
+  }) async {
+    final cleanIds = seriesIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    if (cleanIds.isEmpty) return fallbackTodos;
+
+    final byId = <String, TodoItem>{};
+    for (final todo in fallbackTodos) {
+      final seriesId = (todo.recurrenceSeriesId ?? todo.id).trim();
+      if (cleanIds.contains(seriesId) || cleanIds.contains(todo.id)) {
+        byId[todo.id] = todo;
+      }
+    }
+    final fromDb = await HabitSourceResolver.todosForSeries(
+      cleanIds.toList(growable: false),
+    );
+    for (final todo in fromDb) {
+      byId[todo.id] = todo;
+    }
+    return byId.values.toList(growable: false);
+  }
+
+  static DateTime? _todoLocalDay(TodoItem todo) {
+    final ms = todo.createdDate ?? todo.createdAt;
+    if (ms <= 0) return null;
+    final local = DateTime.fromMillisecondsSinceEpoch(ms).toLocal();
+    return DateTime(local.year, local.month, local.day);
+  }
+
+  static Future<String> _resolveUsername([String username = '']) async {
+    final explicitUsername = username.trim();
+    if (explicitUsername.isNotEmpty) return explicitUsername;
+    final current = (await StorageService.getCurrentUsername())?.trim() ?? '';
+    return current.isNotEmpty ? current : 'default';
   }
 
   static HabitPeriodType _periodFromRecurrence(TodoItem todo) {
@@ -232,62 +484,12 @@ abstract final class HabitRepository {
     }
   }
 
-  /// 完成型固定提醒的待办开始时刻：把 [minuteOfDay]（0..1439）映射到
-  /// [day] 对应的本地时刻，配合提前量 0 由现有待办提醒调度触发。
+  /// 完成型固定提醒的时刻：把 [minuteOfDay]（0..1439）映射到
+  /// [day] 对应的本地时刻。
   @visibleForTesting
   static DateTime reminderStartFor(DateTime day, int minuteOfDay) {
     final m = minuteOfDay.clamp(0, 1439);
     return DateTime(day.year, day.month, day.day, m ~/ 60, m % 60);
-  }
-
-  static Future<TodoItem> _createRecurringTodoFromRule({
-    required String username,
-    required String name,
-    required HabitGoalRuleRevision rule,
-  }) async {
-    final now = DateTime.now();
-    final todo = TodoItem(
-      title: name,
-      isAllDay: true,
-      createdDate: DateTime(
-        now.year,
-        now.month,
-        now.day,
-      ).millisecondsSinceEpoch,
-    );
-    todo.recurrence = _recurrenceFromRule(rule);
-    todo.customIntervalDays = rule.customIntervalDays;
-    todo.recurrenceSeriesId = todo.id;
-    todo.isDone = false;
-    // 设计文档 18.1：完成型提醒直接复用循环待办现有提醒。
-    // 把待办开始时刻设为目标固定时间、提前量 0，即由现有提醒调度在
-    // 目标时刻触发（循环实例会继承该时刻）。
-    final fixedTimes = rule.reminderPolicy.fixedTimes;
-    if (fixedTimes.isNotEmpty) {
-      todo.createdDate = reminderStartFor(
-        now,
-        fixedTimes.first,
-      ).millisecondsSinceEpoch;
-      todo.reminderMinutes = 0;
-    }
-    await StorageService.updateSingleTodo(username, todo);
-    return todo;
-  }
-
-  static RecurrenceType _recurrenceFromRule(HabitGoalRuleRevision rule) {
-    switch (rule.periodType) {
-      case HabitPeriodType.daily:
-        return RecurrenceType.daily;
-      case HabitPeriodType.weekly:
-        return RecurrenceType.weekly;
-      case HabitPeriodType.weekdays:
-        if (rule.weekdaysMask == 31) return RecurrenceType.weekdays;
-        return RecurrenceType.weekly;
-      case HabitPeriodType.monthly:
-        return RecurrenceType.monthly;
-      case HabitPeriodType.custom:
-        return RecurrenceType.customDays;
-    }
   }
 
   /// 更新习惯展示信息（名称、图标、排序、显示位置）。
@@ -296,7 +498,7 @@ abstract final class HabitRepository {
     await HabitStorage.saveHabitGoals([goal]);
     await _requestSync(username);
     StorageService.triggerRefresh(const {DataRefreshDomain.habits});
-    unawaited(HabitReminderService.rescheduleAll());
+    unawaited(HabitReminderService.rescheduleAll().catchError((_) {}));
   }
 
   /// 修改目标规则。
@@ -372,7 +574,7 @@ abstract final class HabitRepository {
       await HabitStorage.saveHabitGoals([goal]);
       await _requestSync(username);
       StorageService.triggerRefresh(const {DataRefreshDomain.habits});
-      unawaited(HabitReminderService.rescheduleAll());
+      unawaited(HabitReminderService.rescheduleAll().catchError((_) {}));
       return;
     }
 
@@ -404,7 +606,7 @@ abstract final class HabitRepository {
       await HabitStorage.saveHabitGoals([goal]);
       await _requestSync(username);
       StorageService.triggerRefresh(const {DataRefreshDomain.habits});
-      unawaited(HabitReminderService.rescheduleAll());
+      unawaited(HabitReminderService.rescheduleAll().catchError((_) {}));
       return;
     }
 
@@ -452,7 +654,7 @@ abstract final class HabitRepository {
     await HabitStorage.saveHabitGoals([goal]);
     await _requestSync(username);
     StorageService.triggerRefresh(const {DataRefreshDomain.habits});
-    unawaited(HabitReminderService.rescheduleAll());
+    unawaited(HabitReminderService.rescheduleAll().catchError((_) {}));
   }
 
   /// 归档 / 取消归档习惯。
@@ -463,7 +665,7 @@ abstract final class HabitRepository {
     await HabitStorage.saveHabitGoals([goal]);
     await _requestSync();
     StorageService.triggerRefresh(const {DataRefreshDomain.habits});
-    unawaited(HabitReminderService.rescheduleAll());
+    unawaited(HabitReminderService.rescheduleAll().catchError((_) {}));
   }
 
   /// 逻辑删除习惯。
@@ -483,7 +685,7 @@ abstract final class HabitRepository {
     await HabitStorage.saveHabitGoals([goal]);
     await _requestSync();
     StorageService.triggerRefresh(const {DataRefreshDomain.habits});
-    unawaited(HabitReminderService.rescheduleAll());
+    unawaited(HabitReminderService.rescheduleAll().catchError((_) {}));
   }
 
   // ── 打卡 ─────────────────────────────────────────────
@@ -643,35 +845,32 @@ abstract final class HabitRepository {
 
   // ── 完成型习惯操作 ───────────────────────────────────
 
-  /// 获取完成型习惯今天对应的循环待办实例。
-  static Future<TodoItem?> todoOccurrenceForDate(
-    HabitGoal goal,
-    DateTime logicalDate,
-  ) async {
-    return HabitSourceResolver.todoForSeriesOnDate(goal.sourceIds, logicalDate);
-  }
-
-  /// 切换完成型习惯当天实例的完成状态。
+  /// 切换完成型习惯指定逻辑日的完成状态。
   static Future<bool> toggleCompletion({
     required HabitGoal goal,
     required DateTime logicalDate,
     String username = '',
   }) async {
     if (goal.sourceType != HabitSourceType.recurringTodo) return false;
-    final todo = await todoOccurrenceForDate(goal, logicalDate);
-    if (todo == null) return false;
-    if (username.isEmpty) {
-      final prefs = await SharedPreferences.getInstance();
-      username = prefs.getString(StorageService.keyCurrentUser) ?? '';
+    if (goal.sourceIds.isNotEmpty) {
+      await migrateLegacyRecurringTodoHabits(username: username);
     }
-    todo.isDone = !todo.isDone;
-    todo.markAsChanged();
-    await StorageService.updateSingleTodo(username, todo);
-    StorageService.triggerRefresh(const {
-      DataRefreshDomain.todos,
-      DataRefreshDomain.habits,
-    });
-    _rescheduleReminders(goal.uuid);
+    final dayKey = HabitRuleResolver.dayKey(logicalDate);
+    final existing = await HabitStorage.getCheckIns(
+      habitUuid: goal.uuid,
+      fromDate: dayKey,
+      toDate: dayKey,
+    );
+    final isDone = existing.any(
+      (checkIn) =>
+          !checkIn.isDeleted && checkIn.source != HabitCheckInSource.skip,
+    );
+    await setCompletion(
+      goal: goal,
+      logicalDate: logicalDate,
+      done: !isDone,
+      username: username,
+    );
     return true;
   }
 
@@ -682,21 +881,66 @@ abstract final class HabitRepository {
     String username = '',
   }) async {
     if (goal.sourceType != HabitSourceType.recurringTodo) return;
-    final todo = await todoOccurrenceForDate(goal, logicalDate);
-    if (todo == null) return;
-    if (todo.isDone == done) return;
-    if (username.isEmpty) {
-      final prefs = await SharedPreferences.getInstance();
-      username = prefs.getString(StorageService.keyCurrentUser) ?? '';
+    if (goal.sourceIds.isNotEmpty) {
+      await migrateLegacyRecurringTodoHabits(username: username);
     }
-    todo.isDone = done;
-    todo.markAsChanged();
-    await StorageService.updateSingleTodo(username, todo);
-    StorageService.triggerRefresh(const {
-      DataRefreshDomain.todos,
-      DataRefreshDomain.habits,
-    });
-    _rescheduleReminders(goal.uuid);
+    final dayKey = HabitRuleResolver.dayKey(logicalDate);
+    final existing = await HabitStorage.getCheckIns(
+      habitUuid: goal.uuid,
+      fromDate: dayKey,
+      toDate: dayKey,
+    );
+    final activeCompletions = existing
+        .where(
+          (checkIn) =>
+              !checkIn.isDeleted && checkIn.source != HabitCheckInSource.skip,
+        )
+        .toList(growable: false);
+    final activeSkips = existing
+        .where(
+          (checkIn) =>
+              !checkIn.isDeleted && checkIn.source == HabitCheckInSource.skip,
+        )
+        .toList(growable: false);
+
+    if (done) {
+      for (final skip in activeSkips) {
+        await deleteCheckIn(skip);
+      }
+      if (activeCompletions.isNotEmpty) return;
+
+      final rules = await getRules(habitUuid: goal.uuid);
+      final rule =
+          HabitRuleResolver.effectiveRule(rules, logicalDate) ??
+          (rules.isNotEmpty
+              ? rules.last
+              : HabitGoalRuleRevision(
+                  habitUuid: goal.uuid,
+                  effectiveFromDate: dayKey,
+                  periodType: HabitPeriodType.daily,
+                  targetValue: 1,
+                ));
+      final now = DateTime.now();
+      final isToday =
+          now.year == logicalDate.year &&
+          now.month == logicalDate.month &&
+          now.day == logicalDate.day;
+      final occurredAt = isToday
+          ? now
+          : DateTime(logicalDate.year, logicalDate.month, logicalDate.day, 12);
+      await addCheckIn(
+        goal: goal,
+        rule: rule,
+        localOccurredAt: occurredAt,
+        value: 1,
+        dedupeKey: HabitCheckIn.buildDedupeKey(goal.uuid, 'completion/$dayKey'),
+      );
+      return;
+    }
+
+    for (final checkIn in activeCompletions) {
+      await deleteCheckIn(checkIn);
+    }
   }
 
   // ── 工具 ─────────────────────────────────────────────
@@ -704,7 +948,7 @@ abstract final class HabitRepository {
   /// 打卡 / 达标 / 删除后异步重排该习惯今天的提醒，
   /// 实现「达标后取消当天剩余提醒」（设计文档 18.3）。
   static void _rescheduleReminders(String habitUuid) {
-    unawaited(HabitReminderService.rescheduleFor(habitUuid));
+    unawaited(HabitReminderService.rescheduleFor(habitUuid).catchError((_) {}));
   }
 
   static String _previousDay(String dayKey) {

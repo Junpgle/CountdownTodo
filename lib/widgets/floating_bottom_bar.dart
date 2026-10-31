@@ -238,17 +238,19 @@ class _FloatingBottomNavigationBarState
       child: content,
     );
 
-    return ValueListenableBuilder<double>(
-      valueListenable: _stretchNotifier,
-      builder: (context, stretch, child) {
-        final scaleX = 1.0 + stretch * 0.045;
-        return Transform(
-          alignment: Alignment.bottomCenter,
-          transform: Matrix4.diagonal3Values(scaleX, 1.0, 1.0),
-          child: child,
-        );
-      },
-      child: surface,
+    return RepaintBoundary(
+      child: ValueListenableBuilder<double>(
+        valueListenable: _stretchNotifier,
+        builder: (context, stretch, child) {
+          final scaleX = 1.0 + stretch * 0.045;
+          return Transform(
+            alignment: Alignment.bottomCenter,
+            transform: Matrix4.diagonal3Values(scaleX, 1.0, 1.0),
+            child: child,
+          );
+        },
+        child: surface,
+      ),
     );
   }
 }

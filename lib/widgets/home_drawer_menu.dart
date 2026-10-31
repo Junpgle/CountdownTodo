@@ -34,6 +34,8 @@ double homeDrawerSlideWidthFor({
       : _homeWideDrawerMaxWidth;
 }
 
+final RegExp _drawerTimezonePattern = RegExp(r'[+-]\d{2}:?\d{2}$');
+
 DateTime? _parseRegistrationDate(dynamic raw) {
   if (raw is num) {
     final value = raw.toInt();
@@ -50,7 +52,7 @@ DateTime? _parseRegistrationDate(dynamic raw) {
   if (numeric != null) return _parseRegistrationDate(numeric);
 
   final hasTimezone =
-      value.endsWith('Z') || RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(value);
+      value.endsWith('Z') || _drawerTimezonePattern.hasMatch(value);
   final normalized = value.replaceFirst(' ', 'T');
   final parseValue = hasTimezone
       ? normalized

@@ -60,7 +60,8 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
+    final size = MediaQuery.sizeOf(context);
+    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
     final colorScheme = Theme.of(context).colorScheme;
     final isWide = size.width > 600;
     final imagePath = widget.content['imagePath'] as String?;
@@ -75,9 +76,9 @@ class _SplashScreenState extends State<SplashScreen>
           children: [
             if (hasImage)
               if (isWide)
-                _buildWideLayout(imagePath, size)
+                _buildWideLayout(imagePath, size, pixelRatio)
               else
-                _buildNarrowLayout(imagePath, size)
+                _buildNarrowLayout(imagePath, size, pixelRatio)
             else
               FadeTransition(
                 opacity: _fadeAnimation,
@@ -124,7 +125,7 @@ class _SplashScreenState extends State<SplashScreen>
     );
   }
 
-  Widget _buildNarrowLayout(String imagePath, Size size) {
+  Widget _buildNarrowLayout(String imagePath, Size size, double pixelRatio) {
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -157,6 +158,8 @@ class _SplashScreenState extends State<SplashScreen>
                 'assets/splash/default.webp',
                 width: size.width,
                 height: size.height,
+                cacheWidth: (size.width * pixelRatio).round().clamp(1, 4096),
+                cacheHeight: (size.height * pixelRatio).round().clamp(1, 4096),
                 fit: BoxFit.cover,
                 alignment: Alignment.bottomCenter,
               ),
@@ -167,7 +170,7 @@ class _SplashScreenState extends State<SplashScreen>
     );
   }
 
-  Widget _buildWideLayout(String imagePath, Size size) {
+  Widget _buildWideLayout(String imagePath, Size size, double pixelRatio) {
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -200,6 +203,8 @@ class _SplashScreenState extends State<SplashScreen>
                 'assets/splash/default_pad.webp',
                 width: size.width,
                 height: size.height,
+                cacheWidth: (size.width * pixelRatio).round().clamp(1, 4096),
+                cacheHeight: (size.height * pixelRatio).round().clamp(1, 4096),
                 fit: BoxFit.cover,
                 alignment: Alignment.centerRight,
               ),

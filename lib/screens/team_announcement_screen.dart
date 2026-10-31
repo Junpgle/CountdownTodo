@@ -104,7 +104,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) => Container(
           padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+            bottom: MediaQuery.viewInsetsOf(context).bottom + 24,
             top: 12,
             left: 24,
             right: 24,

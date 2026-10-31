@@ -50,6 +50,11 @@ class _FixedScheduleDetailScreenState extends State<FixedScheduleDetailScreen> {
   bool _relatedTodoLoadFailed = false;
   int _loadGeneration = 0;
   late FixedScheduleItem _activeItem;
+  final Map<String, GlobalKey> _relatedTodoCardKeys = {};
+  final GlobalKey _editButtonKey = GlobalKey();
+
+  GlobalKey _getRelatedTodoCardKey(String id) =>
+      _relatedTodoCardKeys.putIfAbsent(id, GlobalKey.new);
 
   FixedScheduleItem get item => _activeItem;
   String get username => widget.username;
@@ -192,6 +197,7 @@ class _FixedScheduleDetailScreenState extends State<FixedScheduleDetailScreen> {
     await Navigator.of(context).push<void>(
       PageTransitions.material(
         builder: (_) => AddTodoScreen(
+          username: username,
           initialTeamUuid: item.teamUuid,
           relatedFixedScheduleContext: item,
           onManualTodoSaved: (todo) async {
@@ -315,54 +321,61 @@ class _FixedScheduleDetailScreenState extends State<FixedScheduleDetailScreen> {
                   !accessibleTodo.isDone &&
                   !accessibleTodo.isSkipped &&
                   !accessibleTodo.hasConflict;
-              return Card(
+              final cardKey = _getRelatedTodoCardKey(id);
+              return KeyedSubtree(
                 key: ValueKey('fixed-schedule-related-todo-$id'),
-                color: scheme.surfaceContainerLow,
-                clipBehavior: Clip.antiAlias,
-                child: Column(
-                  children: [
-                    ListTile(
-                      leading: Icon(
-                        accessibleTodo?.isDone == true
-                            ? Icons.task_alt_rounded
-                            : accessibleTodo?.isSkipped == true
-                            ? Icons.skip_next_rounded
-                            : canOpen
-                            ? Icons.checklist_rounded
-                            : Icons.link_off_rounded,
-                        color: canOpen
-                            ? scheme.primary
-                            : scheme.onSurfaceVariant,
+                child: Card(
+                  key: cardKey,
+                  color: scheme.surfaceContainerLow,
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: Icon(
+                          accessibleTodo?.isDone == true
+                              ? Icons.task_alt_rounded
+                              : accessibleTodo?.isSkipped == true
+                              ? Icons.skip_next_rounded
+                              : canOpen
+                              ? Icons.checklist_rounded
+                              : Icons.link_off_rounded,
+                          color: canOpen
+                              ? scheme.primary
+                              : scheme.onSurfaceVariant,
+                        ),
+                        title: Text(
+                          title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text(subtitle),
+                        trailing: canOpen
+                            ? const Icon(Icons.open_in_new_rounded)
+                            : null,
+                        onTap: accessibleTodo == null
+                            ? null
+                            : () => _openRelatedTodo(accessibleTodo),
                       ),
-                      title: Text(
-                        title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      subtitle: Text(subtitle),
-                      trailing: canOpen
-                          ? const Icon(Icons.open_in_new_rounded)
-                          : null,
-                      onTap: accessibleTodo == null
-                          ? null
-                          : () => _openRelatedTodo(accessibleTodo),
-                    ),
-                    if (canPrepare)
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 12, bottom: 8),
-                          child: TextButton.icon(
-                            key: ValueKey(
-                              'fixed-schedule-prepare-related-todo-$id',
+                      if (canPrepare)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Padding(
+                            padding: const EdgeInsets.only(
+                              right: 12,
+                              bottom: 8,
                             ),
-                            onPressed: () => _openPreparation(accessibleTodo),
-                            icon: const Icon(Icons.schedule_rounded),
-                            label: const Text('安排准备时间'),
+                            child: TextButton.icon(
+                              key: ValueKey(
+                                'fixed-schedule-prepare-related-todo-$id',
+                              ),
+                              onPressed: () => _openPreparation(accessibleTodo),
+                              icon: const Icon(Icons.schedule_rounded),
+                              label: const Text('安排准备时间'),
+                            ),
                           ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               );
             },
@@ -425,13 +438,17 @@ class _FixedScheduleDetailScreenState extends State<FixedScheduleDetailScreen> {
     return values.isEmpty ? '不提醒' : values.join('、');
   }
 
-  Future<void> _openEditor(BuildContext context) async {
-    final result = await Navigator.of(context).push<FixedScheduleItem>(
-      PageTransitions.material(
-        builder: (_) =>
-            FixedScheduleEditorScreen(username: username, item: item),
-      ),
-    );
+  Future<void> _openEditor(BuildContext context, {GlobalKey? sourceKey}) async {
+    final page = FixedScheduleEditorScreen(username: username, item: item);
+    final result = sourceKey != null
+        ? await PageTransitions.pushFromRect<FixedScheduleItem>(
+            context: context,
+            page: page,
+            sourceKey: sourceKey,
+          )
+        : await Navigator.of(context).push<FixedScheduleItem>(
+            PageTransitions.material(builder: (_) => page),
+          );
     if (!context.mounted || result == null) return;
     Navigator.of(context).pop(result);
   }
@@ -463,8 +480,9 @@ class _FixedScheduleDetailScreenState extends State<FixedScheduleDetailScreen> {
       scrollPhysics: const BouncingScrollPhysics(),
       appBarActions: [
         IconButton(
+          key: _editButtonKey,
           style: floatingGlassPlainIconButtonStyle(),
-          onPressed: () => _openEditor(context),
+          onPressed: () => _openEditor(context, sourceKey: _editButtonKey),
           icon: const Icon(Icons.edit_outlined),
           tooltip: '编辑固定日程',
         ),

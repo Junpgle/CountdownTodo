@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math' show max;
+import 'dart:math' show max, min;
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -393,6 +393,336 @@ class PomodoroRecord {
   }
 }
 
+typedef PomodoroLegacyPlanBlockMatcher = bool Function(
+  PomodoroRecord record,
+  TodoPlanBlock block,
+);
+
+/// Attributes Pomodoro focus time to planned blocks without counting a focus
+/// interval or a paused interval more than once.
+class PomodoroPlanFocusAllocator {
+  static List<int> linkedSecondsByBlock({
+    required List<TodoPlanBlock> blocks,
+    required List<PomodoroRecord> records,
+    PomodoroLegacyPlanBlockMatcher? legacyBlockMatcher,
+  }) => allocateByBlock(
+    blocks: blocks,
+    records: records,
+    legacyBlockMatcher: legacyBlockMatcher,
+  ).linkedSecondsByBlock;
+
+  static PomodoroPlanFocusAllocation allocateByBlock({
+    required List<TodoPlanBlock> blocks,
+    required List<PomodoroRecord> records,
+    PomodoroLegacyPlanBlockMatcher? legacyBlockMatcher,
+  }) {
+    if (blocks.isEmpty) {
+      return const PomodoroPlanFocusAllocation(
+        linkedSecondsByBlock: <int>[],
+        secondsByRecordByBlock: <Map<String, int>>[],
+        hasRecordCandidatesByBlock: <bool>[],
+      );
+    }
+
+    final blocksById = <String, List<int>>{};
+    final blocksByTodoId = <String, List<int>>{};
+    final explicitBlocksByRecordId = <String, Set<int>>{};
+    for (var blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
+      final block = blocks[blockIndex];
+      if (block.isDeleted) continue;
+      blocksById.putIfAbsent(block.uuid, () => []).add(blockIndex);
+      blocksByTodoId.putIfAbsent(block.todoId, () => []).add(blockIndex);
+      for (final recordId in block.pomodoroRecordIds) {
+        explicitBlocksByRecordId
+            .putIfAbsent(recordId, () => <int>{})
+            .add(blockIndex);
+      }
+    }
+
+    final secondsByRecordByBlock = [
+      for (var index = 0; index < blocks.length; index++) <String, int>{},
+    ];
+    final hasRecordCandidatesByBlock = List<bool>.filled(blocks.length, false);
+    for (final record in records) {
+      if (record.isDeleted) continue;
+
+      final planBlockId = record.planBlockId;
+      final directlyLinked = planBlockId == null
+          ? null
+          : blocksById[planBlockId];
+      if (directlyLinked != null && directlyLinked.isNotEmpty) {
+        hasRecordCandidatesByBlock[directlyLinked.first] = true;
+        _addAttributedSeconds(
+          secondsByRecordByBlock[directlyLinked.first],
+          record.uuid,
+          max(0, record.effectiveDuration),
+        );
+        continue;
+      }
+
+      final explicitlyLinked = explicitBlocksByRecordId[record.uuid];
+      if (explicitlyLinked != null && explicitlyLinked.isNotEmpty) {
+        for (final blockIndex in explicitlyLinked) {
+          hasRecordCandidatesByBlock[blockIndex] = true;
+        }
+        _attributeRecordToBlocks(
+          record: record,
+          candidateIndexes: explicitlyLinked.toList(),
+          blocks: blocks,
+          secondsByRecordByBlock: secondsByRecordByBlock,
+          isExplicitLink: true,
+        );
+        continue;
+      }
+
+      if (planBlockId?.isNotEmpty == true) continue;
+      final candidateBlocks = legacyBlockMatcher == null
+          ? (record.todoUuid == null ? null : blocksByTodoId[record.todoUuid])
+          : [
+              for (var index = 0; index < blocks.length; index++)
+                if (!blocks[index].isDeleted &&
+                    legacyBlockMatcher(record, blocks[index]))
+                  index,
+            ];
+      if (candidateBlocks == null || candidateBlocks.isEmpty) continue;
+
+      for (final blockIndex in candidateBlocks) {
+        if (_recordOverlapsBlock(record, blocks[blockIndex])) {
+          hasRecordCandidatesByBlock[blockIndex] = true;
+        }
+      }
+      _attributeRecordToBlocks(
+        record: record,
+        candidateIndexes: candidateBlocks,
+        blocks: blocks,
+        secondsByRecordByBlock: secondsByRecordByBlock,
+        isExplicitLink: false,
+      );
+    }
+    final linkedSecondsByBlock = [
+      for (final recordSeconds in secondsByRecordByBlock)
+        recordSeconds.values.fold<int>(0, (sum, seconds) => sum + seconds),
+    ];
+    return PomodoroPlanFocusAllocation(
+      linkedSecondsByBlock: linkedSecondsByBlock,
+      secondsByRecordByBlock: secondsByRecordByBlock,
+      hasRecordCandidatesByBlock: hasRecordCandidatesByBlock,
+    );
+  }
+
+  static List<int> actualSecondsByBlock({
+    required List<TodoPlanBlock> blocks,
+    required List<PomodoroRecord> records,
+    PomodoroLegacyPlanBlockMatcher? legacyBlockMatcher,
+  }) {
+    final allocation = allocateByBlock(
+      blocks: blocks,
+      records: records,
+      legacyBlockMatcher: legacyBlockMatcher,
+    );
+    return [
+      for (var i = 0; i < blocks.length; i++)
+        allocation.hasRecordCandidatesByBlock[i]
+            ? allocation.linkedSecondsByBlock[i]
+            : max(0, blocks[i].actualFocusSeconds),
+    ];
+  }
+
+  static bool _recordOverlapsBlock(PomodoroRecord record, TodoPlanBlock block) {
+    final recordEnd =
+        record.endTime ??
+        record.startTime + max(0, record.effectiveDuration) * 1000;
+    return record.startTime < block.endTime && recordEnd > block.startTime;
+  }
+
+  static void _attributeRecordToBlocks({
+    required PomodoroRecord record,
+    required List<int> candidateIndexes,
+    required List<TodoPlanBlock> blocks,
+    required List<Map<String, int>> secondsByRecordByBlock,
+    required bool isExplicitLink,
+  }) {
+    final candidates = candidateIndexes.toSet().toList()
+      ..sort((a, b) {
+        final startTime = blocks[a].startTime.compareTo(blocks[b].startTime);
+        return startTime != 0 ? startTime : a.compareTo(b);
+      });
+    if (candidates.isEmpty) return;
+    if (isExplicitLink && candidates.length == 1) {
+      _addAttributedSeconds(
+        secondsByRecordByBlock[candidates.single],
+        record.uuid,
+        max(0, record.effectiveDuration),
+      );
+      return;
+    }
+
+    var remainingMs = max(0, record.effectiveDuration) * 1000;
+    if (remainingMs == 0) return;
+
+    final activeIntervals = _activeIntervalsForRecord(record);
+    final claimedIntervals = <_PomodoroFocusInterval>[];
+    final allocatedMsByBlock = <int, int>{};
+
+    for (final blockIndex in candidates) {
+      if (remainingMs <= 0) break;
+      final block = blocks[blockIndex];
+      var blockAllocatedMs = 0;
+      for (final activeInterval in activeIntervals) {
+        if (remainingMs <= 0) break;
+        final overlapStart = max(activeInterval.startMs, block.startTime);
+        final overlapEnd = min(activeInterval.endMs, block.endTime);
+        if (overlapEnd <= overlapStart) continue;
+
+        final unclaimed = _subtractClaimedIntervals(
+          _PomodoroFocusInterval(startMs: overlapStart, endMs: overlapEnd),
+          claimedIntervals,
+        );
+        for (final interval in unclaimed) {
+          if (remainingMs <= 0) break;
+          final takeMs = min(interval.durationMs, remainingMs);
+          if (takeMs <= 0) continue;
+          claimedIntervals.add(
+            _PomodoroFocusInterval(
+              startMs: interval.startMs,
+              endMs: interval.startMs + takeMs,
+            ),
+          );
+          blockAllocatedMs += takeMs;
+          remainingMs -= takeMs;
+        }
+      }
+      if (blockAllocatedMs > 0) {
+        allocatedMsByBlock[blockIndex] = blockAllocatedMs;
+      }
+    }
+
+    for (final entry in allocatedMsByBlock.entries) {
+      _addAttributedSeconds(
+        secondsByRecordByBlock[entry.key],
+        record.uuid,
+        entry.value ~/ 1000,
+      );
+    }
+
+    // Explicit links are authoritative even when old records lack usable
+    // timestamps. Keep their duration on one block instead of dropping it.
+    if (isExplicitLink && allocatedMsByBlock.isEmpty) {
+      _addAttributedSeconds(
+        secondsByRecordByBlock[candidates.first],
+        record.uuid,
+        max(0, record.effectiveDuration),
+      );
+    }
+  }
+
+  static void _addAttributedSeconds(
+    Map<String, int> recordSeconds,
+    String recordUuid,
+    int seconds,
+  ) {
+    if (seconds <= 0) return;
+    recordSeconds[recordUuid] = (recordSeconds[recordUuid] ?? 0) + seconds;
+  }
+
+  static List<_PomodoroFocusInterval> _activeIntervalsForRecord(
+    PomodoroRecord record,
+  ) {
+    final recordEnd =
+        record.endTime ??
+        record.startTime + max(0, record.effectiveDuration) * 1000;
+    if (recordEnd <= record.startTime) {
+      return const <_PomodoroFocusInterval>[];
+    }
+
+    final pauses = <_PomodoroFocusInterval>[];
+    for (final pause in record.pauseIntervals ?? const <PauseInterval>[]) {
+      final pauseStart = max(record.startTime, pause.startMs);
+      final pauseEnd = min(recordEnd, pause.endMs ?? recordEnd);
+      if (pauseEnd > pauseStart) {
+        pauses.add(
+          _PomodoroFocusInterval(startMs: pauseStart, endMs: pauseEnd),
+        );
+      }
+    }
+    pauses.sort((a, b) => a.startMs.compareTo(b.startMs));
+
+    final mergedPauses = <_PomodoroFocusInterval>[];
+    for (final pause in pauses) {
+      if (mergedPauses.isEmpty || pause.startMs > mergedPauses.last.endMs) {
+        mergedPauses.add(pause);
+      } else if (pause.endMs > mergedPauses.last.endMs) {
+        mergedPauses.last.endMs = pause.endMs;
+      }
+    }
+
+    final active = <_PomodoroFocusInterval>[];
+    var cursor = record.startTime;
+    for (final pause in mergedPauses) {
+      if (pause.startMs > cursor) {
+        active.add(
+          _PomodoroFocusInterval(startMs: cursor, endMs: pause.startMs),
+        );
+      }
+      cursor = max(cursor, pause.endMs);
+    }
+    if (cursor < recordEnd) {
+      active.add(_PomodoroFocusInterval(startMs: cursor, endMs: recordEnd));
+    }
+    return active;
+  }
+
+  static List<_PomodoroFocusInterval> _subtractClaimedIntervals(
+    _PomodoroFocusInterval source,
+    List<_PomodoroFocusInterval> claimedIntervals,
+  ) {
+    if (claimedIntervals.isEmpty) return [source];
+    final sortedClaims = [...claimedIntervals]
+      ..sort((a, b) => a.startMs.compareTo(b.startMs));
+    final result = <_PomodoroFocusInterval>[];
+    var cursor = source.startMs;
+    for (final claimed in sortedClaims) {
+      if (claimed.endMs <= cursor) continue;
+      if (claimed.startMs >= source.endMs) break;
+      if (claimed.startMs > cursor) {
+        result.add(
+          _PomodoroFocusInterval(
+            startMs: cursor,
+            endMs: min(claimed.startMs, source.endMs),
+          ),
+        );
+      }
+      cursor = max(cursor, claimed.endMs);
+      if (cursor >= source.endMs) break;
+    }
+    if (cursor < source.endMs) {
+      result.add(_PomodoroFocusInterval(startMs: cursor, endMs: source.endMs));
+    }
+    return result;
+  }
+}
+
+class PomodoroPlanFocusAllocation {
+  const PomodoroPlanFocusAllocation({
+    required this.linkedSecondsByBlock,
+    required this.secondsByRecordByBlock,
+    required this.hasRecordCandidatesByBlock,
+  });
+
+  final List<int> linkedSecondsByBlock;
+  final List<Map<String, int>> secondsByRecordByBlock;
+  final List<bool> hasRecordCandidatesByBlock;
+}
+
+class _PomodoroFocusInterval {
+  _PomodoroFocusInterval({required this.startMs, required this.endMs});
+
+  final int startMs;
+  int endMs;
+
+  int get durationMs => endMs - startMs;
+}
+
 /// Lightweight fields used to build long-range statistics without decoding
 /// every historical record into a full [PomodoroRecord].
 class PomodoroSessionSummary {
@@ -555,6 +885,8 @@ class PomodoroRunState {
   int pauseStartMs;
   List<PauseInterval> pauseIntervals; // 暂停区间列表
   String? planBlockId; // 🚀 新增：关联规划块 ID
+  String? habitUuid; // 🚀 新增：关联习惯 UUID
+  int? challengeTaskId; // 🚀 新增：关联30天挑战任务 ID
   String? note; // 专注备注
 
   PomodoroRunState({
@@ -581,6 +913,8 @@ class PomodoroRunState {
     this.pauseStartMs = 0,
     List<PauseInterval>? pauseIntervals,
     this.planBlockId,
+    this.habitUuid,
+    this.challengeTaskId,
     this.note,
   }) : sessionUuid = sessionUuid ?? const Uuid().v4(),
        tagUuids = tagUuids ?? [],
@@ -626,6 +960,8 @@ class PomodoroRunState {
     'pause_start_ms': pauseStartMs,
     'pause_intervals': pauseIntervals,
     'plan_block_id': planBlockId,
+    if (habitUuid != null) 'habit_uuid': habitUuid,
+    if (challengeTaskId != null) 'challenge_task_id': challengeTaskId,
     'note': note,
   };
 
@@ -688,6 +1024,10 @@ class PomodoroRunState {
       ),
       pauseIntervals: _parsePauseIntervals(j['pause_intervals']),
       planBlockId: (j['plan_block_id'] ?? j['planBlockId'])?.toString(),
+      habitUuid: (j['habit_uuid'] ?? j['habitUuid'])?.toString(),
+      challengeTaskId: JsonValueParser.toNullableInt(
+        j['challenge_task_id'] ?? j['challengeTaskId'],
+      ),
       note: j['note']?.toString(),
     );
   }
@@ -1358,6 +1698,11 @@ class PomodoroService {
         where: 'is_deleted = 0',
       );
       final records = recordRows.map(PomodoroRecord.fromJson).toList();
+      final linkedSecondsByBlock =
+          PomodoroPlanFocusAllocator.linkedSecondsByBlock(
+            blocks: blocks,
+            records: records,
+          );
       final recordsByPlanBlock = <String, List<PomodoroRecord>>{};
       final legacyRecordsByUuid = <String, PomodoroRecord>{};
       final recordOrderByUuid = <String, int>{};
@@ -1373,7 +1718,8 @@ class PomodoroService {
         recordOrderByUuid[record.uuid] = index;
       }
 
-      for (final block in blocks) {
+      for (var blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
+        final block = blocks[blockIndex];
         if (block.isDeleted) continue;
         final linkedRecordsByUuid = <String, PomodoroRecord>{
           for (final record in recordsByPlanBlock[block.uuid] ?? const [])
@@ -1391,10 +1737,7 @@ class PomodoroService {
               recordOrderByUuid[right.uuid]!,
             ),
           );
-        final actualFocusSeconds = linkedRecords.fold<int>(
-          0,
-          (total, record) => total + record.effectiveDuration,
-        );
+        final actualFocusSeconds = linkedSecondsByBlock[blockIndex];
         final linkedRecordIds = linkedRecords
             .map((record) => record.uuid)
             .toSet();
@@ -1404,7 +1747,7 @@ class PomodoroService {
             !linkedRecordIds.containsAll(currentRecordIds) ||
             !currentRecordIds.containsAll(linkedRecordIds);
         var statusChanged = false;
-        if (linkedRecords.isNotEmpty &&
+        if (actualFocusSeconds > 0 &&
             (block.status == TodoPlanStatus.planned ||
                 block.status == TodoPlanStatus.focusing)) {
           final nextStatus =

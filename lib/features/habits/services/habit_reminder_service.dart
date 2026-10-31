@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../../../services/notification_service.dart';
 import '../../../services/scheduled_reminder_registry.dart';
 import '../../../services/storage/habit_storage.dart';
@@ -112,8 +114,6 @@ abstract final class HabitReminderService {
       if (rules == null || rules.isEmpty) continue;
       final rule = HabitRuleResolver.effectiveRule(rules, today);
       if (rule == null) continue;
-      // 完成型：复用循环待办现有提醒（设计文档 18.1）。
-      if (goal.sourceType == HabitSourceType.recurringTodo) continue;
       if (!HabitRuleResolver.isPlannedDay(rule, today)) continue;
       prepared.add((goal: goal, rules: rules, rule: rule));
     }
@@ -211,7 +211,17 @@ abstract final class HabitReminderService {
             reminders,
           );
         case HabitSourceType.recurringTodo:
-          break;
+          _buildCompletionReminders(
+            goal,
+            rule,
+            policy,
+            progress,
+            title,
+            today,
+            now,
+            logicalKey,
+            reminders,
+          );
       }
     }
 
@@ -223,10 +233,60 @@ abstract final class HabitReminderService {
           ),
         )
         .toList(growable: false);
-    await NotificationService.scheduleReminders(
-      ownedReminders,
-      clearFirst: false,
-      replaceSource: ScheduledReminderSources.habit,
+    try {
+      await NotificationService.scheduleReminders(
+        ownedReminders,
+        clearFirst: false,
+        replaceSource: ScheduledReminderSources.habit,
+      );
+    } catch (e) {
+      debugPrint('⚠️ 习惯提醒调度失败: $e');
+    }
+  }
+
+  /// 完成型：固定时刻提醒 + 进度提醒 + 每日总结提醒。
+  static void _buildCompletionReminders(
+    HabitGoal goal,
+    HabitGoalRuleRevision rule,
+    HabitReminderPolicy policy,
+    HabitProgress progress,
+    String title,
+    DateTime today,
+    DateTime now,
+    String logicalKey,
+    List<Map<String, dynamic>> reminders,
+  ) {
+    for (final minuteOfDay in _sortedFixedTimes(policy)) {
+      _addReminder(
+        reminders: reminders,
+        goal: goal,
+        slot: 'fixed-$minuteOfDay',
+        triggerAt: today.add(Duration(minutes: minuteOfDay)),
+        now: now,
+        title: title,
+        text: '记得完成今日打卡',
+      );
+    }
+    if (policy.progressReminder) {
+      _addReminder(
+        reminders: reminders,
+        goal: goal,
+        slot: 'progress',
+        triggerAt: today.add(Duration(minutes: progressReminderDefaultMinute)),
+        now: now,
+        title: title,
+        text: '今日还未完成打卡',
+      );
+    }
+    _addDailySummary(
+      goal: goal,
+      policy: policy,
+      title: title,
+      progress: progress,
+      today: today,
+      now: now,
+      logicalKey: logicalKey,
+      reminders: reminders,
     );
   }
 

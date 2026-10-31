@@ -38,16 +38,39 @@ mixin _HomeDashboardViewMixin
       color: const Color(0x66000000),
       colorBlendMode: BlendMode.srcOver,
     );
-    if (!AppPlatform.isWindows) return display(provider);
-    return StableImageDecodeSize(
-      builder: (_, width, height) => display(
-        ResizeImage(
-          provider,
-          width: width,
-          height: height,
-          policy: ResizeImagePolicy.fit,
+    if (AppPlatform.isWindows) {
+      return StableImageDecodeSize(
+        builder: (_, width, height) => display(
+          ResizeImage(
+            provider,
+            width: width,
+            height: height,
+            policy: ResizeImagePolicy.fit,
+          ),
         ),
-      ),
+      );
+    }
+    return Builder(
+      builder: (context) {
+        final size = MediaQuery.sizeOf(context);
+        final pixelRatio = MediaQuery.devicePixelRatioOf(context);
+        final cacheWidth = (size.width * pixelRatio)
+            .round()
+            .clamp(1, 4096)
+            .toInt();
+        final cacheHeight = (size.height * pixelRatio)
+            .round()
+            .clamp(1, 4096)
+            .toInt();
+        return display(
+          ResizeImage(
+            provider,
+            width: cacheWidth,
+            height: cacheHeight,
+            policy: ResizeImagePolicy.fit,
+          ),
+        );
+      },
     );
   }
 
@@ -82,40 +105,42 @@ mixin _HomeDashboardViewMixin
         children: [
           if (showWallpaper && wallpaperUrl != null)
             Positioned.fill(
-              child: wallpaperUrl.startsWith('assets/')
-                  ? Builder(
-                      builder: (context) {
-                        final provider = AssetImage(wallpaperUrl);
-                        _scheduleWallpaperColorExtraction(
-                          provider,
-                          wallpaperUrl,
-                        );
-                        return _buildWallpaperDisplay(provider);
-                      },
-                    )
-                  : localWallpaperProvider != null
-                  ? Builder(
-                      builder: (context) {
-                        final provider = localWallpaperProvider;
-                        _scheduleWallpaperColorExtraction(
-                          provider,
-                          wallpaperUrl,
-                        );
-                        return _buildWallpaperDisplay(provider);
-                      },
-                    )
-                  : _WallpaperNetworkImage(
-                      url: _wallpaperUrl!,
-                      onImageProvider: (provider) {
-                        _extractColorFromProvider(provider, _wallpaperUrl!);
-                      },
-                      onSuccess: () {
-                        _wallpaperRetryCount = 0;
-                      },
-                      onError: () {
-                        _handleWallpaperError();
-                      },
-                    ),
+              child: RepaintBoundary(
+                child: wallpaperUrl.startsWith('assets/')
+                    ? Builder(
+                        builder: (context) {
+                          final provider = AssetImage(wallpaperUrl);
+                          _scheduleWallpaperColorExtraction(
+                            provider,
+                            wallpaperUrl,
+                          );
+                          return _buildWallpaperDisplay(provider);
+                        },
+                      )
+                    : localWallpaperProvider != null
+                    ? Builder(
+                        builder: (context) {
+                          final provider = localWallpaperProvider;
+                          _scheduleWallpaperColorExtraction(
+                            provider,
+                            wallpaperUrl,
+                          );
+                          return _buildWallpaperDisplay(provider);
+                        },
+                      )
+                    : _WallpaperNetworkImage(
+                        url: _wallpaperUrl!,
+                        onImageProvider: (provider) {
+                          _extractColorFromProvider(provider, _wallpaperUrl!);
+                        },
+                        onSuccess: () {
+                          _wallpaperRetryCount = 0;
+                        },
+                        onError: () {
+                          _handleWallpaperError();
+                        },
+                      ),
+              ),
             ),
           SafeArea(
             // 仅避让顶部状态栏。列表需要继续绘制到 Android 手势导航区
@@ -125,7 +150,7 @@ mixin _HomeDashboardViewMixin
             child: FloatingGlassPinnedHeaderLayout(
               initialHeaderExtent:
                   (_selectedTabIndex != _homeFocusTabIndex || isTablet)
-                  ? (112.0 + MediaQuery.paddingOf(context).top)
+                  ? (78.0 + MediaQuery.paddingOf(context).top)
                   : 0.0,
               fadeContent: !showWallpaper,
               header: Column(
@@ -239,136 +264,143 @@ mixin _HomeDashboardViewMixin
                                       .isEmpty)
                               ? _buildDashboardSkeleton(
                                   isLight,
-                                  topPadding: headerExtent + 16,
+                                  topPadding: headerExtent + 6,
                                 )
                               : LayoutBuilder(
                                   builder: (context, constraints) {
                                     Widget wrapSectionBoundary(Widget child) =>
                                         showWallpaper || AppPlatform.isWindows
-                                            ? child
-                                            : RepaintBoundary(
-                                                child: child,
-                                              );
+                                        ? child
+                                        : RepaintBoundary(child: child);
                                     Widget buildCountdown() =>
-                                        ValueListenableBuilder<
-                                          List<CountdownItem>
-                                        >(
-                                          valueListenable: _countdownsNotifier,
-                                          builder: (context, countdowns, _) =>
-                                              CountdownSectionWidget(
-                                                historyKey:
-                                                    _countdownHistoryKey,
-                                                countdowns: countdowns,
-                                                dataRevision:
-                                                    _countdownsDataRevision,
-                                                username: widget.username,
-                                                isLight: isLight,
-                                                addKey: _addCountdownKey,
-                                                onDataChanged: () {
-                                                  _loadAllData(
-                                                    domains: const {
-                                                      DataRefreshDomain
-                                                          .countdowns,
-                                                    },
-                                                  );
-                                                  _timelineRevision.value++;
-                                                },
-                                              ),
+                                        wrapSectionBoundary(
+                                          ValueListenableBuilder<
+                                            List<CountdownItem>
+                                          >(
+                                            valueListenable:
+                                                _countdownsNotifier,
+                                            builder: (context, countdowns, _) =>
+                                                CountdownSectionWidget(
+                                                  historyKey:
+                                                      _countdownHistoryKey,
+                                                  countdowns: countdowns,
+                                                  dataRevision:
+                                                      _countdownsDataRevision,
+                                                  username: widget.username,
+                                                  isLight: isLight,
+                                                  addKey: _addCountdownKey,
+                                                  onDataChanged: () {
+                                                    _loadAllData(
+                                                      domains: const {
+                                                        DataRefreshDomain
+                                                            .countdowns,
+                                                      },
+                                                    );
+                                                    _timelineRevision.value++;
+                                                  },
+                                                ),
+                                          ),
                                         );
-                                    Widget buildTodo() => AnimatedBuilder(
-                                      animation: _todoSectionListenable,
-                                      builder: (context, _) {
-                                        return TodoSectionWidget(
-                                          folderKey: _todoFolderKey,
-                                          historyKey: _todoHistoryKey,
-                                          todos: _todos,
-                                          dataRevision: _todoDataRevision,
-                                          highlightedTodoIds:
-                                              _updatedByOthersTodoIds,
-                                          remoteUpdateHighlightSignal:
-                                              _remoteTodoHighlightSignal,
-                                          todoGroups: _todoGroups,
-                                          conflicts: _latestSyncConflicts,
-                                          username: widget.username,
-                                          isLight: isLight,
-                                          onTeamChanged: (teamUuid, teamName) {
-                                            setState(() {
-                                              _currentSelectedTeamUuid =
-                                                  teamUuid;
-                                              _currentSelectedTeamName =
-                                                  teamName;
-                                            });
-                                          },
-                                          onGroupsChanged: (newGroups) async {
-                                            final allGroups =
-                                                await StorageService.getTodoGroups(
-                                                  widget.username,
-                                                );
-                                            final groupIndexById =
-                                                <String, int>{};
-                                            for (
-                                              var index = 0;
-                                              index < allGroups.length;
-                                              index++
-                                            ) {
-                                              groupIndexById.putIfAbsent(
-                                                allGroups[index].id,
-                                                () => index,
-                                              );
-                                            }
-                                            for (final group in newGroups) {
-                                              final index =
-                                                  groupIndexById[group.id];
-                                              if (index == null) {
-                                                groupIndexById[group.id] =
-                                                    allGroups.length;
-                                                allGroups.add(group);
-                                              } else if (group.updatedAt >=
-                                                  allGroups[index].updatedAt) {
-                                                allGroups[index] = group;
-                                              }
-                                            }
-                                            await StorageService.saveTodoGroups(
-                                              widget.username,
-                                              allGroups,
-                                              sync: true,
-                                            );
-                                            if (!mounted) return;
-                                            setState(() {
-                                              _todoGroups = newGroups
-                                                  .where(
-                                                    (group) => !group.isDeleted,
-                                                  )
-                                                  .toList();
-                                              _todoDataRevision++;
-                                            });
-                                          },
-                                          onTodosChanged: _handleTodosChanged,
-                                          onManualTodoSaved: _saveManualTodo,
-                                          onEditorSave: _handleTodoEditorSave,
-                                          onEditorGroupsSave:
-                                              _handleTodoEditorGroupsSave,
-                                          initialSelectedTeamUuid:
-                                              _currentSelectedTeamUuid,
-                                          onRefreshRequested: _handleManualSync,
-                                          onLLMResultsParsed:
-                                              (
-                                                results,
-                                                imagePath,
-                                                originalText,
-                                                tUuid,
-                                                tName,
+                                    Widget buildTodo() => wrapSectionBoundary(
+                                      AnimatedBuilder(
+                                        animation: _todoSectionListenable,
+                                        builder: (context, _) {
+                                          return TodoSectionWidget(
+                                            folderKey: _todoFolderKey,
+                                            historyKey: _todoHistoryKey,
+                                            todos: _todos,
+                                            dataRevision: _todoDataRevision,
+                                            highlightedTodoIds:
+                                                _updatedByOthersTodoIds,
+                                            remoteUpdateHighlightSignal:
+                                                _remoteTodoHighlightSignal,
+                                            todoGroups: _todoGroups,
+                                            conflicts: _latestSyncConflicts,
+                                            username: widget.username,
+                                            isLight: isLight,
+                                            onTeamChanged:
+                                                (teamUuid, teamName) {
+                                                  setState(() {
+                                                    _currentSelectedTeamUuid =
+                                                        teamUuid;
+                                                    _currentSelectedTeamName =
+                                                        teamName;
+                                                  });
+                                                },
+                                            onGroupsChanged: (newGroups) async {
+                                              final allGroups =
+                                                  await StorageService.getTodoGroups(
+                                                    widget.username,
+                                                  );
+                                              final groupIndexById =
+                                                  <String, int>{};
+                                              for (
+                                                var index = 0;
+                                                index < allGroups.length;
+                                                index++
                                               ) {
-                                                _navigateToTodoConfirm(
+                                                groupIndexById.putIfAbsent(
+                                                  allGroups[index].id,
+                                                  () => index,
+                                                );
+                                              }
+                                              for (final group in newGroups) {
+                                                final index =
+                                                    groupIndexById[group.id];
+                                                if (index == null) {
+                                                  groupIndexById[group.id] =
+                                                      allGroups.length;
+                                                  allGroups.add(group);
+                                                } else if (group.updatedAt >=
+                                                    allGroups[index]
+                                                        .updatedAt) {
+                                                  allGroups[index] = group;
+                                                }
+                                              }
+                                              await StorageService.saveTodoGroups(
+                                                widget.username,
+                                                allGroups,
+                                                sync: true,
+                                              );
+                                              if (!mounted) return;
+                                              setState(() {
+                                                _todoGroups = newGroups
+                                                    .where(
+                                                      (group) =>
+                                                          !group.isDeleted,
+                                                    )
+                                                    .toList();
+                                                _todoDataRevision++;
+                                              });
+                                            },
+                                            onTodosChanged: _handleTodosChanged,
+                                            onManualTodoSaved: _saveManualTodo,
+                                            onEditorSave: _handleTodoEditorSave,
+                                            onEditorGroupsSave:
+                                                _handleTodoEditorGroupsSave,
+                                            initialSelectedTeamUuid:
+                                                _currentSelectedTeamUuid,
+                                            onRefreshRequested:
+                                                _handleManualSync,
+                                            onLLMResultsParsed:
+                                                (
                                                   results,
                                                   imagePath,
                                                   originalText,
                                                   tUuid,
                                                   tName,
-                                                );
-                                              },
-                                        );
-                                      },
+                                                ) {
+                                                  _navigateToTodoConfirm(
+                                                    results,
+                                                    imagePath,
+                                                    originalText,
+                                                    tUuid,
+                                                    tName,
+                                                  );
+                                                },
+                                          );
+                                        },
+                                      ),
                                     );
                                     Widget
                                     buildScreenTime() => wrapSectionBoundary(
@@ -469,19 +501,23 @@ mixin _HomeDashboardViewMixin
                                                 ),
                                               ),
                                         );
-                                    Widget buildTimeline() => KeyedSubtree(
-                                      key: _timelineCardKey,
-                                      child: ValueListenableBuilder<int>(
-                                        valueListenable: _timelineRevision,
-                                        builder: (context, trigger, _) {
-                                          return PersonalTimelineSection(
-                                            username: widget.username,
-                                            isLight: isLight,
-                                            refreshTrigger: trigger,
-                                          );
-                                        },
-                                      ),
-                                    );
+                                    Widget buildTimeline() =>
+                                        wrapSectionBoundary(
+                                          KeyedSubtree(
+                                            key: _timelineCardKey,
+                                            child: ValueListenableBuilder<int>(
+                                              valueListenable:
+                                                  _timelineRevision,
+                                              builder: (context, trigger, _) {
+                                                return PersonalTimelineSection(
+                                                  username: widget.username,
+                                                  isLight: isLight,
+                                                  refreshTrigger: trigger,
+                                                );
+                                              },
+                                            ),
+                                          ),
+                                        );
 
                                     Widget
                                     buildPomodoro() => wrapSectionBoundary(
@@ -622,10 +658,12 @@ mixin _HomeDashboardViewMixin
 
                                     Map<String, Widget Function()>
                                     sectionBuilders = {
-                                      'banners': () => AnimatedBuilder(
-                                        animation: _bannerSectionListenable,
-                                        builder: (_, _) =>
-                                            _buildUniversalBanner(isLight),
+                                      'banners': () => wrapSectionBoundary(
+                                        AnimatedBuilder(
+                                          animation: _bannerSectionListenable,
+                                          builder: (_, _) =>
+                                              _buildUniversalBanner(isLight),
+                                        ),
                                       ),
                                       'agenda': buildAgenda,
                                       'countdowns': buildCountdown,
@@ -682,8 +720,10 @@ mixin _HomeDashboardViewMixin
                                             backgroundBrightness:
                                                 cardBackgroundBrightness,
                                             child: Padding(
-                                              padding: const EdgeInsets.only(
-                                                bottom: 24.0,
+                                              padding: EdgeInsets.only(
+                                                bottom: key == 'banners'
+                                                    ? 0.0
+                                                    : 24.0,
                                               ),
                                               child: sectionBuilders[key]!(),
                                             ),
@@ -744,6 +784,10 @@ mixin _HomeDashboardViewMixin
                                                   ? 'home-focus-sections'
                                                   : 'home-main-sections',
                                             ),
+                                            physics: const BouncingScrollPhysics(
+                                              parent:
+                                                  AlwaysScrollableScrollPhysics(),
+                                            ),
                                             addRepaintBoundaries:
                                                 !showWallpaper,
                                             scrollCacheExtent:
@@ -751,10 +795,10 @@ mixin _HomeDashboardViewMixin
                                                 ? const ScrollCacheExtent.viewport(
                                                     0.5,
                                                   )
-                                                : null,
+                                                : ScrollCacheExtent.pixels(600),
                                             padding: EdgeInsets.fromLTRB(
                                               16,
-                                              listHeaderExtent + 16,
+                                              listHeaderExtent + 6,
                                               16,
                                               16,
                                             ),
@@ -1044,10 +1088,11 @@ mixin _HomeDashboardViewMixin
                                                   backgroundBrightness:
                                                       cardBackgroundBrightness,
                                                   child: Padding(
-                                                    padding:
-                                                        const EdgeInsets.only(
-                                                          bottom: 24.0,
-                                                        ),
+                                                    padding: EdgeInsets.only(
+                                                      bottom: key == 'banners'
+                                                          ? 0.0
+                                                          : 24.0,
+                                                    ),
                                                     child:
                                                         isolateTabletSection &&
                                                             !showWallpaper
@@ -1069,9 +1114,13 @@ mixin _HomeDashboardViewMixin
 
                                     return OptionalLiquidGlassScrollOptimizer(
                                       child: SingleChildScrollView(
+                                        physics: const BouncingScrollPhysics(
+                                          parent:
+                                              AlwaysScrollableScrollPhysics(),
+                                        ),
                                         padding: EdgeInsets.fromLTRB(
                                           isTablet ? 32 : 16,
-                                          headerExtent + 16,
+                                          headerExtent + 6,
                                           isTablet ? 32 : 16,
                                           16 +
                                               bottomSystemInset +
@@ -1584,6 +1633,7 @@ mixin _HomeDashboardViewMixin
 
   Future<void> _openHomeTodo({GlobalKey? sourceKey}) async {
     final page = AddTodoScreen(
+      username: widget.username,
       todoGroups: _todoGroups,
       initialTeamUuid: _currentSelectedTeamUuid,
       initialTeamName: _currentSelectedTeamName,

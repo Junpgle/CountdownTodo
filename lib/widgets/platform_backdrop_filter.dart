@@ -9,10 +9,8 @@ import '../utils/app_platform.dart';
 /// Windows. Windows can opt into the standard blur through the Liquid Glass
 /// setting; Android retains its existing performance bypass.
 ///
-/// Backdrop blur is visually pleasant on desktop and iOS, but it can make a
-/// full-screen wallpaper or a scrolling card miss the 120Hz raster budget on
-/// Android and Windows. The caller still supplies the same child, so the
-/// platform change only removes the expensive compositing step.
+/// The caller still supplies the same child, so bypassing blur only removes the
+/// expensive compositing step while preserving the supplied clipping.
 class PlatformBackdropFilter extends StatelessWidget {
   final ImageFilter filter;
   final Widget child;

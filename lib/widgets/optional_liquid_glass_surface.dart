@@ -96,8 +96,7 @@ bool _hasUniformRadius(BorderRadiusGeometry radius) {
 /// Isolates a glass-heavy scrollable and provides one shared backdrop group.
 ///
 /// Any grouped backdrop filters in the subtree share the engine's single
-/// backdrop input instead of creating independent captures. Adaptive repeated
-/// cards use static material on Android while this scrollable is active.
+/// backdrop input instead of creating independent captures.
 class OptionalLiquidGlassScrollOptimizer extends StatelessWidget {
   const OptionalLiquidGlassScrollOptimizer({super.key, required this.child});
 
@@ -105,22 +104,8 @@ class OptionalLiquidGlassScrollOptimizer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BackdropGroup(child: _OptionalGlassScrollableScope(child: child));
+    return BackdropGroup(child: child);
   }
-}
-
-class _OptionalGlassScrollableScope extends InheritedWidget {
-  const _OptionalGlassScrollableScope({required super.child});
-
-  static bool contains(BuildContext context) =>
-      context
-          .dependOnInheritedWidgetOfExactType<
-            _OptionalGlassScrollableScope
-          >() !=
-      null;
-
-  @override
-  bool updateShouldNotify(_OptionalGlassScrollableScope oldWidget) => false;
 }
 
 /// Marks content rendered inside one of the app's modal overlay surfaces.
@@ -248,9 +233,10 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
         final useStaticMaterial =
             mode == OptionalLiquidGlassPanelMode.staticMaterial ||
             useStaticOverlayMaterial ||
+            useStaticAndroidMaterial ||
             useStaticWindowsMaterial ||
             (mode == OptionalLiquidGlassPanelMode.adaptiveRepeated &&
-                (!enhanced || useStaticAndroidMaterial));
+                !enhanced);
         // Per-corner radii are only expressible by the tiers that clip with
         // BorderRadius; the superellipse shader shape needs a uniform radius.
         final resolvedRadius =
@@ -567,7 +553,9 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
         if (useStaticAndroidMaterial || useStaticWindowsMaterial) {
           // Android keeps its static performance path. Windows uses this
           // no-blur material only while Liquid Glass is disabled; opting in
-          // restores the standard glass implementation below.
+          // restores the standard glass implementation below. Windows keeps
+          // fixed floating controls on the cached material path while content
+          // scrolls behind them.
           final staticShell = OptionalLiquidGlassPanel(
             height: height,
             borderRadius: borderRadius,

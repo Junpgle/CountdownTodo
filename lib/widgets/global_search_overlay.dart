@@ -429,9 +429,8 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
 
   @override
   Widget build(BuildContext context) {
-    final mediaQuery = MediaQuery.of(context);
-    final size = mediaQuery.size;
-    final keyboardInset = mediaQuery.viewInsets.bottom;
+    final size = MediaQuery.sizeOf(context);
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isCompact = size.shortestSide < 600;

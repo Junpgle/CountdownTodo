@@ -1,11 +1,11 @@
 # Services
 
-Last reviewed: 2026-09-30.
+Last reviewed: 2026-10-31.
 
 ## Core areas
 
 - `database_helper.dart`: per-user SQLite schema (version tracked in
-  `database_schema_history.dart`, currently v56), migrations, FTS fallback and
+  `database_schema_history.dart`, currently v60), migrations, FTS fallback and
   data access.
 - `api_service.dart`, `environment_service.dart`: backend URL/environment and
   authenticated HTTP selection.
@@ -17,22 +17,25 @@ Last reviewed: 2026-09-30.
   mapping.
 - `item_semantics_service.dart`: deterministic capture classification between
   todos, fixed schedules and plan blocks. Fixed schedules use their own model,
-  persistence, recurrence materialization, reminders and sync path
-  (`fixed_schedule_recurrence_service.dart`).
+  persistence, recurrence materialization, reminders, todo relations and sync path
+  (`fixed_schedule_recurrence_service.dart`, `fixed_schedule_service.dart`).
 - `notification_service_*` and `todo_notification_policy.dart`: platform
   scheduling and date/deadline policy.
-- `search_service.dart`: global search ranking and database-backed results;
+- `search_service.dart`: global search ranking, database-backed results and direct feature navigation;
   `global_search_extra_service.dart` adds finance, journal, schedules, plan
-  blocks, check-ins, challenges, AI chat and team records.
+  blocks, check-ins, challenges, AI chat and team records; `app_settings_catalog.dart`
+  supports in-app settings search.
 - `llm_service.dart` plus AI parser/executor services: configured provider and
   structured actions.
-- `data_export_service.dart` and migration services: portable data flows.
+- `data_export_service.dart` and migration services: portable data flows, JSON v2 backup,
+  and domain-selective restore with receipts.
+- `bing_wallpaper_service.dart`: Bing daily wallpaper fetching, same-day caching and failure retry.
 - `liquid_glass_effect_service.dart`: opt-in Liquid Glass configuration
   (enablement + standard/enhanced mode) consumed by the theme and glass
   surfaces; initialization failures must degrade to Material fallbacks.
 - `sidebar_menu_service.dart`, `home_layout_service.dart`,
   `feature_tip_service.dart`: home sidebar/menu configuration, home layout
-  groups and feature tips.
+  groups, and feature tips/onboarding guidance.
 - `minor_mode_service.dart` / `minor_mode_policy.dart`: minor-mode state,
   age-band mapping and permission matrix.
 

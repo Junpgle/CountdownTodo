@@ -124,6 +124,11 @@ class ThirtyDayChallengeState {
   final DateTime startedAt;
   final List<ThirtyDayChallengeTask> tasks;
   final bool isClassicChallenge;
+  bool includeInPlanning;
+  int? preferredStartMinute;
+  int? plannedDurationMinutes;
+  List<String> focusTagUuids;
+  bool autoCompleteOnFocus;
 
   ThirtyDayChallengeState({
     required this.startedAt,
@@ -131,7 +136,51 @@ class ThirtyDayChallengeState {
     this.challengeTitle = defaultTitle,
     this.version = currentVersion,
     this.isClassicChallenge = false,
-  });
+    this.includeInPlanning = false,
+    this.preferredStartMinute,
+    this.plannedDurationMinutes,
+    List<String>? focusTagUuids,
+    this.autoCompleteOnFocus = true,
+  }) : focusTagUuids = focusTagUuids ?? [];
+
+  int get effectivePlannedMinutes =>
+      (plannedDurationMinutes != null && plannedDurationMinutes! > 0)
+      ? plannedDurationMinutes!.clamp(5, 720)
+      : 30;
+
+  int? get effectivePreferredStartMinute =>
+      (preferredStartMinute != null &&
+          preferredStartMinute! >= 0 &&
+          preferredStartMinute! < 1440)
+      ? preferredStartMinute
+      : null;
+
+  bool get hasPlanningBlock =>
+      includeInPlanning &&
+      effectivePreferredStartMinute != null &&
+      effectivePlannedMinutes > 0;
+
+  ThirtyDayChallengeTask? get nextUnfinishedTask {
+    for (final task in tasks) {
+      if (!task.isCompleted) return task;
+    }
+    return null;
+  }
+
+  bool hasCompletedTaskOnDate(DateTime date) {
+    final targetDay = DateTime(date.year, date.month, date.day);
+    for (final task in tasks) {
+      if (!task.isCompleted || task.completedAt == null) continue;
+      final completedLocal = task.completedAt!.toLocal();
+      final completedDay = DateTime(
+        completedLocal.year,
+        completedLocal.month,
+        completedLocal.day,
+      );
+      if (completedDay == targetDay) return true;
+    }
+    return false;
+  }
 
   bool get isBuiltIn =>
       isClassicChallenge && _matchesBuiltInTasks(challengeTitle, tasks);
@@ -174,6 +223,13 @@ class ThirtyDayChallengeState {
     'started_at': startedAt.toIso8601String(),
     'tasks': tasks.map((task) => task.toJson()).toList(),
     'is_built_in': isBuiltIn,
+    if (includeInPlanning) 'include_in_planning': true,
+    if (preferredStartMinute != null)
+      'preferred_start_minute': preferredStartMinute,
+    if (plannedDurationMinutes != null)
+      'planned_duration_minutes': plannedDurationMinutes,
+    if (focusTagUuids.isNotEmpty) 'focus_tag_uuids': focusTagUuids,
+    if (!autoCompleteOnFocus) 'auto_complete_on_focus': false,
   };
 
   factory ThirtyDayChallengeState.fromJson(Map<String, dynamic> json) {
@@ -209,6 +265,20 @@ class ThirtyDayChallengeState {
     final isBuiltIn = rawIsBuiltIn is bool
         ? rawIsBuiltIn && matchesBuiltIn
         : matchesBuiltIn;
+    final rawStartMinute = JsonValueParser.toNullableInt(
+      json['preferred_start_minute'],
+    );
+    final rawDuration = JsonValueParser.toNullableInt(
+      json['planned_duration_minutes'],
+    );
+    final rawFocusTags = json['focus_tag_uuids'];
+    final focusTagUuids = rawFocusTags is List
+        ? rawFocusTags
+              .map((item) => item.toString().trim())
+              .where((item) => item.isNotEmpty)
+              .toList()
+        : <String>[];
+    final rawAutoComplete = json['auto_complete_on_focus'];
 
     return ThirtyDayChallengeState(
       version: json['version'] is int
@@ -220,6 +290,20 @@ class ThirtyDayChallengeState {
           DateTime.now(),
       tasks: safeTasks,
       isClassicChallenge: isBuiltIn,
+      includeInPlanning:
+          json['include_in_planning'] == true ||
+          json['include_in_planning'] == 1,
+      preferredStartMinute:
+          rawStartMinute != null && rawStartMinute >= 0 && rawStartMinute < 1440
+          ? rawStartMinute
+          : null,
+      plannedDurationMinutes: rawDuration != null && rawDuration > 0
+          ? rawDuration
+          : null,
+      focusTagUuids: focusTagUuids,
+      autoCompleteOnFocus: rawAutoComplete == null
+          ? true
+          : (rawAutoComplete == true || rawAutoComplete == 1),
     );
   }
 

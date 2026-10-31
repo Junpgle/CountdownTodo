@@ -378,19 +378,21 @@ class _HabitCelebrationTriggerState extends State<HabitCelebrationTrigger>
               // 粒子爆发层
               Positioned.fill(
                 child: IgnorePointer(
-                  child: AnimatedBuilder(
-                    animation: _burstController,
-                    builder: (context, child) {
-                      if (!_burstController.isAnimating) {
-                        return const SizedBox.shrink();
-                      }
-                      return CustomPaint(
-                        painter: _BurstPainter(
-                          particles: _particles,
-                          progress: _burstController.value,
-                        ),
-                      );
-                    },
+                  child: RepaintBoundary(
+                    child: AnimatedBuilder(
+                      animation: _burstController,
+                      builder: (context, child) {
+                        if (!_burstController.isAnimating) {
+                          return const SizedBox.shrink();
+                        }
+                        return CustomPaint(
+                          painter: _BurstPainter(
+                            particles: _particles,
+                            progress: _burstController.value,
+                          ),
+                        );
+                      },
+                    ),
                   ),
                 ),
               ),
@@ -408,6 +410,11 @@ class _HoldProgressBorderPainter extends CustomPainter {
   final Color color;
   final BorderRadius borderRadius;
 
+  static final Paint _fillPaint = Paint()..style = PaintingStyle.fill;
+  static final Paint _borderPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
+
   _HoldProgressBorderPainter({
     required this.progress,
     required this.color,
@@ -422,16 +429,14 @@ class _HoldProgressBorderPainter extends CustomPainter {
     final rrect = borderRadius.toRRect(rect);
 
     // 绘制内部轻微蓄力填充背景
-    final fillPaint = Paint()
-      ..style = PaintingStyle.fill
-      ..color = color.withValues(alpha: (progress * 0.18).clamp(0.0, 0.25));
-    canvas.drawRRect(rrect, fillPaint);
+    _fillPaint.color = color.withValues(
+      alpha: (progress * 0.18).clamp(0.0, 0.25),
+    );
+    canvas.drawRRect(rrect, _fillPaint);
 
     // 绘制蓄力流光边框
-    final borderPaint = Paint()
-      ..style = PaintingStyle.stroke
+    _borderPaint
       ..strokeWidth = 2.0 + (progress * 1.5)
-      ..strokeCap = StrokeCap.round
       ..color = color.withValues(alpha: (0.4 + progress * 0.6).clamp(0.0, 1.0));
 
     final path = Path()..addRRect(rrect);
@@ -442,7 +447,7 @@ class _HoldProgressBorderPainter extends CustomPainter {
     final extractLength = metric.length * progress;
     final extractPath = metric.extractPath(0.0, extractLength);
 
-    canvas.drawPath(extractPath, borderPaint);
+    canvas.drawPath(extractPath, _borderPaint);
   }
 
   @override

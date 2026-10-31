@@ -95,7 +95,7 @@ class _WorkbenchActionsState extends State<WorkbenchActions>
   Widget build(BuildContext context) {
     if (widget.isRemoteWatching) {
       final isLandscape =
-          MediaQuery.of(context).orientation == Orientation.landscape;
+          MediaQuery.orientationOf(context) == Orientation.landscape;
       return Padding(
         padding: EdgeInsets.only(
           bottom: isLandscape ? 0 : (widget.isCompact ? 6 : 8),
@@ -298,7 +298,7 @@ class _WorkbenchActionsState extends State<WorkbenchActions>
 
     if (widget.isFocusing) {
       final isLandscape =
-          MediaQuery.of(context).orientation == Orientation.landscape;
+          MediaQuery.orientationOf(context) == Orientation.landscape;
       return Padding(
         key: const ValueKey('focus_btns'),
         padding: EdgeInsets.only(top: widget.isCompact ? 8 : 12),

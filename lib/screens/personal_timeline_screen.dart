@@ -965,7 +965,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
                       20,
                       8,
                       20,
-                      20 + MediaQuery.of(context).viewInsets.bottom,
+                      20 + MediaQuery.viewInsetsOf(context).bottom,
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -1564,7 +1564,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    final isWide = MediaQuery.of(context).size.width > 900;
+    final isWide = MediaQuery.sizeOf(context).width > 900;
     final topPadding = MediaQuery.paddingOf(context).top;
     final topBarHeight = floatingGlassTopBarHeight(context);
     final bottomContentPadding = floatingBottomNavigationContentPaddingFor(
@@ -1886,9 +1886,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
       width: size,
       height: size,
       decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      // Android 和 Windows 的 BackdropFilter 会给滚动层增加离屏合成，
-      // 这个 blob 只是装饰，在这两个平台保留半透明圆形即可。
-      child: AppPlatform.isAndroid || AppPlatform.isWindows
+      // Windows 的 BackdropFilter 会给透明窗口增加额外混合开销，
+      // 这个 blob 只是背景光晕装饰，在 Windows 保留半透明圆形即可。
+      child: AppPlatform.isWindows
           ? const SizedBox.shrink()
           : BackdropFilter(
               filter: AppImageFilters.blur80,
@@ -1986,7 +1986,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
   }
 
   double _timelineGreetingTopPadding(BuildContext context) {
-    final isCompact = MediaQuery.of(context).size.width < 600;
+    final isCompact = MediaQuery.sizeOf(context).width < 600;
     return isCompact ? 24.0 : 32.0;
   }
 
@@ -3444,18 +3444,20 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
               SizedBox(
                 height: 48,
                 width: 48,
-                child: CustomPaint(
-                  painter: _DonutPainter(
-                    [
-                      MapEntry('HW', _summary!.homeworkRatio),
-                      MapEntry('EX', _summary!.examRatio),
-                      MapEntry(
-                        'OT',
-                        (1.0 - _summary!.homeworkRatio - _summary!.examRatio)
-                            .clamp(0.0, 1.0),
-                      ),
-                    ],
-                    [cs.primary, cs.secondary, cs.outlineVariant],
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: _DonutPainter(
+                      [
+                        MapEntry('HW', _summary!.homeworkRatio),
+                        MapEntry('EX', _summary!.examRatio),
+                        MapEntry(
+                          'OT',
+                          (1.0 - _summary!.homeworkRatio - _summary!.examRatio)
+                              .clamp(0.0, 1.0),
+                        ),
+                      ],
+                      [cs.primary, cs.secondary, cs.outlineVariant],
+                    ),
                   ),
                 ),
               ),
@@ -3494,7 +3496,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
     ];
 
     final int colCount = isWide
-        ? (MediaQuery.of(context).size.width > 1200 ? 4 : 3)
+        ? (MediaQuery.sizeOf(context).width > 1200 ? 4 : 3)
         : 2;
 
     return Column(
@@ -3966,8 +3968,13 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
             SizedBox(
               height: 44,
               width: double.infinity,
-              child: CustomPaint(
-                painter: _SparklinePainter(trend, color.withValues(alpha: 0.5)),
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: _SparklinePainter(
+                    trend,
+                    color.withValues(alpha: 0.5),
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -4397,9 +4404,11 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
             child: Stack(
               children: [
                 Center(
-                  child: CustomPaint(
-                    size: const Size(120, 120),
-                    painter: _DonutPainter(sorted, palette),
+                  child: RepaintBoundary(
+                    child: CustomPaint(
+                      size: const Size(120, 120),
+                      painter: _DonutPainter(sorted, palette),
+                    ),
                   ),
                 ),
                 Center(
@@ -4612,7 +4621,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
         separatorBuilder: (_, _) => const SizedBox(width: 12),
         itemBuilder: (_, index) => SizedBox(
           width: 260,
-          child: _buildInsightItem(_mlInsights[index], cs),
+          child: RepaintBoundary(
+            child: _buildInsightItem(_mlInsights[index], cs),
+          ),
         ),
       ),
     );
@@ -5088,6 +5099,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
 class _DonutPainter extends CustomPainter {
   final List<MapEntry<String, double>> data;
   final List<Color> palette;
+  final Paint _paint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
 
   _DonutPainter(this.data, this.palette);
 
@@ -5096,15 +5110,12 @@ class _DonutPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2;
     final strokeWidth = radius * 0.35;
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
+    _paint.strokeWidth = strokeWidth;
 
     double startAngle = -3.14159 / 2;
     for (int i = 0; i < data.length; i++) {
       final sweepAngle = data[i].value * 2 * 3.14159;
-      paint.color = palette[i % palette.length];
+      _paint.color = palette[i % palette.length];
 
       // Draw arc with slight gap
       canvas.drawArc(
@@ -5112,7 +5123,7 @@ class _DonutPainter extends CustomPainter {
         startAngle + 0.05,
         sweepAngle - 0.1,
         false,
-        paint,
+        _paint,
       );
       startAngle += sweepAngle;
     }
@@ -5127,6 +5138,11 @@ class _DonutPainter extends CustomPainter {
 class _SparklinePainter extends CustomPainter {
   final List<double> data;
   final Color color;
+  final Paint _paint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 2.5
+    ..strokeCap = StrokeCap.round
+    ..strokeJoin = StrokeJoin.round;
 
   _SparklinePainter(this.data, this.color);
 
@@ -5134,13 +5150,7 @@ class _SparklinePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (data.length < 2) return;
 
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
+    _paint.color = color;
     final path = Path();
     var maxVal = data.first;
     var minVal = data.first;
@@ -5163,7 +5173,7 @@ class _SparklinePainter extends CustomPainter {
       }
     }
 
-    canvas.drawPath(path, paint);
+    canvas.drawPath(path, _paint);
   }
 
   @override

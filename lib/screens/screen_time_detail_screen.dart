@@ -825,7 +825,12 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
                   alignment: Alignment.topCenter,
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 1400),
-                    child: _buildMainContent(),
+                    child: MediaQuery.removePadding(
+                      context: context,
+                      removeTop: true,
+                      removeBottom: true,
+                      child: _buildMainContent(),
+                    ),
                   ),
                 ),
         ),
@@ -1113,6 +1118,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       height: 42,
       child: ListView(
         scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.zero,
         children: ScreenTimeRange.values.map(buildRangeChip).toList(),
       ),
     );
@@ -1155,6 +1161,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       height: 42,
       child: ListView(
         scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.zero,
         children: DeviceFilter.values.map(buildDeviceChip).toList(),
       ),
     );
@@ -1330,13 +1337,15 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
               child: SizedBox(
                 width: double.infinity,
                 height: height,
-                child: CustomPaint(
-                  painter: BarChartPainter(
-                    data: totals,
-                    labels: labels,
-                    primaryColor: Theme.of(context).colorScheme.primary,
-                    textColor: Theme.of(context).colorScheme.onSurfaceVariant,
-                    selectedIndex: selectedIndex,
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: BarChartPainter(
+                      data: totals,
+                      labels: labels,
+                      primaryColor: Theme.of(context).colorScheme.primary,
+                      textColor: Theme.of(context).colorScheme.onSurfaceVariant,
+                      selectedIndex: selectedIndex,
+                    ),
                   ),
                 ),
               ),
@@ -1375,6 +1384,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
         crossAxisSpacing: 10,
@@ -1387,6 +1397,11 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
         final String name = cat['name'];
         final int dur = cat['duration'];
         final Color color = _catColor(name);
+        final cs = Theme.of(context).colorScheme;
+        final opaqueCardColor = Color.alphaBlend(
+          color.withValues(alpha: 0.08),
+          cs.surfaceContainerLowest,
+        );
 
         return _ExpandableCard(
           pageBuilder: (_) => CategoryDetailScreen(
@@ -1403,7 +1418,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
               _todayNormalized,
             ),
           ),
-          sourceColor: color.withValues(alpha: 0.06),
+          sourceColor: opaqueCardColor,
           borderRadius: BorderRadius.circular(18),
           child: Container(
             decoration: BoxDecoration(
@@ -1472,6 +1487,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
         crossAxisSpacing: 10,
@@ -1583,6 +1599,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
         child: ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
+          padding: EdgeInsets.zero,
           itemCount: apps.length - skipCount,
           separatorBuilder: (_, _) => Divider(
             height: 1,
@@ -2234,12 +2251,14 @@ class AppDetailScreen extends StatelessWidget {
                           SizedBox(
                             width: double.infinity,
                             height: 180,
-                            child: CustomPaint(
-                              painter: LineChartPainter(
-                                data: trend,
-                                labels: labels,
-                                primaryColor: cs.primary,
-                                textColor: cs.onSurfaceVariant,
+                            child: RepaintBoundary(
+                              child: CustomPaint(
+                                painter: LineChartPainter(
+                                  data: trend,
+                                  labels: labels,
+                                  primaryColor: cs.primary,
+                                  textColor: cs.onSurfaceVariant,
+                                ),
                               ),
                             ),
                           ),

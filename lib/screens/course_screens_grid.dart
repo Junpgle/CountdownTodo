@@ -23,31 +23,25 @@ class _IdentityIndexCache<T extends Object> {
 }
 
 class _PlanPomodoroProgressIndex {
-  _PlanPomodoroProgressIndex(this.records) {
-    for (var index = 0; index < records.length; index++) {
-      final record = records[index];
-      _recordEnds.add(
-        record.endTime ?? record.startTime + record.effectiveDuration * 1000,
-      );
-      if (record.isDeleted) continue;
-      _recordsByUuid.putIfAbsent(record.uuid, () => []).add(index);
-
-      final planBlockId = record.planBlockId;
-      if (planBlockId != null && planBlockId.isNotEmpty) {
-        _recordsByPlanBlockId.putIfAbsent(planBlockId, () => []).add(index);
-      }
-      final todoUuid = record.todoUuid;
-      if (todoUuid != null && todoUuid.isNotEmpty) {
-        _recordsByTodoId.putIfAbsent(todoUuid, () => []).add(index);
-      }
-    }
+  _PlanPomodoroProgressIndex(this.plans, this.records) {
+    final allocation = PomodoroPlanFocusAllocator.allocateByBlock(
+      blocks: plans,
+      records: records,
+    );
+    _secondsByPlanId = {
+      for (var index = 0; index < plans.length; index++)
+        plans[index].id: allocation.secondsByRecordByBlock[index],
+    };
+    _recordsByUuid = {
+      for (final record in records)
+        if (!record.isDeleted) record.uuid: record,
+    };
   }
 
+  final List<TodoPlanBlock> plans;
   final List<PomodoroRecord> records;
-  final _recordEnds = <int>[];
-  final _recordsByUuid = <String, List<int>>{};
-  final _recordsByPlanBlockId = <String, List<int>>{};
-  final _recordsByTodoId = <String, List<int>>{};
+  late final Map<String, Map<String, int>> _secondsByPlanId;
+  late final Map<String, PomodoroRecord> _recordsByUuid;
   final _progressByPlan =
       HashMap<TodoPlanBlock, Map<String, dynamic>>.identity();
 
@@ -58,40 +52,30 @@ class _PlanPomodoroProgressIndex {
       return {'completed': 0, 'total': 0, 'actualSeconds': 0, 'progress': 0.0};
     }
 
-    final matchingIndices = <int>{};
-    for (final recordUuid in plan.pomodoroRecordIds) {
-      matchingIndices.addAll(_recordsByUuid[recordUuid] ?? const <int>[]);
-    }
-    if (plan.id.isNotEmpty) {
-      matchingIndices.addAll(_recordsByPlanBlockId[plan.id] ?? const <int>[]);
-    }
-    if (plan.todoId.isNotEmpty) {
-      for (final index in _recordsByTodoId[plan.todoId] ?? const <int>[]) {
-        final record = records[index];
-        if (record.startTime < plan.endTime &&
-            _recordEnds[index] > plan.startTime) {
-          matchingIndices.add(index);
-        }
-      }
-    }
-
-    if (matchingIndices.isEmpty) {
+    final attributedSeconds = _secondsByPlanId[plan.id] ?? const {};
+    if (attributedSeconds.isEmpty) {
       return {'completed': 0, 'total': 0, 'actualSeconds': 0, 'progress': 0.0};
     }
 
     var totalSeconds = 0;
     var completedSeconds = 0;
     var actualSeconds = 0;
-    for (final index in matchingIndices) {
-      final record = records[index];
-      final effective = record.effectiveDuration > 0
+    for (final entry in attributedSeconds.entries) {
+      final record = _recordsByUuid[entry.key];
+      if (record == null) continue;
+      final effective = entry.value;
+      actualSeconds += effective;
+      final originalEffective = record.effectiveDuration > 0
           ? record.effectiveDuration
           : 0;
-      actualSeconds += effective;
       final planned = record.plannedDuration > 0
           ? record.plannedDuration
-          : effective;
-      final base = planned > 0 ? planned : 1;
+          : originalEffective;
+      var base = planned > 0 ? planned : 1;
+      if (originalEffective > 0 && effective < originalEffective) {
+        final proratedBase = (planned * effective / originalEffective).round();
+        base = proratedBase > 0 ? proratedBase : 1;
+      }
       totalSeconds += base;
       completedSeconds += effective.clamp(0, base);
     }
@@ -101,7 +85,7 @@ class _PlanPomodoroProgressIndex {
       'total': totalSeconds,
       'actualSeconds': actualSeconds,
       'progress': progress.clamp(0.0, 1.0),
-      'recordCount': matchingIndices.length,
+      'recordCount': attributedSeconds.length,
     };
   });
 }
@@ -225,20 +209,17 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     _cachedPlanPomodoroProgressIndex = null;
   }
 
-  _PlanPomodoroProgressIndex? _planPomodoroProgressIndexFor(
-    int uniquePlanCount,
-  ) {
-    if (uniquePlanCount <= 1 ||
-        uniquePlanCount * _allPomodoroRecords.length <= 128) {
-      _cachedPlanPomodoroProgressIndex = null;
-      return null;
-    }
-
+  _PlanPomodoroProgressIndex _planPomodoroProgressIndexFor() {
     final cached = _cachedPlanPomodoroProgressIndex;
-    if (cached != null && identical(cached.records, _allPomodoroRecords)) {
+    if (cached != null &&
+        identical(cached.records, _allPomodoroRecords) &&
+        identical(cached.plans, _allPlanBlocks)) {
       return cached;
     }
-    final index = _PlanPomodoroProgressIndex(_allPomodoroRecords);
+    final index = _PlanPomodoroProgressIndex(
+      _allPlanBlocks,
+      _allPomodoroRecords,
+    );
     _cachedPlanPomodoroProgressIndex = index;
     return index;
   }
@@ -356,7 +337,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           child: Container(
             padding: const EdgeInsets.all(16),
             constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.5,
+              maxHeight: MediaQuery.sizeOf(ctx).height * 0.5,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -783,55 +764,18 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     return false;
   }
 
-  // --- 辅助方法：计算规划块关联的番茄钟完成情况 ---
-  Map<String, dynamic> _calculatePlanPomodoroProgress(TodoPlanBlock plan) {
-    final associatedRecordsByUuid = <String, PomodoroRecord>{};
-    for (final record in _allPomodoroRecords) {
-      if (_isRecordAssociatedWithPlan(record, plan)) {
-        associatedRecordsByUuid.putIfAbsent(record.uuid, () => record);
-      }
-    }
-    final associatedRecords = associatedRecordsByUuid.values;
-
-    if (associatedRecords.isEmpty) {
-      return {'completed': 0, 'total': 0, 'actualSeconds': 0, 'progress': 0.0};
-    }
-
-    // 计算实际专注进度（秒）
-    int totalSeconds = 0;
-    int completedSeconds = 0;
-    int actualSeconds = 0;
-
-    for (var record in associatedRecords) {
-      final int effective = record.effectiveDuration > 0
-          ? record.effectiveDuration
-          : 0;
-      actualSeconds += effective;
-      final int planned = record.plannedDuration > 0
-          ? record.plannedDuration
-          : effective;
-      final int base = planned > 0 ? planned : 1;
-      totalSeconds += base;
-      completedSeconds += effective.clamp(0, base);
-    }
-
-    final progress = totalSeconds > 0 ? completedSeconds / totalSeconds : 0.0;
-
-    return {
-      'completed': completedSeconds,
-      'total': totalSeconds,
-      'actualSeconds': actualSeconds,
-      'progress': progress.clamp(0.0, 1.0),
-      'recordCount': associatedRecords.length,
-    };
-  }
-
   // --- 辅助方法：检查番茄钟是否被某个计划块关联 ---
   bool _isPomodoroAssociatedWithPlan(PomodoroRecord record) {
     return _allPlanBlocks.any(
       (plan) => _isRecordAssociatedWithPlan(record, plan),
     );
   }
+
+  Map<String, dynamic> _calculatePlanPomodoroProgress(TodoPlanBlock plan) =>
+      _PlanPomodoroProgressIndex(
+        _allPlanBlocks,
+        _allPomodoroRecords,
+      ).progressFor(plan);
 
   Widget _buildHeader(DateTime? monday) {
     DateTime now = DateTime.now();
@@ -893,7 +837,14 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     _prepareHiddenTimeRangeIndex();
     final upperBound = _hiddenRangeUpperBound(m);
     if (upperBound == 0) return false;
-    return _hiddenTimeRanges[upperBound - 1].contains(m);
+    final range = _hiddenTimeRanges[upperBound - 1];
+    if (range.startMinute <= startHour * 60.0) {
+      return m >= range.startMinute && m < range.endMinute;
+    }
+    if (range.endMinute >= endHour * 60.0) {
+      return m > range.startMinute && m <= range.endMinute;
+    }
+    return range.contains(m);
   }
 
   String _formatMinute(double minute) {
@@ -981,9 +932,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     final planIndices = hasVisiblePlans
         ? _cachedVisiblePlanIndices
         : const <TodoPlanBlock, int>{};
-    final planPomodoroProgressIndex = _planPomodoroProgressIndexFor(
-      planIndices.length,
-    );
+    final planPomodoroProgressIndex = _planPomodoroProgressIndexFor();
 
     for (int hour = startHour; hour <= endHour; hour++) {
       // 🚀 自适应时间隐藏：如果该小时正点落于本周的合并收窄区间中，跳过不绘制
@@ -1013,28 +962,30 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
         }
         double slotHeight = _timeToY(nextHour, 0, minuteHeight) - y;
 
-        children.add(
-          Positioned(
-            top: y,
-            left: 0,
-            width: timeColumnWidth,
-            height: slotHeight,
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 2.0),
-                child: Text(
-                  '${hour.toString().padLeft(2, '0')}:00',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: textColor,
-                    fontWeight: FontWeight.w500,
+        if (nextHour <= endHour && slotHeight >= 14.0) {
+          children.add(
+            Positioned(
+              top: y,
+              left: 0,
+              width: timeColumnWidth,
+              height: slotHeight,
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2.0),
+                  child: Text(
+                    '${hour.toString().padLeft(2, '0')}:00',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: textColor,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        );
+          );
+        }
       }
     }
 
@@ -1192,10 +1143,10 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 final animationProgressScale = 1.0 / (1.0 - animationDelay);
 
                 return Positioned(
-                  top: top,
+                  top: top + 1,
                   left: left,
                   width: width,
-                  height: height,
+                  height: (height - 2).clamp(18.0, double.infinity),
                   child: AnimatedBuilder(
                     animation: _courseExpandAnim,
                     builder: (ctx, child) {
@@ -1430,10 +1381,10 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 final animationProgressScale = 1.0 / (1.0 - animationDelay);
 
                 return Positioned(
-                  top: top,
+                  top: top + 1,
                   left: left,
                   width: width,
-                  height: height,
+                  height: (height - 2).clamp(18.0, double.infinity),
                   child: AnimatedBuilder(
                     animation: _courseExpandAnim,
                     builder: (ctx, child) {
@@ -1557,9 +1508,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           final planCardKey = _getPlanBlockCardKey(plan.uuid, weekday);
 
           // 计算关联的番茄钟完成进度
-          final pomProgress =
-              planPomodoroProgressIndex?.progressFor(plan) ??
-              _calculatePlanPomodoroProgress(plan);
+          final pomProgress = planPomodoroProgressIndex.progressFor(plan);
           final recordCount = (pomProgress['recordCount'] as int?) ?? 0;
           final hasAssociatedPomodoro = recordCount > 0;
           final actualFocusSeconds =
@@ -1613,10 +1562,10 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 final animationProgressScale = 1.0 / (1.0 - animationDelay);
 
                 return Positioned(
-                  top: top,
+                  top: top + 1,
                   left: left + 3,
                   width: width > 6 ? width - 6 : width,
-                  height: height,
+                  height: (height - 2).clamp(16.0, double.infinity),
                   child: AnimatedBuilder(
                     animation: _courseExpandAnim,
                     builder: (ctx, child) {
@@ -1903,10 +1852,10 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                       (height * 0.3 * (width / (cellWidth - 2)).clamp(0.4, 1.0))
                           .clamp(9.0, 10.5);
                   return Positioned(
-                    top: top,
+                    top: top + 1,
                     left: left,
                     width: width,
-                    height: height,
+                    height: (height - 2).clamp(16.0, double.infinity),
                     child: GestureDetector(
                       onTap: () => _openFixedScheduleDetail(
                         schedule,
@@ -2116,10 +2065,10 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                   final animationProgressScale = 1.0 / (1.0 - animationDelay);
 
                   return Positioned(
-                    top: top,
+                    top: top + 1,
                     left: left,
                     width: width,
-                    height: height,
+                    height: (height - 2).clamp(18.0, double.infinity),
                     child: AnimatedBuilder(
                       animation: _courseExpandAnim,
                       builder: (ctx, child) {
@@ -2292,10 +2241,10 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                               (width / (cellWidth - 2)).clamp(0.4, 1.0))
                           .clamp(9.0, 10.5);
                   return Positioned(
-                    top: top,
+                    top: top + 1,
                     left: left,
                     width: width,
-                    height: height,
+                    height: (height - 2).clamp(16.0, double.infinity),
                     child: GestureDetector(
                       onTap: () => _showDeviceCalendarEventDetail(
                         context,
@@ -2593,10 +2542,12 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               left: timeColumnWidth,
               width: cellWidth * 7,
               height: 1,
-              child: CustomPaint(
-                painter: _CurrentTimeRulePainter(
-                  animation: _pulseAnimation,
-                  color: focusColor,
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: _CurrentTimeRulePainter(
+                    animation: _pulseAnimation,
+                    color: focusColor,
+                  ),
                 ),
               ),
             ),
@@ -2607,10 +2558,12 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               left: lineLeft,
               width: cellWidth,
               height: 2,
-              child: CustomPaint(
-                painter: _CurrentTimeMarkerPainter(
-                  animation: _pulseAnimation,
-                  color: focusColor,
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: _CurrentTimeMarkerPainter(
+                    animation: _pulseAnimation,
+                    color: focusColor,
+                  ),
                 ),
               ),
             ),

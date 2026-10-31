@@ -1,6 +1,6 @@
 # CountDownTodo / Uni-Sync
 
-<img src="assets/icon/app_icon.png" alt="CountDownTodo" width="1024" height="1024">
+<img src="assets/icon/app_icon.png" alt="CountDownTodo" width="128" height="128">
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 ![Client: Flutter](https://img.shields.io/badge/Client-Flutter-02569B?logo=flutter&logoColor=white)
@@ -15,8 +15,8 @@ CountDownTodo 是一个基于 Flutter 的跨平台效率工具，覆盖待办规
 
 Countdown Todo is a Flutter productivity app combining todos, recurring todo series, habit tracking, countdowns, courses, focus sessions, plan blocks, collaboration, statistics, calendar integration and AI-assisted actions.
 
-当前应用版本：`6.4.1`
-文档更新时间：`2026-09-26`
+当前应用版本：`7.22.8`
+文档更新时间：`2026-10-31`
 
 ## 支持平台
 
@@ -24,7 +24,6 @@ Countdown Todo is a Flutter productivity app combining todos, recurring todo ser
 - **Windows**：桌面客户端，以及独立的灵动岛/悬浮窗 host（`lib/windows_island/`，Windows-only）。
 - **macOS**：菜单栏（可关闭）、WidgetKit 小组件（含“循环待办”）、开机自启、深度链接、原生灵动岛/状态显示。
 - **Web**：Flutter Web 客户端（Beta），通过 Cloudflare Zero Trust 访问 API；另有 React 网页介绍站 `webpage/web/`。
-- **iOS**：Flutter host 工程存在，发布前需核实功能对齐。
 - 配套项目：React 介绍页 `webpage/web/`、小米手环伴侣应用 `CountDownTodo-band/`。
 
 ## 高阶功能使用教程
@@ -32,25 +31,28 @@ Countdown Todo is a Flutter productivity app combining todos, recurring todo ser
 
 ## 主要功能
 
-- **待办管理**：分组、提醒、循环待办（习惯另有独立打卡模型）、固定日程（独立 `fixed_schedules` 模型）、版本历史、冲突处理、回收站、AI 辅助操作。
-- **规划块**：把已有待办安排到具体时间段，支持日视图创建、拖动改期、边缘调整、番茄钟绑定和统计，可写入系统日历。
-- **番茄钟**：标签、暂停详情、运行状态持久化、规划块绑定、记录统计、WebSocket 跨端感知、云同步、专注备注。
-- **习惯中心**：独立打卡模型（`lib/features/habits/`），连续天数与完成率统计、睡眠作息渐进训练、快捷打卡与小组件打卡。
-- **个人记账**：离线优先的支出、收入、退款记录，分类/月度统计、账单筛选、月度总预算与分类预算、预算提醒、周期账单、快捷模板、CSV/JSON 备份和回收站恢复（`lib/features/finance/`）。
-- **时间日志和时间线**：合并补录记录与番茄钟记录做效率分析；个人时间轴支持天/周/月/年维度。
+- **待办管理**：分组、提醒、循环待办（习惯另有独立打卡模型）、固定日程（独立 `fixed_schedules` 模型，支持与待办双向关联、改期影响复核与准备时间推荐）、未安排时间待办语义、版本历史、冲突处理、回收站、AI 辅助操作。
+- **规划块**：把已有待办安排到具体时间段，支持日视图创建、拖动改期、边缘调整、番茄钟绑定和统计，可写入系统日历与小时级动态分轨展示。
+- **番茄钟**：标签、暂停详情、运行状态持久化、规划块绑定、记录统计、WebSocket 跨端感知、云同步、专注备注、年度记录分析与专注习惯联动。
+- **习惯中心**：独立打卡模型（`lib/features/habits/`），连续天数与完成率统计、睡眠作息渐进训练、快捷打卡与小组件打卡、长按防误触与延迟盖章保护、专注习惯联动与容量规划接入。
+- **个人记账**：离线优先的支出、收入、退款记录，账单日历视图、分类账本精准筛选、月度累计结余趋势穿透分析、未来固定及手工收支一览、月度总预算与分类预算、预算提醒、周期账单、快捷模板、CSV/JSON 备份和回收站恢复（`lib/features/finance/`）。
+- **时间日志和时间线**：合并补录记录与番茄钟记录做效率分析；个人时间轴支持天/周/月/年维度，支持课程与固定日程只读占位映射。
 - **课程表**：导入与解析（`lib/course_import/`）、共存模式、多学期切换、周/月视图、调休。
-- **本地私密日记**：仅存本地的图文日记（`lib/features/journal/`）。
-- **30 天挑战**：30 件小事清单挑战，支持云端模板目录和分享口令（`lib/features/thirty_day_challenge/`）。
+- **本地私密日记**：仅存本地的图文日记，支持回收站软删除、原时间恢复与物理附件彻底清理（`lib/features/journal/`）。
+- **30 天挑战**：30 件小事清单挑战，支持独立打卡、专注联动、云端模板目录和分享口令（`lib/features/thirty_day_challenge/`）。
+- **功能百宝箱与探索中心**：分类功能知识库、新特性引导（v7.22）、功能直达与使用探索进度打卡（`lib/screens/help/`）。
+- **动画与流畅度量化监控**：实时帧率与渲染达标率监测、GPU/CPU 渲染压力等级动态评估、特效负荷细项分析与性能监控悬浮窗。
+- **全局搜索与设置搜索**：全局搜索覆盖待办、日程、记账、日记、规划块、习惯打卡、挑战、AI 对话和团队资料，并支持功能直达；设置首页支持全配置项模糊搜索。
+- **数据备份与恢复**：JSON 备份支持按数据域选择导出与恢复（待办/日程、课程、专注、习惯、挑战、记账等独立选择），支持恢复前复核与分域导入结果回执。
 - **团队协同**：团队管理、公告、消息中心、冲突收件箱、甘特图/热力图看板、共享链接查看。
-- **全局搜索**：搜索待办、课程、倒数日、专注和时间记录，以及记账、日记、固定日程、规划块、习惯打卡、挑战、AI 对话和团队资料；结果可进入原生页面或详情页，并使用容器变换动画打开和返回。
 - **AI 助手**：LLM 配置（含 NVIDIA NIM）、智能上下文注入、待办建议与操作、待确认记账草案及账单查询/修改/删除、图片识别待办和勋章 ML 推荐。
-- **其他**：屏幕使用时间、首页壁纸、首页侧边栏配置（隐藏与排序）、未成年人模式（年龄权限矩阵）、液态玻璃视觉效果（可选开关与模式）、全局动态取色、个人专注报告、版本更新管理（含 Wi-Fi 自动下载更新包）。
+- **视觉与体验**：首页预设壁纸直出与 Bing 每日壁纸本地缓存与重试、液态玻璃（Liquid Glass）视觉效果（可选开关、模式与滤镜缓存）、全局动态取色、屏幕使用时间统计、首页侧栏自定义与板块间距自适应。
 - **本地 MCP 待办服务**：`mcp-server/` 提供 Node.js stdio MCP Server，供 Claude、VS Code、Cursor 等 Host 查询和操作本地待办，写入 `op_logs` 由 Uni-Sync 机制同步。
 
 ## 当前架构
 
 - 主 Flutter 应用位于 `lib/`，平台壳位于 `android/`、`windows/`、`macos/`、`ios/`、`linux/`、`web/`。
-- 高容量业务数据以 SQLite 为主存储（当前 schema v55）；`SharedPreferences` 保留设置、登录态、同步水位线、小缓存和兼容迁移。
+- 高容量业务数据以 SQLite 为主存储（当前 schema v60）；`SharedPreferences` 保留设置、登录态、同步水位线、小缓存和兼容迁移。
 - 主同步入口为 `StorageService.syncData()`，负责待办、分组、倒数日、时间日志、规划块、屏幕时间 payload 和能力门控的个人记账切片；番茄钟同步由 `PomodoroService` 单独处理（标签、记录、oplog 保护、漏传恢复水位线）。
 - 后端同时保留 Alibaba Cloud 和 Cloudflare Worker。新后端能力优先修改 `CDT-server/debug/`（外部 checkout 的研发树）；`math-quiz-backend/` 保留兼容行为。
 - Web 通过 Cloudflare Zero Trust 访问 `https://api-cdt.junpgle.me/`；Windows/Android 可直接访问 Alibaba Cloud HTTP 服务。
@@ -64,7 +66,7 @@ CountdownTodo/
 ├── lib/                    Flutter 主应用代码
 │   ├── course_import/       课程导入处理器、解析器和 UI
 │   ├── models/              AI action、聊天消息、勋章 ML 等扩展模型
-│   ├── features/            自包含功能模块（习惯、私密日记、30 天挑战）
+│   ├── features/            自包含功能模块（习惯、私密日记、30 天挑战、个人记账）
 │   ├── screens/             页面层和功能页面
 │   ├── services/            API、同步、数据库、番茄钟、AI、课程、时间线、通知、平台服务
 │   │   └── storage/         StorageService 拆分的职责模块

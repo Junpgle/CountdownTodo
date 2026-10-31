@@ -1,12 +1,13 @@
 # Screens
 
 The screen layer contains both full pages and several large legacy feature
-files. Last reviewed: 2026-09-26.
+files. Last reviewed: 2026-10-31.
 
-Major flows include home/dashboard and settings, todo creation/history/chat,
+Major flows include home/dashboard and settings (with in-app search), todo creation/history/chat,
 countdowns, courses, Pomodoro and tag management, plan blocks and statistics,
 personal timeline/medals, collaboration/conflict inbox, calendar sync, global
-search, data import/export, band sync, login/account and onboarding/update UI.
+search (with direct navigation), feature explorer / knowledge base (`help/feature_explorer_screen.dart`),
+data import/export (with selective restore review), band sync, login/account and onboarding/update UI.
 Search results use native detail/editor screens where available and
 `SearchRecordDetailScreen` for records without a dedicated destination.
 `home_dashboard.dart`, `course_screens.dart` and `todo_chat_screen.dart` are
@@ -14,8 +15,9 @@ split into `part` files by concern (view/lifecycle/navigation/persistence).
 
 Feature-module screens live beside their code: `lib/features/habits/screens/`
 (habit center with today/calendar/analysis tabs, detail/edit/history/archive),
-`lib/features/journal/screens/` (private journal list/editor/detail), and
-`lib/features/thirty_day_challenge/screens/`.
+`lib/features/journal/screens/` (private journal list/editor/detail and trash bin),
+`lib/features/thirty_day_challenge/screens/`, and
+`lib/features/finance/screens/` (transactions, calendar view, categories, budgets, recurring rules, loans, statistics/trends).
 
 Recurrence administration includes series-aware display/progress and the
 settings merge page. Todo time UI uses explicit unscheduled, date-only and

@@ -481,7 +481,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                       // 底部留白
                       SliverToBoxAdapter(
                         child: SizedBox(
-                          height: MediaQuery.of(context).padding.bottom + 50,
+                          height: MediaQuery.paddingOf(context).bottom + 50,
                         ),
                       ),
                     ],

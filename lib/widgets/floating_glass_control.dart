@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -1296,31 +1295,32 @@ class FloatingGlassPinnedHeaderLayout extends StatefulWidget {
 
 class _FloatingGlassPinnedHeaderLayoutState
     extends State<FloatingGlassPinnedHeaderLayout> {
-  final GlobalKey _headerKey = GlobalKey();
   double? _measuredHeaderExtent;
+  double? _pendingHeaderExtent;
   bool _measureScheduled = false;
 
-  void _scheduleHeaderMeasurement() {
+  void _handleHeaderExtentChanged(double nextExtent) {
+    if (_measuredHeaderExtent != null &&
+        (nextExtent - _measuredHeaderExtent!).abs() <= 0.5) {
+      return;
+    }
+    _pendingHeaderExtent = nextExtent;
     if (_measureScheduled) return;
     _measureScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _measureScheduled = false;
       if (!mounted) return;
-
-      final renderObject = _headerKey.currentContext?.findRenderObject();
-      if (renderObject is! RenderBox || !renderObject.hasSize) return;
-      final nextExtent = renderObject.size.height;
-      if ((_measuredHeaderExtent == null ||
-              (nextExtent - _measuredHeaderExtent!).abs() > 0.5) &&
-          mounted) {
-        setState(() => _measuredHeaderExtent = nextExtent);
+      final pending = _pendingHeaderExtent;
+      if (pending == null) return;
+      if (_measuredHeaderExtent == null ||
+          (pending - _measuredHeaderExtent!).abs() > 0.5) {
+        setState(() => _measuredHeaderExtent = pending);
       }
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    _scheduleHeaderMeasurement();
     final headerExtent =
         _measuredHeaderExtent ??
         widget.initialHeaderExtent.clamp(0.0, 2000.0).toDouble();
@@ -1341,12 +1341,57 @@ class _FloatingGlassPinnedHeaderLayoutState
           top: 0,
           left: 0,
           right: 0,
-          child: FloatingGlassScrollAware(
-            child: KeyedSubtree(key: _headerKey, child: widget.header),
+          child: RepaintBoundary(
+            child: FloatingGlassScrollAware(
+              child: _FloatingGlassHeaderSizeObserver(
+                onExtentChanged: _handleHeaderExtentChanged,
+                child: widget.header,
+              ),
+            ),
           ),
         ),
       ],
     );
+  }
+}
+
+class _FloatingGlassHeaderSizeObserver extends SingleChildRenderObjectWidget {
+  const _FloatingGlassHeaderSizeObserver({
+    required this.onExtentChanged,
+    required super.child,
+  });
+
+  final ValueChanged<double> onExtentChanged;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) {
+    return _RenderFloatingGlassHeaderSizeObserver(onExtentChanged);
+  }
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant _RenderFloatingGlassHeaderSizeObserver renderObject,
+  ) {
+    renderObject.onExtentChanged = onExtentChanged;
+  }
+}
+
+class _RenderFloatingGlassHeaderSizeObserver extends RenderProxyBox {
+  _RenderFloatingGlassHeaderSizeObserver(this.onExtentChanged);
+
+  ValueChanged<double> onExtentChanged;
+  double? _lastReportedExtent;
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    final nextExtent = size.height;
+    if (_lastReportedExtent == null ||
+        (nextExtent - _lastReportedExtent!).abs() > 0.5) {
+      _lastReportedExtent = nextExtent;
+      onExtentChanged(nextExtent);
+    }
   }
 }
 
@@ -1524,11 +1569,7 @@ class _FloatingGlassTopBarOverlayState
 
         if (widget.blur) {
           surface = BackdropFilter(
-            filter: ui.ImageFilter.blur(
-              sigmaX: blur,
-              sigmaY: blur,
-              tileMode: TileMode.clamp,
-            ),
+            filter: AppImageFilters.quantizedClampedBlur(blur),
             child: surface,
           );
         }
@@ -2859,11 +2900,7 @@ class FloatingGlassTopBarBackground extends StatelessWidget {
 
             if (blur) {
               surface = BackdropFilter(
-                filter: ui.ImageFilter.blur(
-                  sigmaX: blurSigma,
-                  sigmaY: blurSigma,
-                  tileMode: TileMode.clamp,
-                ),
+                filter: AppImageFilters.quantizedClampedBlur(blurSigma),
                 child: surface,
               );
             }
@@ -2992,10 +3029,9 @@ class _FloatingGlassControlFallback extends StatelessWidget {
             fit: fit,
             clipBehavior: allowChildOverflow ? Clip.none : Clip.hardEdge,
             children: [
-              // Avoid BackdropFilter in the Android and Windows fallback
-              // paths; its offscreen pass is costly and can expand across the
-              // transparent desktop window.
-              if (!AppPlatform.isAndroid && !AppPlatform.isWindows)
+              // Avoid BackdropFilter in the Windows fallback path; its
+              // offscreen pass can expand across the transparent desktop window.
+              if (!AppPlatform.isWindows)
                 Positioned.fill(
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(borderRadius),

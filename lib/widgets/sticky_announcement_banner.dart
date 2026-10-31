@@ -263,7 +263,7 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner>
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
-        child: AppPlatform.isAndroid || AppPlatform.isWindows
+        child: AppPlatform.isWindows
             ? bannerContent
             : BackdropFilter(
                 filter: AppImageFilters.blur10,

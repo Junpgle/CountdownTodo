@@ -89,14 +89,16 @@ class HabitTimePointChart extends StatelessWidget {
                 children: [
                   SizedBox(
                     height: _chartHeight,
-                    child: CustomPaint(
-                      key: const ValueKey('habit-time-point-chart-canvas'),
-                      painter: _HabitTimePointChartPainter(
-                        data: data,
-                        colorScheme: colorScheme,
-                        scale: scale,
+                    child: RepaintBoundary(
+                      child: CustomPaint(
+                        key: const ValueKey('habit-time-point-chart-canvas'),
+                        painter: _HabitTimePointChartPainter(
+                          data: data,
+                          colorScheme: colorScheme,
+                          scale: scale,
+                        ),
+                        child: const SizedBox.expand(),
                       ),
-                      child: const SizedBox.expand(),
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -240,6 +242,17 @@ class _HabitTimePointChartPainter extends CustomPainter {
   final ColorScheme colorScheme;
   final _HabitTimePointChartScale scale;
 
+  static final Paint _gridPaint = Paint()..strokeWidth = 1;
+  static final Paint _targetPaint = Paint()..strokeWidth = 1.5;
+  static final Paint _linePaint = Paint()
+    ..strokeWidth = 2.5
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round
+    ..strokeJoin = StrokeJoin.round;
+  static final Paint _dotOutlinePaint = Paint()..style = PaintingStyle.fill;
+  static final Paint _onTimeDotPaint = Paint()..style = PaintingStyle.fill;
+  static final Paint _lateDotPaint = Paint()..style = PaintingStyle.fill;
+
   const _HabitTimePointChartPainter({
     required this.data,
     required this.colorScheme,
@@ -250,13 +263,11 @@ class _HabitTimePointChartPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (size.width <= 0 || size.height <= 0 || data.isEmpty) return;
 
-    final gridPaint = Paint()
-      ..color = colorScheme.outlineVariant.withValues(alpha: 0.55)
-      ..strokeWidth = 1;
+    _gridPaint.color = colorScheme.outlineVariant.withValues(alpha: 0.55);
     for (final minute in scale.tickMinutes) {
       if (!scale.contains(minute)) continue;
       final y = _yFor(minute, size.height);
-      _drawDashedLine(canvas, Offset(0, y), Offset(size.width, y), gridPaint);
+      _drawDashedLine(canvas, Offset(0, y), Offset(size.width, y), _gridPaint);
     }
 
     _drawTargetLines(canvas, size);
@@ -264,9 +275,7 @@ class _HabitTimePointChartPainter extends CustomPainter {
   }
 
   void _drawTargetLines(Canvas canvas, Size size) {
-    final targetPaint = Paint()
-      ..color = colorScheme.primary.withValues(alpha: 0.7)
-      ..strokeWidth = 1.5;
+    _targetPaint.color = colorScheme.primary.withValues(alpha: 0.7);
 
     Offset? previousPoint;
     for (var index = 0; index < data.length; index++) {
@@ -280,28 +289,17 @@ class _HabitTimePointChartPainter extends CustomPainter {
         _yFor(target, size.height),
       );
       if (previousPoint != null) {
-        _drawDashedLine(canvas, previousPoint, point, targetPaint);
+        _drawDashedLine(canvas, previousPoint, point, _targetPaint);
       }
       previousPoint = point;
     }
   }
 
   void _drawActualLines(Canvas canvas, Size size) {
-    final linePaint = Paint()
-      ..color = colorScheme.primary
-      ..strokeWidth = 2.5
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-    final dotOutlinePaint = Paint()
-      ..color = colorScheme.surface
-      ..style = PaintingStyle.fill;
-    final onTimeDotPaint = Paint()
-      ..color = colorScheme.tertiary
-      ..style = PaintingStyle.fill;
-    final lateDotPaint = Paint()
-      ..color = colorScheme.error
-      ..style = PaintingStyle.fill;
+    _linePaint.color = colorScheme.primary;
+    _dotOutlinePaint.color = colorScheme.surface;
+    _onTimeDotPaint.color = colorScheme.tertiary;
+    _lateDotPaint.color = colorScheme.error;
 
     Offset? previousPoint;
     var previousIndex = -2;
@@ -318,14 +316,14 @@ class _HabitTimePointChartPainter extends CustomPainter {
         _yFor(minute, size.height),
       );
       if (previousPoint != null && previousIndex == index - 1) {
-        canvas.drawLine(previousPoint, point, linePaint);
+        canvas.drawLine(previousPoint, point, _linePaint);
       }
 
-      canvas.drawCircle(point, 5, dotOutlinePaint);
+      canvas.drawCircle(point, 5, _dotOutlinePaint);
       canvas.drawCircle(
         point,
         3.5,
-        data[index].onTime ? onTimeDotPaint : lateDotPaint,
+        data[index].onTime ? _onTimeDotPaint : _lateDotPaint,
       );
       previousPoint = point;
       previousIndex = index;

@@ -483,7 +483,7 @@ class _SettingsPageState extends State<SettingsPage> {
     }
 
     final isWide =
-        MediaQuery.of(context).size.width >= 800 &&
+        MediaQuery.sizeOf(context).width >= 800 &&
         !widget.openInitialTargetAsRoot;
     if (isWide) {
       setState(() {
@@ -1070,7 +1070,7 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     if (_initialTargetRootBuilder != null) return _initialTargetRootBuilder!();
-    final isWide = MediaQuery.of(context).size.width >= 800;
+    final isWide = MediaQuery.sizeOf(context).width >= 800;
     final paneTitle = _getPaneTitle();
     final colorScheme = Theme.of(context).colorScheme;
 

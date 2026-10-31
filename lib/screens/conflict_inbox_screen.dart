@@ -71,7 +71,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   bool _isBatchApplying = false;
   int _loadGeneration = 0;
 
-  bool get _isWide => MediaQuery.of(context).size.width > 900;
+  bool get _isWide => MediaQuery.sizeOf(context).width > 900;
 
   String _getConflictId(dynamic item) {
     if (item is TodoItem) return 'todo_${item.id}';
@@ -3494,7 +3494,7 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
 
     return Container(
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.8,
+        maxHeight: MediaQuery.sizeOf(context).height * 0.8,
       ),
       child: OptionalLiquidGlassSheet(
         topRadius: 20,

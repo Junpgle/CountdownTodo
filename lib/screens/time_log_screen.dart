@@ -36,6 +36,25 @@ import 'time_log_save_confirmation.dart';
 
 part 'time_log_components.dart';
 
+/// 时间日志中展示的课程与固定日程只读占位模型
+class TimeLogMappedSchedule {
+  final String id;
+  final String title;
+  final String? subtitle;
+  final int startTime; // ms
+  final int endTime; // ms
+  final bool isCourse;
+
+  const TimeLogMappedSchedule({
+    required this.id,
+    required this.title,
+    this.subtitle,
+    required this.startTime,
+    required this.endTime,
+    required this.isCourse,
+  });
+}
+
 // ══════════════════════════════════════════════════════════
 // 常量
 // ══════════════════════════════════════════════════════════
@@ -153,6 +172,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   List<TodoItem> _allTodos = [];
   List<TodoGroup> _allTodoGroups = [];
   List<TodoPlanBlock> _allPlanBlocks = [];
+  List<TimeLogMappedSchedule> _allMappedSchedules = [];
   _EntryMode _entryMode = _EntryMode.log;
   bool _showCoachMarks = false;
   int _loadGeneration = 0;
@@ -249,9 +269,76 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         signal.affects(DataRefreshDomain.pomodoro) ||
         signal.affects(DataRefreshDomain.todos) ||
         signal.affects(DataRefreshDomain.todoGroups) ||
-        signal.affects(DataRefreshDomain.planBlocks)) {
+        signal.affects(DataRefreshDomain.planBlocks) ||
+        signal.affects(DataRefreshDomain.courses) ||
+        signal.affects(DataRefreshDomain.fixedSchedules)) {
       unawaited(_loadData());
     }
+  }
+
+  static DateTime? _courseDateTime(String date, int hhmm) {
+    final parsed = DateTime.tryParse(date);
+    if (parsed == null || hhmm < 0) return null;
+    final hour = hhmm ~/ 100;
+    final minute = hhmm % 100;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+    return DateTime(parsed.year, parsed.month, parsed.day, hour, minute);
+  }
+
+  static List<TimeLogMappedSchedule> _buildMappedSchedules({
+    required List<CourseItem> courses,
+    required List<FixedScheduleItem> fixedSchedules,
+  }) {
+    final mapped = <TimeLogMappedSchedule>[];
+
+    for (final course in courses) {
+      if (course.isDeleted) continue;
+      final start = _courseDateTime(course.date, course.startTime);
+      final end = _courseDateTime(course.date, course.endTime);
+      if (start == null || end == null || !end.isAfter(start)) continue;
+
+      final room = course.roomName.trim();
+      final teacher = course.teacherName.trim();
+      final subtitle = room.isNotEmpty
+          ? (teacher.isNotEmpty ? '$room · $teacher' : room)
+          : (teacher.isNotEmpty ? teacher : null);
+
+      mapped.add(
+        TimeLogMappedSchedule(
+          id: 'course_${course.uuid}',
+          title: course.courseName,
+          subtitle: subtitle,
+          startTime: start.millisecondsSinceEpoch,
+          endTime: end.millisecondsSinceEpoch,
+          isCourse: true,
+        ),
+      );
+    }
+
+    for (final item in fixedSchedules) {
+      if (item.isDeleted || item.status == FixedScheduleStatus.cancelled) {
+        continue;
+      }
+      final startMs = item.startTime;
+      if (startMs == null) continue;
+      final endMs = item.endTime ?? (startMs + 60 * 60 * 1000);
+      if (endMs <= startMs) continue;
+
+      final loc = item.location?.trim();
+      mapped.add(
+        TimeLogMappedSchedule(
+          id: 'fixed_${item.id}',
+          title: item.title,
+          subtitle: (loc != null && loc.isNotEmpty) ? loc : null,
+          startTime: startMs,
+          endTime: endMs,
+          isCourse: false,
+        ),
+      );
+    }
+
+    mapped.sort((a, b) => a.startTime.compareTo(b.startTime));
+    return mapped;
   }
 
   @override
@@ -298,6 +385,8 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         StorageService.getTodos(widget.username),
         StorageService.getPlanBlocks(widget.username),
         StorageService.getTodoGroups(widget.username),
+        CourseService.getAllCourses(widget.username),
+        StorageService.getFixedSchedules(widget.username),
       ]);
     } catch (error) {
       debugPrint('TimeLog load failed: $error');
@@ -308,6 +397,17 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     }
 
     if (!mounted || loadGeneration != _loadGeneration) return;
+
+    final courses = (results[6] as List<CourseItem>)
+        .where((c) => !c.isDeleted)
+        .toList();
+    final fixedSchedules = (results[7] as List<FixedScheduleItem>)
+        .where((f) => !f.isDeleted)
+        .toList();
+    final mappedSchedules = _buildMappedSchedules(
+      courses: courses,
+      fixedSchedules: fixedSchedules,
+    );
 
     setState(() {
       _allTags = results[0] as List<PomodoroTag>;
@@ -325,6 +425,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       _allTodoGroups = (results[5] as List<TodoGroup>)
           .where((g) => !g.isDeleted)
           .toList();
+      _allMappedSchedules = mappedSchedules;
       _isLoading = false;
     });
 
@@ -670,6 +771,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                   weekStart: _weekStart,
                   logs: _allLogs,
                   pomodoros: _allPomodoros,
+                  schedules: _allMappedSchedules,
                   tags: _tags,
                   onDayTap: (d) => _goDay(d),
                   onTagTap: _showTagDetail,
@@ -677,6 +779,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                   onAddLog: () => _goDay(DateTime.now(), mode: _DayMode.edit),
                   onPomodoroTap: _showPomodoroDetail,
                   onTimeLogTap: _showTimeLogDetail,
+                  onScheduleTap: _showScheduleDetail,
                   username: widget.username,
                 )
               : _dayMode == _DayMode.view
@@ -684,9 +787,11 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                   date: _focusedDate,
                   logs: _allLogs,
                   pomodoros: _allPomodoros,
+                  schedules: _allMappedSchedules,
                   tags: _tags,
                   onPomodoroTap: _showPomodoroDetail,
                   onTimeLogTap: _showTimeLogDetail,
+                  onScheduleTap: _showScheduleDetail,
                   onSwitchEdit: () => setState(() => _dayMode = _DayMode.edit),
                 )
               : _DayView(
@@ -694,6 +799,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                   crossDay: _crossDay,
                   logs: _allLogs,
                   planBlocks: _allPlanBlocks,
+                  schedules: _allMappedSchedules,
                   pomodoros: _allPomodoros,
                   tags: _tags,
                   todos: _allTodos,
@@ -731,7 +837,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       20,
       20,
       20,
-      MediaQuery.of(context).padding.bottom + 20,
+      MediaQuery.paddingOf(context).bottom + 20,
     ),
     fallbackDecoration: BoxDecoration(
       color: _TC.card(context),
@@ -751,7 +857,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         : null;
     final tc = tag != null ? hexColor(tag.color) : colorScheme.cdtFocus;
     final endMs = pom.endTime ?? (pom.startTime + pom.effectiveDuration * 1000);
-    final dur = (endMs - pom.startTime) ~/ 60000;
+    final dur = pom.effectiveDuration ~/ 60;
     final s = DateTime.fromMillisecondsSinceEpoch(pom.startTime);
     final e = DateTime.fromMillisecondsSinceEpoch(endMs);
     showAppModalBottomSheet(
@@ -966,6 +1072,106 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     );
   }
 
+  void _showScheduleDetail(TimeLogMappedSchedule schedule) {
+    final isCourse = schedule.isCourse;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final c = isCourse
+        ? (isDark ? const Color(0xFF64B5F6) : const Color(0xFF1E88E5))
+        : (isDark ? const Color(0xFFFFB74D) : const Color(0xFFFB8C00));
+    final dur = (schedule.endTime - schedule.startTime) ~/ 60000;
+    final s = DateTime.fromMillisecondsSinceEpoch(schedule.startTime);
+    final e = DateTime.fromMillisecondsSinceEpoch(schedule.endTime);
+
+    showAppModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _sheet(
+        c.withValues(alpha: 0.4),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                _glow(c),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    schedule.title,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: _TC.text(context),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                _pill(isCourse ? '课程' : '日程', c),
+                const SizedBox(width: 6),
+                _pill('${dur}min', c),
+                IconButton(
+                  icon: Icon(
+                    Icons.close,
+                    size: 18,
+                    color: _TC.textHint(context),
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+            if (schedule.subtitle != null && schedule.subtitle!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(
+                    isCourse ? Icons.place_outlined : Icons.info_outline,
+                    size: 14,
+                    color: _TC.textSub(context),
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      schedule.subtitle!,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: _TC.textSub(context),
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _InfoCard(
+                    label: '开始',
+                    value: AppTimeFormats.clock(s),
+                    sub: AppTimeFormats.monthDaySlash(s),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _InfoCard(
+                    label: '结束',
+                    value: AppTimeFormats.clock(e),
+                    sub: AppTimeFormats.monthDaySlash(e),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _InfoCard(label: '时长', value: '$dur', sub: '分钟'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _glow(Color c) => Container(
     width: 10,
     height: 10,
@@ -1047,6 +1253,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
 
     return ListView.builder(
       padding: const EdgeInsets.all(16),
+      itemExtent: 72.0,
       itemCount: 8,
       itemBuilder: (context, index) => Container(
         height: 60,
@@ -1111,18 +1318,21 @@ class _WeekView extends StatefulWidget {
   final DateTime weekStart;
   final List<TimeLogItem> logs;
   final List<PomodoroRecord> pomodoros;
+  final List<TimeLogMappedSchedule> schedules;
   final List<PomodoroTag> tags;
   final void Function(DateTime) onDayTap;
   final void Function(PomodoroTag) onTagTap;
   final VoidCallback onManageTags, onAddLog;
   final void Function(PomodoroRecord) onPomodoroTap;
   final void Function(TimeLogItem) onTimeLogTap;
+  final void Function(TimeLogMappedSchedule) onScheduleTap;
   final String username;
 
   const _WeekView({
     required this.weekStart,
     required this.logs,
     required this.pomodoros,
+    this.schedules = const [],
     required this.tags,
     required this.onDayTap,
     required this.onTagTap,
@@ -1130,6 +1340,7 @@ class _WeekView extends StatefulWidget {
     required this.onAddLog,
     required this.onPomodoroTap,
     required this.onTimeLogTap,
+    required this.onScheduleTap,
     required this.username,
   });
 
@@ -1145,6 +1356,7 @@ class _WeekViewData {
     required this.dayEndMs,
     required this.logsByDay,
     required this.pomodorosByDay,
+    required this.schedulesByDay,
     required this.minutesByDay,
     required this.minutesByTag,
   });
@@ -1155,6 +1367,7 @@ class _WeekViewData {
   final List<int> dayEndMs;
   final List<List<TimeLogItem>> logsByDay;
   final List<List<PomodoroRecord>> pomodorosByDay;
+  final List<List<TimeLogMappedSchedule>> schedulesByDay;
   final List<int> minutesByDay;
   final Map<String, int> minutesByTag;
 }
@@ -1165,6 +1378,7 @@ class _WeekViewState extends State<_WeekView>
   late Animation<double> _heatAnim;
   List<TimeLogItem>? _cachedLogs;
   List<PomodoroRecord>? _cachedPomodoros;
+  List<TimeLogMappedSchedule>? _cachedSchedules;
   List<PomodoroTag>? _cachedTags;
   DateTime? _cachedWeekStart;
   int? _cachedTodayStartMs;
@@ -1190,7 +1404,8 @@ class _WeekViewState extends State<_WeekView>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.weekStart != widget.weekStart ||
         oldWidget.logs.length != widget.logs.length ||
-        oldWidget.pomodoros.length != widget.pomodoros.length) {
+        oldWidget.pomodoros.length != widget.pomodoros.length ||
+        oldWidget.schedules.length != widget.schedules.length) {
       _heatAnimCtrl.reset();
       _heatAnimCtrl.forward();
     }
@@ -1218,6 +1433,10 @@ class _WeekViewState extends State<_WeekView>
     final pomodorosByDay = List.generate(
       days.length,
       (_) => <PomodoroRecord>[],
+    );
+    final schedulesByDay = List.generate(
+      days.length,
+      (_) => <TimeLogMappedSchedule>[],
     );
     final minutesByDay = List<int>.filled(days.length, 0);
     final visibleTagUuids = widget.tags.map((tag) => tag.uuid).toSet();
@@ -1308,6 +1527,16 @@ class _WeekViewState extends State<_WeekView>
       }
     }
 
+    for (final schedule in widget.schedules) {
+      for (
+        var dayIndex = firstDayEndingAfter(schedule.startTime);
+        dayIndex < days.length && dayStartMs[dayIndex] < schedule.endTime;
+        dayIndex++
+      ) {
+        schedulesByDay[dayIndex].add(schedule);
+      }
+    }
+
     return _WeekViewData(
       days: days,
       todayMinutes: todayMinutes,
@@ -1315,6 +1544,7 @@ class _WeekViewState extends State<_WeekView>
       dayEndMs: dayEndMs,
       logsByDay: logsByDay,
       pomodorosByDay: pomodorosByDay,
+      schedulesByDay: schedulesByDay,
       minutesByDay: minutesByDay,
       minutesByTag: minutesByTag,
     );
@@ -1332,6 +1562,7 @@ class _WeekViewState extends State<_WeekView>
     if (cached != null &&
         identical(_cachedLogs, widget.logs) &&
         identical(_cachedPomodoros, widget.pomodoros) &&
+        identical(_cachedSchedules, widget.schedules) &&
         identical(_cachedTags, widget.tags) &&
         _cachedWeekStart == normalizedWeekStart &&
         _cachedTodayStartMs == todayStartMs &&
@@ -1347,6 +1578,7 @@ class _WeekViewState extends State<_WeekView>
     final data = _buildWeekViewData(days, todayStart, todayEnd);
     _cachedLogs = widget.logs;
     _cachedPomodoros = widget.pomodoros;
+    _cachedSchedules = widget.schedules;
     _cachedTags = widget.tags;
     _cachedWeekStart = normalizedWeekStart;
     _cachedTodayStartMs = todayStartMs;
@@ -1598,6 +1830,7 @@ class _WeekViewState extends State<_WeekView>
                       final de = weekData.dayEndMs[dayIndex];
                       final dLogs = weekData.logsByDay[dayIndex];
                       final dPoms = weekData.pomodorosByDay[dayIndex];
+                      final dSchedules = weekData.schedulesByDay[dayIndex];
                       return SizedBox(
                         width: dW,
                         height: totalH,
@@ -1614,21 +1847,44 @@ class _WeekViewState extends State<_WeekView>
                                 ),
                               ),
                             ),
-                            CustomPaint(
-                              size: Size(dW, totalH),
-                              painter: _WeekColPainter(
-                                dayLogs: dLogs,
-                                dayPoms: dPoms,
-                                tags: widget.tags,
-                                dayStartMs: ds,
-                                dayEndMs: de,
-                                isDark: isDark,
-                                hourH: hourH,
-                                animation: _heatAnim,
-                                focusColor: colorScheme.cdtFocus,
-                                logColor: colorScheme.cdtInfo,
+                            RepaintBoundary(
+                              child: CustomPaint(
+                                size: Size(dW, totalH),
+                                painter: _WeekColPainter(
+                                  dayLogs: dLogs,
+                                  dayPoms: dPoms,
+                                  daySchedules: dSchedules,
+                                  tags: widget.tags,
+                                  dayStartMs: ds,
+                                  dayEndMs: de,
+                                  isDark: isDark,
+                                  hourH: hourH,
+                                  animation: _heatAnim,
+                                  focusColor: colorScheme.cdtFocus,
+                                  logColor: colorScheme.cdtInfo,
+                                ),
                               ),
                             ),
+                            ...dSchedules.map((schedule) {
+                              final rs = max(schedule.startTime, ds);
+                              final re = min(schedule.endTime, de);
+                              final top = (rs - ds) / 3600000 * hourH;
+                              final h = ((re - rs) / 3600000 * hourH).clamp(
+                                3.0,
+                                9999.0,
+                              );
+                              return Positioned(
+                                top: top,
+                                left: 0,
+                                right: 0,
+                                height: h,
+                                child: GestureDetector(
+                                  onTap: () => widget.onScheduleTap(schedule),
+                                  behavior: HitTestBehavior.opaque,
+                                  child: const SizedBox.expand(),
+                                ),
+                              );
+                            }),
                             ...dPoms.map((pom) {
                               final pe =
                                   pom.endTime ??
@@ -1896,6 +2152,7 @@ class _WeekColBlockVisual {
 class _WeekColPainter extends CustomPainter {
   final List<TimeLogItem> dayLogs;
   final List<PomodoroRecord> dayPoms;
+  final List<TimeLogMappedSchedule> daySchedules;
   final List<PomodoroTag> tags;
   final int dayStartMs;
   final int dayEndMs;
@@ -1909,7 +2166,8 @@ class _WeekColPainter extends CustomPainter {
       _DayGridPainter._buildTagIndices(tags);
   TextPainter? _titlePainter;
   int _staggerBlockIndex = 0;
-  late final int _totalBlockCount = dayPoms.length + dayLogs.length;
+  late final int _totalBlockCount =
+      dayPoms.length + dayLogs.length + daySchedules.length;
 
   double _staggerDelayFor(double top, double bottom) {
     if (bottom <= top + 1) return 0.0;
@@ -1925,6 +2183,27 @@ class _WeekColPainter extends CustomPainter {
     maxLines: 1,
     ellipsis: '…',
   );
+  late final List<_WeekColBlockVisual> _scheduleVisuals = daySchedules
+      .map((schedule) {
+        final isCourse = schedule.isCourse;
+        final base = isCourse
+            ? (isDark ? const Color(0xFF64B5F6) : const Color(0xFF1E88E5))
+            : (isDark ? const Color(0xFFFFB74D) : const Color(0xFFFB8C00));
+        final rangeStart = max(schedule.startTime, dayStartMs);
+        final rangeEnd = min(schedule.endTime, dayEndMs);
+        final top = (rangeStart - dayStartMs) / 3600000 * hourH;
+        final bottom = (rangeEnd - dayStartMs) / 3600000 * hourH;
+        final staggerDelay = _staggerDelayFor(top, bottom);
+        return _WeekColBlockVisual(
+          color: base.withValues(alpha: isDark ? 0.35 : 0.30),
+          title: '${isCourse ? "课程" : "日程"}: ${schedule.title}',
+          top: top,
+          bottom: bottom,
+          staggerDelay: staggerDelay,
+          staggerProgressScale: 1.0 / (1.0 - staggerDelay),
+        );
+      })
+      .toList(growable: false);
   late final List<_WeekColBlockVisual> _pomodoroVisuals = dayPoms
       .map((pomodoro) {
         final tag = _matchingTag(pomodoro.tagUuids);
@@ -1973,6 +2252,7 @@ class _WeekColPainter extends CustomPainter {
   _WeekColPainter({
     required this.dayLogs,
     this.dayPoms = const [],
+    this.daySchedules = const [],
     required this.tags,
     required this.dayStartMs,
     required this.dayEndMs,
@@ -1999,7 +2279,11 @@ class _WeekColPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final animationProgress = animation.value;
 
-    void block(_WeekColBlockVisual visual, bool isPom) {
+    void block(
+      _WeekColBlockVisual visual,
+      bool isPom, {
+      bool isSchedule = false,
+    }) {
       final top = visual.top;
       final bot = visual.bottom;
       if (bot <= top + 1) return;
@@ -2018,7 +2302,9 @@ class _WeekColPainter extends CustomPainter {
           const Radius.circular(2),
         ),
         _blockPaint
-          ..color = visual.color.withValues(alpha: 0.9 * blockProgress),
+          ..color = visual.color.withValues(
+            alpha: (isSchedule ? 0.75 : 0.9) * blockProgress,
+          ),
       );
 
       canvas.drawRRect(
@@ -2028,7 +2314,7 @@ class _WeekColPainter extends CustomPainter {
         ),
         _blockPaint
           ..color = visual.color.withValues(
-            alpha: (isPom ? 0.22 : 0.35) * blockProgress,
+            alpha: (isSchedule ? 0.16 : (isPom ? 0.22 : 0.35)) * blockProgress,
           ),
       );
 
@@ -2069,6 +2355,12 @@ class _WeekColPainter extends CustomPainter {
       }
     }
 
+    // 先画排程（课程 / 日程）
+    for (var i = 0; i < daySchedules.length; i++) {
+      final visual = _scheduleVisuals[i];
+      block(visual, false, isSchedule: true);
+    }
+
     // 画番茄钟（★ 传入 title）
     for (var i = 0; i < dayPoms.length; i++) {
       final visual = _pomodoroVisuals[i];
@@ -2088,6 +2380,7 @@ class _WeekColPainter extends CustomPainter {
       o.hourH != hourH ||
       o.dayLogs != dayLogs ||
       o.dayPoms != dayPoms ||
+      o.daySchedules != daySchedules ||
       o.tags != tags ||
       o.dayStartMs != dayStartMs ||
       o.dayEndMs != dayEndMs ||
@@ -2103,18 +2396,22 @@ class _DayGridView extends StatefulWidget {
   final DateTime date;
   final List<TimeLogItem> logs;
   final List<PomodoroRecord> pomodoros;
+  final List<TimeLogMappedSchedule> schedules;
   final List<PomodoroTag> tags;
   final void Function(PomodoroRecord) onPomodoroTap;
   final void Function(TimeLogItem) onTimeLogTap;
+  final void Function(TimeLogMappedSchedule) onScheduleTap;
   final VoidCallback onSwitchEdit;
 
   const _DayGridView({
     required this.date,
     required this.logs,
     required this.pomodoros,
+    this.schedules = const [],
     required this.tags,
     required this.onPomodoroTap,
     required this.onTimeLogTap,
+    required this.onScheduleTap,
     required this.onSwitchEdit,
   });
 
@@ -2125,10 +2422,12 @@ class _DayGridView extends StatefulWidget {
 class _DayGridViewState extends State<_DayGridView> {
   List<TimeLogItem>? _dayLogsSource;
   List<PomodoroRecord>? _dayPomodorosSource;
+  List<TimeLogMappedSchedule>? _daySchedulesSource;
   int? _dayDataStartMs;
   int? _dayDataEndMs;
   List<TimeLogItem> _dayLogs = const [];
   List<PomodoroRecord> _dayPomodoros = const [];
+  List<TimeLogMappedSchedule> _daySchedules = const [];
   List<MapEntry<String, int>> _sortedTagMinutes = const [];
   List<PomodoroTag>? _tagIndexSource;
   List<PomodoroTag>? _tagIndexSnapshot;
@@ -2136,6 +2435,7 @@ class _DayGridViewState extends State<_DayGridView> {
   Map<String, int> _tagIndicesByUuid = const {};
   int _dayLogMinutes = 0;
   int _dayPomodoroMinutes = 0;
+  int _dayScheduleMinutes = 0;
 
   void _ensureTagIndex() {
     final cachedTags = _tagIndexSnapshot;
@@ -2168,6 +2468,7 @@ class _DayGridViewState extends State<_DayGridView> {
   void _ensureDayData(int dayStartMs, int dayEndMs) {
     if (identical(_dayLogsSource, widget.logs) &&
         identical(_dayPomodorosSource, widget.pomodoros) &&
+        identical(_daySchedulesSource, widget.schedules) &&
         _dayDataStartMs == dayStartMs &&
         _dayDataEndMs == dayEndMs) {
       return;
@@ -2175,6 +2476,7 @@ class _DayGridViewState extends State<_DayGridView> {
 
     final dayLogs = <TimeLogItem>[];
     final dayPomodoros = <PomodoroRecord>[];
+    final daySchedules = <TimeLogMappedSchedule>[];
     final tagMinutesByUuid = <String, int>{};
     var logMinutes = 0;
     for (final log in widget.logs) {
@@ -2207,16 +2509,34 @@ class _DayGridViewState extends State<_DayGridView> {
       }
     }
 
+    var scheduleMinutes = 0;
+    for (final schedule in widget.schedules) {
+      if (schedule.endTime <= dayStartMs || schedule.startTime >= dayEndMs) {
+        continue;
+      }
+      daySchedules.add(schedule);
+      final overlapMinutes = TimeLogRangeMath.overlapMinutes(
+        intervalStartMs: schedule.startTime,
+        intervalEndMs: schedule.endTime,
+        rangeStartMs: dayStartMs,
+        rangeEndMs: dayEndMs,
+      );
+      scheduleMinutes += overlapMinutes;
+    }
+
     _dayLogsSource = widget.logs;
     _dayPomodorosSource = widget.pomodoros;
+    _daySchedulesSource = widget.schedules;
     _dayDataStartMs = dayStartMs;
     _dayDataEndMs = dayEndMs;
     _dayLogs = dayLogs;
     _dayPomodoros = dayPomodoros;
+    _daySchedules = daySchedules;
     _sortedTagMinutes = tagMinutesByUuid.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     _dayLogMinutes = logMinutes;
     _dayPomodoroMinutes = pomodoroMinutes;
+    _dayScheduleMinutes = scheduleMinutes;
   }
 
   @override
@@ -2238,6 +2558,7 @@ class _DayGridViewState extends State<_DayGridView> {
           totalMin,
           _dayLogMinutes,
           _dayPomodoroMinutes,
+          _dayScheduleMinutes,
           _sortedTagMinutes,
           _tagsByUuid,
         ),
@@ -2267,6 +2588,7 @@ class _DayGridViewState extends State<_DayGridView> {
                         dayStartMs: ds,
                         dLogs: _dayLogs,
                         dPoms: _dayPomodoros,
+                        dSchedules: _daySchedules,
                         tags: widget.tags,
                         tagIndicesByUuid: _tagIndicesByUuid,
                         isDark: isDark,
@@ -2274,6 +2596,7 @@ class _DayGridViewState extends State<_DayGridView> {
                         logColor: colorScheme.cdtInfo,
                         onPomodoroTap: widget.onPomodoroTap,
                         onTimeLogTap: widget.onTimeLogTap,
+                        onScheduleTap: widget.onScheduleTap,
                         date: widget.date,
                       ),
                     ),
@@ -2292,6 +2615,7 @@ class _DayGridViewState extends State<_DayGridView> {
     int total,
     int logMin,
     int pomMin,
+    int scheduleMin,
     List<MapEntry<String, int>> sortedTagMinutes,
     Map<String, PomodoroTag> tagsByUuid,
   ) {
@@ -2335,6 +2659,14 @@ class _DayGridViewState extends State<_DayGridView> {
                   ctx,
                   '补录 ${logMin}m',
                   Theme.of(ctx).colorScheme.cdtInfo,
+                ),
+              ],
+              if (scheduleMin > 0) ...[
+                const SizedBox(width: 6),
+                _miniPill(
+                  ctx,
+                  '排程 ${scheduleMin}m',
+                  Theme.of(ctx).colorScheme.tertiary,
                 ),
               ],
               const Spacer(),
@@ -2453,6 +2785,7 @@ class _GridCanvas extends StatelessWidget {
   final int dayStartMs;
   final List<TimeLogItem> dLogs;
   final List<PomodoroRecord> dPoms;
+  final List<TimeLogMappedSchedule> dSchedules;
   final List<PomodoroTag> tags;
   final Map<String, int> tagIndicesByUuid;
   final bool isDark;
@@ -2461,6 +2794,7 @@ class _GridCanvas extends StatelessWidget {
   final DateTime date;
   final void Function(PomodoroRecord) onPomodoroTap;
   final void Function(TimeLogItem) onTimeLogTap;
+  final void Function(TimeLogMappedSchedule) onScheduleTap;
 
   const _GridCanvas({
     required this.colW,
@@ -2469,6 +2803,7 @@ class _GridCanvas extends StatelessWidget {
     required this.dayStartMs,
     required this.dLogs,
     required this.dPoms,
+    this.dSchedules = const [],
     required this.tags,
     required this.tagIndicesByUuid,
     required this.isDark,
@@ -2477,6 +2812,7 @@ class _GridCanvas extends StatelessWidget {
     required this.date,
     required this.onPomodoroTap,
     required this.onTimeLogTap,
+    required this.onScheduleTap,
   });
 
   PomodoroTag? _firstTagForUuids(List<String> uuids) {
@@ -2523,6 +2859,16 @@ class _GridCanvas extends StatelessWidget {
           ),
         ),
         if (nowTotalMin >= 0) _buildNowLine(nowTotalMin),
+        // 排程（课程 / 固定日程，发生冲突时上下两行紧凑排列）
+        ..._buildScheduleBlocks(
+          schedules: dSchedules,
+          dayStartMs: dayStartMs,
+          colW: colW,
+          rowW: rowW,
+          rowH: rowH,
+          isDark: isDark,
+          onScheduleTap: onScheduleTap,
+        ),
         // 番茄钟
         ...dPoms.expand((pom) {
           final pe =
@@ -2748,6 +3094,244 @@ class _GridCanvas extends StatelessWidget {
 
     return result;
   }
+
+  List<Widget> _buildScheduleBlocks({
+    required List<TimeLogMappedSchedule> schedules,
+    required int dayStartMs,
+    required double colW,
+    required double rowW,
+    required double rowH,
+    required bool isDark,
+    required void Function(TimeLogMappedSchedule) onScheduleTap,
+  }) {
+    if (schedules.isEmpty) return const [];
+
+    final List<List<_ScheduleRowSegment>> segmentsByRow = List.generate(
+      kTotalRows,
+      (_) => <_ScheduleRowSegment>[],
+    );
+
+    for (final schedule in schedules) {
+      final sMs = max(schedule.startTime, dayStartMs);
+      final eMs = min(schedule.endTime, dayStartMs + 24 * 3600 * 1000);
+      if (eMs <= sMs) continue;
+
+      final startMinF = (sMs - dayStartMs) / 60000.0;
+      final endMinF = (eMs - dayStartMs) / 60000.0;
+      final isCourse = schedule.isCourse;
+      final base = isCourse
+          ? (isDark ? const Color(0xFF64B5F6) : const Color(0xFF1E88E5))
+          : (isDark ? const Color(0xFFFFB74D) : const Color(0xFFFB8C00));
+      final title =
+          '${isCourse ? "课程" : "日程"}: ${schedule.title}${schedule.subtitle != null && schedule.subtitle!.isNotEmpty ? " · ${schedule.subtitle}" : ""}';
+      final fillColor = base.withValues(alpha: isDark ? 0.16 : 0.10);
+      final barColor = base.withValues(alpha: 0.75);
+      final borderColor = base.withValues(alpha: isDark ? 0.40 : 0.30);
+      void onTap() => onScheduleTap(schedule);
+
+      int row = startMinF ~/ 60;
+      bool isFirst = true;
+
+      while (row < kTotalRows) {
+        final rowStartMin = row * 60.0;
+        final rowEndMin = rowStartMin + 60.0;
+        final segStartMin = startMinF.clamp(rowStartMin, rowEndMin);
+        final segEndMin = endMinF.clamp(rowStartMin, rowEndMin);
+
+        if (segEndMin <= segStartMin) {
+          if (endMinF <= rowStartMin) break;
+          row++;
+          continue;
+        }
+
+        final isLast = endMinF <= rowEndMin;
+        segmentsByRow[row].add(
+          _ScheduleRowSegment(
+            schedule: schedule,
+            row: row,
+            segStartMin: segStartMin,
+            segEndMin: segEndMin,
+            isFirst: isFirst,
+            isLast: isLast,
+            fillColor: fillColor,
+            barColor: barColor,
+            borderColor: borderColor,
+            title: title,
+            onTap: onTap,
+          ),
+        );
+
+        if (isLast) break;
+        isFirst = false;
+        row++;
+      }
+    }
+
+    final List<Widget> result = [];
+
+    for (int row = 0; row < kTotalRows; row++) {
+      final rowSegments = segmentsByRow[row];
+      if (rowSegments.isEmpty) continue;
+
+      // 稳定排序：课程优先排在上半行（lane 0），日程排在下半行（lane 1）
+      rowSegments.sort((a, b) {
+        if (a.schedule.isCourse != b.schedule.isCourse) {
+          return a.schedule.isCourse ? -1 : 1;
+        }
+        final cmpStart = a.schedule.startTime.compareTo(b.schedule.startTime);
+        if (cmpStart != 0) return cmpStart;
+        return a.schedule.id.compareTo(b.schedule.id);
+      });
+
+      // 检查当前行中的片段是否存在时间水平重叠
+      final laneAssignment = <_ScheduleRowSegment, int>{};
+      final laneTotalCount = <_ScheduleRowSegment, int>{};
+
+      for (int i = 0; i < rowSegments.length; i++) {
+        final current = rowSegments[i];
+        final overlapping = <_ScheduleRowSegment>[];
+        for (int j = 0; j < rowSegments.length; j++) {
+          final other = rowSegments[j];
+          if (current.segStartMin < other.segEndMin &&
+              other.segStartMin < current.segEndMin) {
+            overlapping.add(other);
+          }
+        }
+
+        if (overlapping.length <= 1) {
+          laneAssignment[current] = 0;
+          laneTotalCount[current] = 1;
+        } else {
+          final indexInOverlap = overlapping.indexOf(current);
+          laneAssignment[current] = indexInOverlap.clamp(0, 1);
+          laneTotalCount[current] = min(overlapping.length, 2);
+        }
+      }
+
+      for (final seg in rowSegments) {
+        final lane = laneAssignment[seg] ?? 0;
+        final totalLanes = laneTotalCount[seg] ?? 1;
+
+        final rowStartMin = row * 60.0;
+        final colStart = (seg.segStartMin - rowStartMin) / kMinsPerCol;
+        final colEnd = (seg.segEndMin - rowStartMin) / kMinsPerCol;
+        final left = colStart * colW;
+        final width = ((colEnd - colStart) * colW).clamp(1.0, double.infinity);
+
+        final double topOffset;
+        final double blockHeight;
+        final double fontSize;
+
+        if (totalLanes >= 2) {
+          // 冲突时间段：一行分两行用，上下紧凑排列
+          final laneH = (rowH - 3.0) / 2.0;
+          blockHeight = laneH;
+          topOffset = row * rowH + 1.0 + lane * (laneH + 1.0);
+          fontSize = (laneH * 0.72).clamp(7.5, 9.5);
+        } else {
+          blockHeight = rowH - 2.0;
+          topOffset = row * rowH + 1.0;
+          fontSize = (blockHeight * 0.40).clamp(9.0, 10.5);
+        }
+
+        result.add(
+          Positioned(
+            top: topOffset,
+            left: left + 1,
+            width: width - 2,
+            height: blockHeight,
+            child: GestureDetector(
+              onTap: seg.onTap,
+              behavior: HitTestBehavior.opaque,
+              child: ClipRRect(
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(seg.isFirst ? 3 : 0),
+                  bottomLeft: Radius.circular(seg.isLast ? 3 : 0),
+                  topRight: Radius.circular(seg.isFirst && seg.isLast ? 3 : 0),
+                  bottomRight: Radius.circular(
+                    seg.isFirst && seg.isLast ? 3 : 0,
+                  ),
+                ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: seg.fillColor,
+                    border: Border(
+                      left: BorderSide(
+                        color: seg.barColor,
+                        width: totalLanes >= 2 ? 2.0 : 2.5,
+                      ),
+                      top: BorderSide(color: seg.borderColor, width: 0.8),
+                      bottom: BorderSide(color: seg.borderColor, width: 0.8),
+                      right: seg.isLast && colEnd < kColsPerH
+                          ? BorderSide(color: seg.borderColor, width: 0.8)
+                          : BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        if (seg.isFirst) {
+          result.add(
+            Positioned(
+              top: topOffset,
+              left: left + 4,
+              right: 2,
+              height: blockHeight,
+              child: IgnorePointer(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    seg.title,
+                    style: TextStyle(
+                      fontSize: fontSize,
+                      color: seg.barColor,
+                      fontWeight: FontWeight.w700,
+                      height: 1.1,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+      }
+    }
+
+    return result;
+  }
+}
+
+class _ScheduleRowSegment {
+  final TimeLogMappedSchedule schedule;
+  final int row;
+  final double segStartMin;
+  final double segEndMin;
+  final bool isFirst;
+  final bool isLast;
+  final Color fillColor;
+  final Color barColor;
+  final Color borderColor;
+  final String title;
+  final VoidCallback onTap;
+
+  _ScheduleRowSegment({
+    required this.schedule,
+    required this.row,
+    required this.segStartMin,
+    required this.segEndMin,
+    required this.isFirst,
+    required this.isLast,
+    required this.fillColor,
+    required this.barColor,
+    required this.borderColor,
+    required this.title,
+    required this.onTap,
+  });
 }
 
 // ══════════════════════════════════════════════════════════
@@ -2764,6 +3348,12 @@ class _GridBgPainter extends CustomPainter {
   final Color labelMajorColor;
   final Color labelMinorColor;
 
+  static final Paint _rowMajor = Paint()..strokeWidth = 0.9;
+  static final Paint _rowNormal = Paint()..strokeWidth = 0.5;
+  static final Paint _colHour = Paint()..strokeWidth = 0.9;
+  static final Paint _colHalf = Paint()..strokeWidth = 0.5;
+  static final Paint _colCell = Paint()..strokeWidth = 0.3;
+
   const _GridBgPainter({
     required this.colW,
     required this.rowH,
@@ -2778,41 +3368,31 @@ class _GridBgPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final rowMajor = Paint()
-      ..color = rowMajorColor
-      ..strokeWidth = 0.9;
-    final rowNormal = Paint()
-      ..color = rowNormalColor
-      ..strokeWidth = 0.5;
+    _rowMajor.color = rowMajorColor;
+    _rowNormal.color = rowNormalColor;
 
     for (int r = 0; r <= kTotalRows; r++) {
       final y = r * rowH;
       canvas.drawLine(
         Offset(0, y),
         Offset(size.width, y),
-        r % 6 == 0 ? rowMajor : rowNormal,
+        r % 6 == 0 ? _rowMajor : _rowNormal,
       );
     }
 
-    final colHour = Paint()
-      ..color = colHourColor
-      ..strokeWidth = 0.9;
-    final colHalf = Paint()
-      ..color = colHalfColor
-      ..strokeWidth = 0.5;
-    final colCell = Paint()
-      ..color = colCellColor
-      ..strokeWidth = 0.3;
+    _colHour.color = colHourColor;
+    _colHalf.color = colHalfColor;
+    _colCell.color = colCellColor;
 
     for (int c = 0; c <= kTotalCols; c++) {
       final x = c * colW;
       final Paint p;
       if (c % kColsPerH == 0) {
-        p = colHour;
+        p = _colHour;
       } else if (c % 5 == 0) {
-        p = colHalf;
+        p = _colHalf;
       } else {
-        p = colCell;
+        p = _colCell;
       }
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), p);
     }

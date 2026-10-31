@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../../../models.dart';
+
 import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
@@ -88,6 +90,7 @@ abstract final class HabitDayLoader {
   }) async {
     // 早睡/早起新增或修正后，睡眠时长在下一次刷新首页时自动重算。
     await HabitSleepDurationService.syncAll();
+    await HabitRepository.migrateLegacyRecurringTodoHabits(username: username);
     HabitSleepCoachingSnapshot? sleepCoachingSnapshot;
     if (username.trim().isNotEmpty) {
       try {
@@ -165,16 +168,19 @@ abstract final class HabitDayLoader {
               ),
             ),
       );
-      final todosByHabitFuture = HabitSourceResolver.todosForHabitSources(
-        prepared
-            .where(
-              (habit) => habit.goal.sourceType == HabitSourceType.recurringTodo,
-            )
-            .map(
-              (habit) =>
-                  (habitUuid: habit.goal.uuid, seriesIds: habit.goal.sourceIds),
-            ),
-      );
+      final legacyRecurringTodoHabits = prepared
+          .where(
+            (habit) =>
+                habit.goal.sourceType == HabitSourceType.recurringTodo &&
+                habit.goal.sourceIds.isNotEmpty,
+          )
+          .map(
+            (habit) =>
+                (habitUuid: habit.goal.uuid, seriesIds: habit.goal.sourceIds),
+          );
+      final todosByHabitFuture = legacyRecurringTodoHabits.isEmpty
+          ? Future.value(const <String, List<TodoItem>>{})
+          : HabitSourceResolver.todosForHabitSources(legacyRecurringTodoHabits);
 
       final checkIns = await checkInsFuture;
       final checkInsByHabitAndDate =
