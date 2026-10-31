@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 import '../../../utils/app_dialogs.dart';
@@ -84,17 +87,110 @@ class _HabitCardState extends State<HabitCard> {
   bool _justStamped = false;
   double _visibleFraction = 0;
   int? _stampClaimToken;
+  Timer? _stampSettleTimer;
+  ScrollNotificationObserverState? _scrollObserver;
+  Animation<double>? _routeAnimation;
 
   ColorScheme get _colors => Theme.of(context).colorScheme;
 
   bool get _canPlayStampAnimation =>
       TickerMode.valuesOf(context).enabled &&
-      _visibleFraction >= _stampAnimationVisibleFraction;
+      _visibleFraction >= _stampAnimationVisibleFraction &&
+      _isTrulyVisibleOnScreen();
+
+  bool _isTrulyVisibleOnScreen() {
+    if (!mounted) return false;
+    if (!TickerMode.valuesOf(context).enabled) return false;
+
+    // Route transition must be completely completed before running celebrations.
+    final route = ModalRoute.of(context);
+    if (route != null &&
+        route.animation != null &&
+        !route.animation!.isCompleted) {
+      return false;
+    }
+
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.hasSize || !renderBox.attached) {
+      return false;
+    }
+
+    // 1. Ancestor Viewport check (ListView / SingleChildScrollView / CustomScrollView)
+    final viewport = RenderAbstractViewport.maybeOf(renderBox);
+    if (viewport != null) {
+      try {
+        final transform = renderBox.getTransformTo(viewport);
+        final boundsInViewport = MatrixUtils.transformRect(
+          transform,
+          renderBox.paintBounds,
+        );
+        final visibleInViewport = boundsInViewport.intersect(
+          viewport.paintBounds,
+        );
+        if (visibleInViewport.isEmpty ||
+            visibleInViewport.height <
+                renderBox.size.height * _stampAnimationVisibleFraction) {
+          return false;
+        }
+      } catch (_) {
+        return false;
+      }
+    }
+
+    // 2. Physical screen window check (cannot be below the fold or above the top)
+    try {
+      final origin = renderBox.localToGlobal(Offset.zero);
+      final cardRect = origin & renderBox.size;
+      final screenSize = MediaQuery.sizeOf(context);
+      final screenRect = Offset.zero & screenSize;
+      final visibleOnScreen = cardRect.intersect(screenRect);
+      if (visibleOnScreen.isEmpty ||
+          visibleOnScreen.height <
+              renderBox.size.height * _stampAnimationVisibleFraction) {
+        return false;
+      }
+    } catch (_) {
+      return false;
+    }
+
+    return true;
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _playQueuedStampAnimationIfReady();
+    final nextObserver = ScrollNotificationObserver.maybeOf(context);
+    if (_scrollObserver != nextObserver) {
+      _scrollObserver?.removeListener(_handleScrollNotification);
+      _scrollObserver = nextObserver;
+      _scrollObserver?.addListener(_handleScrollNotification);
+    }
+
+    final route = ModalRoute.of(context);
+    final routeAnimation = route?.animation;
+    if (_routeAnimation != routeAnimation) {
+      _routeAnimation?.removeStatusListener(_handleRouteStatus);
+      _routeAnimation = routeAnimation;
+      if (routeAnimation != null && !routeAnimation.isCompleted) {
+        routeAnimation.addStatusListener(_handleRouteStatus);
+      }
+    }
+
+    _scheduleStampAnimationCheck();
+  }
+
+  void _handleRouteStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed) {
+      _routeAnimation?.removeStatusListener(_handleRouteStatus);
+      _scheduleStampAnimationCheck();
+    }
+  }
+
+  void _handleScrollNotification(ScrollNotification notification) {
+    if (notification is ScrollEndNotification ||
+        notification is UserScrollNotification) {
+      _scheduleStampAnimationCheck();
+    }
   }
 
   @override
@@ -110,6 +206,7 @@ class _HabitCardState extends State<HabitCard> {
         habitUuid: oldWidget.goal.uuid,
         logicalDate: oldWidget.dayProgress.logicalDate,
       );
+      _stampSettleTimer?.cancel();
       _justStamped = false;
       _visibleFraction = 0;
     }
@@ -120,12 +217,15 @@ class _HabitCardState extends State<HabitCard> {
         habitUuid: widget.goal.uuid,
         logicalDate: widget.dayProgress.logicalDate,
       );
+      _stampSettleTimer?.cancel();
       _releaseStampClaim();
       if (_justStamped) {
         setState(() => _justStamped = false);
       }
     }
-    if (oldWidget.dayProgress.status != HabitDayStatus.met &&
+    if (!habitChanged &&
+        !dateChanged &&
+        oldWidget.dayProgress.status != HabitDayStatus.met &&
         widget.dayProgress.status == HabitDayStatus.met &&
         !_justStamped) {
       _triggerStampAnimation();
@@ -135,7 +235,37 @@ class _HabitCardState extends State<HabitCard> {
   void _onVisibilityChanged(VisibilityInfo info) {
     if (!mounted) return;
     _visibleFraction = info.visibleFraction;
-    _playQueuedStampAnimationIfReady();
+    _scheduleStampAnimationCheck();
+  }
+
+  void _scheduleStampAnimationCheck() {
+    if (!mounted || _justStamped) return;
+
+    if (!HabitStampAnimationQueue.hasPending(
+      habitUuid: widget.goal.uuid,
+      logicalDate: widget.dayProgress.logicalDate,
+    )) {
+      return;
+    }
+
+    _stampSettleTimer?.cancel();
+
+    if (!_canPlayStampAnimation) return;
+
+    // Unit test environments zero out the updateInterval for immediate verification.
+    final isSynchronousTest =
+        VisibilityDetectorController.instance.updateInterval == Duration.zero;
+    if (isSynchronousTest) {
+      _playQueuedStampAnimationIfReady();
+      return;
+    }
+
+    // Give a comfortable 320ms visual settle delay after coming stably into view
+    // so the user's eye locates the card before the stamp slams down.
+    _stampSettleTimer = Timer(const Duration(milliseconds: 320), () {
+      if (!mounted || _justStamped) return;
+      _playQueuedStampAnimationIfReady();
+    });
   }
 
   void _playQueuedStampAnimationIfReady() {
@@ -173,7 +303,7 @@ class _HabitCardState extends State<HabitCard> {
       habitUuid: widget.goal.uuid,
       logicalDate: widget.dayProgress.logicalDate,
     );
-    _playQueuedStampAnimationIfReady();
+    _scheduleStampAnimationCheck();
   }
 
   void _startStampAnimation() {
@@ -199,6 +329,9 @@ class _HabitCardState extends State<HabitCard> {
 
   @override
   void dispose() {
+    _stampSettleTimer?.cancel();
+    _scrollObserver?.removeListener(_handleScrollNotification);
+    _routeAnimation?.removeStatusListener(_handleRouteStatus);
     _releaseStampClaim();
     super.dispose();
   }

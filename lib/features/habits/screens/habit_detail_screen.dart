@@ -1568,6 +1568,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         HabitCard(
+          key: ValueKey('habit-detail-${_goal.uuid}'),
           goal: _goal,
           rule: _rule,
           dayProgress: dayProgress,

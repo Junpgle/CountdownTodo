@@ -30,26 +30,52 @@ abstract final class HabitFreezeService {
   static const String _prefixBalance = 'habit_freeze_balance_';
   static const String _prefixMilestone = 'habit_freeze_milestone_';
   static const String _prefixInit = 'habit_freeze_initialized_';
+  static const String _prefixReconciledSpent = 'habit_freeze_reconciled_spent_';
   static const String _keyPendingNotice = 'habit_freeze_pending_notice';
   static const String _keyAutoProtectEnabled =
       'habit_freeze_auto_protect_enabled';
 
   /// 获取指定习惯当前可用的免扣卡数量（0..kMaxFreezeCards）。
-  /// 若为首次读取，自动赠送新手保底卡并持久化。
+  ///
+  /// 若为首次读取，自动赠送新手保底卡并持久化；
+  /// 同时自动对比本地与云同步写入的有效免扣打卡记录（`HabitCheckInSource.freeze`），
+  /// 确保跨设备使用或撤销后，剩余卡片数量实现跨端自动对账同步。
   static Future<int> getAvailableCards(String habitUuid) async {
     final prefs = await SharedPreferences.getInstance();
     final initKey = '$_prefixInit$habitUuid';
     final balanceKey = '$_prefixBalance$habitUuid';
+    final reconciledSpentKey = '$_prefixReconciledSpent$habitUuid';
 
+    int localBalance = prefs.getInt(balanceKey) ?? kInitialGiftCards;
     if (!prefs.containsKey(initKey)) {
       // 首次初始化：赠送 1 张启程护航卡
       await prefs.setBool(initKey, true);
       await prefs.setInt(balanceKey, kInitialGiftCards);
-      return kInitialGiftCards;
+      localBalance = kInitialGiftCards;
     }
 
-    final balance = prefs.getInt(balanceKey) ?? 0;
-    return balance.clamp(0, kMaxFreezeCards);
+    // 跨平台自动对账：结合同步下来的有效免扣打卡记录核算
+    try {
+      final checkIns = await HabitRepository.getCheckIns(habitUuid: habitUuid);
+      final currentSpent = checkIns
+          .where((c) => !c.isDeleted && c.source == HabitCheckInSource.freeze)
+          .length;
+      final lastReconciledSpent =
+          prefs.getInt(reconciledSpentKey) ?? currentSpent;
+
+      if (currentSpent != lastReconciledSpent) {
+        final spentDiff = currentSpent - lastReconciledSpent;
+        localBalance = (localBalance - spentDiff).clamp(0, kMaxFreezeCards);
+        await prefs.setInt(balanceKey, localBalance);
+        await prefs.setInt(reconciledSpentKey, currentSpent);
+      } else if (!prefs.containsKey(reconciledSpentKey)) {
+        await prefs.setInt(reconciledSpentKey, currentSpent);
+      }
+    } catch (_) {
+      // 离线或数据加载异常时安全降级使用本地存储值
+    }
+
+    return localBalance.clamp(0, kMaxFreezeCards);
   }
 
   /// 更新免扣卡库存（安全限制在 0..kMaxFreezeCards 之间）。
@@ -215,6 +241,14 @@ abstract final class HabitFreezeService {
 
     final balance = await getAvailableCards(goal.uuid);
     await setAvailableCards(goal.uuid, balance - 1);
+    final prefs = await SharedPreferences.getInstance();
+    final checkInsAfter = await HabitRepository.getCheckIns(
+      habitUuid: goal.uuid,
+    );
+    final currentSpent = checkInsAfter
+        .where((c) => !c.isDeleted && c.source == HabitCheckInSource.freeze)
+        .length;
+    await prefs.setInt('$_prefixReconciledSpent${goal.uuid}', currentSpent);
     return true;
   }
 
@@ -228,6 +262,14 @@ abstract final class HabitFreezeService {
     await HabitRepository.deleteCheckIn(freezeCheckIn);
     final balance = await getAvailableCards(goal.uuid);
     await setAvailableCards(goal.uuid, balance + 1);
+    final prefs = await SharedPreferences.getInstance();
+    final checkInsAfter = await HabitRepository.getCheckIns(
+      habitUuid: goal.uuid,
+    );
+    final currentSpent = checkInsAfter
+        .where((c) => !c.isDeleted && c.source == HabitCheckInSource.freeze)
+        .length;
+    await prefs.setInt('$_prefixReconciledSpent${goal.uuid}', currentSpent);
     return true;
   }
 

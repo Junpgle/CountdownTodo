@@ -363,6 +363,7 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
           : ValueKey(goal.uuid),
       width: width,
       child: HabitCard(
+        key: ValueKey('habit-today-tab-${goal.uuid}'),
         goal: goal,
         rule: snapshot.ruleOf(goal),
         dayProgress: _dayProgress(snapshot, goal),

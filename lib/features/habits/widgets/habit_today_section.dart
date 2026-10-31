@@ -348,9 +348,11 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
       progress: progress,
     );
     return Padding(
+      key: ValueKey('habit-today-wrap-${goal.uuid}'),
       padding: EdgeInsets.only(bottom: widget.compact ? 4 : 10),
       child: RepaintBoundary(
         child: HabitCard(
+          key: ValueKey('habit-today-card-${goal.uuid}'),
           animationKey: _cardKeyFor(goal),
           compact: widget.compact,
           goal: goal,

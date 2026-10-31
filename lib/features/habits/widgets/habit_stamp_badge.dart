@@ -53,25 +53,25 @@ class _HabitStampBadgeState extends State<HabitStampBadge>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 550),
+      duration: const Duration(milliseconds: 580),
     );
 
-    // 0.0 - 0.5: 猛烈下砸 (2.2 -> 0.9)
-    // 0.5 - 1.0: 触底回弹 (0.9 -> 1.0)
+    // 0.0 - 0.42: 蓄力悬空下砸 (2.4 -> 0.92)
+    // 0.42 - 1.00: 触底回弹沉降 (0.92 -> 1.0)
     _scaleAnimation = TweenSequence<double>([
       TweenSequenceItem(
         tween: Tween<double>(
-          begin: 2.2,
-          end: 0.9,
+          begin: 2.4,
+          end: 0.92,
         ).chain(CurveTween(curve: Curves.easeInCubic)),
-        weight: 50,
+        weight: 42,
       ),
       TweenSequenceItem(
         tween: Tween<double>(
-          begin: 0.9,
+          begin: 0.92,
           end: 1.0,
         ).chain(CurveTween(curve: Curves.easeOutBack)),
-        weight: 50,
+        weight: 58,
       ),
     ]).animate(_controller);
 
@@ -86,12 +86,12 @@ class _HabitStampBadgeState extends State<HabitStampBadge>
     _shockwaveAnimation = Tween<double>(begin: 0.8, end: 1.6).animate(
       CurvedAnimation(
         parent: _controller,
-        curve: const Interval(0.45, 1.0, curve: Curves.easeOutCubic),
+        curve: const Interval(0.40, 1.0, curve: Curves.easeOutCubic),
       ),
     );
 
     _controller.addListener(() {
-      if (_controller.value >= 0.48 && !_hapticFired) {
+      if (_controller.value >= 0.40 && !_hapticFired) {
         _hapticFired = true;
         HabitCelebrationService.playGoalMetImpact();
       }
