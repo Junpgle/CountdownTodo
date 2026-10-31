@@ -1538,6 +1538,8 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
     ];
   }
 
+  static final RegExp _whitespacePattern = RegExp(r'\s+');
+
   int _itemPriority(FeatureExplorerItem item) {
     final isExplored = _seenBadges.contains(item.id);
     if (item.isNew && !isExplored) {
@@ -1554,6 +1556,12 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
 
   List<FeatureExplorerItem> _filteredItems(List<FeatureExplorerItem> catalog) {
     final query = _searchQuery.trim().toLowerCase();
+    final queryTerms = query.isEmpty
+        ? const <String>[]
+        : query
+              .split(_whitespacePattern)
+              .where((term) => term.isNotEmpty)
+              .toList(growable: false);
     final indexed = <({int index, FeatureExplorerItem item})>[];
     for (var i = 0; i < catalog.length; i++) {
       final item = catalog[i];
@@ -1578,9 +1586,7 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
           ...item.keywords,
           ...item.steps,
         ].join(' ').toLowerCase();
-        matches = query
-            .split(RegExp(r'\s+'))
-            .every((term) => term.isEmpty || haystack.contains(term));
+        matches = queryTerms.every((term) => haystack.contains(term));
       }
       if (matches) {
         indexed.add((index: i, item: item));

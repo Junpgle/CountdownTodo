@@ -2,6 +2,21 @@ part of 'todo_chat_screen.dart';
 
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
+final RegExp _planningProposalRequestPattern = RegExp(
+  r'生成|确认|确定|^可以|^要的|^好的|^需要',
+);
+final RegExp _confirmPendingPlanningDraftPattern = RegExp(
+  r'^(?:确认|确定|确认保存|确认并保存|保存)[！!。\.\s]*$',
+);
+final RegExp _pickupCluePattern = RegExp(r'取餐|取件|取货|餐号|取单号|取餐码|取件码|外卖|快递');
+final RegExp _pendingNoticePattern = RegExp(
+  r'待确认|尚未(?:写入|保存|入账|执行)|点击.{0,14}(?:执行|保存|确认删除)',
+);
+final RegExp _punctuationStripPattern = RegExp(r'[\s，。！？、,.!?]');
+final RegExp _dateCorrectionPattern = RegExp(
+  r'(?:\d{2,4}\s*年|\d{1,2}\s*月|\d{1,2}\s*(?:日|号)|\d{4}[-/.]\d{1,2})',
+);
+
 mixin _TodoChatSend on _TodoChatScreenStateBase {
   bool _openingVoiceInput = false;
 
@@ -867,7 +882,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
                   knownFinanceCatalogIdsByKindForToolValidation,
               knownReferenceIdsByDomain: knownReferenceIdsByDomain,
               requirePlanningProposal:
-                  (RegExp(r'生成|确认|确定|^可以|^要的|^好的|^需要').hasMatch(requestText) ||
+                  (_planningProposalRequestPattern.hasMatch(requestText) ||
                       AiNativeToolDefinitionBuilder.isMissingActionCardReport(
                         requestText,
                       )) &&
@@ -1848,7 +1863,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
   }
 
   Future<bool> _tryConfirmPendingPlanningDraft(String text) async {
-    if (!RegExp(r'^(?:确认|确定|确认保存|确认并保存|保存)[！!。\.\s]*$').hasMatch(text)) {
+    if (!_confirmPendingPlanningDraftPattern.hasMatch(text)) {
       return false;
     }
     final latest = _messages.reversed
@@ -2200,8 +2215,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
   }
 
   Future<bool> _tryHandleExplicitFinanceText(String text) async {
-    final hasPickupClue = RegExp(r'取餐|取件|取货|餐号|取单号|取餐码|取件码|外卖|快递')
-        .hasMatch(text);
+    final hasPickupClue = _pickupCluePattern.hasMatch(text);
     if (hasPickupClue || !FinanceTextParser.looksLikeFinanceFormat(text)) {
       return false;
     }
@@ -2257,8 +2271,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         !hasPendingFinanceActions) {
       return content;
     }
-    if (RegExp(r'待确认|尚未(?:写入|保存|入账|执行)|点击.{0,14}(?:执行|保存|确认删除)')
-        .hasMatch(content)) {
+    if (_pendingNoticePattern.hasMatch(content)) {
       return content;
     }
 
@@ -2272,7 +2285,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
   }
 
   Future<bool> _tryConfirmPendingFinanceDraft(String text) async {
-    final command = text.trim().replaceAll(RegExp(r'[\s，。！？、,.!?]'), '');
+    final command = text.trim().replaceAll(_punctuationStripPattern, '');
     if (!const {
       '确认',
       '确认记账',
@@ -2370,9 +2383,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         .where((message) => message.role == ChatRole.user)
         .lastOrNull;
     if (correction == null ||
-        !RegExp(
-          r'(?:\d{2,4}\s*年|\d{1,2}\s*月|\d{1,2}\s*(?:日|号)|\d{4}[-/.]\d{1,2})',
-        ).hasMatch(correction.content)) {
+        !_dateCorrectionPattern.hasMatch(correction.content)) {
       return false;
     }
 

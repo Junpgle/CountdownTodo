@@ -269,125 +269,134 @@ mixin _HomeDashboardViewMixin
                                         ? child
                                         : RepaintBoundary(child: child);
                                     Widget buildCountdown() =>
-                                        ValueListenableBuilder<
-                                          List<CountdownItem>
-                                        >(
-                                          valueListenable: _countdownsNotifier,
-                                          builder: (context, countdowns, _) =>
-                                              CountdownSectionWidget(
-                                                historyKey:
-                                                    _countdownHistoryKey,
-                                                countdowns: countdowns,
-                                                dataRevision:
-                                                    _countdownsDataRevision,
-                                                username: widget.username,
-                                                isLight: isLight,
-                                                addKey: _addCountdownKey,
-                                                onDataChanged: () {
-                                                  _loadAllData(
-                                                    domains: const {
-                                                      DataRefreshDomain
-                                                          .countdowns,
-                                                    },
-                                                  );
-                                                  _timelineRevision.value++;
-                                                },
-                                              ),
+                                        wrapSectionBoundary(
+                                          ValueListenableBuilder<
+                                            List<CountdownItem>
+                                          >(
+                                            valueListenable:
+                                                _countdownsNotifier,
+                                            builder: (context, countdowns, _) =>
+                                                CountdownSectionWidget(
+                                                  historyKey:
+                                                      _countdownHistoryKey,
+                                                  countdowns: countdowns,
+                                                  dataRevision:
+                                                      _countdownsDataRevision,
+                                                  username: widget.username,
+                                                  isLight: isLight,
+                                                  addKey: _addCountdownKey,
+                                                  onDataChanged: () {
+                                                    _loadAllData(
+                                                      domains: const {
+                                                        DataRefreshDomain
+                                                            .countdowns,
+                                                      },
+                                                    );
+                                                    _timelineRevision.value++;
+                                                  },
+                                                ),
+                                          ),
                                         );
-                                    Widget buildTodo() => AnimatedBuilder(
-                                      animation: _todoSectionListenable,
-                                      builder: (context, _) {
-                                        return TodoSectionWidget(
-                                          folderKey: _todoFolderKey,
-                                          historyKey: _todoHistoryKey,
-                                          todos: _todos,
-                                          dataRevision: _todoDataRevision,
-                                          highlightedTodoIds:
-                                              _updatedByOthersTodoIds,
-                                          remoteUpdateHighlightSignal:
-                                              _remoteTodoHighlightSignal,
-                                          todoGroups: _todoGroups,
-                                          conflicts: _latestSyncConflicts,
-                                          username: widget.username,
-                                          isLight: isLight,
-                                          onTeamChanged: (teamUuid, teamName) {
-                                            setState(() {
-                                              _currentSelectedTeamUuid =
-                                                  teamUuid;
-                                              _currentSelectedTeamName =
-                                                  teamName;
-                                            });
-                                          },
-                                          onGroupsChanged: (newGroups) async {
-                                            final allGroups =
-                                                await StorageService.getTodoGroups(
-                                                  widget.username,
-                                                );
-                                            final groupIndexById =
-                                                <String, int>{};
-                                            for (
-                                              var index = 0;
-                                              index < allGroups.length;
-                                              index++
-                                            ) {
-                                              groupIndexById.putIfAbsent(
-                                                allGroups[index].id,
-                                                () => index,
-                                              );
-                                            }
-                                            for (final group in newGroups) {
-                                              final index =
-                                                  groupIndexById[group.id];
-                                              if (index == null) {
-                                                groupIndexById[group.id] =
-                                                    allGroups.length;
-                                                allGroups.add(group);
-                                              } else if (group.updatedAt >=
-                                                  allGroups[index].updatedAt) {
-                                                allGroups[index] = group;
-                                              }
-                                            }
-                                            await StorageService.saveTodoGroups(
-                                              widget.username,
-                                              allGroups,
-                                              sync: true,
-                                            );
-                                            if (!mounted) return;
-                                            setState(() {
-                                              _todoGroups = newGroups
-                                                  .where(
-                                                    (group) => !group.isDeleted,
-                                                  )
-                                                  .toList();
-                                              _todoDataRevision++;
-                                            });
-                                          },
-                                          onTodosChanged: _handleTodosChanged,
-                                          onManualTodoSaved: _saveManualTodo,
-                                          onEditorSave: _handleTodoEditorSave,
-                                          onEditorGroupsSave:
-                                              _handleTodoEditorGroupsSave,
-                                          initialSelectedTeamUuid:
-                                              _currentSelectedTeamUuid,
-                                          onRefreshRequested: _handleManualSync,
-                                          onLLMResultsParsed:
-                                              (
-                                                results,
-                                                imagePath,
-                                                originalText,
-                                                tUuid,
-                                                tName,
+                                    Widget buildTodo() => wrapSectionBoundary(
+                                      AnimatedBuilder(
+                                        animation: _todoSectionListenable,
+                                        builder: (context, _) {
+                                          return TodoSectionWidget(
+                                            folderKey: _todoFolderKey,
+                                            historyKey: _todoHistoryKey,
+                                            todos: _todos,
+                                            dataRevision: _todoDataRevision,
+                                            highlightedTodoIds:
+                                                _updatedByOthersTodoIds,
+                                            remoteUpdateHighlightSignal:
+                                                _remoteTodoHighlightSignal,
+                                            todoGroups: _todoGroups,
+                                            conflicts: _latestSyncConflicts,
+                                            username: widget.username,
+                                            isLight: isLight,
+                                            onTeamChanged:
+                                                (teamUuid, teamName) {
+                                                  setState(() {
+                                                    _currentSelectedTeamUuid =
+                                                        teamUuid;
+                                                    _currentSelectedTeamName =
+                                                        teamName;
+                                                  });
+                                                },
+                                            onGroupsChanged: (newGroups) async {
+                                              final allGroups =
+                                                  await StorageService.getTodoGroups(
+                                                    widget.username,
+                                                  );
+                                              final groupIndexById =
+                                                  <String, int>{};
+                                              for (
+                                                var index = 0;
+                                                index < allGroups.length;
+                                                index++
                                               ) {
-                                                _navigateToTodoConfirm(
+                                                groupIndexById.putIfAbsent(
+                                                  allGroups[index].id,
+                                                  () => index,
+                                                );
+                                              }
+                                              for (final group in newGroups) {
+                                                final index =
+                                                    groupIndexById[group.id];
+                                                if (index == null) {
+                                                  groupIndexById[group.id] =
+                                                      allGroups.length;
+                                                  allGroups.add(group);
+                                                } else if (group.updatedAt >=
+                                                    allGroups[index]
+                                                        .updatedAt) {
+                                                  allGroups[index] = group;
+                                                }
+                                              }
+                                              await StorageService.saveTodoGroups(
+                                                widget.username,
+                                                allGroups,
+                                                sync: true,
+                                              );
+                                              if (!mounted) return;
+                                              setState(() {
+                                                _todoGroups = newGroups
+                                                    .where(
+                                                      (group) =>
+                                                          !group.isDeleted,
+                                                    )
+                                                    .toList();
+                                                _todoDataRevision++;
+                                              });
+                                            },
+                                            onTodosChanged: _handleTodosChanged,
+                                            onManualTodoSaved: _saveManualTodo,
+                                            onEditorSave: _handleTodoEditorSave,
+                                            onEditorGroupsSave:
+                                                _handleTodoEditorGroupsSave,
+                                            initialSelectedTeamUuid:
+                                                _currentSelectedTeamUuid,
+                                            onRefreshRequested:
+                                                _handleManualSync,
+                                            onLLMResultsParsed:
+                                                (
                                                   results,
                                                   imagePath,
                                                   originalText,
                                                   tUuid,
                                                   tName,
-                                                );
-                                              },
-                                        );
-                                      },
+                                                ) {
+                                                  _navigateToTodoConfirm(
+                                                    results,
+                                                    imagePath,
+                                                    originalText,
+                                                    tUuid,
+                                                    tName,
+                                                  );
+                                                },
+                                          );
+                                        },
+                                      ),
                                     );
                                     Widget
                                     buildScreenTime() => wrapSectionBoundary(
@@ -488,19 +497,23 @@ mixin _HomeDashboardViewMixin
                                                 ),
                                               ),
                                         );
-                                    Widget buildTimeline() => KeyedSubtree(
-                                      key: _timelineCardKey,
-                                      child: ValueListenableBuilder<int>(
-                                        valueListenable: _timelineRevision,
-                                        builder: (context, trigger, _) {
-                                          return PersonalTimelineSection(
-                                            username: widget.username,
-                                            isLight: isLight,
-                                            refreshTrigger: trigger,
-                                          );
-                                        },
-                                      ),
-                                    );
+                                    Widget buildTimeline() =>
+                                        wrapSectionBoundary(
+                                          KeyedSubtree(
+                                            key: _timelineCardKey,
+                                            child: ValueListenableBuilder<int>(
+                                              valueListenable:
+                                                  _timelineRevision,
+                                              builder: (context, trigger, _) {
+                                                return PersonalTimelineSection(
+                                                  username: widget.username,
+                                                  isLight: isLight,
+                                                  refreshTrigger: trigger,
+                                                );
+                                              },
+                                            ),
+                                          ),
+                                        );
 
                                     Widget
                                     buildPomodoro() => wrapSectionBoundary(
@@ -641,10 +654,12 @@ mixin _HomeDashboardViewMixin
 
                                     Map<String, Widget Function()>
                                     sectionBuilders = {
-                                      'banners': () => AnimatedBuilder(
-                                        animation: _bannerSectionListenable,
-                                        builder: (_, _) =>
-                                            _buildUniversalBanner(isLight),
+                                      'banners': () => wrapSectionBoundary(
+                                        AnimatedBuilder(
+                                          animation: _bannerSectionListenable,
+                                          builder: (_, _) =>
+                                              _buildUniversalBanner(isLight),
+                                        ),
                                       ),
                                       'agenda': buildAgenda,
                                       'countdowns': buildCountdown,

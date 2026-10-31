@@ -56,10 +56,7 @@ class _TestHarnessState extends State<_TestHarness> {
     return MaterialApp(
       home: Scaffold(
         body: MediaQuery(
-          data: MediaQueryData(
-            size: const Size(400, 800),
-            viewInsets: insets,
-          ),
+          data: MediaQueryData(size: const Size(400, 800), viewInsets: insets),
           child: widget.child,
         ),
       ),
@@ -71,44 +68,38 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets(
-      'MediaQuery.sizeOf isolates widget from keyboard viewInsets changes',
-      (tester) async {
-    var selectiveBuildCount = 0;
-    var unselectiveBuildCount = 0;
+    'MediaQuery.sizeOf isolates widget from keyboard viewInsets changes',
+    (tester) async {
+      var selectiveBuildCount = 0;
+      var unselectiveBuildCount = 0;
 
-    final childTree = Column(
-      children: [
-        _SelectiveSizeConsumer(
-          onBuild: () => selectiveBuildCount++,
-        ),
-        _UnselectiveMediaQueryConsumer(
-          onBuild: () => unselectiveBuildCount++,
-        ),
-      ],
-    );
+      final childTree = Column(
+        children: [
+          _SelectiveSizeConsumer(onBuild: () => selectiveBuildCount++),
+          _UnselectiveMediaQueryConsumer(
+            onBuild: () => unselectiveBuildCount++,
+          ),
+        ],
+      );
 
-    await tester.pumpWidget(
-      _TestHarness(
-        child: childTree,
-      ),
-    );
-    expect(selectiveBuildCount, equals(1));
-    expect(unselectiveBuildCount, equals(1));
+      await tester.pumpWidget(_TestHarness(child: childTree));
+      expect(selectiveBuildCount, equals(1));
+      expect(unselectiveBuildCount, equals(1));
 
-    // Update insets on the parent MediaQuery
-    final state = tester.state<_TestHarnessState>(find.byType(_TestHarness));
-    state.updateInsets(const EdgeInsets.only(bottom: 300));
-    await tester.pump();
+      // Update insets on the parent MediaQuery
+      final state = tester.state<_TestHarnessState>(find.byType(_TestHarness));
+      state.updateInsets(const EdgeInsets.only(bottom: 300));
+      await tester.pump();
 
-    // The unselective consumer that accessed MediaQuery.of(context) MUST rebuild
-    expect(unselectiveBuildCount, equals(2));
+      // The unselective consumer that accessed MediaQuery.of(context) MUST rebuild
+      expect(unselectiveBuildCount, equals(2));
 
-    // The optimized selective consumer that uses MediaQuery.sizeOf(context) MUST NOT rebuild!
-    expect(
-      selectiveBuildCount,
-      equals(1),
-      reason:
-          'MediaQuery.sizeOf(context) should not trigger rebuilds when viewInsets changes',
-    );
-  });
+      // The optimized selective consumer that uses MediaQuery.sizeOf(context) MUST NOT rebuild!
+      expect(
+        selectiveBuildCount,
+        equals(1),
+        reason: 'MediaQuery.sizeOf(context) should not trigger rebuilds when viewInsets changes',
+      );
+    },
+  );
 }

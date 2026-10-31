@@ -618,38 +618,40 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
           },
         ),
         isLight,
-        trailingWidget: AnimatedBuilder(
-          animation: _pomodoroDisplayTickNotifier,
-          builder: (context, _) {
-            final currentPomodoro = _localPomodoro;
-            if (currentPomodoro == null) return const SizedBox.shrink();
+        trailingWidget: RepaintBoundary(
+          child: AnimatedBuilder(
+            animation: _pomodoroDisplayTickNotifier,
+            builder: (context, _) {
+              final currentPomodoro = _localPomodoro;
+              if (currentPomodoro == null) return const SizedBox.shrink();
 
-            final nowMs = DateTime.now().millisecondsSinceEpoch;
-            final isCountUp = currentPomodoro.mode == TimerMode.countUp;
-            final rem = isCountUp
-                ? ((nowMs - currentPomodoro.sessionStartMs) / 1000).floor()
-                : ((currentPomodoro.targetEndMs - nowMs) / 1000).ceil();
-            final showStopBtn =
-                hasActivePlanBlock && !isCountUp && rem > 0 && rem <= 1800;
+              final nowMs = DateTime.now().millisecondsSinceEpoch;
+              final isCountUp = currentPomodoro.mode == TimerMode.countUp;
+              final rem = isCountUp
+                  ? ((nowMs - currentPomodoro.sessionStartMs) / 1000).floor()
+                  : ((currentPomodoro.targetEndMs - nowMs) / 1000).ceil();
+              final showStopBtn =
+                  hasActivePlanBlock && !isCountUp && rem > 0 && rem <= 1800;
 
-            return Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _formatDashboardPomodoroTimeInfo(rem, countUp: isCountUp),
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: isLight ? Colors.white : baseColor,
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _formatDashboardPomodoroTimeInfo(rem, countUp: isCountUp),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: isLight ? Colors.white : baseColor,
+                    ),
                   ),
-                ),
-                if (showStopBtn) ...[
-                  const SizedBox(width: 8),
-                  _buildPomodoroStopButton(isLight, baseColor),
+                  if (showStopBtn) ...[
+                    const SizedBox(width: 8),
+                    _buildPomodoroStopButton(isLight, baseColor),
+                  ],
                 ],
-              ],
-            );
-          },
+              );
+            },
+          ),
         ),
       );
     }
@@ -684,17 +686,19 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
         ),
       ),
       isLight,
-      trailingWidget: AnimatedBuilder(
-        animation: _pomodoroDisplayTickNotifier,
-        builder: (context, _) => Text(
-          _formatDashboardPomodoroTimeInfo(
-            _remotePomodoroRemaining,
-            countUp: isCountUp,
-          ),
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            color: isLight ? Colors.white : baseColor,
+      trailingWidget: RepaintBoundary(
+        child: AnimatedBuilder(
+          animation: _pomodoroDisplayTickNotifier,
+          builder: (context, _) => Text(
+            _formatDashboardPomodoroTimeInfo(
+              _remotePomodoroRemaining,
+              countUp: isCountUp,
+            ),
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: isLight ? Colors.white : baseColor,
+            ),
           ),
         ),
       ),

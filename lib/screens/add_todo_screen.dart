@@ -2391,7 +2391,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     final parsedDate = DateTime.tryParse(schedule.date)?.toLocal();
     final dateLabel = parsedDate == null
         ? schedule.date
-        : DateFormat('yyyy年M月d日').format(parsedDate);
+        : _cachedDateFormat('yyyy年M月d日').format(parsedDate);
     final start = schedule.startTime == null
         ? null
         : DateTime.fromMillisecondsSinceEpoch(schedule.startTime!).toLocal();
@@ -2401,8 +2401,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     final timeLabel = start == null
         ? '时间待定'
         : end == null
-        ? '${DateFormat('HH:mm').format(start)} · 结束待定'
-        : '${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)}';
+        ? '${_cachedDateFormat('HH:mm').format(start)} · 结束待定'
+        : '${_cachedDateFormat('HH:mm').format(start)} - ${_cachedDateFormat('HH:mm').format(end)}';
 
     return Container(
       key: const ValueKey('related-fixed-schedule-context'),

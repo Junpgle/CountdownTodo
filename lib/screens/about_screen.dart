@@ -39,6 +39,7 @@ class AboutScreen extends StatefulWidget {
 class _AboutScreenState extends State<AboutScreen> {
   static const _appIconAsset = 'assets/icon/app_icon.png';
   static final GitHubResourceService _resourceService = GitHubResourceService();
+  static final RegExp _privacyDatePattern = RegExp(r'\*\*版本日期：(.+?)\*\*');
   final Map<String, GlobalKey> _navigationKeys = {};
   String _version = '加载中...';
   List<ChangelogEntry> _changelogEntries = [];
@@ -309,7 +310,7 @@ class _AboutScreenState extends State<AboutScreen> {
       if (response.statusCode == 200) {
         final content = response.body;
         String? date;
-        final dateMatch = RegExp(r'\*\*版本日期：(.+?)\*\*').firstMatch(content);
+        final dateMatch = _privacyDatePattern.firstMatch(content);
         if (dateMatch != null) {
           date = dateMatch.group(1)?.trim();
         }
