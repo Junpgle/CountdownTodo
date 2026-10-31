@@ -27,6 +27,13 @@ void main() {
       'timestamp': base,
     };
 
+    Map<String, dynamic> tiltedHandheld(DateTime base) => {
+      'x': 0.0,
+      'y': 8.5,
+      'z': 4.9,
+      'timestamp': base,
+    };
+
     StrictFocusSensorEvent? sample(
       StrictFocusPoseDetector detector,
       Map<String, dynamic> value,
@@ -113,6 +120,79 @@ void main() {
         StrictFocusSensorState.notFaceDown,
       );
     });
+
+    test('accepts naturally tilted handheld posture for initial face-up', () {
+      final detector = StrictFocusPoseDetector();
+      final base = DateTime(2026, 1, 1);
+
+      // 60-degree tilt reading posture (z ~ 4.9, y ~ 8.5)
+      expect(sample(detector, tiltedHandheld(base)), isNull);
+      expect(
+        sample(
+          detector,
+          tiltedHandheld(base.add(const Duration(milliseconds: 500))),
+        )?.state,
+        StrictFocusSensorState.waitingForFlip,
+      );
+      // Flip face-down
+      expect(
+        sample(detector, down(base.add(const Duration(milliseconds: 501)))),
+        isNull,
+      );
+      expect(
+        sample(
+          detector,
+          down(base.add(const Duration(milliseconds: 950))),
+        )?.state,
+        StrictFocusSensorState.faceDown,
+      );
+    });
+
+    test(
+      'accepts face-down flip directly when requireInitialFaceUp is false',
+      () {
+        // Simulates resuming from screen off
+        final detector = StrictFocusPoseDetector(requireInitialFaceUp: false);
+        final base = DateTime(2026, 1, 1);
+
+        expect(sample(detector, down(base)), isNull);
+        expect(
+          sample(
+            detector,
+            down(base.add(const Duration(milliseconds: 450))),
+          )?.state,
+          StrictFocusSensorState.faceDown,
+        );
+      },
+    );
+
+    test(
+      'detects notFaceDown then faceDown during screen off-reopen cycle',
+      () {
+        final detector = StrictFocusPoseDetector(requireInitialFaceUp: false);
+        final base = DateTime(2026, 1, 1);
+
+        // User turns screen back on while holding phone in hand
+        sample(detector, tiltedHandheld(base));
+        expect(
+          sample(
+            detector,
+            tiltedHandheld(base.add(const Duration(milliseconds: 450))),
+          )?.state,
+          StrictFocusSensorState.notFaceDown,
+        );
+
+        // User flips phone face down onto the desk
+        sample(detector, down(base.add(const Duration(milliseconds: 500))));
+        expect(
+          sample(
+            detector,
+            down(base.add(const Duration(milliseconds: 950))),
+          )?.state,
+          StrictFocusSensorState.faceDown,
+        );
+      },
+    );
   });
 
   test('strict mode survives settings and run-state serialization', () {

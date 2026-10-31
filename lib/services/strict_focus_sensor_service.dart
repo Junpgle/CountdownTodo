@@ -29,12 +29,22 @@ class StrictFocusSensorEvent {
 /// after monitoring starts. This prevents a session from starting immediately
 /// when the user taps start while the phone is already face-down.
 class StrictFocusPoseDetector {
-  StrictFocusSensorState _state = StrictFocusSensorState.waitingForFaceUp;
+  StrictFocusPoseDetector({
+    bool requireInitialFaceUp = true,
+    this.stableDuration = const Duration(milliseconds: 400),
+  }) : _hasSeenFaceUp = !requireInitialFaceUp,
+       _state = requireInitialFaceUp
+           ? StrictFocusSensorState.waitingForFaceUp
+           : StrictFocusSensorState.waitingForFlip;
+
+  final Duration stableDuration;
+  StrictFocusSensorState _state;
   StrictFocusSensorState? _candidate;
   DateTime? _candidateSince;
-  bool _hasSeenFaceUp = false;
+  bool _hasSeenFaceUp;
 
   StrictFocusSensorState get state => _state;
+  bool get hasSeenFaceUp => _hasSeenFaceUp;
 
   StrictFocusSensorEvent? addSample({
     required double x,
@@ -50,8 +60,10 @@ class StrictFocusPoseDetector {
     }
 
     final normalizedZ = z / magnitude;
-    final rawUp = normalizedZ >= 0.72;
-    final rawDown = normalizedZ <= -0.72;
+    // rawUp: screen facing user / up (tilted within ~78° of horizontal, covering natural reading postures)
+    final rawUp = normalizedZ >= 0.20;
+    // rawDown: screen facing down (within ~45° of flat face-down, e.g. on a desk)
+    final rawDown = normalizedZ <= -0.70;
 
     if (!_hasSeenFaceUp) {
       if (!rawUp) {
@@ -87,8 +99,7 @@ class StrictFocusPoseDetector {
       return false;
     }
     final since = _candidateSince;
-    return since != null &&
-        now.difference(since) >= const Duration(milliseconds: 700);
+    return since != null && now.difference(since) >= stableDuration;
   }
 
   void _clearCandidate() {
@@ -110,7 +121,7 @@ class StrictFocusSensorService {
 
   Stream<StrictFocusSensorEvent> get events => _eventController.stream;
 
-  Future<bool> start() async {
+  Future<bool> start({bool requireInitialFaceUp = true}) async {
     await stop();
     if (!AppPlatform.isAndroid && !AppPlatform.isIOS) {
       _emit(const StrictFocusSensorEvent(StrictFocusSensorState.unavailable));
@@ -119,15 +130,21 @@ class StrictFocusSensorService {
 
     _running = true;
     _registerPowerSaveListener();
-    _detector = StrictFocusPoseDetector();
+    _detector = StrictFocusPoseDetector(
+      requireInitialFaceUp: requireInitialFaceUp,
+    );
     _lastSampleAt = null;
     _emit(
-      const StrictFocusSensorEvent(StrictFocusSensorState.waitingForFaceUp),
+      StrictFocusSensorEvent(
+        requireInitialFaceUp
+            ? StrictFocusSensorState.waitingForFaceUp
+            : StrictFocusSensorState.waitingForFlip,
+      ),
     );
 
     try {
       _listenToAccelerometer();
-      _noSampleTimer = Timer(const Duration(seconds: 3), () {
+      _noSampleTimer = Timer(const Duration(seconds: 8), () {
         if (_running && _lastSampleAt == null) {
           _emit(
             const StrictFocusSensorEvent(StrictFocusSensorState.unavailable),
@@ -165,6 +182,8 @@ class StrictFocusSensorService {
         ).listen(
           (event) {
             if (!_running) return;
+            _noSampleTimer?.cancel();
+            _noSampleTimer = null;
             _lastSampleAt = DateTime.now();
             final next = _detector.addSample(
               x: event.x,

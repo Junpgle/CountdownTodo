@@ -412,13 +412,15 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         unawaited(_syncService.suspendForBackground());
       }
       if (_isHandlingEnd) return;
-      if (_strictWaitingForFlip) {
-        StrictFocusSessionCoordinator.instance.pauseForBackground();
-      } else if (_isStrictFreeFocus &&
-          _phase == PomodoroPhase.focusing &&
-          !_isPaused) {
-        // 严格模式在前台失去传感器数据时安全暂停，避免把后台时间算进专注。
-        StrictFocusSessionCoordinator.instance.pauseForBackground();
+      if (state != AppLifecycleState.inactive) {
+        if (_strictWaitingForFlip) {
+          StrictFocusSessionCoordinator.instance.pauseForBackground();
+        } else if (_isStrictFreeFocus &&
+            _phase == PomodoroPhase.focusing &&
+            !_isPaused) {
+          // 严格模式在前台失去传感器数据时安全暂停，避免把后台时间算进专注。
+          StrictFocusSessionCoordinator.instance.pauseForBackground();
+        }
       }
       return;
     }
@@ -429,7 +431,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       unawaited(_syncService.resumeFromBackground());
       if (_isStrictFreeFocus && _phase == PomodoroPhase.focusing && _isPaused) {
         if (!StrictFocusSessionCoordinator.instance.isMonitoring) {
-          StrictFocusSessionCoordinator.instance.startMonitoring();
+          StrictFocusSessionCoordinator.instance.startMonitoring(
+            requireInitialFaceUp: false,
+          );
         }
       }
     }
@@ -571,7 +575,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
     // The coordinator owns this subscription, so the waiting state survives
     // popping the workbench route or switching back to the app home page.
-    await StrictFocusSessionCoordinator.instance.startMonitoring();
+    await StrictFocusSessionCoordinator.instance.startMonitoring(
+      requireInitialFaceUp: true,
+    );
   }
 
   Future<void> _cancelStrictWaiting() async {
@@ -1455,7 +1461,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     final bool forceStrictPause =
         isStrictFreeFocus &&
         !saved.isPaused &&
-        !StrictFocusSessionCoordinator.instance.isMonitoring;
+        !StrictFocusSessionCoordinator.instance.isMonitoringOrStarting;
     final int savedAccumulated = saved.accumulatedMs;
     int remaining;
     if (isCountUp) {
@@ -1556,7 +1562,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         _pushPomodoroNotification(overrideRemaining: remaining);
         _showLocalFloat();
         if (isStrictFreeFocus) {
-          await StrictFocusSessionCoordinator.instance.startMonitoring();
+          await StrictFocusSessionCoordinator.instance.startMonitoring(
+            requireInitialFaceUp: false,
+          );
         }
         if (saved.isPaused == true || forceStrictPause) {
           _ticker?.cancel();
@@ -2194,7 +2202,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     widget.onPhaseChanged(_phase);
     if (_isStrictFreeFocus) {
       // 工作台只负责展示，传感器监听交给跨页面协调器。
-      await StrictFocusSessionCoordinator.instance.startMonitoring();
+      await StrictFocusSessionCoordinator.instance.startMonitoring(
+        requireInitialFaceUp: false,
+      );
     }
     _startTicker();
     _showLocalFloat();
