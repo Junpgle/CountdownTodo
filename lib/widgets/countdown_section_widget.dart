@@ -663,6 +663,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
       child: ClipRect(
         clipper: _HorizontalClipper(),
         child: ListView.builder(
+          itemExtent: 142.0,
           addRepaintBoundaries: !widget.isLight,
           scrollCacheExtent: ScrollCacheExtent.pixels(1000),
           controller: _listScrollController,

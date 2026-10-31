@@ -5088,6 +5088,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
 class _DonutPainter extends CustomPainter {
   final List<MapEntry<String, double>> data;
   final List<Color> palette;
+  final Paint _paint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
 
   _DonutPainter(this.data, this.palette);
 
@@ -5096,15 +5099,12 @@ class _DonutPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2;
     final strokeWidth = radius * 0.35;
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
+    _paint.strokeWidth = strokeWidth;
 
     double startAngle = -3.14159 / 2;
     for (int i = 0; i < data.length; i++) {
       final sweepAngle = data[i].value * 2 * 3.14159;
-      paint.color = palette[i % palette.length];
+      _paint.color = palette[i % palette.length];
 
       // Draw arc with slight gap
       canvas.drawArc(
@@ -5112,7 +5112,7 @@ class _DonutPainter extends CustomPainter {
         startAngle + 0.05,
         sweepAngle - 0.1,
         false,
-        paint,
+        _paint,
       );
       startAngle += sweepAngle;
     }
@@ -5127,6 +5127,11 @@ class _DonutPainter extends CustomPainter {
 class _SparklinePainter extends CustomPainter {
   final List<double> data;
   final Color color;
+  final Paint _paint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 2.5
+    ..strokeCap = StrokeCap.round
+    ..strokeJoin = StrokeJoin.round;
 
   _SparklinePainter(this.data, this.color);
 
@@ -5134,13 +5139,7 @@ class _SparklinePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (data.length < 2) return;
 
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
+    _paint.color = color;
     final path = Path();
     var maxVal = data.first;
     var minVal = data.first;
@@ -5163,7 +5162,7 @@ class _SparklinePainter extends CustomPainter {
       }
     }
 
-    canvas.drawPath(path, paint);
+    canvas.drawPath(path, _paint);
   }
 
   @override

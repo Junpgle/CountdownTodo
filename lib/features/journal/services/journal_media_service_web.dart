@@ -64,9 +64,18 @@ class JournalMediaService {
     required Set<String> referencedPaths,
   }) async {}
 
-  ImageProvider<Object>? provider(JournalAttachment attachment) {
+  ImageProvider<Object>? provider(
+    JournalAttachment attachment, {
+    int? width,
+    int? height,
+  }) {
     final bytes = attachment.imageData;
-    return bytes == null || bytes.isEmpty ? null : MemoryImage(bytes);
+    if (bytes == null || bytes.isEmpty) return null;
+    final baseProvider = MemoryImage(bytes);
+    if (width != null || height != null) {
+      return ResizeImage.resizeIfNeeded(width, height, baseProvider);
+    }
+    return baseProvider;
   }
 
   Future<void> delete(JournalAttachment attachment) async {}

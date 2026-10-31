@@ -137,20 +137,12 @@ class CourseSectionWidget extends StatelessWidget {
             isLight: isLight,
           )
         else
-          ListView.builder(
-            padding: EdgeInsets.zero,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: courses.length,
-            itemBuilder: (context, index) {
-              final course = courses[index];
-              return _CourseCompactCard(
-                course: course,
-                isLight: isLight,
-                onTap: (cardKey) => _showCourseDetail(context, course, cardKey),
-              );
-            },
-          ),
+          for (final course in courses)
+            _CourseCompactCard(
+              course: course,
+              isLight: isLight,
+              onTap: (cardKey) => _showCourseDetail(context, course, cardKey),
+            ),
       ],
     );
   }

@@ -1196,11 +1196,13 @@ class _LoginScreenState extends State<LoginScreen>
       body: Stack(
         children: [
           Positioned.fill(
-            child: CustomPaint(
-              painter: _OrbPainter(
-                dark: t._dark,
-                primary: t.primary,
-                accent: t.accent,
+            child: RepaintBoundary(
+              child: CustomPaint(
+                painter: _OrbPainter(
+                  dark: t._dark,
+                  primary: t.primary,
+                  accent: t.accent,
+                ),
               ),
             ),
           ),

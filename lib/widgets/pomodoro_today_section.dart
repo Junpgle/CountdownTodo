@@ -614,19 +614,21 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
           return Stack(
             alignment: Alignment.center,
             children: [
-              CustomPaint(
-                size: const Size(68, 68),
-                painter: _FocusRingPainter(
-                  progress: animatedProgress,
-                  trackColor: isDark
-                      ? Colors.white.withValues(alpha: 0.08)
-                      : primaryColor.withValues(alpha: 0.12),
-                  gradientColors: [
-                    primaryColor.withValues(alpha: 0.8),
-                    tertiaryColor,
-                  ],
-                  overflowColor: Colors.amber,
-                  strokeWidth: 6.0,
+              RepaintBoundary(
+                child: CustomPaint(
+                  size: const Size(68, 68),
+                  painter: _FocusRingPainter(
+                    progress: animatedProgress,
+                    trackColor: isDark
+                        ? Colors.white.withValues(alpha: 0.08)
+                        : primaryColor.withValues(alpha: 0.12),
+                    gradientColors: [
+                      primaryColor.withValues(alpha: 0.8),
+                      tertiaryColor,
+                    ],
+                    overflowColor: Colors.amber,
+                    strokeWidth: 6.0,
+                  ),
                 ),
               ),
               Column(
@@ -1499,6 +1501,16 @@ class _FocusRingPainter extends CustomPainter {
   final Color? overflowColor;
   final double strokeWidth;
 
+  final Paint _trackPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
+  final Paint _basePaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
+  final Paint _overflowPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
+
   _FocusRingPainter({
     required this.progress,
     required this.trackColor,
@@ -1513,12 +1525,10 @@ class _FocusRingPainter extends CustomPainter {
     final radius = (size.width - strokeWidth) / 2;
 
     // 1. 底层轨道圆环
-    final trackPaint = Paint()
+    _trackPaint
       ..color = trackColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
-    canvas.drawCircle(center, radius, trackPaint);
+      ..strokeWidth = strokeWidth;
+    canvas.drawCircle(center, radius, _trackPaint);
 
     if (progress <= 0.001) return;
 
@@ -1528,34 +1538,30 @@ class _FocusRingPainter extends CustomPainter {
     final baseProgress = progress.clamp(0.0, 1.0);
     final baseSweep = 2 * pi * baseProgress;
 
-    final basePaint = Paint()
+    _basePaint
       ..shader = SweepGradient(colors: gradientColors).createShader(rect)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
+      ..strokeWidth = strokeWidth;
 
     canvas.save();
     canvas.translate(center.dx, center.dy);
     canvas.rotate(-pi / 2);
     canvas.translate(-center.dx, -center.dy);
-    canvas.drawArc(rect, 0, baseSweep, false, basePaint);
+    canvas.drawArc(rect, 0, baseSweep, false, _basePaint);
     canvas.restore();
 
     // 3. 超额达成金色弧线（progress > 1.0）
     if (progress > 1.0 && overflowColor != null) {
       final overflowProgress = (progress - 1.0).clamp(0.0, 1.0);
       final overflowSweep = 2 * pi * overflowProgress;
-      final overflowPaint = Paint()
+      _overflowPaint
         ..color = overflowColor!
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = strokeWidth
-        ..strokeCap = StrokeCap.round;
+        ..strokeWidth = strokeWidth;
 
       canvas.save();
       canvas.translate(center.dx, center.dy);
       canvas.rotate(-pi / 2);
       canvas.translate(-center.dx, -center.dy);
-      canvas.drawArc(rect, 0, overflowSweep, false, overflowPaint);
+      canvas.drawArc(rect, 0, overflowSweep, false, _overflowPaint);
       canvas.restore();
     }
   }

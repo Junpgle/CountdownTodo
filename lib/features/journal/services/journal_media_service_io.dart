@@ -204,13 +204,26 @@ class JournalMediaService {
     }
   }
 
-  ImageProvider<Object>? provider(JournalAttachment attachment) {
+  ImageProvider<Object>? provider(
+    JournalAttachment attachment, {
+    int? width,
+    int? height,
+  }) {
     final path = attachment.localPath;
+    ImageProvider<Object>? baseProvider;
     if (path != null && path.isNotEmpty && File(path).existsSync()) {
-      return FileImage(File(path));
+      baseProvider = FileImage(File(path));
+    } else {
+      final bytes = attachment.imageData;
+      if (bytes != null && bytes.isNotEmpty) {
+        baseProvider = MemoryImage(bytes);
+      }
     }
-    final bytes = attachment.imageData;
-    return bytes == null || bytes.isEmpty ? null : MemoryImage(bytes);
+    if (baseProvider == null) return null;
+    if (width != null || height != null) {
+      return ResizeImage.resizeIfNeeded(width, height, baseProvider);
+    }
+    return baseProvider;
   }
 
   Future<void> delete(JournalAttachment attachment) async {
