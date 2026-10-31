@@ -395,3 +395,5 @@ todo.md
 !/test/widgets/sticky_announcement_banner_test.dart
 !/test/services/todo_editor_save_service_test.dart
 !/test/widgets/todo_edit_exit_protection_test.dart
+!/test/widgets/animation_performance_metric_card_test.dart
+!/test/widgets/liquid_glass_manual_adjustments_test.dart

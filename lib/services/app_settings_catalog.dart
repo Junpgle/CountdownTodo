@@ -815,6 +815,15 @@ abstract final class AppSettingsCatalog {
       platforms: {},
     ),
     AiSettingsDestination(
+      id: 'animation_performance_metric',
+      title: '流畅度与渲染压力',
+      path: '设置 > 动画与特效 > 流畅度与渲染压力',
+      description: '流畅度 帧率 FPS 渲染压力 掉帧 卡顿 性能指标',
+      page: SettingsPageId.animation,
+      labels: ['流畅度', '帧率', 'FPS', '渲染压力', '卡顿'],
+      platforms: {},
+    ),
+    AiSettingsDestination(
       id: 'animation_presets',
       title: '性能预设',
       path: '设置 > 动画与特效 > 性能预设',

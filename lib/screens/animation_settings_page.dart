@@ -8,6 +8,7 @@ import '../services/liquid_glass_effect_service.dart';
 import '../services/power_save_mode_service.dart';
 import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
+import '../widgets/animation_performance_metric_card.dart';
 import '../widgets/settings_toggle_card.dart';
 import '../widgets/floating_glass_control.dart';
 import '../utils/app_dialogs.dart';
@@ -401,6 +402,20 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                 isDesktop ? 32 : 16,
               ),
               children: [
+                AnimationPerformanceMetricCard(
+                  animationsEnabled: effectiveAnimationsEnabled,
+                  motionBlurEnabled: effectiveMotionBlurEnabled,
+                  layerBlurEnabled: effectiveLayerBlurEnabled,
+                  liquidGlassEnabled: effectiveLiquidGlassEnabled,
+                  liquidGlassMode: _liquidGlassMode,
+                  liquidGlassBlur: _liquidGlassBlur,
+                  liquidGlassTransparency: _liquidGlassTransparency,
+                  screenRadiusEnabled: effectiveScreenRadiusEnabled,
+                  lazyLoadEnabled: _lazyLoadEnabled,
+                  powerSaveModeEnabled: powerSaveModeEnabled,
+                  isDesktop: isDesktop,
+                ),
+                SizedBox(height: isDesktop ? 20 : 16),
                 if (AppPlatform.isAndroid ||
                     widget.powerSaveModeOverride != null) ...[
                   Card(
