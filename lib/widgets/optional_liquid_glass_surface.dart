@@ -223,7 +223,8 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
             mode == OptionalLiquidGlassPanelMode.staticMaterial ||
             useStaticOverlayMaterial ||
             useStaticWindowsMaterial ||
-            (mode == OptionalLiquidGlassPanelMode.adaptiveRepeated && !enhanced);
+            (mode == OptionalLiquidGlassPanelMode.adaptiveRepeated &&
+                !enhanced);
         // Per-corner radii are only expressible by the tiers that clip with
         // BorderRadius; the superellipse shader shape needs a uniform radius.
         final resolvedRadius =
@@ -233,9 +234,7 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
           final isAdaptiveCard =
               mode == OptionalLiquidGlassPanelMode.adaptiveRepeated;
           final shouldBlur =
-              !useStaticOverlayMaterial &&
-              !useStaticWindowsMaterial &&
-              mode != OptionalLiquidGlassPanelMode.staticMaterial;
+              !useStaticOverlayMaterial && !useStaticWindowsMaterial;
           final blurFilter = configuration.blurFilter;
           final originalOpacity =
               staticMaterialOpacity ??
@@ -530,14 +529,13 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
       builder: (context, configuration, _) {
         if (!configuration.enabled) return fallback;
         final enhanced = configuration.mode == LiquidGlassEffectMode.enhanced;
-        final useStaticAndroidMaterial = AppPlatform.isAndroid;
         final useStaticWindowsMaterial = AppPlatform.isWindows;
 
-        if (useStaticAndroidMaterial || useStaticWindowsMaterial) {
+        if (useStaticWindowsMaterial) {
           // Floating controls stay fixed while dashboard content scrolls
           // behind them. A live glass pass therefore rerasterizes on every
           // scroll frame even though the controls themselves do not move. Use
-          // the cached material path on Android and Windows, retaining
+          // the cached material path on Windows, retaining
           // a lighter fill for compact top-bar lenses.
           final staticShell = OptionalLiquidGlassPanel(
             height: height,

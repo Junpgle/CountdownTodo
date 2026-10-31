@@ -211,7 +211,7 @@ void main() {
   });
 
   testWidgets(
-    'staticMaterial mode never samples backdrop with BackdropFilter',
+    'staticMaterial mode inside overlay avoids redundant BackdropFilter',
     (tester) async {
       await LiquidGlassEffectService.setEnabled(true);
       await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
@@ -219,10 +219,12 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
-            body: OptionalLiquidGlassPanel(
-              mode: OptionalLiquidGlassPanelMode.staticMaterial,
-              fallback: SizedBox(),
-              child: Text('Pure static panel'),
+            body: OptionalLiquidGlassOverlayScope(
+              child: OptionalLiquidGlassPanel(
+                mode: OptionalLiquidGlassPanelMode.staticMaterial,
+                fallback: SizedBox(),
+                child: Text('Pure static panel'),
+              ),
             ),
           ),
         ),
@@ -231,7 +233,9 @@ void main() {
 
       expect(find.byType(OptionalLiquidGlassPanel), findsOneWidget);
       expect(
-        find.byKey(const ValueKey<String>('optional-liquid-glass-static-panel')),
+        find.byKey(
+          const ValueKey<String>('optional-liquid-glass-static-panel'),
+        ),
         findsOneWidget,
       );
       expect(find.byType(BackdropFilter), findsNothing);
@@ -1080,21 +1084,21 @@ void main() {
     );
   });
 
-  testWidgets(
-    'PlatformBackdropFilter renders child directly on non-macOS/iOS platforms',
-    (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: PlatformBackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: const Text('Test Child'),
-            ),
+  testWidgets('PlatformBackdropFilter wraps child with BackdropFilter', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PlatformBackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: const Text('Test Child'),
           ),
         ),
-      );
+      ),
+    );
 
-      expect(find.text('Test Child'), findsOneWidget);
-    },
-  );
+    expect(find.text('Test Child'), findsOneWidget);
+    expect(find.byType(BackdropFilter), findsOneWidget);
+  });
 }

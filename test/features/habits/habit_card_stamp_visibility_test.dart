@@ -265,17 +265,20 @@ void main() {
       );
 
       // Card initially renders goal1 (in progress)
-      Widget buildHarness(HabitGoal currentGoal, HabitGoalRuleRevision currentRule, bool met) =>
-          MaterialApp(
-            home: Scaffold(
-              body: _buildCard(
-                currentGoal,
-                currentRule,
-                met: met,
-                key: const ValueKey('reusable-card-slot'),
-              ),
-            ),
-          );
+      Widget buildHarness(
+        HabitGoal currentGoal,
+        HabitGoalRuleRevision currentRule,
+        bool met,
+      ) => MaterialApp(
+        home: Scaffold(
+          body: _buildCard(
+            currentGoal,
+            currentRule,
+            met: met,
+            key: const ValueKey('reusable-card-slot'),
+          ),
+        ),
+      );
 
       await tester.pumpWidget(buildHarness(goal, rule, false));
       await tester.pump();
@@ -310,20 +313,20 @@ void main() {
       );
 
       Widget buildHarness() => MaterialApp(
-            home: Scaffold(
-              body: ListView.builder(
-                controller: scrollController,
-                itemCount: 2,
-                itemBuilder: (context, index) {
-                  if (index == 0) {
-                    // Takes up full screen height
-                    return const SizedBox(height: 1200);
-                  }
-                  return _buildCard(goal, rule, met: true);
-                },
-              ),
-            ),
-          );
+        home: Scaffold(
+          body: ListView.builder(
+            controller: scrollController,
+            itemCount: 2,
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                // Takes up full screen height
+                return const SizedBox(height: 1200);
+              }
+              return _buildCard(goal, rule, met: true);
+            },
+          ),
+        ),
+      );
 
       await tester.pumpWidget(buildHarness());
       await tester.pump();

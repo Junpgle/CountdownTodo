@@ -3029,10 +3029,9 @@ class _FloatingGlassControlFallback extends StatelessWidget {
             fit: fit,
             clipBehavior: allowChildOverflow ? Clip.none : Clip.hardEdge,
             children: [
-              // Avoid BackdropFilter in the Android and Windows fallback
-              // paths; its offscreen pass is costly and can expand across the
-              // transparent desktop window.
-              if (!AppPlatform.isAndroid && !AppPlatform.isWindows)
+              // Avoid BackdropFilter in the Windows fallback path; its
+              // offscreen pass can expand across the transparent desktop window.
+              if (!AppPlatform.isWindows)
                 Positioned.fill(
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(borderRadius),

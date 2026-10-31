@@ -148,7 +148,8 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
       }
       await Future.wait(futures);
 
-      final dayByHabitAndLogicalDate = <String, Map<String, HabitDayProgress>>{};
+      final dayByHabitAndLogicalDate =
+          <String, Map<String, HabitDayProgress>>{};
       for (final entry in daysByHabit.entries) {
         final dayByLogicalDate = <String, HabitDayProgress>{};
         for (final day in entry.value) {

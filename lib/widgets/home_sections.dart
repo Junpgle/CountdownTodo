@@ -879,7 +879,7 @@ class EmptyState extends StatelessWidget {
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
-      child: AppPlatform.isAndroid || AppPlatform.isWindows
+      child: AppPlatform.isWindows
           ? content
           : BackdropFilter(filter: AppImageFilters.blur10, child: content),
     );

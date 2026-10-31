@@ -1132,7 +1132,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                   ),
                 ),
                 Positioned.fill(
-                  child: AppPlatform.isAndroid
+                  child: AppPlatform.isWindows
                       ? const SizedBox.shrink()
                       : BackdropFilter(
                           filter: AppImageFilters.blur60,
@@ -1608,7 +1608,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
             ),
           ),
           Positioned.fill(
-            child: AppPlatform.isAndroid
+            child: AppPlatform.isWindows
                 ? const SizedBox.shrink()
                 : BackdropFilter(
                     filter: AppImageFilters.blur48,
@@ -3524,7 +3524,7 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
           children: [
             if (hasImage)
               Positioned.fill(
-                child: AppPlatform.isAndroid
+                child: AppPlatform.isWindows
                     ? DecoratedBox(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(

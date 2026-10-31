@@ -1886,9 +1886,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
       width: size,
       height: size,
       decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      // Android 和 Windows 的 BackdropFilter 会给滚动层增加离屏合成，
-      // 这个 blob 只是装饰，在这两个平台保留半透明圆形即可。
-      child: AppPlatform.isAndroid || AppPlatform.isWindows
+      // Windows 的 BackdropFilter 会给透明窗口增加额外混合开销，
+      // 这个 blob 只是背景光晕装饰，在 Windows 保留半透明圆形即可。
+      child: AppPlatform.isWindows
           ? const SizedBox.shrink()
           : BackdropFilter(
               filter: AppImageFilters.blur80,
