@@ -1132,7 +1132,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
   Widget _buildBottomBar({required bool isWide}) {
     final colorScheme = Theme.of(context).colorScheme;
     final lastStep = 3;
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final bottomPadding = MediaQuery.paddingOf(context).bottom;
     final useFloating = !isWide && floatingBottomBarShouldFloat(context);
 
     final child = Container(

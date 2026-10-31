@@ -2362,7 +2362,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   Widget _buildResponsiveGrid(List<Widget> children) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        bool isWide = MediaQuery.of(context).size.width > 600;
+        bool isWide = constraints.maxWidth > 600;
         if (!isWide) {
           List<Widget> colChildren = [];
           for (int i = 0; i < children.length; i++) {

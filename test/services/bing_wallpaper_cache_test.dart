@@ -26,7 +26,10 @@ void main() {
 
       final cached = await StorageService.getCachedBingWallpaper();
       expect(cached, isNotNull);
-      expect(cached!['url'], 'https://cn.bing.com/th?id=OHR.Test_1920x1080.jpg');
+      expect(
+        cached!['url'],
+        'https://cn.bing.com/th?id=OHR.Test_1920x1080.jpg',
+      );
       expect(cached['copyright'], 'Test Photographer (© Test)');
       expect(cached['date'], '2026-10-31');
       expect(cached['params'], '1920:jpg:0:zh-CN');

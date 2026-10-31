@@ -48,8 +48,9 @@ class _AnimationPerformanceFloatingWindowState
                             AnimationPerformanceMonitorService.evaluateCurrentPressure();
                         return LayoutBuilder(
                           builder: (context, constraints) {
-                            final mediaQuery = MediaQuery.of(context);
-                            final screenSize = mediaQuery.size;
+                            final screenSize = MediaQuery.sizeOf(context);
+                            final topPadding = MediaQuery.paddingOf(context)
+                                .top;
                             final windowWidth = isExpanded ? 320.0 : 288.0;
                             final windowHeight = isExpanded ? 390.0 : 38.0;
 
@@ -59,7 +60,7 @@ class _AnimationPerformanceFloatingWindowState
                                 8.0,
                                 screenSize.width - windowWidth - 8.0,
                               ),
-                              math.max(mediaQuery.padding.top + 16, 76.0),
+                              math.max(topPadding + 16, 76.0),
                             );
 
                             // 约束位置在屏幕视口内，防止被拖出屏幕外
@@ -74,7 +75,7 @@ class _AnimationPerformanceFloatingWindowState
                                 .toDouble();
                             final double clampedY = _position!.dy
                                 .clamp(
-                                  mediaQuery.padding.top + 8.0,
+                                  topPadding + 8.0,
                                   math.max<double>(
                                     8.0,
                                     screenSize.height - windowHeight - 8.0,

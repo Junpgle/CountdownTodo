@@ -3277,12 +3277,15 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final media = MediaQuery.of(context);
+    final size = MediaQuery.sizeOf(context);
+    final viewInsets = MediaQuery.viewInsetsOf(context);
+    final padding = MediaQuery.paddingOf(context);
+    final textScaler = MediaQuery.textScalerOf(context);
     final height = max(
       0.0,
-      media.size.height - media.viewInsets.bottom - media.padding.vertical - 24,
+      size.height - viewInsets.bottom - padding.vertical - 24,
     );
-    final scale = media.textScaler.scale(14) / 14;
+    final scale = textScaler.scale(14) / 14;
     if (widget.fullPage) return _page(scale);
     return Semantics(
       namesRoute: true,
@@ -3298,7 +3301,7 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet>
         },
         child: SafeArea(
           child: Padding(
-            padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
+            padding: EdgeInsets.only(bottom: viewInsets.bottom),
             child: Align(
               alignment: Alignment.bottomCenter,
               heightFactor: 1,

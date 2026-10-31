@@ -337,7 +337,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           child: Container(
             padding: const EdgeInsets.all(16),
             constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.5,
+              maxHeight: MediaQuery.sizeOf(ctx).height * 0.5,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

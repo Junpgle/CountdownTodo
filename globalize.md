@@ -1,6 +1,6 @@
 # Shared-component and refactor inventory
 
-Last reviewed: 2026-08-25. This replaces the old line-number-based checklist;
+Last reviewed: 2026-10-31. This replaces the old line-number-based checklist;
 line numbers and file sizes change too often to be useful as design contracts.
 
 ## Extracted and reusable
@@ -12,6 +12,13 @@ line numbers and file sizes change too often to be useful as design contracts.
 - Loading/empty/error views: `lib/widgets/app_state_views.dart`.
 - Glass-or-fallback surfaces: `lib/widgets/optional_liquid_glass_surface.dart`
   with configuration from `lib/services/liquid_glass_effect_service.dart`.
+- Settings catalog and search index: `lib/services/app_settings_catalog.dart`.
+- Feature tips and guidance center: `lib/services/feature_tip_service.dart` and
+  `lib/screens/help/feature_explorer_screen.dart`.
+- Rendering metrics & performance monitoring:
+  `lib/widgets/animation_performance_floating_window.dart`.
+- Wallpaper fetching & caching: `lib/services/bing_wallpaper_service.dart`.
+- Schedule/Todo relations: `lib/services/fixed_schedule_todo_relation_service.dart`.
 - Storage modules: `lib/services/storage/app_settings_storage.dart`,
   `countdown_storage.dart`, `pomodoro_storage.dart`,
   `user_session_storage.dart`, and `storage_conflict_cleanup.dart`.

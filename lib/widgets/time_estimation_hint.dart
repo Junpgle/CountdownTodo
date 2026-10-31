@@ -120,7 +120,9 @@ class _EvidenceSheetState extends State<_EvidenceSheet>
   Widget build(BuildContext context) {
     final result = widget.result;
     final colors = Theme.of(context).colorScheme;
-    final media = MediaQuery.of(context);
+    final viewInsets = MediaQuery.viewInsetsOf(context);
+    final size = MediaQuery.sizeOf(context);
+    final padding = MediaQuery.paddingOf(context);
     final groups = <String, List<int>>{};
     if (_accountValid) {
       for (final sample in result.samples) {
@@ -128,14 +130,13 @@ class _EvidenceSheetState extends State<_EvidenceSheet>
       }
     }
     return Padding(
-      padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
+      padding: EdgeInsets.only(bottom: viewInsets.bottom),
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxHeight:
-              (media.size.height -
-                      media.viewInsets.bottom -
-                      media.padding.vertical)
-                  .clamp(80.0, 560.0),
+          maxHeight: (size.height - viewInsets.bottom - padding.vertical).clamp(
+            80.0,
+            560.0,
+          ),
         ),
         child: OptionalLiquidGlassSheet(
           fallbackDecoration: BoxDecoration(

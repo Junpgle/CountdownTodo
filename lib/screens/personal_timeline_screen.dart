@@ -965,7 +965,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
                       20,
                       8,
                       20,
-                      20 + MediaQuery.of(context).viewInsets.bottom,
+                      20 + MediaQuery.viewInsetsOf(context).bottom,
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -1564,7 +1564,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    final isWide = MediaQuery.of(context).size.width > 900;
+    final isWide = MediaQuery.sizeOf(context).width > 900;
     final topPadding = MediaQuery.paddingOf(context).top;
     final topBarHeight = floatingGlassTopBarHeight(context);
     final bottomContentPadding = floatingBottomNavigationContentPaddingFor(
@@ -1986,7 +1986,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
   }
 
   double _timelineGreetingTopPadding(BuildContext context) {
-    final isCompact = MediaQuery.of(context).size.width < 600;
+    final isCompact = MediaQuery.sizeOf(context).width < 600;
     return isCompact ? 24.0 : 32.0;
   }
 
@@ -3496,7 +3496,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
     ];
 
     final int colCount = isWide
-        ? (MediaQuery.of(context).size.width > 1200 ? 4 : 3)
+        ? (MediaQuery.sizeOf(context).width > 1200 ? 4 : 3)
         : 2;
 
     return Column(
@@ -4621,7 +4621,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
         separatorBuilder: (_, _) => const SizedBox(width: 12),
         itemBuilder: (_, index) => SizedBox(
           width: 260,
-          child: _buildInsightItem(_mlInsights[index], cs),
+          child: RepaintBoundary(
+            child: _buildInsightItem(_mlInsights[index], cs),
+          ),
         ),
       ),
     );

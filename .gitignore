@@ -401,3 +401,4 @@ todo.md
 !/test/widgets/animation_performance_metric_card_test.dart
 !/test/widgets/liquid_glass_manual_adjustments_test.dart
 !/test/widgets/animation_performance_floating_window_test.dart
+!/test/widgets/media_query_selective_optimization_test.dart

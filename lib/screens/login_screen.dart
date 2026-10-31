@@ -1248,7 +1248,7 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Widget _buildNarrowLayout() {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     return SafeArea(
       child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(24, 16, 24, 32 + bottomInset),

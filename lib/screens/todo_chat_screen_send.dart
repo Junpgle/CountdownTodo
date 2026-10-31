@@ -2494,7 +2494,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       builder: (ctx) => AlertDialog(
         title: const Text('粘贴AI回复并识别'),
         content: SizedBox(
-          width: MediaQuery.of(ctx).size.width * 0.86,
+          width: MediaQuery.sizeOf(ctx).width * 0.86,
           child: TextField(
             controller: replyCtrl,
             maxLines: 12,

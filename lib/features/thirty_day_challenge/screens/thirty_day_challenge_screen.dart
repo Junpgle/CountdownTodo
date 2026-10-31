@@ -1952,7 +1952,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
 
   Widget _buildBody(ThirtyDayChallengeState state) {
     final isLandscape =
-        MediaQuery.of(context).orientation == Orientation.landscape;
+        MediaQuery.orientationOf(context) == Orientation.landscape;
     return isLandscape ? _buildLandscapeBody(state) : _buildPortraitBody(state);
   }
 
@@ -3131,7 +3131,7 @@ class _ShuffleCardSurface extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final isCompact =
-        MediaQuery.of(context).orientation == Orientation.landscape;
+        MediaQuery.orientationOf(context) == Orientation.landscape;
     final taskColors = _challengeTaskGradientColors(task, scheme);
     final cardTextColor = isFront
         ? scheme.onPrimaryContainer
@@ -3452,7 +3452,7 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
     final task = widget.task;
     final isCompactMobile =
         MediaQuery.sizeOf(context).width < 600 &&
-        MediaQuery.of(context).orientation == Orientation.portrait;
+        MediaQuery.orientationOf(context) == Orientation.portrait;
     final imageBytes = _decodeChallengeImage(task.imageBase64);
     final hasImage = imageBytes != null;
     final taskColors = _challengeTaskGradientColors(task, scheme);

@@ -1,55 +1,54 @@
 # Feature status
 
-Global-search coverage checked against the working tree: 2026-09-26. This is a
-capability map, not a release promise; other entries retain the 2026-08-25
-review baseline.
+Reconciled against the working tree: 2026-10-31 (v7.22.6). This is a capability map,
+not a release promise; historical review dates are preserved in respective docs.
 
 ## Implemented
 
-- Todos, groups, date-only/deadline semantics, recurrence series, completion
-  history and recurrence repair/merge tools.
+- Todos, groups, date-only/deadline semantics, unscheduled semantics, recurrence series,
+  skip-this-period state, completion history, recurrence repair/merge tools, and trash series restore/purge.
 - Countdowns, course import/management, Pomodoro, time logs and plan blocks.
-- Plan-block reminders, drag/resize interactions, statistics, and system
-  calendar synchronization with persisted calendar event IDs.
-- Habit center (`lib/features/habits/`): independent check-in model with
-  streak/completion statistics, reminders, widget check-in, sleep-duration
-  coaching with progressive goals and legacy sleep-log migration.
-- Local private journal (`lib/features/journal/`) kept on-device only, with a
-  media picker that degrades gracefully on web.
-- Thirty-day challenge (`lib/features/thirty_day_challenge/`) with the built-in
-  30-item list, cloud template catalog and share-code parsing.
-- Alibaba Cloud delta sync, conflict inbox/history/rollback, collaboration and
-  WebSocket-driven live updates.
-- Global search with FTS5/FTS4/LIKE fallback across core SQLite records, finance,
-  journal, schedules, plan blocks, check-ins, challenges, AI chat and team data;
-  result destinations include native detail/edit screens and a generic detail
-  page, with a shared-container open/return transition. See
-  `docs/features/global-search.md` for remote-source limits.
-- Data import/export screens, theme customization, updates (including Wi-Fi
-  auto-download of update packages) and onboarding.
-- AI chat/actions covering todos, fixed schedules, plan blocks, time logs,
-  Pomodoro, countdowns, groups and tags, plus finance drafts and read/update/delete
-  actions through the separate finance protocol. Dedicated parser/action
-  regression tests are still sparse.
-- Rule-based medal recommendations plus an ML/bandit recommendation path; the
-  catalog currently contains 100 medals.
-- Home sidebar configuration (hide/reorder entries), minor mode with an
-  age-permission matrix, and an optional Liquid Glass visual effect
-  (`liquid_glass_effect_service.dart` + `OptionalLiquidGlassSurface`) applied to
-  home cards, the bottom navigation bar and quick actions, with standard/enhanced
-  modes controlled from the animation settings page.
-- Android widgets/background notifications/HyperOS integration, Windows island,
-  macOS menu bar/widgets/island (including Apple Music media info), Flutter
-  web, React web companion, and Xiaomi band companion.
+- Plan-block reminders, drag/resize interactions, statistics, system calendar
+  synchronization with persisted calendar event IDs, availability buffers, backlog capacity planning, and dynamic timeline track layout.
+- Fixed schedules (`fixed_schedules`): dedicated model with recurrence series, conflict detection,
+  bidirectional relations with todos, rescheduling impact review, preparation buffer recommendations,
+  and read-only schedule placeholder mapping in time log.
+- Habit center (`lib/features/habits/`): independent check-in model with streak/completion
+  statistics, reminders, widget check-in, hold-to-checkin guard against accidental taps,
+  focus habit Pomodoro linkage, sleep-duration coaching with progressive goals and legacy sleep-log migration.
+- Local private journal (`lib/features/journal/`): kept on-device only, with media picker,
+  concurrent edit protection, and a trash bin supporting restoration and permanent deletion of physical media.
+- Thirty-day challenge (`lib/features/thirty_day_challenge/`): built-in 30-item list, cloud template catalog,
+  independent check-in, focus session linkage, and share-code parsing.
+- Personal finance (`lib/features/finance/`): offline-first transactions (expense, income, refund),
+  calendar card view, precise category ledger filtering, monthly cumulative balance trends with drill-down,
+  future scheduled commitments & manual future cash flow, monthly & category budgets, recurring rules,
+  installment groups, loans, quick entry templates, and CSV/JSON export/restore.
+- Feature Explorer & Guidance (`lib/screens/help/`): classified feature knowledge base, v7.22 new feature
+  walkthrough, direct feature navigation, and interactive exploration progress tracking.
+- Alibaba Cloud delta sync, conflict inbox/history/rollback, collaboration, sync health center, and WebSocket-driven live updates.
+- Global search & Settings search: FTS5/FTS4/LIKE fallback across core SQLite records, finance,
+  journal, schedules, plan blocks, check-ins, challenges, AI chat and team data; direct feature navigation;
+  in-app settings search (`app_settings_catalog.dart`) with fuzzy match and deep-link routing.
+- Data backup & restore: JSON v2 export and domain-selective restore (todos/schedules, courses, focus,
+  habits, challenge, finance, preferences) with pre-restore review and domain receipts.
+- Animation & Rendering Performance: real-time FPS & delivery rate metrics dashboard in animation settings,
+  GPU/CPU dynamic rendering pressure evaluation, `AnimationPerformanceFloatingWindow` performance overlay,
+  Liquid Glass shader caching, and downsampled image memory controls.
+- Wallpapers & Themes: preset wallpaper direct rendering to avoid startup flash, Bing daily wallpaper
+  local caching with failure retry, Liquid Glass visual effects with standard/enhanced modes, and dynamic Material 3 color extraction.
+- AI chat/actions covering todos, fixed schedules, plan blocks, time logs, Pomodoro, countdowns, groups,
+  tags, settings navigation, and finance drafts / read / update / delete operations.
+- Rule-based medal recommendations plus an ML/bandit recommendation path; the catalog currently contains 100 medals.
+- Home sidebar configuration (hide/reorder entries), minor mode with an age-permission matrix.
+- Android widgets/background notifications/HyperOS integration, Windows island, macOS menu bar/widgets/island
+  (including Apple Music media info), Flutter web, React web companion, and Xiaomi band companion.
 
 ## Partial or platform-dependent
 
 - Product-level todo semantics in `docs/features/todo-semantics.md` are defined;
-  generic fixed schedules now ship with creation/editing, recurrence-series
-  materialization, conflict detection, calendar export, backup support and
-  capability-gated Alibaba debug/release sync. Cross-device deployment
-  verification, skip-state, relation editing, reminder scheduling for
-  fixed schedules, and the remaining wording/migrations are still in flight.
+  fixed schedules ship with creation/editing, recurrence materialization, conflict detection,
+  calendar export, backup support, todo relations and capability-gated Alibaba debug/release sync.
 - iOS has a Flutter host but its integration depth is behind the actively
   maintained Android, Windows and macOS surfaces.
 - Calendar access, background execution, widgets and island behavior vary by

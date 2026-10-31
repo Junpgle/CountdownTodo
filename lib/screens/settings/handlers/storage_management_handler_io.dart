@@ -253,7 +253,7 @@ class StorageManagementHandler {
               contentPadding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
               content: SizedBox(
                 width: double.maxFinite,
-                height: MediaQuery.of(context).size.height * 0.7,
+                height: MediaQuery.sizeOf(context).height * 0.7,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [

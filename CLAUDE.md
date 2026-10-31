@@ -1,14 +1,14 @@
 # Countdown Todo development context
 
 This file is a compact implementation map for coding assistants. It was last
-checked against the working tree on 2026-09-26; `AGENTS.md` contains the
+checked against the working tree on 2026-10-31; `AGENTS.md` contains the
 authoritative repository rules.
 
 ## Current baseline
 
-- Flutter package version: `6.4.1` (`pubspec.yaml`).
-- Dart constraint: `>=3.5.0 <4.0.0`; Flutter constraint: `>=3.41.0`.
-- Local SQLite schema: version 55 (`DatabaseSchemaHistory.currentVersion`).
+- Flutter package version: `7.22.6` (`pubspec.yaml`).
+- Dart constraint: `>=3.13.0 <4.0.0`; Flutter constraint: `>=3.47.0`.
+- Local SQLite schema: version 60 (`DatabaseSchemaHistory.currentVersion`).
 - Main targets: Android, Windows, macOS, and Flutter web. iOS host files exist,
   but feature parity is not documented as complete.
 - `lib/models.dart` contains the shared sync models; `StorageService` remains
@@ -16,7 +16,7 @@ authoritative repository rules.
   and cleanup responsibilities are being extracted under
   `lib/services/storage/`.
 - Self-contained feature modules live under `lib/features/` (habits, private
-  journal, thirty-day challenge); shared theme extensions live in `lib/theme/`.
+  journal, thirty-day challenge, finance); shared theme extensions live in `lib/theme/`.
 - The Liquid Glass visual effect is optional and centrally gated:
   `LiquidGlassEffectService` publishes the configuration, and widgets go through
   `OptionalLiquidGlassSurface/Card/Panel` so a Material fallback always exists.

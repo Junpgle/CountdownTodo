@@ -3657,7 +3657,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     bool isLandscape,
   ) {
     final isGlobalLandscape =
-        MediaQuery.of(context).orientation == Orientation.landscape;
+        MediaQuery.orientationOf(context) == Orientation.landscape;
 
     return SizedBox(
       height: kToolbarHeight,
@@ -3862,7 +3862,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     return IconButton(
       key: serverConnKey,
       tooltip: message,
-      visualDensity: MediaQuery.of(context).orientation == Orientation.landscape
+      visualDensity: MediaQuery.orientationOf(context) == Orientation.landscape
           ? VisualDensity.compact
           : VisualDensity.standard,
       onPressed: () {

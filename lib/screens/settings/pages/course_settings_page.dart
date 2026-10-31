@@ -1075,7 +1075,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                 primary: false,
                 physics: const NeverScrollableScrollPhysics(),
                 padding: EdgeInsets.zero,
-                crossAxisCount: MediaQuery.of(context).size.width > 600 ? 4 : 2,
+                crossAxisCount: MediaQuery.sizeOf(context).width > 600 ? 4 : 2,
                 mainAxisSpacing: 12,
                 crossAxisSpacing: 12,
                 childAspectRatio: 2.2,

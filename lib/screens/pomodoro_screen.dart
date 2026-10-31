@@ -305,7 +305,7 @@ class _PomodoroScreenState extends State<PomodoroScreen>
 
     final int tabIndex = _tabController.index;
     final isLandscape =
-        MediaQuery.of(context).orientation == Orientation.landscape;
+        MediaQuery.orientationOf(context) == Orientation.landscape;
     final windowWidth = MediaQuery.sizeOf(context).width;
 
     // Keep the side-by-side layout for wide windows. Compact Android 17

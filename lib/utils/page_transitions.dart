@@ -1148,7 +1148,7 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final screenSize = MediaQuery.of(context).size;
+    final screenSize = MediaQuery.sizeOf(context);
     final begin = widget.sourceRect;
     final end =
         widget.targetRect ??

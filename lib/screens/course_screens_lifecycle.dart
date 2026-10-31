@@ -541,7 +541,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
           title: '全天待办',
           description: '全天的待办会在顶部展示。',
         ),
-        if (MediaQuery.of(context).size.width > 900)
+        if (MediaQuery.sizeOf(context).width > 900)
           CoachMarkStep(
             targetKey: _dayHeaderKey,
             title: '单日所有任务',

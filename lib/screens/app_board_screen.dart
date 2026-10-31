@@ -272,7 +272,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
 
   @override
   Widget build(BuildContext context) {
-    final isDesktop = MediaQuery.of(context).size.width >= 1024;
+    final isDesktop = MediaQuery.sizeOf(context).width >= 1024;
 
     return Scaffold(
       backgroundColor: const Color(0xFF020617),
@@ -1896,10 +1896,10 @@ class TaskDetailModal extends StatelessWidget {
   Widget build(BuildContext context) {
     final double sheetWidth = math.min(
       600,
-      MediaQuery.of(context).size.width * 0.9,
+      MediaQuery.sizeOf(context).width * 0.9,
     );
     final sheetConstraints = BoxConstraints(
-      maxHeight: MediaQuery.of(context).size.height * 0.8,
+      maxHeight: MediaQuery.sizeOf(context).height * 0.8,
     );
     final sheet = Stack(
       children: [

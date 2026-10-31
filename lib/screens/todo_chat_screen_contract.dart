@@ -86,7 +86,7 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   // 🚀 宽屏适配相关
   bool _sidebarVisible = true;
   bool _actionRailCollapsed = false;
-  bool get _isWide => MediaQuery.of(context).size.width >= 900;
+  bool get _isWide => MediaQuery.sizeOf(context).width >= 900;
   bool get _hasPendingActionMessages => _pendingActionMessages.isNotEmpty;
   int get _pendingActionCount {
     var count = 0;
@@ -101,7 +101,7 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   }
 
   bool get _hasActionRailSpace {
-    final width = MediaQuery.of(context).size.width;
+    final width = MediaQuery.sizeOf(context).width;
     const actionRailWidth = 344.0;
     final historyWidth = _sidebarVisible ? 304.0 : 0.0;
     return width >= 900 && width - historyWidth - actionRailWidth >= 520;

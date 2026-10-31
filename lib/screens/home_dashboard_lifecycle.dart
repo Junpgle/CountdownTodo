@@ -714,7 +714,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
   }
 
   Future<void> _loadSectionPreferences() async {
-    final isWide = MediaQuery.of(context).size.width >= 768;
+    final isWide = MediaQuery.sizeOf(context).width >= 768;
 
     final mobileLayoutFuture = HomeLayoutService.loadPair(
       HomeLayoutTarget.mobileHome,

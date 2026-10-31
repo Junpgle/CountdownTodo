@@ -837,7 +837,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       20,
       20,
       20,
-      MediaQuery.of(context).padding.bottom + 20,
+      MediaQuery.paddingOf(context).bottom + 20,
     ),
     fallbackDecoration: BoxDecoration(
       color: _TC.card(context),

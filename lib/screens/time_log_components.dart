@@ -1028,7 +1028,7 @@ class _DayViewState extends State<_DayView> {
         16,
         14,
         16,
-        MediaQuery.of(context).padding.bottom + 14,
+        MediaQuery.paddingOf(context).bottom + 14,
       ),
       fallbackDecoration: BoxDecoration(
         color: _TC.card(context),
@@ -1649,7 +1649,7 @@ class _PlanEntrySheetState extends State<_PlanEntrySheet> {
     return OptionalLiquidGlassSheet(
       topRadius: 20,
       padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
         left: 20,
         right: 20,
         top: 20,
@@ -2195,7 +2195,7 @@ class _TimeLogEntrySheetState extends State<TimeLogEntrySheet> {
         key: _sheetKey,
         topRadius: 20,
         padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+          bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
           left: 20,
           right: 20,
           top: 20,
@@ -3007,7 +3007,7 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
               },
             ),
           ),
-          SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
+          SizedBox(height: MediaQuery.paddingOf(context).bottom + 16),
         ],
       ),
     );
@@ -3328,7 +3328,7 @@ class _MiniLineChartState extends State<_MiniLineChart> {
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width - 40;
+    final screenWidth = MediaQuery.sizeOf(context).width - 40;
     const double itemW = 55.0; // 固定间距
     final double chartContentW = (widget.data.length - 1) * itemW + 40;
     final double scrollWidth = max(screenWidth, chartContentW);
