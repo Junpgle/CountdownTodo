@@ -283,15 +283,15 @@ class _OnboardingChecklistCardState extends State<OnboardingChecklistCard> {
                 fallbackDecoration: BoxDecoration(
                   color: widget.isLight
                       ? (isDark
-                          ? scheme.surfaceContainerLow.withValues(alpha: 0.75)
-                          : scheme.surface.withValues(alpha: 0.92))
+                            ? scheme.surfaceContainerLow.withValues(alpha: 0.75)
+                            : scheme.surface.withValues(alpha: 0.92))
                       : scheme.surfaceContainerHighest.withValues(alpha: 0.32),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: widget.isLight
                         ? (isDark
-                            ? Colors.white.withValues(alpha: 0.15)
-                            : Colors.white.withValues(alpha: 0.6))
+                              ? Colors.white.withValues(alpha: 0.15)
+                              : Colors.white.withValues(alpha: 0.6))
                         : Theme.of(context).dividerColor.withValues(alpha: 0.5),
                   ),
                   boxShadow: [

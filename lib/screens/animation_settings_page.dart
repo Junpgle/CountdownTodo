@@ -1155,9 +1155,8 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                                                     LiquidGlassEffectService.startLivePreview(
                                                       expand: true,
                                                     );
-                                                    Navigator.of(
-                                                      context,
-                                                    ).maybePop();
+                                                    Navigator.of(context)
+                                                        .maybePop();
                                                   },
                                           ),
                                           if (hasUnsaved) ...[

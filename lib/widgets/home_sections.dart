@@ -376,15 +376,15 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
       fallbackDecoration: BoxDecoration(
         color: widget.isLight
             ? (isDark
-                ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
-                : colorScheme.surface.withValues(alpha: 0.92))
+                  ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
+                  : colorScheme.surface.withValues(alpha: 0.92))
             : colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
           color: widget.isLight
               ? (isDark
-                  ? Colors.white.withValues(alpha: 0.15)
-                  : Colors.white.withValues(alpha: 0.6))
+                    ? Colors.white.withValues(alpha: 0.15)
+                    : Colors.white.withValues(alpha: 0.6))
               : Theme.of(context).dividerColor.withValues(alpha: 0.5),
         ),
         boxShadow: [
@@ -457,9 +457,7 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
         final bool isTablet = constraints.maxWidth >= 600;
         final colorScheme = Theme.of(context).colorScheme;
         final isDark = colorScheme.brightness == Brightness.dark;
-        final foregroundColor = isDark
-            ? Colors.white
-            : colorScheme.onSurface;
+        final foregroundColor = isDark ? Colors.white : colorScheme.onSurface;
         final secondaryColor = isDark
             ? Colors.white.withValues(alpha: 0.7)
             : colorScheme.onSurfaceVariant;
@@ -514,15 +512,17 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
             fallbackDecoration: BoxDecoration(
               color: widget.isLight
                   ? (isDark
-                      ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
-                      : colorScheme.surface.withValues(alpha: 0.92))
+                        ? colorScheme.surfaceContainerLow.withValues(
+                            alpha: 0.75,
+                          )
+                        : colorScheme.surface.withValues(alpha: 0.92))
                   : colorScheme.surface,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
                 color: widget.isLight
                     ? (isDark
-                        ? Colors.white.withValues(alpha: 0.15)
-                        : Colors.white.withValues(alpha: 0.6))
+                          ? Colors.white.withValues(alpha: 0.15)
+                          : Colors.white.withValues(alpha: 0.6))
                     : Theme.of(context).dividerColor.withValues(alpha: 0.5),
               ),
               boxShadow: [
@@ -557,15 +557,15 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
           fallbackDecoration: BoxDecoration(
             color: widget.isLight
                 ? (isDark
-                    ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
-                    : colorScheme.surface.withValues(alpha: 0.92))
+                      ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
+                      : colorScheme.surface.withValues(alpha: 0.92))
                 : colorScheme.surface,
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
               color: widget.isLight
                   ? (isDark
-                      ? Colors.white.withValues(alpha: 0.15)
-                      : Colors.white.withValues(alpha: 0.6))
+                        ? Colors.white.withValues(alpha: 0.15)
+                        : Colors.white.withValues(alpha: 0.6))
                   : Theme.of(context).dividerColor.withValues(alpha: 0.5),
             ),
             boxShadow: [
@@ -914,9 +914,7 @@ class MathStatsCard extends StatelessWidget {
         final bool isTablet = constraints.maxWidth >= 600;
         final colorScheme = Theme.of(context).colorScheme;
         final isDark = colorScheme.brightness == Brightness.dark;
-        final foregroundColor = isDark
-            ? Colors.white
-            : colorScheme.onSurface;
+        final foregroundColor = isDark ? Colors.white : colorScheme.onSurface;
         final secondaryColor = isDark
             ? Colors.white.withValues(alpha: 0.7)
             : colorScheme.onSurfaceVariant;
@@ -943,15 +941,15 @@ class MathStatsCard extends StatelessWidget {
           fallbackDecoration: BoxDecoration(
             color: isLight
                 ? (isDark
-                    ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
-                    : colorScheme.surface.withValues(alpha: 0.92))
+                      ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
+                      : colorScheme.surface.withValues(alpha: 0.92))
                 : colorScheme.surface,
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
               color: isLight
                   ? (isDark
-                      ? Colors.white.withValues(alpha: 0.15)
-                      : Colors.white.withValues(alpha: 0.6))
+                        ? Colors.white.withValues(alpha: 0.15)
+                        : Colors.white.withValues(alpha: 0.6))
                   : Theme.of(context).dividerColor.withValues(alpha: 0.5),
             ),
             boxShadow: [

@@ -286,8 +286,8 @@ class LiquidGlassEffectService {
       orElse: () => LiquidGlassEffectMode.standard,
     );
     final transparency =
-          (prefs.getInt(_keyTransparency) ??
-                  LiquidGlassEffectConfiguration.defaultTransparencyPercent)
+        (prefs.getInt(_keyTransparency) ??
+                LiquidGlassEffectConfiguration.defaultTransparencyPercent)
             .clamp(0, 100);
     final scrimCoverage =
         (prefs.getInt(_keyScrimCoverage) ??

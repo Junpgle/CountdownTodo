@@ -828,10 +828,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             );
             final glassSurface = AppPlatform.isWindows
                 ? surface
-                : BackdropFilter(
-                    filter: AppImageFilters.blur6,
-                    child: surface,
-                  );
+                : BackdropFilter(filter: AppImageFilters.blur6, child: surface);
 
             return Container(
               width: _sizeAnimation.value.width,
@@ -848,9 +845,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(borderRadius),
-                child: RepaintBoundary(
-                  child: glassSurface,
-                ),
+                child: RepaintBoundary(child: glassSurface),
               ),
             );
           },

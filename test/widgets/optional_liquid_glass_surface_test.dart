@@ -452,55 +452,56 @@ void main() {
     },
   );
 
-  testWidgets('wallpaper dashboard cards adapt harmoniously to light UI and dark mode', (
-    tester,
-  ) async {
-    await LiquidGlassEffectService.setEnabled(true);
-    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
-    final colorScheme = ColorScheme.fromSeed(seedColor: Colors.green);
+  testWidgets(
+    'wallpaper dashboard cards adapt harmoniously to light UI and dark mode',
+    (tester) async {
+      await LiquidGlassEffectService.setEnabled(true);
+      await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+      final colorScheme = ColorScheme.fromSeed(seedColor: Colors.green);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: ThemeData(colorScheme: colorScheme, useMaterial3: true),
-        home: Scaffold(
-          body: Column(
-            children: [
-              ScreenTimeCard(
-                stats: const [],
-                hasPermission: false,
-                isLight: true,
-                onOpenSettings: () {},
-                onViewDetail: () {},
-              ),
-              MathStatsCard(stats: const {}, isLight: true, onTap: () {}),
-            ],
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(colorScheme: colorScheme, useMaterial3: true),
+          home: Scaffold(
+            body: Column(
+              children: [
+                ScreenTimeCard(
+                  stats: const [],
+                  hasPermission: false,
+                  isLight: true,
+                  onOpenSettings: () {},
+                  onViewDetail: () {},
+                ),
+                MathStatsCard(stats: const {}, isLight: true, onTap: () {}),
+              ],
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pump(const Duration(milliseconds: 16));
+      );
+      await tester.pump(const Duration(milliseconds: 16));
 
-    final cards = tester
-        .widgetList<Container>(
-          find.byKey(
-            const ValueKey<String>('optional-liquid-glass-static-panel'),
-          ),
-        )
-        .toList();
-    expect(cards, hasLength(2));
-    for (final card in cards) {
-      final decoration = card.decoration! as BoxDecoration;
-      final gradient = decoration.gradient! as LinearGradient;
-      expect(decoration.borderRadius, BorderRadius.circular(24));
-      // In light theme, cards use light frosted glass treatment (> 0.8 luminance)
-      expect(gradient.colors.first.computeLuminance(), greaterThan(0.8));
-    }
+      final cards = tester
+          .widgetList<Container>(
+            find.byKey(
+              const ValueKey<String>('optional-liquid-glass-static-panel'),
+            ),
+          )
+          .toList();
+      expect(cards, hasLength(2));
+      for (final card in cards) {
+        final decoration = card.decoration! as BoxDecoration;
+        final gradient = decoration.gradient! as LinearGradient;
+        expect(decoration.borderRadius, BorderRadius.circular(24));
+        // In light theme, cards use light frosted glass treatment (> 0.8 luminance)
+        expect(gradient.colors.first.computeLuminance(), greaterThan(0.8));
+      }
 
-    final screenTimeTitle = tester.widget<Text>(find.text('未开启屏幕时间统计'));
-    final mathTitle = tester.widget<Text>(find.text('今日还未完成测验'));
-    expect(screenTimeTitle.style?.color, colorScheme.onSurface);
-    expect(mathTitle.style?.color, colorScheme.onSurface);
-  });
+      final screenTimeTitle = tester.widget<Text>(find.text('未开启屏幕时间统计'));
+      final mathTitle = tester.widget<Text>(find.text('今日还未完成测验'));
+      expect(screenTimeTitle.style?.color, colorScheme.onSurface);
+      expect(mathTitle.style?.color, colorScheme.onSurface);
+    },
+  );
 
   testWidgets('folder header taps keep toggling expand and collapse', (
     tester,

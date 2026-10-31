@@ -445,8 +445,8 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
     final fallbackDecoration = BoxDecoration(
       color: widget.isLight
           ? (isDark
-              ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
-              : colorScheme.surface.withValues(alpha: 0.92))
+                ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
+                : colorScheme.surface.withValues(alpha: 0.92))
           : (isDark
                 ? colorScheme.surfaceContainerLow.withValues(alpha: 0.7)
                 : colorScheme.surface),
@@ -463,8 +463,8 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
       border: Border.all(
         color: widget.isLight
             ? (isDark
-                ? Colors.white.withValues(alpha: 0.15)
-                : Colors.white.withValues(alpha: 0.6))
+                  ? Colors.white.withValues(alpha: 0.15)
+                  : Colors.white.withValues(alpha: 0.6))
             : colorScheme.outlineVariant.withValues(alpha: isDark ? 0.25 : 0.4),
       ),
     );

@@ -297,15 +297,15 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
       fallbackDecoration: BoxDecoration(
         color: widget.isLight
             ? (useDarkGlass
-                ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
-                : colorScheme.surface.withValues(alpha: 0.92))
+                  ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
+                  : colorScheme.surface.withValues(alpha: 0.92))
             : colorScheme.surfaceContainerLow.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
           color: widget.isLight
               ? (useDarkGlass
-                  ? Colors.white.withValues(alpha: 0.15)
-                  : Colors.white.withValues(alpha: 0.6))
+                    ? Colors.white.withValues(alpha: 0.15)
+                    : Colors.white.withValues(alpha: 0.6))
               : Theme.of(context).dividerColor.withValues(alpha: 0.4),
         ),
         boxShadow: [

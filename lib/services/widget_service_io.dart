@@ -770,38 +770,46 @@ class WidgetService {
 
     // 2. 待办：未完成、未删除，按紧急度排序
     final todoItems =
-        actionableTodos.where((t) => !t.isDone && !t.isDeleted && !t.isSkipped).map((t) {
-          String? timeText;
-          int priority = 0;
-          if (t.dueDate != null) {
-            final diffDays = CalendarDateMath.daysBetween(today, t.dueDate!);
-            if (diffDays < 0) {
-              timeText = '已逾期';
-              priority = 3;
-            } else if (diffDays == 0) {
-              timeText =
-                  '今天 ${t.dueDate!.hour.toString().padLeft(2, '0')}:${t.dueDate!.minute.toString().padLeft(2, '0')}';
-              priority = 2;
-            } else if (diffDays == 1) {
-              timeText = '明天';
-              priority = 1;
-            } else {
-              timeText = '$diffDays天后';
-            }
-          }
-          return WidgetTodoItem(
-            title: t.title,
-            timeText: timeText,
-            priority: priority,
-            isDone: t.isDone,
-            visibleUntilMs: recurringTodoWidgetVisibleUntil(t)
-                ?.millisecondsSinceEpoch,
-          );
-        }).toList()..sort((a, b) {
-          if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
-          if (a.priority != b.priority) return b.priority.compareTo(a.priority);
-          return 0;
-        });
+        actionableTodos
+            .where((t) => !t.isDone && !t.isDeleted && !t.isSkipped)
+            .map((t) {
+              String? timeText;
+              int priority = 0;
+              if (t.dueDate != null) {
+                final diffDays = CalendarDateMath.daysBetween(
+                  today,
+                  t.dueDate!,
+                );
+                if (diffDays < 0) {
+                  timeText = '已逾期';
+                  priority = 3;
+                } else if (diffDays == 0) {
+                  timeText =
+                      '今天 ${t.dueDate!.hour.toString().padLeft(2, '0')}:${t.dueDate!.minute.toString().padLeft(2, '0')}';
+                  priority = 2;
+                } else if (diffDays == 1) {
+                  timeText = '明天';
+                  priority = 1;
+                } else {
+                  timeText = '$diffDays天后';
+                }
+              }
+              return WidgetTodoItem(
+                title: t.title,
+                timeText: timeText,
+                priority: priority,
+                isDone: t.isDone,
+                visibleUntilMs: recurringTodoWidgetVisibleUntil(t)
+                    ?.millisecondsSinceEpoch,
+              );
+            })
+            .toList()
+          ..sort((a, b) {
+            if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
+            if (a.priority != b.priority)
+              return b.priority.compareTo(a.priority);
+            return 0;
+          });
 
     // 3. 课程：今日课程，按时间排序
     final todayStr = dateFormat.format(now);

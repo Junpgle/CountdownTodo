@@ -18,7 +18,9 @@ void main() {
     SharedPreferences.setMockInitialValues({'current_login_user': username});
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
-    directory = await Directory.systemTemp.createTemp('personal-timeline-test-');
+    directory = await Directory.systemTemp.createTemp(
+      'personal-timeline-test-',
+    );
     await databaseFactory.setDatabasesPath(directory.path);
     await FinanceStorage.ensureReady();
   });
@@ -85,20 +87,24 @@ void main() {
           'content': '完成技术文档编写',
           'is_completed': 1,
           'is_deleted': 0,
-          'created_at':
-              now.subtract(const Duration(hours: 2)).millisecondsSinceEpoch,
-          'updated_at':
-              now.subtract(const Duration(hours: 2)).millisecondsSinceEpoch,
+          'created_at': now
+              .subtract(const Duration(hours: 2))
+              .millisecondsSinceEpoch,
+          'updated_at': now
+              .subtract(const Duration(hours: 2))
+              .millisecondsSinceEpoch,
         });
 
         await db.insert('pomodoro_records', {
           'uuid': 'pomo-test-1',
           'todo_title': '系统重构专注',
           'tag_uuids': '[]',
-          'start_time':
-              now.subtract(const Duration(hours: 1)).millisecondsSinceEpoch,
-          'end_time':
-              now.subtract(const Duration(minutes: 35)).millisecondsSinceEpoch,
+          'start_time': now
+              .subtract(const Duration(hours: 1))
+              .millisecondsSinceEpoch,
+          'end_time': now
+              .subtract(const Duration(minutes: 35))
+              .millisecondsSinceEpoch,
           'planned_duration': 1500,
           'actual_duration': 1500,
           'status': 'completed',
@@ -168,10 +174,7 @@ void main() {
         const MaterialApp(
           home: Scaffold(
             body: SingleChildScrollView(
-              child: PersonalTimelineSection(
-                username: username,
-                isLight: true,
-              ),
+              child: PersonalTimelineSection(username: username, isLight: true),
             ),
           ),
         ),

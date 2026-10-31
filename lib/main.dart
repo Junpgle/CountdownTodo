@@ -1282,7 +1282,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                                     )
                                                   : content;
 
-                                              return ValueListenableBuilder<bool>(
+                                              return ValueListenableBuilder<
+                                                bool
+                                              >(
                                                 valueListenable: WindowService
                                                     .windowIsActiveListenable,
                                                 child: MacosWindowChrome(
@@ -1304,16 +1306,17 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                                     ),
                                                   ),
                                                 ),
-                                                builder: (
-                                                  context,
-                                                  isWindowActive,
-                                                  child,
-                                                ) => TickerMode(
-                                                  enabled: isWindowActive,
-                                                  child:
-                                                      child ??
-                                                      const SizedBox.shrink(),
-                                                ),
+                                                builder:
+                                                    (
+                                                      context,
+                                                      isWindowActive,
+                                                      child,
+                                                    ) => TickerMode(
+                                                      enabled: isWindowActive,
+                                                      child:
+                                                          child ??
+                                                          const SizedBox.shrink(),
+                                                    ),
                                               );
                                             },
                                           );
