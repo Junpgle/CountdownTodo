@@ -30,6 +30,7 @@ import '../services/habit_sleep_log_migration_service.dart';
 import '../services/habit_sleep_duration_service.dart';
 import '../services/habit_focus_launcher.dart';
 import '../services/habit_sleep_coaching_service.dart';
+import '../services/habit_freeze_service.dart';
 import '../../../utils/app_dialogs.dart';
 
 /// 习惯详情：今日进度 + 今日打卡记录 + 目标信息 + 管理操作。
@@ -56,6 +57,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   List<PomodoroRecord> _todayFocusRecords = [];
   List<HabitDayProgress> _timeTrend = [];
   int _timeTrendRangeDays = 7;
+  int _freezeBalance = 0;
   HabitTimeLogImportPreview? _timeLogImportPreview;
   HabitTimeLogImportPart? _timeLogImportPart;
   HabitSleepCoachingSnapshot? _sleepCoachingSnapshot;
@@ -150,6 +152,20 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
           )
         : const <PomodoroRecord>[];
 
+    final initialFreezeBalance = await HabitFreezeService.getAvailableCards(
+      _goal.uuid,
+    );
+    var freezeBalance = initialFreezeBalance;
+    if (summary != null && summary.currentStreak > 0) {
+      final awarded = await HabitFreezeService.checkAndAwardCards(
+        habit: _goal,
+        currentStreak: summary.currentStreak,
+      );
+      if (awarded > 0) {
+        freezeBalance = await HabitFreezeService.getAvailableCards(_goal.uuid);
+      }
+    }
+
     if (mounted) {
       setState(() {
         _rules = rules;
@@ -158,6 +174,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
         _todayCheckIns = checkIns;
         _todayFocusRecords = focusRecords;
         _timeTrend = timeTrend;
+        _freezeBalance = freezeBalance;
         _sleepCoachingSnapshot = sleepCoachingSnapshot;
         _loading = false;
       });
@@ -1185,7 +1202,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
             ],
           ),
         ),
-        if (_summary != null && _summary!.currentStreak > 0)
+        if (_summary != null && _summary!.currentStreak > 0) ...[
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
@@ -1212,7 +1229,322 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
               ],
             ),
           ),
+          const SizedBox(width: 8),
+        ],
+        _buildFreezeCardBadge(colorScheme),
       ],
+    );
+  }
+
+  Widget _buildFreezeCardBadge(ColorScheme colorScheme) {
+    return InkWell(
+      onTap: () => _showStreakFreezeInfoSheet(colorScheme),
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(
+          color: colorScheme.secondaryContainer.withValues(alpha: 0.6),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: colorScheme.secondary.withValues(alpha: 0.3),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.shield_outlined, size: 15, color: colorScheme.secondary),
+            const SizedBox(width: 4),
+            Text(
+              '免扣卡 $_freezeBalance/2',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: colorScheme.secondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showStreakFreezeInfoSheet(ColorScheme colorScheme) async {
+    final curStreak = _summary?.currentStreak ?? 0;
+    final isFull = _freezeBalance >= HabitFreezeService.kMaxFreezeCards;
+    final needed =
+        HabitFreezeService.kStreakIntervalForReward -
+        (curStreak % HabitFreezeService.kStreakIntervalForReward);
+
+    // 检查昨日是否可以补用免扣卡
+    final now = DateTime.now();
+    final yesterday = HabitRuleResolver.addCalendarDays(now, -1);
+    final effectiveRule =
+        HabitRuleResolver.effectiveRule(_rules, yesterday) ?? _rule;
+    final allCheckIns = await HabitRepository.getCheckIns(
+      habitUuid: _goal.uuid,
+    );
+    final validation = await HabitFreezeService.canApplyFreeze(
+      goal: _goal,
+      rule: effectiveRule,
+      logicalDate: yesterday,
+      checkIns: allCheckIns,
+    );
+    final canRemedyYesterday = validation.canApply;
+
+    if (!mounted) return;
+
+    await AppDialogs.showAppBottomSheet(
+      context: context,
+      builder: (sheetContext) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: colorScheme.secondaryContainer.withValues(
+                        alpha: 0.7,
+                      ),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.shield_rounded,
+                      color: colorScheme.secondary,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '习惯免扣卡守护',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: colorScheme.onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '包容生活的意外，守护每一份坚持',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              // 当前库存卡片
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: colorScheme.secondaryContainer.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: colorScheme.secondary.withValues(alpha: 0.2),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '当前可用免扣卡',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colorScheme.secondary,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '$_freezeBalance / ${HabitFreezeService.kMaxFreezeCards} 张',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w800,
+                              color: colorScheme.onSecondary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      isFull
+                          ? '🌟 免扣卡已达存放上限（2 张），继续保持连胜状态吧！'
+                          : '🌱 当前连续 $curStreak 天，还需连续达标 $needed 天可获得下 1 张免扣卡',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                '守护制度规则',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 10),
+              _freezeRuleItem(
+                icon: Icons.calendar_month_outlined,
+                color: colorScheme.primary,
+                title: '连续 7 天奖励 1 张',
+                desc: '坚持满完整一周，自动获得 1 张免扣卡奖励（单个习惯最多存储 2 张）。',
+                colorScheme: colorScheme,
+              ),
+              _freezeRuleItem(
+                icon: Icons.card_giftcard_rounded,
+                color: colorScheme.tertiary,
+                title: '新手启航礼遇',
+                desc: '每个习惯启程初始赠送 1 张保底免扣卡，保护起步阶段不轻易受挫。',
+                colorScheme: colorScheme,
+              ),
+              _freezeRuleItem(
+                icon: Icons.shield_outlined,
+                color: colorScheme.secondary,
+                title: '意外漏打卡智能守护',
+                desc: '生病、突发加班未打卡时，免扣卡守护连胜不中断，在日历与统计中点亮蓝冰盾牌。',
+                colorScheme: colorScheme,
+              ),
+              _freezeRuleItem(
+                icon: Icons.repeat_one_outlined,
+                color: colorScheme.error,
+                title: '绝不连续错过两次',
+                desc: '遵循习惯心理学法则，免扣卡不可连续两天使用，守护真实的习惯养成。',
+                colorScheme: colorScheme,
+              ),
+              const SizedBox(height: 20),
+              if (canRemedyYesterday) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(sheetContext);
+                      final applied = await HabitFreezeService.applyFreeze(
+                        goal: _goal,
+                        rule: effectiveRule,
+                        logicalDate: yesterday,
+                        note: '🛡️ 手动补用免扣卡',
+                      );
+                      if (applied && mounted) {
+                        AppSnackBars.showSnackBar(
+                          context,
+                          const SnackBar(
+                            content: Text('🛡️ 已为昨天使用免扣卡，连胜记录已成功守护！'),
+                          ),
+                        );
+                        _loadData();
+                      }
+                    },
+                    icon: const Icon(Icons.shield_rounded, size: 18),
+                    label: const Text('为昨日使用免扣卡'),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(sheetContext),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: const Text('我知道啦'),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _freezeRuleItem({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String desc,
+    required ColorScheme colorScheme,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 16, color: color),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  desc,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: colorScheme.onSurfaceVariant,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1402,11 +1734,15 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
             child: Row(
               children: [
                 Icon(
-                  _goal.sourceType == HabitSourceType.timeCheckIn
-                      ? Icons.schedule_rounded
-                      : Icons.add_circle_outline_rounded,
+                  checkIn.source == HabitCheckInSource.freeze
+                      ? Icons.shield_outlined
+                      : (_goal.sourceType == HabitSourceType.timeCheckIn
+                            ? Icons.schedule_rounded
+                            : Icons.add_circle_outline_rounded),
                   size: 18,
-                  color: colorScheme.primary,
+                  color: checkIn.source == HabitCheckInSource.freeze
+                      ? colorScheme.secondary
+                      : colorScheme.primary,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -1444,7 +1780,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                     color: colorScheme.onSurfaceVariant,
                   ),
                 ),
-                if (checkIn.source != HabitCheckInSource.skip)
+                if (checkIn.source != HabitCheckInSource.skip &&
+                    checkIn.source != HabitCheckInSource.freeze)
                   IconButton(
                     tooltip: '编辑记录',
                     onPressed: () => _editRecord(checkIn),
@@ -1607,6 +1944,12 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   }
 
   String _recordMainText(HabitCheckIn checkIn) {
+    if (checkIn.source == HabitCheckInSource.freeze) {
+      return '🛡️ 免扣卡守护';
+    }
+    if (checkIn.source == HabitCheckInSource.skip) {
+      return '已跳过';
+    }
     if (_goal.sourceType == HabitSourceType.timeCheckIn) {
       return '打卡 ${HabitText.timeOfDay(DateTime.fromMillisecondsSinceEpoch(checkIn.occurredAt).toLocal())}';
     }
@@ -1650,7 +1993,14 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   }
 
   Future<void> _deleteRecord(HabitCheckIn checkIn) async {
-    await HabitRepository.deleteCheckIn(checkIn);
+    if (checkIn.source == HabitCheckInSource.freeze) {
+      await HabitFreezeService.revokeFreeze(
+        goal: _goal,
+        freezeCheckIn: checkIn,
+      );
+    } else {
+      await HabitRepository.deleteCheckIn(checkIn);
+    }
     if (mounted) _loadData();
   }
 

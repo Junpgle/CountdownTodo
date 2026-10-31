@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -1342,10 +1341,12 @@ class _FloatingGlassPinnedHeaderLayoutState
           top: 0,
           left: 0,
           right: 0,
-          child: FloatingGlassScrollAware(
-            child: _FloatingGlassHeaderSizeObserver(
-              onExtentChanged: _handleHeaderExtentChanged,
-              child: widget.header,
+          child: RepaintBoundary(
+            child: FloatingGlassScrollAware(
+              child: _FloatingGlassHeaderSizeObserver(
+                onExtentChanged: _handleHeaderExtentChanged,
+                child: widget.header,
+              ),
             ),
           ),
         ),
@@ -1568,11 +1569,7 @@ class _FloatingGlassTopBarOverlayState
 
         if (widget.blur) {
           surface = BackdropFilter(
-            filter: ui.ImageFilter.blur(
-              sigmaX: blur,
-              sigmaY: blur,
-              tileMode: TileMode.clamp,
-            ),
+            filter: AppImageFilters.quantizedClampedBlur(blur),
             child: surface,
           );
         }
@@ -2903,11 +2900,7 @@ class FloatingGlassTopBarBackground extends StatelessWidget {
 
             if (blur) {
               surface = BackdropFilter(
-                filter: ui.ImageFilter.blur(
-                  sigmaX: blurSigma,
-                  sigmaY: blurSigma,
-                  tileMode: TileMode.clamp,
-                ),
+                filter: AppImageFilters.quantizedClampedBlur(blurSigma),
                 child: surface,
               );
             }

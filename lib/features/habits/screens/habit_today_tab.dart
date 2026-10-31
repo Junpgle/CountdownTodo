@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../utils/page_transitions.dart';
 import '../../../utils/app_image_filters.dart';
+import '../../../utils/app_dialogs.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../widgets/platform_backdrop_filter.dart';
 import '../models/habit_goal.dart';
@@ -10,6 +11,7 @@ import '../models/habit_progress.dart';
 import '../services/habit_day_loader.dart';
 import '../services/habit_sleep_duration_service.dart';
 import '../services/habit_focus_launcher.dart';
+import '../services/habit_freeze_service.dart';
 import '../widgets/habit_card.dart';
 import 'habit_detail_screen.dart';
 import 'habit_edit_screen.dart';
@@ -80,6 +82,29 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
         _snapshot = snapshot;
         _loading = false;
       });
+    }
+
+    // 检查并自动守护昨日遗漏打卡的习惯
+    if (snapshot.goals.isNotEmpty) {
+      final protected = await HabitFreezeService.autoProtectMissedDays(
+        goals: snapshot.goals,
+        username: widget.username,
+      );
+      if (protected.isNotEmpty && mounted) {
+        final notice = await HabitFreezeService.popPendingAutoProtectNotice();
+        if (notice != null && mounted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            AppSnackBars.showSnackBar(
+              context,
+              SnackBar(
+                content: Text(notice),
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          });
+        }
+      }
     }
   }
 

@@ -1818,97 +1818,99 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6.0),
-      child: TodoGroupWidget(
-        group: g,
-        groupTodos: gTodos,
-        isLight: widget.isLight,
-        onlyShowMostUrgentTodo: urgentFirstFolders,
-        teamRoles: _teamRoles,
-        recurrenceProgressBuilder: (todo) =>
-            _buildRecurrenceProgress(todo, widget.clock()),
-        onToggle: () {
-          _invalidateTodoViewModel();
-          setState(() {
-            g.isExpanded = !g.isExpanded;
-            g.markAsChanged();
-          });
-          widget.onGroupsChanged(widget.todoGroups);
-        },
-        onTodoToggle: (todo) {
-          final bool wasDone = todo.isDone;
-          _invalidateTodoViewModel();
-          if (!todo.isDone) {
-            PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
-          }
-          todo.isDone = !todo.isDone;
-          if (todo.isDone && todo.isSkipped) {
-            todo.isSkipped = false;
-            todo.isSkippedSyncPending = true;
-          }
-          todo.markAsChanged();
-          if (todo.isDone && !wasDone) {
-            TodoCompletionCelebrationService.playCompletionImpact();
-            _checkAndTriggerTodayAllDoneCelebration(todo);
-          }
-          widget.onTodosChanged(widget.todos);
-        },
-        onTodoDropped: (todoId) {
-          final idx = widget.todos.indexWhere((t) => t.id == todoId);
-          if (idx != -1) {
+      child: RepaintBoundary(
+        child: TodoGroupWidget(
+          group: g,
+          groupTodos: gTodos,
+          isLight: widget.isLight,
+          onlyShowMostUrgentTodo: urgentFirstFolders,
+          teamRoles: _teamRoles,
+          recurrenceProgressBuilder: (todo) =>
+              _buildRecurrenceProgress(todo, widget.clock()),
+          onToggle: () {
             _invalidateTodoViewModel();
             setState(() {
-              widget.todos[idx].groupId = g.id;
-              widget.todos[idx].version += 10;
-              widget.todos[idx].updatedAt =
-                  DateTime.now().millisecondsSinceEpoch;
+              g.isExpanded = !g.isExpanded;
+              g.markAsChanged();
             });
-            widget.onTodosChanged(widget.todos);
-          }
-        },
-        onTodoRemoved: (todoId) {
-          final idx = widget.todos.indexWhere((t) => t.id == todoId);
-          if (idx != -1 && widget.todos[idx].groupId != null) {
+            widget.onGroupsChanged(widget.todoGroups);
+          },
+          onTodoToggle: (todo) {
+            final bool wasDone = todo.isDone;
             _invalidateTodoViewModel();
-            setState(() {
-              widget.todos[idx].groupId = null;
-              widget.todos[idx].version += 10;
-              widget.todos[idx].updatedAt =
-                  DateTime.now().millisecondsSinceEpoch;
-            });
-            widget.onTodosChanged(widget.todos);
-            AppSnackBars.showSnackBar(
-              context,
-              const SnackBar(content: Text('自由了！已移出文件夹')),
-            );
-          }
-        },
-        onShowIndependentTodoStatus: _showIndependentTodoStatus,
-        onDelete: () async {
-          final idx = widget.todoGroups.indexWhere((x) => x.id == g.id);
-          if (idx != -1) {
-            _invalidateTodoViewModel();
-            widget.todoGroups[idx].isDeleted = true;
-            widget.todoGroups[idx].markAsChanged();
-          }
-          await StorageService.deleteTodoGroupGlobally(widget.username, g.id);
-          widget.onGroupsChanged(widget.todoGroups);
-          widget.onRefreshRequested();
-        },
-        onTodoTapWithContext: _editTodo,
-        onTodoDelete: (todo) async {
-          if (TodoRecurrenceDeleteService.isRecurring(todo)) {
-            await _deleteRecurringTodoWithScope(todo);
-            return;
-          }
-          _invalidateTodoViewModel();
-          setState(() {
-            PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
-            todo.isDeleted = true;
+            if (!todo.isDone) {
+              PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
+            }
+            todo.isDone = !todo.isDone;
+            if (todo.isDone && todo.isSkipped) {
+              todo.isSkipped = false;
+              todo.isSkippedSyncPending = true;
+            }
             todo.markAsChanged();
-          });
-          widget.onTodosChanged(List<TodoItem>.from(widget.todos));
-          await StorageService.deleteTodoGlobally(widget.username, todo.id);
-        },
+            if (todo.isDone && !wasDone) {
+              TodoCompletionCelebrationService.playCompletionImpact();
+              _checkAndTriggerTodayAllDoneCelebration(todo);
+            }
+            widget.onTodosChanged(widget.todos);
+          },
+          onTodoDropped: (todoId) {
+            final idx = widget.todos.indexWhere((t) => t.id == todoId);
+            if (idx != -1) {
+              _invalidateTodoViewModel();
+              setState(() {
+                widget.todos[idx].groupId = g.id;
+                widget.todos[idx].version += 10;
+                widget.todos[idx].updatedAt =
+                    DateTime.now().millisecondsSinceEpoch;
+              });
+              widget.onTodosChanged(widget.todos);
+            }
+          },
+          onTodoRemoved: (todoId) {
+            final idx = widget.todos.indexWhere((t) => t.id == todoId);
+            if (idx != -1 && widget.todos[idx].groupId != null) {
+              _invalidateTodoViewModel();
+              setState(() {
+                widget.todos[idx].groupId = null;
+                widget.todos[idx].version += 10;
+                widget.todos[idx].updatedAt =
+                    DateTime.now().millisecondsSinceEpoch;
+              });
+              widget.onTodosChanged(widget.todos);
+              AppSnackBars.showSnackBar(
+                context,
+                const SnackBar(content: Text('自由了！已移出文件夹')),
+              );
+            }
+          },
+          onShowIndependentTodoStatus: _showIndependentTodoStatus,
+          onDelete: () async {
+            final idx = widget.todoGroups.indexWhere((x) => x.id == g.id);
+            if (idx != -1) {
+              _invalidateTodoViewModel();
+              widget.todoGroups[idx].isDeleted = true;
+              widget.todoGroups[idx].markAsChanged();
+            }
+            await StorageService.deleteTodoGroupGlobally(widget.username, g.id);
+            widget.onGroupsChanged(widget.todoGroups);
+            widget.onRefreshRequested();
+          },
+          onTodoTapWithContext: _editTodo,
+          onTodoDelete: (todo) async {
+            if (TodoRecurrenceDeleteService.isRecurring(todo)) {
+              await _deleteRecurringTodoWithScope(todo);
+              return;
+            }
+            _invalidateTodoViewModel();
+            setState(() {
+              PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
+              todo.isDeleted = true;
+              todo.markAsChanged();
+            });
+            widget.onTodosChanged(List<TodoItem>.from(widget.todos));
+            await StorageService.deleteTodoGlobally(widget.username, todo.id);
+          },
+        ),
       ),
     );
   }

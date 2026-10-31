@@ -17,6 +17,9 @@ enum HabitDayStatus {
 
   /// 跳过：默认不增加，也不中断。
   skipped,
+
+  /// 免扣保护：使用免扣卡守护，不中断连续。
+  frozen,
 }
 
 /// 习惯进度计算结果。
@@ -51,6 +54,9 @@ class HabitProgress {
   /// 本日是否被手动标记为跳过（不达标、不中断连续）。
   final bool isSkipped;
 
+  /// 本日是否由免扣卡守护（不达标、不中断连续）。
+  final bool isFrozen;
+
   /// 周期是否已经结束（当天尚未结束时不提前判定失败）。
   final bool isFinished;
 
@@ -79,6 +85,7 @@ class HabitProgress {
     required this.isPlanned,
     required this.isFinished,
     this.isSkipped = false,
+    this.isFrozen = false,
     this.onTime = false,
     this.recordCount = 0,
     this.firstRecordAt,
@@ -89,6 +96,7 @@ class HabitProgress {
   /// 按设计文档规则推导单日状态。
   HabitDayStatus get dayStatus {
     if (!isPlanned) return HabitDayStatus.notPlanned;
+    if (isFrozen) return HabitDayStatus.frozen;
     if (isSkipped) return HabitDayStatus.skipped;
     if (goalMet) return HabitDayStatus.met;
     if (!isFinished) return HabitDayStatus.inProgress;
@@ -145,6 +153,12 @@ class HabitStreakSummary {
   /// 统计窗口内逾期次数（计划内且已结束但未达标）。
   final int overdueCount;
 
+  /// 统计窗口内免扣卡守护的次数。
+  final int freezeProtectedCount;
+
+  /// 当前可用的免扣卡数量（0..2）。
+  final int availableFreezeCards;
+
   /// 最容易中断的星期（0=周一 … 6=周日），数据不足时为 null。
   final int? weakestWeekday;
 
@@ -168,6 +182,8 @@ class HabitStreakSummary {
     this.plannedCount = 0,
     this.completedCount = 0,
     this.overdueCount = 0,
+    this.freezeProtectedCount = 0,
+    this.availableFreezeCards = 0,
     this.weakestWeekday,
     this.averageValue,
     this.averageDuration,

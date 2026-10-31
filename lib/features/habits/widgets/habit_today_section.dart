@@ -349,19 +349,21 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
     );
     return Padding(
       padding: EdgeInsets.only(bottom: widget.compact ? 4 : 10),
-      child: HabitCard(
-        animationKey: _cardKeyFor(goal),
-        compact: widget.compact,
-        goal: goal,
-        rule: rule,
-        dayProgress: dayProgress,
-        sleepCoachingMetric: _snapshot!.sleepCoachingMetricFor(goal),
-        username: widget.username,
-        isLight: widget.isLight,
-        onChanged: _loadData,
-        onStartFocus: widget.onStartFocus ?? _startFocus,
-        onViewRecords: widget.onViewRecords ?? () => _viewRecords(goal),
-        onTap: () => _viewRecords(goal),
+      child: RepaintBoundary(
+        child: HabitCard(
+          animationKey: _cardKeyFor(goal),
+          compact: widget.compact,
+          goal: goal,
+          rule: rule,
+          dayProgress: dayProgress,
+          sleepCoachingMetric: _snapshot!.sleepCoachingMetricFor(goal),
+          username: widget.username,
+          isLight: widget.isLight,
+          onChanged: _loadData,
+          onStartFocus: widget.onStartFocus ?? _startFocus,
+          onViewRecords: widget.onViewRecords ?? () => _viewRecords(goal),
+          onTap: () => _viewRecords(goal),
+        ),
       ),
     );
   }

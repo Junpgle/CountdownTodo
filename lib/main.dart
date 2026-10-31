@@ -48,6 +48,7 @@ import 'services/minor_mode_service.dart';
 import 'services/liquid_glass_effect_service.dart';
 import 'services/power_save_mode_service.dart';
 import 'theme/app_liquid_glass_theme.dart';
+import 'utils/app_image_filters.dart';
 import 'widgets/liquid_glass_live_preview_dock.dart';
 import 'widgets/animation_performance_floating_window.dart';
 import 'theme/dynamic_color_scheme_adapter.dart';
@@ -411,6 +412,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           state == AppLifecycleState.hidden) {
         PaintingBinding.instance.imageCache.clearLiveImages();
         LiquidGlassEffectConfiguration.clearFilterCache();
+        AppImageFilters.clearFilterCache();
       }
     }
   }
@@ -424,6 +426,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     imageCache.clear();
     imageCache.clearLiveImages();
     LiquidGlassEffectConfiguration.clearFilterCache();
+    AppImageFilters.clearFilterCache();
   }
 
   void _handlePowerSaveModeChanged() {

@@ -457,6 +457,8 @@ class _HabitCardState extends State<HabitCard> {
         return _colors.error;
       case HabitDayStatus.inProgress:
         return _colors.primary;
+      case HabitDayStatus.frozen:
+        return _colors.secondary;
       default:
         return _colors.outlineVariant;
     }
@@ -480,6 +482,9 @@ class _HabitCardState extends State<HabitCard> {
         break;
       case HabitDayStatus.skipped:
         text = '已跳过';
+        break;
+      case HabitDayStatus.frozen:
+        text = '免扣保护';
         break;
     }
     return AnimatedSwitcher(
@@ -511,6 +516,13 @@ class _HabitCardState extends State<HabitCard> {
             if (status == HabitDayStatus.met) ...[
               Icon(
                 Icons.check_circle_rounded,
+                size: widget.compact ? 11 : 12,
+                color: color,
+              ),
+              const SizedBox(width: 3),
+            ] else if (status == HabitDayStatus.frozen) ...[
+              Icon(
+                Icons.shield_outlined,
                 size: widget.compact ? 11 : 12,
                 color: color,
               ),

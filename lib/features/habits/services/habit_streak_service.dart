@@ -104,6 +104,8 @@ abstract final class HabitStreakService {
       entry.planned = entry.planned || day.progress.isPlanned;
       entry.met = entry.met || day.progress.goalMet;
       entry.finished = entry.finished || day.progress.isFinished;
+      entry.skipped = entry.skipped || day.progress.isSkipped;
+      entry.frozen = entry.frozen || day.progress.isFrozen;
     }
 
     final periods = periodMap.values.toList()
@@ -121,6 +123,9 @@ abstract final class HabitStreakService {
       }
       if (period.met) {
         currentStreak++;
+      } else if (period.skipped || period.frozen) {
+        // 跳过或免扣保护：不中断连续，也不增加连续天数。
+        continue;
       } else {
         break;
       }
@@ -142,6 +147,9 @@ abstract final class HabitStreakService {
       if (period.met) {
         running++;
         if (running > longestStreak) longestStreak = running;
+      } else if (period.skipped || period.frozen) {
+        // 跳过或免扣保护：保持当前 running，不增加也不重置为 0。
+        continue;
       } else {
         running = 0;
       }
@@ -155,13 +163,15 @@ abstract final class HabitStreakService {
     int totalPlanned30 = 0;
     int totalCompleted30 = 0;
     int totalOverdue30 = 0;
+    int freezeProtected30 = 0;
     for (int i = 0; i < 30 && i < rateWindow.length; i++) {
       final p = rateWindow[i];
       if (!p.planned) continue;
+      if (p.frozen) freezeProtected30++;
       totalPlanned30++;
       if (p.met) {
         totalCompleted30++;
-      } else {
+      } else if (!p.skipped && !p.frozen) {
         totalOverdue30++;
       }
     }
@@ -314,6 +324,7 @@ abstract final class HabitStreakService {
       plannedCount: totalPlanned30,
       completedCount: totalCompleted30,
       overdueCount: totalOverdue30,
+      freezeProtectedCount: freezeProtected30,
       weakestWeekday: weakestWeekday,
       averageValue: averageValue,
       averageDuration: averageDuration,
@@ -342,6 +353,8 @@ class _PeriodEntry {
   bool planned;
   bool met = false;
   bool finished = false;
+  bool skipped = false;
+  bool frozen = false;
 
   _PeriodEntry({required this.start, required this.planned});
 }

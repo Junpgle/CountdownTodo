@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../../../utils/app_dialogs.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
 import '../repositories/habit_repository.dart';
+import '../services/habit_freeze_service.dart';
 import '../services/habit_sleep_duration_service.dart';
 import '../services/habit_progress_calculator.dart';
 import '../services/habit_rule_resolver.dart';
@@ -583,7 +585,10 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
 
   bool _hasHistoricalRecord(HabitDayProgress day) {
     final progress = day.progress;
-    return progress.hasRecord || progress.goalMet || progress.isSkipped;
+    return progress.hasRecord ||
+        progress.goalMet ||
+        progress.isSkipped ||
+        progress.isFrozen;
   }
 
   Widget _buildDayRow(HabitGoal goal, HabitDayProgress day) {
@@ -595,6 +600,7 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
       HabitDayStatus.inProgress => (colorScheme.secondary, '进行中'),
       HabitDayStatus.notPlanned => (colorScheme.outline, '无计划'),
       HabitDayStatus.skipped => (colorScheme.outline, '已跳过'),
+      HabitDayStatus.frozen => (colorScheme.primary, '免扣保护'),
     };
 
     final detail = _dayValueText(goal, day);
@@ -668,6 +674,8 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
             ),
           ),
           const SizedBox(width: 8),
+          _buildFreezeButton(goal, day, colorScheme),
+          const SizedBox(width: 8),
           if (goal.sourceType == HabitSourceType.recurringTodo) ...[
             _buildMakeUpButton(goal, day),
             const SizedBox(width: 8),
@@ -675,6 +683,91 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
           ] else
             _buildSkipButton(goal, day, colorScheme, label),
         ],
+      ),
+    );
+  }
+
+  /// 计划内且非未来日期支持「使用免扣卡 / 取消免扣守护」。
+  Widget _buildFreezeButton(
+    HabitGoal goal,
+    HabitDayProgress day,
+    ColorScheme colorScheme,
+  ) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (day.logicalDate.isAfter(today) || !day.progress.isPlanned) {
+      return const SizedBox.shrink();
+    }
+    final isFrozen = day.status == HabitDayStatus.frozen;
+    final isMissed = day.status == HabitDayStatus.missed;
+    if (!isFrozen && !isMissed) return const SizedBox.shrink();
+
+    return OutlinedButton.icon(
+      onPressed: () async {
+        final rule = HabitRuleResolver.effectiveRule(
+          _rulesByHabit[goal.uuid] ?? const [],
+          day.logicalDate,
+        );
+        if (rule == null) return;
+        if (isFrozen) {
+          final checkIns = await HabitRepository.getCheckIns(
+            habitUuid: goal.uuid,
+          );
+          final dateKey = HabitRuleResolver.dayKey(day.logicalDate);
+          final freezeCheckIn = checkIns
+              .where(
+                (c) =>
+                    !c.isDeleted &&
+                    c.logicalDate == dateKey &&
+                    c.source == HabitCheckInSource.freeze,
+              )
+              .firstOrNull;
+          if (freezeCheckIn != null) {
+            await HabitFreezeService.revokeFreeze(
+              goal: goal,
+              freezeCheckIn: freezeCheckIn,
+            );
+            _loadData();
+          }
+        } else {
+          final checkIns = await HabitRepository.getCheckIns(
+            habitUuid: goal.uuid,
+          );
+          final validation = await HabitFreezeService.canApplyFreeze(
+            goal: goal,
+            rule: rule,
+            logicalDate: day.logicalDate,
+            checkIns: checkIns,
+          );
+          if (!validation.canApply) {
+            if (mounted) {
+              AppSnackBars.showSnackBar(
+                context,
+                SnackBar(content: Text(validation.reason ?? '当前条件不满足')),
+              );
+            }
+            return;
+          }
+          await HabitFreezeService.applyFreeze(
+            goal: goal,
+            rule: rule,
+            logicalDate: day.logicalDate,
+            username: widget.username,
+          );
+          _loadData();
+        }
+      },
+      icon: Icon(
+        Icons.shield_outlined,
+        size: 13,
+        color: isFrozen ? colorScheme.secondary : colorScheme.primary,
+      ),
+      label: Text(isFrozen ? '取消免扣' : '用免扣卡'),
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        minimumSize: const Size(0, 32),
+        foregroundColor: isFrozen ? colorScheme.secondary : colorScheme.primary,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
   }
