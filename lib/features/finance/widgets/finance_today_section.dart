@@ -232,15 +232,17 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
               fallbackDecoration: BoxDecoration(
                 color: widget.isLight
                     ? (isDark
-                        ? colorScheme.surfaceContainerLow.withValues(alpha: 0.75)
-                        : colorScheme.surface.withValues(alpha: 0.92))
+                          ? colorScheme.surfaceContainerLow.withValues(
+                              alpha: 0.75,
+                            )
+                          : colorScheme.surface.withValues(alpha: 0.92))
                     : colorScheme.surfaceContainerLow.withValues(alpha: 0.6),
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(
                   color: widget.isLight
                       ? (isDark
-                          ? Colors.white.withValues(alpha: 0.15)
-                          : Colors.white.withValues(alpha: 0.6))
+                            ? Colors.white.withValues(alpha: 0.15)
+                            : Colors.white.withValues(alpha: 0.6))
                       : colorScheme.outlineVariant.withValues(alpha: 0.5),
                 ),
                 boxShadow: [
@@ -259,9 +261,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
                       child: Center(
                         child: CircularProgressIndicator(
                           strokeWidth: 2.5,
-                          color: isDark
-                              ? Colors.white
-                              : colorScheme.tertiary,
+                          color: isDark ? Colors.white : colorScheme.tertiary,
                         ),
                       ),
                     )

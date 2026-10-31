@@ -1386,6 +1386,11 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                           keyword: _keyword,
                           filterType: _filterType,
                           categoryUuids: _categoryFilterUuids,
+                          exactCategoryMatch:
+                              _isCategoryLedgerRoute &&
+                              _categoryFilterUuids.length == 1 &&
+                              _categoryFilterUuids.first ==
+                                  widget.initialCategoryFilterUuid,
                           dateRange: _ledgerDateRange,
                           isLoading: _isLedgerQueryLoading,
                           queryError: _ledgerQueryError,

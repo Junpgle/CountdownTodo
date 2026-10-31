@@ -101,8 +101,6 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
         children: [
           _buildModeSelector(),
           const SizedBox(height: 12),
-          _buildMonthNavigator(),
-          const SizedBox(height: 10),
           _buildFilterAndMetricSelectors(colorScheme),
           const SizedBox(height: 12),
           _buildCalendarCard(context),
@@ -110,7 +108,7 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
           _buildMonthlySummary(context),
           const SizedBox(height: 20),
           _buildSelectedDayHeader(context),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           ..._buildSelectedDayTransactions(context),
         ],
       ),
@@ -131,7 +129,7 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
     );
   }
 
-  Widget _buildMonthNavigator() {
+  Widget _buildMonthNavigatorInCard() {
     final colorScheme = Theme.of(context).colorScheme;
     final currentMonth = DateTime(now.year, now.month);
     final firstMonth = DateTime(2000);
@@ -139,42 +137,73 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
     final lastMonth = DateTime(lastDate.year, lastDate.month);
     final previous = DateTime(month.year, month.month - 1);
     final next = DateTime(month.year, month.month + 1);
-    return Container(
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+    final isCurrent =
+        month.year == currentMonth.year && month.month == currentMonth.month;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 2, 4, 10),
       child: Row(
         children: [
           IconButton(
             key: const ValueKey('finance-calendar-month-previous'),
             tooltip: '上个月',
+            style: IconButton.styleFrom(
+              backgroundColor: colorScheme.surfaceContainerHighest.withValues(
+                alpha: 0.5,
+              ),
+              padding: const EdgeInsets.all(8),
+            ),
             onPressed: previous.isBefore(firstMonth)
                 ? null
                 : () => _shiftMonth(-1),
-            icon: const Icon(Icons.chevron_left),
+            icon: const Icon(Icons.chevron_left_rounded, size: 22),
           ),
           Expanded(
             child: InkWell(
               key: const ValueKey('finance-calendar-month-picker'),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(14),
               onTap: _pickMonth,
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 7),
-                child: Column(
+                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       '${month.year}年${month.month}月',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    Text(
-                      month == currentMonth ? '本月账单日历' : '选择月份',
-                      style: TextStyle(
-                        color: colorScheme.onSurfaceVariant,
-                        fontSize: 12,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.3,
                       ),
                     ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 20,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                    if (isCurrent) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colorScheme.primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '本月',
+                          style: TextStyle(
+                            color: colorScheme.primary,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -183,8 +212,14 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
           IconButton(
             key: const ValueKey('finance-calendar-month-next'),
             tooltip: '下个月',
+            style: IconButton.styleFrom(
+              backgroundColor: colorScheme.surfaceContainerHighest.withValues(
+                alpha: 0.5,
+              ),
+              padding: const EdgeInsets.all(8),
+            ),
             onPressed: next.isAfter(lastMonth) ? null : () => _shiftMonth(1),
-            icon: const Icon(Icons.chevron_right),
+            icon: const Icon(Icons.chevron_right_rounded, size: 22),
           ),
         ],
       ),
@@ -237,32 +272,71 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            TextButton.icon(
-              key: const ValueKey('finance-calendar-filter'),
-              onPressed: _showFilters,
-              icon: const Icon(Icons.tune_rounded, size: 18),
-              label: Text(
-                activeFilterCount == 0 ? '筛选' : '筛选 $activeFilterCount',
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          child: Row(
+            children: [
+              Material(
+                color: activeFilterCount > 0
+                    ? colorScheme.primaryContainer
+                    : colorScheme.surfaceContainerHighest.withValues(
+                        alpha: 0.6,
+                      ),
+                borderRadius: BorderRadius.circular(10),
+                child: InkWell(
+                  key: const ValueKey('finance-calendar-filter'),
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: _showFilters,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.tune_rounded,
+                          size: 16,
+                          color: activeFilterCount > 0
+                              ? colorScheme.onPrimaryContainer
+                              : colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          activeFilterCount == 0
+                              ? '筛选'
+                              : '筛选 $activeFilterCount',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: activeFilterCount > 0
+                                ? colorScheme.onPrimaryContainer
+                                : colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-            ),
-            const Spacer(),
-            Text(
-              _metric == _FinanceCalendarMetric.balance
-                  ? '结余按全账本口径'
-                  : '颜色越深，金额越高',
-              style: TextStyle(
-                color: colorScheme.onSurfaceVariant,
-                fontSize: 12,
+              const Spacer(),
+              Text(
+                _metric == _FinanceCalendarMetric.balance
+                    ? '结余按全账本口径'
+                    : '颜色越深，金额越高',
+                style: TextStyle(
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                  fontSize: 12,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         FinanceGlassSegmentSelector<_FinanceCalendarMetric>(
           keyPrefix: 'finance-calendar-metric-selector',
-          height: 50,
+          height: 48,
           segments: const [
             FinanceGlassSegment(
               id: 'expense',
@@ -450,59 +524,68 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
       final amount = _valueForDate(date)?.abs() ?? 0;
       return amount > maximum ? amount : maximum;
     });
-    return Card(
-      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 12, 8, 10),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                for (final label in const [
-                  '周一',
-                  '周二',
-                  '周三',
-                  '周四',
-                  '周五',
-                  '周六',
-                  '周日',
-                ])
-                  Expanded(
-                    child: Center(
-                      child: Text(
-                        label,
-                        style: TextStyle(
-                          color: colorScheme.onSurfaceVariant,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.35),
+          width: 0.8,
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
+      child: Column(
+        children: [
+          _buildMonthNavigatorInCard(),
+          const SizedBox(height: 2),
+          _buildWeekdayHeader(colorScheme),
+          const SizedBox(height: 6),
+          for (var weekStart = 0; weekStart < allDates.length; weekStart += 7)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final date in allDates.skip(weekStart).take(7))
+                    Expanded(
+                      child: _buildDayCell(
+                        date,
+                        maxMagnitude,
+                        isCurrentMonth:
+                            date.month == month.month &&
+                            date.year == month.year,
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
-            for (var weekStart = 0; weekStart < allDates.length; weekStart += 7)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    for (final date in allDates.skip(weekStart).take(7))
-                      Expanded(
-                        child: _buildDayCell(
-                          date,
-                          maxMagnitude,
-                          isCurrentMonth:
-                              date.month == month.month &&
-                              date.year == month.year,
-                        ),
-                      ),
-                  ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWeekdayHeader(ColorScheme colorScheme) {
+    const labels = ['一', '二', '三', '四', '五', '六', '日'];
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          for (var i = 0; i < labels.length; i++)
+            Expanded(
+              child: Center(
+                child: Text(
+                  labels[i],
+                  style: TextStyle(
+                    color: i >= 5
+                        ? colorScheme.primary.withValues(alpha: 0.75)
+                        : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                    fontSize: 12,
+                    fontWeight: i >= 5 ? FontWeight.w700 : FontWeight.w600,
+                  ),
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
@@ -513,38 +596,62 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
     required bool isCurrentMonth,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
-    final selected = dateKey(date) == dateKey(_selectedDate);
+    final isSelected = dateKey(date) == dateKey(_selectedDate);
+    final isToday = dateKey(date) == todayKey;
     final amount = _valueForDate(date);
-    final backgroundColor = amount == null || amount == 0 || maxMagnitude == 0
-        ? colorScheme.surfaceContainerLow
-        : _metricColor(
-            amount,
-            colorScheme,
-          ).withValues(alpha: 0.1 + 0.42 * amount.abs() / maxMagnitude);
-    final textColor = isCurrentMonth
-        ? colorScheme.onSurface
-        : colorScheme.onSurfaceVariant.withValues(alpha: 0.55);
+    final hasAmount = amount != null && amount != 0;
+
+    final baseTint = hasAmount
+        ? _metricColor(amount, colorScheme)
+        : Colors.transparent;
+    final heatRatio = maxMagnitude == 0 || !hasAmount
+        ? 0.0
+        : (amount.abs() / maxMagnitude).clamp(0.0, 1.0);
+
+    Color cellBackground;
+    if (isSelected) {
+      cellBackground = colorScheme.primaryContainer.withValues(alpha: 0.9);
+    } else if (hasAmount && isCurrentMonth) {
+      cellBackground = baseTint.withValues(alpha: 0.06 + 0.16 * heatRatio);
+    } else {
+      cellBackground = Colors.transparent;
+    }
+
+    Color textColor;
+    if (isSelected) {
+      textColor = colorScheme.onPrimaryContainer;
+    } else if (!isCurrentMonth) {
+      textColor = colorScheme.onSurfaceVariant.withValues(alpha: 0.28);
+    } else if (isToday) {
+      textColor = colorScheme.primary;
+    } else {
+      textColor = colorScheme.onSurface;
+    }
+
     return Padding(
-      padding: const EdgeInsets.all(2),
+      padding: const EdgeInsets.all(1.5),
       child: Material(
-        color: colorScheme.surface.withValues(alpha: 0),
+        color: Colors.transparent,
         child: InkWell(
           key: ValueKey('finance-calendar-day-${dateKey(date)}'),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           onTap: () => _selectDate(date),
-          child: Container(
-            height: 64,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            height: 60,
             decoration: BoxDecoration(
-              color: backgroundColor,
-              borderRadius: BorderRadius.circular(14),
+              color: cellBackground,
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: selected
+                color: isSelected
                     ? colorScheme.primary
-                    : colorScheme.surface.withValues(alpha: 0),
-                width: selected ? 1.8 : 0,
+                    : isToday && !isSelected
+                    ? colorScheme.primary.withValues(alpha: 0.35)
+                    : Colors.transparent,
+                width: isSelected ? 1.6 : 1.0,
               ),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
+            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -552,28 +659,41 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
                   '${date.day}',
                   style: TextStyle(
                     color: textColor,
-                    fontSize: 14,
-                    fontWeight: selected || dateKey(date) == todayKey
+                    fontSize: 13.5,
+                    fontWeight: isSelected || isToday
                         ? FontWeight.w800
                         : FontWeight.w500,
                   ),
                 ),
-                const SizedBox(height: 3),
-                if (amount != null && amount != 0)
+                const SizedBox(height: 2),
+                if (hasAmount)
                   FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Text(
                       formatFinanceAmount(amount, withSymbol: false),
                       maxLines: 1,
                       style: TextStyle(
-                        color: _metricColor(amount, colorScheme),
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.w600,
+                        color: isSelected
+                            ? colorScheme.onPrimaryContainer
+                            : !isCurrentMonth
+                            ? textColor
+                            : _metricColor(amount, colorScheme),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   )
+                else if (isToday && !isSelected)
+                  Container(
+                    width: 4,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary,
+                      shape: BoxShape.circle,
+                    ),
+                  )
                 else
-                  const SizedBox(height: 11),
+                  const SizedBox(height: 12),
               ],
             ),
           ),
@@ -629,41 +749,75 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
             ? '预计结余'
             : '月末结余',
     };
-    return Card(
-      color: colorScheme.surfaceContainerHighest,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Row(
-          children: [
-            Expanded(
-              child: _summaryMetric(
-                context,
-                firstLabel,
-                firstValue,
-                colorScheme,
-                useErrorColor:
-                    _metric == _FinanceCalendarMetric.expense ||
-                    ((_metric == _FinanceCalendarMetric.cashflow ||
-                            _metric == _FinanceCalendarMetric.balance) &&
-                        firstValue < 0),
-              ),
+
+    final summaryContainerColor = switch (_metric) {
+      _FinanceCalendarMetric.expense => colorScheme.errorContainer.withValues(
+        alpha: 0.24,
+      ),
+      _FinanceCalendarMetric.income => colorScheme.primaryContainer.withValues(
+        alpha: 0.32,
+      ),
+      _FinanceCalendarMetric.cashflow =>
+        colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
+      _FinanceCalendarMetric.balance =>
+        colorScheme.tertiaryContainer.withValues(alpha: 0.28),
+    };
+    final summaryBorderColor = switch (_metric) {
+      _FinanceCalendarMetric.expense => colorScheme.error.withValues(
+        alpha: 0.16,
+      ),
+      _FinanceCalendarMetric.income => colorScheme.primary.withValues(
+        alpha: 0.16,
+      ),
+      _FinanceCalendarMetric.cashflow => colorScheme.outlineVariant.withValues(
+        alpha: 0.35,
+      ),
+      _FinanceCalendarMetric.balance => colorScheme.tertiary.withValues(
+        alpha: 0.22,
+      ),
+    };
+
+    return Container(
+      decoration: BoxDecoration(
+        color: summaryContainerColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: summaryBorderColor, width: 0.8),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          Expanded(
+            child: _summaryMetric(
+              context,
+              firstLabel,
+              firstValue,
+              colorScheme,
+              useErrorColor:
+                  _metric == _FinanceCalendarMetric.expense ||
+                  ((_metric == _FinanceCalendarMetric.cashflow ||
+                          _metric == _FinanceCalendarMetric.balance) &&
+                      firstValue < 0),
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _summaryMetric(
-                context,
-                secondLabel,
-                secondValue,
-                colorScheme,
-                useErrorColor:
-                    _metric == _FinanceCalendarMetric.expense ||
-                    ((_metric == _FinanceCalendarMetric.cashflow ||
-                            _metric == _FinanceCalendarMetric.balance) &&
-                        (secondValue ?? 0) < 0),
-              ),
+          ),
+          Container(
+            height: 38,
+            width: 1,
+            color: colorScheme.outlineVariant.withValues(alpha: 0.4),
+          ),
+          Expanded(
+            child: _summaryMetric(
+              context,
+              secondLabel,
+              secondValue,
+              colorScheme,
+              useErrorColor:
+                  _metric == _FinanceCalendarMetric.expense ||
+                  ((_metric == _FinanceCalendarMetric.cashflow ||
+                          _metric == _FinanceCalendarMetric.balance) &&
+                      (secondValue ?? 0) < 0),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -678,8 +832,15 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text(label, style: Theme.of(context).textTheme.bodySmall),
-        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            color: colorScheme.onSurfaceVariant,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 5),
         FittedBox(
           fit: BoxFit.scaleDown,
           child: Text(
@@ -691,7 +852,8 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
                   ? colorScheme.error
                   : colorScheme.primary,
               fontWeight: FontWeight.w800,
-              fontSize: 17,
+              fontSize: 18.5,
+              letterSpacing: 0.2,
             ),
           ),
         ),
@@ -713,36 +875,71 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
           child: Wrap(
             crossAxisAlignment: WrapCrossAlignment.center,
             spacing: 8,
+            runSpacing: 4,
             children: [
               Text(
                 dateLabel,
                 style: Theme.of(context).textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700),
+                    ?.copyWith(fontWeight: FontWeight.w800, fontSize: 16),
               ),
-              Text(
-                valueLabel,
-                style: TextStyle(
-                  color: _metricColor(value ?? 0, colorScheme),
-                  fontSize: 13,
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 9,
+                  vertical: 3.5,
+                ),
+                decoration: BoxDecoration(
+                  color: _metricColor(
+                    value ?? 0,
+                    colorScheme,
+                  ).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  valueLabel,
+                  style: TextStyle(
+                    color: _metricColor(value ?? 0, colorScheme),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
               if (_metric == _FinanceCalendarMetric.balance)
-                Text(
-                  '${summary.transactionCount} 笔',
-                  style: TextStyle(
-                    color: colorScheme.onSurfaceVariant,
-                    fontSize: 12,
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 2.5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerHighest.withValues(
+                      alpha: 0.6,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '${summary.transactionCount} 笔',
+                    style: TextStyle(
+                      color: colorScheme.onSurfaceVariant,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
             ],
           ),
         ),
-        TextButton.icon(
+        FilledButton.tonalIcon(
           key: const ValueKey('finance-calendar-add-entry'),
           onPressed: widget.onAdd == null
               ? null
               : () => widget.onAdd!(_selectedDate, _addActionKey),
-          icon: const Icon(Icons.add, size: 18),
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+            visualDensity: VisualDensity.compact,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          icon: const Icon(Icons.add_rounded, size: 18),
           label: const Text('记一笔'),
         ),
       ],
@@ -760,22 +957,49 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
       });
     if (items.isEmpty) {
       return [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 22),
-            child: Row(
-              children: [
-                Icon(Icons.receipt_long_outlined, color: colorScheme.outline),
-                const SizedBox(width: 12),
-                const Expanded(child: Text('这一天还没有账单')),
-              ],
+        Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+              width: 0.8,
             ),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 26),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.receipt_long_outlined,
+                size: 32,
+                color: colorScheme.outline.withValues(alpha: 0.6),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '这一天还没有账单',
+                style: TextStyle(
+                  color: colorScheme.onSurfaceVariant,
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
           ),
         ),
       ];
     }
     return [
-      Card(
+      Container(
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.35),
+            width: 0.8,
+          ),
+        ),
         clipBehavior: Clip.antiAlias,
         child: Column(
           children: [
@@ -784,7 +1008,7 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
                 Divider(
                   height: 1,
                   indent: 68,
-                  color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.35),
                 ),
               _buildTransactionTile(context, items[index]),
             ],
@@ -825,22 +1049,43 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
     );
     return ListTile(
       key: ValueKey('finance-calendar-transaction-${transaction.uuid}'),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
       onTap: widget.onOpenTransaction == null
           ? null
           : () => widget.onOpenTransaction!(transaction, sourceKey),
-      leading: CircleAvatar(
-        backgroundColor: colorScheme.secondaryContainer,
-        child: Text(category?.icon ?? '💰'),
+      leading: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: colorScheme.secondaryContainer.withValues(alpha: 0.75),
+          borderRadius: BorderRadius.circular(13),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          category?.icon ?? '💰',
+          style: const TextStyle(fontSize: 21),
+        ),
       ),
-      title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+      title: Text(
+        title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5),
+      ),
+      subtitle: Text(
+        subtitle,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12),
+      ),
       trailing: Text(
         formatSignedFinanceAmount(transaction.amountMinor, transaction.type),
         style: TextStyle(
           color: transaction.type == FinanceTransactionType.expense
               ? colorScheme.error
               : colorScheme.primary,
-          fontWeight: FontWeight.w700,
+          fontSize: 15.5,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );
@@ -850,11 +1095,11 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
     final key = dateKey(date);
     final nextDay = financeCalendarDayOffset(date, 1);
     final dayEndAt = nextDay.millisecondsSinceEpoch - 1;
+    // Past/today ledger dates may be back-filled later (event time falls on
+    // the entry day), so cap by "now" instead of the end of that day.
     final asOfAt = dateKey(date).compareTo(todayKey) > 0
         ? dayEndAt
-        : (dayEndAt < now.millisecondsSinceEpoch
-              ? dayEndAt
-              : now.millisecondsSinceEpoch);
+        : now.millisecondsSinceEpoch;
     return widget.transactions
         .where((transaction) {
           if (transaction.transactionDate != key ||
