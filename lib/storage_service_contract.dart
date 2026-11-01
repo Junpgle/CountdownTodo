@@ -682,6 +682,7 @@ abstract class _StorageServiceBase {
     Map<String, dynamic> data,
   );
   void _preserveLocalTodoSourceFields(TodoItem local, TodoItem incoming);
+  void preserveLocalTodoSourceFieldsForTest(TodoItem local, TodoItem incoming);
   Set<String> repairMissingRemoteRecurrenceSeriesIdsForTest(
     List<TodoItem> incoming,
     List<TodoItem> local,

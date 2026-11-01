@@ -32,6 +32,9 @@ class TimelineService {
     r'的|了|和|是|就|都|而|及|与|着|或|个|项|次',
   );
 
+  static const String _todoEffectiveCompletedAtSql =
+      'COALESCE(completed_at, CASE WHEN recurrence_series_id IS NOT NULL AND TRIM(recurrence_series_id) != \'\' THEN COALESCE(created_date, due_date, created_at, updated_at) ELSE updated_at END)';
+
   TimelineService._();
 
   Future<List<TimelineEvent>> getEventsForDay(
@@ -101,21 +104,27 @@ class TimelineService {
         );
       }
 
-      final completedTodos = await db.query(
-        'todos',
-        where: 'is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ?',
-        whereArgs: [startOfDayMs, endOfDayMs],
+      final completedTodos = await db.rawQuery(
+        'SELECT uuid, content, updated_at, recurrence_series_id, '
+        '$_todoEffectiveCompletedAtSql AS effective_completed_at '
+        'FROM todos '
+        'WHERE is_deleted = 0 AND is_completed = 1 AND '
+        '$_todoEffectiveCompletedAtSql >= ? AND $_todoEffectiveCompletedAtSql < ?',
+        [startOfDayMs, endOfDayMs],
       );
       for (var row in completedTodos) {
         final title = row['content'] as String? ?? '';
-        final updatedAt = row['updated_at'] as int;
+        final effectiveCompletedAt = (row['effective_completed_at'] as num)
+            .toInt();
         final recurrenceSeriesId = row['recurrence_series_id']
             ?.toString()
             .trim();
         events.add(
           TimelineEvent(
             id: 'todo_complete_${row['uuid']}',
-            timestamp: DateTime.fromMillisecondsSinceEpoch(updatedAt),
+            timestamp: DateTime.fromMillisecondsSinceEpoch(
+              effectiveCompletedAt,
+            ),
             type: TimelineEventType.todoCompleted,
             title: '完成待办',
             subtitle: title,
@@ -557,9 +566,9 @@ class TimelineService {
       // 4b. Task Quality (Overdue vs Early)
       final taskQualityStats = await db.rawQuery(
         'SELECT '
-        'SUM(CASE WHEN due_date IS NOT NULL AND due_date > 0 AND ((due_date + 86399999) - updated_at) >= 86400000 THEN 1 ELSE 0 END) as early '
+        'SUM(CASE WHEN due_date IS NOT NULL AND due_date > 0 AND ((due_date + 86399999) - $_todoEffectiveCompletedAtSql) >= 86400000 THEN 1 ELSE 0 END) as early '
         'FROM todos '
-        'WHERE is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ?',
+        'WHERE is_deleted = 0 AND is_completed = 1 AND $_todoEffectiveCompletedAtSql >= ? AND $_todoEffectiveCompletedAtSql < ?',
         [startMs, endMs],
       );
       final int earlyCount = taskQualityStats.first['early'] as int? ?? 0;
@@ -590,15 +599,15 @@ class TimelineService {
 
       // 5. Highlights - Latest Wall-clock Completion (Handles over-midnight/all-nighters)
       final latestTodoStats = await db.rawQuery(
-        'SELECT content, updated_at, strftime(\'%H:%M\', datetime(updated_at / 1000, \'unixepoch\', \'localtime\')) as wall_time '
+        'SELECT content, $_todoEffectiveCompletedAtSql as completed_time, strftime(\'%H:%M\', datetime($_todoEffectiveCompletedAtSql / 1000, \'unixepoch\', \'localtime\')) as wall_time '
         'FROM todos '
-        'WHERE is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ? '
-        'ORDER BY updated_at DESC LIMIT 5',
+        'WHERE is_deleted = 0 AND is_completed = 1 AND $_todoEffectiveCompletedAtSql >= ? AND $_todoEffectiveCompletedAtSql < ? '
+        'ORDER BY $_todoEffectiveCompletedAtSql DESC LIMIT 5',
         [startMs, endMs],
       );
       hasTodo = latestTodoStats.isNotEmpty;
       final topCompleted = latestTodoStats
-          .map((r) => {'title': r['content'], 'time': r['updated_at']})
+          .map((r) => {'title': r['content'], 'time': r['completed_time']})
           .toList();
 
       // 6. Highlights - Daily Trend for Sparkline
@@ -643,7 +652,7 @@ class TimelineService {
             1,
           ).millisecondsSinceEpoch;
           final dayCompletions = await db.rawQuery(
-            'SELECT (SELECT COUNT(*) FROM todos WHERE is_deleted=0 AND is_completed=1 AND updated_at >= ? AND updated_at < ?) + '
+            'SELECT (SELECT COUNT(*) FROM todos WHERE is_deleted=0 AND is_completed=1 AND $_todoEffectiveCompletedAtSql >= ? AND $_todoEffectiveCompletedAtSql < ?) + '
             '(SELECT COUNT(*) FROM countdowns WHERE is_deleted=0 AND is_completed=1 AND updated_at >= ? AND updated_at < ?) as c',
             [dayStart, dayEnd, dayStart, dayEnd],
           );
@@ -654,7 +663,7 @@ class TimelineService {
       final hourData = await db.rawQuery(
         'SELECT strftime(\'%H\', datetime(ts / 1000, \'unixepoch\', \'localtime\')) as hr, COUNT(*) as c '
         'FROM ('
-        'SELECT updated_at as ts FROM todos WHERE updated_at >= ? AND updated_at < ? AND is_completed = 1 '
+        'SELECT $_todoEffectiveCompletedAtSql as ts FROM todos WHERE $_todoEffectiveCompletedAtSql >= ? AND $_todoEffectiveCompletedAtSql < ? AND is_completed = 1 '
         'UNION ALL SELECT start_time as ts FROM pomodoro_records WHERE start_time >= ? AND start_time < ? AND is_deleted = 0 '
         'UNION ALL SELECT start_time as ts FROM time_logs WHERE start_time >= ? AND start_time < ? AND is_deleted = 0'
         ') GROUP BY hr',
@@ -681,7 +690,8 @@ class TimelineService {
       final todoRows = await db.query(
         'todos',
         columns: ['content'],
-        where: 'is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ?',
+        where:
+            'is_deleted = 0 AND is_completed = 1 AND $_todoEffectiveCompletedAtSql >= ? AND $_todoEffectiveCompletedAtSql < ?',
         whereArgs: [startMs, endMs],
       );
       allTitles.addAll(todoRows.map((r) => (r['content'] as String? ?? '')));
@@ -1067,7 +1077,7 @@ class TimelineService {
       final monthRows = await db.rawQuery(
         'SELECT COUNT(DISTINCT day) as cnt FROM ('
         'SELECT strftime(\'%Y-%m-%d\', datetime(created_at / 1000, \'unixepoch\', \'localtime\')) as day FROM todos WHERE is_deleted = 0 AND created_at >= ? AND created_at < ? '
-        'UNION SELECT strftime(\'%Y-%m-%d\', datetime(updated_at / 1000, \'unixepoch\', \'localtime\')) as day FROM todos WHERE is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ? '
+        'UNION SELECT strftime(\'%Y-%m-%d\', datetime($_todoEffectiveCompletedAtSql / 1000, \'unixepoch\', \'localtime\')) as day FROM todos WHERE is_deleted = 0 AND is_completed = 1 AND $_todoEffectiveCompletedAtSql >= ? AND $_todoEffectiveCompletedAtSql < ? '
         'UNION SELECT strftime(\'%Y-%m-%d\', datetime(start_time / 1000, \'unixepoch\', \'localtime\')) as day FROM pomodoro_records WHERE is_deleted = 0 AND start_time >= ? AND start_time < ? '
         'UNION SELECT strftime(\'%Y-%m-%d\', datetime(start_time / 1000, \'unixepoch\', \'localtime\')) as day FROM time_logs WHERE is_deleted = 0 AND start_time >= ? AND start_time < ? '
         'UNION SELECT strftime(\'%Y-%m-%d\', datetime(timestamp / 1000, \'unixepoch\', \'localtime\')) as day FROM search_history WHERE timestamp >= ? AND timestamp < ?'
@@ -1345,7 +1355,7 @@ class TimelineService {
       final rows = await db.rawQuery(
         'SELECT DISTINCT day FROM ('
         'SELECT strftime(\'%Y-%m-%d\', datetime(created_at / 1000, \'unixepoch\', \'localtime\')) as day FROM todos WHERE is_deleted = 0 AND created_at < ? '
-        'UNION SELECT strftime(\'%Y-%m-%d\', datetime(updated_at / 1000, \'unixepoch\', \'localtime\')) as day FROM todos WHERE is_deleted = 0 AND is_completed = 1 AND updated_at < ? '
+        'UNION SELECT strftime(\'%Y-%m-%d\', datetime($_todoEffectiveCompletedAtSql / 1000, \'unixepoch\', \'localtime\')) as day FROM todos WHERE is_deleted = 0 AND is_completed = 1 AND $_todoEffectiveCompletedAtSql < ? '
         'UNION SELECT strftime(\'%Y-%m-%d\', datetime(start_time / 1000, \'unixepoch\', \'localtime\')) as day FROM pomodoro_records WHERE is_deleted = 0 AND start_time < ? '
         'UNION SELECT strftime(\'%Y-%m-%d\', datetime(start_time / 1000, \'unixepoch\', \'localtime\')) as day FROM time_logs WHERE is_deleted = 0 AND start_time < ? '
         'UNION SELECT strftime(\'%Y-%m-%d\', datetime(timestamp / 1000, \'unixepoch\', \'localtime\')) as day FROM search_history WHERE timestamp < ?'
@@ -1377,7 +1387,7 @@ class TimelineService {
     final rows = await db.rawQuery(
       'SELECT DISTINCT day FROM ('
       'SELECT strftime(\'%Y-%m-%d\', datetime(created_at / 1000, \'unixepoch\', \'localtime\')) as day FROM todos WHERE is_deleted = 0 AND created_at >= ? AND created_at < ? '
-      'UNION SELECT strftime(\'%Y-%m-%d\', datetime(updated_at / 1000, \'unixepoch\', \'localtime\')) as day FROM todos WHERE is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ? '
+      'UNION SELECT strftime(\'%Y-%m-%d\', datetime($_todoEffectiveCompletedAtSql / 1000, \'unixepoch\', \'localtime\')) as day FROM todos WHERE is_deleted = 0 AND is_completed = 1 AND $_todoEffectiveCompletedAtSql >= ? AND $_todoEffectiveCompletedAtSql < ? '
       'UNION SELECT strftime(\'%Y-%m-%d\', datetime(start_time / 1000, \'unixepoch\', \'localtime\')) as day FROM pomodoro_records WHERE is_deleted = 0 AND start_time >= ? AND start_time < ? '
       'UNION SELECT strftime(\'%Y-%m-%d\', datetime(start_time / 1000, \'unixepoch\', \'localtime\')) as day FROM time_logs WHERE is_deleted = 0 AND start_time >= ? AND start_time < ? '
       'UNION SELECT strftime(\'%Y-%m-%d\', datetime(timestamp / 1000, \'unixepoch\', \'localtime\')) as day FROM search_history WHERE timestamp >= ? AND timestamp < ?'

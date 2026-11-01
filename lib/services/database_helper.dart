@@ -33,6 +33,7 @@ class DatabaseHelper {
     'creator_id',
     'creator_name',
     'is_completed',
+    'completed_at',
     'is_skipped',
     'is_skipped_sync_pending',
     'is_deleted',
@@ -316,6 +317,24 @@ class DatabaseHelper {
         'ALTER TABLE todo_completions ADD COLUMN is_skipped_sync_pending INTEGER NOT NULL DEFAULT 0',
       );
     }
+  }
+
+  static Future<void> ensureTodoCompletionTimestampSchema(Database db) async {
+    final todoColumns = await db.rawQuery('PRAGMA table_info(todos)');
+    if (todoColumns.isEmpty) return;
+    final todoNames = todoColumns.map((row) => row['name']).toSet();
+    if (!todoNames.contains('completed_at')) {
+      await db.execute('ALTER TABLE todos ADD COLUMN completed_at INTEGER');
+    }
+    await db.execute('''
+      UPDATE todos
+      SET completed_at = CASE
+        WHEN recurrence_series_id IS NOT NULL AND TRIM(recurrence_series_id) != ''
+          THEN COALESCE(created_date, due_date, created_at, updated_at)
+        ELSE updated_at
+      END
+      WHERE is_completed = 1 AND completed_at IS NULL
+    ''');
   }
 
   static Future<void> ensureTodoPlanBlockSchema(Database db) async {
@@ -1172,6 +1191,9 @@ class DatabaseHelper {
           },
           onCreate: _createDB,
           onUpgrade: (db, oldVersion, newVersion) async {
+            if (oldVersion < 61) {
+              await ensureTodoCompletionTimestampSchema(db);
+            }
             if (oldVersion < 59) {
               await ensureTodoSkipStateSchema(db);
             }
@@ -1754,11 +1776,15 @@ class DatabaseHelper {
                 //                 debugPrint("⚠️ Database: 升级 V25 失败: $e");
               }
             }
+            if (oldVersion < 61) {
+              await ensureTodoCompletionTimestampSchema(db);
+            }
             if (oldVersion < 60) {
               await _ensureTodoCreatedDateNullable(db);
             }
           },
           onOpen: (db) async {
+            await ensureTodoCompletionTimestampSchema(db);
             await ensurePlanEditorDraftSchema(db);
             await ensureCourseTableSchema(db);
             await ensureTodoClientLocalSchema(db);
@@ -2042,7 +2068,8 @@ class DatabaseHelper {
         conflict_data TEXT,
         is_all_day INTEGER DEFAULT 0,
         image_path TEXT,
-        original_text TEXT
+        original_text TEXT,
+        completed_at INTEGER
       )
     ''');
 
@@ -3266,6 +3293,7 @@ class DatabaseHelper {
         t.created_date AS created_date,
         t.created_at AS created_at,
         t.updated_at AS updated_at,
+        t.completed_at AS completed_at,
         t.recurrence AS recurrence,
         t.recurrence_series_id AS recurrence_series_id,
         t.custom_interval_days AS custom_interval_days,

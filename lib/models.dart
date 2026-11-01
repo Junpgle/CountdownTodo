@@ -193,7 +193,20 @@ enum ParsedTimeSemantics { unscheduled, dateOnly, deadline, range }
 class TodoItem {
   String id; // 核心：全局唯一 UUID
   String title;
-  bool isDone;
+  bool _isDone;
+  bool get isDone => _isDone;
+  set isDone(bool value) {
+    if (_isDone != value) {
+      _isDone = value;
+      if (value) {
+        completedAt ??= DateTime.now().millisecondsSinceEpoch;
+      } else {
+        completedAt = null;
+      }
+    }
+  }
+
+  int? completedAt; // 🚀 真正的完成时间戳 (毫秒)
   bool isSkipped;
   bool isSkippedSyncPending;
   bool isDeleted; // 核心：逻辑删除标记
@@ -225,7 +238,8 @@ class TodoItem {
   TodoItem({
     String? id,
     required this.title,
-    this.isDone = false,
+    bool isDone = false,
+    this.completedAt,
     this.isSkipped = false,
     this.isSkippedSyncPending = false,
     this.isDeleted = false,
@@ -253,6 +267,8 @@ class TodoItem {
     this.isAllDay = false,
     this.categoryId,
   }) : id = id ?? const Uuid().v4(),
+       // ignore: prefer_initializing_formals
+       _isDone = isDone,
        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
 
@@ -408,6 +424,8 @@ class TodoItem {
     'uuid': id,
     'content': title,
     'is_completed': isDone ? 1 : 0,
+    'completed_at': completedAt,
+    'completedAt': completedAt,
     'is_skipped': isSkipped ? 1 : 0,
     'is_skipped_sync_pending': isSkippedSyncPending ? 1 : 0,
     'is_deleted': isDeleted ? 1 : 0,
@@ -452,6 +470,7 @@ class TodoItem {
     id: id.contains('-') ? id : const Uuid().v4(),
     title: title,
     isDone: isDone,
+    completedAt: completedAt,
     isSkipped: isSkipped,
     isSkippedSyncPending: isSkippedSyncPending,
     isDeleted: isDeleted,
@@ -508,10 +527,44 @@ class TodoItem {
       throw const FormatException('待办不能同时处于已完成和已跳过状态');
     }
 
+    final recurrenceSeriesIdValue = _emptyStringToNull(
+      (json['recurrence_series_id'] ?? json['recurrenceSeriesId'])?.toString(),
+    );
+    final isRecurrenceOccurrence =
+        recurrenceIndex != 0 ||
+        (recurrenceSeriesIdValue != null && recurrenceSeriesIdValue.isNotEmpty);
+
+    final rawCompletedAt = _parseNullableTimestamp(
+      json['completed_at'] ?? json['completedAt'],
+    );
+    final int? effectiveCompletedAt;
+    if (rawCompletedAt != null) {
+      effectiveCompletedAt = rawCompletedAt;
+    } else if (isDone) {
+      // 兼容旧数据：若没有独立的 completed_at，循环待办按其所在期次日期回退，非循环待办按更新/完成时间回退
+      if (isRecurrenceOccurrence) {
+        effectiveCompletedAt = (json['created_date'] != null)
+            ? _parseNullableTimestamp(json['created_date'])
+            : ((json['dueDate'] != null || json['due_date'] != null)
+                  ? _parseDateField(json['dueDate'] ?? json['due_date'])
+                        ?.millisecondsSinceEpoch
+                  : _parseNullableTimestamp(
+                      json['created_at'] ?? json['createdAt'],
+                    ));
+      } else {
+        effectiveCompletedAt = _parseNullableTimestamp(
+          json['updated_at'] ?? json['lastUpdated'],
+        );
+      }
+    } else {
+      effectiveCompletedAt = null;
+    }
+
     return TodoItem(
       id: parsedId,
       title: json['content']?.toString() ?? json['title']?.toString() ?? '',
       isDone: isDone,
+      completedAt: effectiveCompletedAt,
       isSkipped: isSkipped,
       isSkippedSyncPending:
           json['is_skipped_sync_pending'] == 1 ||
@@ -533,10 +586,7 @@ class TodoItem {
                 : null),
 
       recurrence: RecurrenceType.values[recurrenceIndex],
-      recurrenceSeriesId: _emptyStringToNull(
-        (json['recurrence_series_id'] ?? json['recurrenceSeriesId'])
-            ?.toString(),
-      ),
+      recurrenceSeriesId: recurrenceSeriesIdValue,
       // 兼容两种字段名：后端列名 custom_interval_days 和本地存储名 customIntervalDays
       customIntervalDays: JsonValueParser.toNullableInt(
         json['customIntervalDays'] ?? json['custom_interval_days'],
@@ -556,9 +606,12 @@ class TodoItem {
       // 📁 分组 ID
       groupId: (json['group_id'] ?? json['groupId'])?.toString(),
       // 🚀 提醒提前量
-      reminderMinutes: JsonValueParser.toNullableInt(
-        json['reminder_minutes'] ?? json['reminderMinutes'],
-      ),
+      reminderMinutes: () {
+        final parsed = JsonValueParser.toNullableInt(
+          json['reminder_minutes'] ?? json['reminderMinutes'],
+        );
+        return (parsed == null || parsed == -1) ? null : parsed;
+      }(),
       // 👥 团队 ID
       teamUuid: (json['team_uuid'] ?? json['teamUuid'])?.toString(),
       creatorId: (json['creator_id'] ?? json['creatorId'])?.toString(),
@@ -766,6 +819,17 @@ class TodoGroup {
 // ============================================================
 // 🕐 统一时间规范（v3 - 最终版）
 // ============================================================
+
+int? _parseNullableTimestamp(dynamic val) {
+  if (val == null) return null;
+  final parsed = JsonValueParser.toNullableInt(val);
+  if (parsed != null) return parsed;
+  if (val is String) {
+    final date = DateTime.tryParse(val.trim());
+    if (date != null) return date.toUtc().millisecondsSinceEpoch;
+  }
+  return null;
+}
 
 int _parseTimestamp(dynamic val) {
   return JsonValueParser.epochMillisOrNow(val);

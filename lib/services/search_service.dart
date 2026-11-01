@@ -1817,6 +1817,7 @@ class SearchNavigationHandler {
         id: todoMap['uuid']?.toString(),
         title: todoMap['content']?.toString() ?? '',
         isDone: todoMap['is_completed'] == 1,
+        completedAt: toInt(todoMap['completed_at']),
         isDeleted: todoMap['is_deleted'] == 1,
         version: (todoMap['version'] is int)
             ? todoMap['version']
