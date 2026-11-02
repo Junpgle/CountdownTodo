@@ -1084,7 +1084,7 @@ void main() {
     );
   });
 
-  testWidgets('PlatformBackdropFilter wraps child with BackdropFilter', (
+  testWidgets('PlatformBackdropFilter wraps child with BackdropFilter and clips', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -1100,5 +1100,26 @@ void main() {
 
     expect(find.text('Test Child'), findsOneWidget);
     expect(find.byType(BackdropFilter), findsOneWidget);
+    expect(find.byType(ClipRect), findsOneWidget);
+  });
+
+  testWidgets('PlatformBackdropFilter clips with ClipRRect when radius provided', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PlatformBackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            clipBorderRadius: BorderRadius.circular(16),
+            child: const Text('Test Child Rounded'),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Test Child Rounded'), findsOneWidget);
+    expect(find.byType(BackdropFilter), findsOneWidget);
+    expect(find.byType(ClipRRect), findsOneWidget);
   });
 }

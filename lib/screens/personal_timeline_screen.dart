@@ -1890,9 +1890,11 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
       // 这个 blob 只是背景光晕装饰，在 Windows 保留半透明圆形即可。
       child: AppPlatform.isWindows
           ? const SizedBox.shrink()
-          : BackdropFilter(
-              filter: AppImageFilters.blur80,
-              child: Container(color: Colors.transparent),
+          : ClipOval(
+              child: BackdropFilter(
+                filter: AppImageFilters.blur80,
+                child: Container(color: Colors.transparent),
+              ),
             ),
     );
   }

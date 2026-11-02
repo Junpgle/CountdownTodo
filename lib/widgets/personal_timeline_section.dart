@@ -370,6 +370,7 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
     return PlatformBackdropFilter(
       filter: AppImageFilters.blur10,
       bypassWhenLiquidGlassEnabled: true,
+      clipBorderRadius: BorderRadius.circular(borderRadius),
       child: OptionalLiquidGlassCard(
         padding: padding,
         borderRadius: borderRadius,
