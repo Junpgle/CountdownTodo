@@ -152,7 +152,6 @@ mixin _HomeDashboardViewMixin
                   (_selectedTabIndex != _homeFocusTabIndex || isTablet)
                   ? (78.0 + MediaQuery.paddingOf(context).top)
                   : 0.0,
-              fadeContent: !showWallpaper,
               header: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [

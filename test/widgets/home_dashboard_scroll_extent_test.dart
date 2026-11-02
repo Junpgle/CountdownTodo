@@ -61,4 +61,31 @@ void main() {
       showBanner.dispose();
     },
   );
+
+  testWidgets(
+    'pinned header layout wraps body with top-bar fade by default',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: FloatingGlassPinnedHeaderLayout(
+              initialHeaderExtent: 78,
+              header: const SizedBox(height: 78, width: double.infinity),
+              bodyBuilder: (context, headerExtent) {
+                return ListView(
+                  children: const [
+                    SizedBox(height: 200, child: Text('Dashboard scroll body')),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byType(FloatingGlassTopBarContentFade), findsOneWidget);
+      expect(find.text('Dashboard scroll body'), findsOneWidget);
+    },
+  );
 }
