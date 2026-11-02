@@ -420,6 +420,9 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
             menuChildren: [
               _buildFilterMenuHeader(),
               _buildFilterMenuDivider(),
+              _buildFilterSectionLabel('视角预设'),
+              _buildPerspectivePresetsRow(),
+              _buildFilterMenuDivider(),
               _buildFilterSectionLabel('显示内容'),
               _buildCheckableMenuItem('courses', '课表'),
               _buildCheckableMenuItem('fixedSchedules', '固定日程'),
@@ -451,6 +454,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
               final selectedCount = _selectedFilterCount;
               final hasFilterChanges =
                   selectedCount != 7 ||
+                  _weekPerspective != 'all' ||
                   _activeDataViews.contains('hideCrossDay') ||
                   !_collapseFreeTime;
               return IconButton(
@@ -677,71 +681,70 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                                             }
                                           },
                                         )
-                                      : AnimatedSwitcher(
-                                          key: _gridKey,
-                                          duration: const Duration(
-                                            milliseconds: 400,
-                                          ),
-                                          transitionBuilder:
-                                              (child, animation) {
-                                                return Transform.translate(
-                                                  offset: Offset(
-                                                    _dragOffset *
-                                                        (1.0 - animation.value),
-                                                    0,
-                                                  ),
-                                                  child: SlideTransition(
-                                                    position:
-                                                        Tween<Offset>(
-                                                          begin: Offset(
-                                                            _isNextSlide
-                                                                ? 1.0
-                                                                : -1.0,
-                                                            0.0,
-                                                          ),
-                                                          end: Offset.zero,
-                                                        ).animate(
-                                                          CurvedAnimation(
-                                                            parent: animation,
-                                                            curve: Curves
-                                                                .easeOutCubic,
-                                                          ),
-                                                        ),
-                                                    child: FadeTransition(
-                                                      opacity: animation,
-                                                      child: child,
-                                                    ),
-                                                  ),
-                                                );
-                                              },
-                                          child: RepaintBoundary(
-                                            key: ValueKey(
-                                              'WeekView_$_currentWeek',
-                                            ),
-                                            child: LayoutBuilder(
-                                              builder:
-                                                  (context, innerConstraints) {
-                                                    double cellWidth =
-                                                        (innerConstraints
-                                                                .maxWidth -
-                                                            timeColumnWidth) /
-                                                        7;
-                                                    double totalMinutes =
-                                                        (endHour - startHour) *
-                                                            60.0 -
-                                                        _totalHiddenMinutes;
-                                                    double minuteHeight =
-                                                        innerConstraints
-                                                            .maxHeight /
-                                                        totalMinutes;
+                                      : LayoutBuilder(
+                                          builder: (context, innerConstraints) {
+                                            double cellWidth =
+                                                (innerConstraints.maxWidth -
+                                                    timeColumnWidth) /
+                                                7;
+                                            double totalMinutes =
+                                                (endHour - startHour) * 60.0 -
+                                                _totalHiddenMinutes;
+                                            double minuteHeight =
+                                                innerConstraints.maxHeight /
+                                                totalMinutes;
 
-                                                    return _buildGrid(
-                                                      cellWidth,
-                                                      minuteHeight,
+                                            return AnimatedSwitcher(
+                                              key: _gridKey,
+                                              duration: const Duration(
+                                                milliseconds: 400,
+                                              ),
+                                              transitionBuilder:
+                                                  (child, animation) {
+                                                    return Transform.translate(
+                                                      offset: Offset(
+                                                        _dragOffset *
+                                                            (1.0 -
+                                                                animation
+                                                                    .value),
+                                                        0,
+                                                      ),
+                                                      child: SlideTransition(
+                                                        position:
+                                                            Tween<Offset>(
+                                                              begin: Offset(
+                                                                _isNextSlide
+                                                                    ? 1.0
+                                                                    : -1.0,
+                                                                0.0,
+                                                              ),
+                                                              end: Offset.zero,
+                                                            ).animate(
+                                                              CurvedAnimation(
+                                                                parent:
+                                                                    animation,
+                                                                curve: Curves
+                                                                    .easeOutCubic,
+                                                              ),
+                                                            ),
+                                                        child: FadeTransition(
+                                                          opacity: animation,
+                                                          child: child,
+                                                        ),
+                                                      ),
                                                     );
                                                   },
-                                            ),
-                                          ),
+                                              child: RepaintBoundary(
+                                                key: ValueKey(
+                                                  'WeekView_${_currentWeek}_$_weekViewGeneration',
+                                                ),
+                                                child: _buildGrid(
+                                                  cellWidth,
+                                                  minuteHeight,
+                                                ),
+                                              ),
+                                            );
+                                          },
                                         ),
                                 ),
                               ],
