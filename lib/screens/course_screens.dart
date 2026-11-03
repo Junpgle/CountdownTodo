@@ -87,6 +87,9 @@ class _TimelineEvent {
   /// Primary title for stack card preview when aggregated.
   final String title;
 
+  /// Optional subtitle (e.g. room, location, remark) for stack card preview.
+  final String? subtitle;
+
   /// Primary background color for stack card preview when aggregated.
   final Color color;
 
@@ -101,6 +104,7 @@ class _TimelineEvent {
     required this.builder,
     this.sourceItem,
     this.title = '',
+    this.subtitle,
     this.color = Colors.transparent,
   }) : collisionBottom = collisionBottom ?? bottom;
 }

@@ -221,6 +221,17 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
     return '${timeFormat.format(start)} - ${timeFormat.format(end)}';
   }
 
+  String _formatEventDuration(int seconds) {
+    if (seconds <= 0) return '0分';
+    final minutes = (seconds / 60).round();
+    if (minutes < 1) return '$seconds秒';
+    if (minutes < 60) return '$minutes分钟';
+    final h = minutes ~/ 60;
+    final m = minutes % 60;
+    if (m == 0) return '$h小时';
+    return '$h小时$m分';
+  }
+
   Future<void> _openFixedScheduleDetail(
     FixedScheduleItem item, {
     GlobalKey? sourceKey,

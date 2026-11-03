@@ -739,6 +739,177 @@ void main() {
     expect(find.text('下周规划块'), findsOneWidget);
     expect(find.text('下周日内待办'), findsOneWidget);
   });
+
+  testWidgets('周视图长课程与长固定日程卡片根据可用高度动态扩展标题与地点最大行数', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final monday = today.subtract(Duration(days: today.weekday - 1));
+    await StorageService.saveSemesters([
+      SemesterInfo(
+        id: 'card-maxlines-test',
+        name: '测试学期',
+        startDate: monday,
+        isCurrent: true,
+      ),
+    ]);
+    final wednesday = monday.add(const Duration(days: 2));
+    final wedStr =
+        '${wednesday.year}-${wednesday.month.toString().padLeft(2, '0')}-${wednesday.day.toString().padLeft(2, '0')}';
+    final monStr =
+        '${monday.year}-${monday.month.toString().padLeft(2, '0')}-${monday.day.toString().padLeft(2, '0')}';
+    await fixture.db.insert('courses', {
+      'uuid': 'course-long-title',
+      'course_name': '习近平新时代中国特色社会主义思想概论',
+      'teacher_name': '张老师',
+      'room_name': '敬亭学堂 402',
+      'date': wedStr,
+      'weekday': 3,
+      'start_time': 800,
+      'end_time': 935,
+      'week_index': 1,
+      'semester_id': 'card-maxlines-test',
+      'created_at': 1,
+      'updated_at': 1,
+    });
+    final fixedStart = DateTime(monday.year, monday.month, monday.day, 14, 0);
+    final fixedEnd = DateTime(monday.year, monday.month, monday.day, 17, 20);
+    await fixture.db.insert(
+      'fixed_schedules',
+      FixedScheduleItem(
+        id: 'tall-fixed-schedule',
+        title: '算法设计与分析实验',
+        date: monStr,
+        location: '计算中心 B302 实验室',
+        remark: '携带实验报告',
+        startTime: fixedStart.millisecondsSinceEpoch,
+        endTime: fixedEnd.millisecondsSinceEpoch,
+      ).toJson(),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: WeeklyCourseScreen(username: PlanAvailabilityFixture.username),
+      ),
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 600)),
+    );
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(milliseconds: 700));
+
+    final courseTitleText = tester.widget<Text>(
+      find.text('习近平新时代中国特色社会主义思想概论'),
+    );
+    expect(courseTitleText.maxLines, greaterThanOrEqualTo(3));
+    expect(find.text('敬亭学堂 402'), findsOneWidget);
+
+    final fixedTitleText = tester.widget<Text>(find.text('算法设计与分析实验'));
+    final fixedLocationText = tester.widget<Text>(
+      find.text('计算中心 B302 实验室 · 携带实验报告'),
+    );
+    expect(fixedTitleText.maxLines, greaterThanOrEqualTo(3));
+    expect(fixedLocationText.maxLines, greaterThanOrEqualTo(3));
+    expect(find.byIcon(Icons.location_on_rounded), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('周视图番茄钟与时间日志卡片展示持续时间，固定日程展示地点与图标', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final monday = today.subtract(Duration(days: today.weekday - 1));
+    await StorageService.saveSemesters([
+      SemesterInfo(
+        id: 'duration-location-test',
+        name: '测试学期',
+        startDate: monday,
+        isCurrent: true,
+      ),
+    ]);
+    final monStr =
+        '${monday.year}-${monday.month.toString().padLeft(2, '0')}-${monday.day.toString().padLeft(2, '0')}';
+
+    // 1. 固定日程（包含地点）
+    final fixedStart = DateTime(monday.year, monday.month, monday.day, 10, 0);
+    final fixedEnd = DateTime(monday.year, monday.month, monday.day, 11, 0);
+    await fixture.db.insert(
+      'fixed_schedules',
+      FixedScheduleItem(
+        id: 'fixed-loc-item',
+        title: '教研组会',
+        date: monStr,
+        location: '新安学堂 317',
+        startTime: fixedStart.millisecondsSinceEpoch,
+        endTime: fixedEnd.millisecondsSinceEpoch,
+      ).toJson(),
+    );
+
+    // 2. 番茄钟（持续 25 分钟）
+    final pomStart = DateTime(monday.year, monday.month, monday.day, 14, 0);
+    await fixture.db.insert('pomodoro_records', {
+      'uuid': 'pom-25min',
+      'todo_title': '高数刷题',
+      'start_time': pomStart.millisecondsSinceEpoch,
+      'end_time': pomStart.add(const Duration(minutes: 25)).millisecondsSinceEpoch,
+      'planned_duration': 1500,
+      'actual_duration': 1500,
+      'status': 'completed',
+      'tag_uuids': '[]',
+      'created_at': 1,
+      'updated_at': 1,
+    });
+
+    // 3. 时间日志（持续 1 小时 30 分钟）
+    final logStart = DateTime(monday.year, monday.month, monday.day, 16, 0);
+    await fixture.db.insert('time_logs', {
+      'uuid': 'log-90min',
+      'title': '毕业设计开发',
+      'start_time': logStart.millisecondsSinceEpoch,
+      'end_time': logStart.add(const Duration(minutes: 90)).millisecondsSinceEpoch,
+      'device_id': 'fixture',
+      'team_uuid': '',
+      'created_at': 1,
+      'updated_at': 1,
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: WeeklyCourseScreen(username: PlanAvailabilityFixture.username),
+      ),
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 600)),
+    );
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(milliseconds: 700));
+
+    // 验证固定日程展示了地点和图标
+    expect(find.text('教研组会'), findsOneWidget);
+    expect(find.text('新安学堂 317'), findsOneWidget);
+    expect(find.byIcon(Icons.location_on_rounded), findsWidgets);
+
+    // 验证番茄钟展示了 25分钟
+    expect(find.text('高数刷题'), findsOneWidget);
+    expect(find.text('25分钟'), findsOneWidget);
+
+    // 验证时间日志展示了 1小时30分
+    expect(find.text('毕业设计开发'), findsOneWidget);
+    expect(find.text('1小时30分'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 class _RouteObserver extends NavigatorObserver {

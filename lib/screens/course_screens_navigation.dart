@@ -631,6 +631,16 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         sourceDate,
         surface: keyScope,
       );
+      final durationStr =
+          _formatEventDuration(((item.endTime - item.startTime) / 1000).round());
+      final remarkStr = item.remark?.trim();
+      final timeRange =
+          '${_cachedDateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true).toLocal())} - ${_cachedDateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.endTime, isUtc: true).toLocal())}';
+      final subtitleParts = [
+        timeRange,
+        '时长: $durationStr',
+        if (remarkStr != null && remarkStr.isNotEmpty) remarkStr,
+      ];
       return ListTile(
         key: sourceKey,
         leading: Container(
@@ -646,7 +656,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
           style: const TextStyle(fontSize: 15),
         ),
         subtitle: Text(
-          '${_cachedDateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true).toLocal())} - ${_cachedDateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.endTime, isUtc: true).toLocal())}',
+          subtitleParts.join(' · '),
           style: const TextStyle(fontSize: 12),
         ),
         onTap: () => _openSidebarDetailFromRect(
@@ -706,6 +716,10 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         sourceDate,
         surface: keyScope,
       );
+      final title = (item.todoTitle != null && item.todoTitle!.isNotEmpty)
+          ? item.todoTitle!
+          : '番茄专注';
+      final durationStr = _formatEventDuration(item.effectiveDuration);
       return ListTile(
         key: sourceKey,
         leading: Container(
@@ -716,9 +730,9 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
           ),
           child: Icon(Icons.timer, color: color, size: 20),
         ),
-        title: const Text('番茄专注', style: TextStyle(fontSize: 15)),
+        title: Text(title, style: const TextStyle(fontSize: 15)),
         subtitle: Text(
-          '时长: ${item.effectiveDuration ~/ 60} 分钟',
+          '时长: $durationStr',
           style: const TextStyle(fontSize: 12),
         ),
         onTap: () => _openSidebarDetailFromRect(
@@ -736,6 +750,14 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         sourceDate,
         surface: keyScope,
       );
+      final locText = item.location?.trim();
+      final remText = item.remark?.trim();
+      final detailParts = <String>[
+        _fixedScheduleTimeLabel(item),
+        if (locText != null && locText.isNotEmpty) locText,
+        if (remText != null && remText.isNotEmpty && remText != locText)
+          remText,
+      ];
       return ListTile(
         key: sourceKey,
         leading: Container(
@@ -748,7 +770,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         ),
         title: Text(item.title, style: const TextStyle(fontSize: 15)),
         subtitle: Text(
-          _fixedScheduleTimeLabel(item),
+          detailParts.join(' · '),
           style: const TextStyle(fontSize: 12),
         ),
         onTap: () => _openFixedScheduleDetail(

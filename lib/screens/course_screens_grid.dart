@@ -600,11 +600,17 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
             );
           }
           if (fixedSchedules.isNotEmpty) {
-            labels.add(
-              fixedSchedules.length == 1
-                  ? fixedSchedules.first.title
-                  : '${fixedSchedules.length}项固定日程',
-            );
+            String scheduleLabel;
+            if (fixedSchedules.length == 1) {
+              final first = fixedSchedules.first;
+              final loc = first.location?.trim();
+              scheduleLabel = (loc != null && loc.isNotEmpty)
+                  ? '${first.title} ($loc)'
+                  : first.title;
+            } else {
+              scheduleLabel = '${fixedSchedules.length}项固定日程';
+            }
+            labels.add(scheduleLabel);
           }
           if (dayTodos.isNotEmpty) {
             labels.add(
@@ -920,6 +926,106 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
         column[candidateIndex].collisionBottom > event.top;
   }
 
+  int _estimateWrappedLines(String text, double maxWidth, double fontSize) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return 0;
+    final effectiveWidth = maxWidth.clamp(12.0, double.infinity);
+    final charsPerLine = (effectiveWidth / fontSize).floorToDouble().clamp(
+      1.0,
+      100.0,
+    );
+    var totalLines = 0;
+    for (final paragraph in trimmed.split('\n')) {
+      if (paragraph.isEmpty) {
+        totalLines += 1;
+        continue;
+      }
+      var lineUnits = 0.0;
+      for (final rune in paragraph.runes) {
+        lineUnits += rune >= 0x2E80 ? 1.0 : 0.58;
+      }
+      totalLines += (lineUnits / charsPerLine).ceil().clamp(1, 20);
+    }
+    return totalLines.clamp(1, 20);
+  }
+
+  ({int titleMaxLines, int subMaxLines, bool showSubtitle})
+  _computeCardTextLayout({
+    required String title,
+    required String? subtitle,
+    required double width,
+    required double height,
+    required double effectiveHeight,
+    required double titleFontSize,
+    required double subFontSize,
+    double extraReservedHeight = 0.0,
+    double horizontalPadding = 6.0,
+  }) {
+    final double availHeight = (effectiveHeight - 5.0 - extraReservedHeight)
+        .clamp(10.0, double.infinity);
+    final double titleLineHeight = titleFontSize * 1.1;
+    final double subLineHeight = subFontSize * 1.1;
+    const double subTopGap = 1.5;
+
+    final String? cleanSub = subtitle?.trim();
+    final bool hasSub = cleanSub != null && cleanSub.isNotEmpty;
+    final bool showSubtitle =
+        hasSub &&
+        effectiveHeight >= 22.0 &&
+        availHeight >= (titleLineHeight + subTopGap + subLineHeight);
+
+    if (!showSubtitle) {
+      final int titleMaxLines = ((availHeight + 2.0) / titleLineHeight)
+          .floor()
+          .clamp(1, 15);
+      return (
+        titleMaxLines: titleMaxLines,
+        subMaxLines: 0,
+        showSubtitle: false,
+      );
+    }
+
+    final double textWidth = (width - horizontalPadding - 1.0).clamp(
+      10.0,
+      double.infinity,
+    );
+    final int neededTitleLines = _estimateWrappedLines(
+      title,
+      textWidth,
+      titleFontSize,
+    );
+    final int neededSubLines = _estimateWrappedLines(
+      cleanSub,
+      textWidth,
+      subFontSize,
+    );
+
+    final int minSubLines =
+        (availHeight >= 46.0 && neededSubLines >= 2) ? 2 : 1;
+    final double minSubReserve = subTopGap + minSubLines * subLineHeight;
+    final int titleMaxLines =
+        ((availHeight - minSubReserve + 2.0) / titleLineHeight)
+            .floor()
+            .clamp(1, 15);
+    final int actualTitleLines = neededTitleLines < titleMaxLines
+        ? neededTitleLines
+        : titleMaxLines;
+    final double remainingForSub =
+        availHeight - actualTitleLines * titleLineHeight - subTopGap;
+    final int computedSubLines = ((remainingForSub + 2.0) / subLineHeight)
+        .floor()
+        .clamp(1, 15);
+    final int subMaxLines = computedSubLines < minSubLines
+        ? minSubLines
+        : computedSubLines;
+
+    return (
+      titleMaxLines: titleMaxLines,
+      subMaxLines: subMaxLines,
+      showSubtitle: true,
+    );
+  }
+
   void _showAggregatedTimelineSheet(
     BuildContext context,
     int weekday,
@@ -1045,7 +1151,27 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               ? groupSnapshot[1].color
               : baseColor;
           final double titleFontSize = (height * 0.32).clamp(9.0, 10.5);
-          final int maxLines = height < 36.0 ? 1 : 2;
+          final double subFontSize = (height * 0.22).clamp(8.0, 9.0);
+          String? previewSubtitle = firstEvent.subtitle;
+          if (previewSubtitle == null || previewSubtitle.trim().isEmpty) {
+            for (final e in groupSnapshot.skip(1)) {
+              final s = e.subtitle?.trim();
+              if (s != null && s.isNotEmpty) {
+                previewSubtitle = s;
+                break;
+              }
+            }
+          }
+          final textLayout = _computeCardTextLayout(
+            title: firstEvent.title,
+            subtitle: previewSubtitle,
+            width: width > 8 ? width - 2 : width,
+            height: height,
+            effectiveHeight: height > 22 ? height - 2 : height,
+            titleFontSize: titleFontSize,
+            subFontSize: subFontSize,
+            extraReservedHeight: height > 48.0 ? 10.0 : 0.0,
+          );
           final items = [
             for (final e in groupSnapshot)
               if (e.sourceItem != null) e.sourceItem!,
@@ -1101,17 +1227,44 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                             width: 0.5,
                           ),
                         ),
-                        child: Text(
-                          firstEvent.title,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: titleFontSize,
-                            fontWeight: FontWeight.bold,
-                            height: 1.1,
+                        child: SingleChildScrollView(
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                firstEvent.title,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: titleFontSize,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1.1,
+                                ),
+                                maxLines: textLayout.titleMaxLines,
+                                textAlign: TextAlign.left,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if (textLayout.showSubtitle &&
+                                  previewSubtitle != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 1.5),
+                                  child: Text(
+                                    previewSubtitle,
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.84,
+                                      ),
+                                      fontSize: subFontSize,
+                                      height: 1.1,
+                                    ),
+                                    maxLines: textLayout.subMaxLines,
+                                    textAlign: TextAlign.left,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                            ],
                           ),
-                          maxLines: maxLines,
-                          textAlign: TextAlign.left,
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ),
@@ -1451,6 +1604,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               collisionBottom: bottom,
               sourceItem: todo,
               title: todo.title,
+              subtitle: todo.remark,
               color: todoColor,
               builder: (left, width) {
                 final double fontScale = (width / (cellWidth - 2)).clamp(
@@ -1467,19 +1621,20 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 );
                 final bool showTeamBadge =
                     todo.teamUuid != null && height > 56.0;
-                final bool showRemark =
-                    todo.remark != null &&
-                    todo.remark!.isNotEmpty &&
-                    height > 56.0;
-                int todoMaxLines = height < 36.0 ? 1 : 2;
-                if (height > 56.0) {
-                  double reserved = 4.0;
-                  if (showTeamBadge) reserved += teamFontSize + 5.0;
-                  if (showRemark) reserved += 10.0;
-                  todoMaxLines = ((height - reserved) / (titleFontSize + 1.5))
-                      .floor()
-                      .clamp(1, 2);
-                }
+                final textLayout = _computeCardTextLayout(
+                  title: todo.title,
+                  subtitle: todo.remark,
+                  width: width,
+                  height: height,
+                  effectiveHeight: height,
+                  titleFontSize: titleFontSize,
+                  subFontSize: 8.0,
+                  extraReservedHeight: showTeamBadge
+                      ? (teamFontSize + 5.0)
+                      : 0.0,
+                );
+                final bool showRemark = textLayout.showSubtitle;
+                final int todoMaxLines = textLayout.titleMaxLines;
                 final animationDelay = (todoIndex * 0.06).clamp(0.0, 0.5);
                 final animationProgressScale = 1.0 / (1.0 - animationDelay);
 
@@ -1604,7 +1759,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                                 textAlign: TextAlign.left,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              if (showRemark)
+                              if (showRemark && todo.remark != null)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 1.5),
                                   child: Text(
@@ -1616,7 +1771,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                                       fontSize: 8,
                                       height: 1.1,
                                     ),
-                                    maxLines: 1,
+                                    maxLines: textLayout.subMaxLines,
                                     textAlign: TextAlign.left,
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -1674,6 +1829,16 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
             opacity: 0.78,
           );
 
+          final int logDurationSeconds =
+              ((log.endTime - log.startTime) / 1000).round();
+          final String logDurationText =
+              _formatEventDuration(logDurationSeconds);
+          final logRemark = log.remark?.trim();
+          final String effectiveLogSubtitle =
+              (logRemark != null && logRemark.isNotEmpty)
+                  ? '$logDurationText · $logRemark'
+                  : logDurationText;
+
           final logCardKey = _getTimeLogCardKey(log.id, weekday: weekday);
           final logIndex = logIndices[log]!;
 
@@ -1684,6 +1849,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               collisionBottom: bottom,
               sourceItem: log,
               title: logTitle,
+              subtitle: effectiveLogSubtitle,
               color: logColor,
               builder: (left, width) {
                 final double fontScale = (width / (cellWidth - 2)).clamp(
@@ -1698,11 +1864,24 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                   8.0,
                   9.0,
                 );
-                final bool showRemark =
-                    log.remark != null &&
-                    log.remark!.isNotEmpty &&
-                    height > 56.0;
-                final int logMaxLines = height < 36.0 ? 1 : 2;
+                final bool isShortLogCard = height < 22.0;
+                final String displayLogTitle = isShortLogCard
+                    ? '$logTitle · $logDurationText'
+                    : logTitle;
+                final String? displayLogSubtitle = isShortLogCard
+                    ? null
+                    : effectiveLogSubtitle;
+                final textLayout = _computeCardTextLayout(
+                  title: displayLogTitle,
+                  subtitle: displayLogSubtitle,
+                  width: width,
+                  height: height,
+                  effectiveHeight: height,
+                  titleFontSize: titleFontSize,
+                  subFontSize: subFontSize,
+                );
+                final bool showRemark = textLayout.showSubtitle;
+                final int logMaxLines = textLayout.titleMaxLines;
                 final animationDelay = (logIndex * 0.06).clamp(0.0, 0.5);
                 final animationProgressScale = 1.0 / (1.0 - animationDelay);
 
@@ -1764,7 +1943,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                logTitle,
+                                displayLogTitle,
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontSize: titleFontSize,
@@ -1775,11 +1954,11 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                                 textAlign: TextAlign.left,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              if (showRemark)
+                              if (showRemark && displayLogSubtitle != null)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 1.5),
                                   child: Text(
-                                    log.remark!,
+                                    displayLogSubtitle,
                                     style: TextStyle(
                                       color: Colors.white.withValues(
                                         alpha: 0.82,
@@ -1787,7 +1966,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                                       fontSize: subFontSize,
                                       height: 1.1,
                                     ),
-                                    maxLines: 1,
+                                    maxLines: textLayout.subMaxLines,
                                     textAlign: TextAlign.left,
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -1854,6 +2033,11 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           final Color planSubTextColor = Colors.white.withValues(
             alpha: isPlanFinished ? 0.56 : 0.82,
           );
+          final String? rawPlanSubtitle = hasAssociatedPomodoro
+              ? '${(progressRatio * 100).toStringAsFixed(0)}%'
+              : (plan.remark != null && plan.remark!.isNotEmpty
+                    ? plan.remark
+                    : null);
 
           backgroundEventsPerDay[weekday]!.add(
             _TimelineEvent(
@@ -1862,6 +2046,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               collisionBottom: bottom,
               sourceItem: plan,
               title: title,
+              subtitle: rawPlanSubtitle,
               color: planColor,
               builder: (left, width) {
                 final double topOccupied = topInsetForBackgroundCard(
@@ -1885,13 +2070,19 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                   8.0,
                   9.0,
                 );
-                final int planMaxLines = effectiveHeight < 36.0 ? 1 : 2;
-                final String? planSubtitle = effectiveHeight > 44.0 && height > 56.0
-                    ? (hasAssociatedPomodoro
-                          ? '${(progressRatio * 100).toStringAsFixed(0)}%'
-                          : (plan.remark != null && plan.remark!.isNotEmpty
-                                ? plan.remark
-                                : null))
+                final double cardWidth = width > 6 ? width - 6 : width;
+                final textLayout = _computeCardTextLayout(
+                  title: title,
+                  subtitle: rawPlanSubtitle,
+                  width: cardWidth,
+                  height: height,
+                  effectiveHeight: effectiveHeight,
+                  titleFontSize: titleFontSize,
+                  subFontSize: subFontSize,
+                );
+                final int planMaxLines = textLayout.titleMaxLines;
+                final String? planSubtitle = textLayout.showSubtitle
+                    ? rawPlanSubtitle
                     : null;
                 final animationDelay = (planIndex * 0.04).clamp(0.0, 0.45);
                 final animationProgressScale = 1.0 / (1.0 - animationDelay);
@@ -1929,7 +2120,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                                     : FontWeight.normal,
                                 height: 1.1,
                               ),
-                              maxLines: 1,
+                              maxLines: textLayout.subMaxLines,
                               textAlign: TextAlign.left,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -2086,6 +2277,24 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               schedule.id,
               weekday,
             );
+            final locText = schedule.location?.trim();
+            final remText = schedule.remark?.trim();
+            final detailParts = <String>[
+              if (locText != null && locText.isNotEmpty) locText,
+              if (remText != null && remText.isNotEmpty && remText != locText)
+                remText,
+            ];
+            final String? location = detailParts.isEmpty
+                ? null
+                : detailParts.join(' · ');
+            final bool isShortFixedCard = height < 24.0;
+            final String displayFixedTitle =
+                isShortFixedCard && location != null
+                    ? '${schedule.title} · $location'
+                    : schedule.title;
+            final String? displayFixedLocation = isShortFixedCard
+                ? null
+                : location;
             backgroundEventsPerDay[weekday]!.add(
               _TimelineEvent(
                 top: top,
@@ -2093,6 +2302,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 collisionBottom: bottom,
                 sourceItem: schedule,
                 title: schedule.title,
+                subtitle: location,
                 color: fixedColor,
                 builder: (left, width) {
                   final double topOccupied = topInsetForBackgroundCard(
@@ -2116,12 +2326,15 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                     8.0,
                     9.0,
                   );
-                  final String? location =
-                      schedule.location?.trim().isNotEmpty == true
-                      ? schedule.location!.trim()
-                      : (schedule.remark?.trim().isNotEmpty == true
-                            ? schedule.remark!.trim()
-                            : null);
+                  final textLayout = _computeCardTextLayout(
+                    title: displayFixedTitle,
+                    subtitle: displayFixedLocation,
+                    width: width,
+                    height: height,
+                    effectiveHeight: effectiveHeight,
+                    titleFontSize: titleSize,
+                    subFontSize: subFontSize,
+                  );
                   return Positioned(
                     top: top + 1,
                     left: left,
@@ -2156,8 +2369,8 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                schedule.title,
-                                maxLines: effectiveHeight < 36.0 ? 1 : 2,
+                                displayFixedTitle,
+                                maxLines: textLayout.titleMaxLines,
                                 overflow: TextOverflow.ellipsis,
                                 textAlign: TextAlign.left,
                                 style: TextStyle(
@@ -2167,23 +2380,47 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                                   height: 1.1,
                                 ),
                               ),
-                              if (effectiveHeight > 44.0 &&
-                                  height > 56.0 &&
-                                  location != null)
+                              if (textLayout.showSubtitle &&
+                                  displayFixedLocation != null)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 1.5),
-                                  child: Text(
-                                    location,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    textAlign: TextAlign.left,
-                                    style: TextStyle(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.82,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      if (locText != null &&
+                                          locText.isNotEmpty) ...[
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            top: 0.5,
+                                            right: 1.5,
+                                          ),
+                                          child: Icon(
+                                            Icons.location_on_rounded,
+                                            size: subFontSize * 0.95,
+                                            color: Colors.white.withValues(
+                                              alpha: 0.85,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                      Expanded(
+                                        child: Text(
+                                          displayFixedLocation,
+                                          maxLines: textLayout.subMaxLines,
+                                          overflow: TextOverflow.ellipsis,
+                                          textAlign: TextAlign.left,
+                                          style: TextStyle(
+                                            color: Colors.white.withValues(
+                                              alpha: 0.85,
+                                            ),
+                                            fontSize: subFontSize,
+                                            height: 1.1,
+                                          ),
+                                        ),
                                       ),
-                                      fontSize: subFontSize,
-                                      height: 1.1,
-                                    ),
+                                    ],
                                   ),
                                 ),
                             ],
@@ -2310,6 +2547,25 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 ? pomTagName
                 : null;
 
+            final int segDurationSeconds = segments.length == 1 &&
+                    record.effectiveDuration > 0
+                ? record.effectiveDuration
+                : ((end.millisecondsSinceEpoch - start.millisecondsSinceEpoch) /
+                        1000)
+                    .round();
+            final String durationText =
+                _formatEventDuration(segDurationSeconds);
+            final String effectivePomSubtitle = pomSubtitle != null
+                ? '$pomSubtitle · $durationText'
+                : durationText;
+            final bool isShortPomCard = height < 22.0;
+            final String displayPomTitle = isShortPomCard
+                ? '$pomTitle · $durationText'
+                : pomTitle;
+            final String? displayPomSubtitle = isShortPomCard
+                ? null
+                : effectivePomSubtitle;
+
             final pomCardKey = _getPomodoroCardKey(
               '${record.uuid}_${segmentIndex++}',
               weekday: weekday,
@@ -2323,6 +2579,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 collisionBottom: bottom,
                 sourceItem: record,
                 title: pomTitle,
+                subtitle: effectivePomSubtitle,
                 color: pomColor,
                 builder: (left, width) {
                   final double fontScale = (width / (cellWidth - 2)).clamp(
@@ -2335,7 +2592,16 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                     8.0,
                     9.0,
                   );
-                  final int pomMaxLines = height < 36.0 ? 1 : 2;
+                  final textLayout = _computeCardTextLayout(
+                    title: displayPomTitle,
+                    subtitle: displayPomSubtitle,
+                    width: width,
+                    height: height,
+                    effectiveHeight: height,
+                    titleFontSize: titleFontSize,
+                    subFontSize: subFontSize,
+                  );
+                  final int pomMaxLines = textLayout.titleMaxLines;
                   final animationDelay = (pomIndex * 0.06).clamp(0.0, 0.5);
                   final animationProgressScale = 1.0 / (1.0 - animationDelay);
 
@@ -2397,7 +2663,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
-                                  pomTitle,
+                                  displayPomTitle,
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontSize: titleFontSize,
@@ -2408,11 +2674,12 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                                   textAlign: TextAlign.left,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                                if (height > 56.0 && pomSubtitle != null)
+                                if (textLayout.showSubtitle &&
+                                    displayPomSubtitle != null)
                                   Padding(
                                     padding: const EdgeInsets.only(top: 1.5),
                                     child: Text(
-                                      pomSubtitle,
+                                      displayPomSubtitle,
                                       textAlign: TextAlign.left,
                                       style: TextStyle(
                                         color: Colors.white.withValues(
@@ -2421,7 +2688,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                                         fontSize: subFontSize,
                                         height: 1.1,
                                       ),
-                                      maxLines: 1,
+                                      maxLines: textLayout.subMaxLines,
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
@@ -2494,6 +2761,10 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               _cachedDateFormat('yyyy-MM-dd').format(dayStart),
               surface: 'week-timed',
             );
+            final String? location =
+                event.location?.trim().isNotEmpty == true
+                ? event.location!.trim()
+                : null;
 
             backgroundEventsPerDay[weekday]!.add(
               _TimelineEvent(
@@ -2502,6 +2773,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 collisionBottom: bottom,
                 sourceItem: event,
                 title: event.title,
+                subtitle: location,
                 color: color,
                 builder: (left, width) {
                   final double topOccupied = topInsetForBackgroundCard(
@@ -2525,10 +2797,15 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                     8.0,
                     9.0,
                   );
-                  final String? location =
-                      event.location?.trim().isNotEmpty == true
-                      ? event.location!.trim()
-                      : null;
+                  final textLayout = _computeCardTextLayout(
+                    title: event.title,
+                    subtitle: location,
+                    width: width,
+                    height: height,
+                    effectiveHeight: effectiveHeight,
+                    titleFontSize: titleSize,
+                    subFontSize: subFontSize,
+                  );
                   return Positioned(
                     top: top + 1,
                     left: left,
@@ -2562,7 +2839,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                             children: [
                               Text(
                                 event.title,
-                                maxLines: effectiveHeight < 36.0 ? 1 : 2,
+                                maxLines: textLayout.titleMaxLines,
                                 overflow: TextOverflow.ellipsis,
                                 textAlign: TextAlign.left,
                                 style: TextStyle(
@@ -2572,14 +2849,12 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                                   height: 1.1,
                                 ),
                               ),
-                              if (effectiveHeight > 44.0 &&
-                                  height > 56.0 &&
-                                  location != null)
+                              if (textLayout.showSubtitle && location != null)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 1.5),
                                   child: Text(
                                     location,
-                                    maxLines: 1,
+                                    maxLines: textLayout.subMaxLines,
                                     overflow: TextOverflow.ellipsis,
                                     textAlign: TextAlign.left,
                                     style: TextStyle(
@@ -2638,6 +2913,9 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           courseUuid: course.uuid,
         );
         final courseIndex = courseIndices[course]!;
+        final String? courseSubtitle = course.roomName.trim().isNotEmpty
+            ? course.roomName.trim()
+            : null;
 
         backgroundEventsPerDay[course.weekday]!.add(
           _TimelineEvent(
@@ -2645,6 +2923,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
             bottom: top + height,
             sourceItem: course,
             title: course.courseName,
+            subtitle: courseSubtitle,
             color: bgColor,
             builder: (left, width) {
               final double topOccupied = topInsetForBackgroundCard(
@@ -2668,11 +2947,18 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 8.0,
                 9.0,
               );
+              final textLayout = _computeCardTextLayout(
+                title: course.courseName,
+                subtitle: courseSubtitle,
+                width: width,
+                height: height,
+                effectiveHeight: effectiveHeight,
+                titleFontSize: titleFontSize,
+                subFontSize: subFontSize,
+              );
               final bool showRoom =
-                  course.roomName.isNotEmpty &&
-                  effectiveHeight > 44.0 &&
-                  height > 56.0;
-              final int courseMaxLines = effectiveHeight < 36.0 ? 1 : 2;
+                  textLayout.showSubtitle && courseSubtitle != null;
+              final int courseMaxLines = textLayout.titleMaxLines;
               final animationDelay = (courseIndex * 0.06).clamp(0.0, 0.5);
               final animationProgressScale = 1.0 / (1.0 - animationDelay);
 
@@ -2737,38 +3023,41 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                                 ),
                               ],
                       ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            course.courseName,
-                            style: TextStyle(
-                              color: courseTitleColor,
-                              fontSize: titleFontSize,
-                              fontWeight: FontWeight.bold,
-                              height: 1.15,
-                            ),
-                            maxLines: courseMaxLines,
-                            textAlign: TextAlign.left,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          if (showRoom) ...[
-                            const SizedBox(height: 2),
-                            Flexible(
-                              child: Text(
-                                course.roomName,
-                                style: TextStyle(
-                                  color: courseSubColor,
-                                  fontSize: subFontSize,
-                                  height: 1.1,
-                                ),
-                                overflow: TextOverflow.clip,
-                                textAlign: TextAlign.left,
+                      child: SingleChildScrollView(
+                        physics: const NeverScrollableScrollPhysics(),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              course.courseName,
+                              style: TextStyle(
+                                color: courseTitleColor,
+                                fontSize: titleFontSize,
+                                fontWeight: FontWeight.bold,
+                                height: 1.1,
                               ),
+                              maxLines: courseMaxLines,
+                              textAlign: TextAlign.left,
+                              overflow: TextOverflow.ellipsis,
                             ),
+                            if (showRoom)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 1.5),
+                                child: Text(
+                                  courseSubtitle,
+                                  style: TextStyle(
+                                    color: courseSubColor,
+                                    fontSize: subFontSize,
+                                    height: 1.1,
+                                  ),
+                                  maxLines: textLayout.subMaxLines,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.left,
+                                ),
+                              ),
                           ],
-                        ],
+                        ),
                       ),
                     ),
                   ),
