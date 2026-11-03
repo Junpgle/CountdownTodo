@@ -1768,21 +1768,18 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       ..sort((a, b) => b.useCount.compareTo(a.useCount));
     final displayTemplates = activeTemplates.take(4).toList();
 
+    final hasBudgetAction = widget.onOpenBudgets != null;
+    final hasRecurringAction = widget.onOpenFutureCommitments != null;
+    if (!hasBudgetAction && !hasRecurringAction && displayTemplates.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       physics: const BouncingScrollPhysics(),
       child: Row(
         children: [
-          _buildActionPill(
-            context,
-            colorScheme,
-            icon: Icons.add_circle_outline_rounded,
-            label: '记一笔',
-            isPrimary: true,
-            onTap: widget.onAdd,
-          ),
-          const SizedBox(width: 8),
-          if (widget.onOpenBudgets != null) ...[
+          if (hasBudgetAction) ...[
             _buildActionPill(
               context,
               colorScheme,
@@ -1792,17 +1789,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
             ),
             const SizedBox(width: 8),
           ],
-          if (widget.onOpenTextRecognition != null) ...[
-            _buildActionPill(
-              context,
-              colorScheme,
-              icon: Icons.document_scanner_outlined,
-              label: '智能识单',
-              onTap: widget.onOpenTextRecognition!,
-            ),
-            const SizedBox(width: 8),
-          ],
-          if (widget.onOpenFutureCommitments != null) ...[
+          if (hasRecurringAction) ...[
             _buildActionPill(
               context,
               colorScheme,

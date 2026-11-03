@@ -318,9 +318,11 @@ void main() {
       FinanceHomeScreen(username: 'default', clock: () => clockNow),
     );
 
-    // 1. 快捷动作栏：记一笔、预算管理、自定义模板
-    expect(find.text('记一笔'), findsOneWidget);
+    // 1. 快捷动作栏：预算管理、周期收支、自定义模板（已移除重复的记一笔和智能识单）
+    expect(find.text('记一笔'), findsNothing);
+    expect(find.text('智能识单'), findsNothing);
     expect(find.text('预算管理'), findsOneWidget);
+    expect(find.text('周期收支'), findsOneWidget);
     expect(find.textContaining('通勤打车'), findsOneWidget);
 
     // 2. 预算看板
