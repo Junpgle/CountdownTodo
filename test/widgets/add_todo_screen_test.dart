@@ -36,6 +36,10 @@ void main() {
 
     expect(find.byType(AddTodoScreen), findsOneWidget);
     expect(find.text('团队会议'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('manual-schedule-location')),
+      findsOneWidget,
+    );
     expect(find.byKey(const ValueKey('fixed-schedule-date')), findsOneWidget);
     expect(
       find.byKey(const ValueKey('fixed-schedule-start-time')),
@@ -62,11 +66,22 @@ void main() {
     expect(find.text('结束时间待定'), findsNothing);
     expect(find.text('某天内完成'), findsNothing);
 
+    await tester.enterText(
+      find.byKey(const ValueKey('manual-schedule-location')),
+      '新安学堂318',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('manual-todo-remark')),
+      '带实验报告',
+    );
+
     await tester.tap(find.text('完成'));
     await tester.pump();
 
     expect(savedSchedule, isNotNull);
     expect(savedSchedule!.title, '团队会议');
+    expect(savedSchedule!.location, '新安学堂318');
+    expect(savedSchedule!.remark, '带实验报告');
     expect(savedSchedule!.startTime, isNotNull);
     expect(savedSchedule!.endTime, isNotNull);
     expect(savedSchedule!.source, FixedScheduleSource.manual);

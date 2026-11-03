@@ -301,8 +301,12 @@ class _TodoRelatedFixedSchedulesSectionState
 
   String _occurrenceDetails(FixedScheduleItem item) {
     final location = item.location?.trim();
+    final remark = item.remark?.trim();
     final details = <String>[_dateTimeLabel(item), _phaseLabel(item)];
     if (location != null && location.isNotEmpty) details.add(location);
+    if (remark != null && remark.isNotEmpty && remark != location) {
+      details.add(remark);
+    }
     return details.join(' · ');
   }
 

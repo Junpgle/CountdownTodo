@@ -233,4 +233,22 @@ void main() {
       expect(data.plans!.card.rows, hasLength(5));
     },
   );
+  test('fixed schedule detail combines location and remark when present', () async {
+    final data = await read(
+      repository(
+        fixed: (_, _) async => [
+          FixedScheduleItem(
+            id: 'f-both',
+            title: '学术讲座',
+            date: '2026-10-08',
+            startTime: at(14).millisecondsSinceEpoch,
+            endTime: at(16).millisecondsSinceEpoch,
+            location: '敬亭学堂224',
+            remark: '提前10分钟签到',
+          ),
+        ],
+      ),
+    );
+    expect(data.visible.single.detail, '敬亭学堂224 · 提前10分钟签到');
+  });
 }

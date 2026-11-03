@@ -107,6 +107,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   static final RegExp _cjkKeywordPattern = RegExp(r'[一-鿿]+');
 
   final TextEditingController _titleCtrl = TextEditingController();
+  final TextEditingController _locationCtrl = TextEditingController();
   final TextEditingController _remarkCtrl = TextEditingController();
   final TextEditingController _aiInputCtrl = TextEditingController();
   final TextEditingController _customDaysCtrl = TextEditingController();
@@ -203,6 +204,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
   String _draftSnapshot() => jsonEncode({
     'title': _titleCtrl.text,
+    'location': _locationCtrl.text,
     'remark': _remarkCtrl.text,
     'aiInput': _aiInputCtrl.text,
     'createdAt': _createdAt.toIso8601String(),
@@ -228,6 +230,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
   bool get _hasUnsavedDraft =>
       _titleCtrl.text.isNotEmpty ||
+      _locationCtrl.text.isNotEmpty ||
       _remarkCtrl.text.isNotEmpty ||
       _aiInputCtrl.text.isNotEmpty ||
       _parsedResults.isNotEmpty ||
@@ -477,6 +480,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     _remarkCtrl.removeListener(_onTitleChanged);
     _estimationDebounce?.cancel();
     _titleCtrl.dispose();
+    _locationCtrl.dispose();
     _remarkCtrl.dispose();
     _aiInputCtrl.dispose();
     _customDaysCtrl.dispose();
@@ -678,12 +682,27 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   }
 
   void _applyParsedResult(ParsedTodoResult result) {
+    final isScheduleResult =
+        widget.relatedFixedScheduleContext == null &&
+        widget.onFixedScheduleAdded != null &&
+        _captureIntentForParsed(result) == CaptureIntentKind.fixedSchedule;
     setState(() {
+      if (isScheduleResult) {
+        _manualCaptureKind = _ManualCaptureKind.fixedSchedule;
+      }
       _titleCtrl.text = result.title;
-      _remarkCtrl.text = result.remark ?? "";
+      _locationCtrl.text = result.location ?? "";
+      _remarkCtrl.text = _manualCaptureKind == _ManualCaptureKind.fixedSchedule
+          ? (result.remark ?? "")
+          : (result.effectiveTodoRemark ?? "");
       _dueDate = null;
       if (result.startTime != null) {
         _createdAt = result.startTime!;
+        _scheduleDate = DateTime(
+          result.startTime!.year,
+          result.startTime!.month,
+          result.startTime!.day,
+        );
         if (result.isAllDay) {
           _createdAt = DateTime(
             _createdAt.year,
@@ -692,6 +711,16 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             0,
             0,
           );
+          _scheduleTimeTbd = true;
+        } else {
+          _scheduleTimeTbd = false;
+          _scheduleStartTime = TimeOfDay.fromDateTime(result.startTime!);
+          if (result.endTime != null) {
+            _scheduleEndTime = TimeOfDay.fromDateTime(result.endTime!);
+            _scheduleEndTimeTbd = false;
+          } else {
+            _scheduleEndTimeTbd = true;
+          }
         }
       }
       if (result.endTime != null) {
@@ -987,6 +1016,13 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         _estimationResult = null;
         _suggestedDueDate = null;
         _classificationSuggestion = null;
+        if (_locationCtrl.text.trim().isNotEmpty &&
+            _remarkCtrl.text.trim() == _locationCtrl.text.trim()) {
+          _remarkCtrl.clear();
+        }
+      } else if (_locationCtrl.text.trim().isNotEmpty &&
+          _remarkCtrl.text.trim().isEmpty) {
+        _remarkCtrl.text = _locationCtrl.text.trim();
       }
     });
     if (next == _ManualCaptureKind.todo) _onTitleChanged();
@@ -1210,6 +1246,9 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
     final parsed = ParsedTodoResult(
       title: _titleCtrl.text.trim(),
+      location: _locationCtrl.text.trim().isEmpty
+          ? null
+          : _locationCtrl.text.trim(),
       remark: _remarkCtrl.text.trim().isEmpty ? null : _remarkCtrl.text.trim(),
       isAllDay: _scheduleTimeTbd,
       startTime: _scheduleTimeTbd ? _scheduleDate : start,
@@ -1271,14 +1310,23 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             currentParsed?.endTime != null ||
             _isAllDay ||
             _dueDate != null;
+        final manualLocation = _locationCtrl.text.trim().isEmpty
+            ? null
+            : _locationCtrl.text.trim();
+        final resolvedLocation = manualLocation ?? currentParsed?.location;
+        final manualRemark = _remarkCtrl.text.trim();
+        final resolvedRemark = manualRemark.isEmpty
+            ? null
+            : (resolvedLocation != null &&
+                      manualRemark == resolvedLocation.trim()
+                  ? currentParsed?.remark
+                  : manualRemark);
         final editedParsed = currentParsed == null
             ? null
             : ParsedTodoResult(
                 title: _titleCtrl.text.trim(),
-                remark: _remarkCtrl.text.trim().isEmpty
-                    ? null
-                    : _remarkCtrl.text.trim(),
-                location: currentParsed.location,
+                remark: resolvedRemark,
+                location: resolvedLocation,
                 isAllDay: _isAllDay,
                 startTime: hasParsedDate ? _createdAt : null,
                 endTime: _dueDate,
@@ -1481,18 +1529,26 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         (parsedResult == null
             ? FixedScheduleSource.manual
             : FixedScheduleSource.ai);
+    final resolvedLocation = _locationCtrl.text.trim().isNotEmpty
+        ? _locationCtrl.text.trim()
+        : (parsed.location?.trim().isNotEmpty == true
+              ? parsed.location!.trim()
+              : null);
+    final manualRemark = _remarkCtrl.text.trim();
+    final resolvedRemark = manualRemark.isNotEmpty &&
+            manualRemark != resolvedLocation
+        ? manualRemark
+        : (parsed.remark?.trim().isNotEmpty == true
+              ? parsed.remark!.trim()
+              : null);
     final item = FixedScheduleItem(
       title: parsed.title.trim().isEmpty ? _titleCtrl.text : parsed.title,
       date: _cachedDateFormat('yyyy-MM-dd').format(dateSource),
       startTime: start?.millisecondsSinceEpoch,
       endTime: end?.millisecondsSinceEpoch,
       source: resolvedSource,
-      location: parsed.location,
-      remark: _remarkCtrl.text.trim().isNotEmpty
-          ? _remarkCtrl.text.trim()
-          : (parsed.remark?.trim().isNotEmpty == true
-                ? parsed.remark!.trim()
-                : null),
+      location: resolvedLocation,
+      remark: resolvedRemark,
       reminderMinutes:
           reminderMinutes < 0 ||
               (resolvedSource == FixedScheduleSource.manual &&
@@ -1633,7 +1689,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         }
         final classification = await TodoClassificationService.recommendForText(
           title: r.title,
-          remark: r.remark ?? '',
+          remark: r.effectiveTodoRemark ?? '',
           groups: _localTodoGroups,
           categoryReminderDefaults: _categoryReminderDefaults,
           dueDate: parsedDueDate,
@@ -1650,7 +1706,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             recurrenceEndDate: r.recurrenceEndDate,
             dueDate: normalizedTime.due,
             createdDate: normalizedTime.start?.millisecondsSinceEpoch,
-            remark: r.remark,
+            remark: r.effectiveTodoRemark,
             originalText: _currentOriginalText,
             imagePath: persistentImagePath,
             groupId: suggestedGroupId,
@@ -2526,8 +2582,43 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                       if (_manualCaptureKind == _ManualCaptureKind.todo &&
                           widget.relatedFixedScheduleContext == null)
                         _buildAISuggestionCard(),
+                      if (_manualCaptureKind ==
+                          _ManualCaptureKind.fixedSchedule) ...[
+                        const Divider(height: 24),
+                        TextField(
+                          key: const ValueKey('manual-schedule-location'),
+                          controller: _locationCtrl,
+                          style: const TextStyle(fontSize: 15),
+                          decoration: InputDecoration(
+                            prefixIcon: Icon(
+                              Icons.location_on_outlined,
+                              size: 20,
+                              color: colors.onSurfaceVariant,
+                            ),
+                            prefixIconConstraints: const BoxConstraints(
+                              minWidth: 28,
+                              minHeight: 24,
+                            ),
+                            hintText: "地点 (可选)",
+                            filled: false,
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            disabledBorder: InputBorder.none,
+                            isDense: true,
+                            isCollapsed: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 4,
+                            ),
+                            hintStyle: TextStyle(
+                              color: Colors.grey.withValues(alpha: 0.8),
+                            ),
+                          ),
+                        ),
+                      ],
                       const Divider(height: 24),
                       TextField(
+                        key: const ValueKey('manual-todo-remark'),
                         controller: _remarkCtrl,
                         style: const TextStyle(fontSize: 15),
                         maxLines: 4,
@@ -3495,6 +3586,24 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                         '内容',
                         _parsedResults[_currentParseIndex].title,
                       ),
+                      if (_parsedResults[_currentParseIndex]
+                              .location
+                              ?.trim()
+                              .isNotEmpty ==
+                          true)
+                        _buildParseResultRow(
+                          '地点',
+                          _parsedResults[_currentParseIndex].location!.trim(),
+                        ),
+                      if (_parsedResults[_currentParseIndex]
+                              .remark
+                              ?.trim()
+                              .isNotEmpty ==
+                          true)
+                        _buildParseResultRow(
+                          '备注',
+                          _parsedResults[_currentParseIndex].remark!.trim(),
+                        ),
                       _buildParseResultRow(
                         '时间',
                         _parsedTimeLabel(_parsedResults[_currentParseIndex]),

@@ -440,7 +440,11 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     if (_currentIndex >= _allTodos.length) return;
     final todo = _allTodos[_currentIndex];
     final titleCtrl = TextEditingController(text: todo.title);
+    final locationCtrl = TextEditingController(text: todo.location ?? '');
     final remarkCtrl = TextEditingController(text: todo.remark ?? '');
+    final showLocationField =
+        _captureIntentFor(todo) == CaptureIntentKind.fixedSchedule ||
+        (todo.location?.trim().isNotEmpty ?? false);
     bool isAllDay = todo.isAllDay;
     DateTime createdAt = todo.startTime ?? DateTime.now();
     DateTime? dueDate = todo.endTime;
@@ -473,6 +477,18 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                       ),
                     ),
                   ),
+                  if (showLocationField) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: locationCtrl,
+                      decoration: InputDecoration(
+                        labelText: '地点 (可选)',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   TextField(
                     controller: remarkCtrl,
@@ -812,7 +828,11 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                       localTodoId: todo.localTodoId,
                       title: titleCtrl.text,
                       remark: remarkCtrl.text.isEmpty ? null : remarkCtrl.text,
-                      location: todo.location,
+                      location: showLocationField
+                          ? (locationCtrl.text.trim().isEmpty
+                                ? null
+                                : locationCtrl.text.trim())
+                          : todo.location,
                       isAllDay: isAllDay,
                       startTime: createdAt,
                       endTime: dueDate,
