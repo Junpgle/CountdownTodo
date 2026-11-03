@@ -1343,6 +1343,8 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     List<Widget> children = [];
     final colorScheme = Theme.of(context).colorScheme;
     final focusColor = colorScheme.cdtFocus;
+    final bool isWideScreen =
+        cellWidth >= 80.0 || MediaQuery.sizeOf(context).width > 900;
     bool isDark = colorScheme.brightness == Brightness.dark;
     Color lineColor = isDark ? Colors.white10 : Colors.black12;
     Color textColor = isDark ? Colors.white70 : Colors.black87;
@@ -1836,7 +1838,9 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           final logRemark = log.remark?.trim();
           final String effectiveLogSubtitle =
               (logRemark != null && logRemark.isNotEmpty)
-                  ? '$logDurationText · $logRemark'
+                  ? (isWideScreen
+                      ? '$logDurationText · $logRemark'
+                      : '$logDurationText $logRemark')
                   : logDurationText;
 
           final logCardKey = _getTimeLogCardKey(log.id, weekday: weekday);
@@ -1866,7 +1870,9 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 );
                 final bool isShortLogCard = height < 22.0;
                 final String displayLogTitle = isShortLogCard
-                    ? '$logTitle · $logDurationText'
+                    ? (isWideScreen
+                        ? '$logTitle · $logDurationText'
+                        : '$logTitle $logDurationText')
                     : logTitle;
                 final String? displayLogSubtitle = isShortLogCard
                     ? null
@@ -2554,13 +2560,17 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                         1000)
                     .round();
             final String durationText =
-                _formatEventDuration(segDurationSeconds);
+                _formatPomodoroDuration(segDurationSeconds);
             final String effectivePomSubtitle = pomSubtitle != null
-                ? '$pomSubtitle · $durationText'
+                ? (isWideScreen
+                    ? '$pomSubtitle · $durationText'
+                    : '$pomSubtitle $durationText')
                 : durationText;
             final bool isShortPomCard = height < 22.0;
             final String displayPomTitle = isShortPomCard
-                ? '$pomTitle · $durationText'
+                ? (isWideScreen
+                    ? '$pomTitle · $durationText'
+                    : '$pomTitle $durationText')
                 : pomTitle;
             final String? displayPomSubtitle = isShortPomCard
                 ? null

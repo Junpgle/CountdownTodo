@@ -350,7 +350,7 @@ void main() {
       'title': 'Coding',
       'start_time': logStart.millisecondsSinceEpoch,
       'end_time': logStart
-          .add(const Duration(minutes: 45))
+          .add(const Duration(minutes: 30))
           .millisecondsSinceEpoch,
       'device_id': 'fixture',
       'team_uuid': '',
@@ -375,7 +375,8 @@ void main() {
 
     final logTitle = tester.widget<Text>(find.text('Coding'));
     expect(logTitle.textAlign, TextAlign.left);
-    expect(find.text('14:00-14:45'), findsNothing);
+    expect(find.text('30min'), findsOneWidget);
+    expect(find.text('14:00-14:30'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -901,13 +902,89 @@ void main() {
     expect(find.text('新安学堂 317'), findsOneWidget);
     expect(find.byIcon(Icons.location_on_rounded), findsWidgets);
 
-    // 验证番茄钟展示了 25分钟
+    // 验证番茄钟展示了 25min（周视图专注时长简写）
     expect(find.text('高数刷题'), findsOneWidget);
-    expect(find.text('25分钟'), findsOneWidget);
+    expect(find.text('25min'), findsOneWidget);
 
-    // 验证时间日志展示了 1小时30分
+    // 验证时间日志展示了 1h30min
     expect(find.text('毕业设计开发'), findsOneWidget);
-    expect(find.text('1小时30分'), findsOneWidget);
+    expect(find.text('1h30min'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('周视图电脑宽屏设备下番茄钟与时间日志副标题使用·连接', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1200, 844);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final monday = today.subtract(Duration(days: today.weekday - 1));
+    await StorageService.saveSemesters([
+      SemesterInfo(
+        id: 'wide-screen-duration-test',
+        name: '测试学期',
+        startDate: monday,
+        isCurrent: true,
+      ),
+    ]);
+
+    await fixture.db.insert('pomodoro_tags', {
+      'uuid': 'tag-wide',
+      'name': 'Reading',
+      'color': '#123456',
+      'created_at': 1,
+      'updated_at': 1,
+    });
+
+    final pomStart = DateTime(monday.year, monday.month, monday.day, 14, 0);
+    await fixture.db.insert('pomodoro_records', {
+      'uuid': 'pom-wide',
+      'todo_title': '申论',
+      'start_time': pomStart.millisecondsSinceEpoch,
+      'end_time': pomStart.add(const Duration(minutes: 59)).millisecondsSinceEpoch,
+      'planned_duration': 3540,
+      'actual_duration': 3540,
+      'status': 'completed',
+      'tag_uuids': '["tag-wide"]',
+      'created_at': 1,
+      'updated_at': 1,
+    });
+
+    final logStart = DateTime(monday.year, monday.month, monday.day, 16, 0);
+    await fixture.db.insert('time_logs', {
+      'uuid': 'log-wide',
+      'title': '毕业设计开发',
+      'remark': '答辩准备',
+      'start_time': logStart.millisecondsSinceEpoch,
+      'end_time': logStart.add(const Duration(minutes: 90)).millisecondsSinceEpoch,
+      'device_id': 'fixture',
+      'team_uuid': '',
+      'created_at': 1,
+      'updated_at': 1,
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: WeeklyCourseScreen(username: PlanAvailabilityFixture.username),
+      ),
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 600)),
+    );
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(milliseconds: 700));
+
+    // 验证宽屏下番茄钟使用 · 连接标签与时长
+    expect(find.text('申论'), findsOneWidget);
+    expect(find.text('Reading · 59min'), findsOneWidget);
+
+    // 验证宽屏下时间日志使用 · 连接时长与备注
+    expect(find.text('毕业设计开发'), findsOneWidget);
+    expect(find.text('1h30min · 答辩准备'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

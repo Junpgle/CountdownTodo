@@ -719,7 +719,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       final title = (item.todoTitle != null && item.todoTitle!.isNotEmpty)
           ? item.todoTitle!
           : '番茄专注';
-      final durationStr = _formatEventDuration(item.effectiveDuration);
+      final durationStr = _formatPomodoroDuration(item.effectiveDuration);
       return ListTile(
         key: sourceKey,
         leading: Container(

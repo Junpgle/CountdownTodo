@@ -37,4 +37,18 @@ void main() {
     expect(chinese, isNot(same(english)));
     expect(AppTimeFormats.dateFormatter('EEEE'), same(chinese));
   });
+
+  test('formatDurationHMin formats duration as xhxmin / xh / xmin / xs / 0min', () {
+    expect(formatDurationHMin(0), '0min');
+    expect(formatDurationHMin(-10), '0min');
+    expect(formatDurationHMin(15), '15s');
+    expect(formatDurationHMin(59), '59s');
+    expect(formatDurationHMin(60), '1min');
+    expect(formatDurationHMin(1500), '25min');
+    expect(formatDurationHMin(3600), '1h');
+    expect(formatDurationHMin(3660), '1h1min');
+    expect(formatDurationHMin(5400), '1h30min');
+    expect(formatDurationHMin(7200), '2h');
+    expect(formatDurationHMin(7500), '2h5min');
+  });
 }

@@ -54,6 +54,18 @@ String formatDurationEnglish(int totalSeconds) {
   return '${m}m ${totalSeconds % 60}s';
 }
 
+/// 简写时长格式（输入秒）：1h30min / 1h / 25min / 45s / 0min
+String formatDurationHMin(int totalSeconds) {
+  if (totalSeconds <= 0) return '0min';
+  if (totalSeconds < 60) return '${totalSeconds}s';
+  final minutes = (totalSeconds / 60).round();
+  final h = minutes ~/ 60;
+  final m = minutes % 60;
+  if (h > 0 && m > 0) return '${h}h${m}min';
+  if (h > 0) return '${h}h';
+  return '${m}min';
+}
+
 /// 倒计时显示格式（输入秒）：>60s 显示 25'，<=60s 显示 MM:SS
 String formatCountdown(int totalSeconds) {
   if (totalSeconds > 60) {
