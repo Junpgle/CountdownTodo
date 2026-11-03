@@ -74,6 +74,49 @@ mixin _HomeDashboardViewMixin
     );
   }
 
+  Widget _buildWallpaperWidget({
+    required String wallpaperUrl,
+    required ImageProvider<Object>? localWallpaperProvider,
+    bool extractColor = true,
+  }) {
+    return RepaintBoundary(
+      child: wallpaperUrl.startsWith('assets/')
+          ? Builder(
+              builder: (context) {
+                final provider = AssetImage(wallpaperUrl);
+                if (extractColor) {
+                  _scheduleWallpaperColorExtraction(provider, wallpaperUrl);
+                }
+                return _buildWallpaperDisplay(provider);
+              },
+            )
+          : localWallpaperProvider != null
+          ? Builder(
+              builder: (context) {
+                final provider = localWallpaperProvider;
+                if (extractColor) {
+                  _scheduleWallpaperColorExtraction(provider, wallpaperUrl);
+                }
+                return _buildWallpaperDisplay(provider);
+              },
+            )
+          : _WallpaperNetworkImage(
+              url: _wallpaperUrl!,
+              onImageProvider: extractColor
+                  ? (provider) {
+                      _extractColorFromProvider(provider, _wallpaperUrl!);
+                    }
+                  : null,
+              onSuccess: () {
+                _wallpaperRetryCount = 0;
+              },
+              onError: () {
+                _handleWallpaperError();
+              },
+            ),
+    );
+  }
+
   Widget build(BuildContext context) {
     bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
     bool showWallpaper = !isDarkMode && _wallpaperShow && _wallpaperUrl != null;
@@ -105,41 +148,12 @@ mixin _HomeDashboardViewMixin
         children: [
           if (showWallpaper && wallpaperUrl != null)
             Positioned.fill(
-              child: RepaintBoundary(
-                child: wallpaperUrl.startsWith('assets/')
-                    ? Builder(
-                        builder: (context) {
-                          final provider = AssetImage(wallpaperUrl);
-                          _scheduleWallpaperColorExtraction(
-                            provider,
-                            wallpaperUrl,
-                          );
-                          return _buildWallpaperDisplay(provider);
-                        },
-                      )
-                    : localWallpaperProvider != null
-                    ? Builder(
-                        builder: (context) {
-                          final provider = localWallpaperProvider;
-                          _scheduleWallpaperColorExtraction(
-                            provider,
-                            wallpaperUrl,
-                          );
-                          return _buildWallpaperDisplay(provider);
-                        },
-                      )
-                    : _WallpaperNetworkImage(
-                        url: _wallpaperUrl!,
-                        onImageProvider: (provider) {
-                          _extractColorFromProvider(provider, _wallpaperUrl!);
-                        },
-                        onSuccess: () {
-                          _wallpaperRetryCount = 0;
-                        },
-                        onError: () {
-                          _handleWallpaperError();
-                        },
-                      ),
+              child: IgnorePointer(
+                child: _buildWallpaperWidget(
+                  wallpaperUrl: wallpaperUrl,
+                  localWallpaperProvider: localWallpaperProvider,
+                  extractColor: true,
+                ),
               ),
             ),
           SafeArea(
@@ -250,6 +264,16 @@ mixin _HomeDashboardViewMixin
               bodyBuilder: (context, headerExtent) => Stack(
                 fit: StackFit.expand,
                 children: [
+                  if (showWallpaper && wallpaperUrl != null)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: _buildWallpaperWidget(
+                          wallpaperUrl: wallpaperUrl,
+                          localWallpaperProvider: localWallpaperProvider,
+                          extractColor: false,
+                        ),
+                      ),
+                    ),
                   ValueListenableBuilder<bool>(
                     valueListenable: _isGlobalLoadingNotifier,
                     builder: (context, isLoading, child) {
