@@ -308,6 +308,7 @@ todo.md
 !/test/features/finance/finance_management_ui_test.dart
 !/test/features/finance/finance_management_screens_test.dart
 !/test/features/finance/finance_intro_guide_test.dart
+!/test/features/finance/finance_category_detail_donut_test.dart
 !/test/utils/todo_widget_visibility_test.dart
 /macos/build/
 /globalize.md

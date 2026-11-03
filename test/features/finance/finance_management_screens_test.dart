@@ -3152,9 +3152,7 @@ void main() {
   });
 
   testWidgets('夏令时回拨日以及月底账单在日周月视图中都能显示', (tester) async {
-    final spendingLabel = DateTime(2026, 11).isAfter(DateTime.now())
-        ? '计划净支出'
-        : '净支出';
+    const spendingLabel = '计划净支出';
     final transactions = [
       FinanceTransaction(
         uuid: 'dst-fallback-first-day',
@@ -3172,6 +3170,7 @@ void main() {
       Scaffold(
         body: FinanceOverviewPanel(
           month: DateTime(2026, 11),
+          clock: () => DateTime(2026, 10, 15),
           summary: FinanceSummary.fromTransactions(transactions),
           transactions: transactions,
           categories: const {},

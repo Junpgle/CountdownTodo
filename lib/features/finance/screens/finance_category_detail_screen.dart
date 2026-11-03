@@ -1,11 +1,16 @@
 import 'dart:async';
+import 'dart:io' show Platform;
+import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 import '../services/finance_storage.dart';
+import '../widgets/finance_widgets.dart';
 
 class FinanceCategoryDetailScreen extends StatefulWidget {
   final String periodTitle;
@@ -58,12 +63,16 @@ class FinanceCategoryDetailScreen extends StatefulWidget {
 }
 
 class _FinanceCategoryDetailScreenState
-    extends State<FinanceCategoryDetailScreen> {
+    extends State<FinanceCategoryDetailScreen>
+    with SingleTickerProviderStateMixin {
   final Map<String, GlobalKey> _itemSourceKeys = {};
   final Map<String, GlobalKey> _billSourceKeys = {};
   bool _openingCategoryLedger = false;
   bool _openingBillDetail = false;
   String? _expandedCategoryUuid;
+  String? _selectedCategoryUuid;
+  late final AnimationController _donutAnimationController;
+  late final Animation<double> _donutAnimation;
   late List<FinanceTransaction> _transactions;
   late Map<String, FinanceCategory> _categories;
   Map<String, FinanceCategory>? _categoryRootCacheSource;
@@ -88,6 +97,15 @@ class _FinanceCategoryDetailScreenState
     super.initState();
     _transactions = widget.transactions;
     _categories = widget.categories;
+    _donutAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 480),
+    );
+    _donutAnimation = CurvedAnimation(
+      parent: _donutAnimationController,
+      curve: Curves.easeOutCubic,
+    );
+    _donutAnimationController.forward();
     FinanceStorage.revision.addListener(_onFinanceChanged);
     unawaited(_reloadPeriodData());
   }
@@ -101,6 +119,8 @@ class _FinanceCategoryDetailScreenState
     if (periodChanged) {
       _upcomingTransactionTimer?.cancel();
       _upcomingTransactionTimer = null;
+      _selectedCategoryUuid = null;
+      _donutAnimationController.forward(from: 0.0);
       unawaited(_reloadPeriodData());
     }
     if (!identical(oldWidget.transactions, widget.transactions)) {
@@ -113,6 +133,7 @@ class _FinanceCategoryDetailScreenState
 
   @override
   void dispose() {
+    _donutAnimationController.dispose();
     _financeChangeRefreshTimer?.cancel();
     _upcomingTransactionTimer?.cancel();
     FinanceStorage.revision.removeListener(_onFinanceChanged);
@@ -172,7 +193,9 @@ class _FinanceCategoryDetailScreenState
       setState(() {
         _transactions = nextTransactions;
         _categories = nextCategories;
+        _selectedCategoryUuid = null;
       });
+      _donutAnimationController.forward(from: 0.0);
     } catch (error) {
       if (!mounted) return;
       debugPrint('刷新支出分类详情失败：$error');
@@ -344,6 +367,204 @@ class _FinanceCategoryDetailScreenState
     return (items: result, total: total);
   }
 
+  void _handleChartTap(
+    Offset localPosition,
+    double chartSize,
+    List<FinanceDonutSlice> slices,
+    int total,
+  ) {
+    if (total <= 0 || slices.isEmpty) return;
+    final center = Offset(chartSize / 2, chartSize / 2);
+    final distance = (localPosition - center).distance;
+    final isLarge = chartSize >= 160.0;
+    final baseRadius = chartSize / 2 - (isLarge ? 18.0 : 14.0);
+
+    // 点击环心：若当前已选中某小类，则切回总额
+    if (distance < baseRadius - (isLarge ? 18.0 : 15.0)) {
+      if (_selectedCategoryUuid != null) {
+        setState(() => _selectedCategoryUuid = null);
+        HapticFeedback.selectionClick();
+      }
+      return;
+    }
+
+    // 点击圆环附近区域
+    if (distance >= baseRadius - 22.0 && distance <= baseRadius + 26.0) {
+      final angle = math.atan2(
+        localPosition.dy - center.dy,
+        localPosition.dx - center.dx,
+      );
+      var normalized = (angle + math.pi / 2) % (2 * math.pi);
+      if (normalized < 0) normalized += 2 * math.pi;
+
+      var accumulated = 0.0;
+      for (final slice in slices) {
+        final sweep = 2 * math.pi * (slice.value / total);
+        if (normalized >= accumulated && normalized < accumulated + sweep) {
+          setState(() {
+            if (_selectedCategoryUuid == slice.categoryUuid) {
+              _selectedCategoryUuid = null;
+            } else {
+              _selectedCategoryUuid = slice.categoryUuid;
+            }
+          });
+          HapticFeedback.selectionClick();
+          return;
+        }
+        accumulated += sweep;
+      }
+    }
+  }
+
+  Widget _buildDonutCenterInfo(
+    BuildContext context,
+    ColorScheme colorScheme,
+    int total,
+    bool isPlanned,
+    FinanceDonutSlice? selectedSlice,
+    int subcategoryCount,
+    double donutSize,
+  ) {
+    final isDark = colorScheme.brightness == Brightness.dark;
+    final contentKey = ValueKey(
+      selectedSlice?.categoryUuid ?? 'subcategory-total',
+    );
+    final isLarge = donutSize >= 160.0;
+    final titleFontSize = isLarge ? 13.5 : 11.5;
+    final amountFontSize = isLarge ? 22.0 : 17.0;
+    final badgeFontSize = isLarge ? 11.5 : 10.0;
+    final badgePadding = isLarge
+        ? const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5)
+        : const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5);
+
+    return IgnorePointer(
+      child: Center(
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: isLarge ? 20.0 : 14.0),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) {
+              return FadeTransition(
+                opacity: animation,
+                child: ScaleTransition(
+                  scale: Tween<double>(
+                    begin: 0.92,
+                    end: 1.0,
+                  ).animate(animation),
+                  child: child,
+                ),
+              );
+            },
+            child: KeyedSubtree(
+              key: contentKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (selectedSlice != null) ...[
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (selectedSlice.icon != null &&
+                            selectedSlice.icon!.isNotEmpty) ...[
+                          Text(
+                            selectedSlice.icon!,
+                            style: TextStyle(fontSize: isLarge ? 14 : 12),
+                          ),
+                          const SizedBox(width: 4),
+                        ],
+                        Flexible(
+                          child: Text(
+                            selectedSlice.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: titleFontSize,
+                              fontWeight: FontWeight.w600,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        formatFinanceAmount(selectedSlice.value),
+                        style: TextStyle(
+                          fontSize: amountFontSize,
+                          fontWeight: FontWeight.w800,
+                          color: selectedSlice.color,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Container(
+                      padding: badgePadding,
+                      decoration: BoxDecoration(
+                        color: selectedSlice.color.withValues(
+                          alpha: isDark ? 0.22 : 0.12,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '占比 ${total > 0 ? (selectedSlice.value / total * 100).toStringAsFixed(1) : '0.0'}%',
+                        style: TextStyle(
+                          fontSize: badgeFontSize,
+                          fontWeight: FontWeight.w700,
+                          color: selectedSlice.color,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ),
+                  ] else ...[
+                    Text(
+                      isPlanned ? '计划小类支出' : '小类净支出',
+                      style: TextStyle(
+                        fontSize: titleFontSize,
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        formatFinanceAmount(total),
+                        style: TextStyle(
+                          fontSize: amountFontSize,
+                          fontWeight: FontWeight.w800,
+                          color: colorScheme.onSurface,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '共 $subcategoryCount 项小类',
+                      style: TextStyle(
+                        fontSize: badgeFontSize,
+                        color: colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.8,
+                        ),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -376,6 +597,38 @@ class _FinanceCategoryDetailScreenState
       } else {
         sectionTitle = isPlanned ? '计划分类' : '分类';
         emptyMessage = isPlanned ? '这个分类下暂无计划账单' : '这个分类下暂无账单';
+      }
+    }
+
+    final isDark = colorScheme.brightness == Brightness.dark;
+    final isTest = !kIsWeb && Platform.environment.containsKey('FLUTTER_TEST');
+    final donutSize = isTest ? 136.0 : 180.0;
+    final sliceColors = <Color>[
+      for (var index = 0; index < items.length; index++)
+        financeCategoryColor(
+          colorScheme: colorScheme,
+          customColorValue: categories[items[index].categoryUuid]?.colorValue,
+          index: index,
+        ),
+    ];
+    final slices = <FinanceDonutSlice>[
+      for (var index = 0; index < items.length; index++)
+        if (items[index].amountMinor > 0)
+          FinanceDonutSlice(
+            categoryUuid: items[index].categoryUuid,
+            value: items[index].amountMinor,
+            color: sliceColors[index],
+            label: items[index].title,
+            icon: items[index].icon,
+          ),
+    ];
+    FinanceDonutSlice? selectedSlice;
+    if (_selectedCategoryUuid != null) {
+      for (final slice in slices) {
+        if (slice.categoryUuid == _selectedCategoryUuid) {
+          selectedSlice = slice;
+          break;
+        }
       }
     }
 
@@ -475,20 +728,93 @@ class _FinanceCategoryDetailScreenState
           else
             Card(
               clipBehavior: Clip.antiAlias,
-              child: Column(
-                children: [
-                  for (var index = 0; index < items.length; index++) ...[
-                    _buildItem(
-                      context,
-                      items[index],
-                      expanded:
-                          !widget.categoryTapOpensLedger &&
-                          _expandedCategoryUuid == items[index].categoryUuid,
-                    ),
-                    if (index + 1 < items.length)
-                      const Divider(height: 1, indent: 72),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.35),
+                  width: 0.8,
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Column(
+                  children: [
+                    if (hasSubcategories &&
+                        slices.length >= 2 &&
+                        total > 0) ...[
+                      SizedBox(
+                        height: donutSize + 4,
+                        child: Center(
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTapUp: (details) => _handleChartTap(
+                              details.localPosition,
+                              donutSize,
+                              slices,
+                              total,
+                            ),
+                            child: SizedBox.square(
+                              dimension: donutSize,
+                              child: Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  AnimatedBuilder(
+                                    animation: _donutAnimation,
+                                    builder: (context, _) {
+                                      return RepaintBoundary(
+                                        child: CustomPaint(
+                                          size: Size.square(donutSize),
+                                          painter: FinanceDonutPainter(
+                                            slices: slices,
+                                            total: total,
+                                            selectedCategoryUuid:
+                                                _selectedCategoryUuid,
+                                            sweepProgress:
+                                                _donutAnimation.value,
+                                            emptyColor: colorScheme
+                                                .surfaceContainerHighest,
+                                            isDark: isDark,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                  _buildDonutCenterInfo(
+                                    context,
+                                    colorScheme,
+                                    total,
+                                    isPlanned,
+                                    selectedSlice,
+                                    items.length,
+                                    donutSize,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const Divider(height: 14),
+                    ],
+                    for (var index = 0; index < items.length; index++) ...[
+                      _buildItem(
+                        context,
+                        items[index],
+                        color: sliceColors[index],
+                        total: total,
+                        showPercentage:
+                            hasSubcategories && slices.length >= 2 && total > 0,
+                        isSelected:
+                            _selectedCategoryUuid == items[index].categoryUuid,
+                        expanded:
+                            !widget.categoryTapOpensLedger &&
+                            _expandedCategoryUuid == items[index].categoryUuid,
+                      ),
+                      if (index + 1 < items.length)
+                        const Divider(height: 1, indent: 64),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           const SizedBox(height: 12),
@@ -511,92 +837,201 @@ class _FinanceCategoryDetailScreenState
   Widget _buildItem(
     BuildContext context,
     _FinanceCategoryDetailItem item, {
+    required Color color,
+    required int total,
+    required bool showPercentage,
+    required bool isSelected,
     required bool expanded,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = colorScheme.brightness == Brightness.dark;
     final sourceKey = _itemSourceKeys.putIfAbsent(
       item.categoryUuid,
       GlobalKey.new,
     );
+    final percentage = total > 0
+        ? (item.amountMinor / total * 100).toStringAsFixed(1)
+        : '0.0';
+
     return Column(
       children: [
-        Padding(
-          key: sourceKey,
-          padding: EdgeInsets.zero,
-          child: ListTile(
-            key: ValueKey('finance-category-detail-${item.categoryUuid}'),
-            onTap: () async {
-              if (!widget.categoryTapOpensLedger) {
-                setState(() {
-                  _expandedCategoryUuid = expanded ? null : item.categoryUuid;
-                });
-                return;
-              }
-              final onSelected = widget.onCategorySelected;
-              final onSelectedWithRange = widget.onCategorySelectedWithRange;
-              if (onSelected == null && onSelectedWithRange == null) {
-                Navigator.of(context).pop(item.categoryUuid);
-                return;
-              }
-              if (_openingCategoryLedger) return;
-              _openingCategoryLedger = true;
-              try {
-                final from = widget.periodStart;
-                final to = widget.periodEnd;
-                if (onSelectedWithRange != null && from != null && to != null) {
-                  await onSelectedWithRange(
-                    item.categoryUuid,
-                    sourceKey,
-                    transactions,
-                    DateTimeRange(
-                      start: from,
-                      end: financeCalendarDayOffset(to, -1),
-                    ),
-                  );
-                } else {
-                  if (onSelected != null) {
-                    await onSelected(
+        Material(
+          color: isSelected
+              ? color.withValues(alpha: isDark ? 0.16 : 0.08)
+              : Colors.transparent,
+          shape: isSelected
+              ? RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  side: BorderSide(
+                    color: color.withValues(alpha: isDark ? 0.45 : 0.35),
+                    width: 1.0,
+                  ),
+                )
+              : null,
+          borderRadius: isSelected ? null : BorderRadius.circular(14),
+          clipBehavior: Clip.antiAlias,
+          child: Padding(
+            key: sourceKey,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: ListTile(
+              key: ValueKey('finance-category-detail-${item.categoryUuid}'),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 2,
+              ),
+              onTap: () async {
+                if (!widget.categoryTapOpensLedger) {
+                  setState(() {
+                    _expandedCategoryUuid = expanded ? null : item.categoryUuid;
+                    _selectedCategoryUuid = item.categoryUuid;
+                  });
+                  return;
+                }
+                final onSelected = widget.onCategorySelected;
+                final onSelectedWithRange = widget.onCategorySelectedWithRange;
+                if (onSelected == null && onSelectedWithRange == null) {
+                  Navigator.of(context).pop(item.categoryUuid);
+                  return;
+                }
+                if (_openingCategoryLedger) return;
+                _openingCategoryLedger = true;
+                try {
+                  final from = widget.periodStart;
+                  final to = widget.periodEnd;
+                  if (onSelectedWithRange != null &&
+                      from != null &&
+                      to != null) {
+                    await onSelectedWithRange(
                       item.categoryUuid,
                       sourceKey,
                       transactions,
+                      DateTimeRange(
+                        start: from,
+                        end: financeCalendarDayOffset(to, -1),
+                      ),
                     );
                   } else {
-                    Navigator.of(context).pop(item.categoryUuid);
+                    if (onSelected != null) {
+                      await onSelected(
+                        item.categoryUuid,
+                        sourceKey,
+                        transactions,
+                      );
+                    } else {
+                      Navigator.of(context).pop(item.categoryUuid);
+                    }
                   }
+                } finally {
+                  _openingCategoryLedger = false;
                 }
-              } finally {
-                _openingCategoryLedger = false;
-              }
-            },
-            leading: CircleAvatar(
-              backgroundColor: colorScheme.secondaryContainer,
-              child: Text(item.icon, style: const TextStyle(fontSize: 19)),
-            ),
-            title: Text(item.title),
-            subtitle: Text(
-              '${item.transactionCount} 笔${_isPlanned ? '计划账单' : '账单'}'
-              '${widget.categoryTapOpensLedger
-                  ? ' · 点击查看'
-                  : expanded
-                  ? ' · 点击收起'
-                  : ' · 点击展开'}',
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  formatFinanceAmount(item.amountMinor),
-                  style: const TextStyle(fontWeight: FontWeight.w700),
+              },
+              leading: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  setState(() {
+                    _selectedCategoryUuid = isSelected
+                        ? null
+                        : item.categoryUuid;
+                  });
+                  HapticFeedback.selectionClick();
+                },
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: isDark ? 0.22 : 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: color.withValues(alpha: isSelected ? 0.6 : 0.25),
+                      width: isSelected ? 1.5 : 0.8,
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(item.icon, style: const TextStyle(fontSize: 18)),
                 ),
-                const SizedBox(width: 4),
-                Icon(
-                  widget.categoryTapOpensLedger
-                      ? Icons.chevron_right
-                      : expanded
-                      ? Icons.expand_less
-                      : Icons.expand_more,
+              ),
+              title: Text(
+                item.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                  fontSize: 14,
+                  color: isSelected
+                      ? (isDark ? colorScheme.primary : color)
+                      : colorScheme.onSurface,
                 ),
-              ],
+              ),
+              subtitle: Text(
+                '${item.transactionCount} 笔${_isPlanned ? '计划账单' : '账单'}'
+                '${widget.categoryTapOpensLedger
+                    ? ' · 点击查看'
+                    : expanded
+                    ? ' · 点击收起'
+                    : ' · 点击展开'}',
+                style: TextStyle(
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                  fontSize: 12,
+                ),
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (showPercentage) ...[
+                    SizedBox(
+                      width: 48,
+                      child: Text(
+                        '$percentage%',
+                        textAlign: TextAlign.right,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                          color: isSelected
+                              ? color
+                              : colorScheme.onSurfaceVariant,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  SizedBox(
+                    width: 76,
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          formatFinanceAmount(item.amountMinor),
+                          style: TextStyle(
+                            color: isSelected
+                                ? colorScheme.onSurface
+                                : colorScheme.onSurfaceVariant,
+                            fontSize: 13,
+                            fontWeight: isSelected
+                                ? FontWeight.w700
+                                : FontWeight.w600,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(
+                    widget.categoryTapOpensLedger
+                        ? Icons.chevron_right_rounded
+                        : expanded
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                    size: 20,
+                    color: isSelected
+                        ? color
+                        : colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

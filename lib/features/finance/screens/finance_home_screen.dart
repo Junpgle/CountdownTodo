@@ -1396,6 +1396,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                           queryError: _ledgerQueryError,
                           onRetry: () => unawaited(_load(showLoading: false)),
                           onDateRangeChanged: _setLedgerDateRange,
+                          onMonthChanged: _setMonth,
                           onOpenDetail: _openDetail,
                           onKeywordChanged: (value) => _updateLedgerFilter(
                             update: () => _keyword = value,

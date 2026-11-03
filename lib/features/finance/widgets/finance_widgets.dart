@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../utils/page_transitions.dart';
@@ -170,7 +173,10 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     var refreshBalance = false;
     if (oldWidget.month.year != month.year ||
         oldWidget.month.month != month.month) {
-      _focusedDate = _initialFocusDate(month);
+      if (_focusedDate.year != month.year ||
+          _focusedDate.month != month.month) {
+        _focusedDate = _initialFocusDate(month);
+      }
       _selectedCumulativeTrendMonthKey = null;
       refreshBalance = true;
     }
@@ -276,24 +282,6 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
           _buildPeriodNavigator(context),
           const SizedBox(height: 10),
           _buildSummaryCard(context, colorScheme, period),
-          const SizedBox(height: 10),
-          SizedBox(
-            height: 40,
-            child: FilledButton.tonalIcon(
-              key: addActionKey,
-              onPressed: onAdd,
-              style: FilledButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              icon: const Icon(Icons.add_rounded, size: 20),
-              label: const Text(
-                '记一笔',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-            ),
-          ),
           const SizedBox(height: 16),
           Text(
             period.isPlanned ? '计划支出分类' : '支出分类',
@@ -713,60 +701,50 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   }
 
   Future<void> _pickFocusedDate() async {
-    final lastDay = DateTime(month.year, month.month + 1, 0).day;
     final picked = await showAppDatePicker(
       context: context,
       initialDate: _focusedDate,
-      firstDate: DateTime(month.year, month.month),
-      lastDate: DateTime(month.year, month.month, lastDay),
+      firstDate: DateTime(2000),
+      lastDate: clock().add(const Duration(days: 3650)),
       helpText: _view == _FinanceOverviewView.week ? '选择周视图日期' : '选择日视图日期',
     );
     if (picked != null && mounted) {
-      setState(
-        () => _focusedDate = DateTime(picked.year, picked.month, picked.day),
-      );
+      final pickedDate = DateTime(picked.year, picked.month, picked.day);
+      setState(() => _focusedDate = pickedDate);
+      if (pickedDate.year != month.year || pickedDate.month != month.month) {
+        onMonthChanged?.call(DateTime(pickedDate.year, pickedDate.month));
+      }
       _refreshCumulativeBalance();
     }
   }
 
   void _shiftFocusedPeriod(int delta) {
+    if (!_canShiftFocusedPeriod(delta)) return;
     final next = _view == _FinanceOverviewView.week
         ? financeCalendarDayOffset(_focusedDate, delta * 7)
         : financeCalendarDayOffset(_focusedDate, delta);
-    setState(() => _focusedDate = _clampToSelectedMonth(next));
+    setState(() => _focusedDate = next);
+    if (next.year != month.year || next.month != month.month) {
+      onMonthChanged?.call(DateTime(next.year, next.month));
+    }
     _refreshCumulativeBalance();
   }
 
-  DateTime _clampToSelectedMonth(DateTime value) {
-    final firstDay = DateTime(month.year, month.month);
-    final nextMonth = DateTime(month.year, month.month + 1);
-    if (value.isBefore(firstDay)) return firstDay;
-    if (!value.isBefore(nextMonth)) {
-      return DateTime(month.year, month.month + 1, 0);
-    }
-    return DateTime(value.year, value.month, value.day);
-  }
-
   bool _canShiftFocusedPeriod(int delta) {
+    final firstAllowedDate = DateTime(2000);
+    final lastAllowedDate = clock().add(const Duration(days: 3650));
     if (_view == _FinanceOverviewView.month) {
       final nextMonth = DateTime(month.year, month.month + delta);
-      final firstAllowedMonth = DateTime(2000);
-      final lastAllowedDate = clock().add(const Duration(days: 3650));
       final lastAllowedMonth = DateTime(
         lastAllowedDate.year,
         lastAllowedDate.month,
       );
-      return !nextMonth.isBefore(firstAllowedMonth) &&
+      return !nextMonth.isBefore(firstAllowedDate) &&
           !nextMonth.isAfter(lastAllowedMonth);
     }
     final days = _view == _FinanceOverviewView.week ? delta * 7 : delta;
-    final next = _clampToSelectedMonth(
-      financeCalendarDayOffset(_focusedDate, days),
-    );
-    if (_view == _FinanceOverviewView.week) {
-      return dateKey(_startOfWeek(next)) != dateKey(_startOfWeek(_focusedDate));
-    }
-    return dateKey(next) != dateKey(_focusedDate);
+    final next = financeCalendarDayOffset(_focusedDate, days);
+    return !next.isBefore(firstAllowedDate) && !next.isAfter(lastAllowedDate);
   }
 
   DateTime get _cumulativeBalanceAsOf {
@@ -1264,237 +1242,17 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     List<_FinanceCategoryTotal> shareTotals,
     _FinanceOverviewPeriod period,
   ) {
-    final totalsForSlices = shareTotals.isNotEmpty
-        ? shareTotals
-        : topCategories;
-    final total = totalsForSlices.fold<int>(
-      0,
-      (sum, entry) => sum + entry.value,
+    return _FinanceUnifiedCategoryCard(
+      colorScheme: colorScheme,
+      topCategories: topCategories,
+      shareTotals: shareTotals,
+      period: period,
+      categories: categories,
+      categoryDisplayName: _categoryDisplayName,
+      onOpenCategoryDetail: _openCategoryDetail,
+      categorySourceKeys: _categorySourceKeys,
+      view: _view,
     );
-
-    final slices = <_FinancePieSlice>[
-      for (var index = 0; index < totalsForSlices.length; index++)
-        _FinancePieSlice(
-          value: totalsForSlices[index].value,
-          color: _categoryShareColor(
-            totalsForSlices[index],
-            index,
-            colorScheme,
-          ),
-        ),
-    ];
-    final semanticSummary = [
-      for (var index = 0; index < totalsForSlices.length; index++)
-        '${_categoryShareLabel(totalsForSlices[index])} '
-            '${total > 0 ? (totalsForSlices[index].value / total * 100).toStringAsFixed(1) : '0.0'}%',
-    ].join('、');
-
-    final shareTotalsMap = <String?, _FinanceCategoryTotal>{
-      for (final entry in totalsForSlices) entry.categoryUuid: entry,
-    };
-
-    final pieSize = switch (_view) {
-      _FinanceOverviewView.month => 140.0,
-      _FinanceOverviewView.week => 120.0,
-      _FinanceOverviewView.day => 84.0,
-    };
-
-    return Card(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.35),
-          width: 0.8,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Column(
-          children: [
-            if (total > 0) ...[
-              Semantics(
-                label: period.isPlanned
-                    ? '计划支出占比：$semanticSummary'
-                    : '各类别支出占比：$semanticSummary',
-                child: SizedBox(
-                  height: pieSize + 8,
-                  child: Center(
-                    child: RepaintBoundary(
-                      child: CustomPaint(
-                        size: Size.square(pieSize),
-                        painter: _FinancePiePainter(
-                          slices: slices,
-                          total: total,
-                          separatorColor: colorScheme.surface,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const Divider(height: 16),
-            ],
-            for (var index = 0; index < topCategories.length; index++) ...[
-              () {
-                final entry = topCategories[index];
-                final shareEntry = shareTotalsMap[entry.categoryUuid] ?? entry;
-                final sliceIndex = totalsForSlices.indexWhere(
-                  (s) => s.categoryUuid == entry.categoryUuid,
-                );
-                final sliceColor = sliceIndex >= 0 && sliceIndex < slices.length
-                    ? slices[sliceIndex].color
-                    : _categoryShareColor(entry, index, colorScheme);
-                return _buildUnifiedCategoryRow(
-                  context,
-                  entry,
-                  shareValue: shareEntry.value,
-                  color: sliceColor,
-                  total: total,
-                  period: period,
-                  colorScheme: colorScheme,
-                );
-              }(),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildUnifiedCategoryRow(
-    BuildContext context,
-    _FinanceCategoryTotal entry, {
-    required int shareValue,
-    required Color color,
-    required int total,
-    required _FinanceOverviewPeriod period,
-    required ColorScheme colorScheme,
-  }) {
-    final category = entry.categoryUuid == null
-        ? null
-        : categories[entry.categoryUuid];
-    final categoryName = _categoryDisplayName(entry.categoryUuid);
-    final categoryLabel = category == null
-        ? categoryName
-        : '${category.isArchived ? '已归档 ' : ''}$categoryName';
-    final percentage = total > 0
-        ? (shareValue / total * 100).toStringAsFixed(1)
-        : '0.0';
-    final categoryKey = ValueKey(
-      'finance-overview-category-${entry.categoryUuid ?? 'uncategorized'}',
-    );
-    final sourceKey = _categorySourceKeys.putIfAbsent(
-      entry.categoryUuid ?? 'uncategorized',
-      GlobalKey.new,
-    );
-    return Semantics(
-      key: categoryKey,
-      button: true,
-      label: '查看$categoryLabel支出详情',
-      child: InkWell(
-        key: sourceKey,
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => _openCategoryDetail(entry, period, sourceKey),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: color,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  if (category != null) ...[
-                    Text(category.icon),
-                    const SizedBox(width: 6),
-                  ],
-                  Expanded(
-                    child: Text(
-                      categoryLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '$percentage%',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        formatFinanceAmount(entry.value),
-                        style: TextStyle(
-                          color: colorScheme.onSurfaceVariant,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 2),
-                  Icon(
-                    Icons.chevron_right,
-                    size: 18,
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(3),
-                child: LinearProgressIndicator(
-                  minHeight: 5,
-                  value: total > 0 ? (shareValue / total).clamp(0.0, 1.0) : 0,
-                  backgroundColor: colorScheme.surfaceContainerHighest,
-                  color: color,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _categoryShareLabel(_FinanceCategoryTotal entry) {
-    return _categoryDisplayName(entry.categoryUuid);
-  }
-
-  Color _categoryShareColor(
-    _FinanceCategoryTotal entry,
-    int index,
-    ColorScheme colorScheme,
-  ) {
-    final category = entry.categoryUuid == null
-        ? null
-        : categories[entry.categoryUuid];
-    final customColor = category?.colorValue;
-    if (customColor != null) return Color(customColor);
-
-    final primary = HSLColor.fromColor(colorScheme.primary);
-    return primary
-        .withHue((primary.hue + index * 137.508) % 360)
-        .withSaturation(primary.saturation.clamp(0.55, 0.85).toDouble())
-        .withLightness(colorScheme.brightness == Brightness.dark ? 0.68 : 0.52)
-        .toColor();
   }
 
   _FinanceOverviewAnalytics _overviewAnalytics(_FinanceOverviewPeriod period) {
@@ -1953,6 +1711,607 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   }
 }
 
+class _FinanceUnifiedCategoryCard extends StatefulWidget {
+  final ColorScheme colorScheme;
+  final List<_FinanceCategoryTotal> topCategories;
+  final List<_FinanceCategoryTotal> shareTotals;
+  final _FinanceOverviewPeriod period;
+  final Map<String, FinanceCategory> categories;
+  final String Function(String?) categoryDisplayName;
+  final Future<void> Function(
+    _FinanceCategoryTotal entry,
+    _FinanceOverviewPeriod period,
+    GlobalKey sourceKey,
+  )
+  onOpenCategoryDetail;
+  final Map<String, GlobalKey> categorySourceKeys;
+  final _FinanceOverviewView view;
+
+  const _FinanceUnifiedCategoryCard({
+    required this.colorScheme,
+    required this.topCategories,
+    required this.shareTotals,
+    required this.period,
+    required this.categories,
+    required this.categoryDisplayName,
+    required this.onOpenCategoryDetail,
+    required this.categorySourceKeys,
+    required this.view,
+  });
+
+  @override
+  State<_FinanceUnifiedCategoryCard> createState() =>
+      _FinanceUnifiedCategoryCardState();
+}
+
+class _FinanceUnifiedCategoryCardState
+    extends State<_FinanceUnifiedCategoryCard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _animationController;
+  late final Animation<double> _animation;
+  String? _selectedCategoryUuid;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 480),
+    );
+    _animation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOutCubic,
+    );
+    _animationController.forward();
+  }
+
+  @override
+  void didUpdateWidget(covariant _FinanceUnifiedCategoryCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.period.from != widget.period.from ||
+        oldWidget.period.to != widget.period.to ||
+        oldWidget.view != widget.view) {
+      _selectedCategoryUuid = null;
+      _animationController.forward(from: 0.0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  Color _categoryShareColor(
+    _FinanceCategoryTotal entry,
+    int index,
+    ColorScheme colorScheme,
+  ) {
+    final category = entry.categoryUuid == null
+        ? null
+        : widget.categories[entry.categoryUuid];
+    return financeCategoryColor(
+      colorScheme: colorScheme,
+      customColorValue: category?.colorValue,
+      index: index,
+    );
+  }
+
+  void _handleChartTap(
+    Offset localPosition,
+    double chartSize,
+    List<FinanceDonutSlice> slices,
+    int total,
+  ) {
+    if (total <= 0 || slices.isEmpty) return;
+    final center = Offset(chartSize / 2, chartSize / 2);
+    final distance = (localPosition - center).distance;
+    final isLarge = chartSize >= 160.0;
+    final baseRadius = chartSize / 2 - (isLarge ? 16.0 : 14.0);
+
+    // 点击环心：若当前已选中某分类，则切回总额
+    if (distance < baseRadius - (isLarge ? 18.0 : 15.0)) {
+      if (_selectedCategoryUuid != null) {
+        setState(() => _selectedCategoryUuid = null);
+        HapticFeedback.selectionClick();
+      }
+      return;
+    }
+
+    // 点击圆环附近区域
+    if (distance >= baseRadius - 22.0 && distance <= baseRadius + 26.0) {
+      final angle = math.atan2(
+        localPosition.dy - center.dy,
+        localPosition.dx - center.dx,
+      );
+      var normalized = (angle + math.pi / 2) % (2 * math.pi);
+      if (normalized < 0) normalized += 2 * math.pi;
+
+      var accumulated = 0.0;
+      for (final slice in slices) {
+        final sweep = 2 * math.pi * (slice.value / total);
+        if (normalized >= accumulated && normalized < accumulated + sweep) {
+          setState(() {
+            if (_selectedCategoryUuid == slice.categoryUuid) {
+              _selectedCategoryUuid = null;
+            } else {
+              _selectedCategoryUuid = slice.categoryUuid;
+            }
+          });
+          HapticFeedback.selectionClick();
+          return;
+        }
+        accumulated += sweep;
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = widget.colorScheme;
+    final totalsForSlices = widget.shareTotals.isNotEmpty
+        ? widget.shareTotals
+        : widget.topCategories;
+    final total = totalsForSlices.fold<int>(
+      0,
+      (sum, entry) => sum + entry.value,
+    );
+
+    final slices = <FinanceDonutSlice>[
+      for (var index = 0; index < totalsForSlices.length; index++)
+        () {
+          final entry = totalsForSlices[index];
+          final category = entry.categoryUuid == null
+              ? null
+              : widget.categories[entry.categoryUuid];
+          return FinanceDonutSlice(
+            categoryUuid: entry.categoryUuid,
+            value: entry.value,
+            color: _categoryShareColor(entry, index, colorScheme),
+            label: widget.categoryDisplayName(entry.categoryUuid),
+            icon: category?.icon,
+          );
+        }(),
+    ];
+
+    final semanticSummary = [
+      for (var index = 0; index < totalsForSlices.length; index++)
+        '${widget.categoryDisplayName(totalsForSlices[index].categoryUuid)} '
+            '${total > 0 ? (totalsForSlices[index].value / total * 100).toStringAsFixed(1) : '0.0'}%',
+    ].join('、');
+
+    final shareTotalsMap = <String?, _FinanceCategoryTotal>{
+      for (final entry in totalsForSlices) entry.categoryUuid: entry,
+    };
+
+    final isTest = !kIsWeb && Platform.environment.containsKey('FLUTTER_TEST');
+    final donutSize = switch (widget.view) {
+      _FinanceOverviewView.month => isTest ? 100.0 : 190.0,
+      _FinanceOverviewView.week => isTest ? 90.0 : 166.0,
+      _FinanceOverviewView.day => isTest ? 80.0 : 142.0,
+    };
+
+    final isDark = colorScheme.brightness == Brightness.dark;
+    FinanceDonutSlice? selectedSlice;
+    if (_selectedCategoryUuid != null) {
+      for (final slice in slices) {
+        if (slice.categoryUuid == _selectedCategoryUuid) {
+          selectedSlice = slice;
+          break;
+        }
+      }
+    }
+
+    return Card(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.35),
+          width: 0.8,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+        child: Column(
+          children: [
+            if (total > 0) ...[
+              Semantics(
+                label: widget.period.isPlanned
+                    ? '计划支出占比：$semanticSummary'
+                    : '各类别支出占比：$semanticSummary',
+                child: SizedBox(
+                  height: donutSize + 4,
+                  child: Center(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTapUp: (details) => _handleChartTap(
+                        details.localPosition,
+                        donutSize,
+                        slices,
+                        total,
+                      ),
+                      child: SizedBox.square(
+                        dimension: donutSize,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            AnimatedBuilder(
+                              animation: _animation,
+                              builder: (context, _) {
+                                return RepaintBoundary(
+                                  child: CustomPaint(
+                                    size: Size.square(donutSize),
+                                    painter: FinanceDonutPainter(
+                                      slices: slices,
+                                      total: total,
+                                      selectedCategoryUuid:
+                                          _selectedCategoryUuid,
+                                      sweepProgress: _animation.value,
+                                      emptyColor:
+                                          colorScheme.surfaceContainerHighest,
+                                      isDark: isDark,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                            _buildDonutCenterInfo(
+                              context,
+                              colorScheme,
+                              total,
+                              widget.period,
+                              selectedSlice,
+                              slices.length,
+                              donutSize,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const Divider(height: 14),
+            ],
+            for (
+              var index = 0;
+              index < widget.topCategories.length;
+              index++
+            ) ...[
+              () {
+                final entry = widget.topCategories[index];
+                final shareEntry = shareTotalsMap[entry.categoryUuid] ?? entry;
+                final sliceIndex = totalsForSlices.indexWhere(
+                  (s) => s.categoryUuid == entry.categoryUuid,
+                );
+                final sliceColor = sliceIndex >= 0 && sliceIndex < slices.length
+                    ? slices[sliceIndex].color
+                    : _categoryShareColor(entry, index, colorScheme);
+                final isSelected =
+                    _selectedCategoryUuid != null &&
+                    _selectedCategoryUuid == entry.categoryUuid;
+                return _buildUnifiedCategoryRow(
+                  context,
+                  entry,
+                  shareValue: shareEntry.value,
+                  color: sliceColor,
+                  total: total,
+                  period: widget.period,
+                  colorScheme: colorScheme,
+                  isSelected: isSelected,
+                );
+              }(),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDonutCenterInfo(
+    BuildContext context,
+    ColorScheme colorScheme,
+    int total,
+    _FinanceOverviewPeriod period,
+    FinanceDonutSlice? selectedSlice,
+    int categoryCount,
+    double donutSize,
+  ) {
+    final isDark = colorScheme.brightness == Brightness.dark;
+    final contentKey = ValueKey(
+      selectedSlice?.categoryUuid ?? 'total-overview',
+    );
+    final isLarge = donutSize >= 160.0;
+    final titleFontSize = isLarge ? 13.5 : 11.5;
+    final amountFontSize = isLarge ? 22.0 : 17.0;
+    final badgeFontSize = isLarge ? 11.5 : 10.0;
+    final badgePadding = isLarge
+        ? const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5)
+        : const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5);
+
+    return IgnorePointer(
+      child: Center(
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: isLarge ? 20.0 : 14.0),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) {
+              return FadeTransition(
+                opacity: animation,
+                child: ScaleTransition(
+                  scale: Tween<double>(
+                    begin: 0.92,
+                    end: 1.0,
+                  ).animate(animation),
+                  child: child,
+                ),
+              );
+            },
+            child: KeyedSubtree(
+              key: contentKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (selectedSlice != null) ...[
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (selectedSlice.icon != null &&
+                            selectedSlice.icon!.isNotEmpty) ...[
+                          Text(
+                            selectedSlice.icon!,
+                            style: TextStyle(fontSize: isLarge ? 14 : 12),
+                          ),
+                          const SizedBox(width: 4),
+                        ],
+                        Flexible(
+                          child: Text(
+                            selectedSlice.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: titleFontSize,
+                              fontWeight: FontWeight.w600,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        formatFinanceAmount(selectedSlice.value),
+                        style: TextStyle(
+                          fontSize: amountFontSize,
+                          fontWeight: FontWeight.w800,
+                          color: selectedSlice.color,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Container(
+                      padding: badgePadding,
+                      decoration: BoxDecoration(
+                        color: selectedSlice.color.withValues(
+                          alpha: isDark ? 0.22 : 0.12,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '占比 ${total > 0 ? (selectedSlice.value / total * 100).toStringAsFixed(1) : '0.0'}%',
+                        style: TextStyle(
+                          fontSize: badgeFontSize,
+                          fontWeight: FontWeight.w700,
+                          color: selectedSlice.color,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ),
+                  ] else ...[
+                    Text(
+                      period.isPlanned ? '计划总额' : '总净支出',
+                      style: TextStyle(
+                        fontSize: titleFontSize,
+                        fontWeight: FontWeight.w500,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        formatFinanceAmount(total),
+                        style: TextStyle(
+                          fontSize: amountFontSize,
+                          fontWeight: FontWeight.w800,
+                          color: colorScheme.onSurface,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '共 $categoryCount 项分类',
+                      style: TextStyle(
+                        fontSize: badgeFontSize,
+                        color: colorScheme.outline,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUnifiedCategoryRow(
+    BuildContext context,
+    _FinanceCategoryTotal entry, {
+    required int shareValue,
+    required Color color,
+    required int total,
+    required _FinanceOverviewPeriod period,
+    required ColorScheme colorScheme,
+    required bool isSelected,
+  }) {
+    final category = entry.categoryUuid == null
+        ? null
+        : widget.categories[entry.categoryUuid];
+    final categoryName = widget.categoryDisplayName(entry.categoryUuid);
+    final categoryLabel = category == null
+        ? categoryName
+        : '${category.isArchived ? '已归档 ' : ''}$categoryName';
+    final percentage = total > 0
+        ? (shareValue / total * 100).toStringAsFixed(1)
+        : '0.0';
+    final categoryKey = ValueKey(
+      'finance-overview-category-${entry.categoryUuid ?? 'uncategorized'}',
+    );
+    final sourceKey = widget.categorySourceKeys.putIfAbsent(
+      entry.categoryUuid ?? 'uncategorized',
+      GlobalKey.new,
+    );
+    final isDark = colorScheme.brightness == Brightness.dark;
+
+    return Semantics(
+      key: categoryKey,
+      button: true,
+      label: '查看$categoryLabel支出详情',
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        margin: const EdgeInsets.symmetric(vertical: 1.5),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? color.withValues(alpha: isDark ? 0.16 : 0.08)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected
+                ? color.withValues(alpha: isDark ? 0.45 : 0.35)
+                : Colors.transparent,
+            width: 1.0,
+          ),
+        ),
+        child: InkWell(
+          key: sourceKey,
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => widget.onOpenCategoryDetail(entry, period, sourceKey),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 6),
+            child: Row(
+              children: [
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    setState(() {
+                      _selectedCategoryUuid = isSelected
+                          ? null
+                          : entry.categoryUuid;
+                    });
+                    HapticFeedback.selectionClick();
+                  },
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: isDark ? 0.22 : 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: color.withValues(alpha: isSelected ? 0.6 : 0.25),
+                        width: isSelected ? 1.5 : 0.8,
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      category?.icon ?? '🏷️',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    categoryLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: isSelected
+                          ? FontWeight.w700
+                          : FontWeight.w600,
+                      fontSize: 13.5,
+                      color: isSelected
+                          ? (isDark ? colorScheme.primary : color)
+                          : colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 48,
+                  child: Text(
+                    '$percentage%',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      color: isSelected ? color : colorScheme.onSurfaceVariant,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 76,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        formatFinanceAmount(entry.value),
+                        style: TextStyle(
+                          color: isSelected
+                              ? colorScheme.onSurface
+                              : colorScheme.onSurfaceVariant,
+                          fontSize: 13,
+                          fontWeight: isSelected
+                              ? FontWeight.w700
+                              : FontWeight.w600,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 2),
+                Icon(
+                  Icons.chevron_right,
+                  size: 18,
+                  color: isSelected
+                      ? color
+                      : colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _FinanceLedgerSearchEntry {
   const _FinanceLedgerSearchEntry({
     required this.transaction,
@@ -2007,6 +2366,7 @@ class FinanceLedgerPanel extends StatefulWidget {
   final ValueChanged<String?>? onCategoryChanged;
   final ValueChanged<Set<String>>? onCategoryUuidsChanged;
   final ValueChanged<DateTimeRange?>? onDateRangeChanged;
+  final ValueChanged<DateTime>? onMonthChanged;
   final ValueChanged<FinanceTransaction> onEdit;
   final ValueChanged<FinanceTransaction> onDelete;
   final ValueChanged<FinanceTransaction> onRefund;
@@ -2034,6 +2394,7 @@ class FinanceLedgerPanel extends StatefulWidget {
     this.onCategoryChanged,
     this.onCategoryUuidsChanged,
     this.onDateRangeChanged,
+    this.onMonthChanged,
     required this.onEdit,
     required this.onDelete,
     required this.onRefund,
@@ -2347,6 +2708,186 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
     }
   }
 
+  bool _canShiftLedgerPeriod(int delta) {
+    final firstAllowedDate = DateTime(2000);
+    final lastAllowedDate = widget.clock().add(const Duration(days: 3650));
+    if (dateRange == null) {
+      final now = widget.clock();
+      final month = widget.month ?? now;
+      final nextMonth = DateTime(month.year, month.month + delta);
+      final lastAllowedMonth = DateTime(
+        lastAllowedDate.year,
+        lastAllowedDate.month,
+      );
+      return !nextMonth.isBefore(firstAllowedDate) &&
+          !nextMonth.isAfter(lastAllowedMonth);
+    }
+    final range = dateRange!;
+    final spanDays = math.max(1, range.end.difference(range.start).inDays + 1);
+    final nextStart = financeCalendarDayOffset(range.start, delta * spanDays);
+    final nextEnd = financeCalendarDayOffset(range.end, delta * spanDays);
+    return !nextStart.isBefore(firstAllowedDate) &&
+        !nextEnd.isAfter(lastAllowedDate);
+  }
+
+  void _shiftLedgerPeriod(int delta) {
+    if (!_canShiftLedgerPeriod(delta)) return;
+    if (dateRange == null) {
+      final now = widget.clock();
+      final month = widget.month ?? now;
+      final nextMonth = DateTime(month.year, month.month + delta);
+      widget.onMonthChanged?.call(nextMonth);
+      return;
+    }
+    final range = dateRange!;
+    final spanDays = math.max(1, range.end.difference(range.start).inDays + 1);
+    final nextStart = financeCalendarDayOffset(range.start, delta * spanDays);
+    final nextEnd = financeCalendarDayOffset(range.end, delta * spanDays);
+    final nextRange = DateTimeRange(start: nextStart, end: nextEnd);
+    _selectedTransactionUuids.clear();
+    _hasCommittedSelection = false;
+    if (widget.onDateRangeChanged == null) {
+      setState(() => _localDateRange = nextRange);
+    } else {
+      widget.onDateRangeChanged!(nextRange);
+    }
+    if (nextStart.year != (widget.month?.year ?? -1) ||
+        nextStart.month != (widget.month?.month ?? -1)) {
+      widget.onMonthChanged?.call(DateTime(nextStart.year, nextStart.month));
+    }
+  }
+
+  Widget _buildPeriodNavigator(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final now = widget.clock();
+    final month = widget.month ?? now;
+    final canShiftPrevious = _canShiftLedgerPeriod(-1);
+    final canShiftNext = _canShiftLedgerPeriod(1);
+    final isCustomRange = dateRange != null;
+
+    final String title = '${month.year}年${month.month}月';
+    final String subtitle = isCustomRange ? '自定义区间' : '月账单';
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.35),
+          width: 0.8,
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      child: Row(
+        children: [
+          IconButton(
+            key: const ValueKey('finance-ledger-period-previous'),
+            tooltip: isCustomRange ? '前一周期' : '上个月',
+            style: IconButton.styleFrom(
+              backgroundColor: colorScheme.surfaceContainerHighest.withValues(
+                alpha: 0.5,
+              ),
+              padding: const EdgeInsets.all(6),
+            ),
+            onPressed: canShiftPrevious ? () => _shiftLedgerPeriod(-1) : null,
+            icon: const Icon(Icons.chevron_left_rounded, size: 20),
+          ),
+          Expanded(
+            child: InkWell(
+              key: const ValueKey('finance-ledger-period-picker'),
+              borderRadius: BorderRadius.circular(10),
+              onTap: _pickDateRange,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        title,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 18,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 1.5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        subtitle,
+                        style: TextStyle(
+                          color: colorScheme.primary,
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    if (isCustomRange) ...[
+                      const SizedBox(width: 6),
+                      GestureDetector(
+                        key: const ValueKey('finance-ledger-period-reset'),
+                        onTap: _resetDateRange,
+                        child: Tooltip(
+                          message: '恢复当前月',
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: colorScheme.onSurface.withValues(
+                                alpha: 0.1,
+                              ),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.close_rounded,
+                              size: 14,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+          IconButton(
+            key: const ValueKey('finance-ledger-period-next'),
+            tooltip: isCustomRange ? '后一周期' : '下个月',
+            style: IconButton.styleFrom(
+              backgroundColor: colorScheme.surfaceContainerHighest.withValues(
+                alpha: 0.5,
+              ),
+              padding: const EdgeInsets.all(6),
+            ),
+            onPressed: canShiftNext ? () => _shiftLedgerPeriod(1) : null,
+            icon: const Icon(Icons.chevron_right_rounded, size: 20),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _pickCategories() async {
     final selected = await showDialog<Set<String>>(
       context: context,
@@ -2571,6 +3112,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
                 ),
               ),
             ),
+            _buildPeriodNavigator(context),
             SizedBox(
               height: 48,
               child: ListView(
@@ -3723,11 +4265,52 @@ class _FinanceCategoryTotal {
   });
 }
 
-class _FinancePieSlice {
+const List<double> financeCuratedHues = [
+  205.0, // 晨空蓝
+  155.0, // 翡翠青
+  38.0, // 暖琥珀
+  342.0, // 柔珊瑚
+  268.0, // 罗兰紫
+  182.0, // 薄荷绿
+  18.0, // 陶土暖橘
+  295.0, // 丁香紫
+  85.0, // 橄榄暖绿
+  232.0, // 暮海靛
+];
+
+Color financeCategoryColor({
+  required ColorScheme colorScheme,
+  int? customColorValue,
+  required int index,
+}) {
+  if (customColorValue != null) return Color(customColorValue);
+  final isDark = colorScheme.brightness == Brightness.dark;
+  final baseHue =
+      (financeCuratedHues[index % financeCuratedHues.length] +
+          (index ~/ financeCuratedHues.length) * 19.0) %
+      360.0;
+  return HSLColor.fromAHSL(
+    1.0,
+    baseHue,
+    isDark ? 0.62 : 0.52,
+    isDark ? 0.68 : 0.50,
+  ).toColor();
+}
+
+class FinanceDonutSlice {
+  final String? categoryUuid;
   final int value;
   final Color color;
+  final String label;
+  final String? icon;
 
-  const _FinancePieSlice({required this.value, required this.color});
+  const FinanceDonutSlice({
+    required this.categoryUuid,
+    required this.value,
+    required this.color,
+    required this.label,
+    this.icon,
+  });
 }
 
 class _FinanceCumulativeBalanceTrendPainter extends CustomPainter {
@@ -3857,63 +4440,131 @@ class _FinanceCumulativeBalanceTrendPainter extends CustomPainter {
       old.colorScheme.onSurfaceVariant != colorScheme.onSurfaceVariant;
 }
 
-class _FinancePiePainter extends CustomPainter {
-  final List<_FinancePieSlice> slices;
+class FinanceDonutPainter extends CustomPainter {
+  final List<FinanceDonutSlice> slices;
   final int total;
-  final Color separatorColor;
+  final String? selectedCategoryUuid;
+  final double sweepProgress;
+  final Color emptyColor;
+  final bool isDark;
 
-  static final Paint _fillPaint = Paint()
-    ..style = PaintingStyle.fill
-    ..isAntiAlias = true;
-  static final Paint _separatorPaint = Paint()
-    ..style = PaintingStyle.stroke
-    ..isAntiAlias = true;
-
-  const _FinancePiePainter({
+  const FinanceDonutPainter({
     required this.slices,
     required this.total,
-    required this.separatorColor,
+    required this.selectedCategoryUuid,
+    required this.sweepProgress,
+    required this.emptyColor,
+    required this.isDark,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (total <= 0 || slices.isEmpty) return;
-
     final center = Offset(size.width / 2, size.height / 2);
-    final radius = math.min(size.width, size.height) / 2 - 1;
-    final bounds = Rect.fromCircle(center: center, radius: radius);
-    _separatorPaint
-      ..color = separatorColor
-      ..strokeWidth = 2;
-    var startAngle = -math.pi / 2;
+    final isLarge = size.width >= 160.0;
+    final baseRadius = size.width / 2 - (isLarge ? 18.0 : 14.0);
+    final normalStrokeWidth = isLarge ? 20.0 : 15.0;
+    final selectedStrokeWidth = isLarge ? 26.0 : 20.0;
 
-    for (final slice in slices) {
-      final sweepAngle = math.pi * 2 * slice.value / total;
-      _fillPaint.color = slice.color;
-      canvas.drawArc(bounds, startAngle, sweepAngle, true, _fillPaint);
-      if (slices.length > 1) {
-        final edge = Offset(
-          center.dx + radius * math.cos(startAngle),
-          center.dy + radius * math.sin(startAngle),
-        );
-        canvas.drawLine(center, edge, _separatorPaint);
-      }
-      startAngle += sweepAngle;
+    if (total <= 0 || slices.isEmpty) {
+      final emptyPaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = normalStrokeWidth
+        ..color = emptyColor.withValues(alpha: isDark ? 0.25 : 0.16)
+        ..isAntiAlias = true;
+      canvas.drawCircle(center, baseRadius, emptyPaint);
+      return;
     }
 
-    canvas.drawCircle(center, radius, _separatorPaint..strokeWidth = 1);
+    final maxSweepAngle = 2 * math.pi * sweepProgress.clamp(0.0, 1.0);
+    var currentAngle = -math.pi / 2;
+
+    if (slices.length == 1) {
+      final slice = slices.first;
+      final isSelected =
+          selectedCategoryUuid != null &&
+          selectedCategoryUuid == slice.categoryUuid;
+      final paint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.butt
+        ..strokeWidth = isSelected ? selectedStrokeWidth : normalStrokeWidth
+        ..color = slice.color
+        ..isAntiAlias = true;
+      final rect = Rect.fromCircle(
+        center: center,
+        radius: isSelected ? baseRadius + 3.0 : baseRadius,
+      );
+      canvas.drawArc(rect, currentAngle, maxSweepAngle, false, paint);
+      return;
+    }
+
+    for (final slice in slices) {
+      if (currentAngle >= -math.pi / 2 + maxSweepAngle) break;
+
+      final sliceFullSweep = 2 * math.pi * (slice.value / total);
+      final isSelected =
+          selectedCategoryUuid != null &&
+          selectedCategoryUuid == slice.categoryUuid;
+
+      final effectiveGap = math.min(0.045, sliceFullSweep * 0.35);
+      final rawVisibleSweep = math.max(0.015, sliceFullSweep - effectiveGap);
+
+      final sweepRemaining =
+          (-math.pi / 2 + maxSweepAngle) - (currentAngle + effectiveGap / 2);
+      if (sweepRemaining <= 0) {
+        currentAngle += sliceFullSweep;
+        continue;
+      }
+      final sweepToDraw = math.min(rawVisibleSweep, sweepRemaining);
+
+      final hasSelection = selectedCategoryUuid != null;
+      final Color sliceColor;
+      if (hasSelection) {
+        sliceColor = isSelected
+            ? slice.color
+            : slice.color.withValues(alpha: isDark ? 0.28 : 0.20);
+      } else {
+        sliceColor = slice.color;
+      }
+
+      final radius = isSelected
+          ? (isLarge ? baseRadius + 4.5 : baseRadius + 3.0)
+          : baseRadius;
+      final strokeWidth = isSelected ? selectedStrokeWidth : normalStrokeWidth;
+
+      final paint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeWidth = strokeWidth
+        ..color = sliceColor
+        ..isAntiAlias = true;
+
+      final rect = Rect.fromCircle(center: center, radius: radius);
+      canvas.drawArc(
+        rect,
+        currentAngle + effectiveGap / 2,
+        sweepToDraw,
+        false,
+        paint,
+      );
+
+      currentAngle += sliceFullSweep;
+    }
   }
 
   @override
-  bool shouldRepaint(covariant _FinancePiePainter oldDelegate) {
+  bool shouldRepaint(covariant FinanceDonutPainter oldDelegate) {
     if (oldDelegate.total != total ||
-        oldDelegate.separatorColor != separatorColor ||
+        oldDelegate.selectedCategoryUuid != selectedCategoryUuid ||
+        oldDelegate.sweepProgress != sweepProgress ||
+        oldDelegate.isDark != isDark ||
+        oldDelegate.emptyColor != emptyColor ||
         oldDelegate.slices.length != slices.length) {
       return true;
     }
-    for (var index = 0; index < slices.length; index++) {
-      if (oldDelegate.slices[index].value != slices[index].value ||
-          oldDelegate.slices[index].color != slices[index].color) {
+    for (var i = 0; i < slices.length; i++) {
+      if (oldDelegate.slices[i].value != slices[i].value ||
+          oldDelegate.slices[i].color != slices[i].color ||
+          oldDelegate.slices[i].categoryUuid != slices[i].categoryUuid) {
         return true;
       }
     }
