@@ -253,4 +253,113 @@ void main() {
 
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('记账概览展示预算看板、快捷模板、消费节奏洞察、账户分布与待发生周期收支', (tester) async {
+    final db = await _seed(tester);
+    final clockNow = DateTime(2026, 10, 23, 12);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    tester.view.physicalSize = const Size(1200, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await (tester.runAsync(() async {
+      // 1. 预算
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'test-budget-1',
+          monthKey: '2026-10',
+          amountMinor: 200000,
+        ).toMap(),
+      );
+      // 2. 支付账户
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(
+          uuid: 'test-pm-wechat',
+          name: '微信支付',
+          icon: '💬',
+        ).toMap(),
+      );
+      // 3. 更新现有消费关联此账户
+      await db.update(
+        'finance_transactions',
+        {'payment_method_uuid': 'test-pm-wechat'},
+        where: 'uuid = ?',
+        whereArgs: ['test-expense-1'],
+      );
+      // 4. 周期收支 (2天后：10月25日)
+      await db.insert(
+        'finance_recurring_rules',
+        FinanceRecurringRule(
+          uuid: 'test-rule-1',
+          name: '音乐会员',
+          amountMinor: 1500,
+          dayOfMonth: 25,
+          startDate: '2026-01-01',
+        ).toMap(),
+      );
+      // 5. 常用模板
+      await db.insert(
+        'finance_entry_templates',
+        FinanceEntryTemplate(
+          uuid: 'test-tpl-1',
+          name: '通勤打车',
+          amountMinor: 2500,
+          useCount: 15,
+        ).toMap(),
+      );
+    }));
+
+    await _pump(
+      tester,
+      FinanceHomeScreen(username: 'default', clock: () => clockNow),
+    );
+
+    // 1. 快捷动作栏：记一笔、预算管理、自定义模板
+    expect(find.text('记一笔'), findsOneWidget);
+    expect(find.text('预算管理'), findsOneWidget);
+    expect(find.textContaining('通勤打车'), findsOneWidget);
+
+    // 2. 预算看板
+    expect(find.text('10月总预算'), findsOneWidget);
+    expect(find.text('总额 ¥2,000.00'), findsOneWidget);
+    expect(find.text('剩余 '), findsOneWidget);
+
+    // 3. 消费节奏与洞察
+    final insightFinder = find.text('本月消费节奏与洞察');
+    await tester.scrollUntilVisible(
+      insightFinder,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(insightFinder, findsOneWidget);
+    expect(find.text('笔均支出'), findsOneWidget);
+    expect(find.text('最高单笔支出'), findsOneWidget);
+    expect(find.textContaining('日常餐饮 · 午餐'), findsOneWidget);
+
+    // 4. 账户支出分布
+    final accountFinder = find.text('账户支出分布');
+    await tester.scrollUntilVisible(
+      accountFinder,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(accountFinder, findsOneWidget);
+    expect(find.text('微信支付'), findsOneWidget);
+
+    // 5. 未来7天待发生周期收支
+    final recurringFinder = find.textContaining('未来7天待发生收支');
+    await tester.scrollUntilVisible(
+      recurringFinder,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(recurringFinder, findsOneWidget);
+    expect(find.text('音乐会员'), findsOneWidget);
+
+    expect(tester.takeException(), isNull);
+  });
 }

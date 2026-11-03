@@ -37,6 +37,8 @@ typedef _FinanceHomeData = ({
   List<FinanceTransaction> overviewTransactions,
   List<FinanceCumulativeBalanceEvent> cumulativeBalanceEvents,
   List<FinanceRecurringRule> recurringRules,
+  List<FinanceBudget> budgets,
+  List<FinanceEntryTemplate> templates,
 });
 
 class FinanceHomeScreen extends StatefulWidget {
@@ -94,6 +96,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   List<FinanceCategory> _categories = const [];
   List<FinancePaymentMethod> _paymentMethods = const [];
   List<FinanceRecurringRule> _recurringRules = const [];
+  List<FinanceBudget> _budgets = const [];
+  List<FinanceEntryTemplate> _templates = const [];
   List<FinanceCumulativeBalanceEvent> _cumulativeBalanceEvents = const [];
   FinanceSummary _summary = const FinanceSummary();
   int _openingBalanceMinor = 0;
@@ -242,6 +246,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       _overviewTransactions = initialData.overviewTransactions;
       _cumulativeBalanceEvents = initialData.cumulativeBalanceEvents;
       _recurringRules = initialData.recurringRules;
+      _budgets = initialData.budgets;
+      _templates = initialData.templates;
       _lastRecurringRuleSignature = _recurringRuleSignature(
         initialData.recurringRules,
       );
@@ -348,6 +354,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         _overviewTransactions = data.overviewTransactions;
         _cumulativeBalanceEvents = data.cumulativeBalanceEvents;
         _recurringRules = data.recurringRules;
+        _budgets = data.budgets;
+        _templates = data.templates;
         _categoryTapOpensLedger = categoryTapOpensLedger;
         _openingBalanceMinor = openingBalance.amountMinor;
         _openingBalanceStartDate = openingBalance.startDate;
@@ -495,6 +503,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       ),
       FinanceRepository.getPaymentMethods(includeArchived: true),
       FinanceRepository.getRecurringRules(enabledOnly: true),
+      FinanceRepository.getBudgets(),
+      FinanceRepository.getTemplates(),
     ]);
     final overviewTransactions = values[0] as List<FinanceTransaction>;
     final cumulativeBalanceEvents =
@@ -520,6 +530,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       overviewTransactions: overviewTransactions,
       cumulativeBalanceEvents: cumulativeBalanceEvents,
       recurringRules: values[4] as List<FinanceRecurringRule>,
+      budgets: values[5] as List<FinanceBudget>,
+      templates: values[6] as List<FinanceEntryTemplate>,
     );
   }
 
@@ -636,6 +648,9 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         _paymentMethods = data.paymentMethods;
         _overviewTransactions = data.overviewTransactions;
         _cumulativeBalanceEvents = data.cumulativeBalanceEvents;
+        _recurringRules = data.recurringRules;
+        _budgets = data.budgets;
+        _templates = data.templates;
       });
     } catch (_) {
       // 后台补偿失败不覆盖已经可见的首屏数据。
@@ -1135,6 +1150,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
           overviewTransactions: _overviewTransactions,
           cumulativeBalanceEvents: _cumulativeBalanceEvents,
           recurringRules: _recurringRules,
+          budgets: _budgets,
+          templates: _templates,
         ),
         clock: widget.clock,
       ),
@@ -1178,6 +1195,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
           overviewTransactions: _overviewTransactions,
           cumulativeBalanceEvents: _cumulativeBalanceEvents,
           recurringRules: _recurringRules,
+          budgets: _budgets,
+          templates: _templates,
         ),
         clock: widget.clock,
       ),
@@ -1214,6 +1233,13 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         _ledgerQueryError = error.toString();
       });
     }
+  }
+
+  void _filterLedgerByPaymentMethod(FinancePaymentMethod paymentMethod) {
+    setState(() {
+      _selectedIndex = 1;
+      _keyword = paymentMethod.name;
+    });
   }
 
   @override
@@ -1381,6 +1407,17 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                               onEditOpeningBalance: _editOpeningBalance,
                               categories: _categoryMap,
                               categoryTapOpensLedger: _categoryTapOpensLedger,
+                              paymentMethods: _paymentMethods,
+                              budgets: _budgets,
+                              templates: _templates,
+                              recurringRules: _recurringRules,
+                              onOpenBudgets: _openBudgets,
+                              onOpenFutureCommitments: _openFutureCommitments,
+                              onOpenTextRecognition: _openTextRecognition,
+                              onOpenTemplate: (template) =>
+                                  _openEntry(initialTemplate: template),
+                              onSelectPaymentMethod:
+                                  _filterLedgerByPaymentMethod,
                               onAdd: () =>
                                   _openEntry(sourceKey: _overviewAddActionKey),
                               onAddForDate: (date, sourceKey) => _openEntry(

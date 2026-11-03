@@ -79,6 +79,15 @@ class FinanceOverviewPanel extends StatefulWidget {
   final FinanceCategorySelectionCallback? onCategorySelected;
   final FinanceCategoryRangeSelectionCallback? onCategorySelectedWithRange;
   final FinanceMonthLedgerCallback? onOpenMonthLedger;
+  final List<FinancePaymentMethod> paymentMethods;
+  final List<FinanceBudget> budgets;
+  final List<FinanceEntryTemplate> templates;
+  final List<FinanceRecurringRule> recurringRules;
+  final VoidCallback? onOpenBudgets;
+  final VoidCallback? onOpenFutureCommitments;
+  final VoidCallback? onOpenTextRecognition;
+  final ValueChanged<FinanceEntryTemplate>? onOpenTemplate;
+  final ValueChanged<FinancePaymentMethod>? onSelectPaymentMethod;
   final Future<void> Function(
     FinanceTransaction transaction,
     GlobalKey sourceKey,
@@ -96,6 +105,15 @@ class FinanceOverviewPanel extends StatefulWidget {
     this.openingBalanceMinor = 0,
     this.openingBalanceStartDate,
     required this.categories,
+    this.paymentMethods = const [],
+    this.budgets = const [],
+    this.templates = const [],
+    this.recurringRules = const [],
+    this.onOpenBudgets,
+    this.onOpenFutureCommitments,
+    this.onOpenTextRecognition,
+    this.onOpenTemplate,
+    this.onSelectPaymentMethod,
     required this.onAdd,
     this.onAddForDate,
     this.onEditOpeningBalance,
@@ -145,6 +163,10 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       widget.onCategorySelected;
   FinanceCategoryRangeSelectionCallback? get onCategorySelectedWithRange =>
       widget.onCategorySelectedWithRange;
+  List<FinancePaymentMethod> get paymentMethods => widget.paymentMethods;
+  List<FinanceBudget> get budgets => widget.budgets;
+  List<FinanceEntryTemplate> get templates => widget.templates;
+  List<FinanceRecurringRule> get recurringRules => widget.recurringRules;
 
   String _categoryDisplayName(String? categoryUuid) {
     if (!identical(_categoryDisplayNamesSource, categories)) {
@@ -315,7 +337,11 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
             },
           ),
           const SizedBox(height: 10),
+          _buildQuickActionsRow(context, colorScheme),
+          const SizedBox(height: 10),
           _buildSummaryCard(context, colorScheme, period),
+          const SizedBox(height: 10),
+          _buildBudgetCard(context, colorScheme, period),
           const SizedBox(height: 16),
           Text(
             period.isPlanned ? '计划支出分类' : '支出分类',
@@ -339,12 +365,14 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
               categoryExpenseShares,
               period,
             ),
-          _buildInsightCard(
+          _buildEnhancedInsightCard(context, colorScheme, period, analytics),
+          _buildPaymentMethodSpendingCard(
             context,
             colorScheme,
             period,
-            analytics.outflowTransactionCount,
+            analytics,
           ),
+          _buildUpcomingCommitmentsCard(context, colorScheme),
           const SizedBox(height: 16),
           Text(
             _spendingChartTitle(period),
@@ -1419,11 +1447,47 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
         ),
     ]..sort((a, b) => b.value.compareTo(a.value));
 
+    FinanceTransaction? maxExpenseTransaction;
+    final paymentMethodExpenseTotals = <String?, int>{};
+    for (final transaction in period.transactions) {
+      if (transaction.type == FinanceTransactionType.expense) {
+        if (maxExpenseTransaction == null ||
+            transaction.amountMinor > maxExpenseTransaction.amountMinor) {
+          maxExpenseTransaction = transaction;
+        }
+        final pmUuid = transaction.paymentMethodUuid?.trim();
+        paymentMethodExpenseTotals[pmUuid] =
+            (paymentMethodExpenseTotals[pmUuid] ?? 0) + transaction.amountMinor;
+      }
+    }
+
+    int? previousPeriodNetExpenseMinor;
+    if (_view == _FinanceOverviewView.month) {
+      final prevMonth = DateTime(month.year, month.month - 1);
+      final prevFromKey = dateKey(DateTime(prevMonth.year, prevMonth.month));
+      final prevToKey = dateKey(DateTime(prevMonth.year, prevMonth.month + 1));
+      var prevExpense = 0;
+      for (final transaction in transactions) {
+        if (transaction.transactionDate.compareTo(prevFromKey) >= 0 &&
+            transaction.transactionDate.compareTo(prevToKey) < 0) {
+          if (transaction.type == FinanceTransactionType.expense) {
+            prevExpense += transaction.amountMinor;
+          } else if (transaction.type == FinanceTransactionType.refund) {
+            prevExpense -= transaction.amountMinor;
+          }
+        }
+      }
+      previousPeriodNetExpenseMinor = prevExpense;
+    }
+
     final analytics = _FinanceOverviewAnalytics(
       topExpenseCategories: topExpenseCategories,
       categoryExpenseShares: categoryExpenseShares,
       outflowTransactionCount: outflowTransactionCount,
       hourlyNetExpenseMinor: hourlyNetExpenseMinor,
+      maxExpenseTransaction: maxExpenseTransaction,
+      previousPeriodNetExpenseMinor: previousPeriodNetExpenseMinor,
+      paymentMethodExpenseTotals: paymentMethodExpenseTotals,
     );
     _analyticsSourcePeriod = period;
     return _cachedAnalytics = analytics;
@@ -1699,16 +1763,454 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     );
   }
 
-  Widget _buildInsightCard(
+  Widget _buildQuickActionsRow(BuildContext context, ColorScheme colorScheme) {
+    final activeTemplates = templates.where((t) => !t.isDeleted).toList()
+      ..sort((a, b) => b.useCount.compareTo(a.useCount));
+    final displayTemplates = activeTemplates.take(4).toList();
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        children: [
+          _buildActionPill(
+            context,
+            colorScheme,
+            icon: Icons.add_circle_outline_rounded,
+            label: '记一笔',
+            isPrimary: true,
+            onTap: widget.onAdd,
+          ),
+          const SizedBox(width: 8),
+          if (widget.onOpenBudgets != null) ...[
+            _buildActionPill(
+              context,
+              colorScheme,
+              icon: Icons.account_balance_wallet_outlined,
+              label: '预算管理',
+              onTap: widget.onOpenBudgets!,
+            ),
+            const SizedBox(width: 8),
+          ],
+          if (widget.onOpenTextRecognition != null) ...[
+            _buildActionPill(
+              context,
+              colorScheme,
+              icon: Icons.document_scanner_outlined,
+              label: '智能识单',
+              onTap: widget.onOpenTextRecognition!,
+            ),
+            const SizedBox(width: 8),
+          ],
+          if (widget.onOpenFutureCommitments != null) ...[
+            _buildActionPill(
+              context,
+              colorScheme,
+              icon: Icons.event_repeat_rounded,
+              label: '周期收支',
+              onTap: widget.onOpenFutureCommitments!,
+            ),
+            const SizedBox(width: 8),
+          ],
+          for (final template in displayTemplates) ...[
+            _buildTemplatePill(context, colorScheme, template),
+            const SizedBox(width: 8),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionPill(
+    BuildContext context,
+    ColorScheme colorScheme, {
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    bool isPrimary = false,
+  }) {
+    return Material(
+      color: isPrimary
+          ? colorScheme.primaryContainer
+          : colorScheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 15,
+                color: isPrimary
+                    ? colorScheme.onPrimaryContainer
+                    : colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: isPrimary ? FontWeight.w600 : FontWeight.w500,
+                  color: isPrimary
+                      ? colorScheme.onPrimaryContainer
+                      : colorScheme.onSurface,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTemplatePill(
+    BuildContext context,
+    ColorScheme colorScheme,
+    FinanceEntryTemplate template,
+  ) {
+    final amountText = template.amountMinor > 0
+        ? ' ${formatFinanceAmount(template.amountMinor)}'
+        : '';
+    return Material(
+      color: colorScheme.surfaceContainerLowest,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.4),
+          width: 0.8,
+        ),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () => widget.onOpenTemplate?.call(template),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6.5),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.flash_on_rounded,
+                size: 14,
+                color: colorScheme.secondary,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '${template.name}$amountText',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBudgetCard(
     BuildContext context,
     ColorScheme colorScheme,
     _FinanceOverviewPeriod period,
-    int outflowTransactionCount,
+  ) {
+    final monthKey =
+        '${month.year.toString().padLeft(4, '0')}-${month.month.toString().padLeft(2, '0')}';
+    final overallBudget = budgets.cast<FinanceBudget?>().firstWhere(
+      (b) => b != null && !b.isDeleted && b.isOverall && b.monthKey == monthKey,
+      orElse: () => null,
+    );
+
+    if (overallBudget == null) {
+      if (widget.onOpenBudgets == null) return const SizedBox.shrink();
+      return Card(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.35),
+            width: 0.8,
+          ),
+        ),
+        color: colorScheme.surfaceContainerLow,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: widget.onOpenBudgets,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: colorScheme.secondaryContainer.withValues(
+                      alpha: 0.6,
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.pie_chart_outline_rounded,
+                    color: colorScheme.secondary,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${month.month}月未设定总预算',
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '设定月度预算以实时掌握支出进度与日均额度',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  '去设置',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: colorScheme.primary,
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 16,
+                  color: colorScheme.primary,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final budgetMinor = overallBudget.amountMinor;
+    final monthNetExpenseMinor = _view == _FinanceOverviewView.month
+        ? period.summary.netExpenseMinor
+        : () {
+            var exp = 0;
+            final prefix = monthKey;
+            for (final tx in transactions) {
+              if (tx.transactionDate.startsWith(prefix)) {
+                if (tx.type == FinanceTransactionType.expense) {
+                  exp += tx.amountMinor;
+                } else if (tx.type == FinanceTransactionType.refund) {
+                  exp -= tx.amountMinor;
+                }
+              }
+            }
+            return exp;
+          }();
+
+    final remainingMinor = budgetMinor - monthNetExpenseMinor;
+    final progress = budgetMinor > 0
+        ? (monthNetExpenseMinor / budgetMinor).clamp(0.0, 1.0)
+        : 0.0;
+    final percentNumber = budgetMinor > 0
+        ? ((monthNetExpenseMinor / budgetMinor) * 100).toStringAsFixed(1)
+        : '0.0';
+    final isOverspent = remainingMinor < 0;
+
+    final now = clock();
+    final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
+    int daysRemaining;
+    if (now.year == month.year && now.month == month.month) {
+      daysRemaining = math.max(1, daysInMonth - now.day + 1);
+    } else if (DateTime(
+      month.year,
+      month.month,
+    ).isBefore(DateTime(now.year, now.month))) {
+      daysRemaining = 0;
+    } else {
+      daysRemaining = daysInMonth;
+    }
+
+    final dailyAllowanceMinor = (!isOverspent && daysRemaining > 0)
+        ? remainingMinor ~/ daysRemaining
+        : 0;
+
+    final progressColor = isOverspent
+        ? colorScheme.error
+        : progress > 0.85
+        ? Colors.orange
+        : colorScheme.primary;
+
+    return Card(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.35),
+          width: 0.8,
+        ),
+      ),
+      color: colorScheme.surfaceContainerLow,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: widget.onOpenBudgets,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: progressColor.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      Icons.account_balance_wallet_rounded,
+                      color: progressColor,
+                      size: 16,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${month.month}月总预算',
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '总额 ${formatFinanceAmount(budgetMinor)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 16,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    isOverspent ? '已超支 ' : '剩余 ',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  Text(
+                    formatFinanceAmount(remainingMinor.abs()),
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: -0.5,
+                      color: isOverspent
+                          ? colorScheme.error
+                          : colorScheme.primary,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '已用 $percentNumber%',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: progressColor,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 6,
+                  backgroundColor: colorScheme.surfaceContainerHighest,
+                  valueColor: AlwaysStoppedAnimation<Color>(progressColor),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Icon(
+                    isOverspent
+                        ? Icons.warning_amber_rounded
+                        : Icons.calendar_today_rounded,
+                    size: 13,
+                    color: isOverspent
+                        ? colorScheme.error
+                        : colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Text(
+                      isOverspent
+                          ? '超出预算 ${formatFinanceAmount(remainingMinor.abs())}，建议合理规划后续开支'
+                          : daysRemaining > 0
+                          ? '剩余 $daysRemaining 天，建议日均支出额度 ${formatFinanceAmount(dailyAllowanceMinor)}'
+                          : '本月已结束，最终节余 ${formatFinanceAmount(remainingMinor)}',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: isOverspent
+                            ? colorScheme.error
+                            : colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEnhancedInsightCard(
+    BuildContext context,
+    ColorScheme colorScheme,
+    _FinanceOverviewPeriod period,
+    _FinanceOverviewAnalytics analytics,
   ) {
     if (period.summary.transactionCount == 0) return const SizedBox.shrink();
-    final average = outflowTransactionCount == 0
+
+    final averageMinor = analytics.outflowTransactionCount == 0
         ? 0
-        : period.summary.netExpenseMinor ~/ outflowTransactionCount;
+        : period.summary.netExpenseMinor ~/ analytics.outflowTransactionCount;
+
+    final maxTx = analytics.maxExpenseTransaction;
+    final prevPeriodExpense = analytics.previousPeriodNetExpenseMinor;
+
+    final momDifference = (prevPeriodExpense != null && prevPeriodExpense > 0)
+        ? period.summary.netExpenseMinor - prevPeriodExpense
+        : null;
+    final momPercent = (momDifference != null && prevPeriodExpense! > 0)
+        ? ((momDifference.abs() / prevPeriodExpense) * 100).toStringAsFixed(1)
+        : null;
+
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Card(
@@ -1720,51 +2222,511 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
           ),
         ),
         color: colorScheme.surfaceContainerLow,
-        child: ListTile(
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 0,
-          ),
-          leading: Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: colorScheme.primaryContainer.withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              Icons.lightbulb_rounded,
-              color: colorScheme.primary,
-              size: 18,
-            ),
-          ),
-          title: Text(
-            period.isPlanned
-                ? '${period.shortTitle}计划小结'
-                : '${period.shortTitle}小结',
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-          ),
-          subtitle: Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              outflowTransactionCount == 0
-                  ? period.isPlanned
-                        ? '共 ${period.summary.transactionCount} 笔待发生记录，'
-                              '本期暂无计划支出或退款记录。'
-                        : '共 ${period.summary.transactionCount} 笔记录，'
-                              '本期暂无支出或退款记录。'
-                  : period.isPlanned
-                  ? '共 ${period.summary.transactionCount} 笔待发生记录，'
-                        '计划支出/退款 $outflowTransactionCount 笔，'
-                        '平均计划净支出 ${formatFinanceAmount(average)}。'
-                  : '共 ${period.summary.transactionCount} 笔记录，'
-                        '支出/退款 $outflowTransactionCount 笔，'
-                        '平均净支出 ${formatFinanceAmount(average)}。',
-              style: TextStyle(
-                color: colorScheme.onSurfaceVariant,
-                fontSize: 12.5,
-                height: 1.35,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: colorScheme.primaryContainer.withValues(
+                        alpha: 0.5,
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      Icons.insights_rounded,
+                      color: colorScheme.primary,
+                      size: 16,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    period.isPlanned
+                        ? '${period.shortTitle}计划小结与洞察'
+                        : '${period.shortTitle}消费节奏与洞察',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13.5,
+                    ),
+                  ),
+                ],
               ),
+              const SizedBox(height: 12),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final isWide = constraints.maxWidth > 420;
+                  final tiles = [
+                    _buildInsightMetricTile(
+                      context,
+                      colorScheme,
+                      label: period.isPlanned ? '平均计划支出' : '笔均支出',
+                      value: formatFinanceAmount(averageMinor),
+                      hint: '共 ${analytics.outflowTransactionCount} 笔支出/退款',
+                    ),
+                    if (maxTx != null)
+                      () {
+                        final desc = (maxTx.merchant?.trim().isNotEmpty == true)
+                            ? maxTx.merchant!.trim()
+                            : (maxTx.note?.trim().isNotEmpty == true
+                                  ? maxTx.note!.trim()
+                                  : '');
+                        return _buildInsightMetricTile(
+                          context,
+                          colorScheme,
+                          label: '最高单笔支出',
+                          value: formatFinanceAmount(maxTx.amountMinor),
+                          hint:
+                              _categoryDisplayName(maxTx.categoryUuid) +
+                              (desc.isNotEmpty ? ' · $desc' : ''),
+                        );
+                      }(),
+                    if (momDifference != null && momPercent != null)
+                      _buildInsightMetricTile(
+                        context,
+                        colorScheme,
+                        label: '环比上月',
+                        value: '${momDifference >= 0 ? '+' : '-'}$momPercent%',
+                        valueColor: momDifference > 0
+                            ? colorScheme.error
+                            : Colors.green,
+                        hint: momDifference >= 0
+                            ? '多支出 ${formatFinanceAmount(momDifference)}'
+                            : '少支出 ${formatFinanceAmount(momDifference.abs())}',
+                      ),
+                  ];
+
+                  if (isWide) {
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (int i = 0; i < tiles.length; i++) ...[
+                          Expanded(child: tiles[i]),
+                          if (i < tiles.length - 1) const SizedBox(width: 8),
+                        ],
+                      ],
+                    );
+                  }
+                  return Column(
+                    children: [
+                      for (int i = 0; i < tiles.length; i++) ...[
+                        tiles[i],
+                        if (i < tiles.length - 1) const SizedBox(height: 6),
+                      ],
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerLowest,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  analytics.outflowTransactionCount == 0
+                      ? (period.isPlanned
+                            ? '共 ${period.summary.transactionCount} 笔待发生记录，本期暂无计划支出或退款记录。'
+                            : '共 ${period.summary.transactionCount} 笔记录，本期暂无支出或退款记录。')
+                      : (period.isPlanned
+                            ? '共 ${period.summary.transactionCount} 笔记录，计划支出/退款 ${analytics.outflowTransactionCount} 笔，平均净支出 ${formatFinanceAmount(averageMinor)}。'
+                            : '共 ${period.summary.transactionCount} 笔记录，支出/退款 ${analytics.outflowTransactionCount} 笔，平均净支出 ${formatFinanceAmount(averageMinor)}。'),
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInsightMetricTile(
+    BuildContext context,
+    ColorScheme colorScheme, {
+    required String label,
+    required String value,
+    required String hint,
+    Color? valueColor,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 14.5,
+              fontWeight: FontWeight.bold,
+              color: valueColor ?? colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            hint,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 10.5, color: colorScheme.outline),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentMethodSpendingCard(
+    BuildContext context,
+    ColorScheme colorScheme,
+    _FinanceOverviewPeriod period,
+    _FinanceOverviewAnalytics analytics,
+  ) {
+    if (analytics.paymentMethodExpenseTotals.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final pmMap = {for (final pm in paymentMethods) pm.uuid: pm};
+    final items = <_PaymentMethodSpendingItem>[];
+    var totalExpenseMinor = 0;
+
+    for (final entry in analytics.paymentMethodExpenseTotals.entries) {
+      if (entry.value <= 0) continue;
+      totalExpenseMinor += entry.value;
+      final pm = entry.key != null ? pmMap[entry.key] : null;
+      items.add(
+        _PaymentMethodSpendingItem(
+          paymentMethod: pm,
+          name: pm?.name ?? '未指定账户',
+          icon: pm?.icon ?? '💳',
+          amountMinor: entry.value,
+        ),
+      );
+    }
+
+    if (items.isEmpty || totalExpenseMinor <= 0) {
+      return const SizedBox.shrink();
+    }
+
+    items.sort((a, b) => b.amountMinor.compareTo(a.amountMinor));
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Card(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.35),
+            width: 0.8,
+          ),
+        ),
+        color: colorScheme.surfaceContainerLow,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: colorScheme.secondaryContainer.withValues(
+                        alpha: 0.5,
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      Icons.credit_card_rounded,
+                      color: colorScheme.secondary,
+                      size: 16,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    '账户支出分布',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13.5,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '点击快速查账',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              for (int i = 0; i < items.length; i++) ...[
+                () {
+                  final item = items[i];
+                  final ratio = item.amountMinor / totalExpenseMinor;
+                  final percent = (ratio * 100).toStringAsFixed(1);
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: item.paymentMethod != null
+                        ? () => widget.onSelectPaymentMethod?.call(
+                            item.paymentMethod!,
+                          )
+                        : null,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 6,
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                item.icon,
+                                style: const TextStyle(fontSize: 14),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  item.name,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                '$percent%',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                formatFinanceAmount(item.amountMinor),
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(2),
+                            child: LinearProgressIndicator(
+                              value: ratio,
+                              minHeight: 3.5,
+                              backgroundColor:
+                                  colorScheme.surfaceContainerHighest,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                colorScheme.primary.withValues(alpha: 0.7),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }(),
+                if (i < items.length - 1) const SizedBox(height: 4),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUpcomingCommitmentsCard(
+    BuildContext context,
+    ColorScheme colorScheme,
+  ) {
+    if (recurringRules.isEmpty) return const SizedBox.shrink();
+
+    final now = clock();
+    final today = DateTime(now.year, now.month, now.day);
+    final sevenDaysLater = today.add(
+      const Duration(days: 7, hours: 23, minutes: 59),
+    );
+
+    final upcoming = <_UpcomingCommitmentItem>[];
+    for (final rule in recurringRules) {
+      if (!rule.isEnabled || rule.isDeleted) continue;
+      final dueThisMonth = rule.dueDateFor(now.year, now.month);
+      if (dueThisMonth != null &&
+          !dueThisMonth.isBefore(today) &&
+          !dueThisMonth.isAfter(sevenDaysLater)) {
+        upcoming.add(
+          _UpcomingCommitmentItem(rule: rule, dueDate: dueThisMonth),
+        );
+      }
+      if (now.day > 20) {
+        final nextMonthDate = DateTime(now.year, now.month + 1);
+        final dueNextMonth = rule.dueDateFor(
+          nextMonthDate.year,
+          nextMonthDate.month,
+        );
+        if (dueNextMonth != null &&
+            !dueNextMonth.isBefore(today) &&
+            !dueNextMonth.isAfter(sevenDaysLater)) {
+          upcoming.add(
+            _UpcomingCommitmentItem(rule: rule, dueDate: dueNextMonth),
+          );
+        }
+      }
+    }
+
+    if (upcoming.isEmpty) return const SizedBox.shrink();
+
+    upcoming.sort((a, b) => a.dueDate.compareTo(b.dueDate));
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Card(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.35),
+            width: 0.8,
+          ),
+        ),
+        color: colorScheme.surfaceContainerLow,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: widget.onOpenFutureCommitments,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        color: colorScheme.tertiaryContainer.withValues(
+                          alpha: 0.5,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.event_repeat_rounded,
+                        color: colorScheme.tertiary,
+                        size: 16,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '未来7天待发生收支 (${upcoming.length})',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13.5,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '周期收支',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.primary,
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 16,
+                      color: colorScheme.primary,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                for (final item in upcoming.take(3)) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            item.dueDate.day == now.day
+                                ? '今天'
+                                : item.dueDate.day == now.day + 1
+                                ? '明天'
+                                : '${item.dueDate.month}/${item.dueDate.day}',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w600,
+                              color: item.dueDate.day == now.day
+                                  ? colorScheme.error
+                                  : colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            item.rule.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '${item.rule.type == FinanceTransactionType.expense ? '-' : '+'}${formatFinanceAmount(item.rule.amountMinor)}',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color:
+                                item.rule.type == FinanceTransactionType.expense
+                                ? colorScheme.onSurface
+                                : Colors.green,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         ),
@@ -4428,12 +5390,18 @@ class _FinanceOverviewAnalytics {
   final List<_FinanceCategoryTotal> categoryExpenseShares;
   final int outflowTransactionCount;
   final List<int>? hourlyNetExpenseMinor;
+  final FinanceTransaction? maxExpenseTransaction;
+  final int? previousPeriodNetExpenseMinor;
+  final Map<String?, int> paymentMethodExpenseTotals;
 
   const _FinanceOverviewAnalytics({
     required this.topExpenseCategories,
     required this.categoryExpenseShares,
     required this.outflowTransactionCount,
     required this.hourlyNetExpenseMinor,
+    this.maxExpenseTransaction,
+    this.previousPeriodNetExpenseMinor,
+    this.paymentMethodExpenseTotals = const {},
   });
 
   bool get hasOutflowTransactions => outflowTransactionCount > 0;
@@ -4447,6 +5415,27 @@ class _FinanceCategoryTotal {
     required this.categoryUuid,
     required this.value,
   });
+}
+
+class _PaymentMethodSpendingItem {
+  final FinancePaymentMethod? paymentMethod;
+  final String name;
+  final String icon;
+  final int amountMinor;
+
+  const _PaymentMethodSpendingItem({
+    this.paymentMethod,
+    required this.name,
+    required this.icon,
+    required this.amountMinor,
+  });
+}
+
+class _UpcomingCommitmentItem {
+  final FinanceRecurringRule rule;
+  final DateTime dueDate;
+
+  const _UpcomingCommitmentItem({required this.rule, required this.dueDate});
 }
 
 const List<double> financeCuratedHues = [
