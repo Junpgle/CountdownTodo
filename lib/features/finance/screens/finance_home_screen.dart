@@ -106,6 +106,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   Set<String> _categoryFilterUuids = <String>{};
   bool _categoryTapOpensLedger = true;
   int _selectedIndex = 0;
+  bool _hasInitialized = false;
   bool _isLoading = true;
   String? _loadError;
   int _loadGeneration = 0;
@@ -231,8 +232,9 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     }
     final initialData = widget._initialData;
     if (initialData == null) {
-      _load();
+      _load(showLoading: true);
     } else {
+      _hasInitialized = true;
       _transactions = initialData.transactions;
       _summary = initialData.summary;
       _categories = initialData.categories;
@@ -284,7 +286,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   }
 
   Future<void> _load({
-    bool showLoading = true,
+    DateTime? targetMonth,
+    bool showLoading = false,
     bool refreshCumulativeBalanceEvents = true,
   }) async {
     _upcomingTransactionTimer?.cancel();
@@ -292,6 +295,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     _autoGenerationTimer?.cancel();
     _autoGenerationTimer = null;
     final generation = ++_loadGeneration;
+    final effectiveMonth = targetMonth ?? _month;
     if (mounted && (showLoading || _ledgerDateRange != null)) {
       setState(() {
         if (showLoading) {
@@ -305,6 +309,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     try {
       final values = await Future.wait<Object>([
         _loadOverviewData(
+          targetMonth: effectiveMonth,
           refreshCumulativeBalanceEvents: refreshCumulativeBalanceEvents,
         ),
         AppSettingsStorage.isFinanceCategoryTapOpensLedger(),
@@ -334,6 +339,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
           _lastRecurringRuleSignature != recurringRuleSignature;
       _lastRecurringRuleSignature = recurringRuleSignature;
       setState(() {
+        _hasInitialized = true;
+        _month = effectiveMonth;
         _transactions = ledgerTransactions;
         _summary = data.summary;
         _categories = data.categories;
@@ -461,10 +468,12 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   }
 
   Future<_FinanceHomeData> _loadOverviewData({
+    DateTime? targetMonth,
     bool refreshCumulativeBalanceEvents = true,
   }) async {
-    final from = DateTime(_month.year, _month.month);
-    final to = DateTime(_month.year, _month.month + 1);
+    final effectiveMonth = targetMonth ?? _month;
+    final from = DateTime(effectiveMonth.year, effectiveMonth.month);
+    final to = DateTime(effectiveMonth.year, effectiveMonth.month + 1);
     // 周视图需要覆盖月初前和月末后的完整自然周，避免边界日期被截断。
     final overviewFrom = financeCalendarDayOffset(from, -7);
     final overviewTo = financeCalendarDayOffset(to, 7);
@@ -999,12 +1008,19 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
 
   void _setMonth(DateTime value) {
     final selectedMonth = DateTime(value.year, value.month);
+    if (_month.year == selectedMonth.year &&
+        _month.month == selectedMonth.month) {
+      return;
+    }
     final now = widget.clock();
     final isFutureMonth = selectedMonth.isAfter(DateTime(now.year, now.month));
-    setState(() {
-      _month = selectedMonth;
-    });
-    _load(refreshCumulativeBalanceEvents: isFutureMonth);
+    unawaited(
+      _load(
+        targetMonth: selectedMonth,
+        showLoading: false,
+        refreshCumulativeBalanceEvents: isFutureMonth,
+      ),
+    );
   }
 
   Future<void> _setLedgerDateRange(DateTimeRange? value) async {
@@ -1339,9 +1355,9 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       ),
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
-        child: _isLoading
+        child: !_hasInitialized && _isLoading
             ? const Center(child: CircularProgressIndicator())
-            : _loadError != null
+            : !_hasInitialized && _loadError != null
             ? _buildError(colorScheme)
             : Column(
                 children: [
@@ -1350,83 +1366,84 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                       index: _selectedIndex,
                       children: [
                         FinanceOverviewPanel(
-                          topPadding: topBarHeight,
-                          month: _month,
-                          clock: widget.clock,
-                          summary: _summary,
-                          transactions: _overviewTransactions,
-                          cumulativeBalanceEvents: _cumulativeBalanceEvents,
-                          openingBalanceMinor: _openingBalanceMinor,
-                          openingBalanceStartDate: _openingBalanceStartDate,
-                          onEditOpeningBalance: _editOpeningBalance,
-                          categories: _categoryMap,
-                          categoryTapOpensLedger: _categoryTapOpensLedger,
-                          onAdd: () =>
-                              _openEntry(sourceKey: _overviewAddActionKey),
-                          onAddForDate: (date, sourceKey) => _openEntry(
-                            initialDate: date,
-                            sourceKey: sourceKey,
-                          ),
-                          addActionKey: _overviewAddActionKey,
-                          onRefresh: _load,
-                          onMonthChanged: _setMonth,
-                          onCategorySelected: _pushCategoryLedger,
-                          onCategorySelectedWithRange:
-                              _pushCategoryLedgerWithRange,
-                          onOpenMonthLedger: _openMonthLedger,
-                          onOpenTransaction: _openDetail,
-                        ),
-                        FinanceLedgerPanel(
-                          topPadding: topBarHeight,
-                          month: _month,
-                          clock: widget.clock,
-                          transactions: _transactions,
-                          categories: _categoryMap,
-                          paymentMethods: _paymentMethodMap,
-                          keyword: _keyword,
-                          filterType: _filterType,
-                          categoryUuids: _categoryFilterUuids,
-                          exactCategoryMatch:
-                              _isCategoryLedgerRoute &&
-                              _categoryFilterUuids.length == 1 &&
-                              _categoryFilterUuids.first ==
-                                  widget.initialCategoryFilterUuid,
-                          dateRange: _ledgerDateRange,
-                          isLoading: _isLedgerQueryLoading,
-                          queryError: _ledgerQueryError,
-                          onRetry: () => unawaited(_load(showLoading: false)),
-                          onDateRangeChanged: _setLedgerDateRange,
-                          onMonthChanged: _setMonth,
-                          onOpenDetail: _openDetail,
-                          onKeywordChanged: (value) => _updateLedgerFilter(
-                            update: () => _keyword = value,
-                            keyword: value,
-                            filterType: _filterType,
-                            categoryUuids: _categoryFilterUuids,
-                          ),
-                          onFilterChanged: (value) => _updateLedgerFilter(
-                            update: () => _filterType = value,
-                            keyword: _keyword,
-                            filterType: value,
-                            categoryUuids: _categoryFilterUuids,
-                          ),
-                          onCategoryUuidsChanged: (value) =>
-                              _updateLedgerFilter(
-                                update: () => _categoryFilterUuids = value,
-                                keyword: _keyword,
-                                filterType: _filterType,
-                                categoryUuids: value,
+                              topPadding: topBarHeight,
+                              month: _month,
+                              clock: widget.clock,
+                              summary: _summary,
+                              transactions: _overviewTransactions,
+                              cumulativeBalanceEvents: _cumulativeBalanceEvents,
+                              openingBalanceMinor: _openingBalanceMinor,
+                              openingBalanceStartDate: _openingBalanceStartDate,
+                              onEditOpeningBalance: _editOpeningBalance,
+                              categories: _categoryMap,
+                              categoryTapOpensLedger: _categoryTapOpensLedger,
+                              onAdd: () =>
+                                  _openEntry(sourceKey: _overviewAddActionKey),
+                              onAddForDate: (date, sourceKey) => _openEntry(
+                                initialDate: date,
+                                sourceKey: sourceKey,
                               ),
-                          onEdit: (transaction) =>
-                              _openEntry(transaction: transaction),
-                          onDelete: _deleteTransaction,
-                          onRefund: _openRefund,
+                              addActionKey: _overviewAddActionKey,
+                              onRefresh: _load,
+                              onMonthChanged: _setMonth,
+                              onCategorySelected: _pushCategoryLedger,
+                              onCategorySelectedWithRange:
+                                  _pushCategoryLedgerWithRange,
+                              onOpenMonthLedger: _openMonthLedger,
+                              onOpenTransaction: _openDetail,
+                            ),
+                            FinanceLedgerPanel(
+                              topPadding: topBarHeight,
+                              month: _month,
+                              clock: widget.clock,
+                              transactions: _transactions,
+                              categories: _categoryMap,
+                              paymentMethods: _paymentMethodMap,
+                              keyword: _keyword,
+                              filterType: _filterType,
+                              categoryUuids: _categoryFilterUuids,
+                              exactCategoryMatch:
+                                  _isCategoryLedgerRoute &&
+                                  _categoryFilterUuids.length == 1 &&
+                                  _categoryFilterUuids.first ==
+                                      widget.initialCategoryFilterUuid,
+                              dateRange: _ledgerDateRange,
+                              isLoading: _isLedgerQueryLoading,
+                              queryError: _ledgerQueryError,
+                              onRetry: () =>
+                                  unawaited(_load(showLoading: false)),
+                              onDateRangeChanged: _setLedgerDateRange,
+                              onMonthChanged: _setMonth,
+                              onOpenDetail: _openDetail,
+                              onKeywordChanged: (value) => _updateLedgerFilter(
+                                update: () => _keyword = value,
+                                keyword: value,
+                                filterType: _filterType,
+                                categoryUuids: _categoryFilterUuids,
+                              ),
+                              onFilterChanged: (value) => _updateLedgerFilter(
+                                update: () => _filterType = value,
+                                keyword: _keyword,
+                                filterType: value,
+                                categoryUuids: _categoryFilterUuids,
+                              ),
+                              onCategoryUuidsChanged: (value) =>
+                                  _updateLedgerFilter(
+                                    update: () => _categoryFilterUuids = value,
+                                    keyword: _keyword,
+                                    filterType: _filterType,
+                                    categoryUuids: value,
+                                  ),
+                              onEdit: (transaction) =>
+                                  _openEntry(transaction: transaction),
+                              onDelete: _deleteTransaction,
+                              onRefund: _openRefund,
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
       ),
       // 记账入口固定在底栏中央，避免扩展 FAB 覆盖账单内容。
       bottomNavigationBar: FloatingBottomNavigationBar(
