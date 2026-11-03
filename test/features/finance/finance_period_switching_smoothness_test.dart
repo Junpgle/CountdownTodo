@@ -165,4 +165,92 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('记账板块在宽屏桌面窗口下自适应双列布局且无溢出', (tester) async {
+    await _seed(tester);
+    final clockNow = DateTime(2026, 10, 23, 12);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+        ),
+        home: FinanceHomeScreen(username: 'default', clock: () => clockNow),
+      ),
+    );
+    await _waitFor(
+      tester,
+      () => find.byType(CircularProgressIndicator).evaluate().isEmpty,
+    );
+
+    // 1. 验证宽屏下主内容区域被限制在最大 1040 宽度以内并居中
+    final overviewFinder = find.byType(FinanceOverviewPanel);
+    expect(overviewFinder, findsOneWidget);
+    final overviewSize = tester.getSize(overviewFinder);
+    expect(overviewSize.width, lessThanOrEqualTo(1040.0));
+
+    // 2. 验证模式选择器（报表/日历）被限制在 maxWidth: 380 以内居中
+    final reportModeFinder = _key('finance-overview-mode-selector-report');
+    final calendarModeFinder = _key('finance-overview-mode-selector-calendar');
+    expect(reportModeFinder, findsOneWidget);
+    expect(calendarModeFinder, findsOneWidget);
+    final reportRect = tester.getRect(reportModeFinder);
+    final calendarRect = tester.getRect(calendarModeFinder);
+    final totalModeSelectorWidth = calendarRect.right - reportRect.left;
+    expect(totalModeSelectorWidth, lessThanOrEqualTo(380.0));
+
+    // 3. 验证时间视图与统计周期在宽屏下横向并排（同一 Row）
+    expect(find.text('时间视图'), findsOneWidget);
+    expect(find.text('统计周期'), findsOneWidget);
+    final viewSelectorY = tester.getTopLeft(find.text('时间视图')).dy;
+    final periodNavigatorY = tester.getTopLeft(find.text('统计周期')).dy;
+    expect((viewSelectorY - periodNavigatorY).abs(), lessThanOrEqualTo(2.0));
+
+    // 4. 验证分类卡片在宽屏下甜甜圈图与分类列表横向排列
+    final categoryNameFinder = find.text('日常餐饮');
+    expect(categoryNameFinder, findsOneWidget);
+    // 甜甜圈图中心文本
+    expect(find.text('总净支出'), findsOneWidget);
+    final donutX = tester.getCenter(find.text('总净支出')).dx;
+    final categoryX = tester.getCenter(categoryNameFinder).dx;
+    // 分类在甜甜圈图右侧
+    expect(categoryX, greaterThan(donutX));
+
+    // 5. 切换到日历模式，验证日历面板在宽屏下同样受控且无溢出
+    await _tap(tester, calendarModeFinder);
+    await tester.pumpAndSettle();
+    expect(find.byType(FinanceCalendarPanel), findsOneWidget);
+    final calendarPanelSize = tester.getSize(find.byType(FinanceCalendarPanel));
+    expect(calendarPanelSize.width, lessThanOrEqualTo(1040.0));
+
+    // 6. 切换到底栏「账单」页签，验证搜索框与统计周期在宽屏下横向并排
+    await tester.tap(
+      find.byIcon(Icons.receipt_long_outlined).last,
+      warnIfMissed: false,
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(FinanceLedgerPanel), findsOneWidget);
+    final searchFieldFinder = find.byType(TextField);
+    final ledgerPeriodFinder = _key('finance-ledger-period-picker');
+    expect(searchFieldFinder, findsOneWidget);
+    expect(ledgerPeriodFinder, findsOneWidget);
+
+    final searchRect = tester.getRect(searchFieldFinder);
+    final periodRect = tester.getRect(ledgerPeriodFinder);
+    // 搜索框在左侧，周期选择器在右侧
+    expect(searchRect.center.dx, lessThan(periodRect.center.dx));
+    // 垂直中心对齐在同一行内（容差 <= 4px）
+    expect(
+      (searchRect.center.dy - periodRect.center.dy).abs(),
+      lessThanOrEqualTo(4.0),
+    );
+
+    expect(tester.takeException(), isNull);
+  });
 }

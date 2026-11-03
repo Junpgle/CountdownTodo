@@ -277,9 +277,43 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
         scrollCacheExtent: ScrollCacheExtent.pixels(2500),
         padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPadding),
         children: [
-          _buildViewSelector(context),
-          const SizedBox(height: 8),
-          _buildPeriodNavigator(context),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth >= 640;
+              if (isWide) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(flex: 5, child: _buildViewSelector(context)),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      flex: 5,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '统计周期',
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 4),
+                          _buildPeriodNavigator(context),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildViewSelector(context),
+                  const SizedBox(height: 8),
+                  _buildPeriodNavigator(context),
+                ],
+              );
+            },
+          ),
           const SizedBox(height: 10),
           _buildSummaryCard(context, colorScheme, period),
           const SizedBox(height: 16),
@@ -346,24 +380,29 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   }
 
   Widget _buildOverviewModeSelector() {
-    return FinanceGlassSegmentSelector<_FinanceOverviewMode>(
-      keyPrefix: 'finance-overview-mode-selector',
-      alternateKeyPrefixes: const ['finance-calendar-mode-selector'],
-      height: 44,
-      segments: const [
-        FinanceGlassSegment(
-          id: 'report',
-          label: '报表',
-          value: _FinanceOverviewMode.report,
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 380),
+        child: FinanceGlassSegmentSelector<_FinanceOverviewMode>(
+          keyPrefix: 'finance-overview-mode-selector',
+          alternateKeyPrefixes: const ['finance-calendar-mode-selector'],
+          height: 44,
+          segments: const [
+            FinanceGlassSegment(
+              id: 'report',
+              label: '报表',
+              value: _FinanceOverviewMode.report,
+            ),
+            FinanceGlassSegment(
+              id: 'calendar',
+              label: '日历',
+              value: _FinanceOverviewMode.calendar,
+            ),
+          ],
+          selected: _mode,
+          onSelected: (value) => setState(() => _mode = value),
         ),
-        FinanceGlassSegment(
-          id: 'calendar',
-          label: '日历',
-          value: _FinanceOverviewMode.calendar,
-        ),
-      ],
-      selected: _mode,
-      onSelected: (value) => setState(() => _mode = value),
+      ),
     );
   }
 
@@ -580,6 +619,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       _FinanceOverviewView.day => '选择具体日期',
     };
     return Container(
+      height: 42,
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
         borderRadius: BorderRadius.circular(18),
@@ -672,7 +712,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
               backgroundColor: colorScheme.surfaceContainerHighest.withValues(
                 alpha: 0.5,
               ),
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(6),
             ),
             onPressed: nextAction,
             icon: const Icon(Icons.chevron_right_rounded, size: 22),
@@ -1095,22 +1135,27 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isWide = constraints.maxWidth >= 640;
+            final headerRow = Row(
               children: [
-                Text(
-                  period.title,
-                  style: TextStyle(
-                    color: colorScheme.onPrimaryContainer.withValues(
-                      alpha: 0.85,
+                Flexible(
+                  child: Text(
+                    period.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: colorScheme.onPrimaryContainer.withValues(
+                        alpha: 0.85,
+                      ),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13.5,
                     ),
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13.5,
                   ),
                 ),
-                const Spacer(),
+                if (!isWide) const Spacer(),
+                const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
@@ -1130,28 +1175,9 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
                   ),
                 ),
               ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              formatFinanceAmount(period.summary.netExpenseMinor),
-              style: TextStyle(
-                color: colorScheme.onPrimaryContainer,
-                fontSize: 30,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -0.5,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              period.isPlanned ? '计划净支出' : '净支出',
-              style: TextStyle(
-                color: colorScheme.onPrimaryContainer.withValues(alpha: 0.8),
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Container(
+            );
+
+            final metricsContainer = Container(
               decoration: BoxDecoration(
                 color: colorScheme.surface.withValues(alpha: 0.32),
                 borderRadius: BorderRadius.circular(16),
@@ -1205,8 +1231,79 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
                   ),
                 ],
               ),
-            ),
-          ],
+            );
+
+            if (isWide) {
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    flex: 4,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        headerRow,
+                        const SizedBox(height: 6),
+                        Text(
+                          formatFinanceAmount(period.summary.netExpenseMinor),
+                          style: TextStyle(
+                            color: colorScheme.onPrimaryContainer,
+                            fontSize: 32,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          period.isPlanned ? '计划净支出' : '净支出',
+                          style: TextStyle(
+                            color: colorScheme.onPrimaryContainer.withValues(
+                              alpha: 0.8,
+                            ),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(flex: 5, child: metricsContainer),
+                ],
+              );
+            }
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                headerRow,
+                const SizedBox(height: 6),
+                Text(
+                  formatFinanceAmount(period.summary.netExpenseMinor),
+                  style: TextStyle(
+                    color: colorScheme.onPrimaryContainer,
+                    fontSize: 30,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  period.isPlanned ? '计划净支出' : '净支出',
+                  style: TextStyle(
+                    color: colorScheme.onPrimaryContainer.withValues(
+                      alpha: 0.8,
+                    ),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                metricsContainer,
+              ],
+            );
+          },
         ),
       ),
     );
@@ -1912,97 +2009,139 @@ class _FinanceUnifiedCategoryCardState
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
-        child: Column(
-          children: [
-            if (total > 0) ...[
-              Semantics(
-                label: widget.period.isPlanned
-                    ? '计划支出占比：$semanticSummary'
-                    : '各类别支出占比：$semanticSummary',
-                child: SizedBox(
-                  height: donutSize + 4,
-                  child: Center(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTapUp: (details) => _handleChartTap(
-                        details.localPosition,
-                        donutSize,
-                        slices,
-                        total,
-                      ),
-                      child: SizedBox.square(
-                        dimension: donutSize,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            AnimatedBuilder(
-                              animation: _animation,
-                              builder: (context, _) {
-                                return RepaintBoundary(
-                                  child: CustomPaint(
-                                    size: Size.square(donutSize),
-                                    painter: FinanceDonutPainter(
-                                      slices: slices,
-                                      total: total,
-                                      selectedCategoryUuid:
-                                          _selectedCategoryUuid,
-                                      sweepProgress: _animation.value,
-                                      emptyColor:
-                                          colorScheme.surfaceContainerHighest,
-                                      isDark: isDark,
-                                    ),
-                                  ),
-                                );
-                              },
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isWide = constraints.maxWidth >= 600 && total > 0;
+            final donutWidget = total > 0
+                ? Semantics(
+                    label: widget.period.isPlanned
+                        ? '计划支出占比：$semanticSummary'
+                        : '各类别支出占比：$semanticSummary',
+                    child: SizedBox(
+                      height: donutSize + 4,
+                      child: Center(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTapUp: (details) => _handleChartTap(
+                            details.localPosition,
+                            donutSize,
+                            slices,
+                            total,
+                          ),
+                          child: SizedBox.square(
+                            dimension: donutSize,
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                AnimatedBuilder(
+                                  animation: _animation,
+                                  builder: (context, _) {
+                                    return RepaintBoundary(
+                                      child: CustomPaint(
+                                        size: Size.square(donutSize),
+                                        painter: FinanceDonutPainter(
+                                          slices: slices,
+                                          total: total,
+                                          selectedCategoryUuid:
+                                              _selectedCategoryUuid,
+                                          sweepProgress: _animation.value,
+                                          emptyColor: colorScheme
+                                              .surfaceContainerHighest,
+                                          isDark: isDark,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                                _buildDonutCenterInfo(
+                                  context,
+                                  colorScheme,
+                                  total,
+                                  widget.period,
+                                  selectedSlice,
+                                  slices.length,
+                                  donutSize,
+                                ),
+                              ],
                             ),
-                            _buildDonutCenterInfo(
-                              context,
-                              colorScheme,
-                              total,
-                              widget.period,
-                              selectedSlice,
-                              slices.length,
-                              donutSize,
-                            ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
+                  )
+                : const SizedBox.shrink();
+
+            final categoryRows = [
+              for (
+                var index = 0;
+                index < widget.topCategories.length;
+                index++
+              ) ...[
+                () {
+                  final entry = widget.topCategories[index];
+                  final shareEntry =
+                      shareTotalsMap[entry.categoryUuid] ?? entry;
+                  final sliceIndex = totalsForSlices.indexWhere(
+                    (s) => s.categoryUuid == entry.categoryUuid,
+                  );
+                  final sliceColor =
+                      sliceIndex >= 0 && sliceIndex < slices.length
+                      ? slices[sliceIndex].color
+                      : _categoryShareColor(entry, index, colorScheme);
+                  final isSelected =
+                      _selectedCategoryUuid != null &&
+                      _selectedCategoryUuid == entry.categoryUuid;
+                  return _buildUnifiedCategoryRow(
+                    context,
+                    entry,
+                    shareValue: shareEntry.value,
+                    color: sliceColor,
+                    total: total,
+                    period: widget.period,
+                    colorScheme: colorScheme,
+                    isSelected: isSelected,
+                  );
+                }(),
+              ],
+            ];
+
+            if (isWide) {
+              return IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      width: math.max(
+                        donutSize + 32.0,
+                        constraints.maxWidth * 0.38,
+                      ),
+                      child: Center(child: donutWidget),
+                    ),
+                    VerticalDivider(
+                      width: 24,
+                      thickness: 0.8,
+                      color: colorScheme.outlineVariant.withValues(alpha: 0.35),
+                    ),
+                    Expanded(
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: categoryRows,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const Divider(height: 14),
-            ],
-            for (
-              var index = 0;
-              index < widget.topCategories.length;
-              index++
-            ) ...[
-              () {
-                final entry = widget.topCategories[index];
-                final shareEntry = shareTotalsMap[entry.categoryUuid] ?? entry;
-                final sliceIndex = totalsForSlices.indexWhere(
-                  (s) => s.categoryUuid == entry.categoryUuid,
-                );
-                final sliceColor = sliceIndex >= 0 && sliceIndex < slices.length
-                    ? slices[sliceIndex].color
-                    : _categoryShareColor(entry, index, colorScheme);
-                final isSelected =
-                    _selectedCategoryUuid != null &&
-                    _selectedCategoryUuid == entry.categoryUuid;
-                return _buildUnifiedCategoryRow(
-                  context,
-                  entry,
-                  shareValue: shareEntry.value,
-                  color: sliceColor,
-                  total: total,
-                  period: widget.period,
-                  colorScheme: colorScheme,
-                  isSelected: isSelected,
-                );
-              }(),
-            ],
-          ],
+              );
+            }
+
+            return Column(
+              children: [
+                if (total > 0) ...[donutWidget, const Divider(height: 14)],
+                ...categoryRows,
+              ],
+            );
+          },
         ),
       ),
     );
@@ -2757,7 +2896,10 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
     }
   }
 
-  Widget _buildPeriodNavigator(BuildContext context) {
+  Widget _buildPeriodNavigator(
+    BuildContext context, {
+    EdgeInsetsGeometry margin = const EdgeInsets.fromLTRB(16, 4, 16, 4),
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     final now = widget.clock();
     final month = widget.month ?? now;
@@ -2769,7 +2911,8 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
     final String subtitle = isCustomRange ? '自定义区间' : '月账单';
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      height: 46,
+      margin: margin,
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
         borderRadius: BorderRadius.circular(16),
@@ -3093,26 +3236,67 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
       children: [
         Column(
           children: [
-            Padding(
-              padding: EdgeInsets.fromLTRB(16, widget.topPadding + 12, 16, 4),
-              child: TextField(
-                controller: _keywordController,
-                onChanged: _updateKeyword,
-                decoration: InputDecoration(
-                  hintText: '搜索商家、备注、分类、关联账户或日期',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: keyword.isEmpty
-                      ? null
-                      : IconButton(
-                          onPressed: () => _updateKeyword(''),
-                          icon: const Icon(Icons.clear),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final isWide = constraints.maxWidth >= 640;
+                final searchField = TextField(
+                  controller: _keywordController,
+                  onChanged: _updateKeyword,
+                  decoration: InputDecoration(
+                    hintText: '搜索商家、备注、分类、关联账户或日期',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: keyword.isEmpty
+                        ? null
+                        : IconButton(
+                            onPressed: () => _updateKeyword(''),
+                            icon: const Icon(Icons.clear),
+                          ),
+                    border: const OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                );
+
+                if (isWide) {
+                  return Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      widget.topPadding + 12,
+                      16,
+                      4,
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(flex: 6, child: searchField),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 4,
+                          child: _buildPeriodNavigator(
+                            context,
+                            margin: EdgeInsets.zero,
+                          ),
                         ),
-                  border: const OutlineInputBorder(),
-                  isDense: true,
-                ),
-              ),
+                      ],
+                    ),
+                  );
+                }
+
+                return Column(
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        16,
+                        widget.topPadding + 12,
+                        16,
+                        4,
+                      ),
+                      child: searchField,
+                    ),
+                    _buildPeriodNavigator(context),
+                  ],
+                );
+              },
             ),
-            _buildPeriodNavigator(context),
             SizedBox(
               height: 48,
               child: ListView(

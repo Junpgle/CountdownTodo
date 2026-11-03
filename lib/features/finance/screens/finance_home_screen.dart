@@ -1359,13 +1359,17 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
             ? const Center(child: CircularProgressIndicator())
             : !_hasInitialized && _loadError != null
             ? _buildError(colorScheme)
-            : Column(
-                children: [
-                  Expanded(
-                    child: IndexedStack(
-                      index: _selectedIndex,
-                      children: [
-                        FinanceOverviewPanel(
+            : Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1040),
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: IndexedStack(
+                          index: _selectedIndex,
+                          children: [
+                            FinanceOverviewPanel(
                               topPadding: topBarHeight,
                               month: _month,
                               clock: widget.clock,
@@ -1444,6 +1448,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                       ),
                     ],
                   ),
+                ),
+              ),
       ),
       // 记账入口固定在底栏中央，避免扩展 FAB 覆盖账单内容。
       bottomNavigationBar: FloatingBottomNavigationBar(

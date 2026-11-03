@@ -120,16 +120,21 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
   }
 
   Widget _buildModeSelector() {
-    return FinanceGlassSegmentSelector<bool>(
-      keyPrefix: 'finance-calendar-mode-selector',
-      segments: const [
-        FinanceGlassSegment(id: 'report', label: '报表', value: false),
-        FinanceGlassSegment(id: 'calendar', label: '日历', value: true),
-      ],
-      selected: true,
-      onSelected: (value) {
-        if (!value) widget.onShowReport();
-      },
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 380),
+        child: FinanceGlassSegmentSelector<bool>(
+          keyPrefix: 'finance-calendar-mode-selector',
+          segments: const [
+            FinanceGlassSegment(id: 'report', label: '报表', value: false),
+            FinanceGlassSegment(id: 'calendar', label: '日历', value: true),
+          ],
+          selected: true,
+          onSelected: (value) {
+            if (!value) widget.onShowReport();
+          },
+        ),
+      ),
     );
   }
 
