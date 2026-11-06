@@ -108,6 +108,7 @@ todo.md
 !/test/screens/plan_split_screen_test.dart
 !/test/screens/course_calendar_adjustment_screen_test.dart
 !/test/screens/weekly_course_collapse_test.dart
+!/test/screens/weekly_course_today_highlight_test.dart
 !/test/screens/team_management_invite_test.dart
 !/test/screens/feature_explorer_and_onboarding_test.dart
 !/test/app_performance_monitor_test.dart

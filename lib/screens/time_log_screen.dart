@@ -1742,14 +1742,22 @@ class _WeekViewState extends State<_WeekView>
                   child: Container(
                     width: dW,
                     height: 52,
-                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    padding: const EdgeInsets.symmetric(vertical: 4),
                     decoration: BoxDecoration(
-                      color: isToday ? accent.withValues(alpha: 0.07) : null,
-                      border: Border(
-                        right: BorderSide(
-                          color: _TC.divider(ctx).withValues(alpha: 0.2),
-                        ),
-                      ),
+                      color: isToday
+                          ? accent.withValues(alpha: isDark ? 0.16 : 0.12)
+                          : null,
+                      borderRadius: isToday ? BorderRadius.circular(6) : null,
+                      border: isToday
+                          ? Border.all(
+                              color: accent.withValues(alpha: 0.4),
+                              width: 1,
+                            )
+                          : Border(
+                              right: BorderSide(
+                                color: _TC.divider(ctx).withValues(alpha: 0.2),
+                              ),
+                            ),
                     ),
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
@@ -1757,31 +1765,77 @@ class _WeekViewState extends State<_WeekView>
                         mainAxisAlignment: MainAxisAlignment.center,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            '周${['一', '二', '三', '四', '五', '六', '日'][i]}',
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: isToday ? accent : _TC.textHint(ctx),
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.5,
-                            ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '周${['一', '二', '三', '四', '五', '六', '日'][i]}',
+                                style: TextStyle(
+                                  fontSize: 9.5,
+                                  color: isToday ? accent : _TC.textHint(ctx),
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              if (isToday) ...[
+                                const SizedBox(width: 2),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 3,
+                                    vertical: 0.5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: accent,
+                                    borderRadius: BorderRadius.circular(3),
+                                  ),
+                                  child: Text(
+                                    '今',
+                                    style: TextStyle(
+                                      color: colorScheme.onPrimary,
+                                      fontSize: 7.5,
+                                      fontWeight: FontWeight.bold,
+                                      height: 1.1,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
-                          Text(
-                            '${d.day}',
-                            style: TextStyle(
-                              fontSize: 15,
-                              color: isToday ? _TC.text(ctx) : _TC.textSub(ctx),
-                              fontWeight: isToday
-                                  ? FontWeight.w700
-                                  : FontWeight.w400,
-                            ),
-                          ),
+                          const SizedBox(height: 1),
+                          isToday
+                              ? Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                    vertical: 0.5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: accent,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    '${d.day}',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: colorScheme.onPrimary,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                )
+                              : Text(
+                                  '${d.day}',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    color: _TC.textSub(ctx),
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                ),
                           if (dm > 0)
                             Text(
                               '${dm}m',
                               style: TextStyle(
                                 fontSize: 8,
-                                color: accent.withValues(alpha: 0.5),
+                                color: accent.withValues(alpha: 0.7),
                               ),
                             ),
                         ],
@@ -1831,11 +1885,25 @@ class _WeekViewState extends State<_WeekView>
                       final dLogs = weekData.logsByDay[dayIndex];
                       final dPoms = weekData.pomodorosByDay[dayIndex];
                       final dSchedules = weekData.schedulesByDay[dayIndex];
+                      final isToday = AppTimeFormats.isSameDay(
+                        days[dayIndex],
+                        DateTime.now(),
+                      );
                       return SizedBox(
                         width: dW,
                         height: totalH,
                         child: Stack(
                           children: [
+                            if (isToday)
+                              Positioned.fill(
+                                child: IgnorePointer(
+                                  child: Container(
+                                    color: accent.withValues(
+                                      alpha: isDark ? 0.07 : 0.038,
+                                    ),
+                                  ),
+                                ),
+                              ),
                             RepaintBoundary(
                               child: CustomPaint(
                                 size: Size(dW, totalH),

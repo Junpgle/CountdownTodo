@@ -550,6 +550,10 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
       return const SizedBox.shrink();
     }
 
+    final dateKeyFormat = _cachedDateFormat('yyyy-MM-dd');
+    final String todayKey = dateKeyFormat.format(DateTime.now());
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     final showTodos = _activeDataViews.contains('todos');
     final showFixedSchedules = _activeDataViews.contains('fixedSchedules');
     final showDeviceCalendar = _activeDataViews.contains('deviceCalendar');
@@ -585,10 +589,28 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               ? (_allDayDeviceCalendarEventsPerDay[weekday] ?? [])
               : [];
 
+          final currentDay = CalendarDateMath.addDays(monday, index);
+          final dayKey = dateKeyFormat.format(currentDay);
+          final bool isToday = dayKey == todayKey;
+          final colorScheme = Theme.of(context).colorScheme;
+
           if (dayTodos.isEmpty &&
               fixedSchedules.isEmpty &&
               deviceEvents.isEmpty) {
-            return const Expanded(child: SizedBox(height: 22));
+            return Expanded(
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 1.0),
+                decoration: isToday
+                    ? BoxDecoration(
+                        color: colorScheme.primary.withValues(
+                          alpha: isDark ? 0.06 : 0.035,
+                        ),
+                        borderRadius: BorderRadius.circular(4),
+                      )
+                    : null,
+                height: 22,
+              ),
+            );
           }
 
           final labels = <String>[];
@@ -621,7 +643,6 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           }
           final text = labels.join(' · ');
           bool allDone = dayTodos.every((t) => t.isDone);
-          final colorScheme = Theme.of(context).colorScheme;
           final todoColor = deviceEvents.isNotEmpty
               ? (deviceEvents.first.colorValue == null
                     ? colorScheme.tertiary
@@ -638,9 +659,6 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                     : (allDone
                           ? colorScheme.onSurface.withValues(alpha: 0.75)
                           : Colors.white));
-
-          final currentDay = CalendarDateMath.addDays(monday, index);
-          final dayKey = _cachedDateFormat('yyyy-MM-dd').format(currentDay);
           final allDaySourceKey = deviceEvents.isEmpty
               ? null
               : _getDeviceCalendarCardKey(
@@ -650,89 +668,111 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 );
 
           return Expanded(
-            child: GestureDetector(
-              onTap: () {
-                String dateStr = _cachedDateFormat('MM-dd').format(currentDay);
-                if (fixedSchedules.isNotEmpty || dayTodos.isNotEmpty) {
-                  _showDayDetailSheet(currentDay);
-                } else if (deviceEvents.isNotEmpty) {
-                  if (deviceEvents.length == 1) {
-                    _showDeviceCalendarEventDetail(
-                      context,
-                      deviceEvents.first,
-                      sourceKey: allDaySourceKey,
-                      sourceColor: todoColor.withValues(alpha: 0.92),
-                    );
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 1.0),
+              decoration: isToday
+                  ? BoxDecoration(
+                      color: colorScheme.primary.withValues(
+                        alpha: isDark ? 0.06 : 0.035,
+                      ),
+                      borderRadius: BorderRadius.circular(4),
+                    )
+                  : null,
+              child: GestureDetector(
+                onTap: () {
+                  String dateStr = _cachedDateFormat('MM-dd')
+                      .format(currentDay);
+                  if (fixedSchedules.isNotEmpty || dayTodos.isNotEmpty) {
+                    _showDayDetailSheet(currentDay);
+                  } else if (deviceEvents.isNotEmpty) {
+                    if (deviceEvents.length == 1) {
+                      _showDeviceCalendarEventDetail(
+                        context,
+                        deviceEvents.first,
+                        sourceKey: allDaySourceKey,
+                        sourceColor: todoColor.withValues(alpha: 0.92),
+                      );
+                    } else {
+                      _showAllDayDeviceCalendarEvents(
+                        context,
+                        deviceEvents,
+                        dateStr,
+                        sourceKey: allDaySourceKey,
+                        sourceColor: todoColor.withValues(alpha: 0.92),
+                      );
+                    }
                   } else {
-                    _showAllDayDeviceCalendarEvents(
-                      context,
-                      deviceEvents,
-                      dateStr,
-                      sourceKey: allDaySourceKey,
-                      sourceColor: todoColor.withValues(alpha: 0.92),
-                    );
+                    _showAllDayTodos(context, dayTodos, dateStr);
                   }
-                } else {
-                  _showAllDayTodos(context, dayTodos, dateStr);
-                }
-              },
-              child: Container(
-                key: allDaySourceKey,
-                margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 1),
-                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-                decoration: BoxDecoration(
-                  color: todoColor.withValues(
-                    alpha: deviceEvents.isNotEmpty
-                        ? 0.92
-                        : (fixedSchedules.isNotEmpty
-                              ? 0.85
-                              : (allDone ? 0.28 : 0.85)),
+                },
+                child: Container(
+                  key: allDaySourceKey,
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 1,
+                    vertical: 1,
                   ),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (deviceEvents.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 2),
-                        child: Icon(
-                          Icons.phone_android_rounded,
-                          size: 10,
-                          color: onTodoColor,
-                        ),
-                      )
-                    else if (fixedSchedules.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 2),
-                        child: Icon(
-                          Icons.event_available,
-                          size: 10,
-                          color: onTodoColor,
-                        ),
-                      )
-                    else if (dayTodos.any((t) => t.teamUuid != null))
-                      Padding(
-                        padding: const EdgeInsets.only(right: 2),
-                        child: Icon(Icons.group, size: 10, color: onTodoColor),
-                      ),
-                    Flexible(
-                      child: Text(
-                        text,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: onTodoColor,
-                          decoration: allDone
-                              ? TextDecoration.lineThrough
-                              : null,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                      ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 2,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: todoColor.withValues(
+                      alpha: deviceEvents.isNotEmpty
+                          ? 0.92
+                          : (fixedSchedules.isNotEmpty
+                                ? 0.85
+                                : (allDone ? 0.28 : 0.85)),
                     ),
-                  ],
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (deviceEvents.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 2),
+                          child: Icon(
+                            Icons.phone_android_rounded,
+                            size: 10,
+                            color: onTodoColor,
+                          ),
+                        )
+                      else if (fixedSchedules.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 2),
+                          child: Icon(
+                            Icons.event_available,
+                            size: 10,
+                            color: onTodoColor,
+                          ),
+                        )
+                      else if (dayTodos.any((t) => t.teamUuid != null))
+                        Padding(
+                          padding: const EdgeInsets.only(right: 2),
+                          child: Icon(
+                            Icons.group,
+                            size: 10,
+                            color: onTodoColor,
+                          ),
+                        ),
+                      Flexible(
+                        child: Text(
+                          text,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: onTodoColor,
+                            decoration: allDone
+                                ? TextDecoration.lineThrough
+                                : null,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -812,10 +852,12 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     final dateKeyFormat = _cachedDateFormat('yyyy-MM-dd');
     final headerDateFormat = _cachedDateFormat('M/dd');
     String todayStr = dateKeyFormat.format(now);
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    bool isDark = theme.brightness == Brightness.dark;
 
     return Container(
-      color: Theme.of(context).colorScheme.surface,
+      color: colorScheme.surface,
       padding: EdgeInsets.only(left: timeColumnWidth, top: 4, bottom: 4),
       child: Row(
         children: List.generate(7, (index) {
@@ -829,32 +871,116 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
             isToday = dateKeyFormat.format(currentDate) == todayStr;
           }
 
-          List<String> weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+          const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+          final weekdayLabel = weekdays[index];
 
           return Expanded(
-            child: Column(
-              children: [
-                Text(
-                  weekdays[index],
-                  style: TextStyle(
-                    color: isToday
-                        ? Theme.of(context).colorScheme.primary
-                        : (isDark ? Colors.white70 : Colors.black87),
-                    fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
-                    fontSize: 13,
-                  ),
+            child: Semantics(
+              label: isToday
+                  ? '今天，$weekdayLabel $dateStr'
+                  : '$weekdayLabel $dateStr',
+              child: Container(
+                margin: const EdgeInsets.symmetric(
+                  horizontal: 1.5,
+                  vertical: 1.0,
                 ),
-                if (dateStr.isNotEmpty)
-                  Text(
-                    dateStr,
-                    style: TextStyle(
-                      color: isToday
-                          ? Theme.of(context).colorScheme.primary
-                          : Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontSize: 11,
+                padding: const EdgeInsets.symmetric(
+                  vertical: 3.0,
+                  horizontal: 1.0,
+                ),
+                decoration: isToday
+                    ? BoxDecoration(
+                        color: colorScheme.primaryContainer.withValues(
+                          alpha: isDark ? 0.42 : 0.60,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: colorScheme.primary.withValues(alpha: 0.45),
+                          width: 1,
+                        ),
+                      )
+                    : null,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            weekdayLabel,
+                            style: TextStyle(
+                              color: isToday
+                                  ? colorScheme.primary
+                                  : (isDark ? Colors.white70 : Colors.black87),
+                              fontWeight: isToday
+                                  ? FontWeight.bold
+                                  : FontWeight.w500,
+                              fontSize: 12.5,
+                            ),
+                          ),
+                          if (isToday) ...[
+                            const SizedBox(width: 2),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 3.5,
+                                vertical: 0.5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: colorScheme.primary,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                '今',
+                                style: TextStyle(
+                                  color: colorScheme.onPrimary,
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1.1,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
-                  ),
-              ],
+                    const SizedBox(height: 2),
+                    if (dateStr.isNotEmpty)
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: isToday
+                            ? Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                  vertical: 1,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: colorScheme.primary,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  dateStr,
+                                  style: TextStyle(
+                                    color: colorScheme.onPrimary,
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.bold,
+                                    height: 1.1,
+                                  ),
+                                ),
+                              )
+                            : Text(
+                                dateStr,
+                                style: TextStyle(
+                                  color: colorScheme.onSurfaceVariant,
+                                  fontSize: 11,
+                                ),
+                              ),
+                      ),
+                  ],
+                ),
+              ),
             ),
           );
         }),
@@ -1000,13 +1126,15 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
       subFontSize,
     );
 
-    final int minSubLines =
-        (availHeight >= 46.0 && neededSubLines >= 2) ? 2 : 1;
+    final int minSubLines = (availHeight >= 46.0 && neededSubLines >= 2)
+        ? 2
+        : 1;
     final double minSubReserve = subTopGap + minSubLines * subLineHeight;
     final int titleMaxLines =
-        ((availHeight - minSubReserve + 2.0) / titleLineHeight)
-            .floor()
-            .clamp(1, 15);
+        ((availHeight - minSubReserve + 2.0) / titleLineHeight).floor().clamp(
+          1,
+          15,
+        );
     final int actualTitleLines = neededTitleLines < titleMaxLines
         ? neededTitleLines
         : titleMaxLines;
@@ -1036,9 +1164,15 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
         ? CalendarDateMath.addDays(monday, weekday - 1)
         : DateTime.now();
     final dateStr = _cachedDateFormat('M月d日').format(day);
-    final weekdayStr = const ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][
-      (weekday - 1).clamp(0, 6)
-    ];
+    final weekdayStr = const [
+      '周一',
+      '周二',
+      '周三',
+      '周四',
+      '周五',
+      '周六',
+      '周日',
+    ][(weekday - 1).clamp(0, 6)];
     final sourceDate = _cachedDateFormat('yyyy-MM-dd').format(day);
 
     showAppModalBottomSheet(
@@ -1185,11 +1319,8 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               height: (height - 2).clamp(18.0, double.infinity),
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () => _showAggregatedTimelineSheet(
-                  context,
-                  weekday,
-                  items,
-                ),
+                onTap: () =>
+                    _showAggregatedTimelineSheet(context, weekday, items),
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
@@ -1378,6 +1509,37 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
         ? _cachedVisiblePlanIndices
         : const <TodoPlanBlock, int>{};
     final planPomodoroProgressIndex = _planPomodoroProgressIndexFor();
+
+    // 🚀 周视图“今天”整列纵向柔和高光：贯穿网格全高，作为底层聚光灯使今天一眼可辨
+    final weekMonday = _getMondayOfCurrentWeek();
+    int? todayColumnIndex;
+    if (weekMonday != null) {
+      final now = DateTime.now();
+      final diff = CalendarDateMath.daysBetween(weekMonday, now);
+      if (diff >= 0 && diff < 7) {
+        todayColumnIndex = diff;
+      }
+    }
+
+    if (todayColumnIndex != null) {
+      children.add(
+        Positioned(
+          top: 0,
+          bottom: 0,
+          left: timeColumnWidth + todayColumnIndex * cellWidth,
+          width: cellWidth,
+          child: IgnorePointer(
+            child: Container(
+              decoration: BoxDecoration(
+                color: colorScheme.primary.withValues(
+                  alpha: isDark ? 0.07 : 0.038,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     for (int hour = startHour; hour <= endHour; hour++) {
       // 🚀 自适应时间隐藏：如果该小时正点落于本周的合并收窄区间中，跳过不绘制
@@ -1589,10 +1751,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                   opacity: 0.28,
                   maxSaturation: 0.40,
                 )
-              : _harmonizeWeekEventColor(
-                  colorScheme.cdtWarning,
-                  opacity: 0.85,
-                );
+              : _harmonizeWeekEventColor(colorScheme.cdtWarning, opacity: 0.85);
           final Color todoTextColor = Colors.white.withValues(
             alpha: todo.isDone ? 0.65 : 1.0,
           );
@@ -1831,17 +1990,18 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
             opacity: 0.78,
           );
 
-          final int logDurationSeconds =
-              ((log.endTime - log.startTime) / 1000).round();
-          final String logDurationText =
-              _formatEventDuration(logDurationSeconds);
+          final int logDurationSeconds = ((log.endTime - log.startTime) / 1000)
+              .round();
+          final String logDurationText = _formatEventDuration(
+            logDurationSeconds,
+          );
           final logRemark = log.remark?.trim();
           final String effectiveLogSubtitle =
               (logRemark != null && logRemark.isNotEmpty)
-                  ? (isWideScreen
-                      ? '$logDurationText · $logRemark'
-                      : '$logDurationText $logRemark')
-                  : logDurationText;
+              ? (isWideScreen
+                    ? '$logDurationText · $logRemark'
+                    : '$logDurationText $logRemark')
+              : logDurationText;
 
           final logCardKey = _getTimeLogCardKey(log.id, weekday: weekday);
           final logIndex = logIndices[log]!;
@@ -1871,8 +2031,8 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 final bool isShortLogCard = height < 22.0;
                 final String displayLogTitle = isShortLogCard
                     ? (isWideScreen
-                        ? '$logTitle · $logDurationText'
-                        : '$logTitle $logDurationText')
+                          ? '$logTitle · $logDurationText'
+                          : '$logTitle $logDurationText')
                     : logTitle;
                 final String? displayLogSubtitle = isShortLogCard
                     ? null
@@ -2296,8 +2456,8 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
             final bool isShortFixedCard = height < 24.0;
             final String displayFixedTitle =
                 isShortFixedCard && location != null
-                    ? '${schedule.title} · $location'
-                    : schedule.title;
+                ? '${schedule.title} · $location'
+                : schedule.title;
             final String? displayFixedLocation = isShortFixedCard
                 ? null
                 : location;
@@ -2553,24 +2713,25 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 ? pomTagName
                 : null;
 
-            final int segDurationSeconds = segments.length == 1 &&
-                    record.effectiveDuration > 0
+            final int segDurationSeconds =
+                segments.length == 1 && record.effectiveDuration > 0
                 ? record.effectiveDuration
                 : ((end.millisecondsSinceEpoch - start.millisecondsSinceEpoch) /
-                        1000)
-                    .round();
-            final String durationText =
-                _formatPomodoroDuration(segDurationSeconds);
+                          1000)
+                      .round();
+            final String durationText = _formatPomodoroDuration(
+              segDurationSeconds,
+            );
             final String effectivePomSubtitle = pomSubtitle != null
                 ? (isWideScreen
-                    ? '$pomSubtitle · $durationText'
-                    : '$pomSubtitle $durationText')
+                      ? '$pomSubtitle · $durationText'
+                      : '$pomSubtitle $durationText')
                 : durationText;
             final bool isShortPomCard = height < 22.0;
             final String displayPomTitle = isShortPomCard
                 ? (isWideScreen
-                    ? '$pomTitle · $durationText'
-                    : '$pomTitle $durationText')
+                      ? '$pomTitle · $durationText'
+                      : '$pomTitle $durationText')
                 : pomTitle;
             final String? displayPomSubtitle = isShortPomCard
                 ? null
@@ -2771,8 +2932,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               _cachedDateFormat('yyyy-MM-dd').format(dayStart),
               surface: 'week-timed',
             );
-            final String? location =
-                event.location?.trim().isNotEmpty == true
+            final String? location = event.location?.trim().isNotEmpty == true
                 ? event.location!.trim()
                 : null;
 
@@ -3126,15 +3286,15 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           );
           children.add(
             Positioned(
-              top: nowY - 1,
-              left: lineLeft,
-              width: cellWidth,
-              height: 2,
+              top: nowY - 5,
+              left: lineLeft - 5,
+              width: cellWidth + 5,
+              height: 10,
               child: RepaintBoundary(
                 child: CustomPaint(
                   painter: _CurrentTimeMarkerPainter(
                     animation: _pulseAnimation,
-                    color: focusColor,
+                    color: colorScheme.primary,
                   ),
                 ),
               ),
@@ -3184,12 +3344,32 @@ class _CurrentTimeMarkerPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
     final progress = animation.value;
-    _shadowPaint.color = color.withValues(alpha: 0.4 * progress);
-    canvas.drawRect(rect.inflate(1), _shadowPaint);
-    _fillPaint.color = color.withValues(alpha: 0.7 + 0.3 * progress);
-    canvas.drawRect(rect, _fillPaint);
+    final centerY = size.height / 2;
+
+    // 绘制横贯当天列的高亮时间线
+    final lineRect = Rect.fromLTWH(5, centerY - 1.25, size.width - 5, 2.5);
+    _shadowPaint.color = color.withValues(alpha: 0.45 * progress);
+    canvas.drawRect(lineRect.inflate(1), _shadowPaint);
+    _fillPaint.color = color.withValues(alpha: 0.8 + 0.2 * progress);
+    canvas.drawRect(lineRect, _fillPaint);
+
+    // 绘制当天时间线左侧的时间指示圆点（Time Dot）
+    final dotCenter = Offset(5, centerY);
+    final glowPaint = Paint()
+      ..color = color.withValues(alpha: 0.35 * progress)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(dotCenter, 5.0 + 1.5 * progress, glowPaint);
+
+    final dotPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(dotCenter, 3.5, dotPaint);
+
+    final innerDotPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.95)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(dotCenter, 1.2, innerDotPaint);
   }
 
   @override

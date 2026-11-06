@@ -1020,6 +1020,7 @@ class CourseMonthView extends StatelessWidget {
   ) {
     bool isToday = DateUtils.isSameDay(day, DateTime.now());
     bool isCurrentMonth = day.month == selectedMonth.month;
+    final colorScheme = Theme.of(context).colorScheme;
 
     // Small dots and the detailed timeline honor the cross-day visibility setting.
     final showDetailedTodos = viewMode == 1 && height > 150;
@@ -1031,30 +1032,54 @@ class CourseMonthView extends StatelessWidget {
       decoration: BoxDecoration(
         color:
             heatColor ??
-            (isCurrentMonth
-                ? (isDark ? Colors.white.withValues(alpha: 0.02) : Colors.white)
-                : Colors.transparent),
+            (isToday
+                ? colorScheme.primary.withValues(alpha: isDark ? 0.08 : 0.04)
+                : (isCurrentMonth
+                      ? (isDark
+                            ? Colors.white.withValues(alpha: 0.02)
+                            : Colors.white)
+                      : Colors.transparent)),
         border: Border.all(
-          color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.03),
-          width: 0.5,
+          color: isToday
+              ? colorScheme.primary.withValues(alpha: 0.35)
+              : (isDark
+                    ? Colors.white10
+                    : Colors.black.withValues(alpha: 0.03)),
+          width: isToday ? 1.0 : 0.5,
         ),
       ),
       child: Stack(
         children: [
           Padding(
-            padding: const EdgeInsets.all(4.0),
-            child: Text(
-              '${day.day}',
-              style: TextStyle(
-                fontSize: 10.5,
-                color: isToday
-                    ? Colors.redAccent
-                    : (isCurrentMonth
+            padding: const EdgeInsets.all(3.0),
+            child: isToday
+                ? Container(
+                    width: 18,
+                    height: 18,
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary,
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      '${day.day}',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: colorScheme.onPrimary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  )
+                : Text(
+                    '${day.day}',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      color: isCurrentMonth
                           ? (isDark ? Colors.white70 : Colors.black87)
-                          : Colors.grey.withValues(alpha: 0.3)),
-                fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
-              ),
-            ),
+                          : Colors.grey.withValues(alpha: 0.3),
+                      fontWeight: FontWeight.normal,
+                    ),
+                  ),
           ),
           if (viewMode == 1 && height > 150)
             Positioned(
