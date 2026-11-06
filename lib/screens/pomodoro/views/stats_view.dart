@@ -73,7 +73,6 @@ class PomodoroStatsState extends State<PomodoroStats> {
   int _yearlyCompletedCount = 0;
   bool _loading = true;
   bool _syncing = false;
-  bool _showDimensionPicker = false;
   List<PomodoroSession> _chartSessions = [];
   int _loadGeneration = 0;
 
@@ -379,6 +378,70 @@ class PomodoroStatsState extends State<PomodoroStats> {
     _loadLocal();
   }
 
+  Future<void> _pickDay() async {
+    final now = DateTime.now();
+    final picked = await showAppDatePicker(
+      context: context,
+      initialDate: _selected.isAfter(now) ? now : _selected,
+      firstDate: DateTime(1970),
+      lastDate: DateTime(now.year + 1, 12, 31),
+      helpText: '选择日期',
+      cancelText: '取消',
+      confirmText: '确定',
+    );
+    if (!mounted || picked == null) return;
+    final pickedDate = DateTime(picked.year, picked.month, picked.day);
+    if (pickedDate.year == _selected.year &&
+        pickedDate.month == _selected.month &&
+        pickedDate.day == _selected.day) {
+      return;
+    }
+    setState(() => _selected = pickedDate);
+    _loadLocal();
+  }
+
+  Future<void> _pickWeek() async {
+    final now = DateTime.now();
+    final picked = await showAppDatePicker(
+      context: context,
+      initialDate: _selected.isAfter(now) ? now : _selected,
+      firstDate: DateTime(1970),
+      lastDate: DateTime(now.year + 1, 12, 31),
+      helpText: '选择周内任意日期以跳转到该周',
+      cancelText: '取消',
+      confirmText: '确定',
+    );
+    if (!mounted || picked == null) return;
+    final pickedDate = DateTime(picked.year, picked.month, picked.day);
+    final currentWeekRange = _getRange();
+    if (pickedDate.isAfter(
+          currentWeekRange.start.subtract(const Duration(seconds: 1)),
+        ) &&
+        pickedDate.isBefore(currentWeekRange.end)) {
+      return;
+    }
+    setState(() => _selected = pickedDate);
+    _loadLocal();
+  }
+
+  Future<void> _pickMonth() async {
+    final now = DateTime.now();
+    final picked = await showDialog<DateTime>(
+      context: context,
+      builder: (dialogContext) => _MonthPickerDialog(
+        initialDate: _selected,
+        firstDate: DateTime(1970),
+        lastDate: DateTime(now.year),
+      ),
+    );
+    if (!mounted || picked == null) return;
+    if (picked.year == _selected.year && picked.month == _selected.month) {
+      return;
+    }
+    setState(() => _selected = DateTime(picked.year, picked.month, 1));
+    _loadLocal();
+  }
+
   Future<void> _pickYear() async {
     final now = DateTime.now();
     final pickerYear = _selected.year.clamp(1970, now.year);
@@ -401,6 +464,31 @@ class PomodoroStatsState extends State<PomodoroStats> {
     );
     if (!mounted || year == null || year == _selected.year) return;
     setState(() => _selected = DateTime(year, 1, 1));
+    _loadLocal();
+  }
+
+  Future<void> _handleTitleTap() async {
+    switch (_dimension) {
+      case 0:
+        await _pickDay();
+        break;
+      case 1:
+        await _pickWeek();
+        break;
+      case 2:
+        await _pickMonth();
+        break;
+      case 3:
+        await _pickYear();
+        break;
+    }
+  }
+
+  void _openDay(DateTime day) {
+    setState(() {
+      _dimension = 0;
+      _selected = DateTime(day.year, day.month, day.day);
+    });
     _loadLocal();
   }
 
@@ -473,15 +561,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
                   onPressed: _prev,
                 ),
                 InkWell(
-                  onTap: () async {
-                    if (_dimension == 3) {
-                      await _pickYear();
-                    } else {
-                      setState(
-                        () => _showDimensionPicker = !_showDimensionPicker,
-                      );
-                    }
-                  },
+                  onTap: _handleTitleTap,
                   borderRadius: BorderRadius.circular(8),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
@@ -498,18 +578,12 @@ class PomodoroStatsState extends State<PomodoroStats> {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        if (_dimension == 3 || widget.isCompact) ...[
-                          const SizedBox(width: 4),
-                          Icon(
-                            _dimension == 3
-                                ? Icons.arrow_drop_down_rounded
-                                : _showDimensionPicker
-                                ? Icons.expand_less_rounded
-                                : Icons.expand_more_rounded,
-                            size: 16,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        ],
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.arrow_drop_down_rounded,
+                          size: widget.isCompact ? 18 : 22,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
                       ],
                     ),
                   ),
@@ -527,59 +601,56 @@ class PomodoroStatsState extends State<PomodoroStats> {
               ],
             ),
 
-            if (!widget.isCompact || _showDimensionPicker) ...[
-              const SizedBox(height: 12),
-              Center(
-                child: SegmentedButton<int>(
-                  segments: [
-                    ButtonSegment(
-                      value: 0,
-                      label: Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: widget.isCompact ? 4 : 12,
-                        ),
-                        child: const Text('日'),
+            const SizedBox(height: 12),
+            Center(
+              child: SegmentedButton<int>(
+                segments: [
+                  ButtonSegment(
+                    value: 0,
+                    label: Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: widget.isCompact ? 4 : 12,
                       ),
+                      child: const Text('日'),
                     ),
-                    ButtonSegment(
-                      value: 1,
-                      label: Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: widget.isCompact ? 4 : 8,
-                        ),
-                        child: const Text('周'),
+                  ),
+                  ButtonSegment(
+                    value: 1,
+                    label: Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: widget.isCompact ? 4 : 8,
                       ),
+                      child: const Text('周'),
                     ),
-                    ButtonSegment(
-                      value: 2,
-                      label: Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: widget.isCompact ? 4 : 12,
-                        ),
-                        child: const Text('月'),
+                  ),
+                  ButtonSegment(
+                    value: 2,
+                    label: Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: widget.isCompact ? 4 : 12,
                       ),
+                      child: const Text('月'),
                     ),
-                    ButtonSegment(
-                      value: 3,
-                      label: Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: widget.isCompact ? 4 : 12,
-                        ),
-                        child: const Text('年'),
+                  ),
+                  ButtonSegment(
+                    value: 3,
+                    label: Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: widget.isCompact ? 4 : 12,
                       ),
+                      child: const Text('年'),
                     ),
-                  ],
-                  selected: {_dimension},
-                  onSelectionChanged: (s) {
-                    setState(() {
-                      _dimension = s.first;
-                      if (widget.isCompact) _showDimensionPicker = false;
-                    });
-                    _loadLocal();
-                  },
-                ),
+                  ),
+                ],
+                selected: {_dimension},
+                onSelectionChanged: (s) {
+                  setState(() {
+                    _dimension = s.first;
+                  });
+                  _loadLocal();
+                },
               ),
-            ],
+            ),
 
             const SizedBox(height: 20),
 
@@ -911,15 +982,38 @@ class PomodoroStatsState extends State<PomodoroStats> {
           previousDay.month != localStart.month ||
           previousDay.day != localStart.day;
       if (isNewDay) {
+        final dayDate = DateTime(
+          localStart.year,
+          localStart.month,
+          localStart.day,
+        );
         widgets.add(
           Padding(
             padding: const EdgeInsets.only(top: 16, bottom: 8),
-            child: Text(
-              dayLabelFormatter.format(localStart),
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(6),
+              onTap: () => _openDay(dayDate),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      dayLabelFormatter.format(localStart),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 16,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -2120,6 +2214,181 @@ class PomodoroTrendChart extends StatelessWidget {
           );
         }).toList(),
       ),
+    );
+  }
+}
+
+class _MonthPickerDialog extends StatefulWidget {
+  final DateTime initialDate;
+  final DateTime firstDate;
+  final DateTime lastDate;
+
+  const _MonthPickerDialog({
+    required this.initialDate,
+    required this.firstDate,
+    required this.lastDate,
+  });
+
+  @override
+  State<_MonthPickerDialog> createState() => _MonthPickerDialogState();
+}
+
+class _MonthPickerDialogState extends State<_MonthPickerDialog> {
+  late int _displayYear;
+
+  @override
+  void initState() {
+    super.initState();
+    _displayYear = widget.initialDate.year;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final now = DateTime.now();
+
+    final canGoPrev = _displayYear > widget.firstDate.year;
+    final canGoNext = _displayYear < widget.lastDate.year;
+
+    return AlertDialog(
+      titlePadding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+      contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+      title: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.chevron_left),
+            onPressed: canGoPrev ? () => setState(() => _displayYear--) : null,
+          ),
+          InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () async {
+              final year = await showDialog<int>(
+                context: context,
+                builder: (dialogCtx) => AlertDialog(
+                  title: const Text('选择年份'),
+                  content: SizedBox(
+                    width: 300,
+                    height: 320,
+                    child: YearPicker(
+                      firstDate: widget.firstDate,
+                      lastDate: widget.lastDate,
+                      selectedDate: DateTime(_displayYear),
+                      onChanged: (d) => Navigator.pop(dialogCtx, d.year),
+                    ),
+                  ),
+                ),
+              );
+              if (year != null && mounted) {
+                setState(() => _displayYear = year);
+              }
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '$_displayYear年',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(
+                    Icons.arrow_drop_down_rounded,
+                    size: 20,
+                    color: colorScheme.primary,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.chevron_right),
+            onPressed: canGoNext ? () => setState(() => _displayYear++) : null,
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: 300,
+        height: 240,
+        child: GridView.builder(
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 1.8,
+          ),
+          itemCount: 12,
+          itemBuilder: (context, index) {
+            final month = index + 1;
+            final isSelected =
+                _displayYear == widget.initialDate.year &&
+                month == widget.initialDate.month;
+            final isCurrent = _displayYear == now.year && month == now.month;
+
+            final monthDate = DateTime(_displayYear, month, 1);
+            final isFuture = monthDate.isAfter(
+              DateTime(now.year, now.month, 1),
+            );
+
+            return Material(
+              color: isSelected
+                  ? colorScheme.primary
+                  : (isCurrent
+                        ? colorScheme.primaryContainer.withValues(alpha: 0.3)
+                        : Colors.transparent),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: isCurrent && !isSelected
+                    ? BorderSide(color: colorScheme.primary, width: 1.2)
+                    : BorderSide(
+                        color: isSelected
+                            ? colorScheme.primary
+                            : colorScheme.outlineVariant.withValues(alpha: 0.4),
+                        width: 0.8,
+                      ),
+              ),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: isFuture
+                    ? null
+                    : () {
+                        Navigator.of(context)
+                            .pop(DateTime(_displayYear, month, 1));
+                      },
+                child: Center(
+                  child: Text(
+                    '$month月',
+                    style: TextStyle(
+                      color: isFuture
+                          ? colorScheme.onSurface.withValues(alpha: 0.3)
+                          : (isSelected
+                                ? colorScheme.onPrimary
+                                : (isCurrent
+                                      ? colorScheme.primary
+                                      : colorScheme.onSurface)),
+                      fontWeight: isSelected || isCurrent
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+      ],
     );
   }
 }
