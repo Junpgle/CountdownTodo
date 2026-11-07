@@ -4705,9 +4705,18 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 24),
+        findItemIndexCallback: (Key key) {
+          if (key is ValueKey<String>) {
+            final title = key.value;
+            final idx = _mlInsights.indexWhere((it) => it.title == title);
+            return idx != -1 ? idx : null;
+          }
+          return null;
+        },
         itemCount: _mlInsights.length,
         separatorBuilder: (_, _) => const SizedBox(width: 12),
         itemBuilder: (_, index) => SizedBox(
+          key: ValueKey<String>(_mlInsights[index].title),
           width: 260,
           child: RepaintBoundary(
             child: _buildInsightItem(_mlInsights[index], cs),

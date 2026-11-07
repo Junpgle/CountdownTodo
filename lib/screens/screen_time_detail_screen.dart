@@ -1624,6 +1624,15 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           padding: EdgeInsets.zero,
+          findItemIndexCallback: (Key key) {
+            if (key is ValueKey<String>) {
+              final keyVal = key.value;
+              for (int idx = skipCount; idx < apps.length; idx++) {
+                if (apps[idx].key == keyVal) return idx - skipCount;
+              }
+            }
+            return null;
+          },
           itemCount: apps.length - skipCount,
           separatorBuilder: (_, _) => Divider(
             height: 1,
@@ -1634,71 +1643,74 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
           itemBuilder: (ctx, i) {
             final app = apps[i + skipCount];
             final devices = app.value['devices'] as Map<String, int>;
-            return _ExpandableCard(
-              pageBuilder: (_) => AppDetailScreen(
-                appName: app.key,
-                historyStats: _historyStats,
-                filter: _currentFilter,
-                range: _currentRange,
-                anchorDate: _selectedDate,
-              ),
-              sourceColor: cs.surface,
-              borderRadius: BorderRadius.zero,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
+            return RepaintBoundary(
+              key: ValueKey<String>(app.key),
+              child: _ExpandableCard(
+                pageBuilder: (_) => AppDetailScreen(
+                  appName: app.key,
+                  historyStats: _historyStats,
+                  filter: _currentFilter,
+                  range: _currentRange,
+                  anchorDate: _selectedDate,
                 ),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 18,
-                      backgroundColor: cs.surfaceContainerHighest,
-                      child: Text(
-                        app.key.isNotEmpty ? app.key[0].toUpperCase() : "?",
-                        style: TextStyle(
-                          color: cs.onSurfaceVariant,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
+                sourceColor: cs.surface,
+                borderRadius: BorderRadius.zero,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 18,
+                        backgroundColor: cs.surfaceContainerHighest,
+                        child: Text(
+                          app.key.isNotEmpty ? app.key[0].toUpperCase() : "?",
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            app.key,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              app.key,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 4),
-                          buildDeviceBreakdown(
-                            devices,
-                            _currentFilter == DeviceFilter.all,
-                          ),
-                        ],
+                            const SizedBox(height: 4),
+                            buildDeviceBreakdown(
+                              devices,
+                              _currentFilter == DeviceFilter.all,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      formatHM(app.value['total'] as int),
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                        color: cs.onSurfaceVariant,
+                      const SizedBox(width: 8),
+                      Text(
+                        formatHM(app.value['total'] as int),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                          color: cs.onSurfaceVariant,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 2),
-                    Icon(
-                      Icons.chevron_right_rounded,
-                      size: 18,
-                      color: cs.outlineVariant,
-                    ),
-                  ],
+                      const SizedBox(width: 2),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        size: 18,
+                        color: cs.outlineVariant,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -1914,6 +1926,16 @@ class CategoryDetailScreen extends StatelessWidget {
                               borderRadius: BorderRadius.circular(22),
                               child: ListView.separated(
                                 padding: EdgeInsets.zero,
+                                findItemIndexCallback: (Key key) {
+                                  if (key is ValueKey<String>) {
+                                    final keyVal = key.value;
+                                    final idx = apps.indexWhere(
+                                      (a) => a.key == keyVal,
+                                    );
+                                    return idx != -1 ? idx : null;
+                                  }
+                                  return null;
+                                },
                                 itemCount: apps.length,
                                 separatorBuilder: (_, _) => Divider(
                                   height: 1,
@@ -1927,76 +1949,80 @@ class CategoryDetailScreen extends StatelessWidget {
                                   final app = apps[i];
                                   final devices =
                                       app.value['devices'] as Map<String, int>;
-                                  return _ExpandableCard(
-                                    pageBuilder: (_) => AppDetailScreen(
-                                      appName: app.key,
-                                      historyStats: historyStats,
-                                      filter: currentFilter,
-                                      range: range,
-                                      anchorDate: anchorDate,
-                                    ),
-                                    sourceColor: cs.surface,
-                                    borderRadius: BorderRadius.zero,
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 16,
-                                        vertical: 12,
+                                  return RepaintBoundary(
+                                    key: ValueKey<String>(app.key),
+                                    child: _ExpandableCard(
+                                      pageBuilder: (_) => AppDetailScreen(
+                                        appName: app.key,
+                                        historyStats: historyStats,
+                                        filter: currentFilter,
+                                        range: range,
+                                        anchorDate: anchorDate,
                                       ),
-                                      child: Row(
-                                        children: [
-                                          CircleAvatar(
-                                            radius: 20,
-                                            backgroundColor: catColor
-                                                .withValues(alpha: 0.1),
-                                            child: Text(
-                                              app.key.isNotEmpty
-                                                  ? app.key[0].toUpperCase()
-                                                  : "?",
-                                              style: TextStyle(
-                                                color: catColor,
-                                                fontWeight: FontWeight.w700,
-                                                fontSize: 15,
+                                      sourceColor: cs.surface,
+                                      borderRadius: BorderRadius.zero,
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                          vertical: 12,
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            CircleAvatar(
+                                              radius: 20,
+                                              backgroundColor: catColor
+                                                  .withValues(alpha: 0.1),
+                                              child: Text(
+                                                app.key.isNotEmpty
+                                                    ? app.key[0].toUpperCase()
+                                                    : "?",
+                                                style: TextStyle(
+                                                  color: catColor,
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 15,
+                                                ),
                                               ),
                                             ),
-                                          ),
-                                          const SizedBox(width: 12),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  app.key,
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.w600,
-                                                    fontSize: 15,
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    app.key,
+                                                    style: const TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      fontSize: 15,
+                                                    ),
                                                   ),
-                                                ),
-                                                const SizedBox(height: 5),
-                                                _ScreenTimeDetailScreenState.buildDeviceBreakdown(
-                                                  devices,
-                                                  isAllFilter,
-                                                ),
-                                              ],
+                                                  const SizedBox(height: 5),
+                                                  _ScreenTimeDetailScreenState.buildDeviceBreakdown(
+                                                    devices,
+                                                    isAllFilter,
+                                                  ),
+                                                ],
+                                              ),
                                             ),
-                                          ),
-                                          Text(
-                                            _ScreenTimeDetailScreenState.formatHM(
-                                              app.value['total'] as int,
+                                            Text(
+                                              _ScreenTimeDetailScreenState.formatHM(
+                                                app.value['total'] as int,
+                                              ),
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 14,
+                                                color: cs.onSurfaceVariant,
+                                              ),
                                             ),
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.w700,
-                                              fontSize: 14,
-                                              color: cs.onSurfaceVariant,
+                                            const SizedBox(width: 4),
+                                            Icon(
+                                              Icons.chevron_right_rounded,
+                                              size: 18,
+                                              color: cs.outlineVariant,
                                             ),
-                                          ),
-                                          const SizedBox(width: 4),
-                                          Icon(
-                                            Icons.chevron_right_rounded,
-                                            size: 18,
-                                            color: cs.outlineVariant,
-                                          ),
-                                        ],
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   );

@@ -745,10 +745,20 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           scrollDirection: Axis.horizontal,
           physics: const BouncingScrollPhysics(),
+          findItemIndexCallback: (Key key) {
+            if (key is ValueKey<String>) {
+              final text = key.value;
+              final idx = _suggestions.indexOf(text);
+              return idx != -1 ? idx : null;
+            }
+            return null;
+          },
           itemCount: _suggestions.length,
           separatorBuilder: (_, _) => const SizedBox(width: 8),
-          itemBuilder: (context, index) =>
-              _buildQuickQuestion(_suggestions[index], compact: true),
+          itemBuilder: (context, index) => RepaintBoundary(
+            key: ValueKey<String>(_suggestions[index]),
+            child: _buildQuickQuestion(_suggestions[index], compact: true),
+          ),
         ),
       ),
     );

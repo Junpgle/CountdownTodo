@@ -1005,32 +1005,35 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                       final draft = drafts[index];
                       final isIncome =
                           draft.type == FinanceTransactionType.income;
-                      return ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        leading: CircleAvatar(
-                          backgroundColor: isIncome
-                              ? colorScheme.tertiaryContainer
-                              : colorScheme.primaryContainer,
-                          child: Icon(
-                            isIncome
-                                ? Icons.south_west_rounded
-                                : Icons.north_east_rounded,
-                            color: isIncome
-                                ? colorScheme.onTertiaryContainer
-                                : colorScheme.onPrimaryContainer,
+                      return RepaintBoundary(
+                        key: ValueKey<int>(index),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
                           ),
-                        ),
-                        title: Text(
-                          '${draft.type.label} · '
-                          '${formatFinanceAmount(draft.amountMinor)}',
-                        ),
-                        subtitle: Text(
-                          _quickDraftSummary(draft),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+                          leading: CircleAvatar(
+                            backgroundColor: isIncome
+                                ? colorScheme.tertiaryContainer
+                                : colorScheme.primaryContainer,
+                            child: Icon(
+                              isIncome
+                                  ? Icons.south_west_rounded
+                                  : Icons.north_east_rounded,
+                              color: isIncome
+                                  ? colorScheme.onTertiaryContainer
+                                  : colorScheme.onPrimaryContainer,
+                            ),
+                          ),
+                          title: Text(
+                            '${draft.type.label} · '
+                            '${formatFinanceAmount(draft.amountMinor)}',
+                          ),
+                          subtitle: Text(
+                            _quickDraftSummary(draft),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       );
                     },
@@ -1837,26 +1840,30 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                 separatorBuilder: (_, _) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
                   if (includeUnset && index == 0) {
-                    return _buildFinanceOptionTile(
-                      context,
-                      title: '未指定',
-                      subtitle: unsetSubtitle,
-                      icon: Icons.remove_rounded,
-                      accent: colorScheme.outline,
-                      isSelected: selectedUuid == null,
-                      onTap: () =>
-                          Navigator.of(sheetContext)
-                              .pop(_FinanceOptionSelection<T>(null)),
+                    return RepaintBoundary(
+                      child: _buildFinanceOptionTile(
+                        context,
+                        title: '未指定',
+                        subtitle: unsetSubtitle,
+                        icon: Icons.remove_rounded,
+                        accent: colorScheme.outline,
+                        isSelected: selectedUuid == null,
+                        onTap: () =>
+                            Navigator.of(sheetContext)
+                                .pop(_FinanceOptionSelection<T>(null)),
+                      ),
                     );
                   }
                   final option = options[index - (includeUnset ? 1 : 0)];
-                  return optionBuilder(
-                    context,
-                    option,
-                    optionUuid(option) == selectedUuid,
-                    () =>
-                        Navigator.of(sheetContext)
-                            .pop(_FinanceOptionSelection<T>(option)),
+                  return RepaintBoundary(
+                    child: optionBuilder(
+                      context,
+                      option,
+                      optionUuid(option) == selectedUuid,
+                      () =>
+                          Navigator.of(sheetContext)
+                              .pop(_FinanceOptionSelection<T>(option)),
+                    ),
                   );
                 },
               ),

@@ -331,7 +331,7 @@ class _VersionHistorySheetState extends State<VersionHistorySheet>
       separatorBuilder: (_, _) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
         final item = history[index];
-        return _buildHistoryItem(item, index);
+        return RepaintBoundary(child: _buildHistoryItem(item, index));
       },
     );
   }

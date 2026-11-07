@@ -409,6 +409,14 @@ class _DayViewState extends State<_DayView> {
                     Flexible(
                       child: ListView.separated(
                         shrinkWrap: true,
+                        findItemIndexCallback: (Key key) {
+                          if (key is ValueKey<String>) {
+                            final id = key.value;
+                            final idx = dayLogs.indexWhere((l) => l.id == id);
+                            return idx != -1 ? idx : null;
+                          }
+                          return null;
+                        },
                         itemCount: dayLogs.length,
                         separatorBuilder: (_, _) => const SizedBox(height: 8),
                         itemBuilder: (ctx2, i) {
@@ -434,147 +442,150 @@ class _DayViewState extends State<_DayView> {
                           final e = DateTime.fromMillisecondsSinceEpoch(
                             log.endTime,
                           );
-                          return Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 12,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _TC.inputFill(ctx2),
-                              border: Border(
-                                left: BorderSide(color: c, width: 3),
+                          return RepaintBoundary(
+                            key: ValueKey<String>(log.id),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
                               ),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        log.title.isNotEmpty
-                                            ? log.title
-                                            : (tag?.name ?? '补录记录'),
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: _TC.text(ctx2),
+                              decoration: BoxDecoration(
+                                color: _TC.inputFill(ctx2),
+                                border: Border(
+                                  left: BorderSide(color: c, width: 3),
+                                ),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          log.title.isNotEmpty
+                                              ? log.title
+                                              : (tag?.name ?? '补录记录'),
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                            color: _TC.text(ctx2),
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(height: 3),
-                                      Row(
-                                        children: [
-                                          if (tag != null) ...[
-                                            Container(
-                                              width: 6,
-                                              height: 6,
-                                              decoration: BoxDecoration(
-                                                color: c,
-                                                shape: BoxShape.circle,
+                                        const SizedBox(height: 3),
+                                        Row(
+                                          children: [
+                                            if (tag != null) ...[
+                                              Container(
+                                                width: 6,
+                                                height: 6,
+                                                decoration: BoxDecoration(
+                                                  color: c,
+                                                  shape: BoxShape.circle,
+                                                ),
                                               ),
-                                            ),
-                                            const SizedBox(width: 4),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                tag.name,
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  color: c,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 6),
+                                            ],
                                             Text(
-                                              tag.name,
+                                              '${timeFormat.format(s)} → ${timeFormat.format(e)}',
                                               style: TextStyle(
                                                 fontSize: 10,
-                                                color: c,
-                                                fontWeight: FontWeight.w600,
+                                                color: _TC.textHint(ctx2),
                                               ),
                                             ),
-                                            const SizedBox(width: 6),
                                           ],
-                                          Text(
-                                            '${timeFormat.format(s)} → ${timeFormat.format(e)}',
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              color: _TC.textHint(ctx2),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  '${dur}min',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                    color: c,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                IconButton(
-                                  icon: Icon(
-                                    Icons.delete_outline,
-                                    size: 20,
-                                    color: colorScheme.error.withValues(
-                                      alpha: 0.6,
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(
-                                    minWidth: 36,
-                                    minHeight: 36,
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '${dur}min',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      color: c,
+                                    ),
                                   ),
-                                  onPressed: () {
-                                    showAppDialog(
-                                      context: ctx,
-                                      builder: (dCtx) => AlertDialog(
-                                        backgroundColor: _TC.card(ctx),
-                                        title: Text(
-                                          '删除记录',
-                                          style: TextStyle(
-                                            color: _TC.text(ctx),
-                                            fontSize: 16,
-                                          ),
-                                        ),
-                                        content: Text(
-                                          '确定删除「${log.title.isNotEmpty ? log.title : (tag?.name ?? '补录记录')}」吗？',
-                                          style: TextStyle(
-                                            color: _TC.textSub(ctx),
-                                            fontSize: 13,
-                                          ),
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () =>
-                                                Navigator.pop(dCtx),
-                                            child: Text(
-                                              '取消',
-                                              style: TextStyle(
-                                                color: _TC.textSub(ctx),
-                                              ),
-                                            ),
-                                          ),
-                                          TextButton(
-                                            onPressed: () {
-                                              Navigator.pop(dCtx);
-                                              widget.onDeleteLog(log.id);
-                                              if (dayLogs.length <= 1) {
-                                                Navigator.pop(ctx);
-                                              } else {
-                                                setModal(() {});
-                                              }
-                                            },
-                                            child: Text(
-                                              '删除',
-                                              style: TextStyle(
-                                                color: colorScheme.error,
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
+                                  const SizedBox(width: 4),
+                                  IconButton(
+                                    icon: Icon(
+                                      Icons.delete_outline,
+                                      size: 20,
+                                      color: colorScheme.error.withValues(
+                                        alpha: 0.6,
                                       ),
-                                    );
-                                  },
-                                ),
-                              ],
+                                    ),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(
+                                      minWidth: 36,
+                                      minHeight: 36,
+                                    ),
+                                    onPressed: () {
+                                      showAppDialog(
+                                        context: ctx,
+                                        builder: (dCtx) => AlertDialog(
+                                          backgroundColor: _TC.card(ctx),
+                                          title: Text(
+                                            '删除记录',
+                                            style: TextStyle(
+                                              color: _TC.text(ctx),
+                                              fontSize: 16,
+                                            ),
+                                          ),
+                                          content: Text(
+                                            '确定删除「${log.title.isNotEmpty ? log.title : (tag?.name ?? '补录记录')}」吗？',
+                                            style: TextStyle(
+                                              color: _TC.textSub(ctx),
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(dCtx),
+                                              child: Text(
+                                                '取消',
+                                                style: TextStyle(
+                                                  color: _TC.textSub(ctx),
+                                                ),
+                                              ),
+                                            ),
+                                            TextButton(
+                                              onPressed: () {
+                                                Navigator.pop(dCtx);
+                                                widget.onDeleteLog(log.id);
+                                                if (dayLogs.length <= 1) {
+                                                  Navigator.pop(ctx);
+                                                } else {
+                                                  setModal(() {});
+                                                }
+                                              },
+                                              child: Text(
+                                                '删除',
+                                                style: TextStyle(
+                                                  color: colorScheme.error,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
                             ),
                           );
                         },
@@ -2939,82 +2950,93 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
             constraints: const BoxConstraints(maxHeight: 220),
             child: ListView.separated(
               shrinkWrap: true,
+              findItemIndexCallback: (Key key) {
+                if (key is ValueKey<String>) {
+                  final id = key.value;
+                  final idx = _recentRecs.indexWhere((r) => r.id == id);
+                  return idx != -1 ? idx : null;
+                }
+                return null;
+              },
               itemCount: _recentRecs.length,
               primary: false,
               separatorBuilder: (_, _) => const SizedBox(height: 6),
               itemBuilder: (ctx, i) {
                 final r = _recentRecs[i];
                 final colorScheme = Theme.of(ctx).colorScheme;
-                return Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _TC.inputFill(ctx),
-                    border: Border(
-                      left: BorderSide(
-                        color: r.isPomodoro ? colorScheme.cdtFocus : c,
-                        width: 3,
-                      ),
+                return RepaintBoundary(
+                  key: ValueKey<String>(r.id),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
                     ),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      if (r.isPomodoro) ...[
-                        Icon(
-                          Icons.timer_outlined,
-                          size: 12,
-                          color: colorScheme.cdtFocus.withValues(alpha: 0.6),
-                        ),
-                        const SizedBox(width: 4),
-                      ],
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              r.title,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: _TC.text(ctx),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              r.timeRangeLabel,
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: _TC.textHint(ctx),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Text(
-                        '${r.durationMin}min',
-                        style: TextStyle(
-                          fontSize: 13,
+                    decoration: BoxDecoration(
+                      color: _TC.inputFill(ctx),
+                      border: Border(
+                        left: BorderSide(
                           color: r.isPomodoro ? colorScheme.cdtFocus : c,
-                          fontWeight: FontWeight.w700,
+                          width: 3,
                         ),
                       ),
-                      if (!r.isPomodoro)
-                        IconButton(
-                          icon: Icon(
-                            Icons.delete_outline,
-                            color: colorScheme.error.withValues(alpha: 0.55),
-                            size: 18,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        if (r.isPomodoro) ...[
+                          Icon(
+                            Icons.timer_outlined,
+                            size: 12,
+                            color: colorScheme.cdtFocus.withValues(alpha: 0.6),
                           ),
-                          onPressed: () => widget.onDelete(r.id),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                        )
-                      else
-                        const SizedBox(width: 40),
-                    ],
+                          const SizedBox(width: 4),
+                        ],
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                r.title,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: _TC.text(ctx),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                r.timeRangeLabel,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: _TC.textHint(ctx),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          '${r.durationMin}min',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: r.isPomodoro ? colorScheme.cdtFocus : c,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        if (!r.isPomodoro)
+                          IconButton(
+                            icon: Icon(
+                              Icons.delete_outline,
+                              color: colorScheme.error.withValues(alpha: 0.55),
+                              size: 18,
+                            ),
+                            onPressed: () => widget.onDelete(r.id),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          )
+                        else
+                          const SizedBox(width: 40),
+                      ],
+                    ),
                   ),
                 );
               },
