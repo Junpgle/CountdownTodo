@@ -780,6 +780,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                   onPomodoroTap: _showPomodoroDetail,
                   onTimeLogTap: _showTimeLogDetail,
                   onScheduleTap: _showScheduleDetail,
+                  onAggregatedSchedulesTap: _showAggregatedScheduleSheet,
                   username: widget.username,
                 )
               : _dayMode == _DayMode.view
@@ -1072,6 +1073,186 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     );
   }
 
+  void _showAggregatedScheduleSheet(
+    List<TimeLogMappedSchedule> schedules,
+    DateTime date,
+  ) {
+    if (schedules.isEmpty) return;
+    if (schedules.length == 1) {
+      _showScheduleDetail(schedules.first);
+      return;
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primary = schedules.first;
+    final primaryColor = primary.isCourse
+        ? (isDark ? const Color(0xFF64B5F6) : const Color(0xFF1E88E5))
+        : (isDark ? const Color(0xFFFFB74D) : const Color(0xFFFB8C00));
+    final dateStr = AppTimeFormats.monthDaySlash(date);
+    final weekdayStr = const [
+      '周一',
+      '周二',
+      '周三',
+      '周四',
+      '周五',
+      '周六',
+      '周日',
+    ][(date.weekday - 1).clamp(0, 6)];
+
+    showAppModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _sheet(
+        primaryColor.withValues(alpha: 0.4),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                _glow(primaryColor),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '$dateStr $weekdayStr · 重叠日程 (${schedules.length}项)',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: _TC.text(context),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(
+                    Icons.close,
+                    size: 18,
+                    color: _TC.textHint(context),
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Flexible(
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: schedules.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 8),
+                itemBuilder: (ctx, index) {
+                  final schedule = schedules[index];
+                  final isCourse = schedule.isCourse;
+                  final c = isCourse
+                      ? (isDark
+                            ? const Color(0xFF64B5F6)
+                            : const Color(0xFF1E88E5))
+                      : (isDark
+                            ? const Color(0xFFFFB74D)
+                            : const Color(0xFFFB8C00));
+                  final s = DateTime.fromMillisecondsSinceEpoch(
+                    schedule.startTime,
+                  );
+                  final e = DateTime.fromMillisecondsSinceEpoch(
+                    schedule.endTime,
+                  );
+                  final dur = (schedule.endTime - schedule.startTime) ~/ 60000;
+
+                  return Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _showScheduleDetail(schedule);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: c.withValues(alpha: isDark ? 0.12 : 0.08),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border(
+                            left: BorderSide(color: c, width: 3.5),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          schedule.title,
+                                          style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w600,
+                                            color: _TC.text(context),
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      _pill(isCourse ? '课程' : '日程', c),
+                                      const SizedBox(width: 4),
+                                      _pill('${dur}min', c),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      Text(
+                                        '${AppTimeFormats.clock(s)} - ${AppTimeFormats.clock(e)}',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: _TC.textSub(context),
+                                        ),
+                                      ),
+                                      if (schedule.subtitle != null &&
+                                          schedule.subtitle!.isNotEmpty) ...[
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            schedule.subtitle!,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: _TC.textHint(context),
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              size: 18,
+                              color: _TC.textHint(context),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showScheduleDetail(TimeLogMappedSchedule schedule) {
     final isCourse = schedule.isCourse;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1326,6 +1507,8 @@ class _WeekView extends StatefulWidget {
   final void Function(PomodoroRecord) onPomodoroTap;
   final void Function(TimeLogItem) onTimeLogTap;
   final void Function(TimeLogMappedSchedule) onScheduleTap;
+  final void Function(List<TimeLogMappedSchedule>, DateTime)
+  onAggregatedSchedulesTap;
   final String username;
 
   const _WeekView({
@@ -1341,6 +1524,7 @@ class _WeekView extends StatefulWidget {
     required this.onPomodoroTap,
     required this.onTimeLogTap,
     required this.onScheduleTap,
+    required this.onAggregatedSchedulesTap,
     required this.username,
   });
 
@@ -1930,21 +2114,32 @@ class _WeekViewState extends State<_WeekView>
                                 ),
                               ),
                             ),
-                            ...dSchedules.map((schedule) {
-                              final rs = max(schedule.startTime, ds);
-                              final re = min(schedule.endTime, de);
-                              final top = (rs - ds) / 3600000 * hourH;
-                              final h = ((re - rs) / 3600000 * hourH).clamp(
-                                3.0,
-                                9999.0,
-                              );
+                            ...clusterTimeLogSchedules(dSchedules, ds, de).map((
+                              cluster,
+                            ) {
+                              final top =
+                                  (cluster.startTime - ds) / 3600000 * hourH;
+                              final h =
+                                  ((cluster.endTime - cluster.startTime) /
+                                          3600000 *
+                                          hourH)
+                                      .clamp(3.0, 9999.0);
                               return Positioned(
                                 top: top,
                                 left: 0,
                                 right: 0,
                                 height: h,
                                 child: GestureDetector(
-                                  onTap: () => widget.onScheduleTap(schedule),
+                                  onTap: () {
+                                    if (cluster.isAggregated) {
+                                      widget.onAggregatedSchedulesTap(
+                                        cluster.schedules,
+                                        days[dayIndex],
+                                      );
+                                    } else {
+                                      widget.onScheduleTap(cluster.primary);
+                                    }
+                                  },
                                   behavior: HitTestBehavior.opaque,
                                   child: const SizedBox.expand(),
                                 ),
@@ -2222,20 +2417,105 @@ class _WeekGridPainter extends CustomPainter {
 // ══════════════════════════════════════════════════════════
 class _WeekColBlockVisual {
   final Color color;
+  final Color? secondaryColor;
   final String title;
   final double top;
   final double bottom;
   final double staggerDelay;
   final double staggerProgressScale;
+  final int extraCount;
 
   const _WeekColBlockVisual({
     required this.color,
+    this.secondaryColor,
     required this.title,
     required this.top,
     required this.bottom,
     required this.staggerDelay,
     required this.staggerProgressScale,
+    this.extraCount = 0,
   });
+}
+
+@visibleForTesting
+class ScheduleCluster {
+  final List<TimeLogMappedSchedule> schedules;
+  final int startTime;
+  final int endTime;
+
+  const ScheduleCluster({
+    required this.schedules,
+    required this.startTime,
+    required this.endTime,
+  });
+
+  bool get isAggregated => schedules.length > 1;
+  int get extraCount => schedules.length - 1;
+  TimeLogMappedSchedule get primary => schedules.first;
+}
+
+@visibleForTesting
+List<ScheduleCluster> clusterTimeLogSchedules(
+  List<TimeLogMappedSchedule> schedules,
+  int dayStartMs,
+  int dayEndMs,
+) {
+  if (schedules.isEmpty) return const [];
+
+  final valid =
+      schedules
+          .where((s) => s.endTime > dayStartMs && s.startTime < dayEndMs)
+          .toList()
+        ..sort((a, b) {
+          final cmpStart = a.startTime.compareTo(b.startTime);
+          if (cmpStart != 0) return cmpStart;
+          final cmpEnd = a.endTime.compareTo(b.endTime);
+          if (cmpEnd != 0) return cmpEnd;
+          if (a.isCourse != b.isCourse) {
+            return a.isCourse ? -1 : 1;
+          }
+          return a.id.compareTo(b.id);
+        });
+
+  if (valid.isEmpty) return const [];
+
+  final List<ScheduleCluster> clusters = [];
+  var currentGroup = <TimeLogMappedSchedule>[valid.first];
+  var groupStart = max(valid.first.startTime, dayStartMs);
+  var groupEnd = min(valid.first.endTime, dayEndMs);
+
+  for (int i = 1; i < valid.length; i++) {
+    final s = valid[i];
+    final sStart = max(s.startTime, dayStartMs);
+    final sEnd = min(s.endTime, dayEndMs);
+
+    if (sStart < groupEnd) {
+      currentGroup.add(s);
+      if (sEnd > groupEnd) groupEnd = sEnd;
+      if (sStart < groupStart) groupStart = sStart;
+    } else {
+      clusters.add(
+        ScheduleCluster(
+          schedules: currentGroup,
+          startTime: groupStart,
+          endTime: groupEnd,
+        ),
+      );
+      currentGroup = [s];
+      groupStart = sStart;
+      groupEnd = sEnd;
+    }
+  }
+
+  clusters.add(
+    ScheduleCluster(
+      schedules: currentGroup,
+      startTime: groupStart,
+      endTime: groupEnd,
+    ),
+  );
+
+  return clusters;
 }
 
 @visibleForTesting
@@ -2254,9 +2534,14 @@ class WeekColPainter extends CustomPainter {
   static final Paint _blockPaint = Paint();
   late final Map<String, int> _tagIndicesByUuid =
       _DayGridPainter._buildTagIndices(tags);
+  late final List<ScheduleCluster> _scheduleClusters = clusterTimeLogSchedules(
+    daySchedules,
+    dayStartMs,
+    dayEndMs,
+  );
   int _staggerBlockIndex = 0;
   late final int _totalBlockCount =
-      dayPoms.length + dayLogs.length + daySchedules.length;
+      dayPoms.length + dayLogs.length + _scheduleClusters.length;
 
   double _staggerDelayFor(double top, double bottom) {
     if (bottom <= top + 1) return 0.0;
@@ -2271,26 +2556,40 @@ class WeekColPainter extends CustomPainter {
   List<String> get scheduleBlockTitles =>
       _scheduleVisuals.map((v) => v.title).toList();
 
-  late final List<_WeekColBlockVisual> _scheduleVisuals = daySchedules
-      .map((schedule) {
-        final isCourse = schedule.isCourse;
+  @visibleForTesting
+  List<int> get scheduleBlockExtraCounts =>
+      _scheduleVisuals.map((v) => v.extraCount).toList();
+
+  late final List<_WeekColBlockVisual> _scheduleVisuals = _scheduleClusters
+      .map((cluster) {
+        final primary = cluster.primary;
+        final isCourse = primary.isCourse;
         final base = isCourse
             ? (isDark ? const Color(0xFF64B5F6) : const Color(0xFF1E88E5))
             : (isDark ? const Color(0xFFFFB74D) : const Color(0xFFFB8C00));
-        final rangeStart = max(schedule.startTime, dayStartMs);
-        final rangeEnd = min(schedule.endTime, dayEndMs);
-        final top = (rangeStart - dayStartMs) / 3600000 * hourH;
-        final bottom = (rangeEnd - dayStartMs) / 3600000 * hourH;
+        Color? secondaryBase;
+        if (cluster.isAggregated) {
+          final secondary = cluster.schedules[1];
+          secondaryBase = secondary.isCourse
+              ? (isDark ? const Color(0xFF64B5F6) : const Color(0xFF1E88E5))
+              : (isDark ? const Color(0xFFFFB74D) : const Color(0xFFFB8C00));
+        }
+        final top = (cluster.startTime - dayStartMs) / 3600000 * hourH;
+        final bottom = (cluster.endTime - dayStartMs) / 3600000 * hourH;
         final staggerDelay = _staggerDelayFor(top, bottom);
         return _WeekColBlockVisual(
           color: base.withValues(alpha: isDark ? 0.35 : 0.30),
-          title: schedule.title.trim().isNotEmpty
-              ? schedule.title.trim()
+          secondaryColor: secondaryBase?.withValues(
+            alpha: isDark ? 0.35 : 0.30,
+          ),
+          title: primary.title.trim().isNotEmpty
+              ? primary.title.trim()
               : (isCourse ? '课程' : '日程'),
           top: top,
           bottom: bottom,
           staggerDelay: staggerDelay,
           staggerProgressScale: 1.0 / (1.0 - staggerDelay),
+          extraCount: cluster.extraCount,
         );
       })
       .toList(growable: false);
@@ -2392,6 +2691,22 @@ class WeekColPainter extends CustomPainter {
 
       final animatedBot = top + (bot - top) * blockProgress;
 
+      // 如果有重叠折叠项，先画底部叠牌阴影层，体现多张卡片折叠效果（参考周视图）
+      if (visual.extraCount > 0) {
+        final secColor = visual.secondaryColor ?? visual.color;
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTRB(4.5, top + 2.0, size.width, animatedBot + 2.0),
+            const Radius.circular(3),
+          ),
+          _blockPaint
+            ..color = secColor.withValues(
+              alpha: (isSchedule ? 0.24 : 0.30) * blockProgress,
+            ),
+        );
+      }
+
+      // 左侧指示条
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           Rect.fromLTRB(0, top + 0.5, 3, animatedBot - 0.5),
@@ -2403,9 +2718,15 @@ class WeekColPainter extends CustomPainter {
           ),
       );
 
+      // 主体卡片
       canvas.drawRRect(
         RRect.fromRectAndRadius(
-          Rect.fromLTRB(3, top + 0.5, size.width - 1, animatedBot - 0.5),
+          Rect.fromLTRB(
+            3,
+            top + 0.5,
+            size.width - (visual.extraCount > 0 ? 2 : 1),
+            animatedBot - 0.5,
+          ),
           const Radius.circular(3),
         ),
         _blockPaint
@@ -2421,7 +2742,10 @@ class WeekColPainter extends CustomPainter {
         if (blockH >= 18) {
           final fontSize = (blockH * 0.22).clamp(7.5, blockW > 60 ? 11.0 : 9.0);
           final lineHeight = fontSize * 1.15;
-          final maxLines = max(1, ((blockH - 4) / lineHeight).floor());
+          final availableH = visual.extraCount > 0 && blockH >= 28
+              ? blockH - 12.0
+              : blockH;
+          final maxLines = max(1, ((availableH - 4) / lineHeight).floor());
           final tp = getTitlePainter()
             ..maxLines = maxLines
             ..text = TextSpan(
@@ -2434,7 +2758,10 @@ class WeekColPainter extends CustomPainter {
               ),
             )
             ..layout(maxWidth: max(4.0, blockW - 4));
-          tp.paint(canvas, Offset(5, top + max(2.0, (blockH - tp.height) / 2)));
+          final textTop = visual.extraCount > 0 && blockH >= 28
+              ? top + 3.0
+              : top + max(2.0, (blockH - tp.height) / 2);
+          tp.paint(canvas, Offset(5, textTop));
         } else {
           final tp = getTitlePainter()
             ..maxLines = 1
@@ -2454,12 +2781,53 @@ class WeekColPainter extends CustomPainter {
           tp.paint(canvas, Offset.zero);
           canvas.restore();
         }
+
+        // 右下角 +N 角标（参考周视图）
+        if (visual.extraCount > 0 && blockH >= 16) {
+          final badgeTp = TextPainter(
+            text: TextSpan(
+              text: '+${visual.extraCount}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 7.5,
+                fontWeight: FontWeight.bold,
+                height: 1.0,
+              ),
+            ),
+            textDirection: ui.TextDirection.ltr,
+          )..layout();
+
+          const badgePadH = 3.0;
+          const badgePadV = 1.5;
+          final badgeW = badgeTp.width + badgePadH * 2;
+          final badgeH = badgeTp.height + badgePadV * 2;
+          final badgeRight = size.width - 3.5;
+          final badgeBottom = animatedBot - 2.5;
+          final badgeLeft = badgeRight - badgeW;
+          final badgeTop = badgeBottom - badgeH;
+
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(
+              Rect.fromLTWH(badgeLeft, badgeTop, badgeW, badgeH),
+              const Radius.circular(3.0),
+            ),
+            _blockPaint
+              ..color = (isDark ? Colors.black : const Color(0xFF1E293B))
+                  .withValues(alpha: 0.75 * blockProgress),
+          );
+
+          badgeTp.paint(
+            canvas,
+            Offset(badgeLeft + badgePadH, badgeTop + badgePadV),
+          );
+          badgeTp.dispose();
+        }
       }
     }
 
     try {
       // 先画排程（课程 / 日程）
-      for (var i = 0; i < daySchedules.length; i++) {
+      for (var i = 0; i < _scheduleVisuals.length; i++) {
         final visual = _scheduleVisuals[i];
         block(visual, false, isSchedule: true);
       }
