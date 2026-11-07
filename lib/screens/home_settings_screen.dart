@@ -1121,6 +1121,18 @@ class _SettingsPageState extends State<SettingsPage> {
       duration: Duration(milliseconds: AppPlatform.isAndroid ? 140 : 600),
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, animation) {
+        return AnimatedBuilder(
+          animation: animation,
+          child: child,
+          builder: (context, child) {
+            if (animation.value >= 0.999) {
+              return child!;
+            }
+            return FadeTransition(opacity: animation, child: child);
+          },
+        );
+      },
       child: _isInitialLoading
           ? const Center(child: CircularProgressIndicator())
           : LayoutBuilder(
@@ -1461,7 +1473,16 @@ class _SettingsPageState extends State<SettingsPage> {
                 switchInCurve: Curves.easeInOut,
                 switchOutCurve: Curves.easeInOut,
                 transitionBuilder: (Widget child, Animation<double> animation) {
-                  return FadeTransition(opacity: animation, child: child);
+                  return AnimatedBuilder(
+                    animation: animation,
+                    child: child,
+                    builder: (context, child) {
+                      if (animation.value >= 0.999) {
+                        return child!;
+                      }
+                      return FadeTransition(opacity: animation, child: child);
+                    },
+                  );
                 },
                 child: Navigator(
                   key: _nestedNavigatorKey,

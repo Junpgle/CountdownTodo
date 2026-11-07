@@ -45,13 +45,22 @@ class SettingsToggleCard extends StatelessWidget {
       duration: const Duration(milliseconds: 400),
       switchInCurve: Curves.easeOutBack,
       switchOutCurve: Curves.easeInBack,
-      transitionBuilder: (child, animation) => ScaleTransition(
-        scale: animation,
-        child: RotationTransition(
-          turns: Tween<double>(begin: -0.1, end: 0).animate(animation),
+      transitionBuilder: (child, animation) {
+        final turns = Tween<double>(begin: -0.1, end: 0).animate(animation);
+        return AnimatedBuilder(
+          animation: animation,
           child: child,
-        ),
-      ),
+          builder: (context, child) {
+            if (animation.value >= 0.999) {
+              return child!;
+            }
+            return ScaleTransition(
+              scale: animation,
+              child: RotationTransition(turns: turns, child: child),
+            );
+          },
+        );
+      },
       child: Icon(
         icon,
         key: ValueKey<bool>(value),

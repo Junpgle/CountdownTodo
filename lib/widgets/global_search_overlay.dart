@@ -188,10 +188,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
       vsync: this,
       duration: const Duration(milliseconds: 300),
     );
-    _fadeAnimation = CurvedAnimation(
-      parent: _animController,
-      curve: Curves.easeIn,
-    );
+    _fadeAnimation = _animController.drive(CurveTween(curve: Curves.easeIn));
     _animController.forward();
 
     _focusTimer = Timer(const Duration(milliseconds: 50), () {
@@ -485,8 +482,8 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
             ),
             // ── 内容 ──
             SafeArea(
-              child: FadeTransition(
-                opacity: _fadeAnimation,
+              child: AnimatedBuilder(
+                animation: _animController,
                 child: Align(
                   alignment: Alignment.topCenter,
                   child: ConstrainedBox(
@@ -591,6 +588,12 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                     ),
                   ),
                 ),
+                builder: (context, child) {
+                  if (_animController.value >= 0.999) {
+                    return child!;
+                  }
+                  return FadeTransition(opacity: _fadeAnimation, child: child);
+                },
               ),
             ),
           ],

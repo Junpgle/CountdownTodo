@@ -321,10 +321,19 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 400),
       transitionBuilder: (Widget child, Animation<double> animation) {
-        return SizeTransition(
-          sizeFactor: animation,
-          alignment: AlignmentDirectional.topStart,
-          child: FadeTransition(opacity: animation, child: child),
+        return AnimatedBuilder(
+          animation: animation,
+          child: child,
+          builder: (context, child) {
+            if (animation.value >= 0.999) {
+              return child!;
+            }
+            return SizeTransition(
+              sizeFactor: animation,
+              alignment: AlignmentDirectional.topStart,
+              child: FadeTransition(opacity: animation, child: child),
+            );
+          },
         );
       },
       child: !shouldShow
