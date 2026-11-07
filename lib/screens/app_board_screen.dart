@@ -865,7 +865,7 @@ class _AnimatedBackgroundState extends State<AnimatedBackground>
 class _AnimatedBackgroundPainter extends CustomPainter {
   final Animation<double> animation;
   final Color primaryColor;
-  final Paint _paint = Paint()..isAntiAlias = true;
+  static final Paint _paint = Paint()..isAntiAlias = true;
 
   _AnimatedBackgroundPainter({
     required this.animation,

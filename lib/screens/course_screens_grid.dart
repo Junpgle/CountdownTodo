@@ -3322,7 +3322,7 @@ class _CurrentTimeRulePainter extends CustomPainter {
 
   final Animation<double> animation;
   final Color color;
-  final Paint _paint = Paint();
+  static final Paint _paint = Paint();
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -3341,13 +3341,13 @@ class _CurrentTimeMarkerPainter extends CustomPainter {
 
   final Animation<double> animation;
   final Color color;
-  final Paint _fillPaint = Paint();
-  final Paint _glowPaint = Paint()..style = PaintingStyle.fill;
-  final Paint _dotPaint = Paint()..style = PaintingStyle.fill;
-  final Paint _innerDotPaint = Paint()
+  static final Paint _fillPaint = Paint();
+  static final Paint _glowPaint = Paint()..style = PaintingStyle.fill;
+  static final Paint _dotPaint = Paint()..style = PaintingStyle.fill;
+  static final Paint _innerDotPaint = Paint()
     ..color = Colors.white.withValues(alpha: 0.95)
     ..style = PaintingStyle.fill;
-  late final Paint _shadowPaint = BoxShadow(
+  static final Paint _shadowPaint = BoxShadow(
     color: Colors.transparent,
     blurRadius: 6,
     spreadRadius: 1,

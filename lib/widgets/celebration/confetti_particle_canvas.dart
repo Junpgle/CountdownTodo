@@ -43,7 +43,7 @@ class ConfettiPainter extends CustomPainter {
   final List<ConfettiParticle> particles;
   final Animation<double> animation;
   final List<Color> palette;
-  final Paint _paint = Paint()..style = PaintingStyle.fill;
+  static final Paint _paint = Paint()..style = PaintingStyle.fill;
   final List<Color> _paintColors;
 
   ConfettiPainter({

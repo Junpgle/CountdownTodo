@@ -119,7 +119,7 @@ class _ShimmerGradientPainter extends CustomPainter {
   final Color highlightColor;
   final BorderRadius borderRadius;
   late final List<Color> _colors = [baseColor, highlightColor, baseColor];
-  final Paint _paint = Paint()..isAntiAlias = true;
+  static final Paint _paint = Paint()..isAntiAlias = true;
   Size? _cachedSize;
   Rect? _cachedRect;
   RRect? _cachedRRect;
@@ -725,7 +725,7 @@ class PieChartPainter extends CustomPainter {
 
   // 缓存 TextPainter，避免每帧重复创建
   late final List<TextPainter> _labelPainters;
-  final Paint _paint = Paint()
+  static final Paint _paint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeCap = StrokeCap.round;
 
