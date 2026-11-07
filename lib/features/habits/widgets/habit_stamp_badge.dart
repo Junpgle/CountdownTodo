@@ -76,17 +76,17 @@ class _HabitStampBadgeState extends State<HabitStampBadge>
     ]).animate(_controller);
 
     _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.0, 0.35, curve: Curves.easeIn),
+      _controller.drive(
+        CurveTween(curve: const Interval(0.0, 0.35, curve: Curves.easeIn)),
       ),
     );
 
     // 落地瞬间向外扩散的印泥震波
     _shockwaveAnimation = Tween<double>(begin: 0.8, end: 1.6).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.40, 1.0, curve: Curves.easeOutCubic),
+      _controller.drive(
+        CurveTween(
+          curve: const Interval(0.40, 1.0, curve: Curves.easeOutCubic),
+        ),
       ),
     );
 

@@ -243,7 +243,16 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
             switchInCurve: Curves.easeOutCubic,
             switchOutCurve: Curves.easeOutCubic,
             transitionBuilder: (child, animation) {
-              return FadeTransition(opacity: animation, child: child);
+              return AnimatedBuilder(
+                animation: animation,
+                child: child,
+                builder: (context, child) {
+                  if (animation.value >= 0.999) {
+                    return child!;
+                  }
+                  return FadeTransition(opacity: animation, child: child);
+                },
+              );
             },
             child: _mode == _FinanceOverviewMode.calendar
                 ? KeyedSubtree(
@@ -2804,9 +2813,8 @@ class _FinanceUnifiedCategoryCardState
       vsync: this,
       duration: const Duration(milliseconds: 480),
     );
-    _animation = CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeOutCubic,
+    _animation = _animationController.drive(
+      CurveTween(curve: Curves.easeOutCubic),
     );
     _animationController.forward();
   }
@@ -3122,15 +3130,22 @@ class _FinanceUnifiedCategoryCardState
             switchInCurve: Curves.easeOutCubic,
             switchOutCurve: Curves.easeInCubic,
             transitionBuilder: (child, animation) {
-              return FadeTransition(
-                opacity: animation,
-                child: ScaleTransition(
-                  scale: Tween<double>(
-                    begin: 0.92,
-                    end: 1.0,
-                  ).animate(animation),
-                  child: child,
-                ),
+              final scale = Tween<double>(
+                begin: 0.92,
+                end: 1.0,
+              ).animate(animation);
+              return AnimatedBuilder(
+                animation: animation,
+                child: child,
+                builder: (context, child) {
+                  if (animation.value >= 0.999) {
+                    return child!;
+                  }
+                  return FadeTransition(
+                    opacity: animation,
+                    child: ScaleTransition(scale: scale, child: child),
+                  );
+                },
               );
             },
             child: KeyedSubtree(
@@ -4316,13 +4331,22 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
             switchInCurve: Curves.easeOutCubic,
             switchOutCurve: Curves.easeInCubic,
             transitionBuilder: (child, animation) {
-              return FadeTransition(
-                opacity: animation,
-                child: ScaleTransition(
-                  scale: animation,
-                  alignment: Alignment.bottomRight,
-                  child: child,
-                ),
+              return AnimatedBuilder(
+                animation: animation,
+                child: child,
+                builder: (context, child) {
+                  if (animation.value >= 0.999) {
+                    return child!;
+                  }
+                  return FadeTransition(
+                    opacity: animation,
+                    child: ScaleTransition(
+                      scale: animation,
+                      alignment: Alignment.bottomRight,
+                      child: child,
+                    ),
+                  );
+                },
               );
             },
             layoutBuilder: (currentChild, previousChildren) {
@@ -5483,6 +5507,8 @@ class _FinanceCumulativeBalanceTrendPainter extends CustomPainter {
     ..style = PaintingStyle.stroke;
   static final Paint _pointSurfacePaint = Paint()..style = PaintingStyle.fill;
   static final Paint _pointPrimaryPaint = Paint()..style = PaintingStyle.fill;
+  static final Path _fillPath = Path();
+  static final Path _linePath = Path();
 
   const _FinanceCumulativeBalanceTrendPainter({
     required this.points,
@@ -5537,8 +5563,12 @@ class _FinanceCumulativeBalanceTrendPainter extends CustomPainter {
     }
 
     const baselineValue = 0;
-    final fillPath = Path()..moveTo(xFor(0), yFor(baselineValue));
-    final linePath = Path()..moveTo(xFor(0), yFor(points.first.balanceMinor));
+    final fillPath = _fillPath;
+    fillPath.reset();
+    fillPath.moveTo(xFor(0), yFor(baselineValue));
+    final linePath = _linePath;
+    linePath.reset();
+    linePath.moveTo(xFor(0), yFor(points.first.balanceMinor));
     for (var index = 1; index < points.length; index++) {
       final point = points[index];
       final x = xFor(index);

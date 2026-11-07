@@ -2354,8 +2354,16 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
               const SizedBox(width: 16),
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 300),
-                transitionBuilder: (child, animation) =>
-                    ScaleTransition(scale: animation, child: child),
+                transitionBuilder: (child, animation) => AnimatedBuilder(
+                  animation: animation,
+                  child: child,
+                  builder: (context, child) {
+                    if (animation.value >= 0.999) {
+                      return child!;
+                    }
+                    return ScaleTransition(scale: animation, child: child);
+                  },
+                ),
                 child: Text(
                   '${state.completedCount}/${state.tasks.length}',
                   key: ValueKey(state.completedCount),
@@ -2463,16 +2471,25 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
               children: [
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 260),
-                  transitionBuilder: (child, animation) => FadeTransition(
-                    opacity: animation,
-                    child: SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(0, 0.25),
-                        end: Offset.zero,
-                      ).animate(animation),
+                  transitionBuilder: (child, animation) {
+                    final slide = Tween<Offset>(
+                      begin: const Offset(0, 0.25),
+                      end: Offset.zero,
+                    ).animate(animation);
+                    return AnimatedBuilder(
+                      animation: animation,
                       child: child,
-                    ),
-                  ),
+                      builder: (context, child) {
+                        if (animation.value >= 0.999) {
+                          return child!;
+                        }
+                        return FadeTransition(
+                          opacity: animation,
+                          child: SlideTransition(position: slide, child: child),
+                        );
+                      },
+                    );
+                  },
                   child: Text(
                     '第 ${currentTask.id} 项 / ${state.tasks.length}',
                     key: ValueKey(currentTask.id),
@@ -3029,9 +3046,10 @@ class _ShuffleCardStackState extends State<_ShuffleCardStack>
       vsync: this,
       duration: const Duration(milliseconds: 1750),
     );
-    _stepAnimation = IntTween(begin: 0, end: _sequence.length - 1).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOutCubic),
-    );
+    _stepAnimation = IntTween(
+      begin: 0,
+      end: _sequence.length - 1,
+    ).animate(_controller.drive(CurveTween(curve: Curves.easeInOutCubic)));
     _stepNotifier = ValueNotifier<int>(_stepAnimation.value);
     _controller.addListener(_updateStepNotifier);
     _controller.addStatusListener((status) {
@@ -3128,15 +3146,24 @@ class _ShuffleCardStackState extends State<_ShuffleCardStack>
                             begin: const Offset(0, 0.8),
                             end: Offset.zero,
                           ).animate(animation);
-                          return FadeTransition(
-                            opacity: animation,
-                            child: SlideTransition(
-                              position: slide,
-                              child: ScaleTransition(
-                                scale: animation,
-                                child: child,
-                              ),
-                            ),
+                          return AnimatedBuilder(
+                            animation: animation,
+                            child: child,
+                            builder: (context, child) {
+                              if (animation.value >= 0.999) {
+                                return child!;
+                              }
+                              return FadeTransition(
+                                opacity: animation,
+                                child: SlideTransition(
+                                  position: slide,
+                                  child: ScaleTransition(
+                                    scale: animation,
+                                    child: child,
+                                  ),
+                                ),
+                              );
+                            },
                           );
                         },
                         child: _ShuffleCardSurface(

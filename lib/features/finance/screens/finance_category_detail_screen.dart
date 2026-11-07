@@ -101,9 +101,8 @@ class _FinanceCategoryDetailScreenState
       vsync: this,
       duration: const Duration(milliseconds: 480),
     );
-    _donutAnimation = CurvedAnimation(
-      parent: _donutAnimationController,
-      curve: Curves.easeOutCubic,
+    _donutAnimation = _donutAnimationController.drive(
+      CurveTween(curve: Curves.easeOutCubic),
     );
     _donutAnimationController.forward();
     FinanceStorage.revision.addListener(_onFinanceChanged);
@@ -446,15 +445,22 @@ class _FinanceCategoryDetailScreenState
             switchInCurve: Curves.easeOutCubic,
             switchOutCurve: Curves.easeInCubic,
             transitionBuilder: (child, animation) {
-              return FadeTransition(
-                opacity: animation,
-                child: ScaleTransition(
-                  scale: Tween<double>(
-                    begin: 0.92,
-                    end: 1.0,
-                  ).animate(animation),
-                  child: child,
-                ),
+              final scale = Tween<double>(
+                begin: 0.92,
+                end: 1.0,
+              ).animate(animation);
+              return AnimatedBuilder(
+                animation: animation,
+                child: child,
+                builder: (context, child) {
+                  if (animation.value >= 0.999) {
+                    return child!;
+                  }
+                  return FadeTransition(
+                    opacity: animation,
+                    child: ScaleTransition(scale: scale, child: child),
+                  );
+                },
               );
             },
             child: KeyedSubtree(
