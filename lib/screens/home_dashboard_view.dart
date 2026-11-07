@@ -1038,6 +1038,9 @@ mixin _HomeDashboardViewMixin
                                             animation: animation,
                                             child: child,
                                             builder: (context, child) {
+                                              if (animation.value <= 0.001) {
+                                                return const SizedBox.shrink();
+                                              }
                                               if (animation.value >= 0.999) {
                                                 return child!;
                                               }

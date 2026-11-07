@@ -788,6 +788,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 animation: anim,
                 child: child,
                 builder: (context, child) {
+                  if (anim.value <= 0.001) {
+                    return const SizedBox.shrink();
+                  }
                   if (anim.value >= 0.999) {
                     return child!;
                   }
@@ -1192,6 +1195,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       animation: anim,
       child: child,
       builder: (context, child) {
+        if (anim.value <= 0.001) {
+          return const SizedBox.shrink();
+        }
         if (anim.value >= 0.999) {
           return child!;
         }
@@ -1211,6 +1217,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       animation: anim,
       child: child,
       builder: (context, child) {
+        if (anim.value <= 0.001) {
+          return const SizedBox.shrink();
+        }
         if (anim.value >= 0.999) {
           return child!;
         }

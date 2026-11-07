@@ -1955,6 +1955,9 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                   animation: animation,
                   child: child,
                   builder: (context, child) {
+                    if (animation.value <= 0.001) {
+                      return const SizedBox.shrink();
+                    }
                     if (animation.value >= 0.999) return child!;
                     return FadeTransition(opacity: animation, child: child);
                   },
