@@ -704,6 +704,14 @@ class _RebindTagPageState extends State<RebindTagPage>
         // 记录列表
         Expanded(
           child: ListView.builder(
+            findChildIndexCallback: (Key key) {
+              if (key is ValueKey<String>) {
+                final uuid = key.value;
+                final index = records.indexWhere((r) => r.uuid == uuid);
+                return index != -1 ? index : null;
+              }
+              return null;
+            },
             itemCount: records.length,
             itemBuilder: (context, index) {
               final record = records[index];
@@ -730,6 +738,7 @@ class _RebindTagPageState extends State<RebindTagPage>
                   .toList();
 
               return ListTile(
+                key: ValueKey<String>(record.uuid),
                 leading: Checkbox(
                   value: isSelected,
                   onChanged: (value) {
@@ -867,6 +876,14 @@ class _RebindTagPageState extends State<RebindTagPage>
         // 记录列表
         Expanded(
           child: ListView.builder(
+            findChildIndexCallback: (Key key) {
+              if (key is ValueKey<String>) {
+                final id = key.value;
+                final index = logs.indexWhere((l) => l.id == id);
+                return index != -1 ? index : null;
+              }
+              return null;
+            },
             itemCount: logs.length,
             itemBuilder: (context, index) {
               final log = logs[index];
@@ -899,6 +916,7 @@ class _RebindTagPageState extends State<RebindTagPage>
                   .inMinutes;
 
               return ListTile(
+                key: ValueKey<String>(log.id),
                 leading: Checkbox(
                   value: isSelected,
                   onChanged: (value) {

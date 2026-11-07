@@ -531,6 +531,16 @@ class _LanSyncScreenState extends State<LanSyncScreen>
                         ),
                       )
                     : ListView.builder(
+                        findChildIndexCallback: (Key key) {
+                          if (key is ValueKey<String>) {
+                            final id = key.value;
+                            final index = _devices.indexWhere(
+                              (d) => d.deviceId == id,
+                            );
+                            return index != -1 ? index : null;
+                          }
+                          return null;
+                        },
                         itemCount: _devices.length,
                         itemBuilder: (context, index) {
                           final device = _devices[index];
@@ -653,6 +663,7 @@ class _LanSyncScreenState extends State<LanSyncScreen>
     final isOnline = lastSeen < 15000;
 
     return Card(
+      key: ValueKey<String>(device.deviceId),
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Column(
         mainAxisSize: MainAxisSize.min,

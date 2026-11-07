@@ -909,13 +909,27 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
     return ListView.builder(
       padding: const EdgeInsets.all(24),
+      findChildIndexCallback: (Key key) {
+        if (key is ValueKey<String>) {
+          final id = key.value;
+          final index = _visibleConflictItems.indexWhere(
+            (item) => _itemId(item) == id,
+          );
+          return index != -1 ? index : null;
+        }
+        return null;
+      },
       itemCount: _visibleConflictItems.length,
       itemBuilder: (context, index) {
         final item = _visibleConflictItems[index];
         final isSelected = _selectedItem == item;
+        final id = _itemId(item) ?? '$index';
         return Padding(
+          key: ValueKey<String>(id),
           padding: const EdgeInsets.only(bottom: 12),
-          child: _buildModernConflictCard(item, isSelected, isDark),
+          child: RepaintBoundary(
+            child: _buildModernConflictCard(item, isSelected, isDark),
+          ),
         );
       },
     );
@@ -3444,6 +3458,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
     return ListView.builder(
       padding: const EdgeInsets.all(16),
+      itemExtent: 176.0,
       itemCount: 4,
       itemBuilder: (context, index) => Container(
         height: 160,

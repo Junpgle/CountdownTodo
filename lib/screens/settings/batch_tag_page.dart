@@ -562,6 +562,14 @@ class _BatchTagPageState extends State<BatchTagPage>
                   .copyWith(top: 0);
               return ListView.builder(
                 padding: listPadding,
+                findChildIndexCallback: (Key key) {
+                  if (key is ValueKey<String>) {
+                    final uuid = key.value;
+                    final index = filtered.indexWhere((p) => p.uuid == uuid);
+                    return index != -1 ? index : null;
+                  }
+                  return null;
+                },
                 itemCount: filtered.length,
                 itemBuilder: (ctx, i) {
                   final pom = filtered[i];
@@ -575,6 +583,7 @@ class _BatchTagPageState extends State<BatchTagPage>
                   final duration = pom.effectiveDuration ~/ 60;
 
                   return ListTile(
+                    key: ValueKey<String>(pom.uuid),
                     leading: Checkbox(
                       value: isSelected,
                       onChanged: (v) {
@@ -633,6 +642,14 @@ class _BatchTagPageState extends State<BatchTagPage>
                   .copyWith(top: 0);
               return ListView.builder(
                 padding: listPadding,
+                findChildIndexCallback: (Key key) {
+                  if (key is ValueKey<String>) {
+                    final id = key.value;
+                    final index = filtered.indexWhere((l) => l.id == id);
+                    return index != -1 ? index : null;
+                  }
+                  return null;
+                },
                 itemCount: filtered.length,
                 itemBuilder: (ctx, i) {
                   final log = filtered[i];
@@ -646,6 +663,7 @@ class _BatchTagPageState extends State<BatchTagPage>
                   final duration = (log.endTime - log.startTime) ~/ 60000;
 
                   return ListTile(
+                    key: ValueKey<String>(log.id),
                     leading: Checkbox(
                       value: isSelected,
                       onChanged: (v) {
