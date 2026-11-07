@@ -895,6 +895,14 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                   ),
                 )
               : ListView.builder(
+                  findChildIndexCallback: (Key key) {
+                    if (key is ValueKey<String>) {
+                      final id = key.value;
+                      final index = _sessions.indexWhere((s) => s.id == id);
+                      return index != -1 ? index : null;
+                    }
+                    return null;
+                  },
                   itemCount: _sessions.length,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
@@ -904,6 +912,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                     final session = _sessions[index];
                     final isActive = session.id == _activeSessionId;
                     return Padding(
+                      key: ValueKey<String>(session.id),
                       padding: const EdgeInsets.only(bottom: 4),
                       child: Material(
                         color: isActive

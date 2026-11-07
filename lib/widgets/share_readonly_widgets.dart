@@ -1480,6 +1480,14 @@ class ShareCountdownSection extends StatelessWidget {
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.only(right: 12),
+            findChildIndexCallback: (Key key) {
+              if (key is ValueKey<String>) {
+                final id = key.value;
+                final index = activeCountdowns.indexWhere((c) => c.id == id);
+                return index != -1 ? index : null;
+              }
+              return null;
+            },
             itemCount: activeCountdowns.length,
             itemBuilder: (context, index) {
               final item = activeCountdowns[index];
@@ -1535,6 +1543,7 @@ class ShareCountdownSection extends StatelessWidget {
                         : colorScheme.primary);
 
               return Container(
+                key: ValueKey<String>(item.id),
                 width: 130,
                 margin: const EdgeInsets.only(right: 12, bottom: 8),
                 decoration: BoxDecoration(

@@ -123,10 +123,19 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                   )
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(vertical: 8),
+                    findChildIndexCallback: (Key key) {
+                      if (key is ValueKey<String>) {
+                        final id = key.value;
+                        final index = todayAllDay.indexWhere((t) => t.id == id);
+                        return index != -1 ? index : null;
+                      }
+                      return null;
+                    },
                     itemCount: todayAllDay.length,
                     itemBuilder: (context, index) {
                       final todo = todayAllDay[index];
                       return Padding(
+                        key: ValueKey<String>(todo.id),
                         padding: const EdgeInsets.symmetric(
                           horizontal: 16,
                           vertical: 4,

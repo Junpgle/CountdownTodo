@@ -537,6 +537,16 @@ class _FixedScheduleRelatedTodoPickerScreenState
 
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      findChildIndexCallback: (Key key) {
+        if (key is ValueKey<String> && key.value.startsWith('related-todo-')) {
+          final id = key.value.substring('related-todo-'.length);
+          final index = items.indexWhere(
+            (it) => it is _PickerRowItem && it.row.id == id,
+          );
+          return index != -1 ? index : null;
+        }
+        return null;
+      },
       itemCount: items.length + (hasFooter ? 1 : 0),
       itemBuilder: (context, index) {
         if (index == items.length) return _buildPageFooter(context, scheme);
@@ -548,48 +558,51 @@ class _FixedScheduleRelatedTodoPickerScreenState
         final selected = _selectedIds.contains(row.id);
         final disabled = !row.canAdd && !selected;
         return Padding(
+          key: ValueKey('related-todo-${row.id}'),
           padding: const EdgeInsets.only(bottom: 6),
-          child: Card(
-            elevation: 0,
-            margin: EdgeInsets.zero,
-            color: selected
-                ? scheme.secondaryContainer.withValues(alpha: 0.55)
-                : scheme.surfaceContainerLow,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-              side: BorderSide(
-                color: selected
-                    ? scheme.primary.withValues(alpha: 0.3)
-                    : Colors.black.withValues(alpha: 0.04),
-              ),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: CheckboxListTile(
-              key: ValueKey('related-todo-${row.id}'),
-              value: selected,
-              onChanged: disabled
-                  ? null
-                  : (_) => _toggle(row.id, canAdd: row.canAdd),
-              title: Text(
-                row.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+          child: RepaintBoundary(
+            child: Card(
+              elevation: 0,
+              margin: EdgeInsets.zero,
+              color: selected
+                  ? scheme.secondaryContainer.withValues(alpha: 0.55)
+                  : scheme.surfaceContainerLow,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: BorderSide(
+                  color: selected
+                      ? scheme.primary.withValues(alpha: 0.3)
+                      : Colors.black.withValues(alpha: 0.04),
                 ),
               ),
-              subtitle: Text(row.subtitle),
-              secondary: Icon(
-                row.todo?.isDone == true
-                    ? Icons.task_alt_rounded
-                    : row.todo?.isSkipped == true
-                    ? Icons.skip_next_rounded
-                    : row.canAdd
-                    ? Icons.checklist_rounded
-                    : Icons.link_off_rounded,
-                color: row.canAdd ? scheme.primary : scheme.onSurfaceVariant,
+              clipBehavior: Clip.antiAlias,
+              child: CheckboxListTile(
+                key: ValueKey('related-todo-${row.id}'),
+                value: selected,
+                onChanged: disabled
+                    ? null
+                    : (_) => _toggle(row.id, canAdd: row.canAdd),
+                title: Text(
+                  row.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                  ),
+                ),
+                subtitle: Text(row.subtitle),
+                secondary: Icon(
+                  row.todo?.isDone == true
+                      ? Icons.task_alt_rounded
+                      : row.todo?.isSkipped == true
+                      ? Icons.skip_next_rounded
+                      : row.canAdd
+                      ? Icons.checklist_rounded
+                      : Icons.link_off_rounded,
+                  color: row.canAdd ? scheme.primary : scheme.onSurfaceVariant,
+                ),
+                controlAffinity: ListTileControlAffinity.trailing,
               ),
-              controlAffinity: ListTileControlAffinity.trailing,
             ),
           ),
         );

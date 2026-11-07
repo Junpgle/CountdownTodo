@@ -386,10 +386,19 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 const SizedBox(height: 16),
                 Expanded(
                   child: ListView.builder(
+                    findChildIndexCallback: (Key key) {
+                      if (key is ValueKey<String>) {
+                        final id = key.value;
+                        final index = todos.indexWhere((t) => t.id == id);
+                        return index != -1 ? index : null;
+                      }
+                      return null;
+                    },
                     itemCount: todos.length,
                     itemBuilder: (context, index) {
                       final todo = todos[index];
                       return ListTile(
+                        key: ValueKey<String>(todo.id),
                         leading: Icon(
                           todo.isDone ? Icons.check_circle : Icons.task_alt,
                           color: todo.isDone
