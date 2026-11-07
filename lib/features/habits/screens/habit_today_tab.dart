@@ -251,18 +251,33 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
                                   final rowCount =
                                       (goals.length + crossAxisCount - 1) ~/
                                       crossAxisCount;
-                                  return Padding(
-                                    padding: EdgeInsets.only(
-                                      bottom: rowIndex + 1 < rowCount
-                                          ? spacing
-                                          : 0,
-                                    ),
-                                    child: Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: rowChildren,
+                                  return RepaintBoundary(
+                                    key: ValueKey<int>(rowIndex),
+                                    child: Padding(
+                                      padding: EdgeInsets.only(
+                                        bottom: rowIndex + 1 < rowCount
+                                            ? spacing
+                                            : 0,
+                                      ),
+                                      child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: rowChildren,
+                                      ),
                                     ),
                                   );
+                                },
+                                findChildIndexCallback: (Key key) {
+                                  if (key is ValueKey<int>) {
+                                    final idx = key.value;
+                                    final rowCount =
+                                        (goals.length + crossAxisCount - 1) ~/
+                                        crossAxisCount;
+                                    if (idx >= 0 && idx < rowCount) {
+                                      return idx;
+                                    }
+                                  }
+                                  return null;
                                 },
                                 childCount:
                                     (goals.length + crossAxisCount - 1) ~/

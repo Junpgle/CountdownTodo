@@ -551,6 +551,7 @@ class _AttachmentEditor extends StatelessWidget {
       child: ReorderableListView.builder(
         scrollDirection: Axis.horizontal,
         buildDefaultDragHandles: false,
+        itemExtent: 130.0,
         itemCount: attachments.length,
         onReorderItem: (oldIndex, newIndex) {
           final next = List<JournalAttachment>.of(attachments);

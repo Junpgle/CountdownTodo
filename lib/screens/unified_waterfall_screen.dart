@@ -473,6 +473,15 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                                     isLast:
                                         index == _allCombinedTodos.length - 1,
                                   ),
+                                  findChildIndexCallback: (Key key) {
+                                    if (key is ValueKey<String>) {
+                                      final id = key.value;
+                                      final index = _allCombinedTodos
+                                          .indexWhere((t) => t.id == id);
+                                      return index != -1 ? index : null;
+                                    }
+                                    return null;
+                                  },
                                   childCount: _allCombinedTodos.length,
                                 ),
                               ),
@@ -555,6 +564,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
         : Colors.orange;
 
     return IntrinsicHeight(
+      key: ValueKey<String>(todo.id),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -770,7 +780,8 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
             ),
             SliverPadding(
               padding: const EdgeInsets.all(16),
-              sliver: SliverList(
+              sliver: SliverFixedExtentList(
+                itemExtent: 112.0,
                 delegate: SliverChildBuilderDelegate(
                   (context, index) => Container(
                     height: 100,
