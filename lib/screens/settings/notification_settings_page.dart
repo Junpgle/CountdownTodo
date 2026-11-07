@@ -1126,6 +1126,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
               Flexible(
                 child: ListView.builder(
                   shrinkWrap: true,
+                  itemExtent: 52.0,
                   itemCount: options.length,
                   itemBuilder: (listContext, index) {
                     final mins = options[index];
@@ -1410,6 +1411,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
               Flexible(
                 child: ListView.builder(
                   shrinkWrap: true,
+                  itemExtent: 52.0,
                   itemCount: options.length,
                   itemBuilder: (listContext, index) {
                     final mins = options[index];

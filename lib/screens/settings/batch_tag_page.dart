@@ -461,6 +461,14 @@ class _BatchTagPageState extends State<BatchTagPage>
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
+        findChildIndexCallback: (Key key) {
+          if (key is ValueKey<String>) {
+            final uuid = key.value;
+            final index = _tags.indexWhere((t) => t.uuid == uuid);
+            return index != -1 ? index : null;
+          }
+          return null;
+        },
         itemCount: _tags.length,
         itemBuilder: (ctx, i) {
           final tag = _tags[i];
@@ -470,6 +478,7 @@ class _BatchTagPageState extends State<BatchTagPage>
           );
           final isSelected = _targetTagUuids.contains(tag.uuid);
           return Padding(
+            key: ValueKey<String>(tag.uuid),
             padding: const EdgeInsets.only(right: 8),
             child: GestureDetector(
               onTap: () {

@@ -2033,12 +2033,23 @@ class _WeekViewState extends State<_WeekView>
               ),
               Expanded(
                 child: ListView.builder(
+                  findChildIndexCallback: (Key key) {
+                    if (key is ValueKey<String>) {
+                      final uuid = key.value;
+                      final index = widget.tags.indexWhere(
+                        (t) => t.uuid == uuid,
+                      );
+                      return index != -1 ? index : null;
+                    }
+                    return null;
+                  },
                   itemCount: widget.tags.length,
                   itemBuilder: (context, index) {
                     final t = widget.tags[index];
                     final tw = minutesByTag[t.uuid] ?? 0;
                     final c = hexColor(t.color);
                     return GestureDetector(
+                      key: ValueKey<String>(t.uuid),
                       onTap: () => widget.onTagTap(t),
                       child: Container(
                         margin: const EdgeInsets.fromLTRB(8, 0, 8, 6),
@@ -2105,6 +2116,14 @@ class _WeekViewState extends State<_WeekView>
         color: _TC.topBar(ctx),
         child: ListView.builder(
           scrollDirection: Axis.horizontal,
+          findChildIndexCallback: (Key key) {
+            if (key is ValueKey<String>) {
+              final uuid = key.value;
+              final index = widget.tags.indexWhere((t) => t.uuid == uuid);
+              return index != -1 ? index : null;
+            }
+            return null;
+          },
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           itemCount: widget.tags.length,
           itemBuilder: (context, index) {
@@ -2112,6 +2131,7 @@ class _WeekViewState extends State<_WeekView>
             final tw = minutesByTag[t.uuid] ?? 0;
             final c = hexColor(t.color);
             return GestureDetector(
+              key: ValueKey<String>(t.uuid),
               onTap: () => widget.onTagTap(t),
               child: Container(
                 margin: const EdgeInsets.only(right: 8),

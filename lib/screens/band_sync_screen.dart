@@ -681,6 +681,7 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
                       ),
                     )
                   : ListView.builder(
+                      itemExtent: 20.0,
                       padding: const EdgeInsets.all(8),
                       itemCount: _logs.length,
                       itemBuilder: (context, index) {
@@ -769,6 +770,7 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
                       ),
                     )
                   : ListView.builder(
+                      itemExtent: 20.0,
                       padding: const EdgeInsets.all(8),
                       itemCount: messages.length,
                       itemBuilder: (context, index) {
