@@ -492,6 +492,14 @@ class _QuickVoiceChatSheetState extends State<QuickVoiceChatSheet>
                   const SizedBox(height: 18),
                   AnimatedSwitcher(
                     duration: Duration(milliseconds: _reduceMotion ? 0 : 160),
+                    transitionBuilder: (child, animation) => AnimatedBuilder(
+                      animation: animation,
+                      child: child,
+                      builder: (context, child) {
+                        if (animation.value >= 0.999) return child!;
+                        return FadeTransition(opacity: animation, child: child);
+                      },
+                    ),
                     child: Text(
                       title,
                       key: ValueKey(title),

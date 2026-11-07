@@ -989,6 +989,14 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                 alignment: Alignment.centerRight,
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 200),
+                  transitionBuilder: (child, animation) => AnimatedBuilder(
+                    animation: animation,
+                    child: child,
+                    builder: (context, child) {
+                      if (animation.value >= 0.999) return child!;
+                      return FadeTransition(opacity: animation, child: child);
+                    },
+                  ),
                   child: _selectedHour != null
                       ? Container(
                           key: ValueKey('sel_$_selectedHour'),

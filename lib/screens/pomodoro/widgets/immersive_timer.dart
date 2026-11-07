@@ -357,6 +357,17 @@ class _ImmersiveTimerState extends State<ImmersiveTimer>
                   children: [
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 300),
+                      transitionBuilder: (child, animation) => AnimatedBuilder(
+                        animation: animation,
+                        child: child,
+                        builder: (context, child) {
+                          if (animation.value >= 0.999) return child!;
+                          return FadeTransition(
+                            opacity: animation,
+                            child: child,
+                          );
+                        },
+                      ),
                       child: Text(
                         labelText,
                         key: ValueKey(widget.phase),

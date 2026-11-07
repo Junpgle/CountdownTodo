@@ -5215,7 +5215,7 @@ class _DonutPainter extends CustomPainter {
 class _SparklinePainter extends CustomPainter {
   final List<double> data;
   final Color color;
-  final Paint _paint = Paint()
+  static final Paint _paint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeWidth = 2.5
     ..strokeCap = StrokeCap.round

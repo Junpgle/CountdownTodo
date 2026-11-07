@@ -73,9 +73,10 @@ class _WorkbenchActionsState extends State<WorkbenchActions>
       duration: const Duration(milliseconds: 150),
       reverseDuration: const Duration(milliseconds: 300),
     );
-    _pressAnimation = Tween<double>(begin: 1.0, end: 0.92).animate(
-      CurvedAnimation(parent: _pressController, curve: Curves.easeInOut),
-    );
+    _pressAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.92,
+    ).animate(_pressController.drive(CurveTween(curve: Curves.easeInOut)));
   }
 
   @override

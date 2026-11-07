@@ -2161,7 +2161,7 @@ class _WeekGridPainter extends CustomPainter {
   final double hourH;
   final Color majorLineColor;
   final Color minorLineColor;
-  final Paint _gridPaint = Paint()..strokeWidth = 0.5;
+  static final Paint _gridPaint = Paint()..strokeWidth = 0.5;
 
   _WeekGridPainter({
     required this.hourH,
@@ -2226,7 +2226,7 @@ class _WeekColPainter extends CustomPainter {
   final Animation<double> animation;
   final Color focusColor;
   final Color logColor;
-  final Paint _blockPaint = Paint();
+  static final Paint _blockPaint = Paint();
   late final Map<String, int> _tagIndicesByUuid =
       _DayGridPainter._buildTagIndices(tags);
   int _staggerBlockIndex = 0;
