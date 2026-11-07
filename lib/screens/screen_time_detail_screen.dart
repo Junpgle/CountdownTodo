@@ -1385,6 +1385,14 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       padding: EdgeInsets.zero,
+      findChildIndexCallback: (Key key) {
+        if (key is ValueKey<String>) {
+          final name = key.value;
+          final idx = categories.indexWhere((c) => c['name'] == name);
+          return idx != -1 ? idx : null;
+        }
+        return null;
+      },
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
         crossAxisSpacing: 10,
@@ -1403,67 +1411,70 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
           cs.surfaceContainerLowest,
         );
 
-        return _ExpandableCard(
-          pageBuilder: (_) => CategoryDetailScreen(
-            categoryName: name,
-            stats: cat['items'],
-            isAllFilter: _currentFilter == DeviceFilter.all,
-            historyStats: _historyStats,
-            currentFilter: _currentFilter,
-            range: _currentRange,
-            anchorDate: _selectedDate,
-            periodLabel: _periodLabel(
-              _periodStart(_selectedDate, _currentRange),
-              _currentRange,
-              _todayNormalized,
-            ),
-          ),
-          sourceColor: opaqueCardColor,
-          borderRadius: BorderRadius.circular(18),
-          child: Container(
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: color.withValues(alpha: 0.18),
-                width: 1,
+        return RepaintBoundary(
+          key: ValueKey<String>(name),
+          child: _ExpandableCard(
+            pageBuilder: (_) => CategoryDetailScreen(
+              categoryName: name,
+              stats: cat['items'],
+              isAllFilter: _currentFilter == DeviceFilter.all,
+              historyStats: _historyStats,
+              currentFilter: _currentFilter,
+              range: _currentRange,
+              anchorDate: _selectedDate,
+              periodLabel: _periodLabel(
+                _periodStart(_selectedDate, _currentRange),
+                _currentRange,
+                _todayNormalized,
               ),
             ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(getCategoryIcon(name), color: color, size: 20),
+            sourceColor: opaqueCardColor,
+            borderRadius: BorderRadius.circular(18),
+            child: Container(
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: color.withValues(alpha: 0.18),
+                  width: 1,
                 ),
-                const SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  child: Text(
-                    name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(getCategoryIcon(name), color: color, size: 20),
+                  ),
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  formatShortHM(dur),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: color,
-                    fontWeight: FontWeight.w700,
+                  const SizedBox(height: 4),
+                  Text(
+                    formatShortHM(dur),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: color,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -1488,6 +1499,16 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       padding: EdgeInsets.zero,
+      findChildIndexCallback: (Key key) {
+        if (key is ValueKey<String>) {
+          final keyVal = key.value;
+          final limit = math.min(maxItems, apps.length);
+          for (int idx = 0; idx < limit; idx++) {
+            if (apps[idx].key == keyVal) return idx;
+          }
+        }
+        return null;
+      },
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
         crossAxisSpacing: 10,
@@ -1502,79 +1523,82 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
         final double ratio = appDur / maxAppDur;
         final cs = Theme.of(context).colorScheme;
 
-        return _ExpandableCard(
-          pageBuilder: (_) => AppDetailScreen(
-            appName: app.key,
-            historyStats: _historyStats,
-            filter: _currentFilter,
-            range: _currentRange,
-            anchorDate: _selectedDate,
-          ),
-          sourceColor: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(18),
-          child: OptionalLiquidGlassCard(
-            borderRadius: 22,
-            highContrast: true,
-            padding: const EdgeInsets.all(14),
-            fallbackDecoration: _cardDecoration(context),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 16,
-                      backgroundColor: cs.primary.withValues(alpha: 0.14),
-                      child: Text(
-                        app.key.isNotEmpty ? app.key[0].toUpperCase() : "?",
-                        style: TextStyle(
-                          color: cs.primary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
+        return RepaintBoundary(
+          key: ValueKey<String>(app.key),
+          child: _ExpandableCard(
+            pageBuilder: (_) => AppDetailScreen(
+              appName: app.key,
+              historyStats: _historyStats,
+              filter: _currentFilter,
+              range: _currentRange,
+              anchorDate: _selectedDate,
+            ),
+            sourceColor: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(18),
+            child: OptionalLiquidGlassCard(
+              borderRadius: 22,
+              highContrast: true,
+              padding: const EdgeInsets.all(14),
+              fallbackDecoration: _cardDecoration(context),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 16,
+                        backgroundColor: cs.primary.withValues(alpha: 0.14),
+                        child: Text(
+                          app.key.isNotEmpty ? app.key[0].toUpperCase() : "?",
+                          style: TextStyle(
+                            color: cs.primary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        app.key,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          app.key,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
+                    ],
+                  ),
+                  const Spacer(),
+                  Text(
+                    formatHM(appDur),
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      color: cs.primary,
+                      height: 1.2,
                     ),
-                  ],
-                ),
-                const Spacer(),
-                Text(
-                  formatHM(appDur),
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    color: cs.primary,
-                    height: 1.2,
                   ),
-                ),
-                const SizedBox(height: 6),
-                // 相对进度条
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: ratio,
-                    minHeight: 4,
-                    backgroundColor: cs.primary.withValues(alpha: 0.1),
-                    color: cs.primary.withValues(alpha: 0.6),
+                  const SizedBox(height: 6),
+                  // 相对进度条
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: ratio,
+                      minHeight: 4,
+                      backgroundColor: cs.primary.withValues(alpha: 0.1),
+                      color: cs.primary.withValues(alpha: 0.6),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                buildDeviceBreakdown(
-                  devices,
-                  _currentFilter == DeviceFilter.all,
-                ),
-              ],
+                  const SizedBox(height: 6),
+                  buildDeviceBreakdown(
+                    devices,
+                    _currentFilter == DeviceFilter.all,
+                  ),
+                ],
+              ),
             ),
           ),
         );

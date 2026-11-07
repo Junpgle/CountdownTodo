@@ -714,22 +714,24 @@ class _AppBoardScreenState extends State<AppBoardScreen>
       width: double.infinity,
       color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
       child: Center(
-        child: SingleChildScrollView(
-          controller: _marqueeController,
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              const SizedBox(width: 1000), // Start from outside
-              Text(
-                '【公告】 实时执行流同步中... 祝您今日工作愉快！',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.6),
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
+        child: RepaintBoundary(
+          child: SingleChildScrollView(
+            controller: _marqueeController,
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                const SizedBox(width: 1000), // Start from outside
+                Text(
+                  '【公告】 实时执行流同步中... 祝您今日工作愉快！',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.6),
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 1000), // Gap
-            ],
+                const SizedBox(width: 1000), // Gap
+              ],
+            ),
           ),
         ),
       ),

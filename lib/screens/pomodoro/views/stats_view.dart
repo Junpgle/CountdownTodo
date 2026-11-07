@@ -2316,6 +2316,13 @@ class _MonthPickerDialogState extends State<_MonthPickerDialog> {
         height: 240,
         child: GridView.builder(
           physics: const NeverScrollableScrollPhysics(),
+          findChildIndexCallback: (Key key) {
+            if (key is ValueKey<int>) {
+              final month = key.value;
+              if (month >= 1 && month <= 12) return month - 1;
+            }
+            return null;
+          },
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 3,
             mainAxisSpacing: 10,
@@ -2335,46 +2342,51 @@ class _MonthPickerDialogState extends State<_MonthPickerDialog> {
               DateTime(now.year, now.month, 1),
             );
 
-            return Material(
-              color: isSelected
-                  ? colorScheme.primary
-                  : (isCurrent
-                        ? colorScheme.primaryContainer.withValues(alpha: 0.3)
-                        : Colors.transparent),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-                side: isCurrent && !isSelected
-                    ? BorderSide(color: colorScheme.primary, width: 1.2)
-                    : BorderSide(
-                        color: isSelected
-                            ? colorScheme.primary
-                            : colorScheme.outlineVariant.withValues(alpha: 0.4),
-                        width: 0.8,
+            return RepaintBoundary(
+              key: ValueKey<int>(month),
+              child: Material(
+                color: isSelected
+                    ? colorScheme.primary
+                    : (isCurrent
+                          ? colorScheme.primaryContainer.withValues(alpha: 0.3)
+                          : Colors.transparent),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  side: isCurrent && !isSelected
+                      ? BorderSide(color: colorScheme.primary, width: 1.2)
+                      : BorderSide(
+                          color: isSelected
+                              ? colorScheme.primary
+                              : colorScheme.outlineVariant.withValues(
+                                  alpha: 0.4,
+                                ),
+                          width: 0.8,
+                        ),
+                ),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: isFuture
+                      ? null
+                      : () {
+                          Navigator.of(context)
+                              .pop(DateTime(_displayYear, month, 1));
+                        },
+                  child: Center(
+                    child: Text(
+                      '$month月',
+                      style: TextStyle(
+                        color: isFuture
+                            ? colorScheme.onSurface.withValues(alpha: 0.3)
+                            : (isSelected
+                                  ? colorScheme.onPrimary
+                                  : (isCurrent
+                                        ? colorScheme.primary
+                                        : colorScheme.onSurface)),
+                        fontWeight: isSelected || isCurrent
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                        fontSize: 14,
                       ),
-              ),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(10),
-                onTap: isFuture
-                    ? null
-                    : () {
-                        Navigator.of(context)
-                            .pop(DateTime(_displayYear, month, 1));
-                      },
-                child: Center(
-                  child: Text(
-                    '$month月',
-                    style: TextStyle(
-                      color: isFuture
-                          ? colorScheme.onSurface.withValues(alpha: 0.3)
-                          : (isSelected
-                                ? colorScheme.onPrimary
-                                : (isCurrent
-                                      ? colorScheme.primary
-                                      : colorScheme.onSurface)),
-                      fontWeight: isSelected || isCurrent
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                      fontSize: 14,
                     ),
                   ),
                 ),

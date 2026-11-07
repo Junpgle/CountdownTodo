@@ -2092,106 +2092,112 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
               ]
             : taskColors;
 
-        return InkWell(
+        return RepaintBoundary(
           key: ValueKey<int>(task.id),
-          onTap: () {
-            setState(() {
-              _currentIndex = index;
-              if (!isLandscapeSidebar) {
-                _showOverview = false;
-              }
-            });
-            if (!isLandscapeSidebar) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted && _pageController.hasClients) {
-                  _pageController.jumpToPage(index);
+          child: InkWell(
+            onTap: () {
+              setState(() {
+                _currentIndex = index;
+                if (!isLandscapeSidebar) {
+                  _showOverview = false;
                 }
               });
-            } else {
-              _pageController.animateToPage(
-                index,
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOutCubic,
-              );
-            }
-          },
-          borderRadius: BorderRadius.circular(16),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: overviewColors,
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isSelected
-                    ? taskColors.first
-                    : task.isCompleted
-                    ? taskColors[1].withValues(alpha: 0.62)
-                    : taskColors.first.withValues(alpha: 0.32),
-                width: isSelected ? 2 : 1,
-              ),
-              boxShadow: isSelected
-                  ? [
-                      BoxShadow(
-                        color: scheme.primary.withValues(alpha: 0.2),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ]
-                  : null,
-            ),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (overviewImageProvider != null)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(15),
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final pixelRatio =
-                            MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0;
-                        final cacheWidth = (constraints.maxWidth * pixelRatio)
-                            .ceil()
-                            .clamp(1, 4096)
-                            .toInt();
-                        final cacheHeight = (constraints.maxHeight * pixelRatio)
-                            .ceil()
-                            .clamp(1, 4096)
-                            .toInt();
-                        final imageProvider = ResizeImage(
-                          overviewImageProvider,
-                          width: cacheWidth,
-                          height: cacheHeight,
-                          policy: ResizeImagePolicy.fit,
-                        );
-                        return Image(
-                          image: imageProvider,
-                          fit: BoxFit.cover,
-                          opacity: const AlwaysStoppedAnimation<double>(0.4),
-                        );
-                      },
-                    ),
-                  ),
-                Center(
-                  child: task.isCompleted
-                      ? Icon(
-                          Icons.check_rounded,
-                          color: isSelected ? scheme.primary : scheme.secondary,
-                          size: 24,
-                        )
-                      : Text(
-                          '${task.id}',
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(
-                                color: scheme.onSurface,
-                                fontWeight: FontWeight.bold,
-                              ),
-                        ),
+              if (!isLandscapeSidebar) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted && _pageController.hasClients) {
+                    _pageController.jumpToPage(index);
+                  }
+                });
+              } else {
+                _pageController.animateToPage(
+                  index,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                );
+              }
+            },
+            borderRadius: BorderRadius.circular(16),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: overviewColors,
                 ),
-              ],
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isSelected
+                      ? taskColors.first
+                      : task.isCompleted
+                      ? taskColors[1].withValues(alpha: 0.62)
+                      : taskColors.first.withValues(alpha: 0.32),
+                  width: isSelected ? 2 : 1,
+                ),
+                boxShadow: isSelected
+                    ? [
+                        BoxShadow(
+                          color: scheme.primary.withValues(alpha: 0.2),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ]
+                    : null,
+              ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (overviewImageProvider != null)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(15),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final pixelRatio =
+                              MediaQuery.maybeDevicePixelRatioOf(context) ??
+                              1.0;
+                          final cacheWidth = (constraints.maxWidth * pixelRatio)
+                              .ceil()
+                              .clamp(1, 4096)
+                              .toInt();
+                          final cacheHeight =
+                              (constraints.maxHeight * pixelRatio)
+                                  .ceil()
+                                  .clamp(1, 4096)
+                                  .toInt();
+                          final imageProvider = ResizeImage(
+                            overviewImageProvider,
+                            width: cacheWidth,
+                            height: cacheHeight,
+                            policy: ResizeImagePolicy.fit,
+                          );
+                          return Image(
+                            image: imageProvider,
+                            fit: BoxFit.cover,
+                            opacity: const AlwaysStoppedAnimation<double>(0.4),
+                          );
+                        },
+                      ),
+                    ),
+                  Center(
+                    child: task.isCompleted
+                        ? Icon(
+                            Icons.check_rounded,
+                            color: isSelected
+                                ? scheme.primary
+                                : scheme.secondary,
+                            size: 24,
+                          )
+                        : Text(
+                            '${task.id}',
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(
+                                  color: scheme.onSurface,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                          ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
