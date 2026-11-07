@@ -2002,107 +2002,129 @@ class _DatabaseChangelogSheet extends StatelessWidget {
         Expanded(
           child: ListView.separated(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            findItemIndexCallback: (Key key) {
+              if (key is ValueKey<int>) {
+                final v = key.value;
+                final idx = DatabaseSchemaHistory.changes.indexWhere(
+                  (c) => c.version == v,
+                );
+                return idx != -1 ? idx : null;
+              }
+              return null;
+            },
             itemCount: DatabaseSchemaHistory.changes.length,
             separatorBuilder: (_, _) => const SizedBox(height: 8),
             itemBuilder: (context, index) {
               final entry = DatabaseSchemaHistory.changes[index];
               final isCurrent = entry.version == currentVersion;
 
-              return OptionalLiquidGlassCard(
-                margin: EdgeInsets.zero,
-                borderRadius: 12,
-                clipBehavior: Clip.antiAlias,
-                highContrast: true,
-                tint: isCurrent
-                    ? colorScheme.primaryContainer.withValues(alpha: 0.16)
-                    : null,
-                fallbackDecoration: BoxDecoration(
-                  color: isCurrent
-                      ? colorScheme.primaryContainer.withValues(alpha: 0.45)
-                      : colorScheme.surfaceContainerLow,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.fromBorderSide(
-                    BorderSide(
-                      color: isCurrent
-                          ? colorScheme.primary.withValues(alpha: 0.35)
-                          : colorScheme.outlineVariant.withValues(alpha: 0.45),
+              return RepaintBoundary(
+                key: ValueKey<int>(entry.version),
+                child: OptionalLiquidGlassCard(
+                  margin: EdgeInsets.zero,
+                  borderRadius: 12,
+                  clipBehavior: Clip.antiAlias,
+                  highContrast: true,
+                  tint: isCurrent
+                      ? colorScheme.primaryContainer.withValues(alpha: 0.16)
+                      : null,
+                  fallbackDecoration: BoxDecoration(
+                    color: isCurrent
+                        ? colorScheme.primaryContainer.withValues(alpha: 0.45)
+                        : colorScheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.fromBorderSide(
+                      BorderSide(
+                        color: isCurrent
+                            ? colorScheme.primary.withValues(alpha: 0.35)
+                            : colorScheme.outlineVariant.withValues(
+                                alpha: 0.45,
+                              ),
+                      ),
                     ),
                   ),
-                ),
-                child: Material(
-                  type: MaterialType.transparency,
-                  child: Theme(
-                    data: theme.copyWith(dividerColor: Colors.transparent),
-                    child: ExpansionTile(
-                      key: PageStorageKey('database-version-${entry.version}'),
-                      initiallyExpanded: isCurrent,
-                      tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-                      childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-                      title: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: colorScheme.secondaryContainer,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              'V${entry.version}',
-                              style: TextStyle(
-                                color: colorScheme.onSecondaryContainer,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
+                  child: Material(
+                    type: MaterialType.transparency,
+                    child: Theme(
+                      data: theme.copyWith(dividerColor: Colors.transparent),
+                      child: ExpansionTile(
+                        key: PageStorageKey(
+                          'database-version-${entry.version}',
+                        ),
+                        initiallyExpanded: isCurrent,
+                        tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+                        childrenPadding: const EdgeInsets.fromLTRB(
+                          16,
+                          0,
+                          16,
+                          14,
+                        ),
+                        title: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: colorScheme.secondaryContainer,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                'V${entry.version}',
+                                style: TextStyle(
+                                  color: colorScheme.onSecondaryContainer,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
-                          ),
-                          if (isCurrent) ...[
-                            const SizedBox(width: 8),
-                            Text(
-                              '当前',
-                              style: TextStyle(
-                                color: colorScheme.primary,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
+                            if (isCurrent) ...[
+                              const SizedBox(width: 8),
+                              Text(
+                                '当前',
+                                style: TextStyle(
+                                  color: colorScheme.primary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
-                            ),
+                            ],
                           ],
-                        ],
-                      ),
-                      subtitle: Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(entry.title),
-                      ),
-                      children: entry.changes
-                          .map(
-                            (change) => Padding(
-                              padding: const EdgeInsets.only(top: 6),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 7),
-                                    child: Icon(
-                                      Icons.circle,
-                                      size: 5,
-                                      color: colorScheme.primary,
+                        ),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(entry.title),
+                        ),
+                        children: entry.changes
+                            .map(
+                              (change) => Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 7),
+                                      child: Icon(
+                                        Icons.circle,
+                                        size: 5,
+                                        color: colorScheme.primary,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      change,
-                                      style: theme.textTheme.bodyMedium
-                                          ?.copyWith(height: 1.45),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        change,
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(height: 1.45),
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
-                          )
-                          .toList(),
+                            )
+                            .toList(),
+                      ),
                     ),
                   ),
                 ),

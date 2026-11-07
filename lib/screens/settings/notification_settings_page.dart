@@ -1213,6 +1213,16 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                         )
                       : ListView.separated(
                           controller: scrollController,
+                          findItemIndexCallback: (Key key) {
+                            if (key is ValueKey<dynamic>) {
+                              final notifId = key.value;
+                              final idx = reminders.indexWhere(
+                                (r) => r['notifId'] == notifId,
+                              );
+                              return idx != -1 ? idx : null;
+                            }
+                            return null;
+                          },
                           itemCount: reminders.length,
                           separatorBuilder: (context, index) =>
                               const Divider(height: 1, indent: 72),
@@ -1224,51 +1234,54 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                                 );
                             final isPast = triggerAt.isBefore(DateTime.now());
 
-                            return ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: isPast
-                                    ? colorScheme.surfaceContainerHighest
-                                    : colorScheme.primaryContainer.withValues(
-                                        alpha: 0.7,
-                                      ),
-                                child: Icon(
-                                  isPast ? Icons.history : Icons.alarm,
-                                  color: isPast
-                                      ? colorScheme.onSurfaceVariant
-                                      : colorScheme.primary,
-                                ),
-                              ),
-                              title: Text(r['title'] ?? '未命名提醒'),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(r['text'] ?? ''),
-                                  Text(
-                                    AppTimeFormats.compactDateTime(triggerAt),
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: isPast
-                                          ? colorScheme.error
-                                          : colorScheme.onSurfaceVariant,
-                                      fontWeight: isPast
-                                          ? FontWeight.bold
-                                          : null,
-                                    ),
+                            return RepaintBoundary(
+                              key: ValueKey<dynamic>(r['notifId']),
+                              child: ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: isPast
+                                      ? colorScheme.surfaceContainerHighest
+                                      : colorScheme.primaryContainer.withValues(
+                                          alpha: 0.7,
+                                        ),
+                                  child: Icon(
+                                    isPast ? Icons.history : Icons.alarm,
+                                    color: isPast
+                                        ? colorScheme.onSurfaceVariant
+                                        : colorScheme.primary,
                                   ),
-                                ],
-                              ),
-                              trailing: IconButton(
-                                icon: const Icon(Icons.close, size: 20),
-                                onPressed: () async {
-                                  await NotificationService.cancelReminder(
-                                    r['notifId'],
-                                  );
-                                  if (!mounted) return;
-                                  if (sheetContext.mounted) {
-                                    Navigator.pop(sheetContext);
-                                  }
-                                  _showScheduledReminders();
-                                },
+                                ),
+                                title: Text(r['title'] ?? '未命名提醒'),
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(r['text'] ?? ''),
+                                    Text(
+                                      AppTimeFormats.compactDateTime(triggerAt),
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: isPast
+                                            ? colorScheme.error
+                                            : colorScheme.onSurfaceVariant,
+                                        fontWeight: isPast
+                                            ? FontWeight.bold
+                                            : null,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.close, size: 20),
+                                  onPressed: () async {
+                                    await NotificationService.cancelReminder(
+                                      r['notifId'],
+                                    );
+                                    if (!mounted) return;
+                                    if (sheetContext.mounted) {
+                                      Navigator.pop(sheetContext);
+                                    }
+                                    _showScheduledReminders();
+                                  },
+                                ),
                               ),
                             );
                           },

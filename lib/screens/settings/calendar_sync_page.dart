@@ -244,29 +244,40 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
                 Flexible(
                   child: ListView.separated(
                     shrinkWrap: true,
+                    findItemIndexCallback: (Key key) {
+                      if (key is ValueKey<String>) {
+                        final id = key.value;
+                        final idx = selected.indexWhere((e) => e.id == id);
+                        return idx != -1 ? idx : null;
+                      }
+                      return null;
+                    },
                     itemCount: selected.length,
                     separatorBuilder: (_, _) => const Divider(height: 16),
                     itemBuilder: (context, index) {
                       final entry = selected[index];
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(
-                          _iconFor(entry.type),
-                          color: _colorFor(entry.type),
-                        ),
-                        title: Text(
-                          entry.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: Text(
-                          [
-                            '${entry.typeLabel} · ${_formatEntryTime(entry)}',
-                            if (entry.location?.isNotEmpty == true)
-                              '地点：${entry.location}',
-                            if (entry.description?.isNotEmpty == true)
-                              entry.description!,
-                          ].join('\n'),
+                      return RepaintBoundary(
+                        key: ValueKey<String>(entry.id),
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(
+                            _iconFor(entry.type),
+                            color: _colorFor(entry.type),
+                          ),
+                          title: Text(
+                            entry.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text(
+                            [
+                              '${entry.typeLabel} · ${_formatEntryTime(entry)}',
+                              if (entry.location?.isNotEmpty == true)
+                                '地点：${entry.location}',
+                              if (entry.description?.isNotEmpty == true)
+                                entry.description!,
+                            ].join('\n'),
+                          ),
                         ),
                       );
                     },
