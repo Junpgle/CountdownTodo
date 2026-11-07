@@ -2056,6 +2056,14 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     final scheme = Theme.of(context).colorScheme;
     return GridView.builder(
       padding: EdgeInsets.fromLTRB(16, 12, isLandscapeSidebar ? 8 : 16, 16),
+      findChildIndexCallback: (Key key) {
+        if (key is ValueKey<int>) {
+          final id = key.value;
+          final index = state.tasks.indexWhere((t) => t.id == id);
+          return index != -1 ? index : null;
+        }
+        return null;
+      },
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: isLandscapeSidebar ? 4 : 5,
         mainAxisSpacing: 12,
@@ -2085,6 +2093,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
             : taskColors;
 
         return InkWell(
+          key: ValueKey<int>(task.id),
           onTap: () {
             setState(() {
               _currentIndex = index;

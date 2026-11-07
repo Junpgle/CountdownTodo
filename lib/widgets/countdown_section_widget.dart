@@ -669,6 +669,14 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
           ),
           addRepaintBoundaries: true,
           scrollCacheExtent: ScrollCacheExtent.pixels(1000),
+          findChildIndexCallback: (Key key) {
+            if (key is ValueKey<String>) {
+              final id = key.value;
+              final index = activeCountdowns.indexWhere((c) => c.id == id);
+              return index != -1 ? index : null;
+            }
+            return null;
+          },
           controller: _listScrollController,
           padding: const EdgeInsets.only(right: 12),
           clipBehavior: Clip.none,
@@ -940,9 +948,13 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                 ),
               ),
             );
-            return (widget.isLight || !isUrgent)
+            final rootItem = (widget.isLight || !isUrgent)
                 ? countdownItem
                 : RepaintBoundary(child: countdownItem);
+            return KeyedSubtree(
+              key: ValueKey<String>(item.id),
+              child: rootItem,
+            );
           },
         ),
       ),
