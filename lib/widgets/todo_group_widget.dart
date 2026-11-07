@@ -495,6 +495,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                   final animValue = Curves.easeOutQuart.transform(
                     _progressController.value,
                   );
+                  if (animValue <= 0.001) return const SizedBox.shrink();
                   if (animValue >= 0.999) return child!;
                   return Opacity(opacity: animValue, child: child);
                 },

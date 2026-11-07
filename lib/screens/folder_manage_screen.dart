@@ -323,6 +323,14 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
                 Expanded(
                   child: ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
+                    findChildIndexCallback: (Key key) {
+                      if (key is ValueKey<String>) {
+                        final id = key.value;
+                        final index = unassigned.indexWhere((t) => t.id == id);
+                        return index != -1 ? index : null;
+                      }
+                      return null;
+                    },
                     itemCount: unassigned.length,
                     itemBuilder: (context, index) {
                       final t = unassigned[index];
@@ -338,6 +346,7 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
                           : null;
 
                       return OptionalLiquidGlassCard(
+                        key: ValueKey<String>(t.id),
                         margin: const EdgeInsets.only(bottom: 10),
                         borderRadius: 16,
                         fallbackDecoration: BoxDecoration(

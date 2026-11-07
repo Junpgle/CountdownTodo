@@ -1788,7 +1788,7 @@ class _PlanGridViewState extends State<_PlanGridView>
           width: max(1.0, segmentW - 2),
           height: segmentHeight,
           child: hiddenAnchor
-              ? Opacity(opacity: 0, child: segmentChild)
+              ? Offstage(offstage: true, child: segmentChild)
               : segmentChild,
         ),
       );

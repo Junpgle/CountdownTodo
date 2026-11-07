@@ -533,8 +533,14 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
               onTap: () => setState(() => _showEnded = !_showEnded),
             ),
             if (_showEnded)
-              ...endedItems.map(
-                (item) => Opacity(opacity: 0.58, child: _buildItemCard(item)),
+              Opacity(
+                opacity: 0.58,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: endedItems
+                      .map(_buildItemCard)
+                      .toList(growable: false),
+                ),
               ),
           ],
           if (showingTomorrow)

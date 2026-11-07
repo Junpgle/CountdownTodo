@@ -454,40 +454,42 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
       if (row.arranged && !row.needsReview && !row.focusing && !expired)
         TextButton(onPressed: () => _arrange(row), child: const Text('追加规划')),
     ];
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 10),
-      color: cs.surfaceContainerLow,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: LayoutBuilder(
-          builder: (context, c) {
-            final compact =
-                c.maxWidth >= 600 ||
-                (c.maxWidth >= 300 &&
-                    MediaQuery.textScalerOf(context).scale(14) <= 20);
-            if (compact) {
-              return Row(
+    return RepaintBoundary(
+      child: Card(
+        elevation: 0,
+        margin: const EdgeInsets.only(bottom: 10),
+        color: cs.surfaceContainerLow,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: LayoutBuilder(
+            builder: (context, c) {
+              final compact =
+                  c.maxWidth >= 600 ||
+                  (c.maxWidth >= 300 &&
+                      MediaQuery.textScalerOf(context).scale(14) <= 20);
+              if (compact) {
+                return Row(
+                  children: [
+                    Expanded(child: info),
+                    const SizedBox(width: 12),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: buttons,
+                    ),
+                  ],
+                );
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(child: info),
-                  const SizedBox(width: 12),
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: buttons,
-                  ),
+                  info,
+                  const SizedBox(height: 10),
+                  Wrap(spacing: 8, runSpacing: 4, children: buttons),
                 ],
               );
-            }
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                info,
-                const SizedBox(height: 10),
-                Wrap(spacing: 8, runSpacing: 4, children: buttons),
-              ],
-            );
-          },
+            },
+          ),
         ),
       ),
     );
