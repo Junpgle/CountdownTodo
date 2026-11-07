@@ -378,11 +378,12 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                       itemCount: itemCount,
                       itemBuilder: (context, index) {
                         if (index < actionMessages.length) {
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: _buildMessageTodoActions(
-                              actionMessages[index],
-                              isDark,
+                          final msg = actionMessages[index];
+                          return RepaintBoundary(
+                            key: ValueKey<String>(msg.id),
+                            child: Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: _buildMessageTodoActions(msg, isDark),
                             ),
                           );
                         }
@@ -921,77 +922,79 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                   itemBuilder: (context, index) {
                     final session = _sessions[index];
                     final isActive = session.id == _activeSessionId;
-                    return Padding(
+                    return RepaintBoundary(
                       key: ValueKey<String>(session.id),
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Material(
-                        color: isActive
-                            ? colorScheme.primaryContainer.withValues(
-                                alpha: 0.55,
-                              )
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(8),
-                        child: ListTile(
-                          dense: isWideMode,
-                          minLeadingWidth: 24,
-                          horizontalTitleGap: 10,
-                          contentPadding: const EdgeInsets.only(
-                            left: 12,
-                            right: 4,
-                          ),
-                          leading: Icon(
-                            isActive
-                                ? Icons.chat_bubble_rounded
-                                : Icons.chat_bubble_outline_rounded,
-                            size: 18,
-                            color: isActive
-                                ? colorScheme.primary
-                                : colorScheme.onSurfaceVariant,
-                          ),
-                          title: Text(
-                            session.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: isActive
-                                  ? FontWeight.w700
-                                  : FontWeight.w500,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Material(
+                          color: isActive
+                              ? colorScheme.primaryContainer.withValues(
+                                  alpha: 0.55,
+                                )
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          child: ListTile(
+                            dense: isWideMode,
+                            minLeadingWidth: 24,
+                            horizontalTitleGap: 10,
+                            contentPadding: const EdgeInsets.only(
+                              left: 12,
+                              right: 4,
+                            ),
+                            leading: Icon(
+                              isActive
+                                  ? Icons.chat_bubble_rounded
+                                  : Icons.chat_bubble_outline_rounded,
+                              size: 18,
                               color: isActive
-                                  ? colorScheme.onPrimaryContainer
-                                  : colorScheme.onSurface,
+                                  ? colorScheme.primary
+                                  : colorScheme.onSurfaceVariant,
                             ),
-                          ),
-                          subtitle: Text(
-                            _todoChatDateFormat('MM/dd HH:mm')
-                                .format(session.updatedAt),
-                            style: TextStyle(
-                              fontSize: 11,
+                            title: Text(
+                              session.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: isActive
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                                color: isActive
+                                    ? colorScheme.onPrimaryContainer
+                                    : colorScheme.onSurface,
+                              ),
+                            ),
+                            subtitle: Text(
+                              _todoChatDateFormat('MM/dd HH:mm')
+                                  .format(session.updatedAt),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete_outline, size: 18),
                               color: colorScheme.onSurfaceVariant,
+                              onPressed: _isLoading
+                                  ? null
+                                  : () {
+                                      if (!isWideMode) Navigator.pop(context);
+                                      _deleteSession(session.id);
+                                    },
+                              tooltip: '删除对话',
                             ),
-                          ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete_outline, size: 18),
-                            color: colorScheme.onSurfaceVariant,
-                            onPressed: _isLoading
+                            selected: isActive,
+                            selectedTileColor: Colors.transparent,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            onTap: _isLoading
                                 ? null
                                 : () {
                                     if (!isWideMode) Navigator.pop(context);
-                                    _deleteSession(session.id);
+                                    _switchSession(session.id);
                                   },
-                            tooltip: '删除对话',
                           ),
-                          selected: isActive,
-                          selectedTileColor: Colors.transparent,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          onTap: _isLoading
-                              ? null
-                              : () {
-                                  if (!isWideMode) Navigator.pop(context);
-                                  _switchSession(session.id);
-                                },
                         ),
                       ),
                     );

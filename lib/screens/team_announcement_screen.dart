@@ -391,18 +391,21 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                           final time = _cachedDateFormat(
                             'MM-dd HH:mm',
                           ).format(DateTime.fromMillisecondsSinceEpoch(readAt));
-                          return ListTile(
-                            leading: const CircleAvatar(
-                              child: Icon(Icons.person, size: 16),
-                            ),
-                            title: Text(
-                              member['username']?.toString() ?? '未知成员',
-                            ),
-                            trailing: Text(
-                              time,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
+                          return RepaintBoundary(
+                            key: ValueKey(member['username'] ?? index),
+                            child: ListTile(
+                              leading: const CircleAvatar(
+                                child: Icon(Icons.person, size: 16),
+                              ),
+                              title: Text(
+                                member['username']?.toString() ?? '未知成员',
+                              ),
+                              trailing: Text(
+                                time,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
                               ),
                             ),
                           );

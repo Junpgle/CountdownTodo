@@ -2848,72 +2848,76 @@ class _TeamAnnouncementViewState extends State<_TeamAnnouncementView> {
         final annKey =
             (ann is Map ? (ann['uuid'] ?? ann['id']) : null)?.toString() ??
             '$index';
-        return OptionalLiquidGlassCard(
+        return RepaintBoundary(
           key: ValueKey<String>(annKey),
-          margin: const EdgeInsets.only(bottom: 16),
-          borderRadius: 16,
-          highContrast: true,
-          tint: Theme.of(context).colorScheme.primary.withValues(alpha: 0.16),
-          fallbackDecoration: BoxDecoration(
-            color: Theme.of(context).cardColor.withValues(alpha: 0.5),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.fromBorderSide(
-              BorderSide(color: Colors.grey.withValues(alpha: 0.1)),
+          child: OptionalLiquidGlassCard(
+            key: ValueKey<String>(annKey),
+            margin: const EdgeInsets.only(bottom: 16),
+            borderRadius: 16,
+            highContrast: true,
+            tint: Theme.of(context).colorScheme.primary.withValues(alpha: 0.16),
+            fallbackDecoration: BoxDecoration(
+              color: Theme.of(context).cardColor.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.fromBorderSide(
+                BorderSide(color: Colors.grey.withValues(alpha: 0.1)),
+              ),
             ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.campaign_rounded,
-                      color: Colors.orangeAccent,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        ann['title'] ?? '未命名公告',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.campaign_rounded,
+                        color: Colors.orangeAccent,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          ann['title'] ?? '未命名公告',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
                         ),
                       ),
-                    ),
-                    Builder(
-                      builder: (context) {
-                        DateTime date;
-                        final rawDate = ann['created_at'];
-                        if (rawDate is int) {
-                          date = DateTime.fromMillisecondsSinceEpoch(rawDate);
-                        } else {
-                          date =
-                              DateTime.tryParse(rawDate?.toString() ?? '') ??
-                              DateTime.now();
-                        }
-                        return Text(
-                          _teamManagementDateFormat('MM-dd HH:mm').format(date),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade500,
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Divider(),
-                ),
-                Text(
-                  ann['content'] ?? '',
-                  style: const TextStyle(fontSize: 14, height: 1.5),
-                ),
-              ],
+                      Builder(
+                        builder: (context) {
+                          DateTime date;
+                          final rawDate = ann['created_at'];
+                          if (rawDate is int) {
+                            date = DateTime.fromMillisecondsSinceEpoch(rawDate);
+                          } else {
+                            date =
+                                DateTime.tryParse(rawDate?.toString() ?? '') ??
+                                DateTime.now();
+                          }
+                          return Text(
+                            _teamManagementDateFormat('MM-dd HH:mm')
+                                .format(date),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade500,
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Divider(),
+                  ),
+                  Text(
+                    ann['content'] ?? '',
+                    style: const TextStyle(fontSize: 14, height: 1.5),
+                  ),
+                ],
+              ),
             ),
           ),
         );

@@ -134,127 +134,131 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                     itemCount: todayAllDay.length,
                     itemBuilder: (context, index) {
                       final todo = todayAllDay[index];
-                      return Padding(
+                      return RepaintBoundary(
                         key: ValueKey<String>(todo.id),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 4,
-                        ),
-                        child: InkWell(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              PageTransitions.slideHorizontal(
-                                TodoDetailScreen(
-                                  todo: todo,
-                                  onCreateRelatedTodo:
-                                      widget.onCreateRelatedTodo,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 4,
+                          ),
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                PageTransitions.slideHorizontal(
+                                  TodoDetailScreen(
+                                    todo: todo,
+                                    onCreateRelatedTodo:
+                                        widget.onCreateRelatedTodo,
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: todo.isDone
-                                  ? (isDark
-                                        ? Theme.of(context)
-                                              .colorScheme
-                                              .cdtSuccess
-                                              .withValues(alpha: 0.1)
-                                        : Theme.of(context)
-                                              .colorScheme
-                                              .cdtSuccess
-                                              .withValues(alpha: 0.05))
-                                  : (isDark
-                                        ? Theme.of(context)
-                                              .colorScheme
-                                              .cdtWarning
-                                              .withValues(alpha: 0.1)
-                                        : Theme.of(context)
-                                              .colorScheme
-                                              .cdtWarning
-                                              .withValues(alpha: 0.05)),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
+                              );
+                            },
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
                                 color: todo.isDone
-                                    ? Theme.of(context).colorScheme.cdtSuccess
-                                          .withValues(alpha: 0.3)
-                                    : Theme.of(context).colorScheme.cdtWarning
-                                          .withValues(alpha: 0.3),
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  todo.isDone
-                                      ? Icons.check_circle
-                                      : Icons.task_alt,
-                                  size: 20,
+                                    ? (isDark
+                                          ? Theme.of(context)
+                                                .colorScheme
+                                                .cdtSuccess
+                                                .withValues(alpha: 0.1)
+                                          : Theme.of(context)
+                                                .colorScheme
+                                                .cdtSuccess
+                                                .withValues(alpha: 0.05))
+                                    : (isDark
+                                          ? Theme.of(context)
+                                                .colorScheme
+                                                .cdtWarning
+                                                .withValues(alpha: 0.1)
+                                          : Theme.of(context)
+                                                .colorScheme
+                                                .cdtWarning
+                                                .withValues(alpha: 0.05)),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
                                   color: todo.isDone
                                       ? Theme.of(context).colorScheme.cdtSuccess
-                                      : Theme.of(context)
-                                            .colorScheme
-                                            .cdtWarning,
+                                            .withValues(alpha: 0.3)
+                                      : Theme.of(context).colorScheme.cdtWarning
+                                            .withValues(alpha: 0.3),
                                 ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      if (todo.teamUuid != null)
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                            bottom: 2,
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              Icon(
-                                                Icons.group,
-                                                size: 10,
-                                                color: Theme.of(context)
-                                                    .colorScheme
-                                                    .primary,
-                                              ),
-                                              const SizedBox(width: 4),
-                                              Text(
-                                                todo.teamName ?? '团队',
-                                                style: TextStyle(
-                                                  fontSize: 10,
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    todo.isDone
+                                        ? Icons.check_circle
+                                        : Icons.task_alt,
+                                    size: 20,
+                                    color: todo.isDone
+                                        ? Theme.of(context)
+                                              .colorScheme
+                                              .cdtSuccess
+                                        : Theme.of(context)
+                                              .colorScheme
+                                              .cdtWarning,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        if (todo.teamUuid != null)
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                              bottom: 2,
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.group,
+                                                  size: 10,
                                                   color: Theme.of(context)
                                                       .colorScheme
                                                       .primary,
-                                                  fontWeight: FontWeight.bold,
                                                 ),
-                                              ),
-                                            ],
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  todo.teamName ?? '团队',
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                    color: Theme.of(context)
+                                                        .colorScheme
+                                                        .primary,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
                                           ),
+                                        Text(
+                                          todo.title,
+                                          style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w500,
+                                            decoration: todo.isDone
+                                                ? TextDecoration.lineThrough
+                                                : null,
+                                            color: todo.isDone
+                                                ? (isDark
+                                                      ? Colors.white38
+                                                      : Colors.black38)
+                                                : (isDark
+                                                      ? Colors.white
+                                                      : Colors.black87),
+                                          ),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                      Text(
-                                        todo.title,
-                                        style: TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w500,
-                                          decoration: todo.isDone
-                                              ? TextDecoration.lineThrough
-                                              : null,
-                                          color: todo.isDone
-                                              ? (isDark
-                                                    ? Colors.white38
-                                                    : Colors.black38)
-                                              : (isDark
-                                                    ? Colors.white
-                                                    : Colors.black87),
-                                        ),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),
