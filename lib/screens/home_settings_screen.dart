@@ -792,6 +792,14 @@ class _SettingsPageState extends State<SettingsPage> {
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 400),
+      transitionBuilder: (child, animation) => AnimatedBuilder(
+        animation: animation,
+        child: child,
+        builder: (context, child) {
+          if (animation.value >= 0.999) return child!;
+          return FadeTransition(opacity: animation, child: child);
+        },
+      ),
       child: content,
     );
   }

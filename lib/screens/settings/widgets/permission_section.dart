@@ -146,6 +146,14 @@ class PermissionSection extends StatelessWidget {
 
     statusIcon = AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
+      transitionBuilder: (child, animation) => AnimatedBuilder(
+        animation: animation,
+        child: child,
+        builder: (context, child) {
+          if (animation.value >= 0.999) return child!;
+          return FadeTransition(opacity: animation, child: child);
+        },
+      ),
       child: statusIcon,
     );
 

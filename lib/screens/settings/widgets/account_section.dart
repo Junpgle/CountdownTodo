@@ -104,6 +104,14 @@ class AccountSection extends StatelessWidget {
                   const Text("账户等级", style: TextStyle(fontSize: 14)),
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 300),
+                    transitionBuilder: (child, animation) => AnimatedBuilder(
+                      animation: animation,
+                      child: child,
+                      builder: (context, child) {
+                        if (animation.value >= 0.999) return child!;
+                        return FadeTransition(opacity: animation, child: child);
+                      },
+                    ),
                     child: isLoadingStatus
                         ? const AppLoadingIndicator(
                             key: ValueKey('loading'),
