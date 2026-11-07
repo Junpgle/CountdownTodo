@@ -15,6 +15,8 @@ Widget _keepTodoChatButtonBackground(
 }
 
 mixin _TodoChatLayout on _TodoChatScreenStateBase {
+  final Set<String> _animatedMessageIds = <String>{};
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -532,27 +534,35 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
       itemCount: _messages.length + (_isLoading ? 1 : 0),
       itemBuilder: (context, index) {
         if (_isLoading && index == _messages.length) {
-          return _StaggeredFadeSlide(
-            delay: Duration.zero,
-            child: ValueListenableBuilder<int>(
-              valueListenable: _streamingBubbleRevision,
-              builder: (context, _, _) => _buildStreamingBubble(isDark),
+          return RepaintBoundary(
+            child: _StaggeredFadeSlide(
+              delay: Duration.zero,
+              child: ValueListenableBuilder<int>(
+                valueListenable: _streamingBubbleRevision,
+                builder: (context, _, _) => _buildStreamingBubble(isDark),
+              ),
             ),
           );
         }
         final msg = _messages[index];
+        final bubble = RepaintBoundary(child: _buildMessageBubble(msg, isDark));
+        final shouldAnimate = _animatedMessageIds.add(msg.id);
+        if (!shouldAnimate) {
+          return KeyedSubtree(key: ValueKey(msg.id), child: bubble);
+        }
         return TweenAnimationBuilder<double>(
-          key: ValueKey(msg.timestamp.millisecondsSinceEpoch + index),
-          duration: const Duration(milliseconds: 500),
+          key: ValueKey(msg.id),
+          duration: const Duration(milliseconds: 360),
           tween: Tween(begin: 0.0, end: 1.0),
           curve: Curves.easeOutQuart,
           builder: (context, value, child) {
+            if (value >= 0.999) return child!;
             return Transform.translate(
-              offset: Offset(0, 30 * (1 - value)),
+              offset: Offset(0, 24 * (1 - value)),
               child: Opacity(opacity: value, child: child),
             );
           },
-          child: _buildMessageBubble(msg, isDark),
+          child: bubble,
         );
       },
     );

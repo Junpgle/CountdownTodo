@@ -694,9 +694,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         ),
       ]);
 
-      // 🚀 核心优化：等待 300ms 让进入页面的过渡动画彻底完成
-      // 避免在动画期间进行大量 CPU 计算导致界面掉帧
-      await Future.delayed(const Duration(milliseconds: 300));
+      // 🚀 核心优化：若当前路由仍处于入场过渡动画中，等待动画完成再触发布局更新，
+      // 若已在首页预挂载或懒加载占位已完成，则无需额外等待。
+      final routeAnimation = mounted ? ModalRoute.of(context)?.animation : null;
+      if (routeAnimation != null && routeAnimation.isAnimating) {
+        await Future.delayed(const Duration(milliseconds: 160));
+      }
 
       _settings = results[0] as PomodoroSettings;
       _allTags = results[1] as List<PomodoroTag>;
@@ -3985,29 +3988,31 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   Widget _buildImmersiveTimerWidget() {
-    return ValueListenableBuilder<int>(
-      valueListenable: _timerTickNotifier,
-      builder: (context, _, _) {
-        final isCountUp = _settings.mode == TimerMode.countUp;
-        final isRemoteCountUp = _remoteState?.duration == 0;
-        return ImmersiveTimer(
-          phase: _phase,
-          remainingSeconds: _remainingSeconds,
-          focusMinutes: _settings.focusMinutes,
-          breakMinutes: _settings.breakMinutes,
-          currentCycle: _currentCycle,
-          totalCycles: _settings.cycles,
-          isCountUp: isCountUp,
-          isRemoteCountUp: isRemoteCountUp,
-          remoteState: _remoteState,
-          isCompact: widget.isCompact,
-          isPaused: _isPaused,
-          pauseSeconds: _pauseElapsedSecs,
-          isStrictMode: _isStrictFreeFocus,
-          isStrictWaitingForFlip: _strictWaitingForFlip,
-          strictSensorState: _strictSensorState,
-        );
-      },
+    return RepaintBoundary(
+      child: ValueListenableBuilder<int>(
+        valueListenable: _timerTickNotifier,
+        builder: (context, _, _) {
+          final isCountUp = _settings.mode == TimerMode.countUp;
+          final isRemoteCountUp = _remoteState?.duration == 0;
+          return ImmersiveTimer(
+            phase: _phase,
+            remainingSeconds: _remainingSeconds,
+            focusMinutes: _settings.focusMinutes,
+            breakMinutes: _settings.breakMinutes,
+            currentCycle: _currentCycle,
+            totalCycles: _settings.cycles,
+            isCountUp: isCountUp,
+            isRemoteCountUp: isRemoteCountUp,
+            remoteState: _remoteState,
+            isCompact: widget.isCompact,
+            isPaused: _isPaused,
+            pauseSeconds: _pauseElapsedSecs,
+            isStrictMode: _isStrictFreeFocus,
+            isStrictWaitingForFlip: _strictWaitingForFlip,
+            strictSensorState: _strictSensorState,
+          );
+        },
+      ),
     );
   }
 

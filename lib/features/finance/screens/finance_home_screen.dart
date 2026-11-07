@@ -110,6 +110,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   Set<String> _categoryFilterUuids = <String>{};
   bool _categoryTapOpensLedger = true;
   int _selectedIndex = 0;
+  bool _overviewTabVisited = false;
+  bool _ledgerTabVisited = false;
   bool _hasInitialized = false;
   bool _isLoading = true;
   String? _loadError;
@@ -1392,95 +1394,136 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                   child: Column(
                     children: [
                       Expanded(
-                        child: IndexedStack(
-                          index: _selectedIndex,
-                          children: [
-                            FinanceOverviewPanel(
-                              topPadding: topBarHeight,
-                              month: _month,
-                              clock: widget.clock,
-                              summary: _summary,
-                              transactions: _overviewTransactions,
-                              cumulativeBalanceEvents: _cumulativeBalanceEvents,
-                              openingBalanceMinor: _openingBalanceMinor,
-                              openingBalanceStartDate: _openingBalanceStartDate,
-                              onEditOpeningBalance: _editOpeningBalance,
-                              categories: _categoryMap,
-                              categoryTapOpensLedger: _categoryTapOpensLedger,
-                              paymentMethods: _paymentMethods,
-                              budgets: _budgets,
-                              templates: _templates,
-                              recurringRules: _recurringRules,
-                              onOpenBudgets: _openBudgets,
-                              onOpenFutureCommitments: _openFutureCommitments,
-                              onOpenTextRecognition: _openTextRecognition,
-                              onOpenTemplate: (template) =>
-                                  _openEntry(initialTemplate: template),
-                              onSelectPaymentMethod:
-                                  _filterLedgerByPaymentMethod,
-                              onAdd: () =>
-                                  _openEntry(sourceKey: _overviewAddActionKey),
-                              onAddForDate: (date, sourceKey) => _openEntry(
-                                initialDate: date,
-                                sourceKey: sourceKey,
-                              ),
-                              addActionKey: _overviewAddActionKey,
-                              onRefresh: _load,
-                              onMonthChanged: _setMonth,
-                              onCategorySelected: _pushCategoryLedger,
-                              onCategorySelectedWithRange:
-                                  _pushCategoryLedgerWithRange,
-                              onOpenMonthLedger: _openMonthLedger,
-                              onOpenTransaction: _openDetail,
-                            ),
-                            FinanceLedgerPanel(
-                              topPadding: topBarHeight,
-                              month: _month,
-                              clock: widget.clock,
-                              transactions: _transactions,
-                              categories: _categoryMap,
-                              paymentMethods: _paymentMethodMap,
-                              keyword: _keyword,
-                              filterType: _filterType,
-                              categoryUuids: _categoryFilterUuids,
-                              exactCategoryMatch:
-                                  _isCategoryLedgerRoute &&
-                                  _categoryFilterUuids.length == 1 &&
-                                  _categoryFilterUuids.first ==
-                                      widget.initialCategoryFilterUuid,
-                              dateRange: _ledgerDateRange,
-                              isLoading: _isLedgerQueryLoading,
-                              queryError: _ledgerQueryError,
-                              onRetry: () =>
-                                  unawaited(_load(showLoading: false)),
-                              onDateRangeChanged: _setLedgerDateRange,
-                              onMonthChanged: _setMonth,
-                              onOpenDetail: _openDetail,
-                              onKeywordChanged: (value) => _updateLedgerFilter(
-                                update: () => _keyword = value,
-                                keyword: value,
-                                filterType: _filterType,
-                                categoryUuids: _categoryFilterUuids,
-                              ),
-                              onFilterChanged: (value) => _updateLedgerFilter(
-                                update: () => _filterType = value,
-                                keyword: _keyword,
-                                filterType: value,
-                                categoryUuids: _categoryFilterUuids,
-                              ),
-                              onCategoryUuidsChanged: (value) =>
-                                  _updateLedgerFilter(
-                                    update: () => _categoryFilterUuids = value,
-                                    keyword: _keyword,
-                                    filterType: _filterType,
-                                    categoryUuids: value,
-                                  ),
-                              onEdit: (transaction) =>
-                                  _openEntry(transaction: transaction),
-                              onDelete: _deleteTransaction,
-                              onRefund: _openRefund,
-                            ),
-                          ],
+                        child: Builder(
+                          builder: (context) {
+                            if (_selectedIndex == 0) {
+                              _overviewTabVisited = true;
+                            } else {
+                              _ledgerTabVisited = true;
+                            }
+                            return IndexedStack(
+                              index: _selectedIndex,
+                              children: [
+                                _overviewTabVisited
+                                    ? RepaintBoundary(
+                                        child: FinanceOverviewPanel(
+                                          topPadding: topBarHeight,
+                                          month: _month,
+                                          clock: widget.clock,
+                                          summary: _summary,
+                                          transactions: _overviewTransactions,
+                                          cumulativeBalanceEvents:
+                                              _cumulativeBalanceEvents,
+                                          openingBalanceMinor:
+                                              _openingBalanceMinor,
+                                          openingBalanceStartDate:
+                                              _openingBalanceStartDate,
+                                          onEditOpeningBalance:
+                                              _editOpeningBalance,
+                                          categories: _categoryMap,
+                                          categoryTapOpensLedger:
+                                              _categoryTapOpensLedger,
+                                          paymentMethods: _paymentMethods,
+                                          budgets: _budgets,
+                                          templates: _templates,
+                                          recurringRules: _recurringRules,
+                                          onOpenBudgets: _openBudgets,
+                                          onOpenFutureCommitments:
+                                              _openFutureCommitments,
+                                          onOpenTextRecognition:
+                                              _openTextRecognition,
+                                          onOpenTemplate: (template) =>
+                                              _openEntry(
+                                                initialTemplate: template,
+                                              ),
+                                          onSelectPaymentMethod:
+                                              _filterLedgerByPaymentMethod,
+                                          onAdd: () => _openEntry(
+                                            sourceKey: _overviewAddActionKey,
+                                          ),
+                                          onAddForDate: (date, sourceKey) =>
+                                              _openEntry(
+                                                initialDate: date,
+                                                sourceKey: sourceKey,
+                                              ),
+                                          addActionKey: _overviewAddActionKey,
+                                          onRefresh: _load,
+                                          onMonthChanged: _setMonth,
+                                          onCategorySelected:
+                                              _pushCategoryLedger,
+                                          onCategorySelectedWithRange:
+                                              _pushCategoryLedgerWithRange,
+                                          onOpenMonthLedger: _openMonthLedger,
+                                          onOpenTransaction: _openDetail,
+                                        ),
+                                      )
+                                    : const SizedBox.shrink(),
+                                _ledgerTabVisited
+                                    ? RepaintBoundary(
+                                        child: FinanceLedgerPanel(
+                                          topPadding: topBarHeight,
+                                          month: _month,
+                                          clock: widget.clock,
+                                          transactions: _transactions,
+                                          categories: _categoryMap,
+                                          paymentMethods: _paymentMethodMap,
+                                          keyword: _keyword,
+                                          filterType: _filterType,
+                                          categoryUuids: _categoryFilterUuids,
+                                          exactCategoryMatch:
+                                              _isCategoryLedgerRoute &&
+                                              _categoryFilterUuids.length ==
+                                                  1 &&
+                                              _categoryFilterUuids.first ==
+                                                  widget
+                                                      .initialCategoryFilterUuid,
+                                          dateRange: _ledgerDateRange,
+                                          isLoading: _isLedgerQueryLoading,
+                                          queryError: _ledgerQueryError,
+                                          onRetry: () => unawaited(
+                                            _load(showLoading: false),
+                                          ),
+                                          onDateRangeChanged:
+                                              _setLedgerDateRange,
+                                          onMonthChanged: _setMonth,
+                                          onOpenDetail: _openDetail,
+                                          onKeywordChanged: (value) =>
+                                              _updateLedgerFilter(
+                                                update: () => _keyword = value,
+                                                keyword: value,
+                                                filterType: _filterType,
+                                                categoryUuids:
+                                                    _categoryFilterUuids,
+                                              ),
+                                          onFilterChanged: (value) =>
+                                              _updateLedgerFilter(
+                                                update: () =>
+                                                    _filterType = value,
+                                                keyword: _keyword,
+                                                filterType: value,
+                                                categoryUuids:
+                                                    _categoryFilterUuids,
+                                              ),
+                                          onCategoryUuidsChanged: (value) =>
+                                              _updateLedgerFilter(
+                                                update: () =>
+                                                    _categoryFilterUuids =
+                                                        value,
+                                                keyword: _keyword,
+                                                filterType: _filterType,
+                                                categoryUuids: value,
+                                              ),
+                                          onEdit: (transaction) => _openEntry(
+                                            transaction: transaction,
+                                          ),
+                                          onDelete: _deleteTransaction,
+                                          onRefund: _openRefund,
+                                        ),
+                                      )
+                                    : const SizedBox.shrink(),
+                              ],
+                            );
+                          },
                         ),
                       ),
                     ],

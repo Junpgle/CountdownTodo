@@ -7,9 +7,9 @@ import 'package:intl/intl.dart' hide TextDirection;
 import '../utils/android_energy_policy.dart';
 import '../utils/app_image_filters.dart';
 import '../utils/time_utils.dart';
-import '../utils/app_platform.dart';
 import 'floating_glass_control.dart';
 import 'optional_liquid_glass_surface.dart';
+import 'platform_backdrop_filter.dart';
 
 /// 通用的板块标题
 class SectionHeader extends StatelessWidget {
@@ -877,11 +877,10 @@ class EmptyState extends StatelessWidget {
       ),
     );
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: AppPlatform.isWindows
-          ? content
-          : BackdropFilter(filter: AppImageFilters.blur10, child: content),
+    return PlatformBackdropFilter(
+      filter: AppImageFilters.blur10,
+      clipBorderRadius: BorderRadius.circular(20),
+      child: content,
     );
   }
 }

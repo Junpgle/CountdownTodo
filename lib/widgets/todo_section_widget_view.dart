@@ -195,7 +195,8 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
             builder: (context, child) {
               final anim = _completingAnimations[todo.id];
               final isAnimating = anim != null && anim.isAnimating;
-              final value = isAnimating ? anim.value : 0.0;
+              if (!isAnimating) return child!;
+              final value = anim.value;
               final scale = 1.0 - (value * 0.08);
               final opacity = 1.0 - (value * 0.7);
 
@@ -324,10 +325,12 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                         if (!todo.isDone)
                           Positioned.fill(
                             child: TweenAnimationBuilder<double>(
-                              duration: const Duration(milliseconds: 1200),
+                              duration: const Duration(milliseconds: 600),
                               curve: Curves.easeOutQuart,
                               tween: Tween<double>(
-                                begin: 0.0,
+                                begin: progress < 0.08
+                                    ? 0.08
+                                    : progress.clamp(0.0, 1.0),
                                 end: progress < 0.08
                                     ? 0.08
                                     : progress.clamp(0.0, 1.0),

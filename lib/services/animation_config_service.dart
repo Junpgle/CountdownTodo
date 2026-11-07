@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../utils/page_transitions.dart';
 import 'liquid_glass_effect_service.dart';
 
 enum AnimationPreset { performance, balanced, expressive }
@@ -208,42 +209,49 @@ class AnimationConfigService {
         await LiquidGlassEffectService.setEnabled(true);
         await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.enhanced);
     }
+    await PageTransitions.init();
   }
 
   static Future<void> setAnimationsEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await _clearPreset(prefs);
     await prefs.setBool(_keyEnableAnimations, value);
+    await PageTransitions.init();
   }
 
   static Future<void> setMotionBlurEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await _clearPreset(prefs);
     await prefs.setBool(_keyEnableMotionBlur, value);
+    await PageTransitions.init();
   }
 
   static Future<void> setLayerBlurEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await _clearPreset(prefs);
     await prefs.setBool(_keyEnableLayerBlur, value);
+    await PageTransitions.init();
   }
 
   static Future<void> setLazyLoadEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await _clearPreset(prefs);
     await prefs.setBool(_keyEnableLazyLoad, value);
+    await PageTransitions.init();
   }
 
   static Future<void> setScreenRadiusEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await _clearPreset(prefs);
     await prefs.setBool(_keyEnableScreenRadius, value);
+    await PageTransitions.init();
   }
 
   static Future<void> setPredictiveBackEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await _clearPreset(prefs);
     await prefs.setBool(_keyEnablePredictiveBack, value);
+    await PageTransitions.init();
   }
 
   static Future<void> setAnimationDuration(int value) async {
@@ -254,6 +262,7 @@ class AnimationConfigService {
       _customAnimationSpeedPreset,
     );
     await prefs.setInt(_keyAnimationDuration, value);
+    await PageTransitions.init();
   }
 
   static Future<void> setAnimationSpeedPreset(
@@ -263,18 +272,21 @@ class AnimationConfigService {
     await _clearPreset(prefs);
     await prefs.setString(_keyAnimationSpeedPreset, preset.name);
     await prefs.setInt(_keyAnimationDuration, preset.duration);
+    await PageTransitions.init();
   }
 
   static Future<void> setPageLayerDepth(int value) async {
     final prefs = await SharedPreferences.getInstance();
     await _clearPreset(prefs);
     await prefs.setInt(_keyPageLayerDepth, value);
+    await PageTransitions.init();
   }
 
   static Future<void> setContainerContentStart(int value) async {
     final prefs = await SharedPreferences.getInstance();
     await _clearPreset(prefs);
     await prefs.setInt(_keyContainerContentStart, value);
+    await PageTransitions.init();
   }
 
   /// 用户手动微调任一效果（含液态玻璃开关/模式）后调用，

@@ -149,10 +149,12 @@ mixin _HomeDashboardViewMixin
           if (showWallpaper && wallpaperUrl != null)
             Positioned.fill(
               child: IgnorePointer(
-                child: _buildWallpaperWidget(
-                  wallpaperUrl: wallpaperUrl,
-                  localWallpaperProvider: localWallpaperProvider,
-                  extractColor: true,
+                child: RepaintBoundary(
+                  child: _buildWallpaperWidget(
+                    wallpaperUrl: wallpaperUrl,
+                    localWallpaperProvider: localWallpaperProvider,
+                    extractColor: true,
+                  ),
                 ),
               ),
             ),
@@ -264,13 +266,17 @@ mixin _HomeDashboardViewMixin
               bodyBuilder: (context, headerExtent) => Stack(
                 fit: StackFit.expand,
                 children: [
-                  if (showWallpaper && wallpaperUrl != null)
+                  if (showWallpaper &&
+                      wallpaperUrl != null &&
+                      !AppPlatform.isAndroid)
                     Positioned.fill(
                       child: IgnorePointer(
-                        child: _buildWallpaperWidget(
-                          wallpaperUrl: wallpaperUrl,
-                          localWallpaperProvider: localWallpaperProvider,
-                          extractColor: false,
+                        child: RepaintBoundary(
+                          child: _buildWallpaperWidget(
+                            wallpaperUrl: wallpaperUrl,
+                            localWallpaperProvider: localWallpaperProvider,
+                            extractColor: false,
+                          ),
                         ),
                       ),
                     ),
@@ -291,10 +297,14 @@ mixin _HomeDashboardViewMixin
                                 )
                               : LayoutBuilder(
                                   builder: (context, constraints) {
+                                    final canUseSectionRepaintBoundaries =
+                                        !AppPlatform.isWindows &&
+                                        (!showWallpaper ||
+                                            AppPlatform.isAndroid);
                                     Widget wrapSectionBoundary(Widget child) =>
-                                        showWallpaper || AppPlatform.isWindows
-                                        ? child
-                                        : RepaintBoundary(child: child);
+                                        canUseSectionRepaintBoundaries
+                                        ? RepaintBoundary(child: child)
+                                        : child;
                                     Widget buildCountdown() =>
                                         wrapSectionBoundary(
                                           ValueListenableBuilder<
@@ -810,7 +820,7 @@ mixin _HomeDashboardViewMixin
                                             physics:
                                                 const AppFluidScrollPhysics(),
                                             addRepaintBoundaries:
-                                                !showWallpaper,
+                                                canUseSectionRepaintBoundaries,
                                             scrollCacheExtent:
                                                 AppPlatform.isWindows
                                                 ? const ScrollCacheExtent.viewport(
@@ -889,14 +899,18 @@ mixin _HomeDashboardViewMixin
                                             },
                                           ),
                                         );
-                                        return showWallpaper
-                                            ? listContent
-                                            : RepaintBoundary(
-                                                key: ValueKey<String>(
-                                                  focusPage
-                                                      ? 'home-focus-tab-content'
-                                                      : 'home-main-tab-content',
-                                                ),
+                                        final tabContentKey = ValueKey<String>(
+                                          focusPage
+                                              ? 'home-focus-tab-content'
+                                              : 'home-main-tab-content',
+                                        );
+                                        return canUseSectionRepaintBoundaries
+                                            ? RepaintBoundary(
+                                                key: tabContentKey,
+                                                child: listContent,
+                                              )
+                                            : KeyedSubtree(
+                                                key: tabContentKey,
                                                 child: listContent,
                                               );
                                       }
