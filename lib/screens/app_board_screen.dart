@@ -947,6 +947,7 @@ class TodayHourlyTimeline extends StatelessWidget {
           ? const NeverScrollableScrollPhysics()
           : const BouncingScrollPhysics(),
       padding: const EdgeInsets.symmetric(horizontal: 16),
+      itemExtent: itemHeight ?? 60.0,
       itemCount: 24,
       itemBuilder: (context, hour) {
         final isCurrent = now.hour == hour;

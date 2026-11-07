@@ -154,9 +154,6 @@ class _DayViewState extends State<_DayView> {
   List<TodoPlanBlock> _dayPlanBlocks = const [];
   List<TimeLogMappedSchedule> _daySchedules = const [];
   List<PomodoroRecord> _dayPomodoros = const [];
-  final Paint _selectionPaint = Paint();
-  final Paint _currentTimeLinePaint = Paint();
-  final Paint _currentTimeDotPaint = Paint();
 
   @override
   void initState() {
@@ -859,9 +856,6 @@ class _DayViewState extends State<_DayView> {
                                   : accent.withValues(alpha: 0.45),
                               nowColor: colorScheme.cdtFocus,
                               hourH: hourH,
-                              selectionPaint: _selectionPaint,
-                              currentTimeLinePaint: _currentTimeLinePaint,
-                              currentTimeDotPaint: _currentTimeDotPaint,
                             ),
                           ),
                         ),
@@ -955,12 +949,21 @@ class _DayViewState extends State<_DayView> {
         ),
         Expanded(
           child: ListView.builder(
+            findChildIndexCallback: (Key key) {
+              if (key is ValueKey<String>) {
+                final uuid = key.value;
+                final index = widget.tags.indexWhere((t) => t.uuid == uuid);
+                return index != -1 ? index : null;
+              }
+              return null;
+            },
             itemCount: widget.tags.length,
             itemBuilder: (ctx, i) {
               final t = widget.tags[i];
               final c = hexColor(t.color);
               final sel = _selectedTagId == t.uuid;
               return GestureDetector(
+                key: ValueKey<String>(t.uuid),
                 onTap: () => setState(() => _selectedTagId = t.uuid),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
@@ -1333,9 +1336,9 @@ class _DayGridInteractionPainter extends CustomPainter {
   final Color selColor;
   final Color nowColor;
   final double hourH;
-  final Paint selectionPaint;
-  final Paint currentTimeLinePaint;
-  final Paint currentTimeDotPaint;
+  static final Paint _selectionPaint = Paint();
+  static final Paint _currentTimeLinePaint = Paint();
+  static final Paint _currentTimeDotPaint = Paint();
 
   _DayGridInteractionPainter({
     required this.minutesPerBlock,
@@ -1345,9 +1348,6 @@ class _DayGridInteractionPainter extends CustomPainter {
     required this.selColor,
     required this.nowColor,
     required this.hourH,
-    required this.selectionPaint,
-    required this.currentTimeLinePaint,
-    required this.currentTimeDotPaint,
   });
 
   @override
@@ -1360,7 +1360,7 @@ class _DayGridInteractionPainter extends CustomPainter {
     if (dragStart != null && dragEnd != null) {
       final firstBlock = min(dragStart!, dragEnd!);
       final lastBlock = max(dragStart!, dragEnd!);
-      selectionPaint.color = selColor;
+      _selectionPaint.color = selColor;
       for (var index = firstBlock; index <= lastBlock; index++) {
         final rowStartMs = gridStartMs + index * 60 * minutesPerBlock * 1000;
         final rowEndMs = rowStartMs + 60 * minutesPerBlock * 1000;
@@ -1374,7 +1374,7 @@ class _DayGridInteractionPainter extends CustomPainter {
             Rect.fromLTWH(left, index ~/ bpr * hourH + 1, width, hourH - 2),
             const Radius.circular(3),
           ),
-          selectionPaint,
+          _selectionPaint,
         );
       }
     }
@@ -1383,16 +1383,16 @@ class _DayGridInteractionPainter extends CustomPainter {
     if (!DateUtils.isSameDay(now, gridStart)) return;
     final hour = now.hour;
     final x = (now.minute + now.second / 60) / 60 * size.width;
-    currentTimeLinePaint
+    _currentTimeLinePaint
       ..color = nowColor.withValues(alpha: 0.7)
       ..strokeWidth = 1.5;
-    currentTimeDotPaint.color = nowColor;
+    _currentTimeDotPaint.color = nowColor;
     canvas.drawLine(
       Offset(x, hour * hourH),
       Offset(x, (hour + 1) * hourH),
-      currentTimeLinePaint,
+      _currentTimeLinePaint,
     );
-    canvas.drawCircle(Offset(x, hour * hourH), 3, currentTimeDotPaint);
+    canvas.drawCircle(Offset(x, hour * hourH), 3, _currentTimeDotPaint);
   }
 
   @override
@@ -3041,10 +3041,6 @@ class _LineChartGeometry {
   final Path linePath;
   final Paint fillPaint;
   final Paint linePaint;
-  final Paint pointPaint;
-  final Paint hoverGlowPaint;
-  final Paint hoverLinePaint;
-  final Paint bubblePaint;
 
   _LineChartGeometry._({
     required this.data,
@@ -3060,10 +3056,6 @@ class _LineChartGeometry {
     required this.linePath,
     required this.fillPaint,
     required this.linePaint,
-    required this.pointPaint,
-    required this.hoverGlowPaint,
-    required this.hoverLinePaint,
-    required this.bubblePaint,
   });
 
   factory _LineChartGeometry.create({
@@ -3142,12 +3134,6 @@ class _LineChartGeometry {
       linePath: linePath,
       fillPaint: fillPaint,
       linePaint: linePaint,
-      pointPaint: Paint()..color = color,
-      hoverGlowPaint: Paint()..color = color.withValues(alpha: 0.2),
-      hoverLinePaint: Paint()
-        ..color = color.withValues(alpha: 0.5)
-        ..strokeWidth = 1.0,
-      bubblePaint: Paint()..color = color,
     );
   }
 
@@ -3398,6 +3384,11 @@ class _LineChartPainter extends CustomPainter {
   final List<TextPainter?> xLabelPainters;
   final Offset? touchPos;
 
+  static final Paint _pointPaint = Paint();
+  static final Paint _hoverGlowPaint = Paint();
+  static final Paint _hoverLinePaint = Paint()..strokeWidth = 1.0;
+  static final Paint _bubblePaint = Paint();
+
   _LineChartPainter({
     required this.geometry,
     required this.xLabels,
@@ -3411,10 +3402,15 @@ class _LineChartPainter extends CustomPainter {
     if (data.isEmpty) return;
     final pts = geometry.points;
 
+    _pointPaint.color = geometry.color;
+    _hoverGlowPaint.color = geometry.color.withValues(alpha: 0.2);
+    _hoverLinePaint.color = geometry.color.withValues(alpha: 0.5);
+    _bubblePaint.color = geometry.color;
+
     if (data.length < 2) {
       // 只有一个点的情况
       final p = pts[0];
-      canvas.drawCircle(p, 6, geometry.pointPaint);
+      canvas.drawCircle(p, 6, _pointPaint);
       return;
     }
 
@@ -3436,9 +3432,9 @@ class _LineChartPainter extends CustomPainter {
       final isHover = i == activeIdx;
 
       // 节点点
-      canvas.drawCircle(p, isHover ? 6 : 4, geometry.pointPaint);
+      canvas.drawCircle(p, isHover ? 6 : 4, _pointPaint);
       if (isHover) {
-        canvas.drawCircle(p, 10, geometry.hoverGlowPaint);
+        canvas.drawCircle(p, 10, _hoverGlowPaint);
       }
 
       // X轴标签
@@ -3452,7 +3448,7 @@ class _LineChartPainter extends CustomPainter {
         canvas.drawLine(
           Offset(p.dx, 0),
           Offset(p.dx, size.height - 30),
-          geometry.hoverLinePaint,
+          _hoverLinePaint,
         );
 
         final valTp = geometry.tooltipPainterAt(i);
@@ -3465,7 +3461,7 @@ class _LineChartPainter extends CustomPainter {
         );
         canvas.drawRRect(
           RRect.fromRectAndRadius(bgR, const Radius.circular(8)),
-          geometry.bubblePaint,
+          _bubblePaint,
         );
         valTp.paint(
           canvas,
