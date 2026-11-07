@@ -60,9 +60,10 @@ class _QuizScreenState extends State<QuizScreen>
       duration: const Duration(milliseconds: 400),
       vsync: this,
     );
-    _shakeAnimation = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _shakeController, curve: Curves.elasticIn),
-    );
+    _shakeAnimation = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(_shakeController.drive(CurveTween(curve: Curves.elasticIn)));
     _checkAndLoadSession();
   }
 

@@ -1392,10 +1392,7 @@ class _WeekViewState extends State<_WeekView>
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
-    _heatAnim = CurvedAnimation(
-      parent: _heatAnimCtrl,
-      curve: Curves.easeOutCubic,
-    );
+    _heatAnim = _heatAnimCtrl.drive(CurveTween(curve: Curves.easeOutCubic));
     _heatAnimCtrl.forward();
   }
 

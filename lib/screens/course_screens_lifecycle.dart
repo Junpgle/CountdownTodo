@@ -10,16 +10,16 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     );
-    _pulseAnimation = Tween<double>(begin: 0.3, end: 1.0).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
+    _pulseAnimation = Tween<double>(
+      begin: 0.3,
+      end: 1.0,
+    ).animate(_pulseController.drive(CurveTween(curve: Curves.easeInOut)));
     _courseExpandCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
     );
-    _courseExpandAnim = CurvedAnimation(
-      parent: _courseExpandCtrl,
-      curve: Curves.easeOutCubic,
+    _courseExpandAnim = _courseExpandCtrl.drive(
+      CurveTween(curve: Curves.easeOutCubic),
     );
     PowerSaveModeService.enabledListenable.addListener(_syncPowerSavePulse);
     _syncPowerSavePulse();

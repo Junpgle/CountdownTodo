@@ -56,7 +56,7 @@ class _CelebrationRipplePainter extends CustomPainter {
   final Animation<double> animation;
   final Color color;
   final double strokeWidth;
-  final Paint _paint = Paint()..style = PaintingStyle.stroke;
+  static final Paint _paint = Paint()..style = PaintingStyle.stroke;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -73,12 +73,7 @@ class _CelebrationRipplePainter extends CustomPainter {
         ..color = color.withValues(alpha: opacity * 0.4)
         ..strokeWidth = strokeWidth;
 
-      canvas.save();
-      canvas
-        ..translate(center.dx, center.dy)
-        ..scale(scale);
-      canvas.drawCircle(Offset.zero, radius, _paint);
-      canvas.restore();
+      canvas.drawCircle(center, radius * scale, _paint);
     }
   }
 

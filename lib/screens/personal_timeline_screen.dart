@@ -5176,11 +5176,11 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
 class _DonutPainter extends CustomPainter {
   final List<MapEntry<String, double>> data;
   final List<Color> palette;
-  final Paint _paint = Paint()
+  static final Paint _paint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeCap = StrokeCap.round;
 
-  _DonutPainter(this.data, this.palette);
+  const _DonutPainter(this.data, this.palette);
 
   @override
   void paint(Canvas canvas, Size size) {
