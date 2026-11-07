@@ -284,10 +284,11 @@ class _WorkbenchActionsState extends State<WorkbenchActions>
                       );
                     },
                   ),
-                  builder: (context, child) => Transform.scale(
-                    scale: _pressAnimation.value,
-                    child: child,
-                  ),
+                  builder: (context, child) {
+                    final scale = _pressAnimation.value;
+                    if ((scale - 1.0).abs() <= 0.0005) return child!;
+                    return Transform.scale(scale: scale, child: child);
+                  },
                 ),
               ),
             ),

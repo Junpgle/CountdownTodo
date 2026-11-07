@@ -1147,6 +1147,11 @@ class _DayGridPainter extends CustomPainter {
     return firstIndex == null ? null : tags[firstIndex];
   }
 
+  static final Paint _majorGridPaint = Paint()..strokeWidth = 0.5;
+  static final Paint _minorGridPaint = Paint()..strokeWidth = 0.5;
+  static final Paint _eventFillPaint = Paint();
+  static final Paint _eventBarPaint = Paint();
+
   @override
   void paint(Canvas canvas, Size size) {
     final bpr = 60 ~/ minutesPerBlock;
@@ -1154,14 +1159,10 @@ class _DayGridPainter extends CustomPainter {
     final gsMs = gridStart.millisecondsSinceEpoch;
     final geMs = _dayEndMs(gridStart);
 
-    final mj = Paint()
-      ..color = gridMajorColor
-      ..strokeWidth = 0.5;
-    final mn = Paint()
-      ..color = gridMinorColor
-      ..strokeWidth = 0.5;
-    final eventFillPaint = Paint();
-    final eventBarPaint = Paint();
+    final mj = _majorGridPaint..color = gridMajorColor;
+    final mn = _minorGridPaint..color = gridMinorColor;
+    final eventFillPaint = _eventFillPaint;
+    final eventBarPaint = _eventBarPaint;
 
     for (int h = 0; h <= 24; h++) {
       canvas.drawLine(
@@ -1857,6 +1858,8 @@ class _TimeLogEntrySheetState extends State<TimeLogEntrySheet> {
   late DateTime _baselineStart, _baselineEnd;
   late String? _baselineTagId;
   late String _baselineTitle;
+  String _lastObservedTitle = '';
+  bool? _lastCanPop;
   late String _draftId;
   late int _draftCreatedAt;
   TimeLogItem? _pendingSaveLog;
@@ -1881,8 +1884,15 @@ class _TimeLogEntrySheetState extends State<TimeLogEntrySheet> {
 
   void _onTitleChanged() {
     if (!mounted) return;
+    final title = _tc.text;
+    if (title == _lastObservedTitle) return;
+    _lastObservedTitle = title;
+    final hadSaveError = _saveError != null;
     _invalidatePendingSave();
-    setState(() {});
+    final canPop = _allowExit || (!_isSaving && !_hasUnsavedChanges);
+    if (hadSaveError || canPop != _lastCanPop) {
+      setState(() {});
+    }
   }
 
   @override
@@ -1908,6 +1918,7 @@ class _TimeLogEntrySheetState extends State<TimeLogEntrySheet> {
     _baselineEnd = _end;
     _baselineTagId = _tagId;
     _baselineTitle = _tc.text;
+    _lastObservedTitle = _tc.text;
     _draftId = widget.existingLog?.id ?? const Uuid().v4();
     _draftCreatedAt =
         widget.existingLog?.createdAt ?? DateTime.now().millisecondsSinceEpoch;
@@ -2186,8 +2197,10 @@ class _TimeLogEntrySheetState extends State<TimeLogEntrySheet> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final accent = colorScheme.primary;
+    final canPop = _allowExit || (!_isSaving && !_hasUnsavedChanges);
+    _lastCanPop = canPop;
     return PopScope<Object?>(
-      canPop: _allowExit || (!_isSaving && !_hasUnsavedChanges),
+      canPop: canPop,
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) unawaited(_requestExit());
       },

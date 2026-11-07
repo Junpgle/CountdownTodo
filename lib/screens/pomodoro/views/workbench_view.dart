@@ -3393,15 +3393,22 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   Widget _buildWorkbenchTransition(Widget child, Animation<double> animation) {
-    return FadeTransition(
-      opacity: animation,
-      child: SlideTransition(
-        position: Tween<Offset>(
-          begin: const Offset(0, 0.035),
-          end: Offset.zero,
-        ).animate(animation),
-        child: child,
-      ),
+    final slidePosition = Tween<Offset>(
+      begin: const Offset(0, 0.035),
+      end: Offset.zero,
+    ).animate(animation);
+    return AnimatedBuilder(
+      animation: animation,
+      child: child,
+      builder: (context, child) {
+        if (animation.value >= 0.999) {
+          return child!;
+        }
+        return FadeTransition(
+          opacity: animation,
+          child: SlideTransition(position: slidePosition, child: child),
+        );
+      },
     );
   }
 
@@ -4116,23 +4123,36 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             if (disableFade) return child!;
             return ShaderMask(
               blendMode: BlendMode.dstIn,
-              shaderCallback: (bounds) => const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.transparent,
-                  Colors.white,
-                  Colors.white,
-                  Colors.transparent,
-                ],
-                stops: [0, 0.16, 0.84, 1],
-              ).createShader(bounds),
+              shaderCallback: _resolveTagListFadeShader,
               child: child,
             );
           },
         );
       },
     );
+  }
+
+  static const LinearGradient _tagListFadeGradient = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [
+      Colors.transparent,
+      Colors.white,
+      Colors.white,
+      Colors.transparent,
+    ],
+    stops: [0, 0.16, 0.84, 1],
+  );
+  static Rect? _cachedTagListFadeBounds;
+  static Shader? _cachedTagListFadeShader;
+
+  static Shader _resolveTagListFadeShader(Rect bounds) {
+    if (_cachedTagListFadeBounds == bounds &&
+        _cachedTagListFadeShader != null) {
+      return _cachedTagListFadeShader!;
+    }
+    _cachedTagListFadeBounds = bounds;
+    return _cachedTagListFadeShader = _tagListFadeGradient.createShader(bounds);
   }
 
   Widget _buildActions(

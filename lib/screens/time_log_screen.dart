@@ -2232,7 +2232,6 @@ class _WeekColPainter extends CustomPainter {
   final Paint _blockPaint = Paint();
   late final Map<String, int> _tagIndicesByUuid =
       _DayGridPainter._buildTagIndices(tags);
-  TextPainter? _titlePainter;
   int _staggerBlockIndex = 0;
   late final int _totalBlockCount =
       dayPoms.length + dayLogs.length + daySchedules.length;
@@ -2246,11 +2245,6 @@ class _WeekColPainter extends CustomPainter {
     return delay;
   }
 
-  TextPainter get _reusableTitlePainter => _titlePainter ??= TextPainter(
-    textDirection: ui.TextDirection.ltr,
-    maxLines: 1,
-    ellipsis: '…',
-  );
   late final List<_WeekColBlockVisual> _scheduleVisuals = daySchedules
       .map((schedule) {
         final isCourse = schedule.isCourse;
@@ -2346,6 +2340,12 @@ class _WeekColPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final animationProgress = animation.value;
+    TextPainter? titlePainter;
+    TextPainter getTitlePainter() => titlePainter ??= TextPainter(
+      textDirection: ui.TextDirection.ltr,
+      maxLines: 1,
+      ellipsis: '…',
+    );
 
     void block(
       _WeekColBlockVisual visual,
@@ -2391,7 +2391,7 @@ class _WeekColPainter extends CustomPainter {
 
       if (blockH >= 10 && blockW >= 8 && blockProgress > 0.5) {
         if (blockH >= 18) {
-          final tp = _reusableTitlePainter
+          final tp = getTitlePainter()
             ..text = TextSpan(
               text: visual.title,
               style: TextStyle(
@@ -2403,7 +2403,7 @@ class _WeekColPainter extends CustomPainter {
             ..layout(maxWidth: blockW - 4);
           tp.paint(canvas, Offset(5, top + (blockH - tp.height) / 2));
         } else {
-          final tp = _reusableTitlePainter
+          final tp = getTitlePainter()
             ..text = TextSpan(
               text: visual.title,
               style: TextStyle(
@@ -2423,22 +2423,26 @@ class _WeekColPainter extends CustomPainter {
       }
     }
 
-    // 先画排程（课程 / 日程）
-    for (var i = 0; i < daySchedules.length; i++) {
-      final visual = _scheduleVisuals[i];
-      block(visual, false, isSchedule: true);
-    }
+    try {
+      // 先画排程（课程 / 日程）
+      for (var i = 0; i < daySchedules.length; i++) {
+        final visual = _scheduleVisuals[i];
+        block(visual, false, isSchedule: true);
+      }
 
-    // 画番茄钟（★ 传入 title）
-    for (var i = 0; i < dayPoms.length; i++) {
-      final visual = _pomodoroVisuals[i];
-      block(visual, true);
-    }
+      // 画番茄钟（★ 传入 title）
+      for (var i = 0; i < dayPoms.length; i++) {
+        final visual = _pomodoroVisuals[i];
+        block(visual, true);
+      }
 
-    // 画补录日志（★ 传入 title）
-    for (var i = 0; i < dayLogs.length; i++) {
-      final visual = _logVisuals[i];
-      block(visual, false);
+      // 画补录日志（★ 传入 title）
+      for (var i = 0; i < dayLogs.length; i++) {
+        final visual = _logVisuals[i];
+        block(visual, false);
+      }
+    } finally {
+      titlePainter?.dispose();
     }
   }
 
@@ -3465,32 +3469,40 @@ class _GridBgPainter extends CustomPainter {
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), p);
     }
 
-    for (int h = 0; h < kTotalRows; h++) {
-      final rowTop = h * rowH;
+    final tp = TextPainter(textDirection: ui.TextDirection.ltr);
+    try {
+      for (int h = 0; h < kTotalRows; h++) {
+        final rowTop = h * rowH;
 
-      _drawLabel(
-        canvas,
-        '${h.toString().padLeft(2, '0')}:00',
-        Offset(h * kColsPerH * colW + 3, rowTop + 2),
-        fontSize: 8.0,
-        color: labelMajorColor,
-        bold: true,
-      );
-
-      if (colW >= 14) {
         _drawLabel(
+          tp,
           canvas,
-          '${h.toString().padLeft(2, '0')}:30',
-          Offset((h * kColsPerH + 5) * colW + 3, rowTop + 2),
-          fontSize: 7.0,
-          color: labelMinorColor,
-          bold: false,
+          '${h.toString().padLeft(2, '0')}:00',
+          Offset(h * kColsPerH * colW + 3, rowTop + 2),
+          fontSize: 8.0,
+          color: labelMajorColor,
+          bold: true,
         );
+
+        if (colW >= 14) {
+          _drawLabel(
+            tp,
+            canvas,
+            '${h.toString().padLeft(2, '0')}:30',
+            Offset((h * kColsPerH + 5) * colW + 3, rowTop + 2),
+            fontSize: 7.0,
+            color: labelMinorColor,
+            bold: false,
+          );
+        }
       }
+    } finally {
+      tp.dispose();
     }
   }
 
   void _drawLabel(
+    TextPainter tp,
     Canvas canvas,
     String text,
     Offset offset, {
@@ -3498,17 +3510,16 @@ class _GridBgPainter extends CustomPainter {
     required Color color,
     required bool bold,
   }) {
-    final tp = TextPainter(
-      text: TextSpan(
+    tp
+      ..text = TextSpan(
         text: text,
         style: TextStyle(
           fontSize: fontSize,
           color: color,
           fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
         ),
-      ),
-      textDirection: ui.TextDirection.ltr,
-    )..layout();
+      )
+      ..layout();
     tp.paint(canvas, offset);
   }
 

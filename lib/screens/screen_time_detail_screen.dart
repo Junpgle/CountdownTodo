@@ -2442,6 +2442,22 @@ class LineChartPainter extends CustomPainter {
   final Color primaryColor;
   final Color textColor;
 
+  static final Paint _dashedPaint = Paint()
+    ..strokeWidth = 1
+    ..style = PaintingStyle.stroke;
+  static final Paint _areaPaint = Paint();
+  static final Paint _linePaint = Paint()
+    ..strokeWidth = 2.5
+    ..style = PaintingStyle.stroke
+    ..strokeJoin = StrokeJoin.round
+    ..strokeCap = StrokeCap.round;
+  static final Paint _dotOuterPaint = Paint()
+    ..color = Colors.white
+    ..style = PaintingStyle.fill;
+  static final Paint _dotInnerPaint = Paint()..style = PaintingStyle.fill;
+  static final Path _linePath = Path();
+  static final Path _areaPath = Path();
+
   LineChartPainter({
     required this.data,
     required this.labels,
@@ -2469,69 +2485,58 @@ class LineChartPainter extends CustomPainter {
     final double yAvg =
         size.height - bottomPadding - (average / maxVal) * chartHeight;
     if (maxVal > 1) {
+      _dashedPaint.color = textColor.withValues(alpha: 0.15);
       _drawDashedLine(
         canvas,
         Offset(horizontalPadding, yAvg),
         Offset(size.width - horizontalPadding, yAvg),
-        Paint()
-          ..color = textColor.withValues(alpha: 0.15)
-          ..strokeWidth = 1
-          ..style = PaintingStyle.stroke,
+        _dashedPaint,
       );
     }
 
     final double stepX = drawWidth / (data.length - 1);
-    List<Offset> points = List.generate(
+    final List<Offset> points = List.generate(
       data.length,
       (i) => Offset(
         horizontalPadding + i * stepX,
         size.height - bottomPadding - (data[i] / maxVal) * chartHeight,
       ),
+      growable: false,
     );
 
-    Path linePath = Path()..moveTo(points.first.dx, points.first.dy);
+    _linePath
+      ..reset()
+      ..moveTo(points.first.dx, points.first.dy);
     for (int i = 1; i < points.length; i++) {
-      linePath.lineTo(points[i].dx, points[i].dy);
+      _linePath.lineTo(points[i].dx, points[i].dy);
     }
 
-    Path areaPath = Path.from(linePath)
+    _areaPath
+      ..reset()
+      ..addPath(_linePath, Offset.zero)
       ..lineTo(points.last.dx, size.height - bottomPadding)
       ..lineTo(points.first.dx, size.height - bottomPadding)
       ..close();
 
-    canvas.drawPath(
-      areaPath,
-      Paint()
-        ..shader = ui.Gradient.linear(
-          Offset(0, topPadding),
-          Offset(0, size.height - bottomPadding),
-          [
-            primaryColor.withValues(alpha: 0.3),
-            primaryColor.withValues(alpha: 0.0),
-          ],
-        ),
+    _areaPaint.shader = ui.Gradient.linear(
+      const Offset(0, topPadding),
+      Offset(0, size.height - bottomPadding),
+      [
+        primaryColor.withValues(alpha: 0.3),
+        primaryColor.withValues(alpha: 0.0),
+      ],
     );
-    canvas.drawPath(
-      linePath,
-      Paint()
-        ..color = primaryColor
-        ..strokeWidth = 2.5
-        ..style = PaintingStyle.stroke
-        ..strokeJoin = StrokeJoin.round
-        ..strokeCap = StrokeCap.round,
-    );
+    canvas.drawPath(_areaPath, _areaPaint);
 
-    final dotOuter = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.fill;
-    final dotInner = Paint()
-      ..color = primaryColor
-      ..style = PaintingStyle.fill;
+    _linePaint.color = primaryColor;
+    canvas.drawPath(_linePath, _linePaint);
+
+    _dotInnerPaint.color = primaryColor;
     final textPainter = TextPainter(textDirection: TextDirection.ltr);
     try {
       for (int i = 0; i < points.length; i++) {
-        canvas.drawCircle(points[i], 4.5, dotOuter);
-        canvas.drawCircle(points[i], 3.0, dotInner);
+        canvas.drawCircle(points[i], 4.5, _dotOuterPaint);
+        canvas.drawCircle(points[i], 3.0, _dotInnerPaint);
         if (data[i] == maxVal && maxVal > 1) {
           _drawText(
             textPainter,
@@ -2623,6 +2628,12 @@ class BarChartPainter extends CustomPainter {
   final Color textColor;
   final int selectedIndex;
 
+  static final Paint _barPaint = Paint()..style = PaintingStyle.fill;
+  static final Paint _avgDashedPaint = Paint()
+    ..color = Colors.orangeAccent.shade400
+    ..strokeWidth = 1.5
+    ..style = PaintingStyle.stroke;
+
   BarChartPainter({
     required this.data,
     required this.labels,
@@ -2646,14 +2657,13 @@ class BarChartPainter extends CustomPainter {
     final avgVal = totalVal / data.length;
     final double barWidth = (size.width / data.length) * 0.35;
     final double spacing = size.width / data.length;
-    final barPaint = Paint()..style = PaintingStyle.fill;
 
     final textPainter = TextPainter(textDirection: TextDirection.ltr);
     try {
       for (int i = 0; i < data.length; i++) {
         double xc = i * spacing + spacing / 2;
         double barH = (data[i] / maxVal) * chartHeight;
-        barPaint.color = (i == selectedIndex)
+        _barPaint.color = (i == selectedIndex)
             ? primaryColor
             : primaryColor.withValues(alpha: 0.22);
         canvas.drawRRect(
@@ -2666,7 +2676,7 @@ class BarChartPainter extends CustomPainter {
             ),
             const Radius.circular(6),
           ),
-          barPaint,
+          _barPaint,
         );
         if (data[i] == maxVal && maxVal > 1) {
           _drawText(
@@ -2696,10 +2706,7 @@ class BarChartPainter extends CustomPainter {
           canvas,
           Offset(0, avgY),
           Offset(size.width, avgY),
-          Paint()
-            ..color = Colors.orangeAccent.shade400
-            ..strokeWidth = 1.5
-            ..style = PaintingStyle.stroke,
+          _avgDashedPaint,
         );
         _drawText(
           textPainter,

@@ -1100,7 +1100,36 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                             alignment: Alignment.bottomCenter,
                             child: AnimatedBuilder(
                               animation: _chartAnimationController,
-                              builder: (context, _) {
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.bottomCenter,
+                                    end: Alignment.topCenter,
+                                    colors: isSelected
+                                        ? [
+                                            colorScheme.tertiary,
+                                            colorScheme.primary,
+                                          ]
+                                        : [
+                                            primaryColor.withValues(alpha: 0.6),
+                                            primaryColor,
+                                          ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(4),
+                                  boxShadow: isSelected
+                                      ? [
+                                          BoxShadow(
+                                            color: primaryColor.withValues(
+                                              alpha: 0.4,
+                                            ),
+                                            blurRadius: 4,
+                                          ),
+                                        ]
+                                      : null,
+                                ),
+                                child: const SizedBox.expand(),
+                              ),
+                              builder: (context, barChild) {
                                 final animatedFactor =
                                     factor * _chartAnimationController.value;
                                 if (animatedFactor <= 0) {
@@ -1109,36 +1138,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                                 return FractionallySizedBox(
                                   heightFactor: max(animatedFactor, 0.08),
                                   alignment: Alignment.bottomCenter,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        begin: Alignment.bottomCenter,
-                                        end: Alignment.topCenter,
-                                        colors: isSelected
-                                            ? [
-                                                colorScheme.tertiary,
-                                                colorScheme.primary,
-                                              ]
-                                            : [
-                                                primaryColor.withValues(
-                                                  alpha: 0.6,
-                                                ),
-                                                primaryColor,
-                                              ],
-                                      ),
-                                      borderRadius: BorderRadius.circular(4),
-                                      boxShadow: isSelected
-                                          ? [
-                                              BoxShadow(
-                                                color: primaryColor.withValues(
-                                                  alpha: 0.4,
-                                                ),
-                                                blurRadius: 4,
-                                              ),
-                                            ]
-                                          : null,
-                                    ),
-                                  ),
+                                  child: barChild,
                                 );
                               },
                             ),
@@ -1540,15 +1540,19 @@ class _FocusRingPainter extends CustomPainter {
   final Color? overflowColor;
   final double strokeWidth;
 
-  final Paint _trackPaint = Paint()
+  static final Paint _trackPaint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeCap = StrokeCap.round;
-  final Paint _basePaint = Paint()
+  static final Paint _basePaint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeCap = StrokeCap.round;
-  final Paint _overflowPaint = Paint()
+  static final Paint _overflowPaint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeCap = StrokeCap.round;
+  static Rect? _cachedShaderRect;
+  static Color? _cachedStartColor;
+  static Color? _cachedEndColor;
+  static Shader? _cachedShader;
 
   _FocusRingPainter({
     required this.progress,
@@ -1577,8 +1581,20 @@ class _FocusRingPainter extends CustomPainter {
     final baseProgress = progress.clamp(0.0, 1.0);
     final baseSweep = 2 * pi * baseProgress;
 
+    final startColor = gradientColors.first;
+    final endColor = gradientColors.last;
+    if (_cachedShaderRect != rect ||
+        _cachedStartColor != startColor ||
+        _cachedEndColor != endColor ||
+        _cachedShader == null) {
+      _cachedShaderRect = rect;
+      _cachedStartColor = startColor;
+      _cachedEndColor = endColor;
+      _cachedShader = SweepGradient(colors: gradientColors).createShader(rect);
+    }
+
     _basePaint
-      ..shader = SweepGradient(colors: gradientColors).createShader(rect)
+      ..shader = _cachedShader
       ..strokeWidth = strokeWidth;
 
     canvas.save();

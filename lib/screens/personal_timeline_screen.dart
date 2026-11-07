@@ -1621,15 +1621,25 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
                             switchOutCurve: Curves.easeInQuart,
                             transitionBuilder:
                                 (Widget child, Animation<double> animation) {
-                                  return FadeTransition(
-                                    opacity: animation,
-                                    child: SlideTransition(
-                                      position: Tween<Offset>(
-                                        begin: const Offset(0, 0.02),
-                                        end: Offset.zero,
-                                      ).animate(animation),
-                                      child: child,
-                                    ),
+                                  final slidePosition = Tween<Offset>(
+                                    begin: const Offset(0, 0.02),
+                                    end: Offset.zero,
+                                  ).animate(animation);
+                                  return AnimatedBuilder(
+                                    animation: animation,
+                                    child: child,
+                                    builder: (context, child) {
+                                      if (animation.value >= 0.999) {
+                                        return child!;
+                                      }
+                                      return FadeTransition(
+                                        opacity: animation,
+                                        child: SlideTransition(
+                                          position: slidePosition,
+                                          child: child,
+                                        ),
+                                      );
+                                    },
                                   );
                                 },
                             child: _isLoading
@@ -1857,6 +1867,26 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
     );
   }
 
+  static const LinearGradient _timelineTopFadeGradient = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    stops: [0.0, 0.18, 0.78, 1.0],
+    colors: [Colors.white, Colors.white, Color(0x24FFFFFF), Colors.transparent],
+  );
+  static Rect? _cachedTimelineTopFadeBounds;
+  static Shader? _cachedTimelineTopFadeShader;
+
+  static Shader _resolveTimelineTopFadeShader(Rect bounds) {
+    if (_cachedTimelineTopFadeBounds == bounds &&
+        _cachedTimelineTopFadeShader != null) {
+      return _cachedTimelineTopFadeShader!;
+    }
+    _cachedTimelineTopFadeBounds = bounds;
+    return _cachedTimelineTopFadeShader = _timelineTopFadeGradient.createShader(
+      bounds,
+    );
+  }
+
   Widget _buildTimelineTopFadeCap(ColorScheme cs, double topBarHeight) {
     final fadeHeight = topBarHeight + floatingGlassTopBarDefaultFadeTail;
     return Positioned(
@@ -1871,17 +1901,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
               final screenSize = MediaQuery.sizeOf(context);
               return ShaderMask(
                 blendMode: BlendMode.dstIn,
-                shaderCallback: (bounds) => LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  stops: const [0.0, 0.18, 0.78, 1.0],
-                  colors: [
-                    Colors.white,
-                    Colors.white,
-                    Colors.white.withValues(alpha: 0.14),
-                    Colors.transparent,
-                  ],
-                ).createShader(bounds),
+                shaderCallback: _resolveTimelineTopFadeShader,
                 child: ClipRect(
                   child: OverflowBox(
                     alignment: Alignment.topCenter,
@@ -2049,16 +2069,15 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
   }
 
   Widget _buildTimelineAppBarTitle(ColorScheme cs, double titleProgress) {
-    return Opacity(
-      opacity: titleProgress,
-      child: Text(
-        _timelinePeriodLabel(),
-        style: TextStyle(
-          color: cs.onSurface,
-          fontSize: 17,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.2,
-        ),
+    final clamped = titleProgress.clamp(0.0, 1.0);
+    if (clamped <= 0.001) return const SizedBox.shrink();
+    return Text(
+      _timelinePeriodLabel(),
+      style: TextStyle(
+        color: cs.onSurface.withValues(alpha: clamped),
+        fontSize: 17,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.2,
       ),
     );
   }
@@ -5202,6 +5221,8 @@ class _SparklinePainter extends CustomPainter {
     ..strokeCap = StrokeCap.round
     ..strokeJoin = StrokeJoin.round;
 
+  static final Path _path = Path();
+
   _SparklinePainter(this.data, this.color);
 
   @override
@@ -5209,7 +5230,7 @@ class _SparklinePainter extends CustomPainter {
     if (data.length < 2) return;
 
     _paint.color = color;
-    final path = Path();
+    _path.reset();
     var maxVal = data.first;
     var minVal = data.first;
     for (var index = 1; index < data.length; index++) {
@@ -5225,13 +5246,13 @@ class _SparklinePainter extends CustomPainter {
       final x = i * stepX;
       final y = size.height - ((data[i] - minVal) / range * size.height);
       if (i == 0) {
-        path.moveTo(x, y);
+        _path.moveTo(x, y);
       } else {
-        path.lineTo(x, y);
+        _path.lineTo(x, y);
       }
     }
 
-    canvas.drawPath(path, _paint);
+    canvas.drawPath(_path, _paint);
   }
 
   @override
