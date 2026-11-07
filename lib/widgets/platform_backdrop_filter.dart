@@ -5,9 +5,8 @@ import 'package:flutter/material.dart';
 import '../services/liquid_glass_effect_service.dart';
 import '../utils/app_platform.dart';
 
-/// Avoids creating an offscreen blurred texture on Android and by default on
-/// Windows. Windows can opt into the standard blur through the Liquid Glass
-/// setting; Android retains its existing performance bypass.
+/// Avoids creating an offscreen blurred texture by default on Windows.
+/// Windows can opt into the standard blur through the Liquid Glass setting.
 ///
 /// The caller still supplies the same child, so bypassing blur only removes the
 /// expensive compositing step while preserving the supplied clipping.
@@ -43,10 +42,7 @@ class PlatformBackdropFilter extends StatelessWidget {
     }
 
     if (forceClipRect) {
-      return ClipRect(
-        clipBehavior: effectiveClipBehavior,
-        child: content,
-      );
+      return ClipRect(clipBehavior: effectiveClipBehavior, child: content);
     }
 
     return content;
@@ -54,7 +50,6 @@ class PlatformBackdropFilter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (AppPlatform.isAndroid) return _clipIfNeeded(child);
     if (AppPlatform.isWindows) {
       return ValueListenableBuilder<LiquidGlassEffectConfiguration>(
         valueListenable: LiquidGlassEffectService.configurationListenable,

@@ -117,6 +117,57 @@ mixin _HomeDashboardViewMixin
     );
   }
 
+  Widget _buildWallpaperTopFadeCap({
+    required double headerExtent,
+    required String wallpaperUrl,
+    required ImageProvider<Object>? localWallpaperProvider,
+  }) {
+    final fadeHeight = headerExtent + floatingGlassTopBarDefaultFadeTail;
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      height: fadeHeight,
+      child: IgnorePointer(
+        child: RepaintBoundary(
+          child: Builder(
+            builder: (context) {
+              final screenSize = MediaQuery.sizeOf(context);
+              return ShaderMask(
+                blendMode: BlendMode.dstIn,
+                shaderCallback: (bounds) => LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  stops: const [0.0, 0.18, 0.78, 1.0],
+                  colors: [
+                    Colors.white,
+                    Colors.white,
+                    Colors.white.withValues(alpha: 0.14),
+                    Colors.transparent,
+                  ],
+                ).createShader(bounds),
+                child: ClipRect(
+                  child: OverflowBox(
+                    alignment: Alignment.topCenter,
+                    minWidth: screenSize.width,
+                    maxWidth: screenSize.width,
+                    minHeight: screenSize.height,
+                    maxHeight: screenSize.height,
+                    child: _buildWallpaperWidget(
+                      wallpaperUrl: wallpaperUrl,
+                      localWallpaperProvider: localWallpaperProvider,
+                      extractColor: false,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget build(BuildContext context) {
     bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
     bool showWallpaper = !isDarkMode && _wallpaperShow && _wallpaperUrl != null;
@@ -149,12 +200,10 @@ mixin _HomeDashboardViewMixin
           if (showWallpaper && wallpaperUrl != null)
             Positioned.fill(
               child: IgnorePointer(
-                child: RepaintBoundary(
-                  child: _buildWallpaperWidget(
-                    wallpaperUrl: wallpaperUrl,
-                    localWallpaperProvider: localWallpaperProvider,
-                    extractColor: true,
-                  ),
+                child: _buildWallpaperWidget(
+                  wallpaperUrl: wallpaperUrl,
+                  localWallpaperProvider: localWallpaperProvider,
+                  extractColor: true,
                 ),
               ),
             ),
@@ -164,6 +213,7 @@ mixin _HomeDashboardViewMixin
             top: false,
             bottom: false,
             child: FloatingGlassPinnedHeaderLayout(
+              fadeContent: !showWallpaper,
               initialHeaderExtent:
                   (_selectedTabIndex != _homeFocusTabIndex || isTablet)
                   ? (78.0 + MediaQuery.paddingOf(context).top)
@@ -266,20 +316,6 @@ mixin _HomeDashboardViewMixin
               bodyBuilder: (context, headerExtent) => Stack(
                 fit: StackFit.expand,
                 children: [
-                  if (showWallpaper &&
-                      wallpaperUrl != null &&
-                      !AppPlatform.isAndroid)
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: RepaintBoundary(
-                          child: _buildWallpaperWidget(
-                            wallpaperUrl: wallpaperUrl,
-                            localWallpaperProvider: localWallpaperProvider,
-                            extractColor: false,
-                          ),
-                        ),
-                      ),
-                    ),
                   ValueListenableBuilder<bool>(
                     valueListenable: _isGlobalLoadingNotifier,
                     builder: (context, isLoading, child) {
@@ -297,14 +333,15 @@ mixin _HomeDashboardViewMixin
                                 )
                               : LayoutBuilder(
                                   builder: (context, constraints) {
-                                    final canUseSectionRepaintBoundaries =
-                                        !AppPlatform.isWindows &&
-                                        (!showWallpaper ||
-                                            AppPlatform.isAndroid);
                                     Widget wrapSectionBoundary(Widget child) =>
-                                        canUseSectionRepaintBoundaries
-                                        ? RepaintBoundary(child: child)
-                                        : child;
+                                        showWallpaper || AppPlatform.isWindows
+                                        ? child
+                                        : RepaintBoundary(child: child);
+                                    // Keep `addRepaintBoundaries: !showWallpaper`
+                                    // so BackdropFilter / LiquidGlass cards can
+                                    // sample the wallpaper behind them.
+                                    final addListRepaintBoundaries =
+                                        !showWallpaper;
                                     Widget buildCountdown() =>
                                         wrapSectionBoundary(
                                           ValueListenableBuilder<
@@ -817,10 +854,12 @@ mixin _HomeDashboardViewMixin
                                                   ? 'home-focus-sections'
                                                   : 'home-main-sections',
                                             ),
-                                            physics:
-                                                const AppFluidScrollPhysics(),
+                                            physics: const AppFluidScrollPhysics(
+                                              parent:
+                                                  AlwaysScrollableScrollPhysics(),
+                                            ),
                                             addRepaintBoundaries:
-                                                canUseSectionRepaintBoundaries,
+                                                addListRepaintBoundaries,
                                             scrollCacheExtent:
                                                 AppPlatform.isWindows
                                                 ? const ScrollCacheExtent.viewport(
@@ -904,12 +943,12 @@ mixin _HomeDashboardViewMixin
                                               ? 'home-focus-tab-content'
                                               : 'home-main-tab-content',
                                         );
-                                        return canUseSectionRepaintBoundaries
-                                            ? RepaintBoundary(
+                                        return showWallpaper
+                                            ? KeyedSubtree(
                                                 key: tabContentKey,
                                                 child: listContent,
                                               )
-                                            : KeyedSubtree(
+                                            : RepaintBoundary(
                                                 key: tabContentKey,
                                                 child: listContent,
                                               );
@@ -1149,7 +1188,10 @@ mixin _HomeDashboardViewMixin
 
                                     return OptionalLiquidGlassScrollOptimizer(
                                       child: SingleChildScrollView(
-                                        physics: const AppFluidScrollPhysics(),
+                                        physics: const AppFluidScrollPhysics(
+                                          parent:
+                                              AlwaysScrollableScrollPhysics(),
+                                        ),
                                         padding: EdgeInsets.fromLTRB(
                                           isTablet ? 32 : 16,
                                           headerExtent + 6,
@@ -1242,6 +1284,14 @@ mixin _HomeDashboardViewMixin
                       );
                     },
                   ),
+                  if (showWallpaper &&
+                      wallpaperUrl != null &&
+                      headerExtent > 0.0)
+                    _buildWallpaperTopFadeCap(
+                      headerExtent: headerExtent,
+                      wallpaperUrl: wallpaperUrl,
+                      localWallpaperProvider: localWallpaperProvider,
+                    ),
                 ],
               ),
             ),

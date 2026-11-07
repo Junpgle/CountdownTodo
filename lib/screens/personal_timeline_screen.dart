@@ -21,6 +21,7 @@ import '../services/course_service.dart';
 import '../services/medal_recommendation_service.dart';
 import '../services/timeline_ml_service.dart';
 import '../services/timeline_statistics_service.dart';
+import '../utils/app_image_filters.dart';
 import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/floating_bottom_bar.dart';
@@ -1884,10 +1885,15 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
     return Container(
       width: size,
       height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(colors: [color, color.withValues(alpha: 0.0)]),
-      ),
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      // Windows 的 BackdropFilter 会给透明窗口增加额外混合开销，
+      // 这个 blob 只是背景光晕装饰，在 Windows 保留半透明圆形即可。
+      child: AppPlatform.isWindows
+          ? const SizedBox.shrink()
+          : BackdropFilter(
+              filter: AppImageFilters.blur80,
+              child: Container(color: Colors.transparent),
+            ),
     );
   }
 

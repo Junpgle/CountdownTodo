@@ -18,10 +18,7 @@ const double kAppSmoothScrollCacheExtent = 600.0;
 /// 3. 支持桌面端、触摸屏、手写笔与触摸板全输入场景；
 /// 4. 完整保留所有毛玻璃、液态玻璃、阴影、微光粒子和过渡动画，无任何特效缩减。
 class AppFluidScrollPhysics extends BouncingScrollPhysics {
-  const AppFluidScrollPhysics({
-    super.parent = const AlwaysScrollableScrollPhysics(),
-    this.frictionBonus = 0.015,
-  });
+  const AppFluidScrollPhysics({super.parent, this.frictionBonus = 0.015});
 
   /// 额外惯性顺滑增益（让滑动滑行距离更舒展，跟手度更高）
   final double frictionBonus;
@@ -36,13 +33,15 @@ class AppFluidScrollPhysics extends BouncingScrollPhysics {
 
   @override
   double frictionFactor(double overscrollFraction) {
-    // 边界弹性阻尼：柔和渐进吸收多余动量，手感更细腻
-    return 0.54 * math.pow(1.0 - overscrollFraction.clamp(0.0, 1.0), 2);
+    // 边界弹性阻尼：克制越界拖拽幅度，防止列表被大幅拉出屏幕外
+    return 0.32 * math.pow(1.0 - overscrollFraction.clamp(0.0, 1.0), 2);
   }
 
   @override
   SpringDescription get spring =>
-      const SpringDescription(mass: 75.0, stiffness: 110.0, damping: 1.1);
+      // 采用过阻尼弹簧参数（临界阻尼 = 2 * sqrt(0.5 * 280) ≈ 23.66，damping = 28.0，阻尼比 ≈ 1.18）：
+      // 触达边缘后紧致缓冲并单次快速归位，杜绝反复回弹振荡与滑出屏幕外。
+      const SpringDescription(mass: 0.5, stiffness: 280.0, damping: 28.0);
 }
 
 /// 全局应用滚动体验配置行为
@@ -62,8 +61,8 @@ class AppScrollBehavior extends MaterialScrollBehavior {
 
   @override
   ScrollPhysics getScrollPhysics(BuildContext context) {
-    // 全平台提供一致的丝滑弹性流动物理，让滑动充满现代质感与轻快跟手感
-    return const AppFluidScrollPhysics();
+    // 全平台提供一致的紧致平滑滚动物理，仅在内容可滚动时响应滚动
+    return const AppFluidScrollPhysics(parent: RangeMaintainingScrollPhysics());
   }
 
   @override
