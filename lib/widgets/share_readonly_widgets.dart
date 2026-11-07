@@ -159,16 +159,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
     sections.add(
       AnimatedSwitcher(
         duration: const Duration(milliseconds: 400),
-        transitionBuilder: (child, animation) {
-          return FadeTransition(
-            opacity: animation,
-            child: SizeTransition(
-              sizeFactor: animation,
-              alignment: Alignment.topCenter,
-              child: child,
-            ),
-          );
-        },
+        transitionBuilder: _buildSharedExpandTransition,
         child: (!showTodayItems && todayItems.isNotEmpty)
             ? GestureDetector(
                 key: const ValueKey('today_summary_card'),
@@ -346,16 +337,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 500),
-      transitionBuilder: (Widget child, Animation<double> animation) {
-        return FadeTransition(
-          opacity: animation,
-          child: SizeTransition(
-            sizeFactor: animation,
-            alignment: Alignment.topCenter,
-            child: child,
-          ),
-        );
-      },
+      transitionBuilder: _buildSharedExpandTransition,
       child: !_isWholeListExpanded
           ? GestureDetector(
               key: const ValueKey('collapsed_card'),
@@ -534,13 +516,17 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
     );
   }
 
-  Widget _buildAnimatedSection({
-    required bool expanded,
-    required Widget child,
-  }) {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 300),
-      transitionBuilder: (Widget child, Animation<double> animation) {
+  static Widget _buildSharedExpandTransition(
+    Widget child,
+    Animation<double> animation,
+  ) {
+    return AnimatedBuilder(
+      animation: animation,
+      child: child,
+      builder: (context, child) {
+        if (animation.value >= 0.999) {
+          return child!;
+        }
         return FadeTransition(
           opacity: animation,
           child: SizeTransition(
@@ -550,6 +536,16 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildAnimatedSection({
+    required bool expanded,
+    required Widget child,
+  }) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 300),
+      transitionBuilder: _buildSharedExpandTransition,
       child: expanded
           ? Container(key: const ValueKey('expanded_content'), child: child)
           : const SizedBox.shrink(key: ValueKey('collapsed_empty')),

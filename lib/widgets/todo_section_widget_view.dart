@@ -945,13 +945,14 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
     );
   }
 
-  Widget _buildAnimatedSection({
-    required bool expanded,
-    required Widget child,
-  }) {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 300),
-      transitionBuilder: (Widget child, Animation<double> animation) {
+  Widget _buildExpandTransition(Widget child, Animation<double> animation) {
+    return AnimatedBuilder(
+      animation: animation,
+      child: child,
+      builder: (context, child) {
+        if (animation.value >= 0.999) {
+          return child!;
+        }
         return FadeTransition(
           opacity: animation,
           child: SizeTransition(
@@ -961,6 +962,16 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildAnimatedSection({
+    required bool expanded,
+    required Widget child,
+  }) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 300),
+      transitionBuilder: _buildExpandTransition,
       child: expanded
           ? Container(key: const ValueKey('expanded_content'), child: child)
           : const SizedBox.shrink(key: ValueKey('collapsed_empty')),
@@ -1141,16 +1152,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
       sections.add(
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 400),
-          transitionBuilder: (child, animation) {
-            return FadeTransition(
-              opacity: animation,
-              child: SizeTransition(
-                sizeFactor: animation,
-                alignment: AlignmentDirectional.topStart,
-                child: child,
-              ),
-            );
-          },
+          transitionBuilder: _buildExpandTransition,
           child: (!showTodayItems && todayItems.isNotEmpty)
               ? GestureDetector(
                   key: const ValueKey('today_summary_card'),
@@ -1414,16 +1416,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 500),
-      transitionBuilder: (Widget child, Animation<double> animation) {
-        return FadeTransition(
-          opacity: animation,
-          child: SizeTransition(
-            sizeFactor: animation,
-            alignment: AlignmentDirectional.topStart,
-            child: child,
-          ),
-        );
-      },
+      transitionBuilder: _buildExpandTransition,
       child: !_isWholeListExpanded
           ? GestureDetector(
               key: const ValueKey('collapsed_card'),

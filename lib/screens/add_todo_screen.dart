@@ -2318,6 +2318,18 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           topBarHeight: topBarHeight,
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 300),
+            transitionBuilder: (child, animation) {
+              return AnimatedBuilder(
+                animation: animation,
+                child: child,
+                builder: (context, child) {
+                  if (animation.value >= 0.999) {
+                    return child!;
+                  }
+                  return FadeTransition(opacity: animation, child: child);
+                },
+              );
+            },
             child: _selectedTabIndex == 0
                 ? _buildManualInputTab(
                     key: const ValueKey('manual'),
