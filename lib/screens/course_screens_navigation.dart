@@ -488,13 +488,15 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
                       vertical: 12,
                     ),
                     itemCount: items.length,
-                    itemBuilder: (context, index) => Material(
-                      color: Colors.transparent,
-                      child: _buildDetailSidebarItem(
-                        context,
-                        items[index],
-                        sourceDate,
-                        keyScope,
+                    itemBuilder: (context, index) => RepaintBoundary(
+                      child: Material(
+                        color: Colors.transparent,
+                        child: _buildDetailSidebarItem(
+                          context,
+                          items[index],
+                          sourceDate,
+                          keyScope,
+                        ),
                       ),
                     ),
                   ),
@@ -631,8 +633,9 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         sourceDate,
         surface: keyScope,
       );
-      final durationStr =
-          _formatEventDuration(((item.endTime - item.startTime) / 1000).round());
+      final durationStr = _formatEventDuration(
+        ((item.endTime - item.startTime) / 1000).round(),
+      );
       final remarkStr = item.remark?.trim();
       final timeRange =
           '${_cachedDateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true).toLocal())} - ${_cachedDateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.endTime, isUtc: true).toLocal())}';

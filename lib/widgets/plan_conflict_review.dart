@@ -481,94 +481,99 @@ class _PlanConflictReviewSheetState extends State<PlanConflictReviewSheet>
 
   Widget _entry(PlanConflictEntry entry) {
     final block = entry.block;
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ExpansionTile(
-            key: ValueKey('plan-conflict-${block.id}'),
-            title: Text(
-              entry.todo?.title ?? block.titleSnapshot ?? '未命名规划',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return RepaintBoundary(
+      key: ValueKey('plan-conflict-card-${block.id}'),
+      child: Card(
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ExpansionTile(
+              key: ValueKey('plan-conflict-${block.id}'),
+              title: Text(
+                entry.todo?.title ?? block.titleSnapshot ?? '未命名规划',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${_time(DateTime.fromMillisecondsSinceEpoch(block.startTime))}–${_time(DateTime.fromMillisecondsSinceEpoch(block.endTime))}',
+                  ),
+                  Text('${entry.overlaps.length}项时间重叠'),
+                ],
+              ),
+              childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
               children: [
-                Text(
-                  '${_time(DateTime.fromMillisecondsSinceEpoch(block.startTime))}–${_time(DateTime.fromMillisecondsSinceEpoch(block.endTime))}',
-                ),
-                Text('${entry.overlaps.length}项时间重叠'),
-              ],
-            ),
-            childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            children: [
-              Text(entry.todo?.title ?? block.titleSnapshot ?? '未命名规划'),
-              for (var i = 0; i < entry.overlaps.length; i++)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        '${_sourceName(entry.overlaps[i].source.source)} · ${entry.overlaps[i].source.title ?? '安排'}',
-                      ),
-                      Text(
-                        '重叠 ${_time(entry.overlaps[i].start)}–${_time(entry.overlaps[i].end)}',
-                      ),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton(
-                          key: ValueKey('plan-conflict-source-${block.id}-$i'),
-                          onPressed: () => Navigator.pop(
-                            context,
-                            _ReviewAction(
-                              _ActionKind.source,
-                              entry,
-                              entry.overlaps[i].source,
+                Text(entry.todo?.title ?? block.titleSnapshot ?? '未命名规划'),
+                for (var i = 0; i < entry.overlaps.length; i++)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          '${_sourceName(entry.overlaps[i].source.source)} · ${entry.overlaps[i].source.title ?? '安排'}',
+                        ),
+                        Text(
+                          '重叠 ${_time(entry.overlaps[i].start)}–${_time(entry.overlaps[i].end)}',
+                        ),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton(
+                            key: ValueKey(
+                              'plan-conflict-source-${block.id}-$i',
+                            ),
+                            onPressed: () => Navigator.pop(
+                              context,
+                              _ReviewAction(
+                                _ActionKind.source,
+                                entry,
+                                entry.overlaps[i].source,
+                              ),
+                            ),
+                            child: Text(
+                              '查看${_sourceName(entry.overlaps[i].source.source)}',
                             ),
                           ),
-                          child: Text(
-                            '查看${_sourceName(entry.overlaps[i].source.source)}',
-                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-            ],
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Wrap(
-              spacing: 8,
-              children: [
-                if (entry.canAdjust)
-                  TextButton.icon(
-                    key: ValueKey('plan-conflict-adjust-${block.id}'),
-                    onPressed: () => Navigator.pop(
-                      context,
-                      _ReviewAction(_ActionKind.adjust, entry),
-                    ),
-                    icon: const Icon(Icons.event_repeat, size: 18),
-                    label: const Text('调整安排'),
-                  )
-                else if (block.status == TodoPlanStatus.focusing)
-                  TextButton(
-                    key: ValueKey('plan-conflict-focus-${block.id}'),
-                    onPressed: () => Navigator.pop(
-                      context,
-                      _ReviewAction(_ActionKind.focus, entry),
-                    ),
-                    child: const Text('查看当前专注'),
-                  )
-                else
-                  const Text('关联待办失效，暂不能改期'),
               ],
             ),
-          ),
-        ],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Wrap(
+                spacing: 8,
+                children: [
+                  if (entry.canAdjust)
+                    TextButton.icon(
+                      key: ValueKey('plan-conflict-adjust-${block.id}'),
+                      onPressed: () => Navigator.pop(
+                        context,
+                        _ReviewAction(_ActionKind.adjust, entry),
+                      ),
+                      icon: const Icon(Icons.event_repeat, size: 18),
+                      label: const Text('调整安排'),
+                    )
+                  else if (block.status == TodoPlanStatus.focusing)
+                    TextButton(
+                      key: ValueKey('plan-conflict-focus-${block.id}'),
+                      onPressed: () => Navigator.pop(
+                        context,
+                        _ReviewAction(_ActionKind.focus, entry),
+                      ),
+                      child: const Text('查看当前专注'),
+                    )
+                  else
+                    const Text('关联待办失效，暂不能改期'),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -638,12 +643,39 @@ class _PlanConflictReviewSheetState extends State<PlanConflictReviewSheet>
                     child: ListView.builder(
                       shrinkWrap: true,
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                      findChildIndexCallback: (Key key) {
+                        if (key ==
+                            const ValueKey('plan-conflict-header-filters')) {
+                          return 0;
+                        }
+                        if (key is ValueKey<String>) {
+                          final keyVal = key.value;
+                          for (int i = 0; i < rows.length; i++) {
+                            final r = rows[i];
+                            if (r is DateTime) {
+                              if (keyVal ==
+                                  'plan-conflict-date-${r.millisecondsSinceEpoch}') {
+                                return i + 1;
+                              }
+                            } else if (r is PlanConflictEntry) {
+                              if (keyVal ==
+                                  'plan-conflict-card-${r.block.id}') {
+                                return i + 1;
+                              }
+                            }
+                          }
+                        }
+                        return null;
+                      },
                       itemCount: rows.length + 1,
                       itemBuilder: (context, index) {
                         if (index > 0) {
                           final row = rows[index - 1];
                           return row is DateTime
                               ? Padding(
+                                  key: ValueKey(
+                                    'plan-conflict-date-${row.millisecondsSinceEpoch}',
+                                  ),
                                   padding: const EdgeInsets.only(top: 12),
                                   child: Text(
                                     conflictDateFormat.format(row),
@@ -655,6 +687,7 @@ class _PlanConflictReviewSheetState extends State<PlanConflictReviewSheet>
                               : _entry(row as PlanConflictEntry);
                         }
                         return Column(
+                          key: const ValueKey('plan-conflict-header-filters'),
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             Wrap(

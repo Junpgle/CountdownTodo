@@ -345,73 +345,75 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
                           ? _cachedDateFormat('MM-dd HH:mm').format(t.dueDate!)
                           : null;
 
-                      return OptionalLiquidGlassCard(
+                      return RepaintBoundary(
                         key: ValueKey<String>(t.id),
-                        margin: const EdgeInsets.only(bottom: 10),
-                        borderRadius: 16,
-                        fallbackDecoration: BoxDecoration(
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.05)
-                              : Colors.black.withValues(alpha: 0.03),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Material(
-                          type: MaterialType.transparency,
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 4,
-                            ),
-                            leading: Icon(
-                              t.isDone
-                                  ? Icons.check_circle
-                                  : Icons.circle_outlined,
-                              color: t.isDone
-                                  ? Colors.green
-                                  : Theme.of(context).colorScheme.primary
-                                        .withValues(alpha: 0.5),
-                            ),
-                            title: Text(
-                              t.title,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: t.isDone ? Colors.grey : null,
-                                decoration: t.isDone
-                                    ? TextDecoration.lineThrough
-                                    : null,
+                        child: OptionalLiquidGlassCard(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          borderRadius: 16,
+                          fallbackDecoration: BoxDecoration(
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.05)
+                                : Colors.black.withValues(alpha: 0.03),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Material(
+                            type: MaterialType.transparency,
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 4,
                               ),
-                            ),
-                            subtitle: (startStr != null || dueStr != null)
-                                ? Padding(
-                                    padding: const EdgeInsets.only(top: 4.0),
-                                    child: Text(
-                                      "${startStr ?? '开始?'} → ${dueStr ?? '截止?'}",
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: t.isDone
-                                            ? Colors.grey
-                                            : Colors.blueGrey,
+                              leading: Icon(
+                                t.isDone
+                                    ? Icons.check_circle
+                                    : Icons.circle_outlined,
+                                color: t.isDone
+                                    ? Colors.green
+                                    : Theme.of(context).colorScheme.primary
+                                          .withValues(alpha: 0.5),
+                              ),
+                              title: Text(
+                                t.title,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: t.isDone ? Colors.grey : null,
+                                  decoration: t.isDone
+                                      ? TextDecoration.lineThrough
+                                      : null,
+                                ),
+                              ),
+                              subtitle: (startStr != null || dueStr != null)
+                                  ? Padding(
+                                      padding: const EdgeInsets.only(top: 4.0),
+                                      child: Text(
+                                        "${startStr ?? '开始?'} → ${dueStr ?? '截止?'}",
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: t.isDone
+                                              ? Colors.grey
+                                              : Colors.blueGrey,
+                                        ),
                                       ),
-                                    ),
-                                  )
-                                : null,
-                            onTap: () async {
-                              final nextTodos = _copyTodos(_todos);
-                              final todoIndex = nextTodos.indexWhere(
-                                (todo) => todo.id == t.id,
-                              );
-                              if (todoIndex < 0) return;
-                              nextTodos[todoIndex].groupId = g.id;
-                              nextTodos[todoIndex].version += 10;
-                              nextTodos[todoIndex].updatedAt =
-                                  DateTime.now().millisecondsSinceEpoch;
-                              try {
-                                await _commitTodos(nextTodos);
-                                if (ctx.mounted) Navigator.pop(ctx);
-                              } catch (error) {
-                                _showCommitError(error);
-                              }
-                            },
+                                    )
+                                  : null,
+                              onTap: () async {
+                                final nextTodos = _copyTodos(_todos);
+                                final todoIndex = nextTodos.indexWhere(
+                                  (todo) => todo.id == t.id,
+                                );
+                                if (todoIndex < 0) return;
+                                nextTodos[todoIndex].groupId = g.id;
+                                nextTodos[todoIndex].version += 10;
+                                nextTodos[todoIndex].updatedAt =
+                                    DateTime.now().millisecondsSinceEpoch;
+                                try {
+                                  await _commitTodos(nextTodos);
+                                  if (ctx.mounted) Navigator.pop(ctx);
+                                } catch (error) {
+                                  _showCommitError(error);
+                                }
+                              },
+                            ),
                           ),
                         ),
                       );

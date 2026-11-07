@@ -455,6 +455,7 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
         TextButton(onPressed: () => _arrange(row), child: const Text('追加规划')),
     ];
     return RepaintBoundary(
+      key: ValueKey<String>(row.todo.id),
       child: Card(
         elevation: 0,
         margin: const EdgeInsets.only(bottom: 10),
@@ -658,6 +659,24 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
           child: ListView.builder(
             padding: const EdgeInsets.all(16),
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            findChildIndexCallback: (Key key) {
+              if (key is ValueKey<String>) {
+                final keyVal = key.value;
+                for (int i = 0; i < _displayRows.length; i++) {
+                  final r = _displayRows[i];
+                  if (r is _PlanBacklogSectionHeader) {
+                    if (keyVal == 'backlog_header_${r.group}') {
+                      return headerChildren.length + i;
+                    }
+                  } else if (r is PlanBacklogRow) {
+                    if (r.todo.id == keyVal) {
+                      return headerChildren.length + i;
+                    }
+                  }
+                }
+              }
+              return null;
+            },
             itemCount:
                 headerChildren.length +
                 (_error == null ? _displayRows.length : 0) +
@@ -669,6 +688,7 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
                 final row = _displayRows[rowIndex];
                 if (row is _PlanBacklogSectionHeader) {
                   return Padding(
+                    key: ValueKey<String>('backlog_header_${row.group}'),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     child: Text(
                       _heading(row.group),

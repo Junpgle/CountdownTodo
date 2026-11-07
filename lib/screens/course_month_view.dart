@@ -441,20 +441,24 @@ class CourseMonthView extends StatelessWidget {
                 return ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   physics: const NeverScrollableScrollPhysics(),
+                  itemExtent: rowHeight,
                   itemCount: data.weeks.length,
                   itemBuilder: (context, weekIndex) {
-                    return _buildWeekRow(
-                      context,
-                      data.weeks[weekIndex],
-                      data.weekDateKeys[weekIndex],
-                      data.ganttTodosByWeek[weekIndex],
-                      data.densityMap,
-                      isDark,
-                      rowHeight,
-                      getEventTimeFormat,
-                      data.tagIndexByUuid,
-                      data,
-                      weekIndex,
+                    return RepaintBoundary(
+                      key: ValueKey<int>(weekIndex),
+                      child: _buildWeekRow(
+                        context,
+                        data.weeks[weekIndex],
+                        data.weekDateKeys[weekIndex],
+                        data.ganttTodosByWeek[weekIndex],
+                        data.densityMap,
+                        isDark,
+                        rowHeight,
+                        getEventTimeFormat,
+                        data.tagIndexByUuid,
+                        data,
+                        weekIndex,
+                      ),
                     );
                   },
                 );
