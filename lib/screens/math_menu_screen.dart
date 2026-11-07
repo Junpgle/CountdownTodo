@@ -336,7 +336,8 @@ class _AnimatedMenuCard extends StatelessWidget {
       child: child,
       builder: (context, child) {
         final value = animation.value;
-        if (value == 0) return const SizedBox.shrink();
+        if (value <= 0) return const SizedBox.shrink();
+        if (value >= 0.999) return child!;
         return Transform.translate(
           offset: Offset(0, 30 * (1 - value)),
           child: Opacity(opacity: value, child: child),

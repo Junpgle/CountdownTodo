@@ -864,15 +864,22 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         final formArea = AnimatedSwitcher(
           duration: const Duration(milliseconds: 300),
           transitionBuilder: (child, animation) {
-            return FadeTransition(
-              opacity: animation,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0.05, 0),
-                  end: Offset.zero,
-                ).animate(animation),
-                child: child,
-              ),
+            final slidePosition = Tween<Offset>(
+              begin: const Offset(0.05, 0),
+              end: Offset.zero,
+            ).animate(animation);
+            return AnimatedBuilder(
+              animation: animation,
+              child: child,
+              builder: (context, child) {
+                if (animation.value >= 0.999) {
+                  return child!;
+                }
+                return FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(position: slidePosition, child: child),
+                );
+              },
             );
           },
           child: KeyedSubtree(key: ValueKey<int>(_step), child: content),

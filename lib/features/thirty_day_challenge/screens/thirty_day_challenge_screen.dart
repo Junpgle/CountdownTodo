@@ -72,6 +72,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
   final _pageController = PageController(viewportFraction: 0.88);
   late final AnimationController _entranceController;
   late final Animation<double> _entranceAnimation;
+  late final Animation<Offset> _entranceSlideAnimation;
 
   ThirtyDayChallengeState? _state;
   int _currentIndex = 0;
@@ -89,10 +90,13 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       vsync: this,
       duration: Duration(milliseconds: AppPlatform.isAndroid ? 260 : 650),
     );
-    _entranceAnimation = CurvedAnimation(
-      parent: _entranceController,
-      curve: Curves.easeOutCubic,
+    _entranceAnimation = _entranceController.drive(
+      CurveTween(curve: Curves.easeOutCubic),
     );
+    _entranceSlideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.035),
+      end: Offset.zero,
+    ).animate(_entranceAnimation);
     _load();
   }
 
@@ -1024,25 +1028,31 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
             ),
       body: state == null
           ? const Center(child: CircularProgressIndicator())
-          : FadeTransition(
-              opacity: _entranceAnimation,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0, 0.035),
-                  end: Offset.zero,
-                ).animate(_entranceAnimation),
-                child: _showWelcome
-                    ? _buildWelcomeBody()
-                    : FloatingGlassTopBarContentFade(
-                        topBarHeight: kToolbarHeight,
-                        child: Padding(
-                          padding: EdgeInsets.only(
-                            top: floatingGlassTopBarHeight(context),
-                          ),
-                          child: _buildBody(state),
+          : AnimatedBuilder(
+              animation: _entranceController,
+              child: _showWelcome
+                  ? _buildWelcomeBody()
+                  : FloatingGlassTopBarContentFade(
+                      topBarHeight: kToolbarHeight,
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                          top: floatingGlassTopBarHeight(context),
                         ),
+                        child: _buildBody(state),
                       ),
-              ),
+                    ),
+              builder: (context, child) {
+                if (_entranceController.value >= 0.999) {
+                  return child!;
+                }
+                return FadeTransition(
+                  opacity: _entranceAnimation,
+                  child: SlideTransition(
+                    position: _entranceSlideAnimation,
+                    child: child,
+                  ),
+                );
+              },
             ),
     );
   }
@@ -1140,7 +1150,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                           ),
                           if (!AppPlatform.isWindows)
                             Positioned.fill(
-                              child: BackdropFilter(
+                              child: BackdropFilter.grouped(
                                 filter: AppImageFilters.blur60,
                                 child: const SizedBox(),
                               ),
@@ -1625,7 +1635,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                     ),
                     if (!AppPlatform.isWindows)
                       Positioned.fill(
-                        child: BackdropFilter(
+                        child: BackdropFilter.grouped(
                           filter: AppImageFilters.blur48,
                           child: const SizedBox(),
                         ),
@@ -2130,31 +2140,30 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                 if (overviewImageProvider != null)
                   ClipRRect(
                     borderRadius: BorderRadius.circular(15),
-                    child: Opacity(
-                      opacity: 0.4,
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final pixelRatio =
-                              MediaQuery.maybeDevicePixelRatioOf(context) ??
-                              1.0;
-                          final cacheWidth = (constraints.maxWidth * pixelRatio)
-                              .ceil()
-                              .clamp(1, 4096)
-                              .toInt();
-                          final cacheHeight =
-                              (constraints.maxHeight * pixelRatio)
-                                  .ceil()
-                                  .clamp(1, 4096)
-                                  .toInt();
-                          final imageProvider = ResizeImage(
-                            overviewImageProvider,
-                            width: cacheWidth,
-                            height: cacheHeight,
-                            policy: ResizeImagePolicy.fit,
-                          );
-                          return Image(image: imageProvider, fit: BoxFit.cover);
-                        },
-                      ),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final pixelRatio =
+                            MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0;
+                        final cacheWidth = (constraints.maxWidth * pixelRatio)
+                            .ceil()
+                            .clamp(1, 4096)
+                            .toInt();
+                        final cacheHeight = (constraints.maxHeight * pixelRatio)
+                            .ceil()
+                            .clamp(1, 4096)
+                            .toInt();
+                        final imageProvider = ResizeImage(
+                          overviewImageProvider,
+                          width: cacheWidth,
+                          height: cacheHeight,
+                          policy: ResizeImagePolicy.fit,
+                        );
+                        return Image(
+                          image: imageProvider,
+                          fit: BoxFit.cover,
+                          opacity: const AlwaysStoppedAnimation<double>(0.4),
+                        );
+                      },
                     ),
                   ),
                 Center(

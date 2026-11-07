@@ -162,6 +162,8 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
 
   void _handleInputChanged() {
     final text = _inputCtrl.text.trim();
+    if (text == _lastObservedInputText) return;
+    _lastObservedInputText = text;
     final hasText = text.isNotEmpty;
     if (hasText != _inputHasText) {
       _inputHasText = hasText;

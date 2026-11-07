@@ -1811,11 +1811,12 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                           ((_courseExpandAnim.value - animationDelay) *
                                   animationProgressScale)
                               .clamp(0.0, 1.0);
+                      if (t >= 0.999) return child!;
+                      if (t <= 0.001) return const SizedBox.shrink();
                       final scale = 0.7 + 0.3 * t;
-                      final opacity = t;
                       return Transform.scale(
                         scale: scale,
-                        child: Opacity(opacity: opacity, child: child),
+                        child: Opacity(opacity: t, child: child),
                       );
                     },
                     child: GestureDetector(
@@ -2063,11 +2064,12 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                           ((_courseExpandAnim.value - animationDelay) *
                                   animationProgressScale)
                               .clamp(0.0, 1.0);
+                      if (t >= 0.999) return child!;
+                      if (t <= 0.001) return const SizedBox.shrink();
                       final scale = 0.7 + 0.3 * t;
-                      final opacity = t;
                       return Transform.scale(
                         scale: scale,
-                        child: Opacity(opacity: opacity, child: child),
+                        child: Opacity(opacity: t, child: child),
                       );
                     },
                     child: GestureDetector(
@@ -2308,6 +2310,8 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                           ((_courseExpandAnim.value - animationDelay) *
                                   animationProgressScale)
                               .clamp(0.0, 1.0);
+                      if (t >= 0.999) return child!;
+                      if (t <= 0.001) return const SizedBox.shrink();
                       return Transform.scale(
                         scale: 0.8 + 0.2 * t,
                         child: Opacity(opacity: t, child: child),
@@ -2788,11 +2792,12 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                             ((_courseExpandAnim.value - animationDelay) *
                                     animationProgressScale)
                                 .clamp(0.0, 1.0);
+                        if (t >= 0.999) return child!;
+                        if (t <= 0.001) return const SizedBox.shrink();
                         final scale = 0.7 + 0.3 * t;
-                        final opacity = t;
                         return Transform.scale(
                           scale: scale,
-                          child: Opacity(opacity: opacity, child: child),
+                          child: Opacity(opacity: t, child: child),
                         );
                       },
                       child: GestureDetector(
@@ -3144,11 +3149,12 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                         ((_courseExpandAnim.value - animationDelay) *
                                 animationProgressScale)
                             .clamp(0.0, 1.0);
+                    if (t >= 0.999) return child!;
+                    if (t <= 0.001) return const SizedBox.shrink();
                     final scale = 0.7 + 0.3 * t;
-                    final opacity = t;
                     return Transform.scale(
                       scale: scale,
-                      child: Opacity(opacity: opacity, child: child),
+                      child: Opacity(opacity: t, child: child),
                     );
                   },
                   child: GestureDetector(
@@ -3336,6 +3342,11 @@ class _CurrentTimeMarkerPainter extends CustomPainter {
   final Animation<double> animation;
   final Color color;
   final Paint _fillPaint = Paint();
+  final Paint _glowPaint = Paint()..style = PaintingStyle.fill;
+  final Paint _dotPaint = Paint()..style = PaintingStyle.fill;
+  final Paint _innerDotPaint = Paint()
+    ..color = Colors.white.withValues(alpha: 0.95)
+    ..style = PaintingStyle.fill;
   late final Paint _shadowPaint = BoxShadow(
     color: Colors.transparent,
     blurRadius: 6,
@@ -3356,20 +3367,13 @@ class _CurrentTimeMarkerPainter extends CustomPainter {
 
     // 绘制当天时间线左侧的时间指示圆点（Time Dot）
     final dotCenter = Offset(5, centerY);
-    final glowPaint = Paint()
-      ..color = color.withValues(alpha: 0.35 * progress)
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(dotCenter, 5.0 + 1.5 * progress, glowPaint);
+    _glowPaint.color = color.withValues(alpha: 0.35 * progress);
+    canvas.drawCircle(dotCenter, 5.0 + 1.5 * progress, _glowPaint);
 
-    final dotPaint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(dotCenter, 3.5, dotPaint);
+    _dotPaint.color = color;
+    canvas.drawCircle(dotCenter, 3.5, _dotPaint);
 
-    final innerDotPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.95)
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(dotCenter, 1.2, innerDotPaint);
+    canvas.drawCircle(dotCenter, 1.2, _innerDotPaint);
   }
 
   @override

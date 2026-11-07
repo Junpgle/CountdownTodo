@@ -789,18 +789,13 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               children: [...previousChildren, ?currentChild],
             ),
             transitionBuilder: (child, anim) {
-              final curved = CurvedAnimation(
-                parent: anim,
-                curve: Curves.easeOutCubic,
-                reverseCurve: Curves.easeInCubic,
-              );
               return FadeTransition(
-                opacity: curved,
+                opacity: anim,
                 child: ScaleTransition(
                   scale: Tween<double>(
                     begin: IslandConfig.switchScaleBegin,
                     end: IslandConfig.switchScaleEnd,
-                  ).animate(curved),
+                  ).animate(anim),
                   child: child,
                 ),
               );

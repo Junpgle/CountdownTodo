@@ -306,6 +306,8 @@ class _WaterProgressCupPainter extends CustomPainter {
   );
   Rect? _glassShaderBounds;
   Shader? _glassShader;
+  Rect? _waterShaderBounds;
+  Shader? _waterShader;
 
   _WaterProgressCupPainter({
     required this.ratio,
@@ -321,6 +323,8 @@ class _WaterProgressCupPainter extends CustomPainter {
       _highlightPathCache = _highlightPath(size);
       _glassShaderBounds = null;
       _glassShader = null;
+      _waterShaderBounds = null;
+      _waterShader = null;
     }
 
     final phase = animation.value * math.pi * 2;
@@ -405,8 +409,17 @@ class _WaterProgressCupPainter extends CustomPainter {
   ) {
     _updateWaveOffsets(phase);
     final waterPath = _waterPath(size, fillTop, bottom);
-    final bounds = waterPath.getBounds();
-    _waterPaint.shader = _waterGradient.createShader(bounds);
+    final shaderBounds = Rect.fromLTRB(
+      size.width * 0.16,
+      fillTop - 3.6,
+      size.width * 0.84,
+      bottom + 5,
+    );
+    if (_waterShaderBounds != shaderBounds || _waterShader == null) {
+      _waterShaderBounds = shaderBounds;
+      _waterShader = _waterGradient.createShader(shaderBounds);
+    }
+    _waterPaint.shader = _waterShader;
     canvas.drawPath(waterPath, _waterPaint);
 
     final surfacePath = _wavePath(

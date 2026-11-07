@@ -624,7 +624,7 @@ class _HabitCardState extends State<HabitCard> {
       duration: const Duration(milliseconds: 350),
       transitionBuilder: (child, animation) {
         return ScaleTransition(
-          scale: CurvedAnimation(parent: animation, curve: Curves.elasticOut),
+          scale: animation.drive(CurveTween(curve: Curves.elasticOut)),
           child: child,
         );
       },

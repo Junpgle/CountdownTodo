@@ -1807,6 +1807,18 @@ class _SleepScheduleClockPainter extends CustomPainter {
   final _SleepClockDragMode? activeMode;
   final ColorScheme colorScheme;
 
+  static final Paint _facePaint = Paint();
+  static final Paint _outlinePaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 2.2;
+  static final Paint _arcPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 7
+    ..strokeCap = StrokeCap.round;
+  static final Paint _tickPaint = Paint()..strokeCap = StrokeCap.round;
+  static final Paint _markerPaint = Paint();
+  static final Paint _handPaint = Paint()..strokeCap = StrokeCap.round;
+
   const _SleepScheduleClockPainter({
     required this.goalMinute,
     required this.counterpartMinute,
@@ -1822,13 +1834,10 @@ class _SleepScheduleClockPainter extends CustomPainter {
     final radius = geometry.radius;
     final primary = colorScheme.primary;
     final secondary = colorScheme.tertiary;
-    final face = Paint()..color = colorScheme.surfaceContainerHighest;
-    final outline = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.2
-      ..color = colorScheme.outlineVariant;
-    canvas.drawCircle(center, radius, face);
-    canvas.drawCircle(center, radius, outline);
+    _facePaint.color = colorScheme.surfaceContainerHighest;
+    _outlinePaint.color = colorScheme.outlineVariant;
+    canvas.drawCircle(center, radius, _facePaint);
+    canvas.drawCircle(center, radius, _outlinePaint);
 
     _drawSleepArc(canvas, geometry, primary, secondary);
     _drawTicksAndLabels(canvas, geometry);
@@ -1858,64 +1867,61 @@ class _SleepScheduleClockPainter extends CustomPainter {
         math.pi / 2;
     var sweep = end - start;
     if (sweep < 0) sweep += 2 * math.pi;
-    final arc = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 7
-      ..strokeCap = StrokeCap.round
-      ..color = secondary.withValues(alpha: 0.35);
+    _arcPaint.color = secondary.withValues(alpha: 0.35);
     final rect = Rect.fromCircle(
       center: geometry.center,
       radius: geometry.radius - 7,
     );
-    canvas.drawArc(rect, start, sweep, false, arc);
+    canvas.drawArc(rect, start, sweep, false, _arcPaint);
   }
 
   void _drawTicksAndLabels(Canvas canvas, _SleepClockGeometry geometry) {
-    for (var index = 0; index < 60; index++) {
-      final angle = index * math.pi / 30 - math.pi / 2;
-      final major = index % 5 == 0;
-      final outer = geometry.radius - 4;
-      final inner = geometry.radius - (major ? 16 : 10);
-      final tick = Paint()
-        ..color = major
-            ? colorScheme.onSurfaceVariant
-            : colorScheme.outlineVariant
-        ..strokeWidth = major ? 2 : 1
-        ..strokeCap = StrokeCap.round;
-      canvas.drawLine(
-        Offset(
-          geometry.center.dx + math.cos(angle) * inner,
-          geometry.center.dy + math.sin(angle) * inner,
-        ),
-        Offset(
-          geometry.center.dx + math.cos(angle) * outer,
-          geometry.center.dy + math.sin(angle) * outer,
-        ),
-        tick,
-      );
-      if (major) {
-        final number = index ~/ 5 == 0 ? '12' : '${index ~/ 5}';
-        final textPainter = TextPainter(
-          text: TextSpan(
-            text: number,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: colorScheme.onSurfaceVariant,
-            ),
+    final textPainter = TextPainter(textDirection: TextDirection.ltr);
+    final labelStyle = TextStyle(
+      fontSize: 14,
+      fontWeight: FontWeight.w700,
+      color: colorScheme.onSurfaceVariant,
+    );
+    try {
+      for (var index = 0; index < 60; index++) {
+        final angle = index * math.pi / 30 - math.pi / 2;
+        final major = index % 5 == 0;
+        final outer = geometry.radius - 4;
+        final inner = geometry.radius - (major ? 16 : 10);
+        _tickPaint
+          ..color = major
+              ? colorScheme.onSurfaceVariant
+              : colorScheme.outlineVariant
+          ..strokeWidth = major ? 2 : 1;
+        canvas.drawLine(
+          Offset(
+            geometry.center.dx + math.cos(angle) * inner,
+            geometry.center.dy + math.sin(angle) * inner,
           ),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        final labelRadius = geometry.radius - 31;
-        final labelCenter = Offset(
-          geometry.center.dx + math.cos(angle) * labelRadius,
-          geometry.center.dy + math.sin(angle) * labelRadius,
+          Offset(
+            geometry.center.dx + math.cos(angle) * outer,
+            geometry.center.dy + math.sin(angle) * outer,
+          ),
+          _tickPaint,
         );
-        textPainter.paint(
-          canvas,
-          labelCenter - Offset(textPainter.width / 2, textPainter.height / 2),
-        );
+        if (major) {
+          final number = index ~/ 5 == 0 ? '12' : '${index ~/ 5}';
+          textPainter
+            ..text = TextSpan(text: number, style: labelStyle)
+            ..layout();
+          final labelRadius = geometry.radius - 31;
+          final labelCenter = Offset(
+            geometry.center.dx + math.cos(angle) * labelRadius,
+            geometry.center.dy + math.sin(angle) * labelRadius,
+          );
+          textPainter.paint(
+            canvas,
+            labelCenter - Offset(textPainter.width / 2, textPainter.height / 2),
+          );
+        }
       }
+    } finally {
+      textPainter.dispose();
     }
   }
 
@@ -1925,13 +1931,14 @@ class _SleepScheduleClockPainter extends CustomPainter {
     Color color,
   ) {
     final marker = geometry.timeMarker(counterpartMinute);
-    final markerPaint = Paint()..color = color;
+    _markerPaint.color = color;
     canvas.drawCircle(
       marker,
       activeMode == _SleepClockDragMode.counterpart ? 14 : 11,
-      markerPaint,
+      _markerPaint,
     );
-    canvas.drawCircle(marker, 4, Paint()..color = colorScheme.onTertiary);
+    _markerPaint.color = colorScheme.onTertiary;
+    canvas.drawCircle(marker, 4, _markerPaint);
   }
 
   void _drawTargetHands(
@@ -1957,12 +1964,10 @@ class _SleepScheduleClockPainter extends CustomPainter {
       3.5,
       activeMode == _SleepClockDragMode.minute,
     );
-    canvas.drawCircle(geometry.center, 7, Paint()..color = color);
-    canvas.drawCircle(
-      geometry.center,
-      3,
-      Paint()..color = colorScheme.onPrimary,
-    );
+    _markerPaint.color = color;
+    canvas.drawCircle(geometry.center, 7, _markerPaint);
+    _markerPaint.color = colorScheme.onPrimary;
+    canvas.drawCircle(geometry.center, 3, _markerPaint);
   }
 
   void _drawHand(
@@ -1973,11 +1978,10 @@ class _SleepScheduleClockPainter extends CustomPainter {
     double strokeWidth,
     bool active,
   ) {
-    final hand = Paint()
+    _handPaint
       ..color = active ? color : color.withValues(alpha: 0.9)
-      ..strokeWidth = active ? strokeWidth + 2 : strokeWidth
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(center, tip, hand);
+      ..strokeWidth = active ? strokeWidth + 2 : strokeWidth;
+    canvas.drawLine(center, tip, _handPaint);
   }
 
   @override

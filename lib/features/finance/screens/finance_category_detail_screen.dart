@@ -758,26 +758,21 @@ class _FinanceCategoryDetailScreenState
                               child: Stack(
                                 alignment: Alignment.center,
                                 children: [
-                                  AnimatedBuilder(
-                                    animation: _donutAnimation,
-                                    builder: (context, _) {
-                                      return RepaintBoundary(
-                                        child: CustomPaint(
-                                          size: Size.square(donutSize),
-                                          painter: FinanceDonutPainter(
-                                            slices: slices,
-                                            total: total,
-                                            selectedCategoryUuid:
-                                                _selectedCategoryUuid,
-                                            sweepProgress:
-                                                _donutAnimation.value,
-                                            emptyColor: colorScheme
-                                                .surfaceContainerHighest,
-                                            isDark: isDark,
-                                          ),
-                                        ),
-                                      );
-                                    },
+                                  RepaintBoundary(
+                                    child: CustomPaint(
+                                      size: Size.square(donutSize),
+                                      painter: FinanceDonutPainter(
+                                        slices: slices,
+                                        total: total,
+                                        selectedCategoryUuid:
+                                            _selectedCategoryUuid,
+                                        sweepProgress: _donutAnimation.value,
+                                        sweepAnimation: _donutAnimation,
+                                        emptyColor:
+                                            colorScheme.surfaceContainerHighest,
+                                        isDark: isDark,
+                                      ),
+                                    ),
                                   ),
                                   _buildDonutCenterInfo(
                                     context,

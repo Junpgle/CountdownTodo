@@ -428,6 +428,7 @@ class _QuizScreenState extends State<QuizScreen>
               (_shakeAnimation.value * 10) * (index == currentIndex ? 1 : 0);
           if (shakeOffset.abs() < 0.5) shakeOffset = 0;
         }
+        if (shakeOffset == 0) return child!;
         return Transform.translate(
           offset: Offset(shakeOffset, 0),
           child: child,

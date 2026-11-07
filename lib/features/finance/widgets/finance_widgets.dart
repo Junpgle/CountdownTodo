@@ -2982,25 +2982,21 @@ class _FinanceUnifiedCategoryCardState
                             child: Stack(
                               alignment: Alignment.center,
                               children: [
-                                AnimatedBuilder(
-                                  animation: _animation,
-                                  builder: (context, _) {
-                                    return RepaintBoundary(
-                                      child: CustomPaint(
-                                        size: Size.square(donutSize),
-                                        painter: FinanceDonutPainter(
-                                          slices: slices,
-                                          total: total,
-                                          selectedCategoryUuid:
-                                              _selectedCategoryUuid,
-                                          sweepProgress: _animation.value,
-                                          emptyColor: colorScheme
-                                              .surfaceContainerHighest,
-                                          isDark: isDark,
-                                        ),
-                                      ),
-                                    );
-                                  },
+                                RepaintBoundary(
+                                  child: CustomPaint(
+                                    size: Size.square(donutSize),
+                                    painter: FinanceDonutPainter(
+                                      slices: slices,
+                                      total: total,
+                                      selectedCategoryUuid:
+                                          _selectedCategoryUuid,
+                                      sweepProgress: _animation.value,
+                                      sweepAnimation: _animation,
+                                      emptyColor:
+                                          colorScheme.surfaceContainerHighest,
+                                      isDark: isDark,
+                                    ),
+                                  ),
                                 ),
                                 _buildDonutCenterInfo(
                                   context,
@@ -5562,31 +5558,46 @@ class _FinanceCumulativeBalanceTrendPainter extends CustomPainter {
     _pointSurfacePaint.color = colorScheme.surface;
     _pointPrimaryPaint.color = colorScheme.primary;
 
-    for (var index = 0; index < points.length; index++) {
-      final center = Offset(xFor(index), yFor(points[index].balanceMinor));
-      if (index == selectedIndex) {
-        canvas.drawCircle(center, 6, _pointSurfacePaint);
-        canvas.drawCircle(center, 5, _pointPrimaryPaint);
-      } else {
-        canvas.drawCircle(center, 3.25, _pointPrimaryPaint);
-      }
+    final labelPainter = TextPainter(
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    );
+    final labelStyle = TextStyle(
+      fontSize: 10,
+      color: colorScheme.onSurfaceVariant,
+    );
+    try {
+      for (var index = 0; index < points.length; index++) {
+        final center = Offset(xFor(index), yFor(points[index].balanceMinor));
+        if (index == selectedIndex) {
+          canvas.drawCircle(center, 6, _pointSurfacePaint);
+          canvas.drawCircle(center, 5, _pointPrimaryPaint);
+        } else {
+          canvas.drawCircle(center, 3.25, _pointPrimaryPaint);
+        }
 
-      final showLabel =
-          index.isEven || index == points.length - 1 || index == selectedIndex;
-      if (!showLabel) continue;
-      final label = TextPainter(
-        text: TextSpan(
-          text: '${points[index].month.month}月',
-          style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant),
-        ),
-        textDirection: TextDirection.ltr,
-        maxLines: 1,
-      )..layout(maxWidth: 34);
-      final labelX = (center.dx - label.width / 2).clamp(
-        0.0,
-        size.width - label.width,
-      );
-      label.paint(canvas, Offset(labelX, size.height - label.height));
+        final showLabel =
+            index.isEven ||
+            index == points.length - 1 ||
+            index == selectedIndex;
+        if (!showLabel) continue;
+        labelPainter
+          ..text = TextSpan(
+            text: '${points[index].month.month}月',
+            style: labelStyle,
+          )
+          ..layout(maxWidth: 34);
+        final labelX = (center.dx - labelPainter.width / 2).clamp(
+          0.0,
+          size.width - labelPainter.width,
+        );
+        labelPainter.paint(
+          canvas,
+          Offset(labelX, size.height - labelPainter.height),
+        );
+      }
+    } finally {
+      labelPainter.dispose();
     }
   }
 
@@ -5605,17 +5616,26 @@ class FinanceDonutPainter extends CustomPainter {
   final int total;
   final String? selectedCategoryUuid;
   final double sweepProgress;
+  final Animation<double>? sweepAnimation;
   final Color emptyColor;
   final bool isDark;
+
+  static final Paint _emptyPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..isAntiAlias = true;
+  static final Paint _slicePaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..isAntiAlias = true;
 
   const FinanceDonutPainter({
     required this.slices,
     required this.total,
     required this.selectedCategoryUuid,
     required this.sweepProgress,
+    this.sweepAnimation,
     required this.emptyColor,
     required this.isDark,
-  });
+  }) : super(repaint: sweepAnimation);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -5626,16 +5646,15 @@ class FinanceDonutPainter extends CustomPainter {
     final selectedStrokeWidth = isLarge ? 26.0 : 20.0;
 
     if (total <= 0 || slices.isEmpty) {
-      final emptyPaint = Paint()
-        ..style = PaintingStyle.stroke
+      _emptyPaint
         ..strokeWidth = normalStrokeWidth
-        ..color = emptyColor.withValues(alpha: isDark ? 0.25 : 0.16)
-        ..isAntiAlias = true;
-      canvas.drawCircle(center, baseRadius, emptyPaint);
+        ..color = emptyColor.withValues(alpha: isDark ? 0.25 : 0.16);
+      canvas.drawCircle(center, baseRadius, _emptyPaint);
       return;
     }
 
-    final maxSweepAngle = 2 * math.pi * sweepProgress.clamp(0.0, 1.0);
+    final effectiveSweepProgress = sweepAnimation?.value ?? sweepProgress;
+    final maxSweepAngle = 2 * math.pi * effectiveSweepProgress.clamp(0.0, 1.0);
     var currentAngle = -math.pi / 2;
 
     if (slices.length == 1) {
@@ -5643,20 +5662,19 @@ class FinanceDonutPainter extends CustomPainter {
       final isSelected =
           selectedCategoryUuid != null &&
           selectedCategoryUuid == slice.categoryUuid;
-      final paint = Paint()
-        ..style = PaintingStyle.stroke
+      _slicePaint
         ..strokeCap = StrokeCap.butt
         ..strokeWidth = isSelected ? selectedStrokeWidth : normalStrokeWidth
-        ..color = slice.color
-        ..isAntiAlias = true;
+        ..color = slice.color;
       final rect = Rect.fromCircle(
         center: center,
         radius: isSelected ? baseRadius + 3.0 : baseRadius,
       );
-      canvas.drawArc(rect, currentAngle, maxSweepAngle, false, paint);
+      canvas.drawArc(rect, currentAngle, maxSweepAngle, false, _slicePaint);
       return;
     }
 
+    _slicePaint.strokeCap = StrokeCap.round;
     for (final slice in slices) {
       if (currentAngle >= -math.pi / 2 + maxSweepAngle) break;
 
@@ -5691,12 +5709,9 @@ class FinanceDonutPainter extends CustomPainter {
           : baseRadius;
       final strokeWidth = isSelected ? selectedStrokeWidth : normalStrokeWidth;
 
-      final paint = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
+      _slicePaint
         ..strokeWidth = strokeWidth
-        ..color = sliceColor
-        ..isAntiAlias = true;
+        ..color = sliceColor;
 
       final rect = Rect.fromCircle(center: center, radius: radius);
       canvas.drawArc(
@@ -5704,7 +5719,7 @@ class FinanceDonutPainter extends CustomPainter {
         currentAngle + effectiveGap / 2,
         sweepToDraw,
         false,
-        paint,
+        _slicePaint,
       );
 
       currentAngle += sliceFullSweep;
@@ -5716,6 +5731,7 @@ class FinanceDonutPainter extends CustomPainter {
     if (oldDelegate.total != total ||
         oldDelegate.selectedCategoryUuid != selectedCategoryUuid ||
         oldDelegate.sweepProgress != sweepProgress ||
+        oldDelegate.sweepAnimation != sweepAnimation ||
         oldDelegate.isDark != isDark ||
         oldDelegate.emptyColor != emptyColor ||
         oldDelegate.slices.length != slices.length) {

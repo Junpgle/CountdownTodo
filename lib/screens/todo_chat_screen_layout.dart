@@ -714,12 +714,55 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
 
   void _showHistorySidebar() {
     final historyPanelTopMargin = floatingGlassTopBarHeight(context) + 20;
+    final panelWidth = MediaQuery.sizeOf(context).width * 0.75;
+    final panelHeight = MediaQuery.sizeOf(context).height;
+    final surfaceColor = Theme.of(context).colorScheme.surface;
     showAppGeneralDialog(
       context: context,
       barrierDismissible: true,
       barrierLabel: '关闭',
       transitionDuration: const Duration(milliseconds: 250),
-      pageBuilder: (ctx, anim1, anim2) => const SizedBox.shrink(),
+      pageBuilder: (ctx, anim1, anim2) {
+        final sidebarContent = _buildHistorySidebarContent(
+          ctx,
+          isWideMode: false,
+        );
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            color: Colors.transparent,
+            child: OptionalLiquidGlassPanel(
+              width: panelWidth,
+              height: panelHeight,
+              margin: EdgeInsets.only(top: historyPanelTopMargin),
+              borderRadius: 16,
+              highContrast: true,
+              tint: surfaceColor,
+              fallback: Container(
+                width: panelWidth,
+                height: panelHeight,
+                margin: EdgeInsets.only(top: historyPanelTopMargin),
+                decoration: BoxDecoration(
+                  color: surfaceColor,
+                  borderRadius: const BorderRadius.only(
+                    topRight: Radius.circular(16),
+                    bottomRight: Radius.circular(16),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.15),
+                      blurRadius: 16,
+                      offset: const Offset(4, 0),
+                    ),
+                  ],
+                ),
+                child: sidebarContent,
+              ),
+              child: sidebarContent,
+            ),
+          ),
+        );
+      },
       transitionBuilder: (ctx, anim1, anim2, child) {
         return Stack(
           children: [
@@ -728,45 +771,11 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
               dismissible: true,
             ),
             SlideTransition(
-              position:
-                  Tween<Offset>(
-                    begin: const Offset(-1, 0),
-                    end: Offset.zero,
-                  ).animate(
-                    CurvedAnimation(parent: anim1, curve: Curves.easeOutCubic),
-                  ),
-              child: Material(
-                color: Colors.transparent,
-                child: OptionalLiquidGlassPanel(
-                  width: MediaQuery.sizeOf(context).width * 0.75,
-                  height: MediaQuery.sizeOf(context).height,
-                  margin: EdgeInsets.only(top: historyPanelTopMargin),
-                  borderRadius: 16,
-                  highContrast: true,
-                  tint: Theme.of(context).colorScheme.surface,
-                  fallback: Container(
-                    width: MediaQuery.sizeOf(context).width * 0.75,
-                    height: MediaQuery.sizeOf(context).height,
-                    margin: EdgeInsets.only(top: historyPanelTopMargin),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface,
-                      borderRadius: const BorderRadius.only(
-                        topRight: Radius.circular(16),
-                        bottomRight: Radius.circular(16),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.15),
-                          blurRadius: 16,
-                          offset: const Offset(4, 0),
-                        ),
-                      ],
-                    ),
-                    child: _buildHistorySidebarContent(ctx, isWideMode: false),
-                  ),
-                  child: _buildHistorySidebarContent(ctx, isWideMode: false),
-                ),
-              ),
+              position: Tween<Offset>(
+                begin: const Offset(-1, 0),
+                end: Offset.zero,
+              ).animate(anim1.drive(CurveTween(curve: Curves.easeOutCubic))),
+              child: child,
             ),
           ],
         );

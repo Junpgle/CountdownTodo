@@ -194,14 +194,23 @@ class _HabitStampBadgeState extends State<HabitStampBadge>
         animation: _controller,
         child: stampBody,
         builder: (context, child) {
-          final shockwaveProgress = (_controller.value - 0.45) / 0.55;
-          final shockwaveAlpha =
-              (1.0 - shockwaveProgress).clamp(0.0, 1.0) * 0.45 * widget.opacity;
-
           final badgeOpacity = (_opacityAnimation.value * widget.opacity).clamp(
             0.0,
             1.0,
           );
+
+          if (_controller.value >= 0.999) {
+            final settled = badgeOpacity >= 0.999
+                ? child!
+                : Opacity(opacity: badgeOpacity, child: child);
+            return widget.angle.abs() <= 0.0001
+                ? settled
+                : Transform.rotate(angle: widget.angle, child: settled);
+          }
+
+          final shockwaveProgress = (_controller.value - 0.45) / 0.55;
+          final shockwaveAlpha =
+              (1.0 - shockwaveProgress).clamp(0.0, 1.0) * 0.45 * widget.opacity;
 
           return Transform.rotate(
             angle: widget.angle,

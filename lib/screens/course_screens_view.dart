@@ -699,41 +699,58 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                                               duration: const Duration(
                                                 milliseconds: 400,
                                               ),
-                                              transitionBuilder:
-                                                  (child, animation) {
-                                                    return Transform.translate(
-                                                      offset: Offset(
-                                                        _dragOffset *
-                                                            (1.0 -
-                                                                animation
-                                                                    .value),
-                                                        0,
+                                              transitionBuilder: (child, animation) {
+                                                final slidePosition =
+                                                    Tween<Offset>(
+                                                      begin: Offset(
+                                                        _isNextSlide
+                                                            ? 1.0
+                                                            : -1.0,
+                                                        0.0,
                                                       ),
-                                                      child: SlideTransition(
-                                                        position:
-                                                            Tween<Offset>(
-                                                              begin: Offset(
-                                                                _isNextSlide
-                                                                    ? 1.0
-                                                                    : -1.0,
-                                                                0.0,
-                                                              ),
-                                                              end: Offset.zero,
-                                                            ).animate(
-                                                              CurvedAnimation(
-                                                                parent:
-                                                                    animation,
-                                                                curve: Curves
-                                                                    .easeOutCubic,
-                                                              ),
-                                                            ),
-                                                        child: FadeTransition(
-                                                          opacity: animation,
-                                                          child: child,
+                                                      end: Offset.zero,
+                                                    ).animate(
+                                                      animation.drive(
+                                                        CurveTween(
+                                                          curve: Curves
+                                                              .easeOutCubic,
                                                         ),
                                                       ),
                                                     );
+                                                return AnimatedBuilder(
+                                                  animation: animation,
+                                                  child: child,
+                                                  builder: (context, child) {
+                                                    if (animation.value >=
+                                                        0.999) {
+                                                      return child!;
+                                                    }
+                                                    Widget current =
+                                                        SlideTransition(
+                                                          position:
+                                                              slidePosition,
+                                                          child: FadeTransition(
+                                                            opacity: animation,
+                                                            child: child,
+                                                          ),
+                                                        );
+                                                    final dx =
+                                                        _dragOffset *
+                                                        (1.0 - animation.value);
+                                                    if (dx.abs() > 0.01) {
+                                                      current =
+                                                          Transform.translate(
+                                                            offset: Offset(
+                                                              dx,
+                                                              0,
+                                                            ),
+                                                            child: current,
+                                                          );
+                                                    }
+                                                    return current;
                                                   },
+                                                );
+                                              },
                                               child: RepaintBoundary(
                                                 key: ValueKey(
                                                   'WeekView_${_currentWeek}_$_weekViewGeneration',

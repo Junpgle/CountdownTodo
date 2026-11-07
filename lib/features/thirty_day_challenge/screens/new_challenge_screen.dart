@@ -27,6 +27,7 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _tasksController = TextEditingController();
+  String _lastTasksText = '';
   bool _isImporting = false;
 
   List<String> get _taskTitles =>
@@ -40,6 +41,7 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
       _titleController.text = initialDraft.title;
       _tasksController.text = initialDraft.taskTitles.join('\n');
     }
+    _lastTasksText = _tasksController.text;
     _tasksController.addListener(_refreshPreview);
   }
 
@@ -52,7 +54,12 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
     super.dispose();
   }
 
-  void _refreshPreview() => setState(() {});
+  void _refreshPreview() {
+    final text = _tasksController.text;
+    if (text == _lastTasksText) return;
+    _lastTasksText = text;
+    setState(() {});
+  }
 
   void _applyDraft(ChallengeDraft draft) {
     _titleController.text = draft.title;

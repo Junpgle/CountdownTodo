@@ -307,6 +307,32 @@ class _AppBoardScreenState extends State<AppBoardScreen>
     );
   }
 
+  static const LinearGradient _titleGradient = LinearGradient(
+    colors: [Colors.white, Colors.white38],
+  );
+  static Rect? _cachedDesktopTitleBounds;
+  static Shader? _cachedDesktopTitleShader;
+  static Rect? _cachedMobileTitleBounds;
+  static Shader? _cachedMobileTitleShader;
+
+  static Shader _resolveDesktopTitleShader(Rect bounds) {
+    if (_cachedDesktopTitleBounds == bounds &&
+        _cachedDesktopTitleShader != null) {
+      return _cachedDesktopTitleShader!;
+    }
+    _cachedDesktopTitleBounds = bounds;
+    return _cachedDesktopTitleShader = _titleGradient.createShader(bounds);
+  }
+
+  static Shader _resolveMobileTitleShader(Rect bounds) {
+    if (_cachedMobileTitleBounds == bounds &&
+        _cachedMobileTitleShader != null) {
+      return _cachedMobileTitleShader!;
+    }
+    _cachedMobileTitleBounds = bounds;
+    return _cachedMobileTitleShader = _titleGradient.createShader(bounds);
+  }
+
   Widget _buildHeader(bool isDesktop) {
     final onBack = widget.onBack ?? () => Navigator.of(context).pop();
     return Container(
@@ -358,9 +384,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
           // Title
           if (isDesktop)
             ShaderMask(
-              shaderCallback: (bounds) =>
-                  const LinearGradient(colors: [Colors.white, Colors.white38])
-                      .createShader(bounds),
+              shaderCallback: _resolveDesktopTitleShader,
               child: const Text(
                 '看板',
                 style: TextStyle(
@@ -375,9 +399,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
             Expanded(
               child: Center(
                 child: ShaderMask(
-                  shaderCallback: (bounds) => const LinearGradient(
-                    colors: [Colors.white, Colors.white38],
-                  ).createShader(bounds),
+                  shaderCallback: _resolveMobileTitleShader,
                   child: const Text(
                     '看板',
                     style: TextStyle(
@@ -1152,20 +1174,21 @@ class _GanttDayGridPainter extends CustomPainter {
   static final Paint _paint = Paint()
     ..strokeWidth = 1
     ..style = PaintingStyle.stroke;
+  static final Path _gridPath = Path();
 
   @override
   void paint(Canvas canvas, Size size) {
     if (dayCount <= 0 || size.height <= 0) return;
 
-    final grid = Path();
+    _gridPath.reset();
     for (var day = 1; day <= dayCount; day++) {
       final x = day * dayWidth - 0.5;
-      grid
+      _gridPath
         ..moveTo(x, 0)
         ..lineTo(x, size.height);
     }
     _paint.color = color;
-    canvas.drawPath(grid, _paint);
+    canvas.drawPath(_gridPath, _paint);
   }
 
   @override

@@ -18,6 +18,10 @@ class _StaggeredFadeSlide extends StatelessWidget {
             : ((value * (360 + delay.inMilliseconds) - delay.inMilliseconds) /
                       360)
                   .clamp(0.0, 1.0);
+        if (delayedValue >= 0.999) return child!;
+        if (delayedValue <= 0.001) {
+          return Opacity(opacity: 0.0, child: child);
+        }
         return Opacity(
           opacity: delayedValue,
           child: Transform.translate(
