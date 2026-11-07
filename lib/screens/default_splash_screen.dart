@@ -27,10 +27,7 @@ class _DefaultSplashScreenState extends State<DefaultSplashScreen>
       vsync: this,
       duration: const Duration(milliseconds: 150),
     );
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
+    _fadeAnimation = _controller.drive(CurveTween(curve: Curves.easeIn));
 
     _controller.forward();
 
@@ -64,16 +61,14 @@ class _DefaultSplashScreenState extends State<DefaultSplashScreen>
         child: Stack(
           fit: StackFit.expand,
           children: [
-            FadeTransition(
+            Image.asset(
+              assetName,
+              width: size.width,
+              height: size.height,
+              cacheWidth: (size.width * pixelRatio).round().clamp(1, 4096),
+              cacheHeight: (size.height * pixelRatio).round().clamp(1, 4096),
+              fit: BoxFit.cover,
               opacity: _fadeAnimation,
-              child: Image.asset(
-                assetName,
-                width: size.width,
-                height: size.height,
-                cacheWidth: (size.width * pixelRatio).round().clamp(1, 4096),
-                cacheHeight: (size.height * pixelRatio).round().clamp(1, 4096),
-                fit: BoxFit.cover,
-              ),
             ),
             Positioned(
               top: 48,

@@ -38,10 +38,7 @@ class _SplashScreenState extends State<SplashScreen>
       vsync: this,
       duration: const Duration(milliseconds: 200),
     );
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
+    _fadeAnimation = _controller.drive(CurveTween(curve: Curves.easeIn));
 
     _controller.forward();
 
@@ -151,18 +148,16 @@ class _SplashScreenState extends State<SplashScreen>
           left: 0,
           right: 0,
           height: size.height * 0.3,
-          child: FadeTransition(
-            opacity: _fadeAnimation,
-            child: ClipRect(
-              child: Image.asset(
-                'assets/splash/default.webp',
-                width: size.width,
-                height: size.height,
-                cacheWidth: (size.width * pixelRatio).round().clamp(1, 4096),
-                cacheHeight: (size.height * pixelRatio).round().clamp(1, 4096),
-                fit: BoxFit.cover,
-                alignment: Alignment.bottomCenter,
-              ),
+          child: ClipRect(
+            child: Image.asset(
+              'assets/splash/default.webp',
+              width: size.width,
+              height: size.height,
+              cacheWidth: (size.width * pixelRatio).round().clamp(1, 4096),
+              cacheHeight: (size.height * pixelRatio).round().clamp(1, 4096),
+              fit: BoxFit.cover,
+              alignment: Alignment.bottomCenter,
+              opacity: _fadeAnimation,
             ),
           ),
         ),
@@ -196,18 +191,16 @@ class _SplashScreenState extends State<SplashScreen>
           bottom: 0,
           right: 0,
           width: size.width * 0.4,
-          child: FadeTransition(
-            opacity: _fadeAnimation,
-            child: ClipRect(
-              child: Image.asset(
-                'assets/splash/default_pad.webp',
-                width: size.width,
-                height: size.height,
-                cacheWidth: (size.width * pixelRatio).round().clamp(1, 4096),
-                cacheHeight: (size.height * pixelRatio).round().clamp(1, 4096),
-                fit: BoxFit.cover,
-                alignment: Alignment.centerRight,
-              ),
+          child: ClipRect(
+            child: Image.asset(
+              'assets/splash/default_pad.webp',
+              width: size.width,
+              height: size.height,
+              cacheWidth: (size.width * pixelRatio).round().clamp(1, 4096),
+              cacheHeight: (size.height * pixelRatio).round().clamp(1, 4096),
+              fit: BoxFit.cover,
+              alignment: Alignment.centerRight,
+              opacity: _fadeAnimation,
             ),
           ),
         ),
