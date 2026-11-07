@@ -3209,6 +3209,25 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
               : ListView.builder(
                   controller: widget.scrollController,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
+                  findChildIndexCallback: (Key key) {
+                    if (key is ValueKey<String>) {
+                      final keyVal = key.value;
+                      if (keyVal.startsWith('team-req-')) {
+                        final id = keyVal.substring('team-req-'.length);
+                        final idx = _requests.indexWhere(
+                          (r) => '${r['id'] ?? r['user_id']}' == id,
+                        );
+                        if (idx != -1) return idx + 1;
+                      } else if (keyVal.startsWith('team-mem-')) {
+                        final id = keyVal.substring('team-mem-'.length);
+                        final idx = _members.indexWhere(
+                          (m) => '${m['id'] ?? m['user_id']}' == id,
+                        );
+                        if (idx != -1) return idx + memberStartIndex;
+                      }
+                    }
+                    return null;
+                  },
                   itemCount: listItemCount,
                   itemBuilder: (context, index) {
                     if (hasRequests) {
@@ -3228,8 +3247,12 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
                         );
                       }
                       if (index <= requestCount) {
+                        final req = _requests[index - 1];
                         return RepaintBoundary(
-                          child: _buildRequestItem(_requests[index - 1]),
+                          key: ValueKey<String>(
+                            'team-req-${req['id'] ?? req['user_id']}',
+                          ),
+                          child: _buildRequestItem(req),
                         );
                       }
                       if (index == requestCount + 1) {
@@ -3254,8 +3277,12 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
                     }
                     final memberIndex = index - memberStartIndex;
                     if (memberIndex < _members.length) {
+                      final mem = _members[memberIndex];
                       return RepaintBoundary(
-                        child: _buildMemberItem(_members[memberIndex]),
+                        key: ValueKey<String>(
+                          'team-mem-${mem['id'] ?? mem['user_id']}',
+                        ),
+                        child: _buildMemberItem(mem),
                       );
                     }
                     return const SizedBox(height: 40);

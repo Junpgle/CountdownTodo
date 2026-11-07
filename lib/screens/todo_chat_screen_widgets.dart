@@ -656,11 +656,13 @@ class _DanmakuSuggestionsState extends State<_DanmakuSuggestions>
         physics: const NeverScrollableScrollPhysics(),
         itemCount: items.length,
         itemBuilder: (context, index) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: _DanmakuItem(
-              text: items[index],
-              onTap: () => widget.onTap(items[index]),
+          return RepaintBoundary(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: _DanmakuItem(
+                text: items[index],
+                onTap: () => widget.onTap(items[index]),
+              ),
             ),
           );
         },

@@ -2008,107 +2008,109 @@ class _WeekViewState extends State<_WeekView>
     );
   }
 
-  Widget _buildTagSidebar(BuildContext ctx, Map<String, int> minutesByTag) =>
-      SizedBox(
-        width: 160,
-        child: OptionalLiquidGlassSheet(
-          fallbackDecoration: BoxDecoration(
-            color: _TC.card(ctx),
-            border: Border(left: BorderSide(color: _TC.divider(ctx))),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 14, 12, 8),
-                child: Text(
-                  '本周标签',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: _TC.textHint(ctx),
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.5,
-                  ),
-                ),
+  Widget _buildTagSidebar(
+    BuildContext ctx,
+    Map<String, int> minutesByTag,
+  ) => SizedBox(
+    width: 160,
+    child: OptionalLiquidGlassSheet(
+      fallbackDecoration: BoxDecoration(
+        color: _TC.card(ctx),
+        border: Border(left: BorderSide(color: _TC.divider(ctx))),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 14, 12, 8),
+            child: Text(
+              '本周标签',
+              style: TextStyle(
+                fontSize: 10,
+                color: _TC.textHint(ctx),
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.5,
               ),
-              Expanded(
-                child: ListView.builder(
-                  findChildIndexCallback: (Key key) {
-                    if (key is ValueKey<String>) {
-                      final uuid = key.value;
-                      final index = widget.tags.indexWhere(
-                        (t) => t.uuid == uuid,
-                      );
-                      return index != -1 ? index : null;
-                    }
-                    return null;
-                  },
-                  itemCount: widget.tags.length,
-                  itemBuilder: (context, index) {
-                    final t = widget.tags[index];
-                    final tw = minutesByTag[t.uuid] ?? 0;
-                    final c = hexColor(t.color);
-                    return GestureDetector(
-                      key: ValueKey<String>(t.uuid),
-                      onTap: () => widget.onTagTap(t),
-                      child: Container(
-                        margin: const EdgeInsets.fromLTRB(8, 0, 8, 6),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: c.withValues(alpha: 0.07),
-                          border: Border.all(color: c.withValues(alpha: 0.25)),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: c,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    t.name,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: c,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  Text(
-                                    '${(tw / 60).toStringAsFixed(1)}h',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: _TC.text(ctx),
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              findChildIndexCallback: (Key key) {
+                if (key is ValueKey<String>) {
+                  final uuid = key.value;
+                  final index = widget.tags.indexWhere((t) => t.uuid == uuid);
+                  return index != -1 ? index : null;
+                }
+                return null;
+              },
+              itemCount: widget.tags.length,
+              itemBuilder: (context, index) {
+                final t = widget.tags[index];
+                final tw = minutesByTag[t.uuid] ?? 0;
+                final c = hexColor(t.color);
+                return RepaintBoundary(
+                  key: ValueKey<String>(t.uuid),
+                  child: GestureDetector(
+                    onTap: () => widget.onTagTap(t),
+                    child: Container(
+                      margin: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
                       ),
-                    );
-                  },
-                  padding: const EdgeInsets.only(bottom: 8),
-                ),
-              ),
-            ],
+                      decoration: BoxDecoration(
+                        color: c.withValues(alpha: 0.07),
+                        border: Border.all(color: c.withValues(alpha: 0.25)),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: c,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  t.name,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: c,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  '${(tw / 60).toStringAsFixed(1)}h',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: _TC.text(ctx),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+              padding: const EdgeInsets.only(bottom: 8),
+            ),
           ),
-        ),
-      );
+        ],
+      ),
+    ),
+  );
 
   Widget _buildTagChips(BuildContext ctx, Map<String, int> minutesByTag) =>
       Container(
@@ -2130,42 +2132,44 @@ class _WeekViewState extends State<_WeekView>
             final t = widget.tags[index];
             final tw = minutesByTag[t.uuid] ?? 0;
             final c = hexColor(t.color);
-            return GestureDetector(
+            return RepaintBoundary(
               key: ValueKey<String>(t.uuid),
-              onTap: () => widget.onTagTap(t),
-              child: Container(
-                margin: const EdgeInsets.only(right: 8),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: c.withValues(alpha: 0.08),
-                  border: Border.all(color: c.withValues(alpha: 0.3)),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      t.name,
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: c,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.8,
+              child: GestureDetector(
+                onTap: () => widget.onTagTap(t),
+                child: Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: c.withValues(alpha: 0.08),
+                    border: Border.all(color: c.withValues(alpha: 0.3)),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        t.name,
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: c,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.8,
+                        ),
                       ),
-                    ),
-                    Text(
-                      '${(tw / 60).toStringAsFixed(1)}h',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: _TC.text(ctx),
-                        fontWeight: FontWeight.w700,
+                      Text(
+                        '${(tw / 60).toStringAsFixed(1)}h',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: _TC.text(ctx),
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             );

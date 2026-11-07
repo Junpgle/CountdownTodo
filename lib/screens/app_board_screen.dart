@@ -954,130 +954,134 @@ class TodayHourlyTimeline extends StatelessWidget {
         final hCourses = coursesByHour[hour] ?? const <CourseItem>[];
         final hTasks = tasksByHour[hour] ?? const <TodoItem>[];
 
-        return Container(
-          height: itemHeight ?? 60,
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(color: Colors.white.withValues(alpha: 0.02)),
-            ),
-            color: isCurrent
-                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.05)
-                : null,
-          ),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 30,
-                child: Text(
-                  hour.toString().padLeft(2, '0'),
-                  style: TextStyle(
-                    color: isCurrent
-                        ? Theme.of(context).colorScheme.secondary
-                        : Colors.white.withValues(alpha: 0.1),
-                    fontSize: 9,
-                    fontWeight: FontWeight.w900,
-                    fontFeatures: [const FontFeature.tabularFigures()],
-                  ),
-                  textAlign: TextAlign.right,
-                ),
+        return RepaintBoundary(
+          key: ValueKey<int>(hour),
+          child: Container(
+            height: itemHeight ?? 60,
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: Colors.white.withValues(alpha: 0.02)),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      ...hCourses.map(
-                        (c) => Container(
-                          margin: const EdgeInsets.only(right: 4),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 4,
-                            vertical: 1,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.indigo.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                              color: Colors.indigo.withValues(alpha: 0.1),
-                            ),
-                          ),
-                          child: Text(
-                            c.courseName,
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 8,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                      ...hTasks.map(
-                        (t) => GestureDetector(
-                          onTap: () => onTaskClick(t),
-                          child: Container(
+              color: isCurrent
+                  ? Theme.of(context).colorScheme.primary
+                        .withValues(alpha: 0.05)
+                  : null,
+            ),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 30,
+                  child: Text(
+                    hour.toString().padLeft(2, '0'),
+                    style: TextStyle(
+                      color: isCurrent
+                          ? Theme.of(context).colorScheme.secondary
+                          : Colors.white.withValues(alpha: 0.1),
+                      fontSize: 9,
+                      fontWeight: FontWeight.w900,
+                      fontFeatures: [const FontFeature.tabularFigures()],
+                    ),
+                    textAlign: TextAlign.right,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        ...hCourses.map(
+                          (c) => Container(
                             margin: const EdgeInsets.only(right: 4),
                             padding: const EdgeInsets.symmetric(
                               horizontal: 4,
                               vertical: 1,
                             ),
                             decoration: BoxDecoration(
-                              color:
-                                  (t.isDone
-                                          ? emerald
-                                          : Theme.of(context)
-                                                .colorScheme
-                                                .primary)
-                                      .withValues(alpha: 0.2),
+                              color: Colors.indigo.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(4),
                               border: Border.all(
+                                color: Colors.indigo.withValues(alpha: 0.1),
+                              ),
+                            ),
+                            child: Text(
+                              c.courseName,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 8,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                        ...hTasks.map(
+                          (t) => GestureDetector(
+                            onTap: () => onTaskClick(t),
+                            child: Container(
+                              margin: const EdgeInsets.only(right: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 1,
+                              ),
+                              decoration: BoxDecoration(
                                 color:
                                     (t.isDone
                                             ? emerald
                                             : Theme.of(context)
                                                   .colorScheme
                                                   .primary)
-                                        .withValues(alpha: 0.1),
+                                        .withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(
+                                  color:
+                                      (t.isDone
+                                              ? emerald
+                                              : Theme.of(context)
+                                                    .colorScheme
+                                                    .primary)
+                                          .withValues(alpha: 0.1),
+                                ),
                               ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 3,
-                                  height: 3,
-                                  decoration: BoxDecoration(
-                                    color: t.isDone
-                                        ? emeraldAccent
-                                        : Theme.of(context)
-                                              .colorScheme
-                                              .secondary,
-                                    shape: BoxShape.circle,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 3,
+                                    height: 3,
+                                    decoration: BoxDecoration(
+                                      color: t.isDone
+                                          ? emeraldAccent
+                                          : Theme.of(context)
+                                                .colorScheme
+                                                .secondary,
+                                      shape: BoxShape.circle,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(width: 2),
-                                Text(
-                                  t.title,
-                                  style: TextStyle(
-                                    color: t.isDone
-                                        ? Colors.white30
-                                        : Colors.white,
-                                    fontSize: 8,
-                                    fontWeight: FontWeight.bold,
-                                    decoration: t.isDone
-                                        ? TextDecoration.lineThrough
-                                        : null,
+                                  const SizedBox(width: 2),
+                                  Text(
+                                    t.title,
+                                    style: TextStyle(
+                                      color: t.isDone
+                                          ? Colors.white30
+                                          : Colors.white,
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.bold,
+                                      decoration: t.isDone
+                                          ? TextDecoration.lineThrough
+                                          : null,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },

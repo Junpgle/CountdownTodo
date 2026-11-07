@@ -477,61 +477,63 @@ class _BatchTagPageState extends State<BatchTagPage>
             fallback: Colors.grey,
           );
           final isSelected = _targetTagUuids.contains(tag.uuid);
-          return Padding(
+          return RepaintBoundary(
             key: ValueKey<String>(tag.uuid),
-            padding: const EdgeInsets.only(right: 8),
-            child: GestureDetector(
-              onTap: () {
-                setState(() {
-                  if (isSelected) {
-                    _targetTagUuids.remove(tag.uuid);
-                  } else {
-                    _targetTagUuids.add(tag.uuid);
-                  }
-                });
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? color.withValues(alpha: 0.2)
-                      : color.withValues(alpha: 0.05),
-                  border: Border.all(
-                    color: isSelected ? color : color.withValues(alpha: 0.3),
-                    width: isSelected ? 2 : 1,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: GestureDetector(
+                onTap: () {
+                  setState(() {
+                    if (isSelected) {
+                      _targetTagUuids.remove(tag.uuid);
+                    } else {
+                      _targetTagUuids.add(tag.uuid);
+                    }
+                  });
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
                   ),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (isSelected)
-                      Icon(Icons.check, size: 14, color: color)
-                    else
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? color.withValues(alpha: 0.2)
+                        : color.withValues(alpha: 0.05),
+                    border: Border.all(
+                      color: isSelected ? color : color.withValues(alpha: 0.3),
+                      width: isSelected ? 2 : 1,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (isSelected)
+                        Icon(Icons.check, size: 14, color: color)
+                      else
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: color,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      const SizedBox(width: 6),
+                      Text(
+                        tag.name,
+                        style: TextStyle(
+                          fontSize: 12,
                           color: color,
-                          shape: BoxShape.circle,
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.normal,
                         ),
                       ),
-                    const SizedBox(width: 6),
-                    Text(
-                      tag.name,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: color,
-                        fontWeight: isSelected
-                            ? FontWeight.bold
-                            : FontWeight.normal,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -582,35 +584,40 @@ class _BatchTagPageState extends State<BatchTagPage>
                       : startTime.add(Duration(seconds: pom.effectiveDuration));
                   final duration = pom.effectiveDuration ~/ 60;
 
-                  return ListTile(
+                  return RepaintBoundary(
                     key: ValueKey<String>(pom.uuid),
-                    leading: Checkbox(
-                      value: isSelected,
-                      onChanged: (v) {
-                        setState(() {
-                          if (v == true) {
-                            _selectedPomodoros.add(pom.uuid);
-                          } else {
-                            _selectedPomodoros.remove(pom.uuid);
-                          }
-                        });
-                      },
+                    child: ListTile(
+                      leading: Checkbox(
+                        value: isSelected,
+                        onChanged: (v) {
+                          setState(() {
+                            if (v == true) {
+                              _selectedPomodoros.add(pom.uuid);
+                            } else {
+                              _selectedPomodoros.remove(pom.uuid);
+                            }
+                          });
+                        },
+                      ),
+                      title: Text(
+                        pom.todoTitle ?? '番茄钟',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        '${startDateFormat.format(startTime)} → ${endTimeFormat.format(endTime)}  ${duration}min',
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                      trailing: pom.tagUuids.isNotEmpty
+                          ? _buildTagChips(pom.tagUuids)
+                          : const Text(
+                              '无标签',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey,
+                              ),
+                            ),
                     ),
-                    title: Text(
-                      pom.todoTitle ?? '番茄钟',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: Text(
-                      '${startDateFormat.format(startTime)} → ${endTimeFormat.format(endTime)}  ${duration}min',
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                    trailing: pom.tagUuids.isNotEmpty
-                        ? _buildTagChips(pom.tagUuids)
-                        : const Text(
-                            '无标签',
-                            style: TextStyle(fontSize: 11, color: Colors.grey),
-                          ),
                   );
                 },
               );
@@ -662,35 +669,40 @@ class _BatchTagPageState extends State<BatchTagPage>
                   );
                   final duration = (log.endTime - log.startTime) ~/ 60000;
 
-                  return ListTile(
+                  return RepaintBoundary(
                     key: ValueKey<String>(log.id),
-                    leading: Checkbox(
-                      value: isSelected,
-                      onChanged: (v) {
-                        setState(() {
-                          if (v == true) {
-                            _selectedTimeLogs.add(log.id);
-                          } else {
-                            _selectedTimeLogs.remove(log.id);
-                          }
-                        });
-                      },
+                    child: ListTile(
+                      leading: Checkbox(
+                        value: isSelected,
+                        onChanged: (v) {
+                          setState(() {
+                            if (v == true) {
+                              _selectedTimeLogs.add(log.id);
+                            } else {
+                              _selectedTimeLogs.remove(log.id);
+                            }
+                          });
+                        },
+                      ),
+                      title: Text(
+                        log.title.isNotEmpty ? log.title : '时间日志',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        '${startDateFormat.format(startTime)} → ${endTimeFormat.format(endTime)}  ${duration}min',
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                      trailing: log.tagUuids.isNotEmpty
+                          ? _buildTagChips(log.tagUuids)
+                          : const Text(
+                              '无标签',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey,
+                              ),
+                            ),
                     ),
-                    title: Text(
-                      log.title.isNotEmpty ? log.title : '时间日志',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: Text(
-                      '${startDateFormat.format(startTime)} → ${endTimeFormat.format(endTime)}  ${duration}min',
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                    trailing: log.tagUuids.isNotEmpty
-                        ? _buildTagChips(log.tagUuids)
-                        : const Text(
-                            '无标签',
-                            style: TextStyle(fontSize: 11, color: Colors.grey),
-                          ),
                   );
                 },
               );
