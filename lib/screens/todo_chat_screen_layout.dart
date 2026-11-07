@@ -215,13 +215,22 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                           switchInCurve: Curves.easeOutCubic,
                           switchOutCurve: Curves.easeInCubic,
                           transitionBuilder: (child, animation) =>
-                              SizeTransition(
-                                sizeFactor: animation,
-                                alignment: AlignmentDirectional.bottomStart,
-                                child: FadeTransition(
-                                  opacity: animation,
-                                  child: child,
-                                ),
+                              AnimatedBuilder(
+                                animation: animation,
+                                child: child,
+                                builder: (context, child) {
+                                  if (animation.value >= 0.999) {
+                                    return child!;
+                                  }
+                                  return SizeTransition(
+                                    sizeFactor: animation,
+                                    alignment: AlignmentDirectional.bottomStart,
+                                    child: FadeTransition(
+                                      opacity: animation,
+                                      child: child,
+                                    ),
+                                  );
+                                },
                               ),
                           child:
                               _suggestions.isNotEmpty &&
@@ -502,10 +511,19 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
           duration: const Duration(milliseconds: 260),
           switchInCurve: Curves.easeOutCubic,
           switchOutCurve: Curves.easeInCubic,
-          transitionBuilder: (child, animation) => SizeTransition(
-            sizeFactor: animation,
-            alignment: AlignmentDirectional.bottomStart,
-            child: FadeTransition(opacity: animation, child: child),
+          transitionBuilder: (child, animation) => AnimatedBuilder(
+            animation: animation,
+            child: child,
+            builder: (context, child) {
+              if (animation.value >= 0.999) {
+                return child!;
+              }
+              return SizeTransition(
+                sizeFactor: animation,
+                alignment: AlignmentDirectional.bottomStart,
+                child: FadeTransition(opacity: animation, child: child),
+              );
+            },
           ),
           child:
               _suggestions.isNotEmpty &&
@@ -764,18 +782,25 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
         );
       },
       transitionBuilder: (ctx, anim1, anim2, child) {
+        final slidePosition = Tween<Offset>(
+          begin: const Offset(-1, 0),
+          end: Offset.zero,
+        ).animate(anim1.drive(CurveTween(curve: Curves.easeOutCubic)));
         return Stack(
           children: [
             ModalBarrier(
               color: Colors.black.withValues(alpha: 0.3 * anim1.value),
               dismissible: true,
             ),
-            SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(-1, 0),
-                end: Offset.zero,
-              ).animate(anim1.drive(CurveTween(curve: Curves.easeOutCubic))),
+            AnimatedBuilder(
+              animation: anim1,
               child: child,
+              builder: (context, child) {
+                if (anim1.value >= 0.999) {
+                  return child!;
+                }
+                return SlideTransition(position: slidePosition, child: child);
+              },
             ),
           ],
         );

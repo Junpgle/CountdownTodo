@@ -305,7 +305,7 @@ class _PulseAvatarState extends State<_PulseAvatar>
     _scaleAnimation = Tween<double>(
       begin: 0.95,
       end: 1.05,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+    ).animate(_controller.drive(CurveTween(curve: Curves.easeInOut)));
     PowerSaveModeService.enabledListenable.addListener(_syncAnimation);
     _syncAnimation();
   }
@@ -334,8 +334,17 @@ class _PulseAvatarState extends State<_PulseAvatar>
 
   @override
   Widget build(BuildContext context) {
-    return RepaintBoundary(
-      child: ScaleTransition(scale: _scaleAnimation, child: widget.child),
+    return AnimatedBuilder(
+      animation: _controller,
+      child: widget.child,
+      builder: (context, child) {
+        if (!_controller.isAnimating && _controller.value == 0.0) {
+          return child!;
+        }
+        return RepaintBoundary(
+          child: ScaleTransition(scale: _scaleAnimation, child: child),
+        );
+      },
     );
   }
 }
@@ -447,7 +456,7 @@ class _ThinkingDotPainter extends CustomPainter {
   final Animation<double> animation;
   final Color color;
   final int index;
-  final Paint _dotPaint = Paint()..isAntiAlias = true;
+  static final Paint _dotPaint = Paint()..isAntiAlias = true;
 
   @override
   void paint(Canvas canvas, Size size) {

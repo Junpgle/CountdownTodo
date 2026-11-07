@@ -627,7 +627,7 @@ class _QuickVoiceWavePainter extends CustomPainter {
   final Listenable repaintListenable;
   final Color color;
   final bool reduceMotion;
-  final Paint _paint = Paint()..style = PaintingStyle.fill;
+  static final Paint _paint = Paint()..style = PaintingStyle.fill;
 
   _QuickVoiceWavePainter({
     required this.animation,
