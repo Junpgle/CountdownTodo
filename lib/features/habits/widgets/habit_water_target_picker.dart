@@ -308,6 +308,9 @@ class _WaterRulerPainter extends CustomPainter {
   static final Paint _tickPaint = Paint();
   static final Paint _thumbPaint = Paint();
   static final Paint _thumbInnerPaint = Paint();
+  static final TextPainter _labelPainter = TextPainter(
+    textDirection: TextDirection.ltr,
+  );
 
   _WaterRulerPainter({
     required this.value,
@@ -335,32 +338,22 @@ class _WaterRulerPainter extends CustomPainter {
     );
 
     final totalSteps = (range / step).round();
-    final labelPainter = TextPainter(textDirection: TextDirection.ltr);
-    try {
-      for (var i = 0; i <= totalSteps; i++) {
-        final x = left + usable * i / totalSteps;
-        final amount = min + i * step;
-        final major = amount % 500 == 0;
-        _tickPaint
-          ..color = major ? colorScheme.onSurfaceVariant : colorScheme.outline
-          ..strokeWidth = major ? 2 : 1;
-        canvas.drawLine(
-          Offset(x, lineY - (major ? 14 : 8)),
-          Offset(x, lineY + (major ? 14 : 8)),
-          _tickPaint,
-        );
-        if (major) {
-          _drawLabel(
-            labelPainter,
-            canvas,
-            '$amount',
-            Offset(x, 53),
-            colorScheme,
-          );
-        }
+    final labelPainter = _labelPainter;
+    for (var i = 0; i <= totalSteps; i++) {
+      final x = left + usable * i / totalSteps;
+      final amount = min + i * step;
+      final major = amount % 500 == 0;
+      _tickPaint
+        ..color = major ? colorScheme.onSurfaceVariant : colorScheme.outline
+        ..strokeWidth = major ? 2 : 1;
+      canvas.drawLine(
+        Offset(x, lineY - (major ? 14 : 8)),
+        Offset(x, lineY + (major ? 14 : 8)),
+        _tickPaint,
+      );
+      if (major) {
+        _drawLabel(labelPainter, canvas, '$amount', Offset(x, 53), colorScheme);
       }
-    } finally {
-      labelPainter.dispose();
     }
 
     _thumbPaint.color = colorScheme.primary;

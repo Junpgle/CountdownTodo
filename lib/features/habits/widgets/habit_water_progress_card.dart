@@ -244,39 +244,30 @@ class _WaterProgressCupPainter extends CustomPainter {
   final double ratio;
   final Animation<double> animation;
   final ColorScheme colorScheme;
-  late final Paint _shadowPaint = Paint()
-    ..color = colorScheme.primary.withValues(alpha: 0.12)
+  static final Paint _shadowPaint = Paint()
     ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 9);
-  final Paint _glassPaint = Paint();
-  final Paint _waterPaint = Paint();
-  late final Paint _surfacePaint = Paint()
+  static final Paint _glassPaint = Paint();
+  static final Paint _waterPaint = Paint();
+  static final Paint _surfacePaint = Paint()
     ..style = PaintingStyle.stroke
-    ..strokeWidth = 1.5
-    ..color = colorScheme.onPrimary.withValues(alpha: 0.52);
-  late final Paint _reflectionPaint = Paint()
-    ..color = colorScheme.onPrimary.withValues(alpha: 0.26)
+    ..strokeWidth = 1.5;
+  static final Paint _reflectionPaint = Paint()
     ..strokeWidth = 3
     ..strokeCap = StrokeCap.round;
-  late final Paint _bubblePaint = Paint()
+  static final Paint _bubblePaint = Paint()
     ..style = PaintingStyle.stroke
-    ..strokeWidth = 1.1
-    ..color = colorScheme.onPrimary.withValues(alpha: 0.3);
-  late final Paint _outlinePaint = Paint()
+    ..strokeWidth = 1.1;
+  static final Paint _outlinePaint = Paint()
     ..style = PaintingStyle.stroke
-    ..strokeWidth = 2.2
-    ..color = colorScheme.primary.withValues(alpha: 0.52);
-  late final Paint _highlightPaint = Paint()
+    ..strokeWidth = 2.2;
+  static final Paint _highlightPaint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeWidth = 3
-    ..strokeCap = StrokeCap.round
-    ..color = colorScheme.onPrimary.withValues(alpha: 0.38);
-  late final Paint _rimPaint = Paint()
+    ..strokeCap = StrokeCap.round;
+  static final Paint _rimPaint = Paint()
     ..style = PaintingStyle.stroke
-    ..strokeWidth = 1.7
-    ..color = colorScheme.primary.withValues(alpha: 0.45);
-  late final Paint _graduationPaint = Paint()
-    ..color = colorScheme.onPrimaryContainer.withValues(alpha: 0.34)
-    ..strokeWidth = 1.2;
+    ..strokeWidth = 1.7;
+  static final Paint _graduationPaint = Paint()..strokeWidth = 1.2;
   late final LinearGradient _waterGradient = LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
@@ -317,6 +308,17 @@ class _WaterProgressCupPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    _shadowPaint.color = colorScheme.primary.withValues(alpha: 0.12);
+    _surfacePaint.color = colorScheme.onPrimary.withValues(alpha: 0.52);
+    _reflectionPaint.color = colorScheme.onPrimary.withValues(alpha: 0.26);
+    _bubblePaint.color = colorScheme.onPrimary.withValues(alpha: 0.3);
+    _outlinePaint.color = colorScheme.primary.withValues(alpha: 0.52);
+    _highlightPaint.color = colorScheme.onPrimary.withValues(alpha: 0.38);
+    _rimPaint.color = colorScheme.primary.withValues(alpha: 0.45);
+    _graduationPaint.color = colorScheme.onPrimaryContainer.withValues(
+      alpha: 0.34,
+    );
+
     if (_geometrySize != size) {
       _geometrySize = size;
       _cupPathCache = _cupPath(size);

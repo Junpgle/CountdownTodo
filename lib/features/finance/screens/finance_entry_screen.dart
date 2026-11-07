@@ -1951,6 +1951,14 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
               const SizedBox(width: 8),
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 160),
+                transitionBuilder: (child, animation) => AnimatedBuilder(
+                  animation: animation,
+                  child: child,
+                  builder: (context, child) {
+                    if (animation.value >= 0.999) return child!;
+                    return FadeTransition(opacity: animation, child: child);
+                  },
+                ),
                 child: isSelected
                     ? Icon(
                         Icons.check_circle_rounded,
