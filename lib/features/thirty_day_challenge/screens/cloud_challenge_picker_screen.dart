@@ -486,6 +486,16 @@ class _CloudChallengePickerScreenState
         16,
         bottomPadding,
       ),
+      findChildIndexCallback: (Key key) {
+        if (key is ValueKey<String>) {
+          final id = key.value;
+          final cIndex = challenges.indexWhere((c) => c.id == id);
+          if (cIndex != -1) {
+            return headerItems.length + cIndex * 2;
+          }
+        }
+        return null;
+      },
       itemCount: headerItems.length + resultItemCount,
       itemBuilder: (context, index) {
         if (index < headerItems.length) return headerItems[index];
@@ -746,158 +756,161 @@ class _CloudChallengePickerScreenState
     CloudChallengeTemplate challenge,
     ColorScheme scheme,
   ) {
-    return Card(
-      elevation: 0,
-      color: scheme.surfaceContainerLow,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
-        side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: scheme.tertiaryContainer,
-                    borderRadius: BorderRadius.circular(17),
+    return RepaintBoundary(
+      key: ValueKey<String>(challenge.id),
+      child: Card(
+        elevation: 0,
+        color: scheme.surfaceContainerLow,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+          side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: scheme.tertiaryContainer,
+                      borderRadius: BorderRadius.circular(17),
+                    ),
+                    child: Icon(
+                      Icons.auto_awesome_rounded,
+                      color: scheme.onTertiaryContainer,
+                    ),
                   ),
-                  child: Icon(
-                    Icons.auto_awesome_rounded,
-                    color: scheme.onTertiaryContainer,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        challenge.title,
-                        style: Theme.of(context).textTheme.titleLarge
-                            ?.copyWith(fontWeight: FontWeight.w900),
-                      ),
-                      if (challenge.description.isNotEmpty) ...[
-                        const SizedBox(height: 5),
-                        Text(
-                          challenge.description,
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(
-                                color: scheme.onSurfaceVariant,
-                                height: 1.4,
-                              ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                _buildInfoChip(
-                  '${challenge.tasks.length} 项任务',
-                  Icons.format_list_bulleted_rounded,
-                  scheme,
-                ),
-                for (final tag in challenge.tags.take(3))
-                  _buildInfoChip(tag, Icons.label_outline_rounded, scheme),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '任务预览',
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: scheme.primary,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 8),
-            ...challenge.tasks
-                .take(4)
-                .toList()
-                .asMap()
-                .entries
-                .map(
-                  (entry) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Row(
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '${entry.key + 1}',
-                          style: TextStyle(
-                            color: scheme.primary,
-                            fontWeight: FontWeight.w900,
-                          ),
+                          challenge.title,
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w900),
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            entry.value,
-                            maxLines: 2,
+                        if (challenge.description.isNotEmpty) ...[
+                          const SizedBox(height: 5),
+                          Text(
+                            challenge.description,
+                            maxLines: 3,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodyMedium,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: scheme.onSurfaceVariant,
+                                  height: 1.4,
+                                ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ),
-                ),
-            if (challenge.tasks.length > 4)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  '还有 ${challenge.tasks.length - 4} 项任务，开始后可以逐项完成。',
-                  style: Theme.of(context).textTheme.bodySmall
-                      ?.copyWith(color: scheme.onSurfaceVariant),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  _buildInfoChip(
+                    '${challenge.tasks.length} 项任务',
+                    Icons.format_list_bulleted_rounded,
+                    scheme,
+                  ),
+                  for (final tag in challenge.tags.take(3))
+                    _buildInfoChip(tag, Icons.label_outline_rounded, scheme),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '任务预览',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: scheme.primary,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _selectChallenge(
-                      challenge,
-                      CloudChallengePickerAction.customize,
-                    ),
-                    icon: const Icon(Icons.edit_note_rounded),
-                    label: const Text('自定义'),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(46),
+              const SizedBox(height: 8),
+              ...challenge.tasks
+                  .take(4)
+                  .toList()
+                  .asMap()
+                  .entries
+                  .map(
+                    (entry) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${entry.key + 1}',
+                            style: TextStyle(
+                              color: scheme.primary,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              entry.value,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: () => _selectChallenge(
-                      challenge,
-                      CloudChallengePickerAction.start,
-                    ),
-                    icon: const Icon(Icons.bolt_rounded),
-                    label: const Text('开始挑战'),
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(46),
-                    ),
+              if (challenge.tasks.length > 4)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    '还有 ${challenge.tasks.length - 4} 项任务，开始后可以逐项完成。',
+                    style: Theme.of(context).textTheme.bodySmall
+                        ?.copyWith(color: scheme.onSurfaceVariant),
                   ),
                 ),
-              ],
-            ),
-          ],
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _selectChallenge(
+                        challenge,
+                        CloudChallengePickerAction.customize,
+                      ),
+                      icon: const Icon(Icons.edit_note_rounded),
+                      label: const Text('自定义'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(46),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => _selectChallenge(
+                        challenge,
+                        CloudChallengePickerAction.start,
+                      ),
+                      icon: const Icon(Icons.bolt_rounded),
+                      label: const Text('开始挑战'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(46),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

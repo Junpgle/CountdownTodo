@@ -217,61 +217,64 @@ class _JournalTrashScreenState extends State<JournalTrashScreen> {
         : '无题';
     final excerpt = entry.content.trim();
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 6),
-            Text(
-              AppTimeFormats.format(entry.occurredAt, 'yyyy年MM月dd日 HH:mm'),
-              style: Theme.of(context).textTheme.labelMedium
-                  ?.copyWith(color: colorScheme.onSurfaceVariant),
-            ),
-            if (excerpt.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Text(excerpt, maxLines: 3, overflow: TextOverflow.ellipsis),
-            ],
-            if (entry.attachments.isNotEmpty) ...[
-              const SizedBox(height: 8),
+    return RepaintBoundary(
+      key: ValueKey<String>(entry.id),
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 6),
+              Text(
+                AppTimeFormats.format(entry.occurredAt, 'yyyy年MM月dd日 HH:mm'),
+                style: Theme.of(context).textTheme.labelMedium
+                    ?.copyWith(color: colorScheme.onSurfaceVariant),
+              ),
+              if (excerpt.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(excerpt, maxLines: 3, overflow: TextOverflow.ellipsis),
+              ],
+              if (entry.attachments.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.photo_library_outlined,
+                      size: 17,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${entry.attachments.length} 张照片保留在本机',
+                      style: Theme.of(context).textTheme.labelMedium
+                          ?.copyWith(color: colorScheme.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 14),
               Row(
                 children: [
-                  Icon(
-                    Icons.photo_library_outlined,
-                    size: 17,
-                    color: colorScheme.onSurfaceVariant,
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: busy ? null : () => _restore(entry),
+                      icon: const Icon(Icons.restore_rounded),
+                      label: Text(busy ? '处理中…' : '恢复'),
+                    ),
                   ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '${entry.attachments.length} 张照片保留在本机',
-                    style: Theme.of(context).textTheme.labelMedium
-                        ?.copyWith(color: colorScheme.onSurfaceVariant),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: '永久删除',
+                    onPressed: busy ? null : () => _permanentlyDelete(entry),
+                    icon: const Icon(Icons.delete_forever_outlined),
                   ),
                 ],
               ),
             ],
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: busy ? null : () => _restore(entry),
-                    icon: const Icon(Icons.restore_rounded),
-                    label: Text(busy ? '处理中…' : '恢复'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  tooltip: '永久删除',
-                  onPressed: busy ? null : () => _permanentlyDelete(entry),
-                  icon: const Icon(Icons.delete_forever_outlined),
-                ),
-              ],
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -333,6 +336,16 @@ class _JournalTrashScreenState extends State<JournalTrashScreen> {
                                 16,
                                 32,
                               ),
+                              findChildIndexCallback: (Key key) {
+                                if (key is ValueKey<String>) {
+                                  final id = key.value;
+                                  final index = _entries.indexWhere(
+                                    (e) => e.id == id,
+                                  );
+                                  return index != -1 ? index : null;
+                                }
+                                return null;
+                              },
                               itemCount: _entries.length + (_hasMore ? 1 : 0),
                               itemBuilder: (context, index) {
                                 if (index >= _entries.length) {

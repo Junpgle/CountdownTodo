@@ -483,6 +483,14 @@ class _Timeline extends StatelessWidget {
           return GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
+            findChildIndexCallback: (Key key) {
+              if (key is ValueKey<String>) {
+                final id = key.value;
+                final index = gridEntries.indexWhere((e) => e.id == id);
+                return index != -1 ? index : null;
+              }
+              return null;
+            },
             itemCount: gridEntries.length,
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
               maxCrossAxisExtent: 560,
@@ -491,6 +499,7 @@ class _Timeline extends StatelessWidget {
               mainAxisSpacing: 16,
             ),
             itemBuilder: (_, gridIndex) => _JournalCard(
+              key: ValueKey<String>(gridEntries[gridIndex].id),
               entry: gridEntries[gridIndex],
               accountId: accountId,
               onTap: () => onTap(gridEntries[gridIndex]),
@@ -539,6 +548,14 @@ class _PhotoWall extends StatelessWidget {
         isWide ? 40 : 16,
         120,
       ),
+      findChildIndexCallback: (Key key) {
+        if (key is ValueKey<String>) {
+          final id = key.value;
+          final index = entries.indexWhere((e) => e.id == id);
+          return index != -1 ? index : null;
+        }
+        return null;
+      },
       itemCount: entries.length,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: columns,
@@ -547,6 +564,7 @@ class _PhotoWall extends StatelessWidget {
         childAspectRatio: isWide ? 0.92 : 0.82,
       ),
       itemBuilder: (_, index) => _PhotoWallCard(
+        key: ValueKey<String>(entries[index].id),
         entry: entries[index],
         accountId: accountId,
         onTap: () => onTap(entries[index]),
@@ -564,6 +582,7 @@ class _JournalCard extends StatelessWidget {
   final VoidCallback onTap;
 
   const _JournalCard({
+    super.key,
     required this.entry,
     required this.accountId,
     required this.onTap,
@@ -673,6 +692,7 @@ class _PhotoWallCard extends StatelessWidget {
   final VoidCallback onTap;
 
   const _PhotoWallCard({
+    super.key,
     required this.entry,
     required this.accountId,
     required this.onTap,
