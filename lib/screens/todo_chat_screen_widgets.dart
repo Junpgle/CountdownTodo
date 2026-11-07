@@ -20,7 +20,13 @@ class _StaggeredFadeSlide extends StatelessWidget {
                   .clamp(0.0, 1.0);
         if (delayedValue >= 0.999) return child!;
         if (delayedValue <= 0.001) {
-          return Opacity(opacity: 0.0, child: child);
+          return Visibility(
+            visible: false,
+            maintainSize: true,
+            maintainAnimation: true,
+            maintainState: true,
+            child: child!,
+          );
         }
         return Opacity(
           opacity: delayedValue,

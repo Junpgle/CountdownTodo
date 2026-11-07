@@ -566,6 +566,14 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
     }
     return ListView.builder(
       controller: _scrollCtrl,
+      findChildIndexCallback: (Key key) {
+        if (key is ValueKey<String>) {
+          final id = key.value;
+          final index = _messages.indexWhere((m) => m.id == id);
+          return index != -1 ? index : null;
+        }
+        return null;
+      },
       padding: EdgeInsets.fromLTRB(
         12,
         floatingGlassTopBarHeight(context) + 12,
@@ -597,6 +605,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
           tween: Tween(begin: 0.0, end: 1.0),
           curve: Curves.easeOutQuart,
           builder: (context, value, child) {
+            if (value <= 0.001) return const SizedBox.shrink();
             if (value >= 0.999) return child!;
             return Transform.translate(
               offset: Offset(0, 24 * (1 - value)),
