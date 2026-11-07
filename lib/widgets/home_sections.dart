@@ -230,6 +230,11 @@ class _ScreenTimeChartData {
     required this.devicePainter,
     required this.appPainter,
   });
+
+  void dispose() {
+    devicePainter.dispose();
+    appPainter.dispose();
+  }
 }
 
 class _ScreenTimeCardState extends State<ScreenTimeCard>
@@ -293,6 +298,7 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
 
   @override
   void dispose() {
+    _chartData?.dispose();
     _pieCtrl.dispose();
     super.dispose();
   }
@@ -303,6 +309,7 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
   _ScreenTimeChartData _chartDataForCurrentStats() {
     final cached = _chartData;
     if (cached != null && identical(cached.stats, widget.stats)) return cached;
+    cached?.dispose();
 
     var totalTime = 0;
     final deviceMap = <String, int>{};
@@ -813,6 +820,12 @@ class PieChartPainter extends CustomPainter {
     }
   }
 
+  void dispose() {
+    for (final painter in _labelPainters) {
+      painter.dispose();
+    }
+  }
+
   @override
   bool shouldRepaint(covariant PieChartPainter old) =>
       old.data != data ||
@@ -1002,19 +1015,24 @@ class MathStatsCard extends StatelessWidget {
                             ),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: TweenAnimationBuilder<int>(
-                                duration: const Duration(milliseconds: 800),
-                                curve: Curves.easeOutCubic,
-                                tween: IntTween(begin: 0, end: todayCount),
-                                builder: (context, value, child) {
-                                  return Text(
-                                    todayCount > 0
-                                        ? "今日已完成 $value 次测验"
-                                        : "今日还未完成测验",
-                                    style: todayCountStyle,
-                                  );
-                                },
-                              ),
+                              child: todayCount <= 0
+                                  ? Text("今日还未完成测验", style: todayCountStyle)
+                                  : TweenAnimationBuilder<int>(
+                                      duration: const Duration(
+                                        milliseconds: 800,
+                                      ),
+                                      curve: Curves.easeOutCubic,
+                                      tween: IntTween(
+                                        begin: 0,
+                                        end: todayCount,
+                                      ),
+                                      builder: (context, value, child) {
+                                        return Text(
+                                          "今日已完成 $value 次测验",
+                                          style: todayCountStyle,
+                                        );
+                                      },
+                                    ),
                             ),
                             Icon(
                               Icons.arrow_forward_ios,
@@ -1041,17 +1059,24 @@ class MathStatsCard extends StatelessWidget {
                                     ),
                                   ),
                                   const SizedBox(height: 4),
-                                  TweenAnimationBuilder<int>(
-                                    duration: const Duration(milliseconds: 800),
-                                    curve: Curves.easeOutCubic,
-                                    tween: IntTween(begin: 0, end: bestTimeVal),
-                                    builder: (context, value, child) {
-                                      return Text(
-                                        bestTimeVal > 0 ? "$value秒" : "--",
-                                        style: bestTimeStyle,
-                                      );
-                                    },
-                                  ),
+                                  bestTimeVal <= 0
+                                      ? Text("--", style: bestTimeStyle)
+                                      : TweenAnimationBuilder<int>(
+                                          duration: const Duration(
+                                            milliseconds: 800,
+                                          ),
+                                          curve: Curves.easeOutCubic,
+                                          tween: IntTween(
+                                            begin: 0,
+                                            end: bestTimeVal,
+                                          ),
+                                          builder: (context, value, child) {
+                                            return Text(
+                                              "$value秒",
+                                              style: bestTimeStyle,
+                                            );
+                                          },
+                                        ),
                                 ],
                               ),
                             ),
@@ -1067,17 +1092,24 @@ class MathStatsCard extends StatelessWidget {
                                     ),
                                   ),
                                   const SizedBox(height: 4),
-                                  TweenAnimationBuilder<int>(
-                                    duration: const Duration(milliseconds: 800),
-                                    curve: Curves.easeOutCubic,
-                                    tween: IntTween(begin: 0, end: accuracyInt),
-                                    builder: (context, value, child) {
-                                      return Text(
-                                        "$value.0%",
-                                        style: accuracyStyle,
-                                      );
-                                    },
-                                  ),
+                                  accuracyInt <= 0
+                                      ? Text("0.0%", style: accuracyStyle)
+                                      : TweenAnimationBuilder<int>(
+                                          duration: const Duration(
+                                            milliseconds: 800,
+                                          ),
+                                          curve: Curves.easeOutCubic,
+                                          tween: IntTween(
+                                            begin: 0,
+                                            end: accuracyInt,
+                                          ),
+                                          builder: (context, value, child) {
+                                            return Text(
+                                              "$value.0%",
+                                              style: accuracyStyle,
+                                            );
+                                          },
+                                        ),
                                   const SizedBox(height: 6),
                                   ClipRRect(
                                     borderRadius: BorderRadius.circular(8),

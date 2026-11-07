@@ -117,6 +117,26 @@ mixin _HomeDashboardViewMixin
     );
   }
 
+  static const LinearGradient _wallpaperTopFadeGradient = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    stops: [0.0, 0.18, 0.78, 1.0],
+    colors: [Colors.white, Colors.white, Color(0x24FFFFFF), Colors.transparent],
+  );
+  static Rect? _cachedWallpaperFadeBounds;
+  static Shader? _cachedWallpaperFadeShader;
+
+  static Shader _resolveWallpaperTopFadeShader(Rect bounds) {
+    if (_cachedWallpaperFadeBounds == bounds &&
+        _cachedWallpaperFadeShader != null) {
+      return _cachedWallpaperFadeShader!;
+    }
+    _cachedWallpaperFadeBounds = bounds;
+    return _cachedWallpaperFadeShader = _wallpaperTopFadeGradient.createShader(
+      bounds,
+    );
+  }
+
   Widget _buildWallpaperTopFadeCap({
     required double headerExtent,
     required String wallpaperUrl,
@@ -135,17 +155,7 @@ mixin _HomeDashboardViewMixin
               final screenSize = MediaQuery.sizeOf(context);
               return ShaderMask(
                 blendMode: BlendMode.dstIn,
-                shaderCallback: (bounds) => LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  stops: const [0.0, 0.18, 0.78, 1.0],
-                  colors: [
-                    Colors.white,
-                    Colors.white,
-                    Colors.white.withValues(alpha: 0.14),
-                    Colors.transparent,
-                  ],
-                ).createShader(bounds),
+                shaderCallback: _resolveWallpaperTopFadeShader,
                 child: ClipRect(
                   child: OverflowBox(
                     alignment: Alignment.topCenter,
@@ -1017,19 +1027,28 @@ mixin _HomeDashboardViewMixin
                                               const ValueKey<String>(
                                                 'home-focus-tab-content',
                                               );
-                                          final enteringPage = SlideTransition(
-                                            position: Tween<Offset>(
-                                              begin: Offset(
-                                                focusPage ? 0.035 : -0.035,
-                                                0,
-                                              ),
-                                              end: Offset.zero,
-                                            ).animate(animation),
+                                          final slidePosition = Tween<Offset>(
+                                            begin: Offset(
+                                              focusPage ? 0.035 : -0.035,
+                                              0,
+                                            ),
+                                            end: Offset.zero,
+                                          ).animate(animation);
+                                          return AnimatedBuilder(
+                                            animation: animation,
                                             child: child,
-                                          );
-                                          return FadeTransition(
-                                            opacity: animation,
-                                            child: enteringPage,
+                                            builder: (context, child) {
+                                              if (animation.value >= 0.999) {
+                                                return child!;
+                                              }
+                                              return FadeTransition(
+                                                opacity: animation,
+                                                child: SlideTransition(
+                                                  position: slidePosition,
+                                                  child: child,
+                                                ),
+                                              );
+                                            },
                                           );
                                         },
                                         child: buildMobileList(

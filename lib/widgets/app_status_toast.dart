@@ -177,25 +177,33 @@ class _AppStatusToastViewState extends State<_AppStatusToastView>
     );
     final glassContent = _content(colorScheme.onSurface, colorScheme.primary);
 
+    final panel = ConstrainedBox(
+      key: const ValueKey<String>('app-status-toast'),
+      constraints: const BoxConstraints(maxWidth: 260),
+      child: OptionalLiquidGlassPanel(
+        borderRadius: 18,
+        tint: colorScheme.primary.withValues(alpha: 0.14),
+        isDark: colorScheme.brightness == Brightness.dark,
+        fallback: fallback,
+        child: glassContent,
+      ),
+    );
+
     return Material(
       type: MaterialType.transparency,
       child: IgnorePointer(
-        child: FadeTransition(
-          opacity: _opacity,
-          child: SlideTransition(
-            position: _offset,
-            child: ConstrainedBox(
-              key: const ValueKey<String>('app-status-toast'),
-              constraints: const BoxConstraints(maxWidth: 260),
-              child: OptionalLiquidGlassPanel(
-                borderRadius: 18,
-                tint: colorScheme.primary.withValues(alpha: 0.14),
-                isDark: colorScheme.brightness == Brightness.dark,
-                fallback: fallback,
-                child: glassContent,
-              ),
-            ),
-          ),
+        child: AnimatedBuilder(
+          animation: _controller,
+          child: panel,
+          builder: (context, child) {
+            if (_controller.value >= 0.999) {
+              return child!;
+            }
+            return FadeTransition(
+              opacity: _opacity,
+              child: SlideTransition(position: _offset, child: child),
+            );
+          },
         ),
       ),
     );

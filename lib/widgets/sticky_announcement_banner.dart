@@ -37,7 +37,7 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner>
     _pulseAnimation = Tween<double>(
       begin: 1.0,
       end: 1.1,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+    ).animate(_controller.drive(CurveTween(curve: Curves.easeInOut)));
     PowerSaveModeService.enabledListenable.addListener(_startPulse);
     _startPulse();
   }
@@ -128,27 +128,29 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner>
               children: [
                 Row(
                   children: [
-                    ScaleTransition(
-                      scale: _pulseAnimation,
-                      child: Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: accentColor,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: accentColor.withValues(alpha: 0.4),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Icon(
-                          widget.announcement.isPriority
-                              ? Icons.bolt_rounded
-                              : Icons.campaign_rounded,
-                          size: 14,
-                          color: Colors.white,
+                    RepaintBoundary(
+                      child: ScaleTransition(
+                        scale: _pulseAnimation,
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: accentColor,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: accentColor.withValues(alpha: 0.4),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            widget.announcement.isPriority
+                                ? Icons.bolt_rounded
+                                : Icons.campaign_rounded,
+                            size: 14,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ),

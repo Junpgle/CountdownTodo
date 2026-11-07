@@ -299,7 +299,7 @@ class ManagementIntro extends StatelessWidget {
   }
 }
 
-class ManagementSearchField extends StatelessWidget {
+class ManagementSearchField extends StatefulWidget {
   const ManagementSearchField({
     super.key,
     required this.controller,
@@ -312,96 +312,127 @@ class ManagementSearchField extends StatelessWidget {
   final ValueChanged<String> onChanged;
 
   @override
-  Widget build(BuildContext context) =>
-      ValueListenableBuilder<TextEditingValue>(
-        valueListenable: controller,
-        builder: (context, value, _) =>
-            ValueListenableBuilder<LiquidGlassEffectConfiguration>(
-              valueListenable: LiquidGlassEffectService.configurationListenable,
-              builder: (context, configuration, _) {
-                final theme = Theme.of(context);
-                final scheme = theme.colorScheme;
-                if (configuration.enabled) {
-                  final isDark = scheme.brightness == Brightness.dark;
-                  final enhanced =
-                      configuration.mode == LiquidGlassEffectMode.enhanced;
-                  return GlassTextField.search(
-                    controller: controller,
-                    placeholder: hintText,
-                    onChanged: onChanged,
-                    prefixIcon: Icon(
-                      Icons.search_rounded,
-                      color: scheme.onSurfaceVariant,
-                    ),
-                    suffixIcon: value.text.isEmpty
-                        ? null
-                        : Semantics(
-                            label: '清空搜索',
-                            child: const Icon(Icons.close_rounded),
-                          ),
-                    onSuffixTap: value.text.isEmpty
-                        ? null
-                        : () {
-                            controller.clear();
-                            onChanged('');
-                          },
-                    textStyle: theme.textTheme.bodyMedium?.copyWith(
-                      color: scheme.onSurface,
-                    ),
-                    placeholderStyle: theme.textTheme.bodyMedium?.copyWith(
-                      color: scheme.onSurfaceVariant.withValues(alpha: 0.72),
-                    ),
-                    height: 56,
-                    settings: LiquidGlassSettings(
-                      bodyMode: GlassBodyMode.clear,
-                      glassColor: scheme.primary.withValues(
-                        alpha: isDark ? 0.12 : 0.1,
-                      ),
-                      thickness: enhanced ? 20 : 16,
-                      blur: enhanced ? 12 : 9,
-                      chromaticAberration: 0.0015,
-                      lightIntensity: isDark ? 0.48 : 0.58,
-                      ambientStrength: isDark ? 0.08 : 0.1,
-                      backerColor: scheme.surface.withValues(
-                        alpha: liquidGlassBackerOpacity(
-                          isDark ? 0.5 : 0.58,
-                          configuration,
-                        ),
-                      ),
-                    ),
-                    useOwnLayer: true,
-                    quality: liquidGlassQualityForMode(configuration.mode),
-                  );
-                }
+  State<ManagementSearchField> createState() => _ManagementSearchFieldState();
+}
 
-                return TextField(
-                  controller: controller,
-                  onChanged: onChanged,
-                  textInputAction: TextInputAction.search,
-                  decoration: InputDecoration(
-                    hintText: hintText,
-                    prefixIcon: const Icon(Icons.search_rounded),
-                    suffixIcon: value.text.isEmpty
-                        ? null
-                        : IconButton(
-                            tooltip: '清空搜索',
-                            onPressed: () {
-                              controller.clear();
-                              onChanged('');
-                            },
-                            icon: const Icon(Icons.close_rounded),
-                          ),
-                    filled: true,
-                    fillColor: scheme.surfaceContainerLow,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                );
-              },
+class _ManagementSearchFieldState extends State<ManagementSearchField> {
+  late bool _hasText;
+
+  @override
+  void initState() {
+    super.initState();
+    _hasText = widget.controller.text.isNotEmpty;
+    widget.controller.addListener(_handleControllerChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant ManagementSearchField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_handleControllerChanged);
+      _hasText = widget.controller.text.isNotEmpty;
+      widget.controller.addListener(_handleControllerChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_handleControllerChanged);
+    super.dispose();
+  }
+
+  void _handleControllerChanged() {
+    final hasText = widget.controller.text.isNotEmpty;
+    if (hasText != _hasText) {
+      setState(() => _hasText = hasText);
+    }
+  }
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) => ValueListenableBuilder<LiquidGlassEffectConfiguration>(
+    valueListenable: LiquidGlassEffectService.configurationListenable,
+    builder: (context, configuration, _) {
+      final theme = Theme.of(context);
+      final scheme = theme.colorScheme;
+      if (configuration.enabled) {
+        final isDark = scheme.brightness == Brightness.dark;
+        final enhanced = configuration.mode == LiquidGlassEffectMode.enhanced;
+        return GlassTextField.search(
+          controller: widget.controller,
+          placeholder: widget.hintText,
+          onChanged: widget.onChanged,
+          prefixIcon: Icon(
+            Icons.search_rounded,
+            color: scheme.onSurfaceVariant,
+          ),
+          suffixIcon: !_hasText
+              ? null
+              : Semantics(
+                  label: '清空搜索',
+                  child: const Icon(Icons.close_rounded),
+                ),
+          onSuffixTap: !_hasText
+              ? null
+              : () {
+                  widget.controller.clear();
+                  widget.onChanged('');
+                },
+          textStyle: theme.textTheme.bodyMedium?.copyWith(
+            color: scheme.onSurface,
+          ),
+          placeholderStyle: theme.textTheme.bodyMedium?.copyWith(
+            color: scheme.onSurfaceVariant.withValues(alpha: 0.72),
+          ),
+          height: 56,
+          settings: LiquidGlassSettings(
+            bodyMode: GlassBodyMode.clear,
+            glassColor: scheme.primary.withValues(alpha: isDark ? 0.12 : 0.1),
+            thickness: enhanced ? 20 : 16,
+            blur: enhanced ? 12 : 9,
+            chromaticAberration: 0.0015,
+            lightIntensity: isDark ? 0.48 : 0.58,
+            ambientStrength: isDark ? 0.08 : 0.1,
+            backerColor: scheme.surface.withValues(
+              alpha: liquidGlassBackerOpacity(
+                isDark ? 0.5 : 0.58,
+                configuration,
+              ),
             ),
+          ),
+          useOwnLayer: true,
+          quality: liquidGlassQualityForMode(configuration.mode),
+        );
+      }
+
+      return TextField(
+        controller: widget.controller,
+        onChanged: widget.onChanged,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          hintText: widget.hintText,
+          prefixIcon: const Icon(Icons.search_rounded),
+          suffixIcon: !_hasText
+              ? null
+              : IconButton(
+                  tooltip: '清空搜索',
+                  onPressed: () {
+                    widget.controller.clear();
+                    widget.onChanged('');
+                  },
+                  icon: const Icon(Icons.close_rounded),
+                ),
+          filled: true,
+          fillColor: scheme.surfaceContainerLow,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide.none,
+          ),
+        ),
       );
+    },
+  );
 }
 
 class ManagementEmptyState extends StatelessWidget {
