@@ -4784,64 +4784,66 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
           : colorScheme.onSurfaceVariant;
     }
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(5),
-            decoration: BoxDecoration(
-              color: colorScheme.primaryContainer.withValues(alpha: 0.45),
-              borderRadius: BorderRadius.circular(8),
+    return RepaintBoundary(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(5),
+              decoration: BoxDecoration(
+                color: colorScheme.primaryContainer.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                Icons.calendar_today_outlined,
+                size: 15,
+                color: colorScheme.primary,
+              ),
             ),
-            child: Icon(
-              Icons.calendar_today_outlined,
-              size: 15,
-              color: colorScheme.primary,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _formatFinanceDayLabel(group.date),
-                  style: Theme.of(context).textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                Text(
-                  '${group.transactions.length} 笔账单',
-                  style: TextStyle(
-                    color: colorScheme.onSurfaceVariant,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                for (final label in amountLabels)
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    _formatFinanceDayLabel(group.date),
+                    style: Theme.of(context).textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  Text(
+                    '${group.transactions.length} 笔账单',
                     style: TextStyle(
-                      color: labelColor(label),
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12.5,
-                      letterSpacing: -0.2,
+                      color: colorScheme.onSurfaceVariant,
+                      fontSize: 12,
                     ),
                   ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: 8),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  for (final label in amountLabels)
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: labelColor(label),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12.5,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -4896,113 +4898,123 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
         ? colorScheme.error
         : colorScheme.primary;
     final sourceKey = _cardKeyFor(transaction);
-    return Card(
-      key: sourceKey,
-      elevation: 0,
-      margin: EdgeInsets.zero,
-      color: selected
-          ? colorScheme.primaryContainer.withValues(alpha: 0.25)
-          : colorScheme.surfaceContainerLowest,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: selected
-              ? colorScheme.primary.withValues(alpha: 0.8)
-              : colorScheme.outlineVariant.withValues(alpha: 0.35),
-          width: selected ? 1.5 : 1,
-        ),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: ListTile(
-        onTap: selectionMode
-            ? onToggleSelection
-            : () => onOpenDetail(transaction, sourceKey),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
-        leading: selectionMode
-            ? Checkbox(
-                value: selected,
-                onChanged: (_) => onToggleSelection(),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              )
-            : Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: colorScheme.secondaryContainer.withValues(alpha: 0.7),
-                  borderRadius: BorderRadius.circular(13),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  category?.icon ?? '💰',
-                  style: const TextStyle(fontSize: 22),
-                ),
-              ),
-        title: Text(
-          title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.bodyLarge
-              ?.copyWith(fontWeight: FontWeight.w600, letterSpacing: -0.2),
-        ),
-        subtitle: Text(
-          subtitleParts.isEmpty
-              ? transaction.type.label
-              : subtitleParts.join(' · '),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.bodySmall
-              ?.copyWith(color: colorScheme.onSurfaceVariant),
-        ),
-        trailing: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: (MediaQuery.sizeOf(context).width - 120).clamp(
-              0.0,
-              double.infinity,
-            ),
+    return RepaintBoundary(
+      child: Card(
+        key: sourceKey,
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        color: selected
+            ? colorScheme.primaryContainer.withValues(alpha: 0.25)
+            : colorScheme.surfaceContainerLowest,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: selected
+                ? colorScheme.primary.withValues(alpha: 0.8)
+                : colorScheme.outlineVariant.withValues(alpha: 0.35),
+            width: selected ? 1.5 : 1,
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Flexible(
-                child: Text(
-                  formatSignedFinanceAmount(
-                    transaction.amountMinor,
-                    transaction.type,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: ListTile(
+          onTap: selectionMode
+              ? onToggleSelection
+              : () => onOpenDetail(transaction, sourceKey),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 3,
+          ),
+          leading: selectionMode
+              ? Checkbox(
+                  value: selected,
+                  onChanged: (_) => onToggleSelection(),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: amountColor,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                    letterSpacing: -0.3,
+                )
+              : Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: colorScheme.secondaryContainer.withValues(
+                      alpha: 0.7,
+                    ),
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    category?.icon ?? '💰',
+                    style: const TextStyle(fontSize: 22),
                   ),
                 ),
+          title: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodyLarge
+                ?.copyWith(fontWeight: FontWeight.w600, letterSpacing: -0.2),
+          ),
+          subtitle: Text(
+            subtitleParts.isEmpty
+                ? transaction.type.label
+                : subtitleParts.join(' · '),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall
+                ?.copyWith(color: colorScheme.onSurfaceVariant),
+          ),
+          trailing: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: (MediaQuery.sizeOf(context).width - 120).clamp(
+                0.0,
+                double.infinity,
               ),
-              const SizedBox(width: 4),
-              PopupMenuButton<String>(
-                icon: Icon(
-                  Icons.more_vert_rounded,
-                  size: 20,
-                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    formatSignedFinanceAmount(
+                      transaction.amountMinor,
+                      transaction.type,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: amountColor,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
                 ),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                onSelected: (value) {
-                  if (value == 'refund') onRefund(transaction);
-                  if (value == 'edit') onEdit(transaction);
-                  if (value == 'delete') onDelete(transaction);
-                },
-                itemBuilder: (context) => [
-                  if (transaction.type == FinanceTransactionType.expense)
-                    const PopupMenuItem(value: 'refund', child: Text('退款')),
-                  const PopupMenuItem(value: 'edit', child: Text('编辑')),
-                  const PopupMenuItem(value: 'delete', child: Text('删除')),
-                ],
-              ),
-            ],
+                const SizedBox(width: 4),
+                PopupMenuButton<String>(
+                  icon: Icon(
+                    Icons.more_vert_rounded,
+                    size: 20,
+                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                  ),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 28,
+                    minHeight: 28,
+                  ),
+                  onSelected: (value) {
+                    if (value == 'refund') onRefund(transaction);
+                    if (value == 'edit') onEdit(transaction);
+                    if (value == 'delete') onDelete(transaction);
+                  },
+                  itemBuilder: (context) => [
+                    if (transaction.type == FinanceTransactionType.expense)
+                      const PopupMenuItem(value: 'refund', child: Text('退款')),
+                    const PopupMenuItem(value: 'edit', child: Text('编辑')),
+                    const PopupMenuItem(value: 'delete', child: Text('删除')),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),

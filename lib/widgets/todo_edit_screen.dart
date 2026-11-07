@@ -2806,6 +2806,16 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                     ListView.separated(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
+                      findItemIndexCallback: (Key key) {
+                        if (key is ValueKey<String>) {
+                          final id = key.value;
+                          final idx = _relatedPlanBlocks.indexWhere(
+                            (p) => p.id == id,
+                          );
+                          return idx != -1 ? idx : null;
+                        }
+                        return null;
+                      },
                       itemCount: _relatedPlanBlocks.length,
                       separatorBuilder: (context, index) =>
                           const Divider(height: 1),
@@ -2817,40 +2827,43 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                         final end = DateTime.fromMillisecondsSinceEpoch(
                           plan.endTime,
                         );
-                        return ListTile(
-                          onTap: () async {
-                            await Navigator.push(
-                              context,
-                              PageTransitions.material(
-                                builder: (_) => TodoPlanScreen(
-                                  username: widget.username,
-                                  initialDate: DateTime(
-                                    start.year,
-                                    start.month,
-                                    start.day,
+                        return RepaintBoundary(
+                          key: ValueKey<String>(plan.id),
+                          child: ListTile(
+                            onTap: () async {
+                              await Navigator.push(
+                                context,
+                                PageTransitions.material(
+                                  builder: (_) => TodoPlanScreen(
+                                    username: widget.username,
+                                    initialDate: DateTime(
+                                      start.year,
+                                      start.month,
+                                      start.day,
+                                    ),
+                                    initialTodoId: widget.todo.id,
                                   ),
-                                  initialTodoId: widget.todo.id,
                                 ),
-                              ),
-                            );
-                            _loadRelatedPlans();
-                          },
-                          leading: Icon(
-                            Icons.access_time_filled,
-                            color: colorScheme.primary.withValues(alpha: 0.7),
-                          ),
-                          title: Text(
-                            "${_dateFormat('MM-dd').format(start)} ${_dateFormat('HH:mm').format(start)} - ${_dateFormat('HH:mm').format(end)}",
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
+                              );
+                              _loadRelatedPlans();
+                            },
+                            leading: Icon(
+                              Icons.access_time_filled,
+                              color: colorScheme.primary.withValues(alpha: 0.7),
                             ),
-                          ),
-                          subtitle: Text("预计专注 ${plan.plannedMinutes} 分钟"),
-                          trailing: const Icon(
-                            Icons.chevron_right,
-                            size: 20,
-                            color: Colors.grey,
+                            title: Text(
+                              "${_dateFormat('MM-dd').format(start)} ${_dateFormat('HH:mm').format(start)} - ${_dateFormat('HH:mm').format(end)}",
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            subtitle: Text("预计专注 ${plan.plannedMinutes} 分钟"),
+                            trailing: const Icon(
+                              Icons.chevron_right,
+                              size: 20,
+                              color: Colors.grey,
+                            ),
                           ),
                         );
                       },

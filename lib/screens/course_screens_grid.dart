@@ -1223,14 +1223,29 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 Flexible(
                   child: ListView.separated(
                     shrinkWrap: true,
+                    findItemIndexCallback: (Key key) {
+                      if (key is ValueKey<String> &&
+                          key.value.startsWith('week_agg_modal_')) {
+                        final idx = int.tryParse(
+                          key.value.substring('week_agg_modal_'.length),
+                        );
+                        if (idx != null && idx >= 0 && idx < items.length) {
+                          return idx;
+                        }
+                      }
+                      return null;
+                    },
                     itemCount: items.length,
                     separatorBuilder: (_, _) => const Divider(height: 1),
                     itemBuilder: (itemCtx, index) {
-                      return _buildDetailSidebarItem(
-                        itemCtx,
-                        items[index],
-                        sourceDate,
-                        'week_agg_modal_$index',
+                      return RepaintBoundary(
+                        key: ValueKey<String>('week_agg_modal_$index'),
+                        child: _buildDetailSidebarItem(
+                          itemCtx,
+                          items[index],
+                          sourceDate,
+                          'week_agg_modal_$index',
+                        ),
                       );
                     },
                   ),

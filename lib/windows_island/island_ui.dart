@@ -2791,6 +2791,14 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         child: SizedBox.expand(
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
+            findItemIndexCallback: (Key key) {
+              if (key is ValueKey<String>) {
+                final t = key.value;
+                final idx = visibleCards.indexWhere((c) => c['type'] == t);
+                return idx != -1 ? idx : null;
+              }
+              return null;
+            },
             itemCount: visibleCards.length,
             separatorBuilder: (_, _) => const SizedBox(width: 6),
             itemBuilder: (context, index) {
@@ -2870,22 +2878,25 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 };
               }
 
-              return SizedBox(
-                width: 76,
-                height: 80,
-                child: GestureDetector(
-                  onTap: onTap,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 6,
+              return RepaintBoundary(
+                key: ValueKey<String>(type),
+                child: SizedBox(
+                  width: 76,
+                  height: 80,
+                  child: GestureDetector(
+                    onTap: onTap,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      alignment: Alignment.center,
+                      child: cardContent,
                     ),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    alignment: Alignment.center,
-                    child: cardContent,
                   ),
                 ),
               );
