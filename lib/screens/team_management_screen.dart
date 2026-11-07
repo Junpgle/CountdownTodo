@@ -2797,10 +2797,22 @@ class _TeamAnnouncementViewState extends State<_TeamAnnouncementView> {
 
     return ListView.builder(
       padding: const EdgeInsets.all(24),
+      findChildIndexCallback: (Key key) {
+        if (key is ValueKey<String>) {
+          final id = key.value;
+          final index = _announcements.indexWhere(
+            (a) => (a is Map ? (a['uuid'] ?? a['id']) : null)?.toString() == id,
+          );
+          return index != -1 ? index : null;
+        }
+        return null;
+      },
       itemCount: _announcements.length,
       itemBuilder: (context, index) {
         final ann = _announcements[index];
+        final annKey = (ann is Map ? (ann['uuid'] ?? ann['id']) : null)?.toString() ?? '$index';
         return OptionalLiquidGlassCard(
+          key: ValueKey<String>(annKey),
           margin: const EdgeInsets.only(bottom: 16),
           borderRadius: 16,
           highContrast: true,
@@ -3179,7 +3191,9 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
                         );
                       }
                       if (index <= requestCount) {
-                        return _buildRequestItem(_requests[index - 1]);
+                        return RepaintBoundary(
+                          child: _buildRequestItem(_requests[index - 1]),
+                        );
                       }
                       if (index == requestCount + 1) {
                         return const SizedBox(height: 16);
@@ -3203,7 +3217,9 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
                     }
                     final memberIndex = index - memberStartIndex;
                     if (memberIndex < _members.length) {
-                      return _buildMemberItem(_members[memberIndex]);
+                      return RepaintBoundary(
+                        child: _buildMemberItem(_members[memberIndex]),
+                      );
                     }
                     return const SizedBox(height: 40);
                   },

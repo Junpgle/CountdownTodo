@@ -169,6 +169,14 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
       onRefresh: _loadShares,
       child: ListView.builder(
         padding: EdgeInsets.fromLTRB(16, topPadding + 16, 16, 16),
+        findChildIndexCallback: (Key key) {
+          if (key is ValueKey<int>) {
+            final id = key.value;
+            final index = _shares.indexWhere((s) => s.id == id);
+            return index != -1 ? index : null;
+          }
+          return null;
+        },
         itemCount: _shares.length,
         itemBuilder: (context, index) => _buildShareCard(_shares[index]),
       ),
@@ -180,6 +188,7 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
     final isInactive = !share.isActive;
 
     return Card(
+      key: ValueKey<int>(share.id),
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
