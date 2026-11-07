@@ -1603,7 +1603,7 @@ class _FloatingGlassTopBarOverlayState
         );
 
         if (widget.blur) {
-          surface = BackdropFilter(
+          surface = BackdropFilter.grouped(
             filter: AppImageFilters.quantizedClampedBlur(blur),
             child: surface,
           );
@@ -1801,42 +1801,7 @@ class _FloatingGlassAppBarActionContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<double>(
-      valueListenable: collapseProgress,
-      builder: (context, value, _) {
-        final transitionStart = math.max(0.0, floatingThreshold - 0.22);
-        final transitionEnd = math.min(1.0, floatingThreshold + 0.22);
-        final transitionRange = math.max(
-          0.001,
-          transitionEnd - transitionStart,
-        );
-        final target = ((value - transitionStart) / transitionRange).clamp(
-          0.0,
-          1.0,
-        );
-
-        // Scroll notifications already provide a frame-by-frame progress
-        // signal. Animating each new target again with a 180 ms tween makes
-        // Android controls trail the scroll and schedules redundant work.
-        if (AppPlatform.isAndroid) {
-          return _buildForProgress(context, target);
-        }
-
-        return TweenAnimationBuilder<double>(
-          tween: Tween<double>(end: target),
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
-          builder: (context, progress, _) {
-            return _buildForProgress(context, progress);
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildForProgress(BuildContext context, double progress) {
     final colorScheme = Theme.of(context).colorScheme;
-    final resolvedTint = tint ?? _floatingAppBarTint(colorScheme, null);
     final nativeChild = Theme(
       data: Theme.of(context).copyWith(
         // The app-wide glass button theme applies to ordinary page controls.
@@ -1861,6 +1826,79 @@ class _FloatingGlassAppBarActionContent extends StatelessWidget {
       child: child,
     );
 
+    return ValueListenableBuilder<double>(
+      valueListenable: collapseProgress,
+      child: Center(child: nativeChild),
+      builder: (context, value, centeredNativeChild) {
+        final transitionStart = math.max(0.0, floatingThreshold - 0.22);
+        final transitionEnd = math.min(1.0, floatingThreshold + 0.22);
+        final transitionRange = math.max(
+          0.001,
+          transitionEnd - transitionStart,
+        );
+        final target = ((value - transitionStart) / transitionRange).clamp(
+          0.0,
+          1.0,
+        );
+
+        // Scroll notifications already provide a frame-by-frame progress
+        // signal. Animating each new target again with a 180 ms tween makes
+        // Android controls trail the scroll and schedules redundant work.
+        if (AppPlatform.isAndroid) {
+          return _buildForProgress(context, target, centeredNativeChild!);
+        }
+
+        return TweenAnimationBuilder<double>(
+          tween: Tween<double>(end: target),
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          child: centeredNativeChild,
+          builder: (context, progress, staticChild) {
+            return _buildForProgress(context, progress, staticChild!);
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildForProgress(
+    BuildContext context,
+    double progress,
+    Widget centeredNativeChild,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final resolvedTint = tint ?? _floatingAppBarTint(colorScheme, null);
+    Widget? glassShell;
+    if (progress > 0.001) {
+      final clippedControl = ClipOval(
+        // The glass surface owns an outer halo shadow. Clip
+        // it to the circular control so it cannot leave a
+        // square/irregular shadow around the action button.
+        child: FloatingGlassControl(
+          height: size,
+          borderRadius: borderRadius,
+          tint: resolvedTint,
+          haloColor: haloColor ?? colorScheme.primary,
+          haloOpacity: haloOpacity,
+          backerOpacity: backerOpacity,
+          useTopBarGlass: useTopBarGlass,
+          isDark: isDark,
+          child: const SizedBox.shrink(),
+        ),
+      );
+      glassShell = IgnorePointer(
+        child: progress >= 0.999
+            ? clippedControl
+            : Opacity(
+                opacity: progress,
+                child: Transform.scale(
+                  scale: 0.82 + progress * 0.18,
+                  child: clippedControl,
+                ),
+              ),
+      );
+    }
+
     return Padding(
       padding: margin,
       child: Center(
@@ -1870,36 +1908,7 @@ class _FloatingGlassAppBarActionContent extends StatelessWidget {
           child: Stack(
             alignment: Alignment.center,
             fit: StackFit.expand,
-            children: [
-              Visibility(
-                visible: progress > 0.001,
-                child: IgnorePointer(
-                  child: Opacity(
-                    opacity: progress,
-                    child: Transform.scale(
-                      scale: 0.82 + progress * 0.18,
-                      child: ClipOval(
-                        // The glass surface owns an outer halo shadow. Clip
-                        // it to the circular control so it cannot leave a
-                        // square/irregular shadow around the action button.
-                        child: FloatingGlassControl(
-                          height: size,
-                          borderRadius: borderRadius,
-                          tint: resolvedTint,
-                          haloColor: haloColor ?? colorScheme.primary,
-                          haloOpacity: haloOpacity,
-                          backerOpacity: backerOpacity,
-                          useTopBarGlass: useTopBarGlass,
-                          isDark: isDark,
-                          child: const SizedBox.shrink(),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Center(child: nativeChild),
-            ],
+            children: [?glassShell, centeredNativeChild],
           ),
         ),
       ),
@@ -2934,7 +2943,7 @@ class FloatingGlassTopBarBackground extends StatelessWidget {
             );
 
             if (blur) {
-              surface = BackdropFilter(
+              surface = BackdropFilter.grouped(
                 filter: AppImageFilters.quantizedClampedBlur(blurSigma),
                 child: surface,
               );
@@ -2978,22 +2987,24 @@ class FloatingGlassLargeFlexibleSpace extends StatelessWidget {
     final expandedStyle = Theme.of(context).textTheme.headlineMedium
         ?.copyWith(color: colorScheme.onSurface);
 
+    final styledTitle = expandedStyle == null
+        ? title
+        : DefaultTextStyle(style: expandedStyle, child: title);
+
     return Stack(
       fit: StackFit.expand,
       children: [
         FloatingGlassTopBarBackground(tint: tint, isDark: isDark),
-        Align(
-          alignment: Alignment.bottomLeft,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
-            child: Opacity(
-              opacity: extent,
-              child: expandedStyle == null
-                  ? title
-                  : DefaultTextStyle(style: expandedStyle, child: title),
+        if (extent > 0.001)
+          Align(
+            alignment: Alignment.bottomLeft,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
+              child: extent >= 0.999
+                  ? styledTitle
+                  : Opacity(opacity: extent, child: styledTitle),
             ),
           ),
-        ),
       ],
     );
   }

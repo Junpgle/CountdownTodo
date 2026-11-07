@@ -37,9 +37,8 @@ class LiquidGlassLivePreviewDock extends StatelessWidget {
                             begin: const Offset(0, 0.4),
                             end: Offset.zero,
                           ).animate(
-                            CurvedAnimation(
-                              parent: animation,
-                              curve: Curves.easeOutCubic,
+                            animation.drive(
+                              CurveTween(curve: Curves.easeOutCubic),
                             ),
                           ),
                       child: FadeTransition(opacity: animation, child: child),

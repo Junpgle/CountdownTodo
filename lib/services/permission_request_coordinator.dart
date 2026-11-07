@@ -559,12 +559,13 @@ class PermissionRationaleBanner extends StatelessWidget {
                 duration: const Duration(milliseconds: 500),
                 curve: Curves.easeOutBack,
                 builder: (context, value, child) {
+                  if ((value - 1.0).abs() <= 0.0005) return child!;
+                  final clampedOpacity = value.clamp(0.0, 1.0);
                   return Transform.translate(
                     offset: Offset(0, 40 * (1 - value)),
-                    child: Opacity(
-                      opacity: value.clamp(0.0, 1.0),
-                      child: child,
-                    ),
+                    child: clampedOpacity >= 0.999
+                        ? child
+                        : Opacity(opacity: clampedOpacity, child: child),
                   );
                 },
                 child: FloatingGlassControl(

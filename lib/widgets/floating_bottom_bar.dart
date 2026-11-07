@@ -242,6 +242,7 @@ class _FloatingBottomNavigationBarState
       child: ValueListenableBuilder<double>(
         valueListenable: _stretchNotifier,
         builder: (context, stretch, child) {
+          if (stretch.abs() <= 0.0001) return child!;
           final scaleX = 1.0 + stretch * 0.045;
           return Transform(
             alignment: Alignment.bottomCenter,
