@@ -308,22 +308,18 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                 // shell — the visible layers distinguish two todos from
                 // larger folders.
                 if (totalCount > 1 && !isExpanded)
-                  AnimatedOpacity(
-                    duration: const Duration(milliseconds: 300),
-                    opacity: 1.0,
-                    child: Column(
-                      children: totalCount == 2
-                          ? [
-                              _buildStackLayerInline(context, 0.97, 0.6),
-                              const SizedBox(height: 2),
-                            ]
-                          : [
-                              _buildStackLayerInline(context, 0.94, 0.3),
-                              const SizedBox(height: 2),
-                              _buildStackLayerInline(context, 0.97, 0.6),
-                              const SizedBox(height: 2),
-                            ],
-                    ),
+                  Column(
+                    children: totalCount == 2
+                        ? [
+                            _buildStackLayerInline(context, 0.97, 0.6),
+                            const SizedBox(height: 2),
+                          ]
+                        : [
+                            _buildStackLayerInline(context, 0.94, 0.3),
+                            const SizedBox(height: 2),
+                            _buildStackLayerInline(context, 0.97, 0.6),
+                            const SizedBox(height: 2),
+                          ],
                   ),
                 // One continuous glass surface for the whole folder: the
                 // header and the expanded todo list share the same treatment,
@@ -499,6 +495,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                   final animValue = Curves.easeOutQuart.transform(
                     _progressController.value,
                   );
+                  if (animValue >= 0.999) return child!;
                   return Opacity(opacity: animValue, child: child);
                 },
                 child: Container(

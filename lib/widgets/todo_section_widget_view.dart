@@ -263,6 +263,9 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                 duration: const Duration(milliseconds: 1100),
                                 curve: Curves.easeOutCubic,
                                 builder: (context, value, _) {
+                                  if (value <= 0.001) {
+                                    return const SizedBox.shrink();
+                                  }
                                   return Container(
                                     decoration: BoxDecoration(
                                       borderRadius: BorderRadius.circular(14),
@@ -296,6 +299,9 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                 duration: const Duration(milliseconds: 900),
                                 curve: Curves.easeOutCubic,
                                 builder: (context, value, _) {
+                                  if (value >= 0.999) {
+                                    return const SizedBox.shrink();
+                                  }
                                   return Align(
                                     alignment: Alignment(-1.4 + 2.8 * value, 0),
                                     child: FractionallySizedBox(
@@ -842,6 +848,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                               duration: const Duration(milliseconds: 650),
                               curve: Curves.easeOutCubic,
                               builder: (context, scale, child) {
+                                if (scale >= 0.999) return child!;
                                 return Transform.scale(
                                   scale: scale,
                                   child: child,

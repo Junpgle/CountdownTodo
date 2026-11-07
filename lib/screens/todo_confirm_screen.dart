@@ -1284,17 +1284,25 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                                     begin: const Offset(0.3, 0.0),
                                     end: Offset.zero,
                                   ).animate(
-                                    CurvedAnimation(
-                                      parent: animation,
-                                      curve: Curves.easeOutCubic,
+                                    animation.drive(
+                                      CurveTween(curve: Curves.easeOutCubic),
                                     ),
                                   );
-                              return FadeTransition(
-                                opacity: animation,
-                                child: SlideTransition(
-                                  position: slideAnimation,
-                                  child: child,
-                                ),
+                              return AnimatedBuilder(
+                                animation: animation,
+                                child: child,
+                                builder: (context, child) {
+                                  if (animation.value >= 0.999) {
+                                    return child!;
+                                  }
+                                  return FadeTransition(
+                                    opacity: animation,
+                                    child: SlideTransition(
+                                      position: slideAnimation,
+                                      child: child,
+                                    ),
+                                  );
+                                },
                               );
                             },
                             child: _buildCurrentTodoCard(currentTodo!),

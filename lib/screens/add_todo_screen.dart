@@ -248,6 +248,11 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   bool _estimateAccountInvalid = false;
   DateTime? _suggestedDueDate;
   List<TodoGroup> _localTodoGroups = [];
+  String _lastObservedTitleText = '';
+  String _lastObservedRemarkText = '';
+  String? _lastObservedGroupId;
+  _ManualCaptureKind? _lastObservedCaptureKind;
+  bool? _lastCanPop;
 
   String? get _relatedScheduleTeamUuid {
     final value = widget.relatedFixedScheduleContext?.teamUuid?.trim();
@@ -313,6 +318,10 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       vsync: this,
       duration: const Duration(milliseconds: 600),
     );
+    _lastObservedTitleText = _titleCtrl.text;
+    _lastObservedRemarkText = _remarkCtrl.text;
+    _lastObservedGroupId = _selectedGroupId;
+    _lastObservedCaptureKind = _manualCaptureKind;
     _titleCtrl.addListener(_onTitleChanged);
     _remarkCtrl.addListener(_onTitleChanged);
     _loadCategoryDefaults().then((_) {
@@ -488,25 +497,46 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     super.dispose();
   }
 
-  void _onTitleChanged() {
+  void _onTitleChanged({bool force = false}) {
+    final rawTitle = _titleCtrl.text;
+    final remark = _remarkCtrl.text;
+    final group = _selectedGroupId;
+    final captureKind = _manualCaptureKind;
+    if (!force &&
+        rawTitle == _lastObservedTitleText &&
+        remark == _lastObservedRemarkText &&
+        group == _lastObservedGroupId &&
+        captureKind == _lastObservedCaptureKind) {
+      return;
+    }
+    _lastObservedTitleText = rawTitle;
+    _lastObservedRemarkText = remark;
+    _lastObservedGroupId = group;
+    _lastObservedCaptureKind = captureKind;
+
     _estimationDebounce?.cancel();
     final sequence = ++_estimateSequence;
     if (mounted) {
-      setState(() {
-        _estimationResult = null;
-        _suggestedDueDate = null;
-        _classificationSuggestion = null;
-      });
+      final hadSuggestions =
+          _estimationResult != null ||
+          _suggestedDueDate != null ||
+          _classificationSuggestion != null;
+      final canPop = _allowExit || (!_isSaving && !_hasUnsavedDraft);
+      if (hadSuggestions || canPop != _lastCanPop) {
+        setState(() {
+          _estimationResult = null;
+          _suggestedDueDate = null;
+          _classificationSuggestion = null;
+        });
+      }
     }
     if (_estimateAccountInvalid ||
         widget.relatedFixedScheduleContext != null ||
         _manualCaptureKind == _ManualCaptureKind.fixedSchedule) {
       return;
     }
-    final text = _titleCtrl.text.trim();
+    final text = rawTitle.trim();
     if (text.length < 2) return;
-    final group = _selectedGroupId;
-    final remark = _remarkCtrl.text;
     _estimationDebounce = Timer(const Duration(milliseconds: 500), () async {
       try {
         final username = await _estimateAccount;
@@ -1025,7 +1055,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         _remarkCtrl.text = _locationCtrl.text.trim();
       }
     });
-    if (next == _ManualCaptureKind.todo) _onTitleChanged();
+    if (next == _ManualCaptureKind.todo) _onTitleChanged(force: true);
   }
 
   Future<void> _requestExit() async {
@@ -1535,8 +1565,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
               ? parsed.location!.trim()
               : null);
     final manualRemark = _remarkCtrl.text.trim();
-    final resolvedRemark = manualRemark.isNotEmpty &&
-            manualRemark != resolvedLocation
+    final resolvedRemark =
+        manualRemark.isNotEmpty && manualRemark != resolvedLocation
         ? manualRemark
         : (parsed.remark?.trim().isNotEmpty == true
               ? parsed.remark!.trim()
@@ -2227,9 +2257,11 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         ? const Color(0xFFF2F2F7)
         : theme.colorScheme.surface;
     final topBarHeight = floatingGlassTopBarHeight(context);
+    final canPop = _allowExit || (!_isSaving && !_hasUnsavedDraft);
+    _lastCanPop = canPop;
 
     return PopScope<Object?>(
-      canPop: _allowExit || (!_isSaving && !_hasUnsavedDraft),
+      canPop: canPop,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) unawaited(_requestExit());
       },
@@ -2355,7 +2387,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       }
       _classificationSuggestion = null;
     });
-    _onTitleChanged();
+    _onTitleChanged(force: true);
   }
 
   void _recordNegativeClassificationFeedback() {
@@ -3586,8 +3618,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                         '内容',
                         _parsedResults[_currentParseIndex].title,
                       ),
-                      if (_parsedResults[_currentParseIndex]
-                              .location
+                      if (_parsedResults[_currentParseIndex].location
                               ?.trim()
                               .isNotEmpty ==
                           true)
@@ -3595,8 +3626,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                           '地点',
                           _parsedResults[_currentParseIndex].location!.trim(),
                         ),
-                      if (_parsedResults[_currentParseIndex]
-                              .remark
+                      if (_parsedResults[_currentParseIndex].remark
                               ?.trim()
                               .isNotEmpty ==
                           true)
@@ -3647,33 +3677,35 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
   Widget _buildBouncingDots() {
     final dotColor = Theme.of(context).colorScheme.primary;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(3, (index) {
-        return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 3),
-          child: AnimatedBuilder(
-            animation: _dotsController,
-            child: Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(
-                color: dotColor,
-                shape: BoxShape.circle,
+    return RepaintBoundary(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: List.generate(3, (index) {
+          return Container(
+            margin: const EdgeInsets.symmetric(horizontal: 3),
+            child: AnimatedBuilder(
+              animation: _dotsController,
+              child: Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: dotColor,
+                  shape: BoxShape.circle,
+                ),
               ),
+              builder: (context, child) {
+                final double value = _dotsController.value;
+                final double delay = index * 0.2;
+                final double animationValue = (value + delay) % 1.0;
+                final double scale =
+                    0.5 + 0.5 * (1.0 - (animationValue - 0.5).abs() * 2.0);
+                return Transform.scale(scale: scale, child: child);
+              },
             ),
-            builder: (context, child) {
-              final double value = _dotsController.value;
-              final double delay = index * 0.2;
-              final double animationValue = (value + delay) % 1.0;
-              final double scale =
-                  0.5 + 0.5 * (1.0 - (animationValue - 0.5).abs() * 2.0);
-              return Transform.scale(scale: scale, child: child);
-            },
-          ),
-        );
-      }),
+          );
+        }),
+      ),
     );
   }
 

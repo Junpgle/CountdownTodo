@@ -154,6 +154,10 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   late TextEditingController _titleCtrl;
   late TextEditingController _remarkCtrl;
   late TextEditingController _customDaysCtrl;
+  String _lastObservedTitle = '';
+  String _lastObservedRemark = '';
+  String _lastObservedCustomDays = '';
+  bool? _lastCanPop;
   late bool _isDone;
   late DateTime _createdDate;
   late DateTime _originalCreatedDate;
@@ -224,6 +228,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     _customDaysCtrl = TextEditingController(
       text: _customDays?.toString() ?? '',
     );
+    _lastObservedTitle = _titleCtrl.text;
+    _lastObservedRemark = _remarkCtrl.text;
+    _lastObservedCustomDays = _customDaysCtrl.text;
     _titleCtrl.addListener(_onEditorInputChanged);
     _remarkCtrl.addListener(_onEditorInputChanged);
     _customDaysCtrl.addListener(_onEditorInputChanged);
@@ -333,7 +340,22 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   }
 
   void _onEditorInputChanged() {
-    if (mounted && !_loadingEditorFields) setState(() {});
+    if (!mounted || _loadingEditorFields) return;
+    final titleText = _titleCtrl.text;
+    final remarkText = _remarkCtrl.text;
+    final customDaysText = _customDaysCtrl.text;
+    if (titleText == _lastObservedTitle &&
+        remarkText == _lastObservedRemark &&
+        customDaysText == _lastObservedCustomDays) {
+      return;
+    }
+    _lastObservedTitle = titleText;
+    _lastObservedRemark = remarkText;
+    _lastObservedCustomDays = customDaysText;
+    final canPop = _allowExit || (!_saving && !_hasUnsavedChanges);
+    if (canPop != _lastCanPop) {
+      setState(() {});
+    }
   }
 
   Future<bool> _persistCurrentTodo({required bool closeAfterSave}) async {
@@ -1063,13 +1085,17 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     }
   }
 
-  Widget _exitProtected(Widget child) => PopScope<Object?>(
-    canPop: _allowExit || (!_saving && !_hasUnsavedChanges),
-    onPopInvokedWithResult: (didPop, result) {
-      if (!didPop) unawaited(_requestExit());
-    },
-    child: child,
-  );
+  Widget _exitProtected(Widget child) {
+    final canPop = _allowExit || (!_saving && !_hasUnsavedChanges);
+    _lastCanPop = canPop;
+    return PopScope<Object?>(
+      canPop: canPop,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) unawaited(_requestExit());
+      },
+      child: child,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2312,6 +2338,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
       _recurrence = todo.recurrence;
       _customDays = todo.customIntervalDays;
       _customDaysCtrl.text = _customDays?.toString() ?? '';
+      _lastObservedTitle = _titleCtrl.text;
+      _lastObservedRemark = _remarkCtrl.text;
+      _lastObservedCustomDays = _customDaysCtrl.text;
       _recurrenceEndDate = todo.recurrenceEndDate;
       _isAllDay = todo.isDateOnly;
       _preserveLegacyTiming = todo.hasLegacyTiming;
