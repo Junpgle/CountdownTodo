@@ -265,7 +265,7 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner>
         borderRadius: BorderRadius.circular(24),
         child: AppPlatform.isWindows
             ? bannerContent
-            : BackdropFilter(
+            : BackdropFilter.grouped(
                 filter: AppImageFilters.blur10,
                 child: bannerContent,
               ),

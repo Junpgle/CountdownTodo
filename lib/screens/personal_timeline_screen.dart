@@ -23,6 +23,7 @@ import '../services/timeline_ml_service.dart';
 import '../services/timeline_statistics_service.dart';
 import '../utils/app_image_filters.dart';
 import '../utils/app_platform.dart';
+import '../utils/app_scroll_behavior.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/floating_bottom_bar.dart';
 import '../widgets/floating_glass_control.dart';
@@ -1598,11 +1599,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
       body: Stack(
         children: [
           RepaintBoundary(child: _buildBackground(colorScheme)),
-          FloatingGlassTopBarContentFade(
-            topBarHeight: topBarHeight,
+          OptionalLiquidGlassScrollOptimizer(
             child: CustomScrollView(
               controller: _timelineScrollController,
-              physics: const BouncingScrollPhysics(),
+              physics: const AppFluidScrollPhysics(),
               slivers: [
                 _buildAppBar(context),
                 SliverToBoxAdapter(child: _buildGreeting(colorScheme)),
@@ -1801,6 +1801,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
               ],
             ),
           ),
+          if (topBarHeight > 0.0)
+            _buildTimelineTopFadeCap(colorScheme, topBarHeight),
           // The foreground AppBar is deliberately above the mask: its title
           // and actions must stay crisp while only the scrolling body fades.
           Positioned(
@@ -1852,6 +1854,62 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildTimelineTopFadeCap(ColorScheme cs, double topBarHeight) {
+    final fadeHeight = topBarHeight + floatingGlassTopBarDefaultFadeTail;
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      height: fadeHeight,
+      child: IgnorePointer(
+        child: RepaintBoundary(
+          child: Builder(
+            builder: (context) {
+              final screenSize = MediaQuery.sizeOf(context);
+              return ShaderMask(
+                blendMode: BlendMode.dstIn,
+                shaderCallback: (bounds) => LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  stops: const [0.0, 0.18, 0.78, 1.0],
+                  colors: [
+                    Colors.white,
+                    Colors.white,
+                    Colors.white.withValues(alpha: 0.14),
+                    Colors.transparent,
+                  ],
+                ).createShader(bounds),
+                child: ClipRect(
+                  child: OverflowBox(
+                    alignment: Alignment.topCenter,
+                    minWidth: screenSize.width,
+                    maxWidth: screenSize.width,
+                    minHeight: screenSize.height,
+                    maxHeight: screenSize.height,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            cs.surface,
+                            cs.primaryContainer.withValues(alpha: 0.08),
+                            cs.secondaryContainer.withValues(alpha: 0.04),
+                            cs.surface,
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
     );
   }
 

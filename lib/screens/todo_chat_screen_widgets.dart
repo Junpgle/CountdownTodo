@@ -136,7 +136,12 @@ class _IridescentActionPanelState extends State<_IridescentActionPanel>
           animation: _controller,
           isDark: widget.isDark,
         ),
-        child: Padding(padding: const EdgeInsets.all(2.5), child: widget.child),
+        child: RepaintBoundary(
+          child: Padding(
+            padding: const EdgeInsets.all(2.5),
+            child: widget.child,
+          ),
+        ),
       ),
     );
   }
@@ -168,6 +173,21 @@ class _IridescentBorderPainter extends CustomPainter {
 
   final Animation<double> animation;
   final bool isDark;
+  static const BorderRadius _baseBorderRadius = BorderRadius.all(
+    Radius.circular(18),
+  );
+  static const List<BorderRadius> _rippleBorderRadii = [
+    BorderRadius.all(Radius.circular(18)),
+    BorderRadius.all(Radius.circular(17)),
+    BorderRadius.all(Radius.circular(16)),
+  ];
+  static const BorderRadius _highlightBorderRadius = BorderRadius.all(
+    Radius.circular(16),
+  );
+  Size? _cachedSize;
+  Rect? _cachedRect;
+  Rect? _cachedBorderRect;
+  RRect? _cachedBaseRRect;
   late final List<Color> _gradientColors = [
     const Color(0xFF5EFCE8).withValues(alpha: isDark ? 0.88 : 0.82),
     const Color(0xFF736EFE).withValues(alpha: isDark ? 0.82 : 0.74),
@@ -204,11 +224,20 @@ class _IridescentBorderPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
 
+    if (_cachedSize != size) {
+      _cachedSize = size;
+      final rect = Offset.zero & size;
+      final borderRect = rect.deflate(2.0);
+      _cachedRect = rect;
+      _cachedBorderRect = borderRect;
+      _cachedBaseRRect = _baseBorderRadius.toRRect(borderRect);
+    }
+
     final progress = animation.value;
-    final rect = Offset.zero & size;
+    final rect = _cachedRect!;
     final center = rect.center;
-    final borderRect = rect.deflate(2.0);
-    final radius = BorderRadius.circular(18).toRRect(borderRect);
+    final borderRect = _cachedBorderRect!;
+    final radius = _cachedBaseRRect!;
     final shader = _gradient.createShader(rect);
 
     _glowPaint.shader = shader;
@@ -225,7 +254,7 @@ class _IridescentBorderPainter extends CustomPainter {
         width: borderRect.width - (i * 1.2) + wave,
         height: borderRect.height - (i * 1.2) - wave,
       );
-      final ripple = BorderRadius.circular(18.0 - i).toRRect(rippleRect);
+      final ripple = _rippleBorderRadii[i].toRRect(rippleRect);
       final paint = _ripplePaints[i]..shader = shader;
       canvas.drawRRect(ripple, paint);
     }
@@ -239,7 +268,7 @@ class _IridescentBorderPainter extends CustomPainter {
           ),
         );
     canvas.drawRRect(
-      BorderRadius.circular(16).toRRect(highlightRect),
+      _highlightBorderRadius.toRRect(highlightRect),
       _sheenPaint,
     );
   }

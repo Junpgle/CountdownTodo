@@ -58,7 +58,7 @@ class PlatformBackdropFilter extends StatelessWidget {
             return _clipIfNeeded(child);
           }
           return _clipIfNeeded(
-            BackdropFilter(filter: filter, child: child),
+            BackdropFilter.grouped(filter: filter, child: child),
             forceClipRect: true,
           );
         },
@@ -70,14 +70,14 @@ class PlatformBackdropFilter extends StatelessWidget {
         builder: (context, configuration, _) {
           if (configuration.enabled) return _clipIfNeeded(child);
           return _clipIfNeeded(
-            BackdropFilter(filter: filter, child: child),
+            BackdropFilter.grouped(filter: filter, child: child),
             forceClipRect: true,
           );
         },
       );
     }
     return _clipIfNeeded(
-      BackdropFilter(filter: filter, child: child),
+      BackdropFilter.grouped(filter: filter, child: child),
       forceClipRect: true,
     );
   }

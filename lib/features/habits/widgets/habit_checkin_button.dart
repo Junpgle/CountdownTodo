@@ -353,6 +353,7 @@ class _HabitCelebrationTriggerState extends State<HabitCelebrationTrigger>
                       _scaleController,
                       _holdController,
                     ]),
+                    child: RepaintBoundary(child: widget.child),
                     builder: (context, child) {
                       final scale = _scaleController.value;
                       final holdProgress = _holdController.value;
@@ -367,7 +368,7 @@ class _HabitCelebrationTriggerState extends State<HabitCelebrationTrigger>
                                   borderRadius: effectiveRadius,
                                 )
                               : null,
-                          child: widget.child,
+                          child: child,
                         ),
                       );
                     },

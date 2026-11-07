@@ -1095,50 +1095,60 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
             decoration: BoxDecoration(color: scheme.surface),
             child: Stack(
               children: [
-                // Background blurred blobs
-                Positioned(
-                  top: -100,
-                  left: -50,
-                  child: Container(
-                    width: 300,
-                    height: 300,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: welcomePrimary.withValues(alpha: 0.15),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  bottom: -50,
-                  right: -50,
-                  child: Container(
-                    width: 250,
-                    height: 250,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: welcomeTertiary.withValues(alpha: 0.15),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: 96,
-                  right: -34,
-                  child: Container(
-                    width: 132,
-                    height: 132,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: welcomeSecondary.withValues(alpha: 0.15),
-                    ),
-                  ),
-                ),
+                // Background blurred blobs isolated in a static RepaintBoundary
+                // so scrolling never re-triggers full-screen blur60.
                 Positioned.fill(
-                  child: AppPlatform.isWindows
-                      ? const SizedBox.shrink()
-                      : BackdropFilter(
-                          filter: AppImageFilters.blur60,
-                          child: const SizedBox(),
-                        ),
+                  child: IgnorePointer(
+                    child: RepaintBoundary(
+                      child: Stack(
+                        children: [
+                          Positioned(
+                            top: -100,
+                            left: -50,
+                            child: Container(
+                              width: 300,
+                              height: 300,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: welcomePrimary.withValues(alpha: 0.15),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            bottom: -50,
+                            right: -50,
+                            child: Container(
+                              width: 250,
+                              height: 250,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: welcomeTertiary.withValues(alpha: 0.15),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            top: 96,
+                            right: -34,
+                            child: Container(
+                              width: 132,
+                              height: 132,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: welcomeSecondary.withValues(alpha: 0.15),
+                              ),
+                            ),
+                          ),
+                          if (!AppPlatform.isWindows)
+                            Positioned.fill(
+                              child: BackdropFilter(
+                                filter: AppImageFilters.blur60,
+                                child: const SizedBox(),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
                 // Content
                 FloatingGlassTopBarContentFade(
@@ -1584,37 +1594,46 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       decoration: BoxDecoration(color: scheme.surface),
       child: Stack(
         children: [
-          Positioned(
-            top: -80,
-            left: -80,
-            child: Container(
-              width: 220,
-              height: 220,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: welcomePrimary.withValues(alpha: 0.15),
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: -90,
-            right: -70,
-            child: Container(
-              width: 220,
-              height: 220,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: welcomeTertiary.withValues(alpha: 0.15),
-              ),
-            ),
-          ),
           Positioned.fill(
-            child: AppPlatform.isWindows
-                ? const SizedBox.shrink()
-                : BackdropFilter(
-                    filter: AppImageFilters.blur48,
-                    child: const SizedBox(),
-                  ),
+            child: IgnorePointer(
+              child: RepaintBoundary(
+                child: Stack(
+                  children: [
+                    Positioned(
+                      top: -80,
+                      left: -80,
+                      child: Container(
+                        width: 220,
+                        height: 220,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: welcomePrimary.withValues(alpha: 0.15),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: -90,
+                      right: -70,
+                      child: Container(
+                        width: 220,
+                        height: 220,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: welcomeTertiary.withValues(alpha: 0.15),
+                        ),
+                      ),
+                    ),
+                    if (!AppPlatform.isWindows)
+                      Positioned.fill(
+                        child: BackdropFilter(
+                          filter: AppImageFilters.blur48,
+                          child: const SizedBox(),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
           ),
           Positioned.fill(
             child: FloatingGlassTopBarContentFade(

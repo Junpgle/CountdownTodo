@@ -767,9 +767,10 @@ class FloatingGlassTopBarContentFade extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final groupedChild = BackdropGroup(child: child);
     return ValueListenableBuilder<bool>(
       valueListenable: AndroidWindowRenderingPolicy.disableShaderContentFade,
-      child: child,
+      child: groupedChild,
       builder: (context, disableShader, child) {
         // Android 17 freeform windows can drop the entire TextureView subtree
         // when a destination-in mask is involved. The top bar remains a
@@ -821,12 +822,16 @@ class _RenderFloatingGlassTopBarContentFadeBox extends RenderProxyBox {
   ShaderMaskLayer? get layer => super.layer as ShaderMaskLayer?;
 
   double _fadeHeight;
+  Shader? _cachedShader;
+  double? _cachedWidth;
+  double? _cachedMaskHeight;
 
   double get fadeHeight => _fadeHeight;
 
   set fadeHeight(double value) {
     if (_fadeHeight == value) return;
     _fadeHeight = value;
+    _cachedShader = null;
     markNeedsPaint();
   }
 
@@ -848,12 +853,27 @@ class _RenderFloatingGlassTopBarContentFadeBox extends RenderProxyBox {
     AndroidWindowRenderingPolicy.disableShaderContentFade.removeListener(
       _handleRenderingPolicyChanged,
     );
+    _cachedShader = null;
     super.detach();
   }
 
   void _handleRenderingPolicyChanged() {
     markNeedsCompositingBitsUpdate();
     markNeedsPaint();
+  }
+
+  Shader _resolveShader(double width, double maskHeight) {
+    if (_cachedShader != null &&
+        _cachedWidth == width &&
+        _cachedMaskHeight == maskHeight) {
+      return _cachedShader!;
+    }
+    _cachedWidth = width;
+    _cachedMaskHeight = maskHeight;
+    return _cachedShader = floatingGlassTopBarContentFadeShader(
+      Rect.fromLTWH(0.0, 0.0, width, maskHeight),
+      fadeHeight: maskHeight,
+    );
   }
 
   @override
@@ -880,10 +900,7 @@ class _RenderFloatingGlassTopBarContentFadeBox extends RenderProxyBox {
     );
     layer ??= ShaderMaskLayer();
     layer!
-      ..shader = floatingGlassTopBarContentFadeShader(
-        Rect.fromLTWH(0.0, 0.0, size.width, maskHeight),
-        fadeHeight: maskHeight,
-      )
+      ..shader = _resolveShader(size.width, maskHeight)
       ..maskRect = maskRect
       ..blendMode = BlendMode.dstIn;
     context.pushLayer(layer!, super.paint, offset);
@@ -970,12 +987,16 @@ class _RenderFloatingGlassSliverContentFade extends RenderProxySliver {
   _RenderFloatingGlassSliverContentFade({required this._fadeHeight});
 
   double _fadeHeight;
+  Shader? _cachedShader;
+  double? _cachedWidth;
+  double? _cachedMaskHeight;
 
   double get fadeHeight => _fadeHeight;
 
   set fadeHeight(double value) {
     if (_fadeHeight == value) return;
     _fadeHeight = value;
+    _cachedShader = null;
     markNeedsPaint();
   }
 
@@ -997,6 +1018,7 @@ class _RenderFloatingGlassSliverContentFade extends RenderProxySliver {
     AndroidWindowRenderingPolicy.disableShaderContentFade.removeListener(
       _handleRenderingPolicyChanged,
     );
+    _cachedShader = null;
     super.detach();
   }
 
@@ -1007,6 +1029,20 @@ class _RenderFloatingGlassSliverContentFade extends RenderProxySliver {
 
   @override
   ShaderMaskLayer? get layer => super.layer as ShaderMaskLayer?;
+
+  Shader _resolveShader(double width, double maskHeight) {
+    if (_cachedShader != null &&
+        _cachedWidth == width &&
+        _cachedMaskHeight == maskHeight) {
+      return _cachedShader!;
+    }
+    _cachedWidth = width;
+    _cachedMaskHeight = maskHeight;
+    return _cachedShader = floatingGlassTopBarContentFadeShader(
+      Rect.fromLTWH(0.0, 0.0, width, maskHeight),
+      fadeHeight: maskHeight,
+    );
+  }
 
   @override
   void paint(PaintingContext context, Offset offset) {
@@ -1035,10 +1071,7 @@ class _RenderFloatingGlassSliverContentFade extends RenderProxySliver {
     final maskRect = Rect.fromLTWH(offset.dx, 0.0, viewportWidth, maskHeight);
     layer ??= ShaderMaskLayer();
     layer!
-      ..shader = floatingGlassTopBarContentFadeShader(
-        Rect.fromLTWH(0.0, 0.0, viewportWidth, maskHeight),
-        fadeHeight: maskHeight,
-      )
+      ..shader = _resolveShader(viewportWidth, maskHeight)
       ..maskRect = maskRect
       ..blendMode = BlendMode.dstIn;
     context.pushLayer(layer!, super.paint, offset);
@@ -3037,7 +3070,7 @@ class _FloatingGlassControlFallback extends StatelessWidget {
                 Positioned.fill(
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(borderRadius),
-                    child: BackdropFilter(
+                    child: BackdropFilter.grouped(
                       filter: AppImageFilters.blur16,
                       child: const SizedBox.expand(),
                     ),

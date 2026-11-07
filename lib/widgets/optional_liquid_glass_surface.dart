@@ -313,7 +313,7 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
             );
           }
 
-          final filtered = BackdropFilter(
+          final filtered = BackdropFilter.grouped(
             filter: blurFilter,
             child: Container(
               key: const ValueKey<String>('optional-liquid-glass-static-panel'),
@@ -399,7 +399,7 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
               ),
             ],
           );
-          final filtered = BackdropFilter(
+          final filtered = BackdropFilter.grouped(
             filter: configuration.blurFilter,
             child: Container(
               key: const ValueKey<String>(

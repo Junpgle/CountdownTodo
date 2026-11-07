@@ -881,7 +881,10 @@ class EmptyState extends StatelessWidget {
       borderRadius: BorderRadius.circular(20),
       child: AppPlatform.isWindows
           ? content
-          : BackdropFilter(filter: AppImageFilters.blur10, child: content),
+          : BackdropFilter.grouped(
+              filter: AppImageFilters.blur10,
+              child: content,
+            ),
     );
   }
 }
