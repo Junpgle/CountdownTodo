@@ -1960,206 +1960,209 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
     required int unreadNewCount,
   }) {
     final progress = totalCount == 0 ? 1.0 : exploredCount / totalCount;
-    return OptionalLiquidGlassCard(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-      borderRadius: 18,
-      tint: scheme.primary.withValues(alpha: 0.08),
-      fallbackDecoration: BoxDecoration(
-        color: scheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: scheme.outlineVariant.withValues(alpha: 0.65),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 第一行：探索进度标题 + 已体验 / 还差多少项徽章
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(7),
-                decoration: BoxDecoration(
-                  color: scheme.primary.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  remainingCount == 0
-                      ? Icons.emoji_events_rounded
-                      : Icons.explore_rounded,
-                  size: 18,
-                  color: scheme.primary,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          '功能探索进度',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            color: scheme.onSurface,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '${(progress * 100).round()}%',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: scheme.primary,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      remainingCount == 0
-                          ? '恭喜！你已体验完全部 $totalCount 项功能与隐藏神技'
-                          : '共 $totalCount 项能力，点条目看教程，打开对应功能界面才算「已体验」',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+    return RepaintBoundary(
+      key: const ValueKey<String>('feature_top_control'),
+      child: OptionalLiquidGlassCard(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+        borderRadius: 18,
+        tint: scheme.primary.withValues(alpha: 0.08),
+        fallbackDecoration: BoxDecoration(
+          color: scheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: scheme.outlineVariant.withValues(alpha: 0.65),
           ),
-          const SizedBox(height: 10),
-
-          // 第二行：直观数据指标卡（已体验 X 项 / 还差 Y 项 / 近期新增未读 Z 项）
-          Row(
-            children: [
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 7,
-                  ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 第一行：探索进度标题 + 已体验 / 还差多少项徽章
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
                   decoration: BoxDecoration(
-                    color: scheme.primaryContainer.withValues(alpha: 0.45),
+                    color: scheme.primary.withValues(alpha: 0.14),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  child: Icon(
+                    remainingCount == 0
+                        ? Icons.emoji_events_rounded
+                        : Icons.explore_rounded,
+                    size: 18,
+                    color: scheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(
-                        Icons.check_circle_rounded,
-                        size: 15,
-                        color: scheme.primary,
+                      Row(
+                        children: [
+                          Text(
+                            '功能探索进度',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: scheme.onSurface,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${(progress * 100).round()}%',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: scheme.primary,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 5),
+                      const SizedBox(height: 2),
                       Text(
-                        '已体验 $exploredCount 项',
+                        remainingCount == 0
+                            ? '恭喜！你已体验完全部 $totalCount 项功能与隐藏神技'
+                            : '共 $totalCount 项能力，点条目看教程，打开对应功能界面才算「已体验」',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: scheme.onPrimaryContainer,
+                          fontSize: 11.5,
+                          color: scheme.onSurfaceVariant,
                         ),
                       ),
                     ],
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    key: const ValueKey<String>(
-                      'feature-explorer-toggle-unexplored-btn',
+              ],
+            ),
+            const SizedBox(height: 10),
+
+            // 第二行：直观数据指标卡（已体验 X 项 / 还差 Y 项 / 近期新增未读 Z 项）
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 7,
                     ),
-                    borderRadius: BorderRadius.circular(10),
-                    onTap: remainingCount > 0
-                        ? () {
-                            setState(() {
-                              _onlyUnexplored = !_onlyUnexplored;
-                            });
-                          }
-                        : null,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 7,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _onlyUnexplored
-                            ? scheme.tertiaryContainer
-                            : scheme.surfaceContainerHighest.withValues(
-                                alpha: 0.6,
-                              ),
-                        borderRadius: BorderRadius.circular(10),
-                        border: _onlyUnexplored
-                            ? Border.all(color: scheme.tertiary, width: 1.2)
-                            : null,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            remainingCount == 0
-                                ? Icons.verified_rounded
-                                : (_onlyUnexplored
-                                      ? Icons.filter_alt_rounded
-                                      : Icons.pending_actions_rounded),
-                            size: 15,
-                            color: _onlyUnexplored
-                                ? scheme.onTertiaryContainer
-                                : scheme.onSurfaceVariant,
+                    decoration: BoxDecoration(
+                      color: scheme.primaryContainer.withValues(alpha: 0.45),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.check_circle_rounded,
+                          size: 15,
+                          color: scheme.primary,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          '已体验 $exploredCount 项',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: scheme.onPrimaryContainer,
                           ),
-                          const SizedBox(width: 5),
-                          Flexible(
-                            child: Text(
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      key: const ValueKey<String>(
+                        'feature-explorer-toggle-unexplored-btn',
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: remainingCount > 0
+                          ? () {
+                              setState(() {
+                                _onlyUnexplored = !_onlyUnexplored;
+                              });
+                            }
+                          : null,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 7,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _onlyUnexplored
+                              ? scheme.tertiaryContainer
+                              : scheme.surfaceContainerHighest.withValues(
+                                  alpha: 0.6,
+                                ),
+                          borderRadius: BorderRadius.circular(10),
+                          border: _onlyUnexplored
+                              ? Border.all(color: scheme.tertiary, width: 1.2)
+                              : null,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
                               remainingCount == 0
-                                  ? '还差 0 项'
+                                  ? Icons.verified_rounded
                                   : (_onlyUnexplored
-                                        ? '正筛选未体验($remainingCount)'
-                                        : '还差 $remainingCount 项 (点此筛选)'),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w800,
-                                color: _onlyUnexplored
-                                    ? scheme.onTertiaryContainer
-                                    : scheme.onSurface,
+                                        ? Icons.filter_alt_rounded
+                                        : Icons.pending_actions_rounded),
+                              size: 15,
+                              color: _onlyUnexplored
+                                  ? scheme.onTertiaryContainer
+                                  : scheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 5),
+                            Flexible(
+                              child: Text(
+                                remainingCount == 0
+                                    ? '还差 0 项'
+                                    : (_onlyUnexplored
+                                          ? '正筛选未体验($remainingCount)'
+                                          : '还差 $remainingCount 项 (点此筛选)'),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  color: _onlyUnexplored
+                                      ? scheme.onTertiaryContainer
+                                      : scheme.onSurface,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-
-          // 第三行：进度条 + 快捷恢复首页清单
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 6,
-              backgroundColor: scheme.surfaceContainerHighest,
-              valueColor: AlwaysStoppedAnimation<Color>(scheme.primary),
+              ],
             ),
-          ),
-          const SizedBox(height: 10),
-          _buildSearchField(scheme),
-          const SizedBox(height: 10),
-          _buildCategoryBar(scheme, catalog, unreadNewCount),
-        ],
+            const SizedBox(height: 8),
+
+            // 第三行：进度条 + 快捷恢复首页清单
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 6,
+                backgroundColor: scheme.surfaceContainerHighest,
+                valueColor: AlwaysStoppedAnimation<Color>(scheme.primary),
+              ),
+            ),
+            const SizedBox(height: 10),
+            _buildSearchField(scheme),
+            const SizedBox(height: 10),
+            _buildCategoryBar(scheme, catalog, unreadNewCount),
+          ],
+        ),
       ),
     );
   }
@@ -2267,113 +2270,116 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
         .length;
     final remainingInGroup = items.length - exploredInGroup;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, right: 4, bottom: 8),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(5),
-                decoration: BoxDecoration(
-                  color: accentColor.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(icon, size: 16, color: accentColor),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: scheme.onSurface,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              if (isUnreadNewSection)
+    return RepaintBoundary(
+      key: ValueKey<String>('feature_section_$title'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 4, right: 4, bottom: 8),
+            child: Row(
+              children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
+                  padding: const EdgeInsets.all(5),
                   decoration: BoxDecoration(
-                    color: accentColor.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(999),
+                    color: accentColor.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(8),
                   ),
+                  child: Icon(icon, size: 16, color: accentColor),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
                   child: Text(
-                    '待体验 ${items.length} 项',
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: accentColor,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: scheme.onSurface,
                     ),
                   ),
-                )
-              else
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: remainingInGroup == 0
-                        ? scheme.primaryContainer.withValues(alpha: 0.6)
-                        : scheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    remainingInGroup == 0
-                        ? '已全部体验 (${items.length}/${items.length})'
-                        : '已体验 $exploredInGroup/${items.length} · 还差 $remainingInGroup 项',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
+                ),
+                const SizedBox(width: 8),
+                if (isUnreadNewSection)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: accentColor.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '待体验 ${items.length} 项',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: accentColor,
+                      ),
+                    ),
+                  )
+                else
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
                       color: remainingInGroup == 0
-                          ? scheme.primary
-                          : scheme.onSurfaceVariant,
+                          ? scheme.primaryContainer.withValues(alpha: 0.6)
+                          : scheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      remainingInGroup == 0
+                          ? '已全部体验 (${items.length}/${items.length})'
+                          : '已体验 $exploredInGroup/${items.length} · 还差 $remainingInGroup 项',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: remainingInGroup == 0
+                            ? scheme.primary
+                            : scheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
-                ),
-            ],
-          ),
-        ),
-        Card(
-          elevation: 0,
-          margin: EdgeInsets.zero,
-          color: scheme.surfaceContainerLow,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(
-              color: highlightBorder
-                  ? accentColor.withValues(alpha: 0.45)
-                  : scheme.outlineVariant.withValues(alpha: 0.65),
-              width: highlightBorder ? 1.2 : 1.0,
+              ],
             ),
           ),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            children: [
-              for (var i = 0; i < items.length; i++) ...[
-                if (i > 0)
-                  Divider(
-                    height: 1,
-                    thickness: 0.5,
-                    indent: 66,
-                    endIndent: 14,
-                    color: scheme.outlineVariant.withValues(alpha: 0.55),
-                  ),
-                _buildFeatureRow(items[i], scheme),
+          Card(
+            elevation: 0,
+            margin: EdgeInsets.zero,
+            color: scheme.surfaceContainerLow,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(
+                color: highlightBorder
+                    ? accentColor.withValues(alpha: 0.45)
+                    : scheme.outlineVariant.withValues(alpha: 0.65),
+                width: highlightBorder ? 1.2 : 1.0,
+              ),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                for (var i = 0; i < items.length; i++) ...[
+                  if (i > 0)
+                    Divider(
+                      height: 1,
+                      thickness: 0.5,
+                      indent: 66,
+                      endIndent: 14,
+                      color: scheme.outlineVariant.withValues(alpha: 0.55),
+                    ),
+                  _buildFeatureRow(items[i], scheme),
+                ],
               ],
-            ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 

@@ -2893,156 +2893,167 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         ? '${sf.format(DateTime.fromMillisecondsSinceEpoch(start))} ~ ${sf.format(DateTime.fromMillisecondsSinceEpoch(end))}'
         : '时间未知';
 
-    return GestureDetector(
-      onTap: isManualMode && id != null ? () => onSelect(id) : null,
-      child: OptionalLiquidGlassCard(
-        width: 190,
-        margin: const EdgeInsets.only(right: 10),
-        padding: const EdgeInsets.all(12),
-        borderRadius: 14,
-        highContrast: true,
-        tint: isSelectedForEdit
-            ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.16)
-            : (isPrimary ? Colors.orangeAccent.withValues(alpha: 0.16) : null),
-        fallbackDecoration: BoxDecoration(
-          // 主题化取色，修复暗色模式下普通日程卡仍为纯白的问题。
-          color: isSelectedForEdit
-              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1)
+    final resolvedKey = id != null
+        ? ValueKey<String>('schedule_conflict_$id')
+        : null;
+    return RepaintBoundary(
+      key: resolvedKey,
+      child: GestureDetector(
+        onTap: isManualMode && id != null ? () => onSelect(id) : null,
+        child: OptionalLiquidGlassCard(
+          width: 190,
+          margin: const EdgeInsets.only(right: 10),
+          padding: const EdgeInsets.all(12),
+          borderRadius: 14,
+          highContrast: true,
+          tint: isSelectedForEdit
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.16)
               : (isPrimary
-                    ? Colors.orangeAccent.withValues(alpha: 0.08)
-                    : Theme.of(context).colorScheme.surface),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
+                    ? Colors.orangeAccent.withValues(alpha: 0.16)
+                    : null),
+          fallbackDecoration: BoxDecoration(
+            // 主题化取色，修复暗色模式下普通日程卡仍为纯白的问题。
             color: isSelectedForEdit
-                ? Theme.of(context).colorScheme.primary
+                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1)
                 : (isPrimary
-                      ? Colors.orangeAccent.withValues(alpha: 0.25)
-                      : Colors.grey.withValues(alpha: 0.15)),
-            width: isSelectedForEdit || isPrimary ? 1.5 : 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.02),
-              blurRadius: 6,
-              offset: const Offset(0, 3),
+                      ? Colors.orangeAccent.withValues(alpha: 0.08)
+                      : Theme.of(context).colorScheme.surface),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isSelectedForEdit
+                  ? Theme.of(context).colorScheme.primary
+                  : (isPrimary
+                        ? Colors.orangeAccent.withValues(alpha: 0.25)
+                        : Colors.grey.withValues(alpha: 0.15)),
+              width: isSelectedForEdit || isPrimary ? 1.5 : 1,
             ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  isSelectedForEdit
-                      ? Icons.check_circle_rounded
-                      : (isPrimary
-                            ? Icons.push_pin_rounded
-                            : Icons.schedule_rounded),
-                  size: 14,
-                  color: isSelectedForEdit
-                      ? Theme.of(context).colorScheme.primary
-                      : (isPrimary ? Colors.orangeAccent : Colors.grey),
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  isPrimary ? "当前任务" : "冲突任务",
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.02),
+                blurRadius: 6,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    isSelectedForEdit
+                        ? Icons.check_circle_rounded
+                        : (isPrimary
+                              ? Icons.push_pin_rounded
+                              : Icons.schedule_rounded),
+                    size: 14,
                     color: isSelectedForEdit
                         ? Theme.of(context).colorScheme.primary
                         : (isPrimary ? Colors.orangeAccent : Colors.grey),
                   ),
-                ),
-                if (update != null) ...[
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 5,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary
-                          .withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      "待调",
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: Theme.of(context).colorScheme.primary,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              title,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const Spacer(),
-            _buildMiniInfoChip(
-              _scheduleScopeLabel(data),
-              isPrimary
-                  ? Colors.orangeAccent
-                  : Theme.of(context).colorScheme.primary,
-            ),
-            const SizedBox(height: 6),
-            if (update == null)
-              Text(
-                originalTime,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: isSelectedForEdit
-                      ? Theme.of(context).colorScheme.primary
-                      : (isPrimary
-                            ? Colors.orangeAccent
-                            : Colors.grey.shade600),
-                  fontWeight: isSelectedForEdit || isPrimary
-                      ? FontWeight.w600
-                      : FontWeight.normal,
-                ),
-              )
-            else
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+                  const SizedBox(width: 4),
                   Text(
-                    originalTime,
+                    isPrimary ? "当前任务" : "冲突任务",
                     style: TextStyle(
                       fontSize: 10,
-                      color: Colors.grey.shade400,
-                      decoration: TextDecoration.lineThrough,
-                      height: 1.1,
+                      fontWeight: FontWeight.bold,
+                      color: isSelectedForEdit
+                          ? Theme.of(context).colorScheme.primary
+                          : (isPrimary ? Colors.orangeAccent : Colors.grey),
                     ),
                   ),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.arrow_right_alt_rounded,
-                        size: 14,
-                        color: Theme.of(context).colorScheme.primary,
+                  if (update != null) ...[
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 2,
                       ),
-                      const SizedBox(width: 2),
-                      Text(
-                        '${sf.format(update.start)}~${sf.format(update.end)}',
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary
+                            .withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        "待调",
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: 9,
                           color: Theme.of(context).colorScheme.primary,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ],
               ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const Spacer(),
+              _buildMiniInfoChip(
+                _scheduleScopeLabel(data),
+                isPrimary
+                    ? Colors.orangeAccent
+                    : Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(height: 6),
+              if (update == null)
+                Text(
+                  originalTime,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isSelectedForEdit
+                        ? Theme.of(context).colorScheme.primary
+                        : (isPrimary
+                              ? Colors.orangeAccent
+                              : Colors.grey.shade600),
+                    fontWeight: isSelectedForEdit || isPrimary
+                        ? FontWeight.w600
+                        : FontWeight.normal,
+                  ),
+                )
+              else
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      originalTime,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey.shade400,
+                        decoration: TextDecoration.lineThrough,
+                        height: 1.1,
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.arrow_right_alt_rounded,
+                          size: 14,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          '${sf.format(update.start)}~${sf.format(update.end)}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Theme.of(context).colorScheme.primary,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+            ],
+          ),
         ),
       ),
     );
