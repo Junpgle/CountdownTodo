@@ -903,12 +903,14 @@ Widget floatingGlassSettingsBody(
   double topBarHeight = kToolbarHeight,
   double tailExtent = floatingGlassTopBarDefaultFadeTail,
 }) {
-  if (!standalone) return child;
+  if (!standalone) return RepaintBoundary(child: child);
 
-  return FloatingGlassTopBarContentFade(
-    topBarHeight: topBarHeight,
-    tailExtent: tailExtent,
-    child: child,
+  return RepaintBoundary(
+    child: FloatingGlassTopBarContentFade(
+      topBarHeight: topBarHeight,
+      tailExtent: tailExtent,
+      child: child,
+    ),
   );
 }
 

@@ -112,6 +112,7 @@ todo.md
 !/test/screens/pomodoro_stats_jump_test.dart
 !/test/screens/team_management_invite_test.dart
 !/test/screens/feature_explorer_and_onboarding_test.dart
+!/test/screens/about_screen_memory_test.dart
 !/test/app_performance_monitor_test.dart
 !/test/android_delta_service_test.dart
 !/test/coach_mark_overlay_test.dart
@@ -187,6 +188,7 @@ todo.md
 !/test/services/todo_parser_time_semantics_test.dart
 !/test/services/todo_lww_service_test.dart
 !/test/services/database_schema_history_test.dart
+!/test/services/app_memory_monitor_test.dart
 !/test/services/fixed_schedule_recurrence_service_test.dart
 !/test/services/habit_sync_conflict_service_test.dart
 !/test/services/habit_today_section_display_test.dart
@@ -269,6 +271,7 @@ todo.md
 !/test/utils/settings_navigation_test.dart
 !/test/utils/time_utils_test.dart
 !/test/utils/image_optimization_test.dart
+!/test/utils/app_scroll_behavior_test.dart
 !/test/features/
 /test/features/*
 !/test/features/finance_cumulative_balance_trend_test.dart

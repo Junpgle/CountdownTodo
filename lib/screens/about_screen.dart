@@ -27,6 +27,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/github_resource_service.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
+import '../services/app_memory_monitor.dart';
+import '../utils/app_scroll_behavior.dart';
 
 class AboutScreen extends StatefulWidget {
   final bool isEmbedded;
@@ -105,6 +107,7 @@ class _AboutScreenState extends State<AboutScreen> {
     _loadSyncSummary();
     AppPerformanceMonitor.setCurrentScreen('关于此应用');
     AppPerformanceMonitor.loadSettings();
+    AppMemoryMonitor.refresh();
   }
 
   void _checkMigration() async {
@@ -144,6 +147,7 @@ class _AboutScreenState extends State<AboutScreen> {
 
   @override
   void dispose() {
+    AppMemoryMonitor.setAutoRefresh(false);
     _migrationSub?.cancel();
     super.dispose();
   }
@@ -478,64 +482,67 @@ class _AboutScreenState extends State<AboutScreen> {
           width: 340,
           child: Container(
             color: Theme.of(context).colorScheme.surfaceContainerLow,
-            child: SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 16),
-                    Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primaryContainer,
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(18),
-                        child: Image.asset(
-                          _appIconAsset,
-                          width: 80,
-                          height: 80,
-                          cacheWidth: 240,
-                          cacheHeight: 240,
-                          fit: BoxFit.cover,
-                          semanticLabel: 'CountDownTodo',
+            child: RepaintBoundary(
+              child: SingleChildScrollView(
+                physics: const AppFluidScrollPhysics(),
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 16),
+                      Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primaryContainer,
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(18),
+                          child: Image.asset(
+                            _appIconAsset,
+                            width: 80,
+                            height: 80,
+                            cacheWidth: 240,
+                            cacheHeight: 240,
+                            fit: BoxFit.cover,
+                            semanticLabel: 'CountDownTodo',
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'CountDownTodo',
-                      style: Theme.of(context).textTheme.titleLarge
-                          ?.copyWith(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '版本 $_version',
-                      style: Theme.of(context).textTheme.bodySmall
-                          ?.copyWith(color: Colors.grey),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '您的个人效率助手',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    const SizedBox(height: 24),
-                    _buildInfoCard(
-                      context,
-                      title: '软件介绍',
-                      icon: Icons.info_outline,
-                      compact: true,
-                      child: const Text(
-                        'CountDownTodo 是一款集成了多种实用功能的个人效率管理应用，旨在帮助您更好地管理时间、任务和学习。\n\n'
-                        '主要功能：待办事项管理、重要日倒计时、课程表管理、屏幕使用时间、番茄钟专注、数学测验、多设备同步等。',
-                        style: TextStyle(fontSize: 13),
+                      const SizedBox(height: 12),
+                      Text(
+                        'CountDownTodo',
+                        style: Theme.of(context).textTheme.titleLarge
+                            ?.copyWith(fontWeight: FontWeight.bold),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    _buildDeviceCard(context, compact: true),
-                  ],
+                      const SizedBox(height: 4),
+                      Text(
+                        '版本 $_version',
+                        style: Theme.of(context).textTheme.bodySmall
+                            ?.copyWith(color: Colors.grey),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '您的个人效率助手',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                      const SizedBox(height: 24),
+                      _buildInfoCard(
+                        context,
+                        title: '软件介绍',
+                        icon: Icons.info_outline,
+                        compact: true,
+                        child: const Text(
+                          'CountDownTodo 是一款集成了多种实用功能的个人效率管理应用，旨在帮助您更好地管理时间、任务和学习。\n\n'
+                          '主要功能：待办事项管理、重要日倒计时、课程表管理、屏幕使用时间、番茄钟专注、数学测验、多设备同步等。',
+                          style: TextStyle(fontSize: 13),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _buildDeviceCard(context, compact: true),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -543,74 +550,79 @@ class _AboutScreenState extends State<AboutScreen> {
         ),
         // 右侧滚动区域
         Expanded(
-          child: SingleChildScrollView(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 680),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  child: Column(
-                    children: [
-                      _buildPerformanceCard(context),
-                      const SizedBox(height: 16),
-                      _buildDatabaseCard(context),
-                      const SizedBox(height: 16),
-                      _buildCleanupCard(context),
-                      const SizedBox(height: 16),
-                      _buildChangelogCard(context),
-                      const SizedBox(height: 16),
-                      _buildPrivacyCard(context),
-                      const SizedBox(height: 16),
-                      _buildLinkCard(
-                        context,
-                        items: [
-                          _LinkItem(
-                            icon: Icons.code,
-                            title: '官方 GitHub',
-                            subtitle: 'github.com/Junpgle/math_quiz_app',
-                            onTap: () => _launchURL(
-                              'https://github.com/Junpgle/math_quiz_app',
+          child: RepaintBoundary(
+            child: SingleChildScrollView(
+              physics: const AppFluidScrollPhysics(),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 680),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Column(
+                      children: [
+                        _buildMemoryCard(context),
+                        const SizedBox(height: 16),
+                        _buildPerformanceCard(context),
+                        const SizedBox(height: 16),
+                        _buildDatabaseCard(context),
+                        const SizedBox(height: 16),
+                        _buildCleanupCard(context),
+                        const SizedBox(height: 16),
+                        _buildChangelogCard(context),
+                        const SizedBox(height: 16),
+                        _buildPrivacyCard(context),
+                        const SizedBox(height: 16),
+                        _buildLinkCard(
+                          context,
+                          items: [
+                            _LinkItem(
+                              icon: Icons.code,
+                              title: '官方 GitHub',
+                              subtitle: 'github.com/Junpgle/math_quiz_app',
+                              onTap: () => _launchURL(
+                                'https://github.com/Junpgle/math_quiz_app',
+                              ),
                             ),
-                          ),
-                          _LinkItem(
-                            icon: Icons.bug_report_outlined,
-                            title: '问题反馈',
-                            subtitle: '在 GitHub 提交 Issues',
-                            onTap: () => _launchURL(
-                              'https://github.com/Junpgle/math_quiz_app/issues',
+                            _LinkItem(
+                              icon: Icons.bug_report_outlined,
+                              title: '问题反馈',
+                              subtitle: '在 GitHub 提交 Issues',
+                              onTap: () => _launchURL(
+                                'https://github.com/Junpgle/math_quiz_app/issues',
+                              ),
                             ),
-                          ),
-                          _LinkItem(
-                            sourceKey: _navigationKey('device_versions'),
-                            icon: Icons.devices_other_outlined,
-                            title: '设备版本明细',
-                            subtitle: '查看在线设备与历史版本分布',
-                            onTap: () {
-                              _openSettingsPage(
-                                'device_versions',
-                                DeviceVersionDetailPage(
-                                  isEmbedded: widget.isEmbedded,
-                                ),
-                                settings: const RouteSettings(name: '设备版本明细'),
-                              );
-                            },
-                          ),
-                          _LinkItem(
-                            icon: Icons.email_outlined,
-                            title: '联系开发者',
-                            subtitle: 'junpgle@qq.com',
-                            onTap: () => _launchURL('mailto:junpgle@qq.com'),
-                          ),
-                        ],
-                      ),
-                      if (_needsMigration ||
-                          _isMigrating ||
-                          _migrationCompleted)
-                        _buildMigrationPanel(context),
-                      if (_shouldShowSyncSummary)
-                        _buildSyncIssueCenter(context),
-                      const SizedBox(height: 32),
-                    ],
+                            _LinkItem(
+                              sourceKey: _navigationKey('device_versions'),
+                              icon: Icons.devices_other_outlined,
+                              title: '设备版本明细',
+                              subtitle: '查看在线设备与历史版本分布',
+                              onTap: () {
+                                _openSettingsPage(
+                                  'device_versions',
+                                  DeviceVersionDetailPage(
+                                    isEmbedded: widget.isEmbedded,
+                                  ),
+                                  settings: const RouteSettings(name: '设备版本明细'),
+                                );
+                              },
+                            ),
+                            _LinkItem(
+                              icon: Icons.email_outlined,
+                              title: '联系开发者',
+                              subtitle: 'junpgle@qq.com',
+                              onTap: () => _launchURL('mailto:junpgle@qq.com'),
+                            ),
+                          ],
+                        ),
+                        if (_needsMigration ||
+                            _isMigrating ||
+                            _migrationCompleted)
+                          _buildMigrationPanel(context),
+                        if (_shouldShowSyncSummary)
+                          _buildSyncIssueCenter(context),
+                        const SizedBox(height: 32),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -622,122 +634,127 @@ class _AboutScreenState extends State<AboutScreen> {
   }
 
   Widget _buildNarrowLayout(BuildContext context, {required bool standalone}) {
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          SizedBox(
-            height: standalone
-                ? floatingGlassSettingsContentTopInset(context, extra: 32)
-                : 32,
-          ),
-          Container(
-            width: 100,
-            height: 100,
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(22),
+    return RepaintBoundary(
+      child: SingleChildScrollView(
+        physics: const AppFluidScrollPhysics(),
+        child: Column(
+          children: [
+            SizedBox(
+              height: standalone
+                  ? floatingGlassSettingsContentTopInset(context, extra: 32)
+                  : 32,
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(22),
-              child: Image.asset(
-                _appIconAsset,
-                width: 100,
-                height: 100,
-                cacheWidth: 300,
-                cacheHeight: 300,
-                fit: BoxFit.cover,
-                semanticLabel: 'CountDownTodo',
+            Container(
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(22),
               ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'CountDownTodo',
-            style: Theme.of(context).textTheme.headlineSmall
-                ?.copyWith(fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '版本 $_version',
-            style: Theme.of(context).textTheme.bodyMedium
-                ?.copyWith(color: Colors.grey),
-          ),
-          const SizedBox(height: 8),
-          Text('您的个人效率助手', style: Theme.of(context).textTheme.bodyLarge),
-          const SizedBox(height: 32),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _buildInfoCard(
-              context,
-              title: '软件介绍',
-              icon: Icons.info_outline,
-              child: const Text(
-                'CountDownTodo 是一款集成了多种实用功能的个人效率管理应用，旨在帮助您更好地管理时间、任务和学习。\n\n'
-                '主要功能：待办事项管理、重要日倒计时、课程表管理、屏幕使用时间、番茄钟专注、数学测验、多设备同步等。',
-                style: TextStyle(fontSize: 14),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _buildDeviceCard(context),
-          ),
-          const SizedBox(height: 16),
-          _buildPerformanceCard(context),
-          const SizedBox(height: 16),
-          _buildDatabaseCard(context),
-          const SizedBox(height: 16),
-          _buildCleanupCard(context),
-          const SizedBox(height: 16),
-          _buildChangelogCard(context),
-          const SizedBox(height: 16),
-          _buildPrivacyCard(context),
-          const SizedBox(height: 16),
-          _buildLinkCard(
-            context,
-            items: [
-              _LinkItem(
-                icon: Icons.code,
-                title: '官方 GitHub',
-                subtitle: 'github.com/Junpgle/math_quiz_app',
-                onTap: () =>
-                    _launchURL('https://github.com/Junpgle/math_quiz_app'),
-              ),
-              _LinkItem(
-                icon: Icons.bug_report_outlined,
-                title: '问题反馈',
-                subtitle: '在 GitHub 提交 Issues',
-                onTap: () => _launchURL(
-                  'https://github.com/Junpgle/math_quiz_app/issues',
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: Image.asset(
+                  _appIconAsset,
+                  width: 100,
+                  height: 100,
+                  cacheWidth: 300,
+                  cacheHeight: 300,
+                  fit: BoxFit.cover,
+                  semanticLabel: 'CountDownTodo',
                 ),
               ),
-              _LinkItem(
-                sourceKey: _navigationKey('device_versions'),
-                icon: Icons.devices_other_outlined,
-                title: '设备版本明细',
-                subtitle: '查看在线设备与历史版本分布',
-                onTap: () {
-                  _openSettingsPage(
-                    'device_versions',
-                    DeviceVersionDetailPage(isEmbedded: widget.isEmbedded),
-                    settings: const RouteSettings(name: '设备版本明细'),
-                  );
-                },
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'CountDownTodo',
+              style: Theme.of(context).textTheme.headlineSmall
+                  ?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '版本 $_version',
+              style: Theme.of(context).textTheme.bodyMedium
+                  ?.copyWith(color: Colors.grey),
+            ),
+            const SizedBox(height: 8),
+            Text('您的个人效率助手', style: Theme.of(context).textTheme.bodyLarge),
+            const SizedBox(height: 32),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _buildInfoCard(
+                context,
+                title: '软件介绍',
+                icon: Icons.info_outline,
+                child: const Text(
+                  'CountDownTodo 是一款集成了多种实用功能的个人效率管理应用，旨在帮助您更好地管理时间、任务和学习。\n\n'
+                  '主要功能：待办事项管理、重要日倒计时、课程表管理、屏幕使用时间、番茄钟专注、数学测验、多设备同步等。',
+                  style: TextStyle(fontSize: 14),
+                ),
               ),
-              _LinkItem(
-                icon: Icons.email_outlined,
-                title: '联系开发者',
-                subtitle: 'junpgle@qq.com',
-                onTap: () => _launchURL('mailto:junpgle@qq.com'),
-              ),
-            ],
-          ),
-          if (_needsMigration || _isMigrating || _migrationCompleted)
-            _buildMigrationPanel(context),
-          if (_shouldShowSyncSummary) _buildSyncIssueCenter(context),
-          const SizedBox(height: 32),
-        ],
+            ),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _buildDeviceCard(context),
+            ),
+            const SizedBox(height: 16),
+            _buildMemoryCard(context),
+            const SizedBox(height: 16),
+            _buildPerformanceCard(context),
+            const SizedBox(height: 16),
+            _buildDatabaseCard(context),
+            const SizedBox(height: 16),
+            _buildCleanupCard(context),
+            const SizedBox(height: 16),
+            _buildChangelogCard(context),
+            const SizedBox(height: 16),
+            _buildPrivacyCard(context),
+            const SizedBox(height: 16),
+            _buildLinkCard(
+              context,
+              items: [
+                _LinkItem(
+                  icon: Icons.code,
+                  title: '官方 GitHub',
+                  subtitle: 'github.com/Junpgle/math_quiz_app',
+                  onTap: () =>
+                      _launchURL('https://github.com/Junpgle/math_quiz_app'),
+                ),
+                _LinkItem(
+                  icon: Icons.bug_report_outlined,
+                  title: '问题反馈',
+                  subtitle: '在 GitHub 提交 Issues',
+                  onTap: () => _launchURL(
+                    'https://github.com/Junpgle/math_quiz_app/issues',
+                  ),
+                ),
+                _LinkItem(
+                  sourceKey: _navigationKey('device_versions'),
+                  icon: Icons.devices_other_outlined,
+                  title: '设备版本明细',
+                  subtitle: '查看在线设备与历史版本分布',
+                  onTap: () {
+                    _openSettingsPage(
+                      'device_versions',
+                      DeviceVersionDetailPage(isEmbedded: widget.isEmbedded),
+                      settings: const RouteSettings(name: '设备版本明细'),
+                    );
+                  },
+                ),
+                _LinkItem(
+                  icon: Icons.email_outlined,
+                  title: '联系开发者',
+                  subtitle: 'junpgle@qq.com',
+                  onTap: () => _launchURL('mailto:junpgle@qq.com'),
+                ),
+              ],
+            ),
+            if (_needsMigration || _isMigrating || _migrationCompleted)
+              _buildMigrationPanel(context),
+            if (_shouldShowSyncSummary) _buildSyncIssueCenter(context),
+            const SizedBox(height: 32),
+          ],
+        ),
       ),
     );
   }
@@ -786,6 +803,298 @@ class _AboutScreenState extends State<AboutScreen> {
 
   bool get _shouldShowSyncSummary =>
       _syncSummaryFailed || (_syncSummary?.hasAttention ?? false);
+
+  Widget _buildMemoryCard(BuildContext context, {bool compact = false}) {
+    return Padding(
+      padding: compact
+          ? EdgeInsets.zero
+          : const EdgeInsets.symmetric(horizontal: 16),
+      child: ValueListenableBuilder<MemorySnapshot>(
+        valueListenable: AppMemoryMonitor.snapshot,
+        builder: (context, snapshot, _) {
+          final colorScheme = Theme.of(context).colorScheme;
+          final textTheme = Theme.of(context).textTheme;
+
+          final Color statusColor;
+          switch (snapshot.healthLevel) {
+            case MemoryHealthLevel.normal:
+              statusColor = colorScheme.primary;
+              break;
+            case MemoryHealthLevel.moderate:
+              statusColor = colorScheme.tertiary;
+              break;
+            case MemoryHealthLevel.high:
+              statusColor = colorScheme.error;
+              break;
+          }
+
+          final isWeb = !snapshot.isProcessMemorySupported;
+
+          return Card(
+            elevation: compact ? 0 : 1,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            color: compact
+                ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.3)
+                : null,
+            child: Padding(
+              padding: EdgeInsets.all(compact ? 14 : 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.memory_rounded,
+                        size: compact ? 18 : 20,
+                        color: colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '内存占用与优化',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: compact ? 14 : 15,
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        tooltip: '刷新内存数据',
+                        icon: const Icon(Icons.refresh_rounded, size: 20),
+                        onPressed: () {
+                          AppMemoryMonitor.refresh();
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest.withValues(
+                        alpha: 0.45,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: statusColor.withValues(alpha: 0.25),
+                        width: 1.2,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              '当前占用内存',
+                              style: textTheme.bodyMedium?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: statusColor.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                snapshot.healthDescription,
+                                style: TextStyle(
+                                  color: statusColor,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
+                          children: [
+                            Text(
+                              isWeb
+                                  ? snapshot.imageCacheFormatted
+                                  : snapshot.currentRssFormatted,
+                              style: textTheme.headlineMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: colorScheme.onSurface,
+                                letterSpacing: -0.5,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              isWeb ? '(图片解码缓存)' : '(物理常驻 RSS)',
+                              style: textTheme.bodySmall?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (!isWeb && snapshot.maxRss > 0) ...[
+                          const SizedBox(height: 8),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              value: snapshot.peakRatio,
+                              minHeight: 6,
+                              backgroundColor:
+                                  colorScheme.surfaceContainerHighest,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                statusColor,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '历史峰值: ${snapshot.maxRssFormatted}  •  当前占峰值 ${(snapshot.peakRatio * 100).toStringAsFixed(0)}%',
+                            style: textTheme.bodySmall?.copyWith(
+                              fontSize: 11,
+                              color: colorScheme.outline,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      if (!isWeb)
+                        _buildPerformanceMetric(
+                          context,
+                          '物理常驻',
+                          snapshot.currentRssFormatted,
+                        ),
+                      _buildPerformanceMetric(
+                        context,
+                        '图片解码缓存',
+                        snapshot.imageCacheFormatted,
+                      ),
+                      _buildPerformanceMetric(
+                        context,
+                        '缓存图片',
+                        '${snapshot.imageCacheCount} 张',
+                      ),
+                      _buildPerformanceMetric(
+                        context,
+                        '缓存上限',
+                        snapshot.maxImageCacheBytesFormatted,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  const Divider(height: 1),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      onPressed: () async {
+                        final freed = await AppMemoryMonitor.cleanCache();
+                        if (context.mounted) {
+                          AppSnackBars.showSnackBar(
+                            context,
+                            SnackBar(
+                              content: Text(
+                                freed > 0
+                                    ? '已完成内存整理，释放了约 ${AppMemoryMonitor.formatBytes(freed)} 缓存空间'
+                                    : '当前图片缓存已处于最低状态，无冗余纹理',
+                              ),
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(
+                        Icons.cleaning_services_rounded,
+                        size: 18,
+                      ),
+                      label: const Text('一键释放图片缓存与内存'),
+                    ),
+                  ),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: AppMemoryMonitor.isAutoRefreshing,
+                    builder: (context, isAuto, _) {
+                      return LiquidGlassSwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        title: const Text('实时刷新内存占用'),
+                        subtitle: const Text('每 2 秒自动采样，便于观测滑动及操作中的内存变化'),
+                        value: isAuto,
+                        onChanged: (val) {
+                          AppMemoryMonitor.setAutoRefresh(val);
+                        },
+                      );
+                    },
+                  ),
+                  ValueListenableBuilder<MemoryPolicyMode>(
+                    valueListenable: AppMemoryMonitor.policyMode,
+                    builder: (context, mode, _) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          children: [
+                            const Text(
+                              '缓存策略',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            DropdownButton<MemoryPolicyMode>(
+                              value: mode,
+                              isDense: true,
+                              underline: const SizedBox.shrink(),
+                              items: const [
+                                DropdownMenuItem(
+                                  value: MemoryPolicyMode.balanced,
+                                  child: Text('标准平衡 (推荐)'),
+                                ),
+                                DropdownMenuItem(
+                                  value: MemoryPolicyMode.performance,
+                                  child: Text('极速流畅 (优先高刷)'),
+                                ),
+                                DropdownMenuItem(
+                                  value: MemoryPolicyMode.eco,
+                                  child: Text('紧凑节约 (低内存)'),
+                                ),
+                              ],
+                              onChanged: (newMode) {
+                                if (newMode != null) {
+                                  AppMemoryMonitor.setPolicyMode(newMode);
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
 
   Widget _buildPerformanceCard(BuildContext context) {
     if (!AppPerformanceMonitor.isAvailable) {

@@ -807,10 +807,8 @@ mixin _HomeDashboardViewMixin
                                                   ? 'home-focus-sections'
                                                   : 'home-main-sections',
                                             ),
-                                            physics: const BouncingScrollPhysics(
-                                              parent:
-                                                  AlwaysScrollableScrollPhysics(),
-                                            ),
+                                            physics:
+                                                const AppFluidScrollPhysics(),
                                             addRepaintBoundaries:
                                                 !showWallpaper,
                                             scrollCacheExtent:
@@ -1137,10 +1135,7 @@ mixin _HomeDashboardViewMixin
 
                                     return OptionalLiquidGlassScrollOptimizer(
                                       child: SingleChildScrollView(
-                                        physics: const BouncingScrollPhysics(
-                                          parent:
-                                              AlwaysScrollableScrollPhysics(),
-                                        ),
+                                        physics: const AppFluidScrollPhysics(),
                                         padding: EdgeInsets.fromLTRB(
                                           isTablet ? 32 : 16,
                                           headerExtent + 6,

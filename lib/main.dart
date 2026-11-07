@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:flutter/foundation.dart'; // 引入 kIsWeb
 import 'package:flutter/material.dart';
@@ -15,6 +14,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'update_service.dart';
 import 'utils/page_transitions.dart';
 import 'utils/app_platform.dart';
+import 'utils/app_scroll_behavior.dart';
+import 'services/app_memory_monitor.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_dashboard.dart';
 import 'screens/team_management_screen.dart';
@@ -259,6 +260,7 @@ Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   AppPerformanceMonitor.install();
   unawaited(AppPerformanceMonitor.loadSettings());
+  unawaited(AppMemoryMonitor.init());
 
   await AppSystemUiStyle.enableEdgeToEdge(
     initialBrightness:
@@ -1191,15 +1193,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                       AppPerformanceNavigatorObserver(),
                                     ],
                                     themeMode: currentThemeMode,
-                                    scrollBehavior:
-                                        const MaterialScrollBehavior().copyWith(
-                                          dragDevices: {
-                                            PointerDeviceKind.mouse,
-                                            PointerDeviceKind.touch,
-                                            PointerDeviceKind.trackpad,
-                                            PointerDeviceKind.stylus,
-                                          },
-                                        ),
+                                    scrollBehavior: const AppScrollBehavior(),
                                     theme: lightTheme,
                                     darkTheme: darkTheme,
                                     localizationsDelegates: const [
