@@ -2238,7 +2238,8 @@ class _WeekColBlockVisual {
   });
 }
 
-class _WeekColPainter extends CustomPainter {
+@visibleForTesting
+class WeekColPainter extends CustomPainter {
   final List<TimeLogItem> dayLogs;
   final List<PomodoroRecord> dayPoms;
   final List<TimeLogMappedSchedule> daySchedules;
@@ -2266,6 +2267,10 @@ class _WeekColPainter extends CustomPainter {
     return delay;
   }
 
+  @visibleForTesting
+  List<String> get scheduleBlockTitles =>
+      _scheduleVisuals.map((v) => v.title).toList();
+
   late final List<_WeekColBlockVisual> _scheduleVisuals = daySchedules
       .map((schedule) {
         final isCourse = schedule.isCourse;
@@ -2279,7 +2284,9 @@ class _WeekColPainter extends CustomPainter {
         final staggerDelay = _staggerDelayFor(top, bottom);
         return _WeekColBlockVisual(
           color: base.withValues(alpha: isDark ? 0.35 : 0.30),
-          title: '${isCourse ? "课程" : "日程"}: ${schedule.title}',
+          title: schedule.title.trim().isNotEmpty
+              ? schedule.title.trim()
+              : (isCourse ? '课程' : '日程'),
           top: top,
           bottom: bottom,
           staggerDelay: staggerDelay,
@@ -2332,7 +2339,7 @@ class _WeekColPainter extends CustomPainter {
       })
       .toList(growable: false);
 
-  _WeekColPainter({
+  WeekColPainter({
     required this.dayLogs,
     this.dayPoms = const [],
     this.daySchedules = const [],
@@ -2412,19 +2419,25 @@ class _WeekColPainter extends CustomPainter {
 
       if (blockH >= 10 && blockW >= 8 && blockProgress > 0.5) {
         if (blockH >= 18) {
+          final fontSize = (blockH * 0.22).clamp(7.5, blockW > 60 ? 11.0 : 9.0);
+          final lineHeight = fontSize * 1.15;
+          final maxLines = max(1, ((blockH - 4) / lineHeight).floor());
           final tp = getTitlePainter()
+            ..maxLines = maxLines
             ..text = TextSpan(
               text: visual.title,
               style: TextStyle(
-                fontSize: (blockH * 0.28).clamp(7.0, 10.0),
+                fontSize: fontSize,
+                height: 1.15,
                 color: visual.color.withValues(alpha: 0.95 * blockProgress),
                 fontWeight: FontWeight.w700,
               ),
             )
-            ..layout(maxWidth: blockW - 4);
-          tp.paint(canvas, Offset(5, top + (blockH - tp.height) / 2));
+            ..layout(maxWidth: max(4.0, blockW - 4));
+          tp.paint(canvas, Offset(5, top + max(2.0, (blockH - tp.height) / 2)));
         } else {
           final tp = getTitlePainter()
+            ..maxLines = 1
             ..text = TextSpan(
               text: visual.title,
               style: TextStyle(
@@ -2433,7 +2446,7 @@ class _WeekColPainter extends CustomPainter {
                 fontWeight: FontWeight.w700,
               ),
             )
-            ..layout(maxWidth: blockH - 2);
+            ..layout(maxWidth: max(2.0, blockH - 2));
 
           canvas.save();
           canvas.translate(5 + tp.height, top + 1);
@@ -2468,7 +2481,7 @@ class _WeekColPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _WeekColPainter o) =>
+  bool shouldRepaint(covariant WeekColPainter o) =>
       o.isDark != isDark ||
       o.hourH != hourH ||
       o.dayLogs != dayLogs ||
@@ -2481,6 +2494,8 @@ class _WeekColPainter extends CustomPainter {
       o.focusColor != focusColor ||
       o.logColor != logColor;
 }
+
+typedef _WeekColPainter = WeekColPainter;
 
 // ══════════════════════════════════════════════════════════
 // 日视图 — 网格（24行×5分钟格）
