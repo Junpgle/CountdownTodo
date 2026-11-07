@@ -101,16 +101,23 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
               duration: const Duration(milliseconds: 220),
               switchInCurve: Curves.easeOutCubic,
               switchOutCurve: Curves.easeInCubic,
-              transitionBuilder: (child, animation) => FadeTransition(
-                opacity: animation,
-                child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(0, 0.25),
-                    end: Offset.zero,
-                  ).animate(animation),
+              transitionBuilder: (child, animation) {
+                final slide = Tween<Offset>(
+                  begin: const Offset(0, 0.25),
+                  end: Offset.zero,
+                ).animate(animation);
+                return AnimatedBuilder(
+                  animation: animation,
                   child: child,
-                ),
-              ),
+                  builder: (context, child) {
+                    if (animation.value >= 0.999) return child!;
+                    return FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(position: slide, child: child),
+                    );
+                  },
+                );
+              },
               child: Text(
                 _isLoading ? '正在思考...' : 'AI 助手在线',
                 key: ValueKey(_isLoading),
@@ -313,6 +320,14 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                 const Spacer(),
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 200),
+                  transitionBuilder: (child, animation) => AnimatedBuilder(
+                    animation: animation,
+                    child: child,
+                    builder: (context, child) {
+                      if (animation.value >= 0.999) return child!;
+                      return FadeTransition(opacity: animation, child: child);
+                    },
+                  ),
                   child: actionCount == 0
                       ? const SizedBox.shrink()
                       : Text(
@@ -345,6 +360,14 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
               duration: const Duration(milliseconds: 260),
               switchInCurve: Curves.easeOutCubic,
               switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) => AnimatedBuilder(
+                animation: animation,
+                child: child,
+                builder: (context, child) {
+                  if (animation.value >= 0.999) return child!;
+                  return FadeTransition(opacity: animation, child: child);
+                },
+              ),
               child: actionMessages.isEmpty && _suggestions.isEmpty
                   ? _buildActionRailEmptyState(colorScheme)
                   : ListView.builder(

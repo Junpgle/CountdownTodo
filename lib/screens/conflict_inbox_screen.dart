@@ -949,6 +949,14 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     // 根据选中的项目类型渲染不同的详情视图
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
+      transitionBuilder: (child, animation) => AnimatedBuilder(
+        animation: animation,
+        child: child,
+        builder: (context, child) {
+          if (animation.value >= 0.999) return child!;
+          return FadeTransition(opacity: animation, child: child);
+        },
+      ),
       child: Container(
         key: ValueKey(_itemId(_selectedItem)),
         child: _buildEmbeddedResolutionUI(_selectedItem, isDark),

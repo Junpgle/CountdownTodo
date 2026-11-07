@@ -90,6 +90,7 @@ class _AppStatusToastView extends StatefulWidget {
 class _AppStatusToastViewState extends State<_AppStatusToastView>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+  late final CurvedAnimation _curved;
   late final Animation<double> _opacity;
   late final Animation<Offset> _offset;
   Timer? _dismissTimer;
@@ -102,16 +103,16 @@ class _AppStatusToastViewState extends State<_AppStatusToastView>
       duration: const Duration(milliseconds: 220),
       reverseDuration: const Duration(milliseconds: 160),
     );
-    final curved = CurvedAnimation(
+    _curved = CurvedAnimation(
       parent: _controller,
       curve: Curves.easeOutCubic,
       reverseCurve: Curves.easeInCubic,
     );
-    _opacity = curved;
+    _opacity = _curved;
     _offset = Tween<Offset>(
       begin: const Offset(0, -0.18),
       end: Offset.zero,
-    ).animate(curved);
+    ).animate(_curved);
     _controller.forward();
     _dismissTimer = Timer(widget.duration, _dismiss);
   }
@@ -125,6 +126,7 @@ class _AppStatusToastViewState extends State<_AppStatusToastView>
   @override
   void dispose() {
     _dismissTimer?.cancel();
+    _curved.dispose();
     _controller.dispose();
     super.dispose();
   }
