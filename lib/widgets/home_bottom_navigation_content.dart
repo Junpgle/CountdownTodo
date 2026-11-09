@@ -282,6 +282,12 @@ class _FloatingBottomNavigationContentState
 
   @override
   void dispose() {
+    if (_heldItem != null) {
+      final item = _heldItem;
+      _heldItem = null;
+      item?.onLongPressCancel?.call();
+    }
+    widget.onDragStretchChanged?.call(0.0);
     _positionSpring
       ..removeListener(_handleSpringTick)
       ..dispose();
@@ -418,6 +424,11 @@ class _FloatingBottomNavigationContentState
   }
 
   void _startSelectionDrag(DragStartDetails details, double width) {
+    if (_heldItem != null) {
+      final item = _heldItem;
+      _heldItem = null;
+      item?.onLongPressCancel?.call();
+    }
     _motionEpoch++;
     _motionTargetIndex = null;
     _notifyTargetWhenReady = false;

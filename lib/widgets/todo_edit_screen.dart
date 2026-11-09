@@ -1165,250 +1165,295 @@ class TodoEditScreenState extends State<TodoEditScreen> {
             ),
             child: FloatingGlassTopBarContentFade(
               topBarHeight: topBarHeight,
-              child: SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(16, topBarHeight + 8, 16, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (widget.recurrenceEditScope !=
-                        TodoRecurrenceEditScope.occurrence) ...[
-                      _buildRecurrenceScopeSummary(colorScheme),
-                      const SizedBox(height: 12),
-                    ],
-                    if (!_isWholeSeriesEdit)
-                      _buildRelatedRecurrenceSection(colorScheme),
-                    OptionalLiquidGlassCard(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 4,
-                      ),
-                      borderRadius: 24,
-                      highContrast: true,
-                      fallbackDecoration: BoxDecoration(
-                        color: colorScheme.surfaceContainerLow,
-                        borderRadius: BorderRadius.circular(24),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.01),
-                            blurRadius: 10,
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          TextField(
-                            controller: _titleCtrl,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            decoration: const InputDecoration(
-                              hintText: "待办内容",
-                              filled: false,
-                              border: InputBorder.none,
-                              enabledBorder: InputBorder.none,
-                              focusedBorder: InputBorder.none,
-                              disabledBorder: InputBorder.none,
-                              isCollapsed: true,
-                              contentPadding: EdgeInsets.symmetric(vertical: 4),
-                            ),
-                          ),
-                          Divider(
-                            height: 1,
-                            thickness: 0.8,
-                            color: colorScheme.outlineVariant.withValues(
-                              alpha: 0.35,
-                            ),
-                          ),
-                          TextField(
-                            controller: _remarkCtrl,
-                            maxLines: 3,
-                            minLines: 1,
-                            style: const TextStyle(fontSize: 15),
-                            decoration: InputDecoration(
-                              hintText: "备注 (可选)",
-                              hintStyle: TextStyle(
-                                color: Colors.grey.withValues(alpha: 0.8),
-                              ),
-                              filled: false,
-                              border: InputBorder.none,
-                              enabledBorder: InputBorder.none,
-                              focusedBorder: InputBorder.none,
-                              disabledBorder: InputBorder.none,
-                              isCollapsed: true,
-                              contentPadding: const EdgeInsets.symmetric(
-                                vertical: 4,
-                              ),
-                            ),
-                          ),
-                          Divider(
-                            height: 1,
-                            thickness: 0.8,
-                            color: colorScheme.outlineVariant.withValues(
-                              alpha: 0.35,
-                            ),
-                          ),
-                          if (!_isWholeSeriesEdit)
-                            LiquidGlassSwitchListTile(
-                              key: const ValueKey(
-                                'todo_edit_completion_switch',
-                              ),
-                              contentPadding: EdgeInsets.zero,
-                              value: _isDone,
-                              onChanged: (value) =>
-                                  setState(() => _isDone = value),
-                              secondary: Icon(
-                                _isDone
-                                    ? Icons.check_circle_rounded
-                                    : Icons.radio_button_unchecked_rounded,
-                                color: _isDone
-                                    ? colorScheme.primary
-                                    : colorScheme.onSurfaceVariant,
-                              ),
-                              title: const Text('完成状态'),
-                              subtitle: Text(_isDone ? '本期已完成' : '本期待完成'),
-                            ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    Wrap(
-                      alignment: WrapAlignment.spaceBetween,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: 12,
-                      runSpacing: 8,
-                      children: [
-                        const Text(
-                          "时间与提醒",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.fromLTRB(16, topBarHeight + 8, 16, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (widget.recurrenceEditScope !=
+                          TodoRecurrenceEditScope.occurrence) ...[
+                        _buildRecurrenceScopeSummary(colorScheme),
+                        const SizedBox(height: 12),
+                      ],
+                      if (!_isWholeSeriesEdit)
+                        _buildRelatedRecurrenceSection(colorScheme),
+                      OptionalLiquidGlassCard(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 4,
                         ),
-                        Row(
-                          children: [
-                            const Text(
-                              "某天内完成",
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.grey,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            SizedBox(
-                              height: 24,
-                              child: LiquidGlassSwitch(
-                                height: 24,
-                                value: _isAllDay,
-                                onChanged: (val) {
-                                  setState(() {
-                                    final wasDateOnlyRange =
-                                        _dueDate != null &&
-                                        TodoItem.looksLikeLegacyDateOnlyRange(
-                                          _createdDate,
-                                          _dueDate!,
-                                        );
-                                    _isAllDay = val;
-                                    if (_isAllDay) {
-                                      _preserveLegacyTiming = false;
-                                      _createdDate = DateTime(
-                                        _createdDate.year,
-                                        _createdDate.month,
-                                        _createdDate.day,
-                                        0,
-                                        0,
-                                      );
-                                      _dueDate = _dueDate != null
-                                          ? DateTime(
-                                              _dueDate!.year,
-                                              _dueDate!.month,
-                                              _dueDate!.day,
-                                              23,
-                                              59,
-                                            )
-                                          : DateTime(
-                                              _createdDate.year,
-                                              _createdDate.month,
-                                              _createdDate.day,
-                                              23,
-                                              59,
-                                            );
-                                    } else if (wasDateOnlyRange) {
-                                      final now = _now;
-                                      _createdDate = DateTime(
-                                        _createdDate.year,
-                                        _createdDate.month,
-                                        _createdDate.day,
-                                        now.hour,
-                                        now.minute,
-                                      );
-                                      _dueDate = null;
-                                    }
-                                  });
-                                },
-                              ),
+                        borderRadius: 24,
+                        highContrast: true,
+                        fallbackDecoration: BoxDecoration(
+                          color: colorScheme.surfaceContainerLow,
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.01),
+                              blurRadius: 10,
                             ),
                           ],
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    if (_preserveLegacyTiming && !_isAllDay) ...[
-                      Container(
-                        width: double.infinity,
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: colorScheme.secondaryContainer.withValues(
-                            alpha: 0.45,
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          '这是旧版时间待办，已有的开始/结束设置会继续保留。新的不可移动事项请使用“固定日程”。',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: colorScheme.onSecondaryContainer,
-                          ),
+                        child: Column(
+                          children: [
+                            TextField(
+                              controller: _titleCtrl,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              decoration: const InputDecoration(
+                                hintText: "待办内容",
+                                filled: false,
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                disabledBorder: InputBorder.none,
+                                isCollapsed: true,
+                                contentPadding: EdgeInsets.symmetric(
+                                  vertical: 4,
+                                ),
+                              ),
+                            ),
+                            Divider(
+                              height: 1,
+                              thickness: 0.8,
+                              color: colorScheme.outlineVariant.withValues(
+                                alpha: 0.35,
+                              ),
+                            ),
+                            TextField(
+                              controller: _remarkCtrl,
+                              maxLines: 3,
+                              minLines: 1,
+                              style: const TextStyle(fontSize: 15),
+                              decoration: InputDecoration(
+                                hintText: "备注 (可选)",
+                                hintStyle: TextStyle(
+                                  color: Colors.grey.withValues(alpha: 0.8),
+                                ),
+                                filled: false,
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                disabledBorder: InputBorder.none,
+                                isCollapsed: true,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  vertical: 4,
+                                ),
+                              ),
+                            ),
+                            Divider(
+                              height: 1,
+                              thickness: 0.8,
+                              color: colorScheme.outlineVariant.withValues(
+                                alpha: 0.35,
+                              ),
+                            ),
+                            if (!_isWholeSeriesEdit)
+                              LiquidGlassSwitchListTile(
+                                key: const ValueKey(
+                                  'todo_edit_completion_switch',
+                                ),
+                                contentPadding: EdgeInsets.zero,
+                                value: _isDone,
+                                onChanged: (value) =>
+                                    setState(() => _isDone = value),
+                                secondary: Icon(
+                                  _isDone
+                                      ? Icons.check_circle_rounded
+                                      : Icons.radio_button_unchecked_rounded,
+                                  color: _isDone
+                                      ? colorScheme.primary
+                                      : colorScheme.onSurfaceVariant,
+                                ),
+                                title: const Text('完成状态'),
+                                subtitle: Text(_isDone ? '本期已完成' : '本期待完成'),
+                              ),
+                          ],
                         ),
                       ),
-                    ],
-                    Row(
-                      children: [
-                        if (_isAllDay)
-                          Expanded(
-                            child: _buildSquareTile(
-                              title: "完成日期",
-                              subtitle: _dateFormat('MM-dd')
-                                  .format(_createdDate),
-                              icon: Icons.event_available_rounded,
-                              color: Theme.of(context).colorScheme.secondary,
-                              onTap: () async {
-                                final pickedDate = await showAppDatePicker(
-                                  context: context,
-                                  firstDate: DateTime(2000),
-                                  lastDate: DateTime(2100),
-                                  initialDate: _createdDate,
-                                );
-                                if (!context.mounted || pickedDate == null) {
-                                  return;
-                                }
-                                if (_isAllDay) {
-                                  setState(() {
-                                    _createdDate = DateTime(
-                                      pickedDate.year,
-                                      pickedDate.month,
-                                      pickedDate.day,
+                      const SizedBox(height: 24),
+                      Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 12,
+                        runSpacing: 8,
+                        children: [
+                          const Text(
+                            "时间与提醒",
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Row(
+                            children: [
+                              const Text(
+                                "某天内完成",
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              SizedBox(
+                                height: 24,
+                                child: LiquidGlassSwitch(
+                                  height: 24,
+                                  value: _isAllDay,
+                                  onChanged: (val) {
+                                    setState(() {
+                                      final wasDateOnlyRange =
+                                          _dueDate != null &&
+                                          TodoItem.looksLikeLegacyDateOnlyRange(
+                                            _createdDate,
+                                            _dueDate!,
+                                          );
+                                      _isAllDay = val;
+                                      if (_isAllDay) {
+                                        _preserveLegacyTiming = false;
+                                        _createdDate = DateTime(
+                                          _createdDate.year,
+                                          _createdDate.month,
+                                          _createdDate.day,
+                                          0,
+                                          0,
+                                        );
+                                        _dueDate = _dueDate != null
+                                            ? DateTime(
+                                                _dueDate!.year,
+                                                _dueDate!.month,
+                                                _dueDate!.day,
+                                                23,
+                                                59,
+                                              )
+                                            : DateTime(
+                                                _createdDate.year,
+                                                _createdDate.month,
+                                                _createdDate.day,
+                                                23,
+                                                59,
+                                              );
+                                      } else if (wasDateOnlyRange) {
+                                        final now = _now;
+                                        _createdDate = DateTime(
+                                          _createdDate.year,
+                                          _createdDate.month,
+                                          _createdDate.day,
+                                          now.hour,
+                                          now.minute,
+                                        );
+                                        _dueDate = null;
+                                      }
+                                    });
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      if (_preserveLegacyTiming && !_isAllDay) ...[
+                        Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: colorScheme.secondaryContainer.withValues(
+                              alpha: 0.45,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '这是旧版时间待办，已有的开始/结束设置会继续保留。新的不可移动事项请使用“固定日程”。',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: colorScheme.onSecondaryContainer,
+                            ),
+                          ),
+                        ),
+                      ],
+                      Row(
+                        children: [
+                          if (_isAllDay)
+                            Expanded(
+                              child: _buildSquareTile(
+                                title: "完成日期",
+                                subtitle: _dateFormat('MM-dd')
+                                    .format(_createdDate),
+                                icon: Icons.event_available_rounded,
+                                color: Theme.of(context).colorScheme.secondary,
+                                onTap: () async {
+                                  final pickedDate = await showAppDatePicker(
+                                    context: context,
+                                    firstDate: DateTime(2000),
+                                    lastDate: DateTime(2100),
+                                    initialDate: _createdDate,
+                                  );
+                                  if (!context.mounted || pickedDate == null) {
+                                    return;
+                                  }
+                                  if (_isAllDay) {
+                                    setState(() {
+                                      _createdDate = DateTime(
+                                        pickedDate.year,
+                                        pickedDate.month,
+                                        pickedDate.day,
+                                      );
+                                      _dueDate = DateTime(
+                                        pickedDate.year,
+                                        pickedDate.month,
+                                        pickedDate.day,
+                                        23,
+                                        59,
+                                      );
+                                    });
+                                  } else {
+                                    final pickedTime = await showAppTimePicker(
+                                      context: context,
+                                      initialTime: TimeOfDay.fromDateTime(
+                                        _createdDate,
+                                      ),
                                     );
-                                    _dueDate = DateTime(
-                                      pickedDate.year,
-                                      pickedDate.month,
-                                      pickedDate.day,
-                                      23,
-                                      59,
+                                    if (!mounted || pickedTime == null) return;
+                                    setState(
+                                      () => _createdDate = DateTime(
+                                        pickedDate.year,
+                                        pickedDate.month,
+                                        pickedDate.day,
+                                        pickedTime.hour,
+                                        pickedTime.minute,
+                                      ),
                                     );
-                                  });
-                                } else {
+                                  }
+                                },
+                              ),
+                            ),
+                          if (_preserveLegacyTiming && !_isAllDay) ...[
+                            Expanded(
+                              child: _buildSquareTile(
+                                title: "开始时间",
+                                subtitle: _dateFormat('MM-dd HH:mm')
+                                    .format(_createdDate),
+                                icon: Icons.play_circle_outline_rounded,
+                                color: colorScheme.primary,
+                                onTap: () async {
+                                  final pickedDate = await showAppDatePicker(
+                                    context: context,
+                                    firstDate: DateTime(2000),
+                                    lastDate: DateTime(2100),
+                                    initialDate: _createdDate,
+                                  );
+                                  if (!context.mounted || pickedDate == null) {
+                                    return;
+                                  }
                                   final pickedTime = await showAppTimePicker(
                                     context: context,
                                     initialTime: TimeOfDay.fromDateTime(
@@ -1425,565 +1470,540 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                                       pickedTime.minute,
                                     ),
                                   );
-                                }
-                              },
+                                },
+                              ),
                             ),
-                          ),
-                        if (_preserveLegacyTiming && !_isAllDay) ...[
-                          Expanded(
-                            child: _buildSquareTile(
-                              title: "开始时间",
-                              subtitle: _dateFormat('MM-dd HH:mm')
-                                  .format(_createdDate),
-                              icon: Icons.play_circle_outline_rounded,
-                              color: colorScheme.primary,
-                              onTap: () async {
-                                final pickedDate = await showAppDatePicker(
-                                  context: context,
-                                  firstDate: DateTime(2000),
-                                  lastDate: DateTime(2100),
-                                  initialDate: _createdDate,
-                                );
-                                if (!context.mounted || pickedDate == null) {
-                                  return;
-                                }
-                                final pickedTime = await showAppTimePicker(
-                                  context: context,
-                                  initialTime: TimeOfDay.fromDateTime(
-                                    _createdDate,
-                                  ),
-                                );
-                                if (!mounted || pickedTime == null) return;
-                                setState(
-                                  () => _createdDate = DateTime(
-                                    pickedDate.year,
-                                    pickedDate.month,
-                                    pickedDate.day,
-                                    pickedTime.hour,
-                                    pickedTime.minute,
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                        ],
-                        if (!_isAllDay)
-                          Expanded(
-                            child: _buildSquareTile(
-                              title: _preserveLegacyTiming ? "结束时间" : "截止时间",
-                              subtitle: _dueDate == null
-                                  ? (_preserveLegacyTiming ? "结束时间待定" : "未安排")
-                                  : _preserveLegacyTiming
-                                  ? _dateFormat('MM-dd HH:mm').format(_dueDate!)
-                                  : "${_dateFormat('MM-dd HH:mm').format(_dueDate!)} 前完成",
-                              icon: _preserveLegacyTiming
-                                  ? Icons.stop_circle_outlined
-                                  : Icons.flag_rounded,
-                              color: Colors.deepOrangeAccent,
-                              onTap: () async {
-                                final pickedDate = await showAppDatePicker(
-                                  context: context,
-                                  firstDate: DateTime(2000),
-                                  lastDate: DateTime(2100),
-                                  initialDate: _dueDate ?? _createdDate,
-                                );
-                                if (!context.mounted || pickedDate == null) {
-                                  return;
-                                }
-                                if (_isAllDay) {
-                                  setState(
-                                    () => _dueDate = DateTime(
-                                      pickedDate.year,
-                                      pickedDate.month,
-                                      pickedDate.day,
-                                      23,
-                                      59,
-                                    ),
-                                  );
-                                } else {
-                                  final pickedTime = await showAppTimePicker(
-                                    context: context,
-                                    initialTime: TimeOfDay.fromDateTime(
-                                      _dueDate ?? _now,
-                                    ),
-                                  );
-                                  if (!mounted || pickedTime == null) return;
-                                  setState(
-                                    () => _dueDate = DateTime(
-                                      pickedDate.year,
-                                      pickedDate.month,
-                                      pickedDate.day,
-                                      pickedTime.hour,
-                                      pickedTime.minute,
-                                    ),
-                                  );
-                                }
-                              },
-                            ),
-                          ),
-                      ],
-                    ),
-                    if (!_isAllDay &&
-                        (_dueDate != null || _preserveLegacyTiming))
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton.icon(
-                          onPressed: () => setState(() {
-                            _dueDate = null;
-                            _preserveLegacyTiming = false;
-                          }),
-                          icon: const Icon(Icons.event_busy_outlined, size: 16),
-                          label: const Text('改为未安排'),
-                        ),
-                      ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildPopupSquareTile<int>(
-                            title: "任务提醒",
-                            subtitle: _getReminderText(_reminderMinutes),
-                            icon: Icons.notifications_active_rounded,
-                            color: Colors.purpleAccent,
-                            value: _reminderMinutes,
-                            items: [0, 5, 10, 15, 30, 45, 60, 120, 1440]
-                                .map(
-                                  (m) => PopupMenuItem(
-                                    value: m,
-                                    child: Text(_getReminderText(m)),
-                                  ),
-                                )
-                                .toList(),
-                            onSelected: (val) =>
-                                setState(() => _reminderMinutes = val),
-                          ),
-                        ),
-                        if (!_isWholeSeriesEdit) ...[
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildPopupSquareTile<RecurrenceType>(
-                              title: '重复',
-                              subtitle: _getRecurrenceLabel(_recurrence),
-                              icon: Icons.replay_rounded,
-                              color: colorScheme.tertiary,
-                              value: _recurrence,
-                              items:
-                                  [
-                                        RecurrenceType.none,
-                                        RecurrenceType.daily,
-                                        RecurrenceType.weekly,
-                                        RecurrenceType.monthly,
-                                        RecurrenceType.yearly,
-                                        RecurrenceType.weekdays,
-                                        RecurrenceType.customDays,
-                                      ]
-                                      .map(
-                                        (recurrence) => PopupMenuItem(
-                                          value: recurrence,
-                                          child: Text(
-                                            _getRecurrenceLabel(recurrence),
-                                          ),
-                                        ),
-                                      )
-                                      .toList(),
-                              onSelected: (value) =>
-                                  setState(() => _recurrence = value),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    if (_isWholeSeriesEdit)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.repeat_rounded,
-                              size: 18,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 12),
+                          ],
+                          if (!_isAllDay)
                             Expanded(
-                              child: Text(
-                                '${_getRecurrenceLabel(_recurrence)} · 整个系列编辑不改重复规则，调整规则请选择“本期及以后”',
-                                key: const ValueKey(
-                                  'series_locked_recurrence_rule',
-                                ),
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(
-                                      color: colorScheme.onSurfaceVariant,
-                                    ),
+                              child: _buildSquareTile(
+                                title: _preserveLegacyTiming ? "结束时间" : "截止时间",
+                                subtitle: _dueDate == null
+                                    ? (_preserveLegacyTiming ? "结束时间待定" : "未安排")
+                                    : _preserveLegacyTiming
+                                    ? _dateFormat('MM-dd HH:mm')
+                                          .format(_dueDate!)
+                                    : "${_dateFormat('MM-dd HH:mm').format(_dueDate!)} 前完成",
+                                icon: _preserveLegacyTiming
+                                    ? Icons.stop_circle_outlined
+                                    : Icons.flag_rounded,
+                                color: Colors.deepOrangeAccent,
+                                onTap: () async {
+                                  final pickedDate = await showAppDatePicker(
+                                    context: context,
+                                    firstDate: DateTime(2000),
+                                    lastDate: DateTime(2100),
+                                    initialDate: _dueDate ?? _createdDate,
+                                  );
+                                  if (!context.mounted || pickedDate == null) {
+                                    return;
+                                  }
+                                  if (_isAllDay) {
+                                    setState(
+                                      () => _dueDate = DateTime(
+                                        pickedDate.year,
+                                        pickedDate.month,
+                                        pickedDate.day,
+                                        23,
+                                        59,
+                                      ),
+                                    );
+                                  } else {
+                                    final pickedTime = await showAppTimePicker(
+                                      context: context,
+                                      initialTime: TimeOfDay.fromDateTime(
+                                        _dueDate ?? _now,
+                                      ),
+                                    );
+                                    if (!mounted || pickedTime == null) return;
+                                    setState(
+                                      () => _dueDate = DateTime(
+                                        pickedDate.year,
+                                        pickedDate.month,
+                                        pickedDate.day,
+                                        pickedTime.hour,
+                                        pickedTime.minute,
+                                      ),
+                                    );
+                                  }
+                                },
                               ),
                             ),
-                          ],
-                        ),
+                        ],
                       ),
-                    if (_recurrence != RecurrenceType.none &&
-                        !_isWholeSeriesEdit)
-                      OptionalLiquidGlassCard(
-                        margin: const EdgeInsets.only(top: 12),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                        borderRadius: 16,
-                        highContrast: true,
-                        fallbackDecoration: BoxDecoration(
-                          color: colorScheme.surface,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: Colors.black.withValues(alpha: 0.04),
+                      if (!_isAllDay &&
+                          (_dueDate != null || _preserveLegacyTiming))
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton.icon(
+                            onPressed: () => setState(() {
+                              _dueDate = null;
+                              _preserveLegacyTiming = false;
+                            }),
+                            icon: const Icon(
+                              Icons.event_busy_outlined,
+                              size: 16,
+                            ),
+                            label: const Text('改为未安排'),
                           ),
                         ),
-                        child: Column(
-                          children: [
-                            if (_recurrence == RecurrenceType.customDays) ...[
-                              Row(
-                                children: [
-                                  const Text("每隔"),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: TextField(
-                                      controller: _customDaysCtrl,
-                                      keyboardType: TextInputType.number,
-                                      textAlign: TextAlign.center,
-                                      decoration: InputDecoration(
-                                        isDense: true,
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                              vertical: 8,
-                                            ),
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                        ),
-                                      ),
-                                      onChanged: (val) => setState(
-                                        () => _customDays = int.tryParse(val),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  const Text("天重复"),
-                                ],
-                              ),
-                              const Divider(height: 24),
-                            ],
-                            InkWell(
-                              onTap: () async {
-                                final picked = await showAppDatePicker(
-                                  context: context,
-                                  // 循环结束日期是系列规则，不是当前实例的截止时间；
-                                  // 允许把规则结束日期回调到今天之前。
-                                  firstDate: DateTime(2000),
-                                  lastDate: DateTime(2100),
-                                  initialDate:
-                                      _recurrenceEndDate ??
-                                      _now.add(const Duration(days: 30)),
-                                );
-                                if (picked != null) {
-                                  setState(() => _recurrenceEndDate = picked);
-                                }
-                              },
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  const Text("重复结束日期"),
-                                  Row(
-                                    children: [
-                                      Text(
-                                        _recurrenceEndDate == null
-                                            ? "未指定"
-                                            : _dateFormat('yyyy-MM-dd')
-                                                  .format(_recurrenceEndDate!),
-                                        style: TextStyle(
-                                          color: _recurrenceEndDate == null
-                                              ? Colors.grey
-                                              : colorScheme.primary,
-                                        ),
-                                      ),
-                                      const Icon(
-                                        Icons.chevron_right,
-                                        color: Colors.grey,
-                                        size: 20,
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    const SizedBox(height: 24),
-                    if (availableGroups.isNotEmpty || _teams.isNotEmpty) ...[
-                      const Text(
-                        "组织与协作",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          if (availableGroups.isNotEmpty)
-                            Expanded(
-                              child: _buildPopupSquareTile<String>(
-                                title: "归属文件夹",
-                                subtitle: effectiveGroupId == null
-                                    ? "未分类"
-                                    : (_availableGroupsById[effectiveGroupId]
-                                              ?.name ??
-                                          '未知'),
-                                icon: Icons.folder_rounded,
-                                color: Colors.amber.shade600,
-                                value: effectiveGroupId ?? "__none__",
-                                items: [
-                                  const PopupMenuItem<String>(
-                                    value: "__none__",
-                                    child: Text("未分类"),
-                                  ),
-                                  ...availableGroups.map(
-                                    (g) => PopupMenuItem(
-                                      value: g.id,
-                                      child: Text(g.name),
+                          Expanded(
+                            child: _buildPopupSquareTile<int>(
+                              title: "任务提醒",
+                              subtitle: _getReminderText(_reminderMinutes),
+                              icon: Icons.notifications_active_rounded,
+                              color: Colors.purpleAccent,
+                              value: _reminderMinutes,
+                              items: [0, 5, 10, 15, 30, 45, 60, 120, 1440]
+                                  .map(
+                                    (m) => PopupMenuItem(
+                                      value: m,
+                                      child: Text(_getReminderText(m)),
                                     ),
-                                  ),
-                                ],
-                                onSelected: (v) => setState(() {
-                                  _selectedGroupId = v == "__none__" ? null : v;
-                                  if (_selectedGroupId != null &&
-                                      _categoryReminderDefaults.containsKey(
-                                        _selectedGroupId,
-                                      )) {
-                                    _reminderMinutes =
-                                        _categoryReminderDefaults[_selectedGroupId]!;
-                                  } else if (_selectedGroupId == null) {
-                                    _reminderMinutes = 5;
-                                  }
-                                }),
-                              ),
-                            ),
-                          if (availableGroups.isNotEmpty && _teams.isNotEmpty)
-                            const SizedBox(width: 12),
-                          if (_teams.isNotEmpty)
-                            Expanded(
-                              child: _buildPopupSquareTile<String>(
-                                title: "团队归属",
-                                subtitle: _selectedTeamUuid == null
-                                    ? "个人私有"
-                                    : (_teamsByUuid[_selectedTeamUuid]?.name ??
-                                          '未知'),
-                                icon: Icons.groups_rounded,
-                                color: Colors.indigoAccent,
-                                value: _selectedTeamUuid ?? "__none__",
-                                items: [
-                                  const PopupMenuItem<String>(
-                                    value: "__none__",
-                                    child: Text("个人私有 (仅自己可见)"),
-                                  ),
-                                  ..._teams.map(
-                                    (t) => PopupMenuItem(
-                                      value: t.uuid,
-                                      child: Text(t.name),
-                                    ),
-                                  ),
-                                ],
-                                onSelected: (v) => setState(
-                                  () => _selectedTeamUuid = v == "__none__"
-                                      ? null
-                                      : v,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                      if (_selectedTeamUuid != null) _buildCompactTeamSection(),
-                      const SizedBox(height: 12),
-                      if (_selectedTeamUuid != null && effectiveGroupId != null)
-                        Builder(
-                          builder: (context) {
-                            final folder =
-                                _availableGroupsById[effectiveGroupId];
-                            if (folder != null &&
-                                folder.teamUuid != _selectedTeamUuid) {
-                              return Padding(
-                                padding: const EdgeInsets.only(
-                                  top: 8.0,
-                                  left: 4.0,
-                                ),
-                                child: Row(
-                                  children: [
-                                    SizedBox(
-                                      height: 24,
-                                      width: 24,
-                                      child: Checkbox(
-                                        value: _syncFolderToTeam,
-                                        onChanged: (val) => setState(
-                                          () =>
-                                              _syncFolderToTeam = val ?? false,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        "将文件夹 '${folder.name}' 也同步到团队，方便队友查看分类",
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: colorScheme.primary,
-                                          fontStyle: FontStyle.italic,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }
-                            return const SizedBox.shrink();
-                          },
-                        ),
-                      const SizedBox(height: 24),
-                    ],
-                    _buildPlanBlockSection(),
-                    _buildFocusRecordsSection(),
-                    if (_editingTodo.imagePath != null ||
-                        (_editingTodo.originalText != null &&
-                            _editingTodo.originalText!.isNotEmpty)) ...[
-                      const Text(
-                        "原始分析来源",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      if (_hasEditingTodoImage())
-                        GestureDetector(
-                          onTap: () =>
-                              _showFullImage(context, _editingTodo.imagePath!),
-                          child: Container(
-                            height: 160,
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            clipBehavior: Clip.antiAlias,
-                            child: localImageWidget(
-                              _editingTodo.imagePath!,
-                              fit: BoxFit.cover,
-                              width: double.infinity,
-                              height: 160,
+                                  )
+                                  .toList(),
+                              onSelected: (val) =>
+                                  setState(() => _reminderMinutes = val),
                             ),
                           ),
+                          if (!_isWholeSeriesEdit) ...[
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildPopupSquareTile<RecurrenceType>(
+                                title: '重复',
+                                subtitle: _getRecurrenceLabel(_recurrence),
+                                icon: Icons.replay_rounded,
+                                color: colorScheme.tertiary,
+                                value: _recurrence,
+                                items:
+                                    [
+                                          RecurrenceType.none,
+                                          RecurrenceType.daily,
+                                          RecurrenceType.weekly,
+                                          RecurrenceType.monthly,
+                                          RecurrenceType.yearly,
+                                          RecurrenceType.weekdays,
+                                          RecurrenceType.customDays,
+                                        ]
+                                        .map(
+                                          (recurrence) => PopupMenuItem(
+                                            value: recurrence,
+                                            child: Text(
+                                              _getRecurrenceLabel(recurrence),
+                                            ),
+                                          ),
+                                        )
+                                        .toList(),
+                                onSelected: (value) =>
+                                    setState(() => _recurrence = value),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      if (_isWholeSeriesEdit)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.repeat_rounded,
+                                size: 18,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '${_getRecurrenceLabel(_recurrence)} · 整个系列编辑不改重复规则，调整规则请选择“本期及以后”',
+                                  key: const ValueKey(
+                                    'series_locked_recurrence_rule',
+                                  ),
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(
+                                        color: colorScheme.onSurfaceVariant,
+                                      ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      if (_editingTodo.originalText != null &&
-                          _editingTodo.originalText!.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
+                      if (_recurrence != RecurrenceType.none &&
+                          !_isWholeSeriesEdit)
+                        OptionalLiquidGlassCard(
+                          margin: const EdgeInsets.only(top: 12),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                          borderRadius: 16,
+                          highContrast: true,
+                          fallbackDecoration: BoxDecoration(
                             color: colorScheme.surface,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
                               color: Colors.black.withValues(alpha: 0.04),
                             ),
                           ),
-                          child: Text(
-                            _editingTodo.originalText!,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 24),
-                    ],
-                    const SizedBox(height: 12),
-                    KeyedSubtree(
-                      key: _dataKey,
-                      child: const Text(
-                        "数据存证",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: colorScheme.surface,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: Colors.black.withValues(alpha: 0.04),
-                        ),
-                      ),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(16),
-                          onTap: () => VersionHistorySheet.show(
-                            context,
-                            _editingTodo.id,
-                            'todos',
-                            _editingTodo.title,
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 16,
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.history_rounded,
-                                  color: colorScheme.primary,
-                                  size: 22,
-                                ),
-                                const SizedBox(width: 12),
-                                const Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        "版本记录与回滚",
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 14.5,
+                          child: Column(
+                            children: [
+                              if (_recurrence == RecurrenceType.customDays) ...[
+                                Row(
+                                  children: [
+                                    const Text("每隔"),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: TextField(
+                                        controller: _customDaysCtrl,
+                                        keyboardType: TextInputType.number,
+                                        textAlign: TextAlign.center,
+                                        decoration: InputDecoration(
+                                          isDense: true,
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                vertical: 8,
+                                              ),
+                                          border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                          ),
+                                        ),
+                                        onChanged: (val) => setState(
+                                          () => _customDays = int.tryParse(val),
                                         ),
                                       ),
-                                      Text(
-                                        "追踪修改历史，支持一键恢复至旧版本",
-                                        style: TextStyle(
-                                          fontSize: 11.5,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    const Text("天重复"),
+                                  ],
+                                ),
+                                const Divider(height: 24),
+                              ],
+                              InkWell(
+                                onTap: () async {
+                                  final picked = await showAppDatePicker(
+                                    context: context,
+                                    // 循环结束日期是系列规则，不是当前实例的截止时间；
+                                    // 允许把规则结束日期回调到今天之前。
+                                    firstDate: DateTime(2000),
+                                    lastDate: DateTime(2100),
+                                    initialDate:
+                                        _recurrenceEndDate ??
+                                        _now.add(const Duration(days: 30)),
+                                  );
+                                  if (picked != null) {
+                                    setState(() => _recurrenceEndDate = picked);
+                                  }
+                                },
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text("重复结束日期"),
+                                    Row(
+                                      children: [
+                                        Text(
+                                          _recurrenceEndDate == null
+                                              ? "未指定"
+                                              : _dateFormat(
+                                                  'yyyy-MM-dd',
+                                                ).format(_recurrenceEndDate!),
+                                          style: TextStyle(
+                                            color: _recurrenceEndDate == null
+                                                ? Colors.grey
+                                                : colorScheme.primary,
+                                          ),
+                                        ),
+                                        const Icon(
+                                          Icons.chevron_right,
                                           color: Colors.grey,
+                                          size: 20,
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      const SizedBox(height: 24),
+                      if (availableGroups.isNotEmpty || _teams.isNotEmpty) ...[
+                        const Text(
+                          "组织与协作",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            if (availableGroups.isNotEmpty)
+                              Expanded(
+                                child: _buildPopupSquareTile<String>(
+                                  title: "归属文件夹",
+                                  subtitle: effectiveGroupId == null
+                                      ? "未分类"
+                                      : (_availableGroupsById[effectiveGroupId]
+                                                ?.name ??
+                                            '未知'),
+                                  icon: Icons.folder_rounded,
+                                  color: Colors.amber.shade600,
+                                  value: effectiveGroupId ?? "__none__",
+                                  items: [
+                                    const PopupMenuItem<String>(
+                                      value: "__none__",
+                                      child: Text("未分类"),
+                                    ),
+                                    ...availableGroups.map(
+                                      (g) => PopupMenuItem(
+                                        value: g.id,
+                                        child: Text(g.name),
+                                      ),
+                                    ),
+                                  ],
+                                  onSelected: (v) => setState(() {
+                                    _selectedGroupId = v == "__none__"
+                                        ? null
+                                        : v;
+                                    if (_selectedGroupId != null &&
+                                        _categoryReminderDefaults.containsKey(
+                                          _selectedGroupId,
+                                        )) {
+                                      _reminderMinutes =
+                                          _categoryReminderDefaults[_selectedGroupId]!;
+                                    } else if (_selectedGroupId == null) {
+                                      _reminderMinutes = 5;
+                                    }
+                                  }),
+                                ),
+                              ),
+                            if (availableGroups.isNotEmpty && _teams.isNotEmpty)
+                              const SizedBox(width: 12),
+                            if (_teams.isNotEmpty)
+                              Expanded(
+                                child: _buildPopupSquareTile<String>(
+                                  title: "团队归属",
+                                  subtitle: _selectedTeamUuid == null
+                                      ? "个人私有"
+                                      : (_teamsByUuid[_selectedTeamUuid]
+                                                ?.name ??
+                                            '未知'),
+                                  icon: Icons.groups_rounded,
+                                  color: Colors.indigoAccent,
+                                  value: _selectedTeamUuid ?? "__none__",
+                                  items: [
+                                    const PopupMenuItem<String>(
+                                      value: "__none__",
+                                      child: Text("个人私有 (仅自己可见)"),
+                                    ),
+                                    ..._teams.map(
+                                      (t) => PopupMenuItem(
+                                        value: t.uuid,
+                                        child: Text(t.name),
+                                      ),
+                                    ),
+                                  ],
+                                  onSelected: (v) => setState(
+                                    () => _selectedTeamUuid = v == "__none__"
+                                        ? null
+                                        : v,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        if (_selectedTeamUuid != null)
+                          _buildCompactTeamSection(),
+                        const SizedBox(height: 12),
+                        if (_selectedTeamUuid != null &&
+                            effectiveGroupId != null)
+                          Builder(
+                            builder: (context) {
+                              final folder =
+                                  _availableGroupsById[effectiveGroupId];
+                              if (folder != null &&
+                                  folder.teamUuid != _selectedTeamUuid) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(
+                                    top: 8.0,
+                                    left: 4.0,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      SizedBox(
+                                        height: 24,
+                                        width: 24,
+                                        child: Checkbox(
+                                          value: _syncFolderToTeam,
+                                          onChanged: (val) => setState(
+                                            () => _syncFolderToTeam =
+                                                val ?? false,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          "将文件夹 '${folder.name}' 也同步到团队，方便队友查看分类",
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: colorScheme.primary,
+                                            fontStyle: FontStyle.italic,
+                                          ),
                                         ),
                                       ),
                                     ],
                                   ),
-                                ),
-                                Icon(
-                                  Icons.chevron_right_rounded,
-                                  color: Colors.grey.withValues(alpha: 0.5),
-                                ),
-                              ],
+                                );
+                              }
+                              return const SizedBox.shrink();
+                            },
+                          ),
+                        const SizedBox(height: 24),
+                      ],
+                      _buildPlanBlockSection(),
+                      _buildFocusRecordsSection(),
+                      if (_editingTodo.imagePath != null ||
+                          (_editingTodo.originalText != null &&
+                              _editingTodo.originalText!.isNotEmpty)) ...[
+                        const Text(
+                          "原始分析来源",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        if (_hasEditingTodoImage())
+                          GestureDetector(
+                            onTap: () => _showFullImage(
+                              context,
+                              _editingTodo.imagePath!,
+                            ),
+                            child: Container(
+                              height: 160,
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              clipBehavior: Clip.antiAlias,
+                              child: localImageWidget(
+                                _editingTodo.imagePath!,
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: 160,
+                              ),
+                            ),
+                          ),
+                        if (_editingTodo.originalText != null &&
+                            _editingTodo.originalText!.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: colorScheme.surface,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: Colors.black.withValues(alpha: 0.04),
+                              ),
+                            ),
+                            child: Text(
+                              _editingTodo.originalText!,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 24),
+                      ],
+                      const SizedBox(height: 12),
+                      KeyedSubtree(
+                        key: _dataKey,
+                        child: const Text(
+                          "数据存证",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: colorScheme.surface,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: Colors.black.withValues(alpha: 0.04),
+                          ),
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(16),
+                            onTap: () => VersionHistorySheet.show(
+                              context,
+                              _editingTodo.id,
+                              'todos',
+                              _editingTodo.title,
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 16,
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.history_rounded,
+                                    color: colorScheme.primary,
+                                    size: 22,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  const Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          "版本记录与回滚",
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 14.5,
+                                          ),
+                                        ),
+                                        Text(
+                                          "追踪修改历史，支持一键恢复至旧版本",
+                                          style: TextStyle(
+                                            fontSize: 11.5,
+                                            color: Colors.grey,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Icon(
+                                    Icons.chevron_right_rounded,
+                                    color: Colors.grey.withValues(alpha: 0.5),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 60),
-                  ],
+                      const SizedBox(height: 60),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -3018,6 +3038,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   }) {
     return PopupMenuButton<T>(
       initialValue: value,
+      onOpened: () => FocusManager.instance.primaryFocus?.unfocus(),
       onSelected: onSelected,
       itemBuilder: (context) => items,
       offset: const Offset(0, 45),

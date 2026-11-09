@@ -412,3 +412,5 @@ todo.md
 !/test/widgets/animation_performance_floating_window_test.dart
 !/test/widgets/media_query_selective_optimization_test.dart
 !/test/widgets/time_log_week_col_painter_test.dart
+!/test/widgets/add_todo_focus_test.dart
+!/test/widgets/fixed_schedule_focus_test.dart
