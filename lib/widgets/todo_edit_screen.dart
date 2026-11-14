@@ -1745,7 +1745,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                           children: [
                             if (availableGroups.isNotEmpty)
                               Expanded(
-                                child: _buildPopupSquareTile<String>(
+                                child: _buildSquareTile(
                                   title: "归属文件夹",
                                   subtitle: effectiveGroupId == null
                                       ? "未分类"
@@ -1754,33 +1754,29 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                                             '未知'),
                                   icon: Icons.folder_rounded,
                                   color: Colors.amber.shade600,
-                                  value: effectiveGroupId ?? "__none__",
-                                  items: [
-                                    const PopupMenuItem<String>(
-                                      value: "__none__",
-                                      child: Text("未分类"),
-                                    ),
-                                    ...availableGroups.map(
-                                      (g) => PopupMenuItem(
-                                        value: g.id,
-                                        child: Text(g.name),
-                                      ),
-                                    ),
-                                  ],
-                                  onSelected: (v) => setState(() {
-                                    _selectedGroupId = v == "__none__"
-                                        ? null
-                                        : v;
-                                    if (_selectedGroupId != null &&
-                                        _categoryReminderDefaults.containsKey(
-                                          _selectedGroupId,
-                                        )) {
-                                      _reminderMinutes =
-                                          _categoryReminderDefaults[_selectedGroupId]!;
-                                    } else if (_selectedGroupId == null) {
-                                      _reminderMinutes = 5;
-                                    }
-                                  }),
+                                  onTap: () async {
+                                    FocusManager.instance.primaryFocus
+                                        ?.unfocus();
+                                    final result =
+                                        await showTodoGroupPickerSheet(
+                                          context: context,
+                                          groups: availableGroups,
+                                          selectedGroupId: effectiveGroupId,
+                                        );
+                                    if (!mounted || result == null) return;
+                                    setState(() {
+                                      _selectedGroupId = result.groupId;
+                                      if (_selectedGroupId != null &&
+                                          _categoryReminderDefaults.containsKey(
+                                            _selectedGroupId,
+                                          )) {
+                                        _reminderMinutes =
+                                            _categoryReminderDefaults[_selectedGroupId]!;
+                                      } else if (_selectedGroupId == null) {
+                                        _reminderMinutes = 5;
+                                      }
+                                    });
+                                  },
                                 ),
                               ),
                             if (availableGroups.isNotEmpty && _teams.isNotEmpty)

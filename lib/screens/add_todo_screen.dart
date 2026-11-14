@@ -31,6 +31,7 @@ import 'fixed_schedule_related_todo_picker_screen.dart';
 import '../widgets/coach_mark_overlay.dart';
 import '../widgets/floating_bottom_bar.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
+import '../widgets/todo_group_picker_sheet.dart';
 import '../utils/persistent_image_storage.dart';
 import '../utils/page_transitions.dart';
 
@@ -3249,48 +3250,27 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                             trailing: const Icon(Icons.chevron_right),
                             onTap: () async {
                               _unfocusActiveInput();
-                              final val = await showMenu<String>(
+                              final result = await showTodoGroupPickerSheet(
                                 context: context,
-                                position: const RelativeRect.fromLTRB(
-                                  100,
-                                  600,
-                                  0,
-                                  0,
-                                ),
-                                items: [
-                                  const PopupMenuItem<String>(
-                                    value: "__none__",
-                                    child: Text("未分类"),
-                                  ),
-                                  ..._localTodoGroups
-                                      .where((g) => !g.isDeleted)
-                                      .map(
-                                        (g) => PopupMenuItem(
-                                          value: g.id,
-                                          child: Text(g.name),
-                                        ),
-                                      ),
-                                ],
+                                groups: _localTodoGroups,
+                                selectedGroupId: _selectedGroupId,
                               );
-                              if (val != null) {
-                                final newGroupId = val == "__none__"
-                                    ? null
-                                    : val;
-                                _recordUserGroupChoice(newGroupId);
-                                setState(() {
-                                  _selectedGroupId = newGroupId;
-                                  if (_selectedGroupId != null &&
-                                      _categoryReminderDefaults.containsKey(
-                                        _selectedGroupId,
-                                      )) {
-                                    _reminderMinutes =
-                                        _categoryReminderDefaults[_selectedGroupId]!;
-                                  } else if (_selectedGroupId == null) {
-                                    _reminderMinutes = 5;
-                                  }
-                                });
-                                _onTitleChanged();
-                              }
+                              if (!mounted || result == null) return;
+                              final newGroupId = result.groupId;
+                              _recordUserGroupChoice(newGroupId);
+                              setState(() {
+                                _selectedGroupId = newGroupId;
+                                if (_selectedGroupId != null &&
+                                    _categoryReminderDefaults.containsKey(
+                                      _selectedGroupId,
+                                    )) {
+                                  _reminderMinutes =
+                                      _categoryReminderDefaults[_selectedGroupId]!;
+                                } else if (_selectedGroupId == null) {
+                                  _reminderMinutes = 5;
+                                }
+                              });
+                              _onTitleChanged();
                             },
                           ),
                         if (widget.relatedFixedScheduleContext != null)
