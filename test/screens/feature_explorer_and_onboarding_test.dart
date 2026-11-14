@@ -238,4 +238,43 @@ void main() {
       expect(find.text('神技 10：设置中心实时搜功能，一秒直达深层配置'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'FeatureExplorerScreen displays and searches v7.23 newly updated features',
+    (tester) async {
+      tester.view.physicalSize = const Size(430, 1400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        const MaterialApp(home: FeatureExplorerScreen(username: 'tester')),
+      );
+      await tester.pumpAndSettle();
+
+      // Search for '环形图'
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('feature-explorer-search-field')),
+        '环形图',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('记账预算看板与交互式支出环形图'), findsOneWidget);
+
+      // Search for '专属日历'
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('feature-explorer-search-field')),
+        '专属日历',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('习惯中心与专属打卡日历'), findsOneWidget);
+
+      // Search for '流畅度'
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('feature-explorer-search-field')),
+        '流畅度',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Liquid Glass 液态玻璃与实时流畅度监控'), findsOneWidget);
+    },
+  );
 }
