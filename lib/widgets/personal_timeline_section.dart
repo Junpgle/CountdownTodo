@@ -263,7 +263,7 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
         : colorScheme.onSurfaceVariant;
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // ── 标题栏（与其他板块统一交互与无边框风格） ──
         Padding(
@@ -356,7 +356,11 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
         const SizedBox(height: 6),
 
         // ── 一体化时光流液态毛玻璃卡片 ──
-        Container(key: _cardKey, child: _buildUnifiedCard(colorScheme, isDark)),
+        SizedBox(
+          key: _cardKey,
+          width: double.infinity,
+          child: _buildUnifiedCard(colorScheme, isDark),
+        ),
       ],
     );
   }
@@ -366,12 +370,14 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
     required BoxDecoration fallbackDecoration,
     required Widget child,
     EdgeInsetsGeometry padding = const EdgeInsets.all(18),
+    double? width = double.infinity,
   }) {
     return PlatformBackdropFilter(
       filter: AppImageFilters.blur10,
       bypassWhenLiquidGlassEnabled: true,
       clipBorderRadius: BorderRadius.circular(borderRadius),
       child: OptionalLiquidGlassCard(
+        width: width,
         padding: padding,
         borderRadius: borderRadius,
         fallbackDecoration: fallbackDecoration,
@@ -414,10 +420,14 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
       borderRadius: 24,
       fallbackDecoration: fallbackDecoration,
       padding: const EdgeInsets.all(18),
+      width: double.infinity,
       child: (_isLoading && !_hasLoaded)
-          ? const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
-              child: Center(child: CircularProgressIndicator(strokeWidth: 3)),
+          ? const SizedBox(
+              width: double.infinity,
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: CircularProgressIndicator(strokeWidth: 3)),
+              ),
             )
           : _events.isEmpty
           ? _buildEmptyState(colorScheme, isDark)
@@ -719,45 +729,48 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
   // 空状态展示
   // ==========================================
   Widget _buildEmptyState(ColorScheme colorScheme, bool isDark) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: _openTodayReport,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
-        child: Column(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: colorScheme.primary.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
+    return SizedBox(
+      width: double.infinity,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: _openTodayReport,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
+          child: Column(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: colorScheme.primary.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.history_toggle_off_rounded,
+                  size: 24,
+                  color: colorScheme.primary,
+                ),
               ),
-              child: Icon(
-                Icons.history_toggle_off_rounded,
-                size: 24,
-                color: colorScheme.primary,
+              const SizedBox(height: 10),
+              Text(
+                '今日暂无时光轨迹',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : colorScheme.onSurface,
+                ),
               ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              '今日暂无时光轨迹',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : colorScheme.onSurface,
+              const SizedBox(height: 4),
+              Text(
+                '完成待办、习惯打卡或记录账单后，将在此刻画今日生活脉络',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  color: isDark ? Colors.white60 : colorScheme.onSurfaceVariant,
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '完成待办、习惯打卡或记录账单后，将在此刻画今日生活脉络',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 11.5,
-                color: isDark ? Colors.white60 : colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

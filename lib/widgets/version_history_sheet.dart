@@ -26,8 +26,9 @@ class VersionHistorySheet extends StatefulWidget {
     String table,
     String title,
   ) {
-    AppDialogs.showAppBottomSheet<void>(
+    showAppModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       builder: (context) =>
           VersionHistorySheet(uuid: uuid, table: table, title: title),
     );
@@ -239,7 +240,6 @@ class _VersionHistorySheetState extends State<VersionHistorySheet>
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     final localHistory = _history
         .where((item) => item['is_local'] == true)
         .toList();
@@ -253,59 +253,53 @@ class _VersionHistorySheetState extends State<VersionHistorySheet>
       maxChildSize: 0.9,
       expand: false,
       builder: (context, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: colorScheme.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: Column(
-            children: [
-              const AppSheetDragHandle(),
-              AppSheetHeader(
-                icon: Icons.history,
-                title: '版本记录',
-                subtitle: widget.title,
-                trailing: IconButton(
-                  icon: const Icon(Icons.refresh),
-                  onPressed: _loadHistory,
-                ),
+        return Column(
+          children: [
+            const AppSheetDragHandle(),
+            AppSheetHeader(
+              icon: Icons.history,
+              title: '版本记录',
+              subtitle: widget.title,
+              trailing: IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: _loadHistory,
               ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: TabBar(
-                  controller: _tabController,
-                  tabs: [
-                    Tab(text: '本地 (${localHistory.length})'),
-                    Tab(text: '云端 (${cloudHistory.length})'),
-                  ],
-                ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: TabBar(
+                controller: _tabController,
+                tabs: [
+                  Tab(text: '本地 (${localHistory.length})'),
+                  Tab(text: '云端 (${cloudHistory.length})'),
+                ],
               ),
-              const Divider(height: 1),
-              Expanded(
-                child: _isLoading
-                    ? const AppLoadingView()
-                    : TabBarView(
-                        controller: _tabController,
-                        children: [
-                          _buildHistoryList(
-                            history: localHistory,
-                            emptyLabel: '暂无本地修改记录',
-                            scrollController: _currentTabIndex == 0
-                                ? scrollController
-                                : null,
-                          ),
-                          _buildHistoryList(
-                            history: cloudHistory,
-                            emptyLabel: '暂无云端修改记录',
-                            scrollController: _currentTabIndex == 1
-                                ? scrollController
-                                : null,
-                          ),
-                        ],
-                      ),
-              ),
-            ],
-          ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: _isLoading
+                  ? const AppLoadingView()
+                  : TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _buildHistoryList(
+                          history: localHistory,
+                          emptyLabel: '暂无本地修改记录',
+                          scrollController: _currentTabIndex == 0
+                              ? scrollController
+                              : null,
+                        ),
+                        _buildHistoryList(
+                          history: cloudHistory,
+                          emptyLabel: '暂无云端修改记录',
+                          scrollController: _currentTabIndex == 1
+                              ? scrollController
+                              : null,
+                        ),
+                      ],
+                    ),
+            ),
+          ],
         );
       },
     );

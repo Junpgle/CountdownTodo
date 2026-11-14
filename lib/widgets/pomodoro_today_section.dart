@@ -337,10 +337,12 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
     required Widget child,
     EdgeInsetsGeometry? padding,
     AlignmentGeometry? alignment,
+    double? width = double.infinity,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = colorScheme.brightness == Brightness.dark;
     final card = OptionalLiquidGlassCard(
+      width: width,
       borderRadius: borderRadius,
       padding: padding,
       alignment: alignment,
@@ -369,7 +371,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
         : colorScheme.onSurfaceVariant;
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // ── 顶部区域标题栏 ──
         Padding(
@@ -475,7 +477,11 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
         const SizedBox(height: 6),
 
         // ── 一体化液态毛玻璃卡片 ──
-        Container(key: _cardKey, child: _buildUnifiedCard(colorScheme, isDark)),
+        SizedBox(
+          key: _cardKey,
+          width: double.infinity,
+          child: _buildUnifiedCard(colorScheme, isDark),
+        ),
       ],
     );
   }
@@ -512,10 +518,14 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
       borderRadius: 24,
       fallbackDecoration: fallbackDecoration,
       padding: const EdgeInsets.all(18),
+      width: double.infinity,
       child: (_loading && !_hasLoaded)
-          ? const Padding(
-              padding: EdgeInsets.symmetric(vertical: 36),
-              child: Center(child: CircularProgressIndicator(strokeWidth: 3)),
+          ? const SizedBox(
+              width: double.infinity,
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 36),
+                child: Center(child: CircularProgressIndicator(strokeWidth: 3)),
+              ),
             )
           : _records.isEmpty
           ? _buildEmptyState(colorScheme, isDark)
@@ -1484,55 +1494,58 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
         ? Colors.white.withValues(alpha: 0.7)
         : colorScheme.onSurfaceVariant;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
-      child: Column(
-        children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: colorScheme.primary.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.hourglass_empty_rounded,
-              size: 26,
-              color: colorScheme.primary,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            '暂无专注记录',
-            style: TextStyle(
-              color: isDark ? Colors.white : colorScheme.onSurface,
-              fontSize: 14.5,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '保持心流，立即开启你的第一个番茄钟吧！',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: subColor,
-              fontSize: 12,
-              fontWeight: FontWeight.normal,
-            ),
-          ),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: _openPomodoroWorkbench,
-            icon: const Icon(Icons.play_arrow_rounded, size: 18),
-            label: const Text('开启今日专注'),
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
+    return SizedBox(
+      width: double.infinity,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+        child: Column(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: colorScheme.primary.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.hourglass_empty_rounded,
+                size: 26,
+                color: colorScheme.primary,
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+            Text(
+              '暂无专注记录',
+              style: TextStyle(
+                color: isDark ? Colors.white : colorScheme.onSurface,
+                fontSize: 14.5,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '保持心流，立即开启你的第一个番茄钟吧！',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: subColor,
+                fontSize: 12,
+                fontWeight: FontWeight.normal,
+              ),
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _openPomodoroWorkbench,
+              icon: const Icon(Icons.play_arrow_rounded, size: 18),
+              label: const Text('开启今日专注'),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
