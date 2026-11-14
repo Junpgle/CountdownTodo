@@ -1,10 +1,10 @@
 // CountDownTodo PWA Service Worker
 // Handles offline caching and update lifecycle.
 
-const CACHE_VERSION = 'v13';
+const CACHE_VERSION = 'v15';
 const CACHE_NAME = `countdowntodo-${CACHE_VERSION}`;
 const OFFLINE_URL = './offline.html';
-const BOOTSTRAP_URL = './flutter_bootstrap.js?v=20260826c';
+const BOOTSTRAP_URL = './flutter_bootstrap.js?v=20261114b';
 
 // App shell files to pre-cache on install.
 // Flutter build output is hashed, so we only cache the unhashed entry points;
@@ -48,6 +48,14 @@ const STATIC_EXTENSIONS = [
 
 function isSameOrigin(url) {
   return url.origin === self.location.origin;
+}
+
+function isNetworkFirstAsset(url) {
+  return url.pathname.endsWith('/main.dart.js') ||
+    url.pathname.endsWith('/flutter_bootstrap.js') ||
+    url.pathname.endsWith('/share-viewer.js') ||
+    url.pathname.endsWith('/share-viewer.css') ||
+    url.pathname.endsWith('/version.json');
 }
 
 function isStaticAsset(url) {
@@ -118,6 +126,21 @@ self.addEventListener('fetch', (event) => {
           (await caches.match(OFFLINE_URL)) ||
           Response.error()
         )
+    );
+    return;
+  }
+
+  if (isNetworkFirstAsset(url)) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response && response.status === 200) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(request))
     );
     return;
   }

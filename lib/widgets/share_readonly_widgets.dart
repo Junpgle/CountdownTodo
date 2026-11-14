@@ -592,14 +592,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
           groupDate = todo.dueDate;
         }
       }
-      if (groupDate == null) {
-        for (final todo in groupTodos) {
-          if (todo.dueDate != null &&
-              (groupDate == null || todo.dueDate!.isBefore(groupDate))) {
-            groupDate = todo.dueDate;
-          }
-        }
-      }
+      groupDate ??= _latestFallbackGroupDate(groupTodos);
 
       var groupProgress = 0.0;
       for (final todo in groupTodos) {
@@ -624,7 +617,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
       items.add(
         _ShareTodoDisplayItem(
           todo: todo,
-          date: todo.dueDate,
+          date: _fallbackDateForTodo(todo),
           isDone: todo.isDone,
           progress: _todoProgress(todo, now),
         ),
@@ -667,6 +660,42 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
       undoneCount: undoneCount,
       hasVisibleItems: hasVisibleItems,
     );
+  }
+
+  DateTime _fallbackDateForTodo(TodoItem todo) {
+    if (todo.dueDate != null) return todo.dueDate!;
+    return DateTime.fromMillisecondsSinceEpoch(
+      todo.createdDate ?? todo.createdAt,
+      isUtc: true,
+    ).toLocal();
+  }
+
+  DateTime? _latestFallbackGroupDate(List<TodoItem> groupTodos) {
+    DateTime? fallback;
+    for (final todo in groupTodos) {
+      if (todo.dueDate != null &&
+          (fallback == null || todo.dueDate!.isBefore(fallback))) {
+        fallback = todo.dueDate;
+      }
+    }
+    if (fallback != null) return fallback;
+
+    for (final todo in groupTodos) {
+      if (todo.isDone) continue;
+      final candidate = _fallbackDateForTodo(todo);
+      if (fallback == null || candidate.isAfter(fallback)) {
+        fallback = candidate;
+      }
+    }
+    if (fallback != null) return fallback;
+
+    for (final todo in groupTodos) {
+      final candidate = _fallbackDateForTodo(todo);
+      if (fallback == null || candidate.isAfter(fallback)) {
+        fallback = candidate;
+      }
+    }
+    return fallback;
   }
 
   void _sortFolderTodos(List<TodoItem> todos) {

@@ -620,7 +620,7 @@
         if (swRegistered || !('serviceWorker' in navigator)) return;
         swRegistered = true;
         var register = function () {
-          navigator.serviceWorker.register('sw.js?v=20261021a', { scope: './' }).then(function (reg) {
+          navigator.serviceWorker.register('sw.js?v=20261114b', { scope: './' }).then(function (reg) {
             // Listen for updates and prompt user to reload.
             reg.addEventListener('updatefound', function () {
               var newWorker = reg.installing;
@@ -669,7 +669,7 @@
         }
         registerServiceWorker();
         var script = document.createElement('script');
-        script.src = 'flutter_bootstrap.js?v=20261021a';
+        script.src = 'flutter_bootstrap.js?v=20261114b';
         script.async = true;
         document.body.appendChild(script);
       }
