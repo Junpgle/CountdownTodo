@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/page_transitions.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
@@ -14,8 +15,13 @@ import '../services/habit_rule_resolver.dart';
 import '../services/habit_source_resolver.dart';
 import '../services/habit_sleep_goal_resolver.dart';
 import '../widgets/habit_format.dart';
+import 'habit_detail_screen.dart';
 
-/// 习惯中心「日历」标签页：月历 + 选中日习惯明细。
+/// 习惯中心「日历」标签页：
+///
+/// 顶部支持按习惯筛选：
+/// - 选中「全部习惯」时显示聚合月历；
+/// - 选中具体习惯时显示该习惯专属的打卡完成日历视图。
 class HabitCalendarTab extends StatefulWidget {
   final double topPadding;
   final String username;
@@ -23,11 +29,15 @@ class HabitCalendarTab extends StatefulWidget {
   /// 数据变化后自增，触发重新加载。
   final int reloadTick;
 
+  /// 初始选中的习惯 UUID（为空表示默认查看全部习惯）。
+  final String? initialHabitUuid;
+
   const HabitCalendarTab({
     super.key,
     this.topPadding = 0,
     required this.username,
     this.reloadTick = 0,
+    this.initialHabitUuid,
   });
 
   @override
@@ -46,9 +56,13 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
   bool _loading = true;
   int _loadGeneration = 0;
 
+  /// 当前选中的习惯 UUID（null 表示全部习惯）。
+  String? _selectedHabitUuid;
+
   @override
   void initState() {
     super.initState();
+    _selectedHabitUuid = widget.initialHabitUuid;
     _loadData();
   }
 
@@ -58,6 +72,15 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     if (oldWidget.reloadTick != widget.reloadTick) {
       _loadData();
     }
+    if (oldWidget.initialHabitUuid != widget.initialHabitUuid &&
+        widget.initialHabitUuid != null) {
+      setState(() => _selectedHabitUuid = widget.initialHabitUuid);
+    }
+  }
+
+  HabitGoal? get _selectedGoal {
+    if (_selectedHabitUuid == null) return null;
+    return _goals.where((goal) => goal.uuid == _selectedHabitUuid).firstOrNull;
   }
 
   Future<void> _loadData() async {
@@ -166,6 +189,10 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
           _goals = goals;
           _rulesByHabit = rulesByHabit;
           _dayByHabitAndLogicalDate = dayByHabitAndLogicalDate;
+          if (_selectedHabitUuid != null &&
+              !goals.any((g) => g.uuid == _selectedHabitUuid)) {
+            _selectedHabitUuid = null;
+          }
           _loading = false;
         });
       }
@@ -180,7 +207,6 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
   void _changeMonth(int delta) {
     setState(() {
       _month = DateTime(_month.year, _month.month + delta, 1);
-      // 选中日期超出新月份（如 1 月 31 日切到 2 月）时回落到当月最后一天。
       final daysInMonth = DateTime(_month.year, _month.month + 1, 0).day;
       if (_selectedDay.year != _month.year ||
           _selectedDay.month != _month.month) {
@@ -194,7 +220,16 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     _loadData();
   }
 
-  // ── 每日聚合状态 ────────────────────────────────────
+  void _goToCurrentMonth() {
+    final now = DateTime.now();
+    setState(() {
+      _month = DateTime(now.year, now.month, 1);
+      _selectedDay = now;
+    });
+    _loadData();
+  }
+
+  // ── 每日聚合状态（全部习惯） ─────────────────────────
   ({_DayAggregate status, double ratio}) _aggregate(DateTime day) {
     final now = DateTime.now();
     final todayKey = HabitRuleResolver.dayKey(now);
@@ -213,7 +248,6 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     DateTime day,
     DateTime now,
   ) {
-    // 未来日期不显示状态（设计文档 11.2）。
     if (day.isAfter(DateTime(now.year, now.month, now.day))) {
       return (status: _DayAggregate.future, ratio: 0.0);
     }
@@ -225,8 +259,6 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     for (final goal in _goals) {
       final day = _dayByHabitAndLogicalDate[goal.uuid]?[key];
       if (day == null) continue;
-      // 归档代表停止后续执行。归档后的空计划日不应继续污染日历，
-      // 但归档前已经产生过记录的日期仍要保留。
       if (goal.isArchived && !_hasHistoricalRecord(day)) continue;
       final status = day.status;
       if (status == HabitDayStatus.notPlanned) continue;
@@ -239,7 +271,6 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
       if (status == HabitDayStatus.met) met++;
     }
     if (planned == 0) {
-      // 全部习惯当天均被跳过：灰色标记（与非计划日的空白区分）。
       if (skipped > 0) return (status: _DayAggregate.skipped, ratio: 0.0);
       return (status: _DayAggregate.none, ratio: 0.0);
     }
@@ -249,97 +280,139 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     return (status: _DayAggregate.partial, ratio: overallRatio);
   }
 
+  // ── 单习惯当月打卡统计 ────────────────────────────────
+  ({
+    int plannedDays,
+    int metDays,
+    int frozenDays,
+    int skippedDays,
+    int missedDays,
+    double rate,
+  })
+  _computeGoalMonthSummary(HabitGoal goal) {
+    final daysInMonth = DateTime(_month.year, _month.month + 1, 0).day;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    int planned = 0;
+    int met = 0;
+    int frozen = 0;
+    int skipped = 0;
+    int missed = 0;
+
+    final daysMap = _dayByHabitAndLogicalDate[goal.uuid];
+    if (daysMap != null) {
+      for (int d = 1; d <= daysInMonth; d++) {
+        final date = DateTime(_month.year, _month.month, d);
+        if (date.isAfter(today)) continue;
+        final key = HabitRuleResolver.dayKey(date);
+        final dayProgress = daysMap[key];
+        if (dayProgress == null) continue;
+        if (goal.isArchived && !_hasHistoricalRecord(dayProgress)) continue;
+
+        final status = dayProgress.status;
+        if (status == HabitDayStatus.notPlanned) continue;
+
+        planned++;
+        switch (status) {
+          case HabitDayStatus.met:
+            met++;
+          case HabitDayStatus.frozen:
+            frozen++;
+          case HabitDayStatus.skipped:
+            skipped++;
+          case HabitDayStatus.missed:
+            missed++;
+          case HabitDayStatus.inProgress:
+          case HabitDayStatus.notPlanned:
+            break;
+        }
+      }
+    }
+
+    final rate = planned > 0 ? (met / planned) : 0.0;
+    return (
+      plannedDays: planned,
+      metDays: met,
+      frozenDays: frozen,
+      skippedDays: skipped,
+      missedDays: missed,
+      rate: rate,
+    );
+  }
+
+  String _compactDayValue(HabitGoal goal, HabitDayProgress day) {
+    final progress = day.progress;
+    if (day.status == HabitDayStatus.met) {
+      switch (goal.sourceType) {
+        case HabitSourceType.recurringTodo:
+          return '✓';
+        case HabitSourceType.pomodoroTag:
+        case HabitSourceType.durationCheckIn:
+          final m = (progress.currentValue / 60).round();
+          return m > 0 ? '${m}m' : '✓';
+        case HabitSourceType.quantityCheckIn:
+          final v = progress.currentValue;
+          final unit = _unitOf(goal);
+          final vStr = v == v.roundToDouble()
+              ? '${v.toInt()}'
+              : v.toStringAsFixed(1);
+          return '$vStr$unit';
+        case HabitSourceType.timeCheckIn:
+          final actual = progress.firstRecordAt;
+          if (actual != null) {
+            return HabitText.timeOfDay(actual);
+          }
+          return '✓';
+      }
+    }
+    return '';
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading && _goals.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final isWide = constraints.maxWidth > 600;
         final bottomPadding = floatingBottomNavigationContentPaddingFor(
           context,
         );
+        final selectedGoal = _selectedGoal;
 
-        if (isWide) {
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                flex: 5,
-                child: RefreshIndicator(
-                  onRefresh: _loadData,
-                  child: ListView(
-                    padding: EdgeInsets.fromLTRB(
-                      16,
-                      widget.topPadding + 12,
-                      16,
-                      bottomPadding,
-                    ),
-                    children: [
-                      _buildMonthHeader(),
-                      const SizedBox(height: 12),
-                      _buildWeekdayHeader(),
-                      const SizedBox(height: 4),
-                      _buildDayGrid(),
-                      const SizedBox(height: 16),
-                      _buildLegend(),
-                    ],
-                  ),
-                ),
-              ),
-              const VerticalDivider(
-                width: 1,
-                thickness: 1,
-                color: Colors.black12,
-              ),
-              Expanded(
-                flex: 4,
-                child: ListView(
-                  padding: EdgeInsets.fromLTRB(
-                    16,
-                    widget.topPadding + 12,
-                    16,
-                    bottomPadding,
-                  ),
-                  children: [_buildSelectedDayDetail()],
-                ),
-              ),
-            ],
+        // 1. 选中具体习惯：单习惯打卡大日历视图
+        if (selectedGoal != null) {
+          return _buildSingleHabitView(
+            context,
+            goal: selectedGoal,
+            isWide: isWide,
+            bottomPadding: bottomPadding,
           );
         }
 
-        return RefreshIndicator(
-          onRefresh: _loadData,
-          child: ListView(
-            padding: EdgeInsets.fromLTRB(
-              16,
-              widget.topPadding + 12,
-              16,
-              bottomPadding,
-            ),
-            children: [
-              _buildMonthHeader(),
-              const SizedBox(height: 12),
-              _buildWeekdayHeader(),
-              const SizedBox(height: 4),
-              _buildDayGrid(),
-              const SizedBox(height: 16),
-              _buildLegend(),
-              const SizedBox(height: 12),
-              _buildSelectedDayDetail(),
-            ],
-          ),
+        // 2. 选中全部习惯：总览月历视图
+        return _buildOverviewCalendarView(
+          context,
+          isWide: isWide,
+          bottomPadding: bottomPadding,
         );
       },
     );
   }
 
+  // ── 顶部月份切换栏 ─────────────────────────────────────
   Widget _buildMonthHeader() {
     final colorScheme = Theme.of(context).colorScheme;
+    final now = DateTime.now();
+    final isCurrentMonth = _month.year == now.year && _month.month == now.month;
+
     return Row(
       children: [
         IconButton(
+          tooltip: '上一月',
           onPressed: () => _changeMonth(-1),
           icon: const Icon(Icons.chevron_left_rounded),
         ),
@@ -352,7 +425,7 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
                 '${_month.year} 年 ${_month.month} 月',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 16.5,
                   fontWeight: FontWeight.w700,
                   color: colorScheme.onSurface,
                 ),
@@ -371,11 +444,625 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
             ],
           ),
         ),
+        if (!isCurrentMonth)
+          TextButton(
+            onPressed: _goToCurrentMonth,
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: const Size(0, 32),
+            ),
+            child: const Text('今月', style: TextStyle(fontSize: 12.5)),
+          ),
         IconButton(
+          tooltip: '下一月',
           onPressed: () => _changeMonth(1),
           icon: const Icon(Icons.chevron_right_rounded),
         ),
       ],
+    );
+  }
+
+  // ── 习惯筛选 Chip 列表 ──────────────────────────────────
+  Widget _buildHabitFilterBar() {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          FilterChip(
+            showCheckmark: false,
+            avatar: Icon(
+              Icons.grid_view_rounded,
+              size: 15,
+              color: _selectedHabitUuid == null
+                  ? colorScheme.onPrimary
+                  : colorScheme.onSurfaceVariant,
+            ),
+            label: const Text('全部习惯'),
+            selected: _selectedHabitUuid == null,
+            selectedColor: colorScheme.primary,
+            labelStyle: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: _selectedHabitUuid == null
+                  ? colorScheme.onPrimary
+                  : colorScheme.onSurface,
+            ),
+            onSelected: (_) {
+              if (_selectedHabitUuid != null) {
+                setState(() => _selectedHabitUuid = null);
+              }
+            },
+          ),
+          const SizedBox(width: 8),
+          for (final goal in _goals) ...[
+            FilterChip(
+              showCheckmark: false,
+              avatar: Text(
+                goal.icon.isNotEmpty ? goal.icon : '🎯',
+                style: const TextStyle(fontSize: 14),
+              ),
+              label: Text(
+                goal.name + (goal.isArchived ? ' (已归档)' : ''),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              selected: _selectedHabitUuid == goal.uuid,
+              selectedColor: colorScheme.primary,
+              labelStyle: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: _selectedHabitUuid == goal.uuid
+                    ? colorScheme.onPrimary
+                    : colorScheme.onSurface,
+              ),
+              onSelected: (_) {
+                setState(() => _selectedHabitUuid = goal.uuid);
+              },
+            ),
+            const SizedBox(width: 8),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ── 单习惯打卡日历大视图 ──────────────────────────────────
+  Widget _buildSingleHabitView(
+    BuildContext context, {
+    required HabitGoal goal,
+    required bool isWide,
+    required double bottomPadding,
+  }) {
+    if (isWide) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 5,
+            child: RefreshIndicator(
+              onRefresh: _loadData,
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  widget.topPadding + 12,
+                  16,
+                  bottomPadding,
+                ),
+                children: [
+                  _buildMonthHeader(),
+                  const SizedBox(height: 10),
+                  _buildHabitFilterBar(),
+                  const SizedBox(height: 14),
+                  _buildSingleHabitSummaryCard(goal),
+                  const SizedBox(height: 14),
+                  _buildWeekdayHeader(),
+                  const SizedBox(height: 4),
+                  _buildSingleHabitDayGrid(goal),
+                  const SizedBox(height: 14),
+                  _buildSingleHabitLegend(),
+                ],
+              ),
+            ),
+          ),
+          const VerticalDivider(width: 1, thickness: 1, color: Colors.black12),
+          Expanded(
+            flex: 4,
+            child: ListView(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                widget.topPadding + 12,
+                16,
+                bottomPadding,
+              ),
+              children: [_buildSingleHabitDayDetail(goal)],
+            ),
+          ),
+        ],
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadData,
+      child: ListView(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          widget.topPadding + 12,
+          16,
+          bottomPadding,
+        ),
+        children: [
+          _buildMonthHeader(),
+          const SizedBox(height: 10),
+          _buildHabitFilterBar(),
+          const SizedBox(height: 14),
+          _buildSingleHabitSummaryCard(goal),
+          const SizedBox(height: 14),
+          _buildWeekdayHeader(),
+          const SizedBox(height: 4),
+          _buildSingleHabitDayGrid(goal),
+          const SizedBox(height: 14),
+          _buildSingleHabitLegend(),
+          const SizedBox(height: 14),
+          _buildSingleHabitDayDetail(goal),
+        ],
+      ),
+    );
+  }
+
+  // ── 单习惯本月打卡统计小卡片 ─────────────────────────────
+  Widget _buildSingleHabitSummaryCard(HabitGoal goal) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final summary = _computeGoalMonthSummary(goal);
+    final ratePercent = (summary.rate * 100).round();
+
+    Widget statItem({
+      required String label,
+      required String value,
+      Color? valueColor,
+    }) {
+      return Expanded(
+        child: Column(
+          children: [
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+                color: valueColor ?? colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11.5,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Text(
+                goal.icon.isNotEmpty ? goal.icon : '🎯',
+                style: const TextStyle(fontSize: 20),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${goal.name} · 本月打卡日历',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w700,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () async {
+                  final changed = await Navigator.of(context).push<bool>(
+                    PageTransitions.material(
+                      builder: (_) => HabitDetailScreen(
+                        goal: goal,
+                        username: widget.username,
+                      ),
+                    ),
+                  );
+                  if (changed == true && mounted) {
+                    _loadData();
+                  }
+                },
+                icon: const Icon(Icons.arrow_forward_ios_rounded, size: 12),
+                label: const Text('详情', style: TextStyle(fontSize: 12.5)),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(0, 30),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Divider(height: 1, thickness: 0.5),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              statItem(
+                label: '已达标',
+                value: '${summary.metDays}天',
+                valueColor: colorScheme.tertiary,
+              ),
+              statItem(
+                label: '达成率',
+                value: '$ratePercent%',
+                valueColor: colorScheme.primary,
+              ),
+              statItem(label: '计划天数', value: '${summary.plannedDays}天'),
+              statItem(
+                label: '免扣/跳过',
+                value: '${summary.frozenDays}/${summary.skippedDays}天',
+                valueColor: summary.frozenDays > 0
+                    ? colorScheme.secondary
+                    : null,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── 单习惯大日历网格 ──────────────────────────────────
+  Widget _buildSingleHabitDayGrid(HabitGoal goal) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final firstDay = DateTime(_month.year, _month.month, 1);
+    final daysInMonth = DateTime(_month.year, _month.month + 1, 0).day;
+    final leadingBlanks = firstDay.weekday - 1;
+
+    final cells = <Widget>[];
+    for (int i = 0; i < leadingBlanks; i++) {
+      cells.add(const SizedBox.shrink());
+    }
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    for (int day = 1; day <= daysInMonth; day++) {
+      final date = DateTime(_month.year, _month.month, day);
+      final isToday =
+          date.year == today.year &&
+          date.month == today.month &&
+          date.day == today.day;
+      final isSelected =
+          date.year == _selectedDay.year &&
+          date.month == _selectedDay.month &&
+          date.day == _selectedDay.day;
+      final isFuture = date.isAfter(today);
+
+      final key = HabitRuleResolver.dayKey(date);
+      final dayProgress = _dayByHabitAndLogicalDate[goal.uuid]?[key];
+
+      HabitDayStatus? status;
+      if (!isFuture && dayProgress != null) {
+        if (!goal.isArchived || _hasHistoricalRecord(dayProgress)) {
+          status = dayProgress.status;
+        }
+      }
+
+      Color cellBg = Colors.transparent;
+      Color textColor = colorScheme.onSurface;
+      Color dotColor = Colors.transparent;
+      String subText = '';
+
+      if (isFuture) {
+        textColor = colorScheme.onSurfaceVariant.withValues(alpha: 0.35);
+      } else {
+        switch (status) {
+          case HabitDayStatus.met:
+            cellBg = colorScheme.tertiaryContainer;
+            textColor = colorScheme.onTertiaryContainer;
+            dotColor = colorScheme.tertiary;
+            if (dayProgress != null) {
+              subText = _compactDayValue(goal, dayProgress);
+            }
+          case HabitDayStatus.frozen:
+            cellBg = colorScheme.secondaryContainer.withValues(alpha: 0.55);
+            textColor = colorScheme.onSecondaryContainer;
+            dotColor = colorScheme.secondary;
+          case HabitDayStatus.skipped:
+            cellBg = colorScheme.surfaceContainerHighest.withValues(
+              alpha: 0.45,
+            );
+            textColor = colorScheme.outline;
+            dotColor = colorScheme.outline;
+          case HabitDayStatus.inProgress:
+            cellBg = Colors.transparent;
+            dotColor = colorScheme.secondary;
+          case HabitDayStatus.missed:
+            cellBg = colorScheme.errorContainer.withValues(alpha: 0.15);
+            dotColor = colorScheme.error;
+          case HabitDayStatus.notPlanned:
+          case null:
+            textColor = colorScheme.onSurfaceVariant.withValues(alpha: 0.4);
+        }
+      }
+
+      cells.add(
+        GestureDetector(
+          onTap: () => setState(() => _selectedDay = date),
+          child: Container(
+            margin: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isSelected
+                    ? colorScheme.primary
+                    : isToday
+                    ? colorScheme.primary.withValues(alpha: 0.45)
+                    : Colors.transparent,
+                width: isSelected ? 2 : 1,
+              ),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Stack(
+                children: [
+                  Container(color: cellBg),
+                  Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          '$day',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: isToday || isSelected
+                                ? FontWeight.w800
+                                : FontWeight.w500,
+                            color: isSelected ? colorScheme.primary : textColor,
+                          ),
+                        ),
+                        if (subText.isNotEmpty) ...[
+                          const SizedBox(height: 1),
+                          Text(
+                            subText,
+                            maxLines: 1,
+                            overflow: TextOverflow.clip,
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              color: colorScheme.tertiary,
+                            ),
+                          ),
+                        ] else if (status == HabitDayStatus.frozen) ...[
+                          const SizedBox(height: 2),
+                          Icon(
+                            Icons.shield_rounded,
+                            size: 8.5,
+                            color: colorScheme.secondary,
+                          ),
+                        ] else ...[
+                          const SizedBox(height: 2),
+                          Container(
+                            width: 5.5,
+                            height: 5.5,
+                            decoration: BoxDecoration(
+                              color: dotColor,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return GridView.count(
+      crossAxisCount: 7,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      childAspectRatio: 0.95,
+      children: cells,
+    );
+  }
+
+  // ── 单习惯图例 ─────────────────────────────────────
+  Widget _buildSingleHabitLegend() {
+    final colorScheme = Theme.of(context).colorScheme;
+    Widget item(Color color, String label, {Widget? icon}) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null)
+            icon
+          else
+            Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+          ),
+        ],
+      );
+    }
+
+    return Wrap(
+      spacing: 14,
+      runSpacing: 8,
+      children: [
+        item(colorScheme.tertiary, '已达标'),
+        item(colorScheme.error, '未完成'),
+        item(colorScheme.secondary, '进行中'),
+        item(
+          colorScheme.secondary,
+          '免扣保护',
+          icon: Icon(
+            Icons.shield_rounded,
+            size: 12,
+            color: colorScheme.secondary,
+          ),
+        ),
+        item(colorScheme.outline, '已跳过'),
+      ],
+    );
+  }
+
+  // ── 单习惯选中日明细 ──────────────────────────────────
+  Widget _buildSingleHabitDayDetail(HabitGoal goal) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final dayLabel =
+        '${_selectedDay.month} 月 ${_selectedDay.day} 日'
+        ' · 周${'一二三四五六日'[_selectedDay.weekday - 1]}';
+    final key = HabitRuleResolver.dayKey(_selectedDay);
+    final dayProgress = _dayByHabitAndLogicalDate[goal.uuid]?[key];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              dayLabel,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: colorScheme.onSurface,
+              ),
+            ),
+            TextButton.icon(
+              onPressed: () => setState(() => _selectedHabitUuid = null),
+              icon: const Icon(Icons.arrow_back_rounded, size: 14),
+              label: const Text('查看全部', style: TextStyle(fontSize: 12.5)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (dayProgress == null)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Text(
+              '这一天没有打卡计划',
+              style: TextStyle(
+                fontSize: 14,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          )
+        else
+          _buildDayRow(goal, dayProgress),
+      ],
+    );
+  }
+
+  // ── 总览聚合月历视图 ───────────────────────────────────
+  Widget _buildOverviewCalendarView(
+    BuildContext context, {
+    required bool isWide,
+    required double bottomPadding,
+  }) {
+    if (isWide) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 5,
+            child: RefreshIndicator(
+              onRefresh: _loadData,
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  widget.topPadding + 12,
+                  16,
+                  bottomPadding,
+                ),
+                children: [
+                  _buildMonthHeader(),
+                  const SizedBox(height: 10),
+                  _buildHabitFilterBar(),
+                  const SizedBox(height: 14),
+                  _buildWeekdayHeader(),
+                  const SizedBox(height: 4),
+                  _buildDayGrid(),
+                  const SizedBox(height: 16),
+                  _buildLegend(),
+                ],
+              ),
+            ),
+          ),
+          const VerticalDivider(width: 1, thickness: 1, color: Colors.black12),
+          Expanded(
+            flex: 4,
+            child: ListView(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                widget.topPadding + 12,
+                16,
+                bottomPadding,
+              ),
+              children: [_buildSelectedDayDetail()],
+            ),
+          ),
+        ],
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadData,
+      child: ListView(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          widget.topPadding + 12,
+          16,
+          bottomPadding,
+        ),
+        children: [
+          _buildMonthHeader(),
+          const SizedBox(height: 10),
+          _buildHabitFilterBar(),
+          const SizedBox(height: 14),
+          _buildWeekdayHeader(),
+          const SizedBox(height: 4),
+          _buildDayGrid(),
+          const SizedBox(height: 16),
+          _buildLegend(),
+          const SizedBox(height: 16),
+          _buildSelectedDayDetail(),
+        ],
+      ),
     );
   }
 
@@ -405,7 +1092,7 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     final colorScheme = Theme.of(context).colorScheme;
     final firstDay = DateTime(_month.year, _month.month, 1);
     final daysInMonth = DateTime(_month.year, _month.month + 1, 0).day;
-    final leadingBlanks = firstDay.weekday - 1; // 周一开头
+    final leadingBlanks = firstDay.weekday - 1;
 
     final cells = <Widget>[];
     for (int i = 0; i < leadingBlanks; i++) {
@@ -463,11 +1150,10 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
               ),
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(8), // 略小于外框
+              borderRadius: BorderRadius.circular(8),
               child: Stack(
                 children: [
                   Container(color: bg),
-                  // “水池灌水”式的进度填充
                   if (ratio > 0.0 && aggregate == _DayAggregate.partial)
                     Align(
                       alignment: Alignment.bottomCenter,
@@ -559,7 +1245,7 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     );
   }
 
-  // ── 选中日明细 ──────────────────────────────────────
+  // ── 选中日明细（全部习惯列表） ──────────────────────────
   Widget _buildSelectedDayDetail() {
     final colorScheme = Theme.of(context).colorScheme;
     final dayLabel =
@@ -641,63 +1327,74 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
       ),
       child: Row(
         children: [
-          Text(
-            goal.icon.isNotEmpty ? goal.icon : '🎯',
-            style: const TextStyle(fontSize: 22),
+          InkWell(
+            onTap: () {
+              setState(() => _selectedHabitUuid = goal.uuid);
+            },
+            borderRadius: BorderRadius.circular(8),
+            child: Text(
+              goal.icon.isNotEmpty ? goal.icon : '🎯',
+              style: const TextStyle(fontSize: 22),
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        goal.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: colorScheme.onSurface,
+            child: InkWell(
+              onTap: () {
+                setState(() => _selectedHabitUuid = goal.uuid);
+              },
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          goal.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: colorScheme.onSurface,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: color.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        label,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: color,
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
                         ),
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          label,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: color,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (detail.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      detail,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
-                ),
-                if (detail.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    detail,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
                 ],
-              ],
+              ),
             ),
           ),
           const SizedBox(width: 8),
