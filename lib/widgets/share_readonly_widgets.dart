@@ -159,16 +159,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
     sections.add(
       AnimatedSwitcher(
         duration: const Duration(milliseconds: 400),
-        transitionBuilder: (child, animation) {
-          return FadeTransition(
-            opacity: animation,
-            child: SizeTransition(
-              sizeFactor: animation,
-              alignment: Alignment.topCenter,
-              child: child,
-            ),
-          );
-        },
+        transitionBuilder: _buildSharedExpandTransition,
         child: (!showTodayItems && todayItems.isNotEmpty)
             ? GestureDetector(
                 key: const ValueKey('today_summary_card'),
@@ -346,16 +337,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 500),
-      transitionBuilder: (Widget child, Animation<double> animation) {
-        return FadeTransition(
-          opacity: animation,
-          child: SizeTransition(
-            sizeFactor: animation,
-            alignment: Alignment.topCenter,
-            child: child,
-          ),
-        );
-      },
+      transitionBuilder: _buildSharedExpandTransition,
       child: !_isWholeListExpanded
           ? GestureDetector(
               key: const ValueKey('collapsed_card'),
@@ -534,13 +516,20 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
     );
   }
 
-  Widget _buildAnimatedSection({
-    required bool expanded,
-    required Widget child,
-  }) {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 300),
-      transitionBuilder: (Widget child, Animation<double> animation) {
+  static Widget _buildSharedExpandTransition(
+    Widget child,
+    Animation<double> animation,
+  ) {
+    return AnimatedBuilder(
+      animation: animation,
+      child: child,
+      builder: (context, child) {
+        if (animation.value <= 0.001) {
+          return const SizedBox.shrink();
+        }
+        if (animation.value >= 0.999) {
+          return child!;
+        }
         return FadeTransition(
           opacity: animation,
           child: SizeTransition(
@@ -550,6 +539,16 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildAnimatedSection({
+    required bool expanded,
+    required Widget child,
+  }) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 300),
+      transitionBuilder: _buildSharedExpandTransition,
       child: expanded
           ? Container(key: const ValueKey('expanded_content'), child: child)
           : const SizedBox.shrink(key: ValueKey('collapsed_empty')),
@@ -593,14 +592,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
           groupDate = todo.dueDate;
         }
       }
-      if (groupDate == null) {
-        for (final todo in groupTodos) {
-          if (todo.dueDate != null &&
-              (groupDate == null || todo.dueDate!.isBefore(groupDate))) {
-            groupDate = todo.dueDate;
-          }
-        }
-      }
+      groupDate ??= _latestFallbackGroupDate(groupTodos);
 
       var groupProgress = 0.0;
       for (final todo in groupTodos) {
@@ -625,7 +617,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
       items.add(
         _ShareTodoDisplayItem(
           todo: todo,
-          date: todo.dueDate,
+          date: _fallbackDateForTodo(todo),
           isDone: todo.isDone,
           progress: _todoProgress(todo, now),
         ),
@@ -668,6 +660,42 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
       undoneCount: undoneCount,
       hasVisibleItems: hasVisibleItems,
     );
+  }
+
+  DateTime _fallbackDateForTodo(TodoItem todo) {
+    if (todo.dueDate != null) return todo.dueDate!;
+    return DateTime.fromMillisecondsSinceEpoch(
+      todo.createdDate ?? todo.createdAt,
+      isUtc: true,
+    ).toLocal();
+  }
+
+  DateTime? _latestFallbackGroupDate(List<TodoItem> groupTodos) {
+    DateTime? fallback;
+    for (final todo in groupTodos) {
+      if (todo.dueDate != null &&
+          (fallback == null || todo.dueDate!.isBefore(fallback))) {
+        fallback = todo.dueDate;
+      }
+    }
+    if (fallback != null) return fallback;
+
+    for (final todo in groupTodos) {
+      if (todo.isDone) continue;
+      final candidate = _fallbackDateForTodo(todo);
+      if (fallback == null || candidate.isAfter(fallback)) {
+        fallback = candidate;
+      }
+    }
+    if (fallback != null) return fallback;
+
+    for (final todo in groupTodos) {
+      final candidate = _fallbackDateForTodo(todo);
+      if (fallback == null || candidate.isAfter(fallback)) {
+        fallback = candidate;
+      }
+    }
+    return fallback;
   }
 
   void _sortFolderTodos(List<TodoItem> todos) {
@@ -1483,7 +1511,16 @@ class ShareCountdownSection extends StatelessWidget {
           height: 130,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
+            itemExtent: 142.0,
             padding: const EdgeInsets.only(right: 12),
+            findChildIndexCallback: (Key key) {
+              if (key is ValueKey<String>) {
+                final id = key.value;
+                final index = activeCountdowns.indexWhere((c) => c.id == id);
+                return index != -1 ? index : null;
+              }
+              return null;
+            },
             itemCount: activeCountdowns.length,
             itemBuilder: (context, index) {
               final item = activeCountdowns[index];
@@ -1538,114 +1575,117 @@ class ShareCountdownSection extends StatelessWidget {
                         ? Colors.redAccent
                         : colorScheme.primary);
 
-              return Container(
-                width: 130,
-                margin: const EdgeInsets.only(right: 12, bottom: 8),
-                decoration: BoxDecoration(
-                  color: bgColor,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: borderColor),
-                  boxShadow: useDarkUI
-                      ? []
-                      : [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.04),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // 标题行
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              item.title,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: textColor,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13,
-                                height: 1.2,
-                              ),
+              return RepaintBoundary(
+                key: ValueKey<String>(item.id),
+                child: Container(
+                  width: 130,
+                  margin: const EdgeInsets.only(right: 12, bottom: 8),
+                  decoration: BoxDecoration(
+                    color: bgColor,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: borderColor),
+                    boxShadow: useDarkUI
+                        ? []
+                        : [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.04),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
                             ),
-                          ),
-                        ],
-                      ),
-                      // 团队信息
-                      if (item.teamUuid != null) ...[
-                        const SizedBox(height: 2),
+                          ],
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 标题行
                         Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(
-                              Icons.groups_rounded,
-                              size: 10,
-                              color: accentColor.withValues(alpha: 0.6),
-                            ),
-                            const SizedBox(width: 3),
                             Expanded(
                               child: Text(
-                                "${item.teamName ?? '团队'} · ${item.creatorName ?? '成员'}",
-                                maxLines: 1,
+                                item.title,
+                                maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  fontSize: 8,
-                                  color: subTextColor.withValues(alpha: 0.8),
+                                  color: textColor,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                  height: 1.2,
                                 ),
                               ),
                             ),
                           ],
                         ),
-                      ] else ...[
-                        const SizedBox(height: 12),
-                      ],
-                      const Spacer(),
-                      // 天数
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            "$diff",
-                            style: TextStyle(
-                              fontSize: 28,
-                              height: 1.0,
-                              fontWeight: FontWeight.bold,
-                              color: accentColor,
-                            ),
+                        // 团队信息
+                        if (item.teamUuid != null) ...[
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.groups_rounded,
+                                size: 10,
+                                color: accentColor.withValues(alpha: 0.6),
+                              ),
+                              const SizedBox(width: 3),
+                              Expanded(
+                                child: Text(
+                                  "${item.teamName ?? '团队'} · ${item.creatorName ?? '成员'}",
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 8,
+                                    color: subTextColor.withValues(alpha: 0.8),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 4),
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 4.0),
-                            child: Text(
-                              "天",
+                        ] else ...[
+                          const SizedBox(height: 12),
+                        ],
+                        const Spacer(),
+                        // 天数
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              "$diff",
                               style: TextStyle(
-                                fontSize: 11,
-                                color: subTextColor,
-                                fontWeight: FontWeight.w500,
+                                fontSize: 28,
+                                height: 1.0,
+                                fontWeight: FontWeight.bold,
+                                color: accentColor,
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      // 目标日
-                      Text(
-                        "目标日: ${_shareReadonlyDateFormat('yyyy-MM-dd').format(item.targetDate)}",
-                        style: TextStyle(
-                          fontSize: 9,
-                          color: subTextColor,
-                          letterSpacing: 0.2,
+                            const SizedBox(width: 4),
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 4.0),
+                              child: Text(
+                                "天",
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: subTextColor,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 2),
+                        // 目标日
+                        Text(
+                          "目标日: ${_shareReadonlyDateFormat('yyyy-MM-dd').format(item.targetDate)}",
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: subTextColor,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               );

@@ -169,6 +169,14 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
       onRefresh: _loadShares,
       child: ListView.builder(
         padding: EdgeInsets.fromLTRB(16, topPadding + 16, 16, 16),
+        findChildIndexCallback: (Key key) {
+          if (key is ValueKey<int>) {
+            final id = key.value;
+            final index = _shares.indexWhere((s) => s.id == id);
+            return index != -1 ? index : null;
+          }
+          return null;
+        },
         itemCount: _shares.length,
         itemBuilder: (context, index) => _buildShareCard(_shares[index]),
       ),
@@ -179,110 +187,113 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
     final isExpired = share.isExpired;
     final isInactive = !share.isActive;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.link,
-                  color: isExpired || isInactive
-                      ? Colors.grey
-                      : Theme.of(context).colorScheme.primary,
+    return RepaintBoundary(
+      key: ValueKey<int>(share.id),
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.link,
+                    color: isExpired || isInactive
+                        ? Colors.grey
+                        : Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          share.title ?? '分享链接',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if (share.description != null)
+                          Text(
+                            share.description!,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade500,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
+                    ),
+                  ),
+                  LiquidGlassSwitch(
+                    value: share.isActive,
+                    onChanged: (value) => _toggleShare(share),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _buildInfoRow(
+                Icons.access_time,
+                '创建于 ${_formatDate(share.createdAt)}',
+              ),
+              if (share.expiresAt != null)
+                _buildInfoRow(
+                  Icons.event,
+                  isExpired ? '已过期' : '过期时间 ${_formatDate(share.expiresAt!)}',
+                  color: isExpired ? Colors.red : null,
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        share.title ?? '分享链接',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
+              _buildInfoRow(Icons.visibility, '浏览 ${share.viewCount} 次'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: [
+                  if (share.shareTodos)
+                    _buildTag('待办事项', Icons.check_circle_outline),
+                  if (share.shareSchedules)
+                    _buildTag('日程', Icons.event_available_outlined),
+                  if (share.shareCountdowns)
+                    _buildTag('倒计时', Icons.timer_outlined),
+                  if (share.shareAnnouncements)
+                    _buildTag('团队公告', Icons.announcement_outlined),
+                  if (share.hasPassword) _buildTag('密码保护', Icons.lock_outline),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _copyShareLink(share),
+                      icon: const Icon(Icons.copy, size: 16),
+                      label: const Text('复制链接'),
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
                         ),
                       ),
-                      if (share.description != null)
-                        Text(
-                          share.description!,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade500,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                    ],
+                    ),
                   ),
-                ),
-                LiquidGlassSwitch(
-                  value: share.isActive,
-                  onChanged: (value) => _toggleShare(share),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _buildInfoRow(
-              Icons.access_time,
-              '创建于 ${_formatDate(share.createdAt)}',
-            ),
-            if (share.expiresAt != null)
-              _buildInfoRow(
-                Icons.event,
-                isExpired ? '已过期' : '过期时间 ${_formatDate(share.expiresAt!)}',
-                color: isExpired ? Colors.red : null,
-              ),
-            _buildInfoRow(Icons.visibility, '浏览 ${share.viewCount} 次'),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              children: [
-                if (share.shareTodos)
-                  _buildTag('待办事项', Icons.check_circle_outline),
-                if (share.shareSchedules)
-                  _buildTag('日程', Icons.event_available_outlined),
-                if (share.shareCountdowns)
-                  _buildTag('倒计时', Icons.timer_outlined),
-                if (share.shareAnnouncements)
-                  _buildTag('团队公告', Icons.announcement_outlined),
-                if (share.hasPassword) _buildTag('密码保护', Icons.lock_outline),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _copyShareLink(share),
-                    icon: const Icon(Icons.copy, size: 16),
-                    label: const Text('复制链接'),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => _deleteShare(share),
+                    icon: const Icon(Icons.delete_outline, size: 16),
+                    label: const Text('删除'),
                     style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  onPressed: () => _deleteShare(share),
-                  icon: const Icon(Icons.delete_outline, size: 16),
-                  label: const Text('删除'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.red,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -531,6 +531,16 @@ class _LanSyncScreenState extends State<LanSyncScreen>
                         ),
                       )
                     : ListView.builder(
+                        findChildIndexCallback: (Key key) {
+                          if (key is ValueKey<String>) {
+                            final id = key.value;
+                            final index = _devices.indexWhere(
+                              (d) => d.deviceId == id,
+                            );
+                            return index != -1 ? index : null;
+                          }
+                          return null;
+                        },
                         itemCount: _devices.length,
                         itemBuilder: (context, index) {
                           final device = _devices[index];
@@ -652,94 +662,97 @@ class _LanSyncScreenState extends State<LanSyncScreen>
     final lastSeen = DateTime.now().millisecondsSinceEpoch - device.lastSeen;
     final isOnline = lastSeen < 15000;
 
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            leading: CircleAvatar(
-              backgroundColor: isOnline
-                  ? Theme.of(context).colorScheme.primary
-                  : Colors.grey,
-              child: const Icon(Icons.devices, color: Colors.white),
-            ),
-            title: Row(
-              children: [
-                Text(device.deviceName),
-                if (device.userId != _service.currentUserId) ...[
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: Colors.orange, width: 0.5),
-                    ),
-                    child: const Text(
-                      '其他账号',
-                      style: TextStyle(color: Colors.orange, fontSize: 10),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            subtitle: Text(
-              '${device.ip}:${device.port} • ${isOnline ? "在线" : "可能已离线"}',
-              style: TextStyle(
-                color: isOnline ? null : Colors.grey,
-                fontSize: 12,
+    return RepaintBoundary(
+      key: ValueKey<String>(device.deviceId),
+      child: Card(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: CircleAvatar(
+                backgroundColor: isOnline
+                    ? Theme.of(context).colorScheme.primary
+                    : Colors.grey,
+                child: const Icon(Icons.devices, color: Colors.white),
               ),
+              title: Row(
+                children: [
+                  Text(device.deviceName),
+                  if (device.userId != _service.currentUserId) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.orange, width: 0.5),
+                      ),
+                      child: const Text(
+                        '其他账号',
+                        style: TextStyle(color: Colors.orange, fontSize: 10),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              subtitle: Text(
+                '${device.ip}:${device.port} • ${isOnline ? "在线" : "可能已离线"}',
+                style: TextStyle(
+                  color: isOnline ? null : Colors.grey,
+                  fontSize: 12,
+                ),
+              ),
+              trailing: _isLoading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : null,
             ),
-            trailing: _isLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : null,
-          ),
-          Padding(
-            padding: const EdgeInsets.only(left: 72, right: 16, bottom: 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.file_upload, size: 18),
-                    label: const Text('发送文件'),
-                    onPressed: !isOnline
-                        ? null
-                        : () => _pickAndSendFile(device),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Theme.of(context).colorScheme.primary,
-                      side: BorderSide(
-                        color: Theme.of(context).colorScheme.primary,
+            Padding(
+              padding: const EdgeInsets.only(left: 72, right: 16, bottom: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.file_upload, size: 18),
+                      label: const Text('发送文件'),
+                      onPressed: !isOnline
+                          ? null
+                          : () => _pickAndSendFile(device),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Theme.of(context).colorScheme.primary,
+                        side: BorderSide(
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.sync, size: 18),
-                    label: const Text('同步数据'),
-                    onPressed: !isOnline
-                        ? null
-                        : (device.userId != _service.currentUserId
-                              ? () => _showCrossAccountWarning(
-                                  device,
-                                  LanSyncConfig(),
-                                )
-                              : () => _showSelectSyncTypeDialog(device)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.sync, size: 18),
+                      label: const Text('同步数据'),
+                      onPressed: !isOnline
+                          ? null
+                          : (device.userId != _service.currentUserId
+                                ? () => _showCrossAccountWarning(
+                                    device,
+                                    LanSyncConfig(),
+                                  )
+                                : () => _showSelectSyncTypeDialog(device)),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

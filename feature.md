@@ -1,6 +1,6 @@
 # Feature status
 
-Reconciled against the working tree: 2026-10-31 (v7.22.8). This is a capability map,
+Reconciled against the working tree: 2026-11-14 (v7.23.9). This is a capability map,
 not a release promise; historical review dates are preserved in respective docs.
 
 ## Implemented

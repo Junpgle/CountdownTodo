@@ -694,9 +694,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         ),
       ]);
 
-      // 🚀 核心优化：等待 300ms 让进入页面的过渡动画彻底完成
-      // 避免在动画期间进行大量 CPU 计算导致界面掉帧
-      await Future.delayed(const Duration(milliseconds: 300));
+      // 🚀 核心优化：若当前路由仍处于入场过渡动画中，等待动画完成再触发布局更新，
+      // 若已在首页预挂载或懒加载占位已完成，则无需额外等待。
+      final routeAnimation = mounted ? ModalRoute.of(context)?.animation : null;
+      if (routeAnimation != null && routeAnimation.isAnimating) {
+        await Future.delayed(const Duration(milliseconds: 160));
+      }
 
       _settings = results[0] as PomodoroSettings;
       _allTags = results[1] as List<PomodoroTag>;
@@ -839,20 +842,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       } catch (e) {
         debugPrint('[PomodoroWorkbench] 连接跨设备服务失败: $e');
       }
-
-      if (mounted && _userId.isNotEmpty && _deviceId.isNotEmpty) {
-        try {
-          try {
-            await _syncService
-                .forceReconnect(_userId, 'flutter_$_deviceId')
-                .timeout(const Duration(seconds: 5));
-          } on TimeoutException catch (e) {
-            debugPrint('[PomodoroWorkbench] 强制重连同步服务超时: $e');
-          }
-        } catch (e) {
-          debugPrint('[PomodoroWorkbench] 强制重连同步服务失败: $e');
-        }
-      }
     } finally {
       _isInitProcessing = false;
       initWatchdog.cancel();
@@ -878,11 +867,56 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         );
 
     _connSub?.cancel();
-    _connSub = _syncService.onConnectionChanged.listen((state) {
+    _connSub = _syncService.onConnectionChanged.listen((state) async {
       if (!mounted) return;
       setState(() {
         _syncConnState = state;
       });
+      if (state == SyncConnectionState.connected &&
+          (_phase == PomodoroPhase.focusing ||
+              _phase == PomodoroPhase.breaking) &&
+          _currentSessionUuid.isNotEmpty) {
+        _syncService.setLocalFocusing(true);
+        final sourceDeviceName = await StorageService.getDeviceFriendlyName();
+        if (!mounted ||
+            (_phase != PomodoroPhase.focusing &&
+                _phase != PomodoroPhase.breaking) ||
+            _currentSessionUuid.isEmpty) {
+          return;
+        }
+        final isCountUp = _settings.mode == TimerMode.countUp;
+        final plannedFocusSeconds = isCountUp
+            ? 0
+            : (_activeFocusSeconds ?? _settings.focusMinutes * 60);
+        final durationSeconds = _phase == PomodoroPhase.focusing
+            ? plannedFocusSeconds
+            : _settings.breakMinutes * 60;
+        final targetEndMs = isCountUp ? _sessionStartMs : _targetEndMs;
+        final tagNames = _tags
+            .where((t) => _selectedTagUuids.contains(t.uuid))
+            .map((t) => t.name)
+            .toList();
+        _syncService.sendReconnectSyncSignal(
+          sessionUuid: _currentSessionUuid,
+          todoUuid: _boundTodo?.id.isNotEmpty == true ? _boundTodo!.id : null,
+          todoTitle: _boundTodo?.title,
+          planBlockId: _planBlockId,
+          durationSeconds: durationSeconds,
+          targetEndMs: targetEndMs,
+          tagNames: tagNames,
+          sourceDeviceName: sourceDeviceName,
+          mode: _settings.mode.index,
+          currentCycle: _currentCycle,
+          totalCycles: _settings.cycles,
+          plannedFocusSeconds: plannedFocusSeconds,
+          note: _currentNote.isNotEmpty ? _currentNote : null,
+          doNotDisturb:
+              _phase == PomodoroPhase.focusing &&
+              _settings.doNotDisturbDuringFocus &&
+              !_strictWaitingForFlip,
+          customTimestamp: _sessionStartMs > 0 ? _sessionStartMs : null,
+        );
+      }
       // debugPrint('[工作台] 同步通道连接状态变更: $state');
     });
 
@@ -917,7 +951,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
     final myDeviceId = 'flutter_$_deviceId';
     if (_deviceId.isEmpty ||
-        (signal.sourceDevice != null && signal.sourceDevice == myDeviceId)) {
+        (signal.sourceDevice != null &&
+            (signal.sourceDevice == myDeviceId ||
+                _syncService.isFromCurrentDevice(signal.sourceDevice)))) {
       return;
     }
 
@@ -941,10 +977,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       case 'SYNC':
       case 'SYNC_FOCUS':
       case 'RECONNECT_SYNC':
-        if (signal.sessionUuid != null &&
-            signal.sessionUuid == _currentSessionUuid) {
-          break;
-        }
         if (_phase == PomodoroPhase.focusing ||
             _phase == PomodoroPhase.breaking ||
             _phase == PomodoroPhase.finished) {
@@ -1200,6 +1232,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         _stopRemoteTicker();
         setState(() {
           _phase = PomodoroPhase.idle;
+          _currentSessionUuid = '';
           _remainingSeconds = _settings.mode == TimerMode.countUp
               ? 0
               : _settings.focusMinutes * 60;
@@ -3390,15 +3423,22 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   Widget _buildWorkbenchTransition(Widget child, Animation<double> animation) {
-    return FadeTransition(
-      opacity: animation,
-      child: SlideTransition(
-        position: Tween<Offset>(
-          begin: const Offset(0, 0.035),
-          end: Offset.zero,
-        ).animate(animation),
-        child: child,
-      ),
+    final slidePosition = Tween<Offset>(
+      begin: const Offset(0, 0.035),
+      end: Offset.zero,
+    ).animate(animation);
+    return AnimatedBuilder(
+      animation: animation,
+      child: child,
+      builder: (context, child) {
+        if (animation.value >= 0.999) {
+          return child!;
+        }
+        return FadeTransition(
+          opacity: animation,
+          child: SlideTransition(position: slidePosition, child: child),
+        );
+      },
     );
   }
 
@@ -3985,29 +4025,31 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   Widget _buildImmersiveTimerWidget() {
-    return ValueListenableBuilder<int>(
-      valueListenable: _timerTickNotifier,
-      builder: (context, _, _) {
-        final isCountUp = _settings.mode == TimerMode.countUp;
-        final isRemoteCountUp = _remoteState?.duration == 0;
-        return ImmersiveTimer(
-          phase: _phase,
-          remainingSeconds: _remainingSeconds,
-          focusMinutes: _settings.focusMinutes,
-          breakMinutes: _settings.breakMinutes,
-          currentCycle: _currentCycle,
-          totalCycles: _settings.cycles,
-          isCountUp: isCountUp,
-          isRemoteCountUp: isRemoteCountUp,
-          remoteState: _remoteState,
-          isCompact: widget.isCompact,
-          isPaused: _isPaused,
-          pauseSeconds: _pauseElapsedSecs,
-          isStrictMode: _isStrictFreeFocus,
-          isStrictWaitingForFlip: _strictWaitingForFlip,
-          strictSensorState: _strictSensorState,
-        );
-      },
+    return RepaintBoundary(
+      child: ValueListenableBuilder<int>(
+        valueListenable: _timerTickNotifier,
+        builder: (context, _, _) {
+          final isCountUp = _settings.mode == TimerMode.countUp;
+          final isRemoteCountUp = _remoteState?.duration == 0;
+          return ImmersiveTimer(
+            phase: _phase,
+            remainingSeconds: _remainingSeconds,
+            focusMinutes: _settings.focusMinutes,
+            breakMinutes: _settings.breakMinutes,
+            currentCycle: _currentCycle,
+            totalCycles: _settings.cycles,
+            isCountUp: isCountUp,
+            isRemoteCountUp: isRemoteCountUp,
+            remoteState: _remoteState,
+            isCompact: widget.isCompact,
+            isPaused: _isPaused,
+            pauseSeconds: _pauseElapsedSecs,
+            isStrictMode: _isStrictFreeFocus,
+            isStrictWaitingForFlip: _strictWaitingForFlip,
+            strictSensorState: _strictSensorState,
+          );
+        },
+      ),
     );
   }
 
@@ -4111,23 +4153,36 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             if (disableFade) return child!;
             return ShaderMask(
               blendMode: BlendMode.dstIn,
-              shaderCallback: (bounds) => const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.transparent,
-                  Colors.white,
-                  Colors.white,
-                  Colors.transparent,
-                ],
-                stops: [0, 0.16, 0.84, 1],
-              ).createShader(bounds),
+              shaderCallback: _resolveTagListFadeShader,
               child: child,
             );
           },
         );
       },
     );
+  }
+
+  static const LinearGradient _tagListFadeGradient = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [
+      Colors.transparent,
+      Colors.white,
+      Colors.white,
+      Colors.transparent,
+    ],
+    stops: [0, 0.16, 0.84, 1],
+  );
+  static Rect? _cachedTagListFadeBounds;
+  static Shader? _cachedTagListFadeShader;
+
+  static Shader _resolveTagListFadeShader(Rect bounds) {
+    if (_cachedTagListFadeBounds == bounds &&
+        _cachedTagListFadeShader != null) {
+      return _cachedTagListFadeShader!;
+    }
+    _cachedTagListFadeBounds = bounds;
+    return _cachedTagListFadeShader = _tagListFadeGradient.createShader(bounds);
   }
 
   Widget _buildActions(

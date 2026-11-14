@@ -21,8 +21,9 @@ import '../services/course_service.dart';
 import '../services/medal_recommendation_service.dart';
 import '../services/timeline_ml_service.dart';
 import '../services/timeline_statistics_service.dart';
-import '../utils/app_platform.dart';
 import '../utils/app_image_filters.dart';
+import '../utils/app_platform.dart';
+import '../utils/app_scroll_behavior.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/floating_bottom_bar.dart';
 import '../widgets/floating_glass_control.dart';
@@ -1597,12 +1598,11 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
       ),
       body: Stack(
         children: [
-          _buildBackground(colorScheme),
-          FloatingGlassTopBarContentFade(
-            topBarHeight: topBarHeight,
+          RepaintBoundary(child: _buildBackground(colorScheme)),
+          OptionalLiquidGlassScrollOptimizer(
             child: CustomScrollView(
               controller: _timelineScrollController,
-              physics: const BouncingScrollPhysics(),
+              physics: const AppFluidScrollPhysics(),
               slivers: [
                 _buildAppBar(context),
                 SliverToBoxAdapter(child: _buildGreeting(colorScheme)),
@@ -1621,15 +1621,25 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
                             switchOutCurve: Curves.easeInQuart,
                             transitionBuilder:
                                 (Widget child, Animation<double> animation) {
-                                  return FadeTransition(
-                                    opacity: animation,
-                                    child: SlideTransition(
-                                      position: Tween<Offset>(
-                                        begin: const Offset(0, 0.02),
-                                        end: Offset.zero,
-                                      ).animate(animation),
-                                      child: child,
-                                    ),
+                                  final slidePosition = Tween<Offset>(
+                                    begin: const Offset(0, 0.02),
+                                    end: Offset.zero,
+                                  ).animate(animation);
+                                  return AnimatedBuilder(
+                                    animation: animation,
+                                    child: child,
+                                    builder: (context, child) {
+                                      if (animation.value >= 0.999) {
+                                        return child!;
+                                      }
+                                      return FadeTransition(
+                                        opacity: animation,
+                                        child: SlideTransition(
+                                          position: slidePosition,
+                                          child: child,
+                                        ),
+                                      );
+                                    },
                                   );
                                 },
                             child: _isLoading
@@ -1801,6 +1811,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
               ],
             ),
           ),
+          if (topBarHeight > 0.0)
+            _buildTimelineTopFadeCap(colorScheme, topBarHeight),
           // The foreground AppBar is deliberately above the mask: its title
           // and actions must stay crisp while only the scrolling body fades.
           Positioned(
@@ -1852,6 +1864,72 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  static const LinearGradient _timelineTopFadeGradient = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    stops: [0.0, 0.18, 0.78, 1.0],
+    colors: [Colors.white, Colors.white, Color(0x24FFFFFF), Colors.transparent],
+  );
+  static Rect? _cachedTimelineTopFadeBounds;
+  static Shader? _cachedTimelineTopFadeShader;
+
+  static Shader _resolveTimelineTopFadeShader(Rect bounds) {
+    if (_cachedTimelineTopFadeBounds == bounds &&
+        _cachedTimelineTopFadeShader != null) {
+      return _cachedTimelineTopFadeShader!;
+    }
+    _cachedTimelineTopFadeBounds = bounds;
+    return _cachedTimelineTopFadeShader = _timelineTopFadeGradient.createShader(
+      bounds,
+    );
+  }
+
+  Widget _buildTimelineTopFadeCap(ColorScheme cs, double topBarHeight) {
+    final fadeHeight = topBarHeight + floatingGlassTopBarDefaultFadeTail;
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      height: fadeHeight,
+      child: IgnorePointer(
+        child: RepaintBoundary(
+          child: Builder(
+            builder: (context) {
+              final screenSize = MediaQuery.sizeOf(context);
+              return ShaderMask(
+                blendMode: BlendMode.dstIn,
+                shaderCallback: _resolveTimelineTopFadeShader,
+                child: ClipRect(
+                  child: OverflowBox(
+                    alignment: Alignment.topCenter,
+                    minWidth: screenSize.width,
+                    maxWidth: screenSize.width,
+                    minHeight: screenSize.height,
+                    maxHeight: screenSize.height,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            cs.surface,
+                            cs.primaryContainer.withValues(alpha: 0.08),
+                            cs.secondaryContainer.withValues(alpha: 0.04),
+                            cs.surface,
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
     );
   }
 
@@ -1991,16 +2069,15 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
   }
 
   Widget _buildTimelineAppBarTitle(ColorScheme cs, double titleProgress) {
-    return Opacity(
-      opacity: titleProgress,
-      child: Text(
-        _timelinePeriodLabel(),
-        style: TextStyle(
-          color: cs.onSurface,
-          fontSize: 17,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.2,
-        ),
+    final clamped = titleProgress.clamp(0.0, 1.0);
+    if (clamped <= 0.001) return const SizedBox.shrink();
+    return Text(
+      _timelinePeriodLabel(),
+      style: TextStyle(
+        color: cs.onSurface.withValues(alpha: clamped),
+        fontSize: 17,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.2,
       ),
     );
   }
@@ -2736,6 +2813,14 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
             GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
+              findChildIndexCallback: (Key key) {
+                if (key is ValueKey<String>) {
+                  final title = key.value;
+                  final idx = medals.indexWhere((m) => m.title == title);
+                  return idx != -1 ? idx : null;
+                }
+                return null;
+              },
               itemCount: medals.length,
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: isWide ? 3 : 2,
@@ -2745,69 +2830,72 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
               ),
               itemBuilder: (context, index) {
                 final medal = medals[index];
-                return Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: cs.surfaceContainerLow,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: cs.outlineVariant.withValues(alpha: 0.3),
+                return RepaintBoundary(
+                  key: ValueKey<String>(medal.title),
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: cs.outlineVariant.withValues(alpha: 0.3),
+                      ),
                     ),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 46,
-                        height: 46,
-                        decoration: BoxDecoration(
-                          color: medal.color.withValues(alpha: 0.12),
-                          shape: BoxShape.circle,
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 46,
+                          height: 46,
+                          decoration: BoxDecoration(
+                            color: medal.color.withValues(alpha: 0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(medal.icon, color: medal.color, size: 24),
                         ),
-                        child: Icon(medal.icon, color: medal.color, size: 24),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              medal.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w900,
-                                color: cs.onSurface,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              medal.desc,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: cs.onSurfaceVariant,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              '获得于 ${_formatMedalTime(medal.earnedAt)}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: cs.onSurfaceVariant.withValues(
-                                  alpha: 0.64,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                medal.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w900,
+                                  color: cs.onSurface,
                                 ),
-                                fontWeight: FontWeight.w600,
                               ),
-                            ),
-                          ],
+                              const SizedBox(height: 4),
+                              Text(
+                                medal.desc,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: cs.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                '获得于 ${_formatMedalTime(medal.earnedAt)}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: cs.onSurfaceVariant.withValues(
+                                    alpha: 0.64,
+                                  ),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 );
               },
@@ -4617,9 +4705,18 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 24),
+        findItemIndexCallback: (Key key) {
+          if (key is ValueKey<String>) {
+            final title = key.value;
+            final idx = _mlInsights.indexWhere((it) => it.title == title);
+            return idx != -1 ? idx : null;
+          }
+          return null;
+        },
         itemCount: _mlInsights.length,
         separatorBuilder: (_, _) => const SizedBox(width: 12),
         itemBuilder: (_, index) => SizedBox(
+          key: ValueKey<String>(_mlInsights[index].title),
           width: 260,
           child: RepaintBoundary(
             child: _buildInsightItem(_mlInsights[index], cs),
@@ -5099,11 +5196,11 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
 class _DonutPainter extends CustomPainter {
   final List<MapEntry<String, double>> data;
   final List<Color> palette;
-  final Paint _paint = Paint()
+  static final Paint _paint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeCap = StrokeCap.round;
 
-  _DonutPainter(this.data, this.palette);
+  const _DonutPainter(this.data, this.palette);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -5138,11 +5235,13 @@ class _DonutPainter extends CustomPainter {
 class _SparklinePainter extends CustomPainter {
   final List<double> data;
   final Color color;
-  final Paint _paint = Paint()
+  static final Paint _paint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeWidth = 2.5
     ..strokeCap = StrokeCap.round
     ..strokeJoin = StrokeJoin.round;
+
+  static final Path _path = Path();
 
   _SparklinePainter(this.data, this.color);
 
@@ -5151,7 +5250,7 @@ class _SparklinePainter extends CustomPainter {
     if (data.length < 2) return;
 
     _paint.color = color;
-    final path = Path();
+    _path.reset();
     var maxVal = data.first;
     var minVal = data.first;
     for (var index = 1; index < data.length; index++) {
@@ -5167,13 +5266,13 @@ class _SparklinePainter extends CustomPainter {
       final x = i * stepX;
       final y = size.height - ((data[i] - minVal) / range * size.height);
       if (i == 0) {
-        path.moveTo(x, y);
+        _path.moveTo(x, y);
       } else {
-        path.lineTo(x, y);
+        _path.lineTo(x, y);
       }
     }
 
-    canvas.drawPath(path, _paint);
+    canvas.drawPath(_path, _paint);
   }
 
   @override

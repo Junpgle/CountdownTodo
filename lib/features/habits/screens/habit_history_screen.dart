@@ -351,8 +351,9 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
                   child: ListView.builder(
                     padding: EdgeInsets.fromLTRB(16, topBarHeight + 8, 16, 32),
                     itemCount: _historyRows.length,
-                    itemBuilder: (context, index) =>
-                        _buildHistoryRow(_historyRows[index], colorScheme),
+                    itemBuilder: (context, index) => RepaintBoundary(
+                      child: _buildHistoryRow(_historyRows[index], colorScheme),
+                    ),
                   ),
                 ),
               ),

@@ -189,6 +189,7 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen>
             1.0,
           ),
         );
+        if (value >= 0.999) return child!;
         return IgnorePointer(
           ignoring: value == 0,
           child: Opacity(

@@ -1,4 +1,6 @@
+import 'package:countdown_todo/widgets/floating_bottom_bar.dart';
 import 'package:countdown_todo/widgets/home_bottom_navigation_content.dart';
+import 'package:countdown_todo/widgets/quick_voice_gesture.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
@@ -436,4 +438,143 @@ void main() {
     expect(addPressed, isTrue);
     expect(pomodoroPressed, isTrue);
   });
+
+  testWidgets(
+    'supports horizontal drag switching without breaking subsequent action long-press gesture',
+    (tester) async {
+      var selectedIndex = 0;
+      QuickVoiceGestureController? voiceGesture;
+      var longPressStarted = false;
+      var longPressMoved = false;
+      var longPressEnded = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 360,
+                height: 60,
+                child: StatefulBuilder(
+                  builder: (context, setState) {
+                    return FloatingBottomNavigationBar(
+                      selectedIndex: selectedIndex,
+                      onTabSelected: (index) {
+                        setState(() => selectedIndex = index);
+                      },
+                      items: [
+                        const FloatingBottomNavigationItem(
+                          icon: Icons.dashboard_outlined,
+                          selectedIcon: Icons.dashboard_rounded,
+                          label: '首页',
+                        ),
+                        FloatingBottomNavigationItem(
+                          icon: Icons.calendar_today_outlined,
+                          label: '周视图',
+                          selectable: false,
+                          onPressed: () {},
+                        ),
+                        FloatingBottomNavigationItem(
+                          label: '新增',
+                          selectable: false,
+                          icon: Icons.add,
+                          onPressed: () {},
+                          onLongPressStart: (details) {
+                            longPressStarted = true;
+                            voiceGesture = QuickVoiceGestureController(
+                              details.globalPosition,
+                            );
+                          },
+                          onLongPressMoveUpdate: (details) {
+                            longPressMoved = true;
+                            voiceGesture?.move(details.globalPosition);
+                          },
+                          onLongPressEnd: (details) {
+                            longPressEnded = true;
+                            voiceGesture?.move(details.globalPosition);
+                            voiceGesture?.release();
+                          },
+                          onLongPressCancel: () {
+                            voiceGesture?.release(cancel: true);
+                          },
+                        ),
+                        FloatingBottomNavigationItem(
+                          icon: Icons.timer_outlined,
+                          label: '番茄钟',
+                          selectable: false,
+                          onPressed: () {},
+                        ),
+                        const FloatingBottomNavigationItem(
+                          icon: Icons.center_focus_weak_rounded,
+                          selectedIcon: Icons.center_focus_strong_rounded,
+                          label: '专注',
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final gestureFinder = find.byKey(
+        const ValueKey<String>('floating-bottom-navigation-gesture-layer'),
+      );
+      final indicatorFinder = find.byKey(
+        const ValueKey<String>('floating-bottom-selection-indicator'),
+      );
+
+      // Verify resting state at slot 0 (首页)
+      expect(
+        tester.widget<AnimatedGlassIndicator>(indicatorFinder).alignment,
+        const Alignment(-1, 0),
+      );
+
+      // 1. Horizontal multi-step drag across to slot 4 (专注)
+      final dragGesture = await tester.startGesture(
+        tester.getTopLeft(gestureFinder) + const Offset(10, 30),
+      );
+      await tester.pump();
+      for (var i = 1; i <= 5; i++) {
+        await dragGesture.moveBy(const Offset(40, 0));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      // Indicator actively tracked the drag
+      final movingAlignment = tester
+          .widget<AnimatedGlassIndicator>(indicatorFinder)
+          .alignment
+          .resolve(TextDirection.ltr)
+          .x;
+      expect(movingAlignment, greaterThan(-0.5));
+
+      await dragGesture.up();
+      await tester.pumpAndSettle();
+      expect(selectedIndex, 4);
+      expect(
+        tester.widget<AnimatedGlassIndicator>(indicatorFinder).alignment,
+        const Alignment(1, 0),
+      );
+
+      // 2. Long press on the action button ("新增") and drag to cancel
+      final addCenter = tester.getCenter(find.text('新增').first);
+      final longGesture = await tester.startGesture(addCenter);
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(longPressStarted, isTrue);
+      expect(voiceGesture, isNotNull);
+      expect(voiceGesture!.target, QuickVoiceTarget.send);
+
+      // Drag toward top-right (dx >= 36, dy <= -72) to cancel
+      await longGesture.moveBy(const Offset(60, -100));
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(longPressMoved, isTrue);
+      expect(voiceGesture!.target, QuickVoiceTarget.cancel);
+
+      await longGesture.up();
+      await tester.pumpAndSettle();
+      expect(longPressEnded, isTrue);
+      expect(voiceGesture!.isReleased, isTrue);
+    },
+  );
 }

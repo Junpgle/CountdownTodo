@@ -5,9 +5,8 @@ import 'package:flutter/material.dart';
 import '../services/liquid_glass_effect_service.dart';
 import '../utils/app_platform.dart';
 
-/// Avoids creating an offscreen blurred texture on Android and by default on
-/// Windows. Windows can opt into the standard blur through the Liquid Glass
-/// setting; Android retains its existing performance bypass.
+/// Avoids creating an offscreen blurred texture by default on Windows.
+/// Windows can opt into the standard blur through the Liquid Glass setting.
 ///
 /// The caller still supplies the same child, so bypassing blur only removes the
 /// expensive compositing step while preserving the supplied clipping.
@@ -27,27 +26,30 @@ class PlatformBackdropFilter extends StatelessWidget {
     this.clipBehavior = Clip.antiAlias,
   });
 
-  Widget _clipIfNeeded(Widget content) {
+  Widget _clipIfNeeded(Widget content, {bool forceClipRect = false}) {
     final borderRadius = clipBorderRadius;
-    if (borderRadius == null) return content;
-
-    // Windows Skia/ANGLE turns repeated anti-aliased rounded clips into
-    // software mask textures. A hard-edge clip keeps the card bounds without
-    // allocating those masks on every scroll frame.
     final effectiveClipBehavior =
         AppPlatform.isWindows && clipBehavior == Clip.antiAlias
         ? Clip.hardEdge
         : clipBehavior;
-    return ClipRRect(
-      borderRadius: borderRadius,
-      clipBehavior: effectiveClipBehavior,
-      child: content,
-    );
+
+    if (borderRadius != null) {
+      return ClipRRect(
+        borderRadius: borderRadius,
+        clipBehavior: effectiveClipBehavior,
+        child: content,
+      );
+    }
+
+    if (forceClipRect) {
+      return ClipRect(clipBehavior: effectiveClipBehavior, child: content);
+    }
+
+    return content;
   }
 
   @override
   Widget build(BuildContext context) {
-    if (AppPlatform.isAndroid) return _clipIfNeeded(child);
     if (AppPlatform.isWindows) {
       return ValueListenableBuilder<LiquidGlassEffectConfiguration>(
         valueListenable: LiquidGlassEffectService.configurationListenable,
@@ -55,22 +57,28 @@ class PlatformBackdropFilter extends StatelessWidget {
           if (!configuration.enabled || bypassWhenLiquidGlassEnabled) {
             return _clipIfNeeded(child);
           }
-          return _clipIfNeeded(BackdropFilter(filter: filter, child: child));
+          return _clipIfNeeded(
+            BackdropFilter.grouped(filter: filter, child: child),
+            forceClipRect: true,
+          );
         },
       );
     }
-    late final Widget filtered;
     if (bypassWhenLiquidGlassEnabled) {
-      filtered = ValueListenableBuilder<LiquidGlassEffectConfiguration>(
+      return ValueListenableBuilder<LiquidGlassEffectConfiguration>(
         valueListenable: LiquidGlassEffectService.configurationListenable,
         builder: (context, configuration, _) {
-          if (configuration.enabled) return child;
-          return BackdropFilter(filter: filter, child: child);
+          if (configuration.enabled) return _clipIfNeeded(child);
+          return _clipIfNeeded(
+            BackdropFilter.grouped(filter: filter, child: child),
+            forceClipRect: true,
+          );
         },
       );
-    } else {
-      filtered = BackdropFilter(filter: filter, child: child);
     }
-    return _clipIfNeeded(filtered);
+    return _clipIfNeeded(
+      BackdropFilter.grouped(filter: filter, child: child),
+      forceClipRect: true,
+    );
   }
 }

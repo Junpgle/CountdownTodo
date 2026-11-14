@@ -15,6 +15,8 @@ Widget _keepTodoChatButtonBackground(
 }
 
 mixin _TodoChatLayout on _TodoChatScreenStateBase {
+  final Set<String> _animatedMessageIds = <String>{};
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -99,16 +101,23 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
               duration: const Duration(milliseconds: 220),
               switchInCurve: Curves.easeOutCubic,
               switchOutCurve: Curves.easeInCubic,
-              transitionBuilder: (child, animation) => FadeTransition(
-                opacity: animation,
-                child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(0, 0.25),
-                    end: Offset.zero,
-                  ).animate(animation),
+              transitionBuilder: (child, animation) {
+                final slide = Tween<Offset>(
+                  begin: const Offset(0, 0.25),
+                  end: Offset.zero,
+                ).animate(animation);
+                return AnimatedBuilder(
+                  animation: animation,
                   child: child,
-                ),
-              ),
+                  builder: (context, child) {
+                    if (animation.value >= 0.999) return child!;
+                    return FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(position: slide, child: child),
+                    );
+                  },
+                );
+              },
               child: Text(
                 _isLoading ? '正在思考...' : 'AI 助手在线',
                 key: ValueKey(_isLoading),
@@ -213,13 +222,22 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                           switchInCurve: Curves.easeOutCubic,
                           switchOutCurve: Curves.easeInCubic,
                           transitionBuilder: (child, animation) =>
-                              SizeTransition(
-                                sizeFactor: animation,
-                                alignment: AlignmentDirectional.bottomStart,
-                                child: FadeTransition(
-                                  opacity: animation,
-                                  child: child,
-                                ),
+                              AnimatedBuilder(
+                                animation: animation,
+                                child: child,
+                                builder: (context, child) {
+                                  if (animation.value >= 0.999) {
+                                    return child!;
+                                  }
+                                  return SizeTransition(
+                                    sizeFactor: animation,
+                                    alignment: AlignmentDirectional.bottomStart,
+                                    child: FadeTransition(
+                                      opacity: animation,
+                                      child: child,
+                                    ),
+                                  );
+                                },
                               ),
                           child:
                               _suggestions.isNotEmpty &&
@@ -302,6 +320,14 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                 const Spacer(),
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 200),
+                  transitionBuilder: (child, animation) => AnimatedBuilder(
+                    animation: animation,
+                    child: child,
+                    builder: (context, child) {
+                      if (animation.value >= 0.999) return child!;
+                      return FadeTransition(opacity: animation, child: child);
+                    },
+                  ),
                   child: actionCount == 0
                       ? const SizedBox.shrink()
                       : Text(
@@ -334,6 +360,14 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
               duration: const Duration(milliseconds: 260),
               switchInCurve: Curves.easeOutCubic,
               switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) => AnimatedBuilder(
+                animation: animation,
+                child: child,
+                builder: (context, child) {
+                  if (animation.value >= 0.999) return child!;
+                  return FadeTransition(opacity: animation, child: child);
+                },
+              ),
               child: actionMessages.isEmpty && _suggestions.isEmpty
                   ? _buildActionRailEmptyState(colorScheme)
                   : ListView.builder(
@@ -344,11 +378,12 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                       itemCount: itemCount,
                       itemBuilder: (context, index) {
                         if (index < actionMessages.length) {
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: _buildMessageTodoActions(
-                              actionMessages[index],
-                              isDark,
+                          final msg = actionMessages[index];
+                          return RepaintBoundary(
+                            key: ValueKey<String>(msg.id),
+                            child: Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: _buildMessageTodoActions(msg, isDark),
                             ),
                           );
                         }
@@ -500,10 +535,19 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
           duration: const Duration(milliseconds: 260),
           switchInCurve: Curves.easeOutCubic,
           switchOutCurve: Curves.easeInCubic,
-          transitionBuilder: (child, animation) => SizeTransition(
-            sizeFactor: animation,
-            alignment: AlignmentDirectional.bottomStart,
-            child: FadeTransition(opacity: animation, child: child),
+          transitionBuilder: (child, animation) => AnimatedBuilder(
+            animation: animation,
+            child: child,
+            builder: (context, child) {
+              if (animation.value >= 0.999) {
+                return child!;
+              }
+              return SizeTransition(
+                sizeFactor: animation,
+                alignment: AlignmentDirectional.bottomStart,
+                child: FadeTransition(opacity: animation, child: child),
+              );
+            },
           ),
           child:
               _suggestions.isNotEmpty &&
@@ -523,6 +567,14 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
     }
     return ListView.builder(
       controller: _scrollCtrl,
+      findChildIndexCallback: (Key key) {
+        if (key is ValueKey<String>) {
+          final id = key.value;
+          final index = _messages.indexWhere((m) => m.id == id);
+          return index != -1 ? index : null;
+        }
+        return null;
+      },
       padding: EdgeInsets.fromLTRB(
         12,
         floatingGlassTopBarHeight(context) + 12,
@@ -532,27 +584,36 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
       itemCount: _messages.length + (_isLoading ? 1 : 0),
       itemBuilder: (context, index) {
         if (_isLoading && index == _messages.length) {
-          return _StaggeredFadeSlide(
-            delay: Duration.zero,
-            child: ValueListenableBuilder<int>(
-              valueListenable: _streamingBubbleRevision,
-              builder: (context, _, _) => _buildStreamingBubble(isDark),
+          return RepaintBoundary(
+            child: _StaggeredFadeSlide(
+              delay: Duration.zero,
+              child: ValueListenableBuilder<int>(
+                valueListenable: _streamingBubbleRevision,
+                builder: (context, _, _) => _buildStreamingBubble(isDark),
+              ),
             ),
           );
         }
         final msg = _messages[index];
+        final bubble = RepaintBoundary(child: _buildMessageBubble(msg, isDark));
+        final shouldAnimate = _animatedMessageIds.add(msg.id);
+        if (!shouldAnimate) {
+          return KeyedSubtree(key: ValueKey(msg.id), child: bubble);
+        }
         return TweenAnimationBuilder<double>(
-          key: ValueKey(msg.timestamp.millisecondsSinceEpoch + index),
-          duration: const Duration(milliseconds: 500),
+          key: ValueKey(msg.id),
+          duration: const Duration(milliseconds: 360),
           tween: Tween(begin: 0.0, end: 1.0),
           curve: Curves.easeOutQuart,
           builder: (context, value, child) {
+            if (value <= 0.001) return const SizedBox.shrink();
+            if (value >= 0.999) return child!;
             return Transform.translate(
-              offset: Offset(0, 30 * (1 - value)),
+              offset: Offset(0, 24 * (1 - value)),
               child: Opacity(opacity: value, child: child),
             );
           },
-          child: _buildMessageBubble(msg, isDark),
+          child: bubble,
         );
       },
     );
@@ -685,10 +746,20 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           scrollDirection: Axis.horizontal,
           physics: const BouncingScrollPhysics(),
+          findItemIndexCallback: (Key key) {
+            if (key is ValueKey<String>) {
+              final text = key.value;
+              final idx = _suggestions.indexOf(text);
+              return idx != -1 ? idx : null;
+            }
+            return null;
+          },
           itemCount: _suggestions.length,
           separatorBuilder: (_, _) => const SizedBox(width: 8),
-          itemBuilder: (context, index) =>
-              _buildQuickQuestion(_suggestions[index], compact: true),
+          itemBuilder: (context, index) => RepaintBoundary(
+            key: ValueKey<String>(_suggestions[index]),
+            child: _buildQuickQuestion(_suggestions[index], compact: true),
+          ),
         ),
       ),
     );
@@ -704,59 +775,75 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
 
   void _showHistorySidebar() {
     final historyPanelTopMargin = floatingGlassTopBarHeight(context) + 20;
+    final panelWidth = MediaQuery.sizeOf(context).width * 0.75;
+    final panelHeight = MediaQuery.sizeOf(context).height;
+    final surfaceColor = Theme.of(context).colorScheme.surface;
     showAppGeneralDialog(
       context: context,
       barrierDismissible: true,
       barrierLabel: '关闭',
       transitionDuration: const Duration(milliseconds: 250),
-      pageBuilder: (ctx, anim1, anim2) => const SizedBox.shrink(),
+      pageBuilder: (ctx, anim1, anim2) {
+        final sidebarContent = _buildHistorySidebarContent(
+          ctx,
+          isWideMode: false,
+        );
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            color: Colors.transparent,
+            child: OptionalLiquidGlassPanel(
+              width: panelWidth,
+              height: panelHeight,
+              margin: EdgeInsets.only(top: historyPanelTopMargin),
+              borderRadius: 16,
+              highContrast: true,
+              tint: surfaceColor,
+              fallback: Container(
+                width: panelWidth,
+                height: panelHeight,
+                margin: EdgeInsets.only(top: historyPanelTopMargin),
+                decoration: BoxDecoration(
+                  color: surfaceColor,
+                  borderRadius: const BorderRadius.only(
+                    topRight: Radius.circular(16),
+                    bottomRight: Radius.circular(16),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.15),
+                      blurRadius: 16,
+                      offset: const Offset(4, 0),
+                    ),
+                  ],
+                ),
+                child: sidebarContent,
+              ),
+              child: sidebarContent,
+            ),
+          ),
+        );
+      },
       transitionBuilder: (ctx, anim1, anim2, child) {
+        final slidePosition = Tween<Offset>(
+          begin: const Offset(-1, 0),
+          end: Offset.zero,
+        ).animate(anim1.drive(CurveTween(curve: Curves.easeOutCubic)));
         return Stack(
           children: [
             ModalBarrier(
               color: Colors.black.withValues(alpha: 0.3 * anim1.value),
               dismissible: true,
             ),
-            SlideTransition(
-              position:
-                  Tween<Offset>(
-                    begin: const Offset(-1, 0),
-                    end: Offset.zero,
-                  ).animate(
-                    CurvedAnimation(parent: anim1, curve: Curves.easeOutCubic),
-                  ),
-              child: Material(
-                color: Colors.transparent,
-                child: OptionalLiquidGlassPanel(
-                  width: MediaQuery.sizeOf(context).width * 0.75,
-                  height: MediaQuery.sizeOf(context).height,
-                  margin: EdgeInsets.only(top: historyPanelTopMargin),
-                  borderRadius: 16,
-                  highContrast: true,
-                  tint: Theme.of(context).colorScheme.surface,
-                  fallback: Container(
-                    width: MediaQuery.sizeOf(context).width * 0.75,
-                    height: MediaQuery.sizeOf(context).height,
-                    margin: EdgeInsets.only(top: historyPanelTopMargin),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface,
-                      borderRadius: const BorderRadius.only(
-                        topRight: Radius.circular(16),
-                        bottomRight: Radius.circular(16),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.15),
-                          blurRadius: 16,
-                          offset: const Offset(4, 0),
-                        ),
-                      ],
-                    ),
-                    child: _buildHistorySidebarContent(ctx, isWideMode: false),
-                  ),
-                  child: _buildHistorySidebarContent(ctx, isWideMode: false),
-                ),
-              ),
+            AnimatedBuilder(
+              animation: anim1,
+              child: child,
+              builder: (context, child) {
+                if (anim1.value >= 0.999) {
+                  return child!;
+                }
+                return SlideTransition(position: slidePosition, child: child);
+              },
             ),
           ],
         );
@@ -819,6 +906,14 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                   ),
                 )
               : ListView.builder(
+                  findChildIndexCallback: (Key key) {
+                    if (key is ValueKey<String>) {
+                      final id = key.value;
+                      final index = _sessions.indexWhere((s) => s.id == id);
+                      return index != -1 ? index : null;
+                    }
+                    return null;
+                  },
                   itemCount: _sessions.length,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
@@ -827,76 +922,79 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                   itemBuilder: (context, index) {
                     final session = _sessions[index];
                     final isActive = session.id == _activeSessionId;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Material(
-                        color: isActive
-                            ? colorScheme.primaryContainer.withValues(
-                                alpha: 0.55,
-                              )
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(8),
-                        child: ListTile(
-                          dense: isWideMode,
-                          minLeadingWidth: 24,
-                          horizontalTitleGap: 10,
-                          contentPadding: const EdgeInsets.only(
-                            left: 12,
-                            right: 4,
-                          ),
-                          leading: Icon(
-                            isActive
-                                ? Icons.chat_bubble_rounded
-                                : Icons.chat_bubble_outline_rounded,
-                            size: 18,
-                            color: isActive
-                                ? colorScheme.primary
-                                : colorScheme.onSurfaceVariant,
-                          ),
-                          title: Text(
-                            session.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: isActive
-                                  ? FontWeight.w700
-                                  : FontWeight.w500,
+                    return RepaintBoundary(
+                      key: ValueKey<String>(session.id),
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Material(
+                          color: isActive
+                              ? colorScheme.primaryContainer.withValues(
+                                  alpha: 0.55,
+                                )
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          child: ListTile(
+                            dense: isWideMode,
+                            minLeadingWidth: 24,
+                            horizontalTitleGap: 10,
+                            contentPadding: const EdgeInsets.only(
+                              left: 12,
+                              right: 4,
+                            ),
+                            leading: Icon(
+                              isActive
+                                  ? Icons.chat_bubble_rounded
+                                  : Icons.chat_bubble_outline_rounded,
+                              size: 18,
                               color: isActive
-                                  ? colorScheme.onPrimaryContainer
-                                  : colorScheme.onSurface,
+                                  ? colorScheme.primary
+                                  : colorScheme.onSurfaceVariant,
                             ),
-                          ),
-                          subtitle: Text(
-                            _todoChatDateFormat('MM/dd HH:mm')
-                                .format(session.updatedAt),
-                            style: TextStyle(
-                              fontSize: 11,
+                            title: Text(
+                              session.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: isActive
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                                color: isActive
+                                    ? colorScheme.onPrimaryContainer
+                                    : colorScheme.onSurface,
+                              ),
+                            ),
+                            subtitle: Text(
+                              _todoChatDateFormat('MM/dd HH:mm')
+                                  .format(session.updatedAt),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete_outline, size: 18),
                               color: colorScheme.onSurfaceVariant,
+                              onPressed: _isLoading
+                                  ? null
+                                  : () {
+                                      if (!isWideMode) Navigator.pop(context);
+                                      _deleteSession(session.id);
+                                    },
+                              tooltip: '删除对话',
                             ),
-                          ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete_outline, size: 18),
-                            color: colorScheme.onSurfaceVariant,
-                            onPressed: _isLoading
+                            selected: isActive,
+                            selectedTileColor: Colors.transparent,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            onTap: _isLoading
                                 ? null
                                 : () {
                                     if (!isWideMode) Navigator.pop(context);
-                                    _deleteSession(session.id);
+                                    _switchSession(session.id);
                                   },
-                            tooltip: '删除对话',
                           ),
-                          selected: isActive,
-                          selectedTileColor: Colors.transparent,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          onTap: _isLoading
-                              ? null
-                              : () {
-                                  if (!isWideMode) Navigator.pop(context);
-                                  _switchSession(session.id);
-                                },
                         ),
                       ),
                     );

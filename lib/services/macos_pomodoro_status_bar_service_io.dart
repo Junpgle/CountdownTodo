@@ -18,7 +18,7 @@ enum MacPomodoroAction { togglePause, stopFocus }
 
 enum MacIslandReminderActionType { acknowledged, snoozed }
 
-enum MacIslandCommandType { openEntity, startFocus, completeTodo }
+enum MacIslandCommandType { openEntity, startFocus, completeTodo, aiRecognize }
 
 class MacIslandCommand {
   const MacIslandCommand({
@@ -211,9 +211,103 @@ class MacPomodoroStatusBarService {
         _emitCommand(MacIslandCommandType.startFocus, call.arguments);
       case 'completeIslandTodo':
         _emitCommand(MacIslandCommandType.completeTodo, call.arguments);
+      case 'startIslandAiRecognition':
+        final command = await buildAiRecognitionCommand(call.arguments);
+        if (command != null) {
+          _commandController.add(command);
+        }
       case 'requestIslandOverview':
         unawaited(syncIslandOverview());
     }
+  }
+
+  /// Parses Swift-side `startIslandAiRecognition` arguments and loads plain text
+  /// file contents when a non-image document path is supplied.
+  @visibleForTesting
+  static Future<MacIslandCommand?> buildAiRecognitionCommand(
+    dynamic arguments,
+  ) async {
+    final args = _methodArguments(arguments);
+    final path = (args['path']?.toString() ?? '').trim();
+    final text = (args['text']?.toString() ?? '').trim();
+    final isImage = args['isImage'] == true;
+
+    if (isImage) {
+      if (path.isEmpty) return null;
+      return MacIslandCommand(
+        type: MacIslandCommandType.aiRecognize,
+        entityKind: 'image',
+        entityId: path,
+      );
+    }
+
+    if (text.isNotEmpty) {
+      return MacIslandCommand(
+        type: MacIslandCommandType.aiRecognize,
+        entityKind: 'text',
+        entityId: text,
+      );
+    }
+
+    if (path.isEmpty) return null;
+
+    final dot = path.lastIndexOf('.');
+    final ext = dot == -1 ? '' : path.substring(dot + 1).toLowerCase();
+    const imageExtensions = {
+      'png',
+      'jpg',
+      'jpeg',
+      'webp',
+      'gif',
+      'heic',
+      'tiff',
+      'bmp',
+      'svg',
+      'ico',
+    };
+    if (imageExtensions.contains(ext)) {
+      return MacIslandCommand(
+        type: MacIslandCommandType.aiRecognize,
+        entityKind: 'image',
+        entityId: path,
+      );
+    }
+
+    const plainTextExtensions = {
+      'txt',
+      'md',
+      'markdown',
+      'csv',
+      'json',
+      'log',
+      'yaml',
+      'yml',
+      'xml',
+      'html',
+      'htm',
+    };
+    if (plainTextExtensions.contains(ext)) {
+      try {
+        final raw = await File(path).readAsString();
+        final trimmed = raw.trim();
+        if (trimmed.isNotEmpty) {
+          final clamped = trimmed.length > 15000
+              ? trimmed.substring(0, 15000)
+              : trimmed;
+          return MacIslandCommand(
+            type: MacIslandCommandType.aiRecognize,
+            entityKind: 'text',
+            entityId: clamped,
+          );
+        }
+      } catch (_) {}
+    }
+
+    return MacIslandCommand(
+      type: MacIslandCommandType.aiRecognize,
+      entityKind: 'file',
+      entityId: path,
+    );
   }
 
   static void _emitCommand(MacIslandCommandType type, dynamic arguments) {

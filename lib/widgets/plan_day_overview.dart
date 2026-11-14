@@ -313,12 +313,20 @@ class _PlanDayOverviewState extends State<PlanDayOverview>
         fontWeight: FontWeight.w700,
         color: colors.primary,
       );
-      double measure(String value, TextStyle style) => (TextPainter(
-        text: TextSpan(text: value, style: style),
-        textDirection: Directionality.of(context),
-        textScaler: MediaQuery.textScalerOf(context),
-        maxLines: 1,
-      )..layout()).width;
+      double measure(String value, TextStyle style) {
+        final painter = TextPainter(
+          text: TextSpan(text: value, style: style),
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context),
+          maxLines: 1,
+        )..layout();
+        try {
+          return painter.width;
+        } finally {
+          painter.dispose();
+        }
+      }
+
       final issues = data.issues > 0
           ? IconButton(
               key: const ValueKey('plan-overview-issues'),

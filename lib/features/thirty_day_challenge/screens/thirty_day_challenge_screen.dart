@@ -72,6 +72,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
   final _pageController = PageController(viewportFraction: 0.88);
   late final AnimationController _entranceController;
   late final Animation<double> _entranceAnimation;
+  late final Animation<Offset> _entranceSlideAnimation;
 
   ThirtyDayChallengeState? _state;
   int _currentIndex = 0;
@@ -89,10 +90,13 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       vsync: this,
       duration: Duration(milliseconds: AppPlatform.isAndroid ? 260 : 650),
     );
-    _entranceAnimation = CurvedAnimation(
-      parent: _entranceController,
-      curve: Curves.easeOutCubic,
+    _entranceAnimation = _entranceController.drive(
+      CurveTween(curve: Curves.easeOutCubic),
     );
+    _entranceSlideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.035),
+      end: Offset.zero,
+    ).animate(_entranceAnimation);
     _load();
   }
 
@@ -1024,25 +1028,31 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
             ),
       body: state == null
           ? const Center(child: CircularProgressIndicator())
-          : FadeTransition(
-              opacity: _entranceAnimation,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0, 0.035),
-                  end: Offset.zero,
-                ).animate(_entranceAnimation),
-                child: _showWelcome
-                    ? _buildWelcomeBody()
-                    : FloatingGlassTopBarContentFade(
-                        topBarHeight: kToolbarHeight,
-                        child: Padding(
-                          padding: EdgeInsets.only(
-                            top: floatingGlassTopBarHeight(context),
-                          ),
-                          child: _buildBody(state),
+          : AnimatedBuilder(
+              animation: _entranceController,
+              child: _showWelcome
+                  ? _buildWelcomeBody()
+                  : FloatingGlassTopBarContentFade(
+                      topBarHeight: kToolbarHeight,
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                          top: floatingGlassTopBarHeight(context),
                         ),
+                        child: _buildBody(state),
                       ),
-              ),
+                    ),
+              builder: (context, child) {
+                if (_entranceController.value >= 0.999) {
+                  return child!;
+                }
+                return FadeTransition(
+                  opacity: _entranceAnimation,
+                  child: SlideTransition(
+                    position: _entranceSlideAnimation,
+                    child: child,
+                  ),
+                );
+              },
             ),
     );
   }
@@ -1095,50 +1105,60 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
             decoration: BoxDecoration(color: scheme.surface),
             child: Stack(
               children: [
-                // Background blurred blobs
-                Positioned(
-                  top: -100,
-                  left: -50,
-                  child: Container(
-                    width: 300,
-                    height: 300,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: welcomePrimary.withValues(alpha: 0.15),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  bottom: -50,
-                  right: -50,
-                  child: Container(
-                    width: 250,
-                    height: 250,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: welcomeTertiary.withValues(alpha: 0.15),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: 96,
-                  right: -34,
-                  child: Container(
-                    width: 132,
-                    height: 132,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: welcomeSecondary.withValues(alpha: 0.15),
-                    ),
-                  ),
-                ),
+                // Background blurred blobs isolated in a static RepaintBoundary
+                // so scrolling never re-triggers full-screen blur60.
                 Positioned.fill(
-                  child: AppPlatform.isWindows
-                      ? const SizedBox.shrink()
-                      : BackdropFilter(
-                          filter: AppImageFilters.blur60,
-                          child: const SizedBox(),
-                        ),
+                  child: IgnorePointer(
+                    child: RepaintBoundary(
+                      child: Stack(
+                        children: [
+                          Positioned(
+                            top: -100,
+                            left: -50,
+                            child: Container(
+                              width: 300,
+                              height: 300,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: welcomePrimary.withValues(alpha: 0.15),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            bottom: -50,
+                            right: -50,
+                            child: Container(
+                              width: 250,
+                              height: 250,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: welcomeTertiary.withValues(alpha: 0.15),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            top: 96,
+                            right: -34,
+                            child: Container(
+                              width: 132,
+                              height: 132,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: welcomeSecondary.withValues(alpha: 0.15),
+                              ),
+                            ),
+                          ),
+                          if (!AppPlatform.isWindows)
+                            Positioned.fill(
+                              child: BackdropFilter.grouped(
+                                filter: AppImageFilters.blur60,
+                                child: const SizedBox(),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
                 // Content
                 FloatingGlassTopBarContentFade(
@@ -1584,37 +1604,46 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       decoration: BoxDecoration(color: scheme.surface),
       child: Stack(
         children: [
-          Positioned(
-            top: -80,
-            left: -80,
-            child: Container(
-              width: 220,
-              height: 220,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: welcomePrimary.withValues(alpha: 0.15),
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: -90,
-            right: -70,
-            child: Container(
-              width: 220,
-              height: 220,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: welcomeTertiary.withValues(alpha: 0.15),
-              ),
-            ),
-          ),
           Positioned.fill(
-            child: AppPlatform.isWindows
-                ? const SizedBox.shrink()
-                : BackdropFilter(
-                    filter: AppImageFilters.blur48,
-                    child: const SizedBox(),
-                  ),
+            child: IgnorePointer(
+              child: RepaintBoundary(
+                child: Stack(
+                  children: [
+                    Positioned(
+                      top: -80,
+                      left: -80,
+                      child: Container(
+                        width: 220,
+                        height: 220,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: welcomePrimary.withValues(alpha: 0.15),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: -90,
+                      right: -70,
+                      child: Container(
+                        width: 220,
+                        height: 220,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: welcomeTertiary.withValues(alpha: 0.15),
+                        ),
+                      ),
+                    ),
+                    if (!AppPlatform.isWindows)
+                      Positioned.fill(
+                        child: BackdropFilter.grouped(
+                          filter: AppImageFilters.blur48,
+                          child: const SizedBox(),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
           ),
           Positioned.fill(
             child: FloatingGlassTopBarContentFade(
@@ -2027,6 +2056,14 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     final scheme = Theme.of(context).colorScheme;
     return GridView.builder(
       padding: EdgeInsets.fromLTRB(16, 12, isLandscapeSidebar ? 8 : 16, 16),
+      findChildIndexCallback: (Key key) {
+        if (key is ValueKey<int>) {
+          final id = key.value;
+          final index = state.tasks.indexWhere((t) => t.id == id);
+          return index != -1 ? index : null;
+        }
+        return null;
+      },
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: isLandscapeSidebar ? 4 : 5,
         mainAxisSpacing: 12,
@@ -2055,64 +2092,64 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
               ]
             : taskColors;
 
-        return InkWell(
-          onTap: () {
-            setState(() {
-              _currentIndex = index;
-              if (!isLandscapeSidebar) {
-                _showOverview = false;
-              }
-            });
-            if (!isLandscapeSidebar) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted && _pageController.hasClients) {
-                  _pageController.jumpToPage(index);
+        return RepaintBoundary(
+          key: ValueKey<int>(task.id),
+          child: InkWell(
+            onTap: () {
+              setState(() {
+                _currentIndex = index;
+                if (!isLandscapeSidebar) {
+                  _showOverview = false;
                 }
               });
-            } else {
-              _pageController.animateToPage(
-                index,
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOutCubic,
-              );
-            }
-          },
-          borderRadius: BorderRadius.circular(16),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: overviewColors,
+              if (!isLandscapeSidebar) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted && _pageController.hasClients) {
+                    _pageController.jumpToPage(index);
+                  }
+                });
+              } else {
+                _pageController.animateToPage(
+                  index,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                );
+              }
+            },
+            borderRadius: BorderRadius.circular(16),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: overviewColors,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isSelected
+                      ? taskColors.first
+                      : task.isCompleted
+                      ? taskColors[1].withValues(alpha: 0.62)
+                      : taskColors.first.withValues(alpha: 0.32),
+                  width: isSelected ? 2 : 1,
+                ),
+                boxShadow: isSelected
+                    ? [
+                        BoxShadow(
+                          color: scheme.primary.withValues(alpha: 0.2),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ]
+                    : null,
               ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isSelected
-                    ? taskColors.first
-                    : task.isCompleted
-                    ? taskColors[1].withValues(alpha: 0.62)
-                    : taskColors.first.withValues(alpha: 0.32),
-                width: isSelected ? 2 : 1,
-              ),
-              boxShadow: isSelected
-                  ? [
-                      BoxShadow(
-                        color: scheme.primary.withValues(alpha: 0.2),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ]
-                  : null,
-            ),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (overviewImageProvider != null)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(15),
-                    child: Opacity(
-                      opacity: 0.4,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (overviewImageProvider != null)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(15),
                       child: LayoutBuilder(
                         builder: (context, constraints) {
                           final pixelRatio =
@@ -2133,28 +2170,34 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                             height: cacheHeight,
                             policy: ResizeImagePolicy.fit,
                           );
-                          return Image(image: imageProvider, fit: BoxFit.cover);
+                          return Image(
+                            image: imageProvider,
+                            fit: BoxFit.cover,
+                            opacity: const AlwaysStoppedAnimation<double>(0.4),
+                          );
                         },
                       ),
                     ),
+                  Center(
+                    child: task.isCompleted
+                        ? Icon(
+                            Icons.check_rounded,
+                            color: isSelected
+                                ? scheme.primary
+                                : scheme.secondary,
+                            size: 24,
+                          )
+                        : Text(
+                            '${task.id}',
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(
+                                  color: scheme.onSurface,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                          ),
                   ),
-                Center(
-                  child: task.isCompleted
-                      ? Icon(
-                          Icons.check_rounded,
-                          color: isSelected ? scheme.primary : scheme.secondary,
-                          size: 24,
-                        )
-                      : Text(
-                          '${task.id}',
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(
-                                color: scheme.onSurface,
-                                fontWeight: FontWeight.bold,
-                              ),
-                        ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -2326,8 +2369,19 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
               const SizedBox(width: 16),
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 300),
-                transitionBuilder: (child, animation) =>
-                    ScaleTransition(scale: animation, child: child),
+                transitionBuilder: (child, animation) => AnimatedBuilder(
+                  animation: animation,
+                  child: child,
+                  builder: (context, child) {
+                    if (animation.value <= 0.001) {
+                      return const SizedBox.shrink();
+                    }
+                    if (animation.value >= 0.999) {
+                      return child!;
+                    }
+                    return ScaleTransition(scale: animation, child: child);
+                  },
+                ),
                 child: Text(
                   '${state.completedCount}/${state.tasks.length}',
                   key: ValueKey(state.completedCount),
@@ -2435,16 +2489,28 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
               children: [
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 260),
-                  transitionBuilder: (child, animation) => FadeTransition(
-                    opacity: animation,
-                    child: SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(0, 0.25),
-                        end: Offset.zero,
-                      ).animate(animation),
+                  transitionBuilder: (child, animation) {
+                    final slide = Tween<Offset>(
+                      begin: const Offset(0, 0.25),
+                      end: Offset.zero,
+                    ).animate(animation);
+                    return AnimatedBuilder(
+                      animation: animation,
                       child: child,
-                    ),
-                  ),
+                      builder: (context, child) {
+                        if (animation.value <= 0.001) {
+                          return const SizedBox.shrink();
+                        }
+                        if (animation.value >= 0.999) {
+                          return child!;
+                        }
+                        return FadeTransition(
+                          opacity: animation,
+                          child: SlideTransition(position: slide, child: child),
+                        );
+                      },
+                    );
+                  },
                   child: Text(
                     '第 ${currentTask.id} 项 / ${state.tasks.length}',
                     key: ValueKey(currentTask.id),
@@ -3001,9 +3067,10 @@ class _ShuffleCardStackState extends State<_ShuffleCardStack>
       vsync: this,
       duration: const Duration(milliseconds: 1750),
     );
-    _stepAnimation = IntTween(begin: 0, end: _sequence.length - 1).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOutCubic),
-    );
+    _stepAnimation = IntTween(
+      begin: 0,
+      end: _sequence.length - 1,
+    ).animate(_controller.drive(CurveTween(curve: Curves.easeInOutCubic)));
     _stepNotifier = ValueNotifier<int>(_stepAnimation.value);
     _controller.addListener(_updateStepNotifier);
     _controller.addStatusListener((status) {
@@ -3100,15 +3167,27 @@ class _ShuffleCardStackState extends State<_ShuffleCardStack>
                             begin: const Offset(0, 0.8),
                             end: Offset.zero,
                           ).animate(animation);
-                          return FadeTransition(
-                            opacity: animation,
-                            child: SlideTransition(
-                              position: slide,
-                              child: ScaleTransition(
-                                scale: animation,
-                                child: child,
-                              ),
-                            ),
+                          return AnimatedBuilder(
+                            animation: animation,
+                            child: child,
+                            builder: (context, child) {
+                              if (animation.value <= 0.001) {
+                                return const SizedBox.shrink();
+                              }
+                              if (animation.value >= 0.999) {
+                                return child!;
+                              }
+                              return FadeTransition(
+                                opacity: animation,
+                                child: SlideTransition(
+                                  position: slide,
+                                  child: ScaleTransition(
+                                    scale: animation,
+                                    child: child,
+                                  ),
+                                ),
+                              );
+                            },
                           );
                         },
                         child: _ShuffleCardSurface(

@@ -290,6 +290,16 @@ class StorageManagementHandler {
                       child: topFiles.isEmpty
                           ? const Center(child: Text("未发现大于 50KB 的文件"))
                           : ListView.separated(
+                              findItemIndexCallback: (Key key) {
+                                if (key is ValueKey<String>) {
+                                  final p = key.value;
+                                  final idx = topFiles.indexWhere(
+                                    (f) => f['path'] == p,
+                                  );
+                                  return idx != -1 ? idx : null;
+                                }
+                                return null;
+                              },
                               itemCount: topFiles.length,
                               separatorBuilder: (_, _) =>
                                   const Divider(height: 1),
@@ -306,72 +316,79 @@ class StorageManagementHandler {
                                     path.contains('shared_prefs') ||
                                     path.contains('databases');
 
-                                return ListTile(
-                                  contentPadding: EdgeInsets.zero,
-                                  leading: Icon(
-                                    isCore
-                                        ? Icons.warning_amber_rounded
-                                        : Icons.insert_drive_file,
-                                    color: isCore ? Colors.orange : Colors.grey,
-                                  ),
-                                  title: Text(
-                                    fileName,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                      color: isCore ? Colors.orange : null,
+                                return RepaintBoundary(
+                                  key: ValueKey<String>(path),
+                                  child: ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    leading: Icon(
+                                      isCore
+                                          ? Icons.warning_amber_rounded
+                                          : Icons.insert_drive_file,
+                                      color: isCore
+                                          ? Colors.orange
+                                          : Colors.grey,
                                     ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  subtitle: Text(
-                                    path,
-                                    style: const TextStyle(
-                                      fontSize: 10,
-                                      color: Colors.grey,
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        formatSize(size.toDouble()),
-                                        style: const TextStyle(
-                                          color: Colors.redAccent,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
-                                        ),
+                                    title: Text(
+                                      fileName,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                        color: isCore ? Colors.orange : null,
                                       ),
-                                      IconButton(
-                                        padding: const EdgeInsets.only(left: 8),
-                                        constraints: const BoxConstraints(),
-                                        icon: const Icon(
-                                          Icons.delete_outline,
-                                          size: 20,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    subtitle: Text(
+                                      path,
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.grey,
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          formatSize(size.toDouble()),
+                                          style: const TextStyle(
+                                            color: Colors.redAccent,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                         ),
-                                        onPressed: () async {
-                                          if (isCore) {
-                                            showMessage(
-                                              '⚠️ 这个是应用运行核心文件或你的用户数据库，禁止删除！',
-                                            );
-                                            return;
-                                          }
-                                          try {
-                                            if (await file.exists()) {
-                                              await file.delete();
-                                              setDialogState(() {
-                                                topFiles.removeAt(index);
-                                              });
-                                              showMessage('✅ 文件已删除');
+                                        IconButton(
+                                          padding: const EdgeInsets.only(
+                                            left: 8,
+                                          ),
+                                          constraints: const BoxConstraints(),
+                                          icon: const Icon(
+                                            Icons.delete_outline,
+                                            size: 20,
+                                          ),
+                                          onPressed: () async {
+                                            if (isCore) {
+                                              showMessage(
+                                                '⚠️ 这个是应用运行核心文件或你的用户数据库，禁止删除！',
+                                              );
+                                              return;
                                             }
-                                          } catch (e) {
-                                            showMessage('删除失败: $e');
-                                          }
-                                        },
-                                      ),
-                                    ],
+                                            try {
+                                              if (await file.exists()) {
+                                                await file.delete();
+                                                setDialogState(() {
+                                                  topFiles.removeAt(index);
+                                                });
+                                                showMessage('✅ 文件已删除');
+                                              }
+                                            } catch (e) {
+                                              showMessage('删除失败: $e');
+                                            }
+                                          },
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 );
                               },

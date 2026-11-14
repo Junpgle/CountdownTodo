@@ -1018,6 +1018,11 @@ class StorageService {
     List<TodoItem> local,
   ) => _storage.repairMissingRemoteRecurrenceSeriesIdsForTest(incoming, local);
 
+  static void preserveLocalTodoSourceFieldsForTest(
+    TodoItem local,
+    TodoItem incoming,
+  ) => _storage.preserveLocalTodoSourceFieldsForTest(local, incoming);
+
   static Set<String> repairLocalRecurrenceSeriesAliasesFromHistoryForTest(
     List<TodoItem> todos,
     Map<String, List<String>> historicalSeriesByTodoId,

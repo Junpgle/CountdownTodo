@@ -704,6 +704,14 @@ class _RebindTagPageState extends State<RebindTagPage>
         // 记录列表
         Expanded(
           child: ListView.builder(
+            findChildIndexCallback: (Key key) {
+              if (key is ValueKey<String>) {
+                final uuid = key.value;
+                final index = records.indexWhere((r) => r.uuid == uuid);
+                return index != -1 ? index : null;
+              }
+              return null;
+            },
             itemCount: records.length,
             itemBuilder: (context, index) {
               final record = records[index];
@@ -729,60 +737,63 @@ class _RebindTagPageState extends State<RebindTagPage>
                   })
                   .toList();
 
-              return ListTile(
-                leading: Checkbox(
-                  value: isSelected,
-                  onChanged: (value) {
-                    setState(() {
-                      if (value == true) {
-                        _selectedPomodoros.add(record.uuid);
-                      } else {
-                        _selectedPomodoros.remove(record.uuid);
-                      }
-                    });
-                  },
-                ),
-                title: Text(
-                  record.todoTitle ?? '专注',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      recordDateFormat.format(
-                        DateTime.fromMillisecondsSinceEpoch(record.startTime),
-                      ),
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    if (oldTagNames.isNotEmpty)
+              return RepaintBoundary(
+                key: ValueKey<String>(record.uuid),
+                child: ListTile(
+                  leading: Checkbox(
+                    value: isSelected,
+                    onChanged: (value) {
+                      setState(() {
+                        if (value == true) {
+                          _selectedPomodoros.add(record.uuid);
+                        } else {
+                          _selectedPomodoros.remove(record.uuid);
+                        }
+                      });
+                    },
+                  ),
+                  title: Text(
+                    record.todoTitle ?? '专注',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        '旧标签: ${oldTagNames.join(', ')}',
+                        recordDateFormat.format(
+                          DateTime.fromMillisecondsSinceEpoch(record.startTime),
+                        ),
                         style: TextStyle(
-                          fontSize: 11,
-                          color: colorScheme.error,
+                          fontSize: 12,
+                          color: colorScheme.onSurfaceVariant,
                         ),
                       ),
-                  ],
-                ),
-                trailing: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
+                      if (oldTagNames.isNotEmpty)
+                        Text(
+                          '旧标签: ${oldTagNames.join(', ')}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: colorScheme.error,
+                          ),
+                        ),
+                    ],
                   ),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    '${record.plannedDuration ~/ 60}分钟',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: colorScheme.onSurfaceVariant,
+                  trailing: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '${record.plannedDuration ~/ 60}分钟',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ),
@@ -867,6 +878,14 @@ class _RebindTagPageState extends State<RebindTagPage>
         // 记录列表
         Expanded(
           child: ListView.builder(
+            findChildIndexCallback: (Key key) {
+              if (key is ValueKey<String>) {
+                final id = key.value;
+                final index = logs.indexWhere((l) => l.id == id);
+                return index != -1 ? index : null;
+              }
+              return null;
+            },
             itemCount: logs.length,
             itemBuilder: (context, index) {
               final log = logs[index];
@@ -898,60 +917,63 @@ class _RebindTagPageState extends State<RebindTagPage>
                   )
                   .inMinutes;
 
-              return ListTile(
-                leading: Checkbox(
-                  value: isSelected,
-                  onChanged: (value) {
-                    setState(() {
-                      if (value == true) {
-                        _selectedTimeLogs.add(log.id);
-                      } else {
-                        _selectedTimeLogs.remove(log.id);
-                      }
-                    });
-                  },
-                ),
-                title: Text(
-                  log.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      recordDateFormat.format(
-                        DateTime.fromMillisecondsSinceEpoch(log.startTime),
-                      ),
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    if (oldTagNames.isNotEmpty)
+              return RepaintBoundary(
+                key: ValueKey<String>(log.id),
+                child: ListTile(
+                  leading: Checkbox(
+                    value: isSelected,
+                    onChanged: (value) {
+                      setState(() {
+                        if (value == true) {
+                          _selectedTimeLogs.add(log.id);
+                        } else {
+                          _selectedTimeLogs.remove(log.id);
+                        }
+                      });
+                    },
+                  ),
+                  title: Text(
+                    log.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        '旧标签: ${oldTagNames.join(', ')}',
+                        recordDateFormat.format(
+                          DateTime.fromMillisecondsSinceEpoch(log.startTime),
+                        ),
                         style: TextStyle(
-                          fontSize: 11,
-                          color: colorScheme.error,
+                          fontSize: 12,
+                          color: colorScheme.onSurfaceVariant,
                         ),
                       ),
-                  ],
-                ),
-                trailing: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
+                      if (oldTagNames.isNotEmpty)
+                        Text(
+                          '旧标签: ${oldTagNames.join(', ')}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: colorScheme.error,
+                          ),
+                        ),
+                    ],
                   ),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    '$duration分钟',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: colorScheme.onSurfaceVariant,
+                  trailing: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '$duration分钟',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ),

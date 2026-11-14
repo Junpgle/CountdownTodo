@@ -454,40 +454,43 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
       if (row.arranged && !row.needsReview && !row.focusing && !expired)
         TextButton(onPressed: () => _arrange(row), child: const Text('追加规划')),
     ];
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 10),
-      color: cs.surfaceContainerLow,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: LayoutBuilder(
-          builder: (context, c) {
-            final compact =
-                c.maxWidth >= 600 ||
-                (c.maxWidth >= 300 &&
-                    MediaQuery.textScalerOf(context).scale(14) <= 20);
-            if (compact) {
-              return Row(
+    return RepaintBoundary(
+      key: ValueKey<String>(row.todo.id),
+      child: Card(
+        elevation: 0,
+        margin: const EdgeInsets.only(bottom: 10),
+        color: cs.surfaceContainerLow,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: LayoutBuilder(
+            builder: (context, c) {
+              final compact =
+                  c.maxWidth >= 600 ||
+                  (c.maxWidth >= 300 &&
+                      MediaQuery.textScalerOf(context).scale(14) <= 20);
+              if (compact) {
+                return Row(
+                  children: [
+                    Expanded(child: info),
+                    const SizedBox(width: 12),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: buttons,
+                    ),
+                  ],
+                );
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(child: info),
-                  const SizedBox(width: 12),
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: buttons,
-                  ),
+                  info,
+                  const SizedBox(height: 10),
+                  Wrap(spacing: 8, runSpacing: 4, children: buttons),
                 ],
               );
-            }
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                info,
-                const SizedBox(height: 10),
-                Wrap(spacing: 8, runSpacing: 4, children: buttons),
-              ],
-            );
-          },
+            },
+          ),
         ),
       ),
     );
@@ -656,6 +659,24 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
           child: ListView.builder(
             padding: const EdgeInsets.all(16),
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            findChildIndexCallback: (Key key) {
+              if (key is ValueKey<String>) {
+                final keyVal = key.value;
+                for (int i = 0; i < _displayRows.length; i++) {
+                  final r = _displayRows[i];
+                  if (r is _PlanBacklogSectionHeader) {
+                    if (keyVal == 'backlog_header_${r.group}') {
+                      return headerChildren.length + i;
+                    }
+                  } else if (r is PlanBacklogRow) {
+                    if (r.todo.id == keyVal) {
+                      return headerChildren.length + i;
+                    }
+                  }
+                }
+              }
+              return null;
+            },
             itemCount:
                 headerChildren.length +
                 (_error == null ? _displayRows.length : 0) +
@@ -667,6 +688,7 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
                 final row = _displayRows[rowIndex];
                 if (row is _PlanBacklogSectionHeader) {
                   return Padding(
+                    key: ValueKey<String>('backlog_header_${row.group}'),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     child: Text(
                       _heading(row.group),

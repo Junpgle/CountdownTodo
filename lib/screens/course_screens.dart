@@ -78,6 +78,21 @@ class _TimelineEvent {
   /// records look like overlapping events.
   final double collisionBottom;
   final Widget Function(double left, double width) builder;
+
+  /// Underlying model item (e.g. [TodoItem], [PomodoroRecord], [TimeLogItem],
+  /// [CourseItem], [FixedScheduleItem], [TodoPlanBlock], [DeviceCalendarEvent])
+  /// used when multiple narrow cards are aggregated into a single stack sheet.
+  final Object? sourceItem;
+
+  /// Primary title for stack card preview when aggregated.
+  final String title;
+
+  /// Optional subtitle (e.g. room, location, remark) for stack card preview.
+  final String? subtitle;
+
+  /// Primary background color for stack card preview when aggregated.
+  final Color color;
+
   int columnIndex = 0;
   int maxColumns = 1;
   int colSpan = 1;
@@ -87,6 +102,10 @@ class _TimelineEvent {
     required this.bottom,
     double? collisionBottom,
     required this.builder,
+    this.sourceItem,
+    this.title = '',
+    this.subtitle,
+    this.color = Colors.transparent,
   }) : collisionBottom = collisionBottom ?? bottom;
 }
 

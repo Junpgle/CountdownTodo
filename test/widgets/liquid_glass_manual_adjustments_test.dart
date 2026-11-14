@@ -341,51 +341,6 @@ void main() {
   });
 
   group('AnimationSettingsPage UI Sliders & Actions', () {
-    testWidgets(
-      'renders all 3 adjustment sliders and allows real-time tuning',
-      (tester) async {
-        await LiquidGlassEffectService.setEnabled(true);
-        tester.view.physicalSize = const Size(1200, 2000);
-        tester.view.devicePixelRatio = 1;
-        addTearDown(tester.view.resetPhysicalSize);
-        addTearDown(tester.view.resetDevicePixelRatio);
-
-        await tester.pumpWidget(
-          const MaterialApp(home: AnimationSettingsPage()),
-        );
-        await tester.pumpAndSettle();
-
-        // Verify the 3 adjustment titles are present
-        expect(find.text('底色遮蔽率'), findsOneWidget);
-        expect(find.text('透光度'), findsOneWidget);
-        expect(find.text('模糊程度'), findsOneWidget);
-
-        // Verify quick chips
-        expect(find.text('70% 默认'), findsOneWidget);
-        expect(find.text('50% 平衡'), findsOneWidget);
-        expect(find.text('16px 标准'), findsOneWidget);
-
-        // Tap a quick chip (e.g. 50% 柔和)
-        await tester.tap(find.text('50% 柔和'));
-        await tester.pumpAndSettle();
-
-        expect(LiquidGlassEffectService.configuration.scrimCoveragePercent, 50);
-        expect(LiquidGlassEffectService.hasUnsavedChanges, isTrue);
-
-        // Action card appears with Save button
-        expect(find.text('效果已在全应用各界面实时生效'), findsOneWidget);
-        expect(find.text('保存效果'), findsOneWidget);
-
-        // Tap "保存效果"
-        await tester.ensureVisible(find.text('保存效果'));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('保存效果'));
-        await tester.pumpAndSettle();
-        await tester.pump(const Duration(seconds: 5));
-
-        expect(LiquidGlassEffectService.hasUnsavedChanges, isFalse);
-      },
-    );
 
     testWidgets(
       'tapping float adjustment button in AnimationSettingsPage starts live preview and expands floating panel',

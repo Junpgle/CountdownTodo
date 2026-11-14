@@ -33,6 +33,7 @@ abstract final class HabitFreezeService {
   static const String _prefixMilestone = 'habit_freeze_milestone_';
   static const String _prefixInit = 'habit_freeze_initialized_';
   static const String _prefixReconciledSpent = 'habit_freeze_reconciled_spent_';
+  static const String _prefixRevoked = 'habit_freeze_revoked_';
   static const String _keyPendingNotice = 'habit_freeze_pending_notice';
   static const String _keyAutoProtectEnabled =
       'habit_freeze_auto_protect_enabled';
@@ -275,6 +276,7 @@ abstract final class HabitFreezeService {
       return false;
     }
 
+    final balance = await getAvailableCards(goal.uuid);
     final dateKey = HabitRuleResolver.dayKey(logicalDate);
     await HabitRepository.addCheckIn(
       goal: goal,
@@ -286,7 +288,6 @@ abstract final class HabitFreezeService {
       dedupeKey: HabitCheckIn.buildDedupeKey(goal.uuid, 'freeze/$dateKey'),
     );
 
-    final balance = await getAvailableCards(goal.uuid);
     await setAvailableCards(goal.uuid, balance - 1);
     final prefs = await SharedPreferences.getInstance();
     final checkInsAfter = await HabitRepository.getCheckIns(
@@ -296,6 +297,7 @@ abstract final class HabitFreezeService {
         .where((c) => !c.isDeleted && c.source == HabitCheckInSource.freeze)
         .length;
     await prefs.setInt('$_prefixReconciledSpent${goal.uuid}', currentSpent);
+    await clearFreezeRevoked(goal.uuid, dateKey);
     return true;
   }
 
@@ -306,8 +308,8 @@ abstract final class HabitFreezeService {
   }) async {
     if (freezeCheckIn.source != HabitCheckInSource.freeze) return false;
 
-    await HabitRepository.deleteCheckIn(freezeCheckIn);
     final balance = await getAvailableCards(goal.uuid);
+    await HabitRepository.deleteCheckIn(freezeCheckIn);
     await setAvailableCards(goal.uuid, balance + 1);
     final prefs = await SharedPreferences.getInstance();
     final checkInsAfter = await HabitRepository.getCheckIns(
@@ -317,7 +319,31 @@ abstract final class HabitFreezeService {
         .where((c) => !c.isDeleted && c.source == HabitCheckInSource.freeze)
         .length;
     await prefs.setInt('$_prefixReconciledSpent${goal.uuid}', currentSpent);
+    if (freezeCheckIn.logicalDate.isNotEmpty) {
+      await markFreezeRevoked(goal.uuid, freezeCheckIn.logicalDate);
+    }
     return true;
+  }
+
+  /// 检查某一天某个习惯的免扣卡是否曾被用户手动撤销。
+  static Future<bool> isFreezeRevoked(String habitUuid, String dayKey) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('$_prefixRevoked${habitUuid}_$dayKey') ?? false;
+  }
+
+  /// 记录用户手动撤销了某一天某个习惯的免扣卡。
+  static Future<void> markFreezeRevoked(String habitUuid, String dayKey) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('$_prefixRevoked${habitUuid}_$dayKey', true);
+  }
+
+  /// 清除指定日期的免扣卡撤销标记（例如用户后续又主动手动使用了免扣卡）。
+  static Future<void> clearFreezeRevoked(
+    String habitUuid,
+    String dayKey,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('$_prefixRevoked${habitUuid}_$dayKey');
   }
 
   /// 是否启用了自动守护（默认开启）。
@@ -339,18 +365,24 @@ abstract final class HabitFreezeService {
   static Future<List<String>> autoProtectMissedDays({
     required List<HabitGoal> goals,
     String username = '',
+    DateTime? now,
   }) async {
     final enabled = await isAutoProtectEnabled();
     if (!enabled || goals.isEmpty) return const [];
 
-    final now = DateTime.now();
-    final yesterday = HabitRuleResolver.addCalendarDays(now, -1);
+    final nowVal = now ?? DateTime.now();
+    final yesterday = HabitRuleResolver.addCalendarDays(nowVal, -1);
     final yesterdayKey = HabitRuleResolver.dayKey(yesterday);
 
     final protectedHabitNames = <String>[];
 
     for (final goal in goals) {
       if (goal.isArchived || goal.isDeleted) continue;
+
+      // 若该日期的免扣卡已被用户手动撤销，则绝不自动重新应用
+      if (await isFreezeRevoked(goal.uuid, yesterdayKey)) {
+        continue;
+      }
 
       // 仅适用于每日类习惯（每日、工作日、自定义天数）
       final rules = await HabitRepository.getRules(habitUuid: goal.uuid);
@@ -372,7 +404,7 @@ abstract final class HabitFreezeService {
         habit: goal,
         rules: [rule],
         logicalDate: yesterday,
-        now: now,
+        now: nowVal,
         checkIns: checkIns,
       );
 
@@ -388,7 +420,7 @@ abstract final class HabitFreezeService {
         logicalDate: yesterday,
         checkIns: checkIns,
         rules: [rule],
-        now: now,
+        now: nowVal,
       );
 
       if (validation.canApply) {
@@ -399,7 +431,7 @@ abstract final class HabitFreezeService {
           note: '🛡️ 自动免扣卡守护 ($yesterdayKey)',
           username: username,
           rules: [rule],
-          now: now,
+          now: nowVal,
         );
         if (applied) {
           protectedHabitNames.add(goal.name);

@@ -14,22 +14,24 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     if (!mounted) return;
     setState(() {
       _currentWeek = newWeek;
+      _weekViewGeneration++;
       // Keep the old grid in the AnimatedSwitcher instead of replacing it
       // with a skeleton while the optional device-calendar query resolves.
       _deviceCalendarEvents = [];
       _updateWeekDeviceCalendarEvents();
       _updateMonthDeviceCalendarEvents();
+      // 🚀 核心优化：根据周次自动判断学期，并在首帧同步更新全部周数据
+      _updateWeekCourses();
+      _updateWeekTodos();
+      _updateWeekTimeLogsPomodorosAndPlans();
+      _updateWeekFixedSchedules();
     });
+    _checkCollapsedSlots();
+    _courseExpandCtrl.forward(from: 0);
 
-    // 🚀 核心优化：根据周次自动判断学期，然后过滤课程
-    _updateWeekCourses();
-    _updateWeekTodos();
-    _updateWeekTimeLogsPomodorosAndPlans();
-    _updateWeekFixedSchedules();
     await _loadDeviceCalendarEventsForCurrentView();
     if (!mounted || _currentWeek != newWeek) return;
     _checkCollapsedSlots();
-    _courseExpandCtrl.forward(from: 0);
     if (mounted) setState(() {});
   }
 
@@ -486,13 +488,15 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
                       vertical: 12,
                     ),
                     itemCount: items.length,
-                    itemBuilder: (context, index) => Material(
-                      color: Colors.transparent,
-                      child: _buildDetailSidebarItem(
-                        context,
-                        items[index],
-                        sourceDate,
-                        keyScope,
+                    itemBuilder: (context, index) => RepaintBoundary(
+                      child: Material(
+                        color: Colors.transparent,
+                        child: _buildDetailSidebarItem(
+                          context,
+                          items[index],
+                          sourceDate,
+                          keyScope,
+                        ),
                       ),
                     ),
                   ),
@@ -629,6 +633,17 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         sourceDate,
         surface: keyScope,
       );
+      final durationStr = _formatEventDuration(
+        ((item.endTime - item.startTime) / 1000).round(),
+      );
+      final remarkStr = item.remark?.trim();
+      final timeRange =
+          '${_cachedDateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true).toLocal())} - ${_cachedDateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.endTime, isUtc: true).toLocal())}';
+      final subtitleParts = [
+        timeRange,
+        '时长: $durationStr',
+        if (remarkStr != null && remarkStr.isNotEmpty) remarkStr,
+      ];
       return ListTile(
         key: sourceKey,
         leading: Container(
@@ -644,7 +659,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
           style: const TextStyle(fontSize: 15),
         ),
         subtitle: Text(
-          '${_cachedDateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true).toLocal())} - ${_cachedDateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.endTime, isUtc: true).toLocal())}',
+          subtitleParts.join(' · '),
           style: const TextStyle(fontSize: 12),
         ),
         onTap: () => _openSidebarDetailFromRect(
@@ -704,6 +719,10 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         sourceDate,
         surface: keyScope,
       );
+      final title = (item.todoTitle != null && item.todoTitle!.isNotEmpty)
+          ? item.todoTitle!
+          : '番茄专注';
+      final durationStr = _formatPomodoroDuration(item.effectiveDuration);
       return ListTile(
         key: sourceKey,
         leading: Container(
@@ -714,9 +733,9 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
           ),
           child: Icon(Icons.timer, color: color, size: 20),
         ),
-        title: const Text('番茄专注', style: TextStyle(fontSize: 15)),
+        title: Text(title, style: const TextStyle(fontSize: 15)),
         subtitle: Text(
-          '时长: ${item.effectiveDuration ~/ 60} 分钟',
+          '时长: $durationStr',
           style: const TextStyle(fontSize: 12),
         ),
         onTap: () => _openSidebarDetailFromRect(
@@ -734,6 +753,14 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         sourceDate,
         surface: keyScope,
       );
+      final locText = item.location?.trim();
+      final remText = item.remark?.trim();
+      final detailParts = <String>[
+        _fixedScheduleTimeLabel(item),
+        if (locText != null && locText.isNotEmpty) locText,
+        if (remText != null && remText.isNotEmpty && remText != locText)
+          remText,
+      ];
       return ListTile(
         key: sourceKey,
         leading: Container(
@@ -746,7 +773,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         ),
         title: Text(item.title, style: const TextStyle(fontSize: 15)),
         subtitle: Text(
-          _fixedScheduleTimeLabel(item),
+          detailParts.join(' · '),
           style: const TextStyle(fontSize: 12),
         ),
         onTap: () => _openFixedScheduleDetail(
@@ -812,23 +839,56 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
 
   void _handleFilterSelection(String value) {
     setState(() {
+      final keepHideCrossDay = _activeDataViews.contains('hideCrossDay');
       if (value == 'clearAll') {
+        _weekPerspective = 'custom';
         _activeDataViews.clear();
+        if (keepHideCrossDay) _activeDataViews.add('hideCrossDay');
         _updateWeekTodos();
-      } else if (value == 'selectAll') {
-        _activeDataViews.addAll({
-          'courses',
-          'fixedSchedules',
-          'todos',
-          'plans',
-          'timeLogs',
-          'pomodoros',
-          'deviceCalendar',
-        });
+      } else if (value == 'selectAll' || value == 'preset_all') {
+        _weekPerspective = 'all';
+        _activeDataViews
+          ..clear()
+          ..addAll({
+            'courses',
+            'fixedSchedules',
+            'todos',
+            'plans',
+            'timeLogs',
+            'pomodoros',
+            'deviceCalendar',
+            if (keepHideCrossDay) 'hideCrossDay',
+          });
+        _updateWeekTodos();
+      } else if (value == 'preset_schedule') {
+        _weekPerspective = 'schedule';
+        _activeDataViews
+          ..clear()
+          ..addAll({
+            'courses',
+            'fixedSchedules',
+            'plans',
+            'deviceCalendar',
+            if (keepHideCrossDay) 'hideCrossDay',
+          });
+        _updateWeekTodos();
+      } else if (value == 'preset_review') {
+        _weekPerspective = 'review';
+        _activeDataViews
+          ..clear()
+          ..addAll({
+            'courses',
+            'pomodoros',
+            'timeLogs',
+            if (keepHideCrossDay) 'hideCrossDay',
+          });
         _updateWeekTodos();
       } else if (value == 'disableFreeTimeCollapse') {
         _collapseFreeTime = !_collapseFreeTime;
       } else {
+        if (value != 'hideCrossDay') {
+          _weekPerspective = 'custom';
+        }
         if (_activeDataViews.contains(value)) {
           _activeDataViews.remove(value);
         } else {
@@ -840,6 +900,90 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       }
     });
     _checkCollapsedSlots();
+  }
+
+  Widget _buildPerspectivePresetsRow() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final presets = const [
+      ('all', 'preset_all', '全部视角', Icons.layers_rounded),
+      ('schedule', 'preset_schedule', '日程视角', Icons.event_note_rounded),
+      ('review', 'preset_review', '复盘视角', Icons.insights_rounded),
+    ];
+
+    return SizedBox(
+      width: _filterMenuWidth(context),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        child: Row(
+          children: [
+            for (var i = 0; i < presets.length; i++) ...[
+              if (i > 0) const SizedBox(width: 6),
+              Expanded(
+                child: Builder(
+                  builder: (context) {
+                    final preset = presets[i];
+                    final isSelected = _weekPerspective == preset.$1;
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () => _handleFilterSelection(preset.$2),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 160),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? colorScheme.primary
+                              : colorScheme.surfaceContainerHighest.withValues(
+                                  alpha: 0.55,
+                                ),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: isSelected
+                                ? colorScheme.primary
+                                : colorScheme.outlineVariant.withValues(
+                                    alpha: 0.4,
+                                  ),
+                          ),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              preset.$4,
+                              size: 15,
+                              color: isSelected
+                                  ? colorScheme.onPrimary
+                                  : colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              preset.$3,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: isSelected
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                                color: isSelected
+                                    ? colorScheme.onPrimary
+                                    : colorScheme.onSurface,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   double _filterMenuWidth(BuildContext context) {

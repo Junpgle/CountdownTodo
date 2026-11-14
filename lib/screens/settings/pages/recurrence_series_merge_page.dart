@@ -279,6 +279,16 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
                           )
                         : ListView.builder(
                             padding: const EdgeInsets.fromLTRB(16, 4, 16, 112),
+                            findChildIndexCallback: (Key key) {
+                              if (key is ValueKey<String>) {
+                                final id = key.value;
+                                final index = filtered.indexWhere(
+                                  (s) => s.id == id,
+                                );
+                                return index != -1 ? index : null;
+                              }
+                              return null;
+                            },
                             itemCount: filtered.length,
                             itemBuilder: (context, index) {
                               return _buildSeriesCard(filtered[index]);
@@ -297,99 +307,103 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
     final selected = _selectedSeriesIds.contains(summary.id);
     final isTarget = _targetSeriesId == summary.id;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      elevation: 0,
-      color: selected
-          ? colorScheme.primaryContainer.withValues(alpha: 0.55)
-          : colorScheme.surfaceContainerLow,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: selected ? colorScheme.primary : colorScheme.outlineVariant,
-          width: selected ? 1.5 : 1,
+    return RepaintBoundary(
+      key: ValueKey<String>(summary.id),
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 10),
+        elevation: 0,
+        color: selected
+            ? colorScheme.primaryContainer.withValues(alpha: 0.55)
+            : colorScheme.surfaceContainerLow,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: selected ? colorScheme.primary : colorScheme.outlineVariant,
+            width: selected ? 1.5 : 1,
+          ),
         ),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => _toggleSeries(summary.id, !selected),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 8, 12, 8),
-          child: Row(
-            children: [
-              Checkbox(
-                value: selected,
-                onChanged: (value) => _toggleSeries(summary.id, value ?? false),
-              ),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            summary.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        if (summary.hasActiveRule)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 6),
-                            child: Icon(
-                              Icons.repeat_rounded,
-                              size: 17,
-                              color: colorScheme.primary,
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      '${_formatRange(summary)} · ${summary.completedCount}/${summary.occurrenceCount} 期已完成'
-                      '${summary.conflictCount > 0 ? ' · ${summary.conflictCount} 条冲突' : ''}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      '系列 ${_shortSeriesId(summary.id)}',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => _toggleSeries(summary.id, !selected),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 8, 12, 8),
+            child: Row(
+              children: [
+                Checkbox(
+                  value: selected,
+                  onChanged: (value) =>
+                      _toggleSeries(summary.id, value ?? false),
                 ),
-              ),
-              if (selected) ...[
-                const SizedBox(width: 8),
-                isTarget
-                    ? Chip(
-                        avatar: Icon(
-                          Icons.flag_rounded,
-                          size: 16,
-                          color: colorScheme.onPrimaryContainer,
-                        ),
-                        label: const Text('主系列'),
-                        backgroundColor: colorScheme.primaryContainer,
-                        side: BorderSide.none,
-                      )
-                    : TextButton(
-                        onPressed: () =>
-                            setState(() => _targetSeriesId = summary.id),
-                        child: const Text('设为主系列'),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              summary.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          if (summary.hasActiveRule)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 6),
+                              child: Icon(
+                                Icons.repeat_rounded,
+                                size: 17,
+                                color: colorScheme.primary,
+                              ),
+                            ),
+                        ],
                       ),
+                      const SizedBox(height: 5),
+                      Text(
+                        '${_formatRange(summary)} · ${summary.completedCount}/${summary.occurrenceCount} 期已完成'
+                        '${summary.conflictCount > 0 ? ' · ${summary.conflictCount} 条冲突' : ''}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '系列 ${_shortSeriesId(summary.id)}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (selected) ...[
+                  const SizedBox(width: 8),
+                  isTarget
+                      ? Chip(
+                          avatar: Icon(
+                            Icons.flag_rounded,
+                            size: 16,
+                            color: colorScheme.onPrimaryContainer,
+                          ),
+                          label: const Text('主系列'),
+                          backgroundColor: colorScheme.primaryContainer,
+                          side: BorderSide.none,
+                        )
+                      : TextButton(
+                          onPressed: () =>
+                              setState(() => _targetSeriesId = summary.id),
+                          child: const Text('设为主系列'),
+                        ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

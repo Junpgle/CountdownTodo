@@ -93,6 +93,17 @@ class SystemSection extends StatelessWidget {
               subtitle: const Text('包含更新残留包与深度图片缓存'),
               trailing: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 300),
+                transitionBuilder: (child, animation) => AnimatedBuilder(
+                  animation: animation,
+                  child: child,
+                  builder: (context, child) {
+                    if (animation.value <= 0.001) {
+                      return const SizedBox.shrink();
+                    }
+                    if (animation.value >= 0.999) return child!;
+                    return FadeTransition(opacity: animation, child: child);
+                  },
+                ),
                 child: Text(
                   cacheSizeStr,
                   key: ValueKey(cacheSizeStr),

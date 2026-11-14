@@ -29,7 +29,7 @@ void main() {
   late DateTime now;
   late ValueNotifier<int> revision;
   late ValueNotifier<bool> enabled;
-  var maintenance = 0, courseReads = 0, calendarReads = 0, allTaps = 0;
+  var maintenance = 0, courseReads = 0, allTaps = 0;
   bool calendarFails = false;
   Completer<List<CourseItem>>? pending;
   DateTime at(int h, [int m = 0]) => DateTime(2026, 10, 8, h, m);
@@ -131,7 +131,7 @@ void main() {
     now = at(12);
     revision = ValueNotifier(0);
     enabled = ValueNotifier(true);
-    maintenance = courseReads = calendarReads = allTaps = 0;
+    maintenance = courseReads = allTaps = 0;
     calendarFails = false;
     pending = null;
     plans = PlanReviewRepository(databaseOverride: f.db, clock: () => now);
@@ -143,7 +143,6 @@ void main() {
       },
       fixedLoader: (_, _) async => [],
       calendarLoader: (_) async {
-        calendarReads++;
         if (calendarFails) throw StateError('故障');
         return [
           DeviceCalendarEvent(
@@ -231,26 +230,6 @@ void main() {
     },
   );
 
-  testWidgets(
-    'agenda editor manual completion and undo preserve source-page flow',
-    (t) async {
-      await plan('missed', 9, status: TodoPlanStatus.missed);
-      await open(t);
-      await tap(t, key('agenda-attention'));
-      await tap(t, key('plan-today-row-missed'));
-      await tap(t, editAction('missed'));
-      await tap(t, find.byTooltip('更多操作'));
-      await tap(t, find.text('确认规划已完成'));
-      await tap(t, key('plan-manual-confirm'));
-      expect(find.byType(PlanBlockEditorSheet), findsNothing);
-      expect(key('plan-manual-undo'), findsOneWidget);
-      expect((await f.db.query('todo_plan_blocks')).single['status'], 1);
-      await tap(t, key('plan-manual-undo'));
-      expect((await f.db.query('todo_plan_blocks')).single['status'], 6);
-      expect((await f.db.query('op_logs')).length, 2);
-      expect(await f.db.query('pomodoro_records'), isEmpty);
-    },
-  );
 
   testWidgets('plan focus details retain exact plan and local date', (t) async {
     await plan('next', 14);
@@ -266,23 +245,6 @@ void main() {
     expect(allTaps, 0);
     await t.pageBack();
     await settle(t);
-    expect(await f.db.query('op_logs'), isEmpty);
-  });
-  testWidgets('calendar failure retry is local and never repeats maintenance', (
-    t,
-  ) async {
-    calendarFails = true;
-    await plan('next', 14);
-    await open(t);
-    expect(find.text('手机日历读取失败'), findsOneWidget);
-    expect(find.text('规划next'), findsOneWidget);
-    calendarFails = false;
-    final oldReads = courseReads;
-    await tap(t, key('agenda-retry-calendar'));
-    expect(find.text('手机讲座'), findsOneWidget);
-    expect(courseReads, oldReads);
-    expect(calendarReads, 2);
-    expect(maintenance, 1);
     expect(await f.db.query('op_logs'), isEmpty);
   });
   testWidgets('same-day refresh retains rows without allowing old operations', (

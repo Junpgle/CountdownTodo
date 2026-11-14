@@ -1105,6 +1105,15 @@ class _PlanReviewDetailScreenState
           key: PageStorageKey('review-detail-${widget.filter.name}'),
           padding: const EdgeInsets.all(16),
           itemCount: _rows.length + 2,
+          findChildIndexCallback: (Key key) {
+            if (key is ValueKey<String> &&
+                key.value.startsWith('review-row-')) {
+              final sub = key.value.substring('review-row-'.length);
+              final i = _rows.indexWhere((e) => '${e.kind}-${e.id}' == sub);
+              return i == -1 ? null : i + 1;
+            }
+            return null;
+          },
           itemBuilder: (context, index) {
             if (index == 0) {
               return Center(
@@ -1189,52 +1198,59 @@ class _PlanReviewDetailScreenState
 
             final e = _rows[index - 1];
             return Center(
+              key: ValueKey('review-row-${e.kind}-${e.id}'),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 900),
                 child: SizedBox(
                   width: double.infinity,
-                  child: Card(
-                    margin: const EdgeInsets.symmetric(vertical: 5),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          InkWell(
-                            key: ValueKey('review-entry-${e.kind}-${e.id}'),
-                            onTap: () => _openEntry(e),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 4),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    e.title,
-                                    style: theme.textTheme.titleMedium,
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(_period(e)),
-                                  Text(
-                                    '${e.kind == 'plan'
-                                        ? '计划'
-                                        : e.kind == 'log'
-                                        ? '日志'
-                                        : '专注'} ${e.verified ? reviewDuration(e.seconds) : '时长待核对'}${e.reason.isEmpty ? '' : ' · ${e.reason}'}',
-                                  ),
-                                ],
+                  child: RepaintBoundary(
+                    child: Card(
+                      margin: const EdgeInsets.symmetric(vertical: 5),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            InkWell(
+                              key: ValueKey('review-entry-${e.kind}-${e.id}'),
+                              onTap: () => _openEntry(e),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 4,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      e.title,
+                                      style: theme.textTheme.titleMedium,
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(_period(e)),
+                                    Text(
+                                      '${e.kind == 'plan'
+                                          ? '计划'
+                                          : e.kind == 'log'
+                                          ? '日志'
+                                          : '专注'} ${e.verified ? reviewDuration(e.seconds) : '时长待核对'}${e.reason.isEmpty ? '' : ' · ${e.reason}'}',
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                          if (e.kind == 'plan' && e.values['status'] == 6)
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: TextButton(
-                                key: ValueKey('plan-stats-all-recover-${e.id}'),
-                                onPressed: () => _recover(e),
-                                child: const Text('重新安排'),
+                            if (e.kind == 'plan' && e.values['status'] == 6)
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: TextButton(
+                                  key: ValueKey(
+                                    'plan-stats-all-recover-${e.id}',
+                                  ),
+                                  onPressed: () => _recover(e),
+                                  child: const Text('重新安排'),
+                                ),
                               ),
-                            ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),

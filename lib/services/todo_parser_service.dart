@@ -48,6 +48,19 @@ class ParsedTodoResult {
 
   bool get hasContent => title.isNotEmpty;
 
+  /// 待办（TodoItem）没有独立的 location 字段，合并 location 与 remark 作为待办备注。
+  String? get effectiveTodoRemark {
+    final loc = location?.trim();
+    final rem = remark?.trim();
+    if (loc != null && loc.isNotEmpty && rem != null && rem.isNotEmpty) {
+      if (rem == loc || rem.contains(loc)) return rem;
+      return '$loc · $rem';
+    }
+    if (rem != null && rem.isNotEmpty) return rem;
+    if (loc != null && loc.isNotEmpty) return loc;
+    return null;
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'title': title,
@@ -83,8 +96,8 @@ class TodoParserService {
       r'在([\u4e00-\u9fa5]{2,10}(?:图书馆|教室|办公室|会议室|学校|公司|食堂|超市|公园|医院|餐厅|咖啡厅|酒店|机场|车站|广场|体育馆|商场|社区|中心|家里|家|店里|楼上|楼下))',
     ),
     RegExp(r'地点[：:]\s*([^\s，,。！!]{1,20})'),
-    RegExp(r'备注[：:]\s*([^\s，,。！!]{1,30})'),
   ];
+  static final _remarkPattern = RegExp(r'备注[：:]\s*([^\s，,。！!]{1,30})');
   static final _recurrencePatterns = <(RegExp, RecurrenceType, int)>[
     (RegExp(r'每天|天天|每日'), RecurrenceType.daily, 0),
     (RegExp(r'每周|每星期|每礼拜'), RecurrenceType.weekly, 0),
@@ -236,6 +249,7 @@ class TodoParserService {
       masked = masked.replaceRange(m.start, m.end, ' ' * (m.end - m.start));
     }
 
+    String? location;
     String? remark;
     RecurrenceType recurrence = RecurrenceType.none;
     int? customIntervalDays;
@@ -248,20 +262,27 @@ class TodoParserService {
     DateTime? endTime;
     bool isAllDay = false;
 
-    // 1. 提取地点 / 备注 (Location)
+    // 1. 提取地点 / 备注 (Location & Remark)
     final atMatch = _atPattern.firstMatch(masked);
     if (atMatch != null) {
-      remark = atMatch.group(1)!;
+      location = atMatch.group(1)!;
       applyMask(atMatch, SegmentType.location);
     } else {
       for (final p in _locationPatterns) {
         final m = p.firstMatch(masked);
         if (m != null) {
-          remark = m.groupCount >= 1 ? m.group(1) : m.group(0);
+          location = m.groupCount >= 1 ? m.group(1) : m.group(0);
           applyMask(m, SegmentType.location);
           break;
         }
       }
+    }
+    final remarkMatch = _remarkPattern.firstMatch(masked);
+    if (remarkMatch != null) {
+      remark = remarkMatch.groupCount >= 1
+          ? remarkMatch.group(1)
+          : remarkMatch.group(0);
+      applyMask(remarkMatch, SegmentType.location);
     }
 
     // 2. 提取重复规则 (Recurrence)
@@ -476,6 +497,7 @@ class TodoParserService {
     return ParsedTodoResult(
       title: finalTitle,
       remark: remark,
+      location: location,
       isAllDay: isAllDay,
       startTime: startTime,
       endTime: endTime,

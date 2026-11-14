@@ -1604,6 +1604,180 @@ class _PlanGridViewState extends State<_PlanGridView>
         2.0,
         width * segmentEnd.difference(segmentStart).inMinutes / 60,
       );
+      final segmentChild = IgnorePointer(
+        ignoring:
+            previewOnly || (_gesture != null && _gesture!.block.id != block.id),
+        child: GestureDetector(
+          key: !previewOnly && isStartSegment
+              ? _sourceKeyFor(block)
+              : ValueKey(
+                  '${previewOnly ? 'plan-preview' : 'plan-drag-block'}-${block.id}-$hour',
+                ),
+          onTap: widget.dragBusy || _gesture != null
+              ? null
+              : isMappedBlock
+              ? () => _openMappedBlockDetail(block)
+              : () =>
+                    _showEditBlockSheet(block, sourceKey: _sourceKeyFor(block)),
+          onLongPressStart: canDrag
+              ? (details) => _beginGesture(
+                  block,
+                  PlanDragKind.move,
+                  details.globalPosition,
+                )
+              : null,
+          onLongPressMoveUpdate: canDrag
+              ? (details) =>
+                    _updateGesture(details.globalPosition, width, hourH)
+              : null,
+          onLongPressEnd: canDrag ? (_) => unawaited(_finishGesture()) : null,
+          onLongPressCancel: canDrag ? _cancelGesture : null,
+          onPanStart: canDrag || previewOnly
+              ? null
+              : (_) => _clearRecordSelection(),
+          onPanUpdate: canDrag || previewOnly ? null : (_) {},
+          onPanEnd: canDrag || previewOnly ? null : (_) {},
+          child: Stack(
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(5),
+                  border: Border.all(color: color.withValues(alpha: 0.4)),
+                ),
+                padding: EdgeInsets.symmetric(
+                  horizontal: 5,
+                  vertical: laneCount > 1 ? 0 : 1,
+                ),
+                child: segmentW < 28
+                    ? const SizedBox.shrink()
+                    : Row(
+                        children: [
+                          Icon(
+                            block.status == TodoPlanStatus.finished
+                                ? Icons.check_circle
+                                : icon,
+                            size: min(10.0, contentFontSize),
+                            color: color,
+                          ),
+                          const SizedBox(width: 3),
+                          Expanded(
+                            child: Text(
+                              block.titleSnapshot ?? todo?.title ?? '未知待办',
+                              style: TextStyle(
+                                fontSize: contentFontSize,
+                                fontWeight: FontWeight.bold,
+                                color: color,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ),
+                          if (segmentW >
+                                  100 *
+                                      MediaQuery.textScalerOf(context)
+                                          .scale(1) &&
+                              isMappedBlock) ...[
+                            const SizedBox(width: 4),
+                            Text(
+                              mappedBadgeLabel,
+                              style: TextStyle(
+                                fontSize: min(8.0, contentFontSize),
+                                fontWeight: FontWeight.w700,
+                                color: color.withValues(alpha: 0.72),
+                              ),
+                              maxLines: 1,
+                            ),
+                          ],
+                          if (segmentW >
+                              180 * MediaQuery.textScalerOf(context).scale(1))
+                            Text(
+                              '${_todoPlanDateFormat('HH:mm').format(start)}-${_todoPlanDateFormat('HH:mm').format(end)}',
+                              style: TextStyle(
+                                fontSize: min(8.0, contentFontSize),
+                                color: color.withValues(alpha: 0.72),
+                              ),
+                              maxLines: 1,
+                            ),
+                        ],
+                      ),
+              ),
+              if (isStartSegment && !isMappedBlock && (canDrag || previewOnly))
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: 12,
+                  child: GestureDetector(
+                    key: ValueKey(
+                      '${previewOnly ? 'preview-' : ''}plan-resize-start-${block.id}',
+                    ),
+                    behavior: HitTestBehavior.translucent,
+                    dragStartBehavior: DragStartBehavior.down,
+                    onHorizontalDragStart: canDrag
+                        ? (details) => _beginGesture(
+                            block,
+                            PlanDragKind.resizeStart,
+                            details.globalPosition,
+                          )
+                        : null,
+                    onHorizontalDragUpdate: canDrag
+                        ? (details) => _updateGesture(
+                            details.globalPosition,
+                            width,
+                            hourH,
+                          )
+                        : null,
+                    onHorizontalDragEnd: canDrag
+                        ? (_) => unawaited(_finishGesture())
+                        : null,
+                    onHorizontalDragCancel: canDrag ? _cancelGesture : null,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Container(width: 3, color: color),
+                    ),
+                  ),
+                ),
+              if (isEndSegment && !isMappedBlock && (canDrag || previewOnly))
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: 12,
+                  child: GestureDetector(
+                    key: ValueKey(
+                      '${previewOnly ? 'preview-' : ''}plan-resize-end-${block.id}',
+                    ),
+                    behavior: HitTestBehavior.translucent,
+                    dragStartBehavior: DragStartBehavior.down,
+                    onHorizontalDragStart: canDrag
+                        ? (details) => _beginGesture(
+                            block,
+                            PlanDragKind.resizeEnd,
+                            details.globalPosition,
+                          )
+                        : null,
+                    onHorizontalDragUpdate: canDrag
+                        ? (details) => _updateGesture(
+                            details.globalPosition,
+                            width,
+                            hourH,
+                          )
+                        : null,
+                    onHorizontalDragEnd: canDrag
+                        ? (_) => unawaited(_finishGesture())
+                        : null,
+                    onHorizontalDragCancel: canDrag ? _cancelGesture : null,
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Container(width: 3, color: color),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
       widgets.add(
         Positioned(
           key: ValueKey(
@@ -1613,200 +1787,9 @@ class _PlanGridViewState extends State<_PlanGridView>
           left: left + 1,
           width: max(1.0, segmentW - 2),
           height: segmentHeight,
-          child: Opacity(
-            opacity: hiddenAnchor ? 0 : 1,
-            child: IgnorePointer(
-              ignoring:
-                  previewOnly ||
-                  (_gesture != null && _gesture!.block.id != block.id),
-              child: GestureDetector(
-                key: !previewOnly && isStartSegment
-                    ? _sourceKeyFor(block)
-                    : ValueKey(
-                        '${previewOnly ? 'plan-preview' : 'plan-drag-block'}-${block.id}-$hour',
-                      ),
-                onTap: widget.dragBusy || _gesture != null
-                    ? null
-                    : isMappedBlock
-                    ? () => _openMappedBlockDetail(block)
-                    : () => _showEditBlockSheet(
-                        block,
-                        sourceKey: _sourceKeyFor(block),
-                      ),
-                onLongPressStart: canDrag
-                    ? (details) => _beginGesture(
-                        block,
-                        PlanDragKind.move,
-                        details.globalPosition,
-                      )
-                    : null,
-                onLongPressMoveUpdate: canDrag
-                    ? (details) =>
-                          _updateGesture(details.globalPosition, width, hourH)
-                    : null,
-                onLongPressEnd: canDrag
-                    ? (_) => unawaited(_finishGesture())
-                    : null,
-                onLongPressCancel: canDrag ? _cancelGesture : null,
-                onPanStart: canDrag || previewOnly
-                    ? null
-                    : (_) => _clearRecordSelection(),
-                onPanUpdate: canDrag || previewOnly ? null : (_) {},
-                onPanEnd: canDrag || previewOnly ? null : (_) {},
-                child: Stack(
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        color: color.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(5),
-                        border: Border.all(color: color.withValues(alpha: 0.4)),
-                      ),
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 5,
-                        vertical: laneCount > 1 ? 0 : 1,
-                      ),
-                      child: segmentW < 28
-                          ? const SizedBox.shrink()
-                          : Row(
-                              children: [
-                                Icon(
-                                  block.status == TodoPlanStatus.finished
-                                      ? Icons.check_circle
-                                      : icon,
-                                  size: min(10.0, contentFontSize),
-                                  color: color,
-                                ),
-                                const SizedBox(width: 3),
-                                Expanded(
-                                  child: Text(
-                                    block.titleSnapshot ??
-                                        todo?.title ??
-                                        '未知待办',
-                                    style: TextStyle(
-                                      fontSize: contentFontSize,
-                                      fontWeight: FontWeight.bold,
-                                      color: color,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                    maxLines: 1,
-                                  ),
-                                ),
-                                if (segmentW >
-                                        100 *
-                                            MediaQuery.textScalerOf(context)
-                                                .scale(1) &&
-                                    isMappedBlock) ...[
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    mappedBadgeLabel,
-                                    style: TextStyle(
-                                      fontSize: min(8.0, contentFontSize),
-                                      fontWeight: FontWeight.w700,
-                                      color: color.withValues(alpha: 0.72),
-                                    ),
-                                    maxLines: 1,
-                                  ),
-                                ],
-                                if (segmentW >
-                                    180 *
-                                        MediaQuery.textScalerOf(context)
-                                            .scale(1))
-                                  Text(
-                                    '${_todoPlanDateFormat('HH:mm').format(start)}-${_todoPlanDateFormat('HH:mm').format(end)}',
-                                    style: TextStyle(
-                                      fontSize: min(8.0, contentFontSize),
-                                      color: color.withValues(alpha: 0.72),
-                                    ),
-                                    maxLines: 1,
-                                  ),
-                              ],
-                            ),
-                    ),
-                    if (isStartSegment &&
-                        !isMappedBlock &&
-                        (canDrag || previewOnly))
-                      Positioned(
-                        left: 0,
-                        top: 0,
-                        bottom: 0,
-                        width: 12,
-                        child: GestureDetector(
-                          key: ValueKey(
-                            '${previewOnly ? 'preview-' : ''}plan-resize-start-${block.id}',
-                          ),
-                          behavior: HitTestBehavior.translucent,
-                          dragStartBehavior: DragStartBehavior.down,
-                          onHorizontalDragStart: canDrag
-                              ? (details) => _beginGesture(
-                                  block,
-                                  PlanDragKind.resizeStart,
-                                  details.globalPosition,
-                                )
-                              : null,
-                          onHorizontalDragUpdate: canDrag
-                              ? (details) => _updateGesture(
-                                  details.globalPosition,
-                                  width,
-                                  hourH,
-                                )
-                              : null,
-                          onHorizontalDragEnd: canDrag
-                              ? (_) => unawaited(_finishGesture())
-                              : null,
-                          onHorizontalDragCancel: canDrag
-                              ? _cancelGesture
-                              : null,
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: Container(width: 3, color: color),
-                          ),
-                        ),
-                      ),
-                    if (isEndSegment &&
-                        !isMappedBlock &&
-                        (canDrag || previewOnly))
-                      Positioned(
-                        right: 0,
-                        top: 0,
-                        bottom: 0,
-                        width: 12,
-                        child: GestureDetector(
-                          key: ValueKey(
-                            '${previewOnly ? 'preview-' : ''}plan-resize-end-${block.id}',
-                          ),
-                          behavior: HitTestBehavior.translucent,
-                          dragStartBehavior: DragStartBehavior.down,
-                          onHorizontalDragStart: canDrag
-                              ? (details) => _beginGesture(
-                                  block,
-                                  PlanDragKind.resizeEnd,
-                                  details.globalPosition,
-                                )
-                              : null,
-                          onHorizontalDragUpdate: canDrag
-                              ? (details) => _updateGesture(
-                                  details.globalPosition,
-                                  width,
-                                  hourH,
-                                )
-                              : null,
-                          onHorizontalDragEnd: canDrag
-                              ? (_) => unawaited(_finishGesture())
-                              : null,
-                          onHorizontalDragCancel: canDrag
-                              ? _cancelGesture
-                              : null,
-                          child: Align(
-                            alignment: Alignment.centerRight,
-                            child: Container(width: 3, color: color),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+          child: hiddenAnchor
+              ? Offstage(offstage: true, child: segmentChild)
+              : segmentChild,
         ),
       );
     }

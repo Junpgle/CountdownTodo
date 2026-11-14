@@ -781,6 +781,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
           remotePomodoro.mode == 1,
         );
       }
+      unawaited(_syncService.resumeFromBackground());
       if (shouldRunFullRefresh) {
         // 尊重用户配置的自动同步间隔。通知栏、权限弹窗等短暂失焦
         // 不再触发网络同步、更新检查和四组首页数据重建。
@@ -797,7 +798,6 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
           _pomodoroRevision.value++;
           _habitsRevision.value++;
         }
-        unawaited(_syncService.resumeFromBackground());
         unawaited(_checkClipboardShareAfterResume());
         NotificationService.cancelSpecialTodoNotification(12351);
         NotificationService.cancelTodoRecognizeNotification();

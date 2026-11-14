@@ -244,6 +244,7 @@ Future<DateTime?> showAppDatePicker({
       const GregorianCalendarDelegate(),
   SemesterWeekContext? semesterWeekContext,
 }) {
+  FocusManager.instance.primaryFocus?.unfocus();
   final effectiveCalendarDelegate = semesterWeekContext == null
       ? calendarDelegate
       : SemesterWeekCalendarDelegate(
@@ -326,6 +327,7 @@ Future<DateTimeRange?> showAppDateRangePicker({
   CalendarDelegate<DateTime> calendarDelegate =
       const GregorianCalendarDelegate(),
 }) {
+  FocusManager.instance.primaryFocus?.unfocus();
   return showDateRangePicker(
     context: context,
     initialDateRange: initialDateRange,
@@ -388,6 +390,7 @@ Future<TimeOfDay?> showAppTimePicker({
   Icon? switchToTimerEntryModeIcon,
   bool emptyInitialInput = false,
 }) {
+  FocusManager.instance.primaryFocus?.unfocus();
   return showTimePicker(
     context: context,
     initialTime: initialTime,

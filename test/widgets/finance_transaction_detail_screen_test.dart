@@ -146,7 +146,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('概览支持月周日视图并禁用超出选中月的导航', (tester) async {
+  testWidgets('概览支持月周日视图且周日视图支持向前跨月翻页', (tester) async {
     final transaction = FinanceTransaction(
       uuid: 'overview-transaction',
       amountMinor: 1200,
@@ -205,7 +205,7 @@ void main() {
             find.byKey(const ValueKey('finance-overview-period-previous')),
           )
           .onPressed,
-      isNull,
+      isNotNull,
     );
     await tester.tap(
       find.byKey(const ValueKey('finance-overview-period-next')),
@@ -242,7 +242,7 @@ void main() {
             find.byKey(const ValueKey('finance-overview-period-previous')),
           )
           .onPressed,
-      isNull,
+      isNotNull,
     );
     expect(tester.takeException(), isNull);
   });

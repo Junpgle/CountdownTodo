@@ -71,7 +71,14 @@ class FeatureTipService {
     ('MedalWallPage', ['medal_wall_achievements']),
     ('JournalHomeScreen', ['private_journal']),
     ('JournalTrashScreen', ['journal_recycle_bin']),
-    ('FinanceHomeScreen', ['finance_and_ai_bill', 'finance_calendar_view']),
+    (
+      'FinanceHomeScreen',
+      [
+        'finance_and_ai_bill',
+        'finance_budget_and_insights',
+        'finance_calendar_view',
+      ],
+    ),
     ('FinanceCalendarPanel', ['finance_calendar_view']),
     ('FinanceAutomationScreen', ['finance_recurring_and_templates']),
     ('FinanceFutureCommitmentsScreen', ['finance_loans_and_commitments']),

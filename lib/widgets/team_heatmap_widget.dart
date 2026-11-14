@@ -79,41 +79,45 @@ class _TeamHeatmapWidgetState extends State<TeamHeatmapWidget> {
           height: 90,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
+            itemExtent: 16.0,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: weeks, // 动态周数
             itemBuilder: (context, weekIdx) {
-              return Padding(
-                padding: const EdgeInsets.only(right: 6),
-                child: Column(
-                  children: List.generate(7, (dayIdx) {
-                    final date = today.subtract(
-                      Duration(
-                        days: ((weeks - 1 - weekIdx) * 7 + (6 - dayIdx))
-                            .toInt(),
-                      ),
-                    );
-                    final count = density[_dateKey(date)] ?? 0;
-                    int intensity = 0;
-                    if (count > 0 && count <= 2) {
-                      intensity = 1;
-                    } else if (count > 2 && count <= 5) {
-                      intensity = 2;
-                    } else if (count > 5 && count <= 9) {
-                      intensity = 3;
-                    } else if (count > 9) {
-                      intensity = 4;
-                    }
+              return RepaintBoundary(
+                key: ValueKey<int>(weekIdx),
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: Column(
+                    children: List.generate(7, (dayIdx) {
+                      final date = today.subtract(
+                        Duration(
+                          days: ((weeks - 1 - weekIdx) * 7 + (6 - dayIdx))
+                              .toInt(),
+                        ),
+                      );
+                      final count = density[_dateKey(date)] ?? 0;
+                      int intensity = 0;
+                      if (count > 0 && count <= 2) {
+                        intensity = 1;
+                      } else if (count > 2 && count <= 5) {
+                        intensity = 2;
+                      } else if (count > 5 && count <= 9) {
+                        intensity = 3;
+                      } else if (count > 9) {
+                        intensity = 4;
+                      }
 
-                    return Container(
-                      width: 10,
-                      height: 10,
-                      margin: const EdgeInsets.only(bottom: 2),
-                      decoration: BoxDecoration(
-                        color: _getHeatmapColor(intensity, isDark),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    );
-                  }),
+                      return Container(
+                        width: 10,
+                        height: 10,
+                        margin: const EdgeInsets.only(bottom: 2),
+                        decoration: BoxDecoration(
+                          color: _getHeatmapColor(intensity, isDark),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      );
+                    }),
+                  ),
                 ),
               );
             },

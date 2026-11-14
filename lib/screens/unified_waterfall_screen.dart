@@ -473,6 +473,15 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                                     isLast:
                                         index == _allCombinedTodos.length - 1,
                                   ),
+                                  findChildIndexCallback: (Key key) {
+                                    if (key is ValueKey<String>) {
+                                      final id = key.value;
+                                      final index = _allCombinedTodos
+                                          .indexWhere((t) => t.id == id);
+                                      return index != -1 ? index : null;
+                                    }
+                                    return null;
+                                  },
                                   childCount: _allCombinedTodos.length,
                                 ),
                               ),
@@ -554,155 +563,158 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
         ? Theme.of(context).colorScheme.primary
         : Colors.orange;
 
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // 左侧时间点与团队标识线
-          SizedBox(
-            width: 24,
-            child: Column(
-              children: [
-                const SizedBox(height: 24), // 对齐卡片视觉中心
-                Container(
-                  width: 14,
-                  height: 14,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).scaffoldBackgroundColor,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: teamColor, width: 3),
-                  ),
-                ),
-                if (!isLast)
-                  Expanded(
-                    child: Container(
-                      width: 2,
-                      margin: const EdgeInsets.only(top: 4),
-                      decoration: BoxDecoration(
-                        color: teamColor.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(1),
-                      ),
+    return RepaintBoundary(
+      key: ValueKey<String>(todo.id),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // 左侧时间点与团队标识线
+            SizedBox(
+              width: 24,
+              child: Column(
+                children: [
+                  const SizedBox(height: 24), // 对齐卡片视觉中心
+                  Container(
+                    width: 14,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: teamColor, width: 3),
                     ),
                   ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          // 右侧卡片内容
-          Expanded(
-            child: OptionalLiquidGlassCard(
-              margin: const EdgeInsets.only(bottom: 16),
-              padding: const EdgeInsets.all(16),
-              borderRadius: 20,
-              fallbackDecoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: isDark ? Colors.white10 : Colors.transparent,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: isDark
-                        ? Colors.black.withValues(alpha: 0.2)
-                        : Colors.black.withValues(alpha: 0.03),
-                    blurRadius: 15,
-                    offset: const Offset(0, 5),
-                  ),
+                  if (!isLast)
+                    Expanded(
+                      child: Container(
+                        width: 2,
+                        margin: const EdgeInsets.only(top: 4),
+                        decoration: BoxDecoration(
+                          color: teamColor.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(1),
+                        ),
+                      ),
+                    ),
                 ],
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      // 🚀 优化的标签样式
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
+            ),
+            const SizedBox(width: 12),
+            // 右侧卡片内容
+            Expanded(
+              child: OptionalLiquidGlassCard(
+                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.all(16),
+                borderRadius: 20,
+                fallbackDecoration: BoxDecoration(
+                  color: Theme.of(context).cardColor,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isDark ? Colors.white10 : Colors.transparent,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: isDark
+                          ? Colors.black.withValues(alpha: 0.2)
+                          : Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 15,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        // 🚀 优化的标签样式
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: teamColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isTeamTask
+                                    ? Icons.group_rounded
+                                    : Icons.person_rounded,
+                                size: 10,
+                                color: teamColor,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                isTeamTask
+                                    ? _safeStr(todo.teamName ?? '未知团队')
+                                    : "个人私密",
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: teamColor,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                        decoration: BoxDecoration(
-                          color: teamColor.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
+                        const Spacer(),
+                        Row(
                           children: [
                             Icon(
-                              isTeamTask
-                                  ? Icons.group_rounded
-                                  : Icons.person_rounded,
-                              size: 10,
-                              color: teamColor,
+                              Icons.schedule_rounded,
+                              size: 12,
+                              color: Colors.grey,
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              isTeamTask
-                                  ? _safeStr(todo.teamName ?? '未知团队')
-                                  : "个人私密",
+                              _safeStr(
+                                TimezoneUtils.getRelativeTime(
+                                  todo.dueDate?.millisecondsSinceEpoch ??
+                                      todo.updatedAt,
+                                ),
+                              ),
                               style: TextStyle(
-                                fontSize: 10,
-                                color: teamColor,
-                                fontWeight: FontWeight.bold,
+                                fontSize: 11,
+                                color: isDark ? Colors.grey : Colors.grey,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ],
                         ),
-                      ),
-                      const Spacer(),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.schedule_rounded,
-                            size: 12,
-                            color: Colors.grey,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            _safeStr(
-                              TimezoneUtils.getRelativeTime(
-                                todo.dueDate?.millisecondsSinceEpoch ??
-                                    todo.updatedAt,
-                              ),
-                            ),
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: isDark ? Colors.grey : Colors.grey,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    _safeStr(todo.title),
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      height: 1.3,
+                      ],
                     ),
-                  ),
-                  if (todo.remark != null && todo.remark!.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        _safeStr(todo.remark!),
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: isDark ? Colors.grey : Colors.grey,
-                          height: 1.4,
+                    const SizedBox(height: 12),
+                    Text(
+                      _safeStr(todo.title),
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        height: 1.3,
+                      ),
+                    ),
+                    if (todo.remark != null && todo.remark!.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          _safeStr(todo.remark!),
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: isDark ? Colors.grey : Colors.grey,
+                            height: 1.4,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -770,7 +782,8 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
             ),
             SliverPadding(
               padding: const EdgeInsets.all(16),
-              sliver: SliverList(
+              sliver: SliverFixedExtentList(
+                itemExtent: 112.0,
                 delegate: SliverChildBuilderDelegate(
                   (context, index) => Container(
                     height: 100,

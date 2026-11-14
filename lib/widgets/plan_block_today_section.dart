@@ -1225,7 +1225,11 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
         textDirection: Directionality.of(context),
         textScaler: MediaQuery.textScalerOf(context),
       )..layout();
-      return painter.width;
+      try {
+        return painter.width;
+      } finally {
+        painter.dispose();
+      }
     }
 
     final fits = List.generate(

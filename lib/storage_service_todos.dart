@@ -43,67 +43,7 @@ Future<bool> _fixedScheduleTodoSnapshotsMatch(
 }
 
 List<TodoItem> _parseTodoItemsIsolate(List<Map<String, dynamic>> maps) {
-  return maps
-      .map(
-        (m) => TodoItem(
-          id: m['uuid'],
-          title: m['content'] ?? '',
-          remark: m['remark'],
-          isDone: m['is_completed'] == 1,
-          isSkipped: m['is_skipped'] == 1 || m['is_skipped'] == true,
-          isSkippedSyncPending:
-              m['is_skipped_sync_pending'] == 1 ||
-              m['is_skipped_sync_pending'] == true,
-          isDeleted: m['is_deleted'] == 1,
-          version: m['version'] ?? 1,
-          updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
-          createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
-          createdDate: JsonValueParser.toNullableInt(m['created_date']),
-          dueDate:
-              (m['due_date'] != null &&
-                  m['due_date'].toString() != '0' &&
-                  m['due_date'].toString() != 'null' &&
-                  m['due_date'].toString().isNotEmpty)
-              ? DateTime.fromMillisecondsSinceEpoch(
-                  JsonValueParser.toInt(m['due_date']),
-                )
-              : null,
-          teamUuid: m['team_uuid'],
-          teamName: m['team_name'],
-          creatorId: m['creator_id'],
-          creatorName: m['creator_name'],
-          groupId: m['group_id'],
-          collabType: m['collab_type'] ?? 0,
-          recurrence:
-              RecurrenceType.values[(_parseNullableIntForIsolate(
-                        m['recurrence'],
-                      ) ??
-                      0)
-                  .clamp(0, RecurrenceType.values.length - 1)],
-          recurrenceSeriesId: m['recurrence_series_id']?.toString(),
-          customIntervalDays: _parseNullableIntForIsolate(
-            m['custom_interval_days'],
-          ),
-          recurrenceEndDate:
-              (m['recurrence_end_date'] != null &&
-                  m['recurrence_end_date'].toString() != '0')
-              ? DateTime.fromMillisecondsSinceEpoch(
-                  JsonValueParser.toInt(m['recurrence_end_date']),
-                )
-              : null,
-          reminderMinutes:
-              (m['reminder_minutes'] != null &&
-                  m['reminder_minutes'].toString() != '-1')
-              ? JsonValueParser.toNullableInt(m['reminder_minutes'])
-              : null,
-          imagePath: m['image_path']?.toString(),
-          originalText: m['original_text']?.toString(),
-          isAllDay: m['is_all_day'] == 1 || m['is_all_day'] == true,
-          hasConflict: m['has_conflict'] == 1 || m['has_conflict'] == true,
-          serverVersionData: JsonValueParser.toMap(m['conflict_data']),
-        ),
-      )
-      .toList();
+  return maps.map((m) => TodoItem.fromSql(m)).toList();
 }
 
 List<TodoItem> _parseTodoJsonItemsIsolate(List<String> jsonList) {
@@ -154,6 +94,7 @@ mixin _StorageTodos on _StorageServiceBase {
     'content',
     'remark',
     'is_completed',
+    'completed_at',
     'is_skipped',
     'is_skipped_sync_pending',
     'is_deleted',
@@ -213,6 +154,19 @@ mixin _StorageTodos on _StorageServiceBase {
     final dedupeMap = <String, TodoItem>{};
     if (sync && !isSyncSource) _recurrenceCheckCache.clear();
     for (final source in items) {
+      if (source.isDone && source.completedAt == null) {
+        final isRecurrence =
+            (source.recurrenceSeriesId != null &&
+                source.recurrenceSeriesId!.trim().isNotEmpty) ||
+            source.recurrence != RecurrenceType.none;
+        source.completedAt = isRecurrence
+            ? (source.createdDate ??
+                  source.dueDate?.millisecondsSinceEpoch ??
+                  source.createdAt)
+            : source.updatedAt;
+      } else if (!source.isDone && source.completedAt != null) {
+        source.completedAt = null;
+      }
       // Async reads must not share mutable UI objects with this write.
       var item = expectedTodoBaselines == null
           ? source.detachedCopy()
@@ -448,6 +402,19 @@ mixin _StorageTodos on _StorageServiceBase {
       }
       final batch = txn.batch();
       for (var item in candidates) {
+        if (item.isDone && item.completedAt == null) {
+          final isRecurrence =
+              (item.recurrenceSeriesId != null &&
+                  item.recurrenceSeriesId!.trim().isNotEmpty) ||
+              item.recurrence != RecurrenceType.none;
+          item.completedAt = isRecurrence
+              ? (item.createdDate ??
+                    item.dueDate?.millisecondsSinceEpoch ??
+                    item.createdAt)
+              : item.updatedAt;
+        } else if (!item.isDone && item.completedAt != null) {
+          item.completedAt = null;
+        }
         final oldData = existingById[item.id];
         final current = oldData == null ? null : TodoItem.fromSql(oldData);
         if (current != null) persistedItems[item.id] = current;
@@ -598,6 +565,7 @@ mixin _StorageTodos on _StorageServiceBase {
           'created_date': item.createdDate, // 业务开始时间可空，不回退到物理创建时间
           'created_at': item.createdAt,
           'updated_at': item.updatedAt,
+          'completed_at': item.completedAt,
           'collab_type': item.collabType,
           'recurrence': _normalizedRecurrenceIndex(item),
           'recurrence_series_id': item.recurrenceSeriesId,
@@ -1277,6 +1245,7 @@ mixin _StorageTodos on _StorageServiceBase {
         'title',
         'remark',
         'is_completed',
+        'completed_at',
         'is_deleted',
         'due_date',
         'target_time',
@@ -2028,7 +1997,9 @@ mixin _StorageTodos on _StorageServiceBase {
         t.is_deleted IS NOT 1 AND (
           (t.created_at >= $startMs AND t.created_at < $endMs) OR
           (t.due_date >= $startMs AND t.due_date < $endMs) OR
-          (t.updated_at >= $startMs AND t.updated_at < $endMs) OR
+          (t.is_completed = 0 AND t.updated_at >= $startMs AND t.updated_at < $endMs) OR
+          (t.is_completed = 1 AND COALESCE(t.completed_at, CASE WHEN TRIM(COALESCE(t.recurrence_series_id, '')) != '' THEN COALESCE(t.created_date, t.due_date, t.created_at, t.updated_at) ELSE t.updated_at END) >= $startMs AND
+           COALESCE(t.completed_at, CASE WHEN TRIM(COALESCE(t.recurrence_series_id, '')) != '' THEN COALESCE(t.created_date, t.due_date, t.created_at, t.updated_at) ELSE t.updated_at END) < $endMs) OR
           (TRIM(COALESCE(t.recurrence_series_id, '')) != '' AND
             COALESCE(t.created_date, t.created_at) >= $startMs AND
             COALESCE(t.created_date, t.created_at) < $endMs)
@@ -2090,9 +2061,15 @@ mixin _StorageTodos on _StorageServiceBase {
           seriesId.isNotEmpty &&
           isInRange(todo.createdDate ?? todo.createdAt);
       final dueAt = todo.dueDate?.millisecondsSinceEpoch;
+      final completedAt =
+          todo.completedAt ??
+          (seriesId != null && seriesId.isNotEmpty
+              ? (todo.createdDate ?? dueAt ?? todo.createdAt)
+              : null);
       return isInRange(todo.createdAt) ||
           (dueAt != null && isInRange(dueAt)) ||
-          isInRange(todo.updatedAt) ||
+          (completedAt != null && isInRange(completedAt)) ||
+          (!todo.isDone && isInRange(todo.updatedAt)) ||
           recurrenceStartInRange;
     }).toList();
   }
@@ -2211,70 +2188,7 @@ mixin _StorageTodos on _StorageServiceBase {
         if (maps.length > 50) {
           todos = await compute(_parseTodoItemsIsolate, maps);
         } else {
-          todos = maps
-              .map(
-                (m) => TodoItem(
-                  id: m['uuid'],
-                  title: m['content'] ?? '',
-                  remark: m['remark'],
-                  isDone: m['is_completed'] == 1,
-                  isSkipped: m['is_skipped'] == 1 || m['is_skipped'] == true,
-                  isSkippedSyncPending:
-                      m['is_skipped_sync_pending'] == 1 ||
-                      m['is_skipped_sync_pending'] == true,
-                  isDeleted: m['is_deleted'] == 1,
-                  version: m['version'] ?? 1,
-                  updatedAt:
-                      m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
-                  createdAt:
-                      m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
-                  createdDate: JsonValueParser.toNullableInt(m['created_date']),
-                  dueDate:
-                      (m['due_date'] != null &&
-                          m['due_date'].toString() != '0' &&
-                          m['due_date'].toString() != 'null' &&
-                          m['due_date'].toString().isNotEmpty)
-                      ? DateTime.fromMillisecondsSinceEpoch(
-                          JsonValueParser.toInt(m['due_date']),
-                        )
-                      : null,
-                  teamUuid: m['team_uuid'],
-                  teamName: m['team_name'],
-                  creatorId: m['creator_id'],
-                  creatorName: m['creator_name'],
-                  groupId: m['group_id'],
-                  collabType: m['collab_type'] ?? 0,
-                  recurrence:
-                      RecurrenceType.values[(_parseNullableInt(
-                                m['recurrence'],
-                              ) ??
-                              0)
-                          .clamp(0, RecurrenceType.values.length - 1)],
-                  recurrenceSeriesId: m['recurrence_series_id']?.toString(),
-                  customIntervalDays: _parseNullableInt(
-                    m['custom_interval_days'],
-                  ),
-                  recurrenceEndDate:
-                      (m['recurrence_end_date'] != null &&
-                          m['recurrence_end_date'].toString() != '0')
-                      ? DateTime.fromMillisecondsSinceEpoch(
-                          JsonValueParser.toInt(m['recurrence_end_date']),
-                        )
-                      : null,
-                  reminderMinutes:
-                      (m['reminder_minutes'] != null &&
-                          m['reminder_minutes'].toString() != '-1')
-                      ? JsonValueParser.toNullableInt(m['reminder_minutes'])
-                      : null,
-                  imagePath: m['image_path']?.toString(),
-                  originalText: m['original_text']?.toString(),
-                  isAllDay: m['is_all_day'] == 1 || m['is_all_day'] == true,
-                  hasConflict:
-                      m['has_conflict'] == 1 || m['has_conflict'] == true,
-                  serverVersionData: JsonValueParser.toMap(m['conflict_data']),
-                ),
-              )
-              .toList();
+          todos = maps.map((m) => TodoItem.fromSql(m)).toList();
         }
         final handledTodos = await _handleRecurrenceLogic(username, todos);
         final clearedScheduleConflicts = handledTodos
@@ -3310,6 +3224,7 @@ mixin _StorageTodos on _StorageServiceBase {
       }
       if (canonical.isDone != completionWinner.isDone) {
         canonical.isDone = completionWinner.isDone;
+        canonical.completedAt = completionWinner.completedAt;
         canonicalChanged = true;
       }
       if (canonical.recurrence != mergedRecurrence) {
@@ -3482,6 +3397,11 @@ mixin _StorageTodos on _StorageServiceBase {
     }
 
     assign(target.title, source.title, (value) => target.title = value);
+    assign(
+      target.completedAt,
+      source.completedAt,
+      (value) => target.completedAt = value,
+    );
     assign(
       target.createdDate,
       source.createdDate,

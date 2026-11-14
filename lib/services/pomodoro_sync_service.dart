@@ -655,7 +655,6 @@ class PomodoroSyncService {
           _onDisconnected();
           return;
         }
-        if (!_isLocalFocusing) _reportIdleStatus();
         _flushPendingStops();
         _send({'action': 'HEARTBEAT'});
       }

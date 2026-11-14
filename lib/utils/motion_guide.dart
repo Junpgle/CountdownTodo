@@ -14,6 +14,7 @@ class MotionGuide {
         final dx = (value < 0.1 || value > 0.9)
             ? 0.0
             : (value % 0.2 < 0.1 ? -5.0 : 5.0);
+        if (dx == 0.0) return child!;
 
         return Transform.translate(offset: Offset(dx, 0), child: child);
       },

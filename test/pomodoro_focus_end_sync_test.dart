@@ -240,4 +240,25 @@ void main() {
       expect(channels.last.stops, hasLength(acknowledgedCount));
     },
   );
+
+  test('periodic heartbeats while idle do not emit IDLE_REPORT', () async {
+    service.dispose();
+    service = createService(heartbeat: const Duration(milliseconds: 50));
+    service.setLocalFocusing(false);
+    await connect();
+    expect(
+      channels.last.sent.where((m) => m['action'] == 'IDLE_REPORT'),
+      hasLength(1),
+    );
+    await channels.last.outgoing.stream
+        .firstWhere((message) => message['action'] == 'HEARTBEAT')
+        .timeout(const Duration(seconds: 2));
+    await channels.last.outgoing.stream
+        .firstWhere((message) => message['action'] == 'HEARTBEAT')
+        .timeout(const Duration(seconds: 2));
+    expect(
+      channels.last.sent.where((m) => m['action'] == 'IDLE_REPORT'),
+      hasLength(1),
+    );
+  });
 }

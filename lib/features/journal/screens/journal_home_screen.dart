@@ -483,6 +483,14 @@ class _Timeline extends StatelessWidget {
           return GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
+            findChildIndexCallback: (Key key) {
+              if (key is ValueKey<String>) {
+                final id = key.value;
+                final index = gridEntries.indexWhere((e) => e.id == id);
+                return index != -1 ? index : null;
+              }
+              return null;
+            },
             itemCount: gridEntries.length,
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
               maxCrossAxisExtent: 560,
@@ -491,6 +499,7 @@ class _Timeline extends StatelessWidget {
               mainAxisSpacing: 16,
             ),
             itemBuilder: (_, gridIndex) => _JournalCard(
+              key: ValueKey<String>(gridEntries[gridIndex].id),
               entry: gridEntries[gridIndex],
               accountId: accountId,
               onTap: () => onTap(gridEntries[gridIndex]),
@@ -539,6 +548,14 @@ class _PhotoWall extends StatelessWidget {
         isWide ? 40 : 16,
         120,
       ),
+      findChildIndexCallback: (Key key) {
+        if (key is ValueKey<String>) {
+          final id = key.value;
+          final index = entries.indexWhere((e) => e.id == id);
+          return index != -1 ? index : null;
+        }
+        return null;
+      },
       itemCount: entries.length,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: columns,
@@ -547,6 +564,7 @@ class _PhotoWall extends StatelessWidget {
         childAspectRatio: isWide ? 0.92 : 0.82,
       ),
       itemBuilder: (_, index) => _PhotoWallCard(
+        key: ValueKey<String>(entries[index].id),
         entry: entries[index],
         accountId: accountId,
         onTap: () => onTap(entries[index]),
@@ -564,6 +582,7 @@ class _JournalCard extends StatelessWidget {
   final VoidCallback onTap;
 
   const _JournalCard({
+    super.key,
     required this.entry,
     required this.accountId,
     required this.onTap,
@@ -573,90 +592,94 @@ class _JournalCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final preview = entry.content.trim().replaceAll(_previewWhitespace, ' ');
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      elevation: 0,
-      child: InkWell(
-        onTap: onTap,
-        child: Row(
-          children: [
-            if (entry.attachments.isNotEmpty)
-              SizedBox(
-                width: 136,
-                height: 188,
-                child: _JournalImage(
-                  attachment: entry.attachments.first,
-                  fit: BoxFit.cover,
-                  accountId: accountId,
-                  cacheWidth: 420,
-                  cacheHeight: 580,
+    return RepaintBoundary(
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        elevation: 0,
+        child: InkWell(
+          onTap: onTap,
+          child: Row(
+            children: [
+              if (entry.attachments.isNotEmpty)
+                SizedBox(
+                  width: 136,
+                  height: 188,
+                  child: _JournalImage(
+                    attachment: entry.attachments.first,
+                    fit: BoxFit.cover,
+                    accountId: accountId,
+                    cacheWidth: 420,
+                    cacheHeight: 580,
+                  ),
                 ),
-              ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      _entryDateFormat.format(entry.occurredAt),
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: scheme.primary,
-                        fontWeight: FontWeight.w700,
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        _entryDateFormat.format(entry.occurredAt),
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(
+                              color: scheme.primary,
+                              fontWeight: FontWeight.w700,
+                            ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      entry.title?.trim().isNotEmpty == true
-                          ? entry.title!.trim()
-                          : '无题',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleLarge
-                          ?.copyWith(fontWeight: FontWeight.w800),
-                    ),
-                    if (preview.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       Text(
-                        preview,
-                        maxLines: 3,
+                        entry.title?.trim().isNotEmpty == true
+                            ? entry.title!.trim()
+                            : '无题',
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                          height: 1.45,
+                        style: Theme.of(context).textTheme.titleLarge
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                      if (preview.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          preview,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                                height: 1.45,
+                              ),
                         ),
-                      ),
+                      ],
+                      if (entry.attachments.length > 1) ...[
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.collections_rounded,
+                              size: 15,
+                              color: scheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${entry.attachments.length} 张图片',
+                              style: Theme.of(context).textTheme.labelSmall,
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
-                    if (entry.attachments.length > 1) ...[
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.collections_rounded,
-                            size: 15,
-                            color: scheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${entry.attachments.length} 张图片',
-                            style: Theme.of(context).textTheme.labelSmall,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ],
+                  ),
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: Icon(
-                Icons.chevron_right_rounded,
-                color: scheme.onSurfaceVariant,
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: Icon(
+                  Icons.chevron_right_rounded,
+                  color: scheme.onSurfaceVariant,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -669,6 +692,7 @@ class _PhotoWallCard extends StatelessWidget {
   final VoidCallback onTap;
 
   const _PhotoWallCard({
+    super.key,
     required this.entry,
     required this.accountId,
     required this.onTap,
@@ -678,61 +702,63 @@ class _PhotoWallCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final entryDateFormat = _photoWallDateFormat();
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      elevation: 0,
-      child: InkWell(
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: entry.attachments.isEmpty
-                  ? Container(
-                      color: scheme.primaryContainer,
-                      alignment: Alignment.center,
-                      child: Icon(
-                        Icons.notes_rounded,
-                        size: 42,
-                        color: scheme.onPrimaryContainer,
+    return RepaintBoundary(
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        elevation: 0,
+        child: InkWell(
+          onTap: onTap,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: entry.attachments.isEmpty
+                    ? Container(
+                        color: scheme.primaryContainer,
+                        alignment: Alignment.center,
+                        child: Icon(
+                          Icons.notes_rounded,
+                          size: 42,
+                          color: scheme.onPrimaryContainer,
+                        ),
+                      )
+                    : _JournalImage(
+                        attachment: entry.attachments.first,
+                        fit: BoxFit.cover,
+                        accountId: accountId,
+                        cacheWidth: 600,
+                        cacheHeight: 700,
                       ),
-                    )
-                  : _JournalImage(
-                      attachment: entry.attachments.first,
-                      fit: BoxFit.cover,
-                      accountId: accountId,
-                      cacheWidth: 600,
-                      cacheHeight: 700,
-                    ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    entryDateFormat.format(entry.occurredAt),
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: scheme.primary,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    entry.title?.trim().isNotEmpty == true
-                        ? entry.title!.trim()
-                        : entry.content.trim().isNotEmpty
-                        ? entry.content.trim()
-                        : '图片日记',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w800),
-                  ),
-                ],
               ),
-            ),
-          ],
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      entryDateFormat.format(entry.occurredAt),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: scheme.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      entry.title?.trim().isNotEmpty == true
+                          ? entry.title!.trim()
+                          : entry.content.trim().isNotEmpty
+                          ? entry.content.trim()
+                          : '图片日记',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w800),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

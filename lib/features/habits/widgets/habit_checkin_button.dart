@@ -27,6 +27,8 @@ class _BurstParticle {
 class _BurstPainter extends CustomPainter {
   final List<_BurstParticle> particles;
   final double progress;
+  static final Paint _paint = Paint()..style = PaintingStyle.fill;
+  static final Path _starPath = Path();
 
   _BurstPainter({required this.particles, required this.progress});
 
@@ -35,7 +37,6 @@ class _BurstPainter extends CustomPainter {
     if (progress <= 0.0 || progress >= 1.0) return;
 
     final center = Offset(size.width / 2, size.height / 2);
-    final paint = Paint()..style = PaintingStyle.fill;
     final curvedProgress = Curves.easeOutCubic.transform(progress);
     final alpha = (1.0 - progress).clamp(0.0, 1.0);
 
@@ -43,13 +44,17 @@ class _BurstPainter extends CustomPainter {
       final currentDist = p.distance * curvedProgress;
       final x = center.dx + math.cos(p.angle) * currentDist;
       final y = center.dy + math.sin(p.angle) * currentDist;
-      paint.color = p.color.withValues(alpha: alpha);
+      _paint.color = p.color.withValues(alpha: alpha);
 
       if (p.isStar) {
         final currentSize = p.size * (1.0 - progress * 0.4);
-        _drawFourPointStar(canvas, Offset(x, y), currentSize, paint);
+        _drawFourPointStar(canvas, Offset(x, y), currentSize, _paint);
       } else {
-        canvas.drawCircle(Offset(x, y), p.size * (1.0 - progress * 0.3), paint);
+        canvas.drawCircle(
+          Offset(x, y),
+          p.size * (1.0 - progress * 0.3),
+          _paint,
+        );
       }
     }
   }
@@ -60,7 +65,7 @@ class _BurstPainter extends CustomPainter {
     double radius,
     Paint paint,
   ) {
-    final path = Path();
+    _starPath.reset();
     final innerRadius = radius * 0.35;
     for (int i = 0; i < 4; i++) {
       final outerAngle = (i * math.pi / 2) - (math.pi / 2);
@@ -71,14 +76,14 @@ class _BurstPainter extends CustomPainter {
       final iy = center.dy + math.sin(innerAngle) * innerRadius;
 
       if (i == 0) {
-        path.moveTo(ox, oy);
+        _starPath.moveTo(ox, oy);
       } else {
-        path.lineTo(ox, oy);
+        _starPath.lineTo(ox, oy);
       }
-      path.lineTo(ix, iy);
+      _starPath.lineTo(ix, iy);
     }
-    path.close();
-    canvas.drawPath(path, paint);
+    _starPath.close();
+    canvas.drawPath(_starPath, paint);
   }
 
   @override
@@ -353,6 +358,7 @@ class _HabitCelebrationTriggerState extends State<HabitCelebrationTrigger>
                       _scaleController,
                       _holdController,
                     ]),
+                    child: RepaintBoundary(child: widget.child),
                     builder: (context, child) {
                       final scale = _scaleController.value;
                       final holdProgress = _holdController.value;
@@ -367,7 +373,7 @@ class _HabitCelebrationTriggerState extends State<HabitCelebrationTrigger>
                                   borderRadius: effectiveRadius,
                                 )
                               : null,
-                          child: widget.child,
+                          child: child,
                         ),
                       );
                     },
@@ -414,6 +420,7 @@ class _HoldProgressBorderPainter extends CustomPainter {
   static final Paint _borderPaint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeCap = StrokeCap.round;
+  static final Path _borderPath = Path();
 
   _HoldProgressBorderPainter({
     required this.progress,
@@ -439,11 +446,13 @@ class _HoldProgressBorderPainter extends CustomPainter {
       ..strokeWidth = 2.0 + (progress * 1.5)
       ..color = color.withValues(alpha: (0.4 + progress * 0.6).clamp(0.0, 1.0));
 
-    final path = Path()..addRRect(rrect);
-    final pathMetrics = path.computeMetrics().toList();
-    if (pathMetrics.isEmpty) return;
+    _borderPath
+      ..reset()
+      ..addRRect(rrect);
+    final iterator = _borderPath.computeMetrics().iterator;
+    if (!iterator.moveNext()) return;
 
-    final metric = pathMetrics.first;
+    final metric = iterator.current;
     final extractLength = metric.length * progress;
     final extractPath = metric.extractPath(0.0, extractLength);
 

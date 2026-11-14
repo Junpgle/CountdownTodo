@@ -75,6 +75,9 @@ class _AnimSettings {
   static int duration = 500;
   static int pageLayerDepth = 60;
   static int containerContentStart = 28;
+  static bool _loaded = false;
+
+  static Future<void> ensureLoaded() => _loaded ? Future<void>.value() : load();
 
   static Future<void> load() async {
     try {
@@ -95,6 +98,7 @@ class _AnimSettings {
           prefs.getInt('page_layer_depth') ?? (isAndroid ? 18 : 60);
       containerContentStart =
           prefs.getInt('container_content_start') ?? (isAndroid ? 12 : 28);
+      _loaded = true;
     } catch (_) {}
   }
 
@@ -275,7 +279,7 @@ class PageTransitions {
       AppPerformanceMonitor.screenNameForWidget(page),
     );
     unawaited(FeatureTipService.recordWidgetOpened(page));
-    await _AnimSettings.load();
+    await _AnimSettings.ensureLoaded();
     if (!context.mounted) {
       return null;
     }
@@ -286,14 +290,16 @@ class PageTransitions {
       );
     }
 
-    await Future.delayed(const Duration(milliseconds: 16));
-    if (!context.mounted) {
-      return null;
+    var renderBox = sourceKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.hasSize || renderBox.size.isEmpty) {
+      await Future.delayed(const Duration(milliseconds: 16));
+      if (!context.mounted) {
+        return null;
+      }
+      renderBox = sourceKey.currentContext?.findRenderObject() as RenderBox?;
     }
-    final renderBox =
-        sourceKey.currentContext?.findRenderObject() as RenderBox?;
 
-    if (renderBox == null || renderBox.size.isEmpty) {
+    if (renderBox == null || !renderBox.hasSize || renderBox.size.isEmpty) {
       return Navigator.push<T>(
         context,
         material<T>(builder: (_) => page, settings: settings),
@@ -344,7 +350,7 @@ class PageTransitions {
       AppPerformanceMonitor.screenNameForWidget(page),
     );
     unawaited(FeatureTipService.recordWidgetOpened(page));
-    await _AnimSettings.load();
+    await _AnimSettings.ensureLoaded();
     if (!_AnimSettings.animationsEnabled || sourceRect.isEmpty) {
       return navigator.push<T>(
         material<T>(builder: (_) => page, settings: settings),

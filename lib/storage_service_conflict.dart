@@ -342,6 +342,12 @@ mixin _StorageConflict on _StorageServiceBase {
     return result;
   }
 
+  @override
+  void preserveLocalTodoSourceFieldsForTest(
+    TodoItem local,
+    TodoItem incoming,
+  ) => _preserveLocalTodoSourceFields(local, incoming);
+
   void _preserveLocalTodoSourceFields(TodoItem local, TodoItem incoming) {
     if (incoming.recurrenceSeriesId == null ||
         incoming.recurrenceSeriesId!.trim().isEmpty) {
@@ -356,6 +362,9 @@ mixin _StorageConflict on _StorageServiceBase {
         local.originalText != null &&
         local.originalText!.isNotEmpty) {
       incoming.originalText = local.originalText;
+    }
+    if (incoming.completedAt == null && local.completedAt != null) {
+      incoming.completedAt = local.completedAt;
     }
   }
 

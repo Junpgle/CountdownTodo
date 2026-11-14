@@ -213,6 +213,14 @@ class _DetailGallery extends StatelessWidget {
         return GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
+          findChildIndexCallback: (Key key) {
+            if (key is ValueKey<String>) {
+              final id = key.value;
+              final idx = attachments.indexWhere((a) => a.id == id);
+              return idx != -1 ? idx : null;
+            }
+            return null;
+          },
           itemCount: attachments.length,
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: attachments.length == 1 ? 1 : 2,
@@ -221,21 +229,25 @@ class _DetailGallery extends StatelessWidget {
             mainAxisExtent: height,
           ),
           itemBuilder: (_, index) {
+            final attachment = attachments[index];
             final provider = JournalMediaService.instance.provider(
-              attachments[index],
+              attachment,
               width: 800,
               height: 800,
             );
-            return ClipRRect(
-              borderRadius: BorderRadius.circular(22),
-              child: InkWell(
-                onTap: () => onTap(index),
-                child: provider == null
-                    ? ColoredBox(
-                        color: scheme.surfaceContainerHighest,
-                        child: const Icon(Icons.broken_image_outlined),
-                      )
-                    : Image(image: provider, fit: BoxFit.cover),
+            return RepaintBoundary(
+              key: ValueKey<String>(attachment.id),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: InkWell(
+                  onTap: () => onTap(index),
+                  child: provider == null
+                      ? ColoredBox(
+                          color: scheme.surfaceContainerHighest,
+                          child: const Icon(Icons.broken_image_outlined),
+                        )
+                      : Image(image: provider, fit: BoxFit.cover),
+                ),
               ),
             );
           },

@@ -55,11 +55,6 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    // Listen to tab controller to update the shared bottom navigation.
-    _tabController.addListener(() {
-      if (!mounted) return;
-      setState(() {});
-    });
     _loadChallengePromotion();
     _loadSleepLogMigration();
     if (widget.openSleepMigration) {
@@ -658,25 +653,28 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
           ),
         ];
 
-        final floatingNavigation = FloatingBottomNavigationBar(
-          key: _navigationKey,
-          mobilePortraitOnly: false,
-          items: const [
-            FloatingBottomNavigationItem(
-              icon: Icons.today_outlined,
-              label: '今日',
-            ),
-            FloatingBottomNavigationItem(
-              icon: Icons.calendar_month_outlined,
-              label: '日历',
-            ),
-            FloatingBottomNavigationItem(
-              icon: Icons.analytics_outlined,
-              label: '分析',
-            ),
-          ],
-          selectedIndex: _tabController.index,
-          onTabSelected: (index) => _tabController.animateTo(index),
+        final floatingNavigation = AnimatedBuilder(
+          animation: _tabController,
+          builder: (context, _) => FloatingBottomNavigationBar(
+            key: _navigationKey,
+            mobilePortraitOnly: false,
+            items: const [
+              FloatingBottomNavigationItem(
+                icon: Icons.today_outlined,
+                label: '今日',
+              ),
+              FloatingBottomNavigationItem(
+                icon: Icons.calendar_month_outlined,
+                label: '日历',
+              ),
+              FloatingBottomNavigationItem(
+                icon: Icons.analytics_outlined,
+                label: '分析',
+              ),
+            ],
+            selectedIndex: _tabController.index,
+            onTabSelected: (index) => _tabController.animateTo(index),
+          ),
         );
 
         return Scaffold(

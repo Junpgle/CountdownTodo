@@ -780,6 +780,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                   onPomodoroTap: _showPomodoroDetail,
                   onTimeLogTap: _showTimeLogDetail,
                   onScheduleTap: _showScheduleDetail,
+                  onAggregatedSchedulesTap: _showAggregatedScheduleSheet,
                   username: widget.username,
                 )
               : _dayMode == _DayMode.view
@@ -1072,6 +1073,186 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     );
   }
 
+  void _showAggregatedScheduleSheet(
+    List<TimeLogMappedSchedule> schedules,
+    DateTime date,
+  ) {
+    if (schedules.isEmpty) return;
+    if (schedules.length == 1) {
+      _showScheduleDetail(schedules.first);
+      return;
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primary = schedules.first;
+    final primaryColor = primary.isCourse
+        ? (isDark ? const Color(0xFF64B5F6) : const Color(0xFF1E88E5))
+        : (isDark ? const Color(0xFFFFB74D) : const Color(0xFFFB8C00));
+    final dateStr = AppTimeFormats.monthDaySlash(date);
+    final weekdayStr = const [
+      '周一',
+      '周二',
+      '周三',
+      '周四',
+      '周五',
+      '周六',
+      '周日',
+    ][(date.weekday - 1).clamp(0, 6)];
+
+    showAppModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _sheet(
+        primaryColor.withValues(alpha: 0.4),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                _glow(primaryColor),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '$dateStr $weekdayStr · 重叠日程 (${schedules.length}项)',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: _TC.text(context),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(
+                    Icons.close,
+                    size: 18,
+                    color: _TC.textHint(context),
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Flexible(
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: schedules.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 8),
+                itemBuilder: (ctx, index) {
+                  final schedule = schedules[index];
+                  final isCourse = schedule.isCourse;
+                  final c = isCourse
+                      ? (isDark
+                            ? const Color(0xFF64B5F6)
+                            : const Color(0xFF1E88E5))
+                      : (isDark
+                            ? const Color(0xFFFFB74D)
+                            : const Color(0xFFFB8C00));
+                  final s = DateTime.fromMillisecondsSinceEpoch(
+                    schedule.startTime,
+                  );
+                  final e = DateTime.fromMillisecondsSinceEpoch(
+                    schedule.endTime,
+                  );
+                  final dur = (schedule.endTime - schedule.startTime) ~/ 60000;
+
+                  return Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _showScheduleDetail(schedule);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: c.withValues(alpha: isDark ? 0.12 : 0.08),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border(
+                            left: BorderSide(color: c, width: 3.5),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          schedule.title,
+                                          style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w600,
+                                            color: _TC.text(context),
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      _pill(isCourse ? '课程' : '日程', c),
+                                      const SizedBox(width: 4),
+                                      _pill('${dur}min', c),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      Text(
+                                        '${AppTimeFormats.clock(s)} - ${AppTimeFormats.clock(e)}',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: _TC.textSub(context),
+                                        ),
+                                      ),
+                                      if (schedule.subtitle != null &&
+                                          schedule.subtitle!.isNotEmpty) ...[
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            schedule.subtitle!,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: _TC.textHint(context),
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              size: 18,
+                              color: _TC.textHint(context),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showScheduleDetail(TimeLogMappedSchedule schedule) {
     final isCourse = schedule.isCourse;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1326,6 +1507,8 @@ class _WeekView extends StatefulWidget {
   final void Function(PomodoroRecord) onPomodoroTap;
   final void Function(TimeLogItem) onTimeLogTap;
   final void Function(TimeLogMappedSchedule) onScheduleTap;
+  final void Function(List<TimeLogMappedSchedule>, DateTime)
+  onAggregatedSchedulesTap;
   final String username;
 
   const _WeekView({
@@ -1341,6 +1524,7 @@ class _WeekView extends StatefulWidget {
     required this.onPomodoroTap,
     required this.onTimeLogTap,
     required this.onScheduleTap,
+    required this.onAggregatedSchedulesTap,
     required this.username,
   });
 
@@ -1392,10 +1576,7 @@ class _WeekViewState extends State<_WeekView>
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
-    _heatAnim = CurvedAnimation(
-      parent: _heatAnimCtrl,
-      curve: Curves.easeOutCubic,
-    );
+    _heatAnim = _heatAnimCtrl.drive(CurveTween(curve: Curves.easeOutCubic));
     _heatAnimCtrl.forward();
   }
 
@@ -1742,14 +1923,22 @@ class _WeekViewState extends State<_WeekView>
                   child: Container(
                     width: dW,
                     height: 52,
-                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    padding: const EdgeInsets.symmetric(vertical: 4),
                     decoration: BoxDecoration(
-                      color: isToday ? accent.withValues(alpha: 0.07) : null,
-                      border: Border(
-                        right: BorderSide(
-                          color: _TC.divider(ctx).withValues(alpha: 0.2),
-                        ),
-                      ),
+                      color: isToday
+                          ? accent.withValues(alpha: isDark ? 0.16 : 0.12)
+                          : null,
+                      borderRadius: isToday ? BorderRadius.circular(6) : null,
+                      border: isToday
+                          ? Border.all(
+                              color: accent.withValues(alpha: 0.4),
+                              width: 1,
+                            )
+                          : Border(
+                              right: BorderSide(
+                                color: _TC.divider(ctx).withValues(alpha: 0.2),
+                              ),
+                            ),
                     ),
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
@@ -1757,31 +1946,77 @@ class _WeekViewState extends State<_WeekView>
                         mainAxisAlignment: MainAxisAlignment.center,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            '周${['一', '二', '三', '四', '五', '六', '日'][i]}',
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: isToday ? accent : _TC.textHint(ctx),
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.5,
-                            ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '周${['一', '二', '三', '四', '五', '六', '日'][i]}',
+                                style: TextStyle(
+                                  fontSize: 9.5,
+                                  color: isToday ? accent : _TC.textHint(ctx),
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              if (isToday) ...[
+                                const SizedBox(width: 2),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 3,
+                                    vertical: 0.5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: accent,
+                                    borderRadius: BorderRadius.circular(3),
+                                  ),
+                                  child: Text(
+                                    '今',
+                                    style: TextStyle(
+                                      color: colorScheme.onPrimary,
+                                      fontSize: 7.5,
+                                      fontWeight: FontWeight.bold,
+                                      height: 1.1,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
-                          Text(
-                            '${d.day}',
-                            style: TextStyle(
-                              fontSize: 15,
-                              color: isToday ? _TC.text(ctx) : _TC.textSub(ctx),
-                              fontWeight: isToday
-                                  ? FontWeight.w700
-                                  : FontWeight.w400,
-                            ),
-                          ),
+                          const SizedBox(height: 1),
+                          isToday
+                              ? Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                    vertical: 0.5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: accent,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    '${d.day}',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: colorScheme.onPrimary,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                )
+                              : Text(
+                                  '${d.day}',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    color: _TC.textSub(ctx),
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                ),
                           if (dm > 0)
                             Text(
                               '${dm}m',
                               style: TextStyle(
                                 fontSize: 8,
-                                color: accent.withValues(alpha: 0.5),
+                                color: accent.withValues(alpha: 0.7),
                               ),
                             ),
                         ],
@@ -1831,11 +2066,25 @@ class _WeekViewState extends State<_WeekView>
                       final dLogs = weekData.logsByDay[dayIndex];
                       final dPoms = weekData.pomodorosByDay[dayIndex];
                       final dSchedules = weekData.schedulesByDay[dayIndex];
+                      final isToday = AppTimeFormats.isSameDay(
+                        days[dayIndex],
+                        DateTime.now(),
+                      );
                       return SizedBox(
                         width: dW,
                         height: totalH,
                         child: Stack(
                           children: [
+                            if (isToday)
+                              Positioned.fill(
+                                child: IgnorePointer(
+                                  child: Container(
+                                    color: accent.withValues(
+                                      alpha: isDark ? 0.07 : 0.038,
+                                    ),
+                                  ),
+                                ),
+                              ),
                             RepaintBoundary(
                               child: CustomPaint(
                                 size: Size(dW, totalH),
@@ -1865,21 +2114,32 @@ class _WeekViewState extends State<_WeekView>
                                 ),
                               ),
                             ),
-                            ...dSchedules.map((schedule) {
-                              final rs = max(schedule.startTime, ds);
-                              final re = min(schedule.endTime, de);
-                              final top = (rs - ds) / 3600000 * hourH;
-                              final h = ((re - rs) / 3600000 * hourH).clamp(
-                                3.0,
-                                9999.0,
-                              );
+                            ...clusterTimeLogSchedules(dSchedules, ds, de).map((
+                              cluster,
+                            ) {
+                              final top =
+                                  (cluster.startTime - ds) / 3600000 * hourH;
+                              final h =
+                                  ((cluster.endTime - cluster.startTime) /
+                                          3600000 *
+                                          hourH)
+                                      .clamp(3.0, 9999.0);
                               return Positioned(
                                 top: top,
                                 left: 0,
                                 right: 0,
                                 height: h,
                                 child: GestureDetector(
-                                  onTap: () => widget.onScheduleTap(schedule),
+                                  onTap: () {
+                                    if (cluster.isAggregated) {
+                                      widget.onAggregatedSchedulesTap(
+                                        cluster.schedules,
+                                        days[dayIndex],
+                                      );
+                                    } else {
+                                      widget.onScheduleTap(cluster.primary);
+                                    }
+                                  },
                                   behavior: HitTestBehavior.opaque,
                                   child: const SizedBox.expand(),
                                 ),
@@ -1943,96 +2203,109 @@ class _WeekViewState extends State<_WeekView>
     );
   }
 
-  Widget _buildTagSidebar(BuildContext ctx, Map<String, int> minutesByTag) =>
-      SizedBox(
-        width: 160,
-        child: OptionalLiquidGlassSheet(
-          fallbackDecoration: BoxDecoration(
-            color: _TC.card(ctx),
-            border: Border(left: BorderSide(color: _TC.divider(ctx))),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 14, 12, 8),
-                child: Text(
-                  '本周标签',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: _TC.textHint(ctx),
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.5,
-                  ),
-                ),
+  Widget _buildTagSidebar(
+    BuildContext ctx,
+    Map<String, int> minutesByTag,
+  ) => SizedBox(
+    width: 160,
+    child: OptionalLiquidGlassSheet(
+      fallbackDecoration: BoxDecoration(
+        color: _TC.card(ctx),
+        border: Border(left: BorderSide(color: _TC.divider(ctx))),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 14, 12, 8),
+            child: Text(
+              '本周标签',
+              style: TextStyle(
+                fontSize: 10,
+                color: _TC.textHint(ctx),
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.5,
               ),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: widget.tags.length,
-                  itemBuilder: (context, index) {
-                    final t = widget.tags[index];
-                    final tw = minutesByTag[t.uuid] ?? 0;
-                    final c = hexColor(t.color);
-                    return GestureDetector(
-                      onTap: () => widget.onTagTap(t),
-                      child: Container(
-                        margin: const EdgeInsets.fromLTRB(8, 0, 8, 6),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: c.withValues(alpha: 0.07),
-                          border: Border.all(color: c.withValues(alpha: 0.25)),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: c,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    t.name,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: c,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  Text(
-                                    '${(tw / 60).toStringAsFixed(1)}h',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: _TC.text(ctx),
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              findChildIndexCallback: (Key key) {
+                if (key is ValueKey<String>) {
+                  final uuid = key.value;
+                  final index = widget.tags.indexWhere((t) => t.uuid == uuid);
+                  return index != -1 ? index : null;
+                }
+                return null;
+              },
+              itemCount: widget.tags.length,
+              itemBuilder: (context, index) {
+                final t = widget.tags[index];
+                final tw = minutesByTag[t.uuid] ?? 0;
+                final c = hexColor(t.color);
+                return RepaintBoundary(
+                  key: ValueKey<String>(t.uuid),
+                  child: GestureDetector(
+                    onTap: () => widget.onTagTap(t),
+                    child: Container(
+                      margin: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
                       ),
-                    );
-                  },
-                  padding: const EdgeInsets.only(bottom: 8),
-                ),
-              ),
-            ],
+                      decoration: BoxDecoration(
+                        color: c.withValues(alpha: 0.07),
+                        border: Border.all(color: c.withValues(alpha: 0.25)),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: c,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  t.name,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: c,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  '${(tw / 60).toStringAsFixed(1)}h',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: _TC.text(ctx),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+              padding: const EdgeInsets.only(bottom: 8),
+            ),
           ),
-        ),
-      );
+        ],
+      ),
+    ),
+  );
 
   Widget _buildTagChips(BuildContext ctx, Map<String, int> minutesByTag) =>
       Container(
@@ -2040,47 +2313,58 @@ class _WeekViewState extends State<_WeekView>
         color: _TC.topBar(ctx),
         child: ListView.builder(
           scrollDirection: Axis.horizontal,
+          findChildIndexCallback: (Key key) {
+            if (key is ValueKey<String>) {
+              final uuid = key.value;
+              final index = widget.tags.indexWhere((t) => t.uuid == uuid);
+              return index != -1 ? index : null;
+            }
+            return null;
+          },
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           itemCount: widget.tags.length,
           itemBuilder: (context, index) {
             final t = widget.tags[index];
             final tw = minutesByTag[t.uuid] ?? 0;
             final c = hexColor(t.color);
-            return GestureDetector(
-              onTap: () => widget.onTagTap(t),
-              child: Container(
-                margin: const EdgeInsets.only(right: 8),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: c.withValues(alpha: 0.08),
-                  border: Border.all(color: c.withValues(alpha: 0.3)),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      t.name,
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: c,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.8,
+            return RepaintBoundary(
+              key: ValueKey<String>(t.uuid),
+              child: GestureDetector(
+                onTap: () => widget.onTagTap(t),
+                child: Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: c.withValues(alpha: 0.08),
+                    border: Border.all(color: c.withValues(alpha: 0.3)),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        t.name,
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: c,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.8,
+                        ),
                       ),
-                    ),
-                    Text(
-                      '${(tw / 60).toStringAsFixed(1)}h',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: _TC.text(ctx),
-                        fontWeight: FontWeight.w700,
+                      Text(
+                        '${(tw / 60).toStringAsFixed(1)}h',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: _TC.text(ctx),
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             );
@@ -2096,7 +2380,7 @@ class _WeekGridPainter extends CustomPainter {
   final double hourH;
   final Color majorLineColor;
   final Color minorLineColor;
-  final Paint _gridPaint = Paint()..strokeWidth = 0.5;
+  static final Paint _gridPaint = Paint()..strokeWidth = 0.5;
 
   _WeekGridPainter({
     required this.hourH,
@@ -2133,23 +2417,109 @@ class _WeekGridPainter extends CustomPainter {
 // ══════════════════════════════════════════════════════════
 class _WeekColBlockVisual {
   final Color color;
+  final Color? secondaryColor;
   final String title;
   final double top;
   final double bottom;
   final double staggerDelay;
   final double staggerProgressScale;
+  final int extraCount;
 
   const _WeekColBlockVisual({
     required this.color,
+    this.secondaryColor,
     required this.title,
     required this.top,
     required this.bottom,
     required this.staggerDelay,
     required this.staggerProgressScale,
+    this.extraCount = 0,
   });
 }
 
-class _WeekColPainter extends CustomPainter {
+@visibleForTesting
+class ScheduleCluster {
+  final List<TimeLogMappedSchedule> schedules;
+  final int startTime;
+  final int endTime;
+
+  const ScheduleCluster({
+    required this.schedules,
+    required this.startTime,
+    required this.endTime,
+  });
+
+  bool get isAggregated => schedules.length > 1;
+  int get extraCount => schedules.length - 1;
+  TimeLogMappedSchedule get primary => schedules.first;
+}
+
+@visibleForTesting
+List<ScheduleCluster> clusterTimeLogSchedules(
+  List<TimeLogMappedSchedule> schedules,
+  int dayStartMs,
+  int dayEndMs,
+) {
+  if (schedules.isEmpty) return const [];
+
+  final valid =
+      schedules
+          .where((s) => s.endTime > dayStartMs && s.startTime < dayEndMs)
+          .toList()
+        ..sort((a, b) {
+          final cmpStart = a.startTime.compareTo(b.startTime);
+          if (cmpStart != 0) return cmpStart;
+          final cmpEnd = a.endTime.compareTo(b.endTime);
+          if (cmpEnd != 0) return cmpEnd;
+          if (a.isCourse != b.isCourse) {
+            return a.isCourse ? -1 : 1;
+          }
+          return a.id.compareTo(b.id);
+        });
+
+  if (valid.isEmpty) return const [];
+
+  final List<ScheduleCluster> clusters = [];
+  var currentGroup = <TimeLogMappedSchedule>[valid.first];
+  var groupStart = max(valid.first.startTime, dayStartMs);
+  var groupEnd = min(valid.first.endTime, dayEndMs);
+
+  for (int i = 1; i < valid.length; i++) {
+    final s = valid[i];
+    final sStart = max(s.startTime, dayStartMs);
+    final sEnd = min(s.endTime, dayEndMs);
+
+    if (sStart < groupEnd) {
+      currentGroup.add(s);
+      if (sEnd > groupEnd) groupEnd = sEnd;
+      if (sStart < groupStart) groupStart = sStart;
+    } else {
+      clusters.add(
+        ScheduleCluster(
+          schedules: currentGroup,
+          startTime: groupStart,
+          endTime: groupEnd,
+        ),
+      );
+      currentGroup = [s];
+      groupStart = sStart;
+      groupEnd = sEnd;
+    }
+  }
+
+  clusters.add(
+    ScheduleCluster(
+      schedules: currentGroup,
+      startTime: groupStart,
+      endTime: groupEnd,
+    ),
+  );
+
+  return clusters;
+}
+
+@visibleForTesting
+class WeekColPainter extends CustomPainter {
   final List<TimeLogItem> dayLogs;
   final List<PomodoroRecord> dayPoms;
   final List<TimeLogMappedSchedule> daySchedules;
@@ -2161,13 +2531,17 @@ class _WeekColPainter extends CustomPainter {
   final Animation<double> animation;
   final Color focusColor;
   final Color logColor;
-  final Paint _blockPaint = Paint();
+  static final Paint _blockPaint = Paint();
   late final Map<String, int> _tagIndicesByUuid =
       _DayGridPainter._buildTagIndices(tags);
-  TextPainter? _titlePainter;
+  late final List<ScheduleCluster> _scheduleClusters = clusterTimeLogSchedules(
+    daySchedules,
+    dayStartMs,
+    dayEndMs,
+  );
   int _staggerBlockIndex = 0;
   late final int _totalBlockCount =
-      dayPoms.length + dayLogs.length + daySchedules.length;
+      dayPoms.length + dayLogs.length + _scheduleClusters.length;
 
   double _staggerDelayFor(double top, double bottom) {
     if (bottom <= top + 1) return 0.0;
@@ -2178,29 +2552,44 @@ class _WeekColPainter extends CustomPainter {
     return delay;
   }
 
-  TextPainter get _reusableTitlePainter => _titlePainter ??= TextPainter(
-    textDirection: ui.TextDirection.ltr,
-    maxLines: 1,
-    ellipsis: '…',
-  );
-  late final List<_WeekColBlockVisual> _scheduleVisuals = daySchedules
-      .map((schedule) {
-        final isCourse = schedule.isCourse;
+  @visibleForTesting
+  List<String> get scheduleBlockTitles =>
+      _scheduleVisuals.map((v) => v.title).toList();
+
+  @visibleForTesting
+  List<int> get scheduleBlockExtraCounts =>
+      _scheduleVisuals.map((v) => v.extraCount).toList();
+
+  late final List<_WeekColBlockVisual> _scheduleVisuals = _scheduleClusters
+      .map((cluster) {
+        final primary = cluster.primary;
+        final isCourse = primary.isCourse;
         final base = isCourse
             ? (isDark ? const Color(0xFF64B5F6) : const Color(0xFF1E88E5))
             : (isDark ? const Color(0xFFFFB74D) : const Color(0xFFFB8C00));
-        final rangeStart = max(schedule.startTime, dayStartMs);
-        final rangeEnd = min(schedule.endTime, dayEndMs);
-        final top = (rangeStart - dayStartMs) / 3600000 * hourH;
-        final bottom = (rangeEnd - dayStartMs) / 3600000 * hourH;
+        Color? secondaryBase;
+        if (cluster.isAggregated) {
+          final secondary = cluster.schedules[1];
+          secondaryBase = secondary.isCourse
+              ? (isDark ? const Color(0xFF64B5F6) : const Color(0xFF1E88E5))
+              : (isDark ? const Color(0xFFFFB74D) : const Color(0xFFFB8C00));
+        }
+        final top = (cluster.startTime - dayStartMs) / 3600000 * hourH;
+        final bottom = (cluster.endTime - dayStartMs) / 3600000 * hourH;
         final staggerDelay = _staggerDelayFor(top, bottom);
         return _WeekColBlockVisual(
           color: base.withValues(alpha: isDark ? 0.35 : 0.30),
-          title: '${isCourse ? "课程" : "日程"}: ${schedule.title}',
+          secondaryColor: secondaryBase?.withValues(
+            alpha: isDark ? 0.35 : 0.30,
+          ),
+          title: primary.title.trim().isNotEmpty
+              ? primary.title.trim()
+              : (isCourse ? '课程' : '日程'),
           top: top,
           bottom: bottom,
           staggerDelay: staggerDelay,
           staggerProgressScale: 1.0 / (1.0 - staggerDelay),
+          extraCount: cluster.extraCount,
         );
       })
       .toList(growable: false);
@@ -2249,7 +2638,7 @@ class _WeekColPainter extends CustomPainter {
       })
       .toList(growable: false);
 
-  _WeekColPainter({
+  WeekColPainter({
     required this.dayLogs,
     this.dayPoms = const [],
     this.daySchedules = const [],
@@ -2278,6 +2667,12 @@ class _WeekColPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final animationProgress = animation.value;
+    TextPainter? titlePainter;
+    TextPainter getTitlePainter() => titlePainter ??= TextPainter(
+      textDirection: ui.TextDirection.ltr,
+      maxLines: 1,
+      ellipsis: '…',
+    );
 
     void block(
       _WeekColBlockVisual visual,
@@ -2296,6 +2691,22 @@ class _WeekColPainter extends CustomPainter {
 
       final animatedBot = top + (bot - top) * blockProgress;
 
+      // 如果有重叠折叠项，先画底部叠牌阴影层，体现多张卡片折叠效果（参考周视图）
+      if (visual.extraCount > 0) {
+        final secColor = visual.secondaryColor ?? visual.color;
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTRB(4.5, top + 2.0, size.width, animatedBot + 2.0),
+            const Radius.circular(3),
+          ),
+          _blockPaint
+            ..color = secColor.withValues(
+              alpha: (isSchedule ? 0.24 : 0.30) * blockProgress,
+            ),
+        );
+      }
+
+      // 左侧指示条
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           Rect.fromLTRB(0, top + 0.5, 3, animatedBot - 0.5),
@@ -2307,9 +2718,15 @@ class _WeekColPainter extends CustomPainter {
           ),
       );
 
+      // 主体卡片
       canvas.drawRRect(
         RRect.fromRectAndRadius(
-          Rect.fromLTRB(3, top + 0.5, size.width - 1, animatedBot - 0.5),
+          Rect.fromLTRB(
+            3,
+            top + 0.5,
+            size.width - (visual.extraCount > 0 ? 2 : 1),
+            animatedBot - 0.5,
+          ),
           const Radius.circular(3),
         ),
         _blockPaint
@@ -2323,19 +2740,31 @@ class _WeekColPainter extends CustomPainter {
 
       if (blockH >= 10 && blockW >= 8 && blockProgress > 0.5) {
         if (blockH >= 18) {
-          final tp = _reusableTitlePainter
+          final fontSize = (blockH * 0.22).clamp(7.5, blockW > 60 ? 11.0 : 9.0);
+          final lineHeight = fontSize * 1.15;
+          final availableH = visual.extraCount > 0 && blockH >= 28
+              ? blockH - 12.0
+              : blockH;
+          final maxLines = max(1, ((availableH - 4) / lineHeight).floor());
+          final tp = getTitlePainter()
+            ..maxLines = maxLines
             ..text = TextSpan(
               text: visual.title,
               style: TextStyle(
-                fontSize: (blockH * 0.28).clamp(7.0, 10.0),
+                fontSize: fontSize,
+                height: 1.15,
                 color: visual.color.withValues(alpha: 0.95 * blockProgress),
                 fontWeight: FontWeight.w700,
               ),
             )
-            ..layout(maxWidth: blockW - 4);
-          tp.paint(canvas, Offset(5, top + (blockH - tp.height) / 2));
+            ..layout(maxWidth: max(4.0, blockW - 4));
+          final textTop = visual.extraCount > 0 && blockH >= 28
+              ? top + 3.0
+              : top + max(2.0, (blockH - tp.height) / 2);
+          tp.paint(canvas, Offset(5, textTop));
         } else {
-          final tp = _reusableTitlePainter
+          final tp = getTitlePainter()
+            ..maxLines = 1
             ..text = TextSpan(
               text: visual.title,
               style: TextStyle(
@@ -2344,7 +2773,7 @@ class _WeekColPainter extends CustomPainter {
                 fontWeight: FontWeight.w700,
               ),
             )
-            ..layout(maxWidth: blockH - 2);
+            ..layout(maxWidth: max(2.0, blockH - 2));
 
           canvas.save();
           canvas.translate(5 + tp.height, top + 1);
@@ -2352,30 +2781,75 @@ class _WeekColPainter extends CustomPainter {
           tp.paint(canvas, Offset.zero);
           canvas.restore();
         }
+
+        // 右下角 +N 角标（参考周视图）
+        if (visual.extraCount > 0 && blockH >= 16) {
+          final badgeTp = TextPainter(
+            text: TextSpan(
+              text: '+${visual.extraCount}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 7.5,
+                fontWeight: FontWeight.bold,
+                height: 1.0,
+              ),
+            ),
+            textDirection: ui.TextDirection.ltr,
+          )..layout();
+
+          const badgePadH = 3.0;
+          const badgePadV = 1.5;
+          final badgeW = badgeTp.width + badgePadH * 2;
+          final badgeH = badgeTp.height + badgePadV * 2;
+          final badgeRight = size.width - 3.5;
+          final badgeBottom = animatedBot - 2.5;
+          final badgeLeft = badgeRight - badgeW;
+          final badgeTop = badgeBottom - badgeH;
+
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(
+              Rect.fromLTWH(badgeLeft, badgeTop, badgeW, badgeH),
+              const Radius.circular(3.0),
+            ),
+            _blockPaint
+              ..color = (isDark ? Colors.black : const Color(0xFF1E293B))
+                  .withValues(alpha: 0.75 * blockProgress),
+          );
+
+          badgeTp.paint(
+            canvas,
+            Offset(badgeLeft + badgePadH, badgeTop + badgePadV),
+          );
+          badgeTp.dispose();
+        }
       }
     }
 
-    // 先画排程（课程 / 日程）
-    for (var i = 0; i < daySchedules.length; i++) {
-      final visual = _scheduleVisuals[i];
-      block(visual, false, isSchedule: true);
-    }
+    try {
+      // 先画排程（课程 / 日程）
+      for (var i = 0; i < _scheduleVisuals.length; i++) {
+        final visual = _scheduleVisuals[i];
+        block(visual, false, isSchedule: true);
+      }
 
-    // 画番茄钟（★ 传入 title）
-    for (var i = 0; i < dayPoms.length; i++) {
-      final visual = _pomodoroVisuals[i];
-      block(visual, true);
-    }
+      // 画番茄钟（★ 传入 title）
+      for (var i = 0; i < dayPoms.length; i++) {
+        final visual = _pomodoroVisuals[i];
+        block(visual, true);
+      }
 
-    // 画补录日志（★ 传入 title）
-    for (var i = 0; i < dayLogs.length; i++) {
-      final visual = _logVisuals[i];
-      block(visual, false);
+      // 画补录日志（★ 传入 title）
+      for (var i = 0; i < dayLogs.length; i++) {
+        final visual = _logVisuals[i];
+        block(visual, false);
+      }
+    } finally {
+      titlePainter?.dispose();
     }
   }
 
   @override
-  bool shouldRepaint(covariant _WeekColPainter o) =>
+  bool shouldRepaint(covariant WeekColPainter o) =>
       o.isDark != isDark ||
       o.hourH != hourH ||
       o.dayLogs != dayLogs ||
@@ -2388,6 +2862,8 @@ class _WeekColPainter extends CustomPainter {
       o.focusColor != focusColor ||
       o.logColor != logColor;
 }
+
+typedef _WeekColPainter = WeekColPainter;
 
 // ══════════════════════════════════════════════════════════
 // 日视图 — 网格（24行×5分钟格）
@@ -3397,32 +3873,40 @@ class _GridBgPainter extends CustomPainter {
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), p);
     }
 
-    for (int h = 0; h < kTotalRows; h++) {
-      final rowTop = h * rowH;
+    final tp = TextPainter(textDirection: ui.TextDirection.ltr);
+    try {
+      for (int h = 0; h < kTotalRows; h++) {
+        final rowTop = h * rowH;
 
-      _drawLabel(
-        canvas,
-        '${h.toString().padLeft(2, '0')}:00',
-        Offset(h * kColsPerH * colW + 3, rowTop + 2),
-        fontSize: 8.0,
-        color: labelMajorColor,
-        bold: true,
-      );
-
-      if (colW >= 14) {
         _drawLabel(
+          tp,
           canvas,
-          '${h.toString().padLeft(2, '0')}:30',
-          Offset((h * kColsPerH + 5) * colW + 3, rowTop + 2),
-          fontSize: 7.0,
-          color: labelMinorColor,
-          bold: false,
+          '${h.toString().padLeft(2, '0')}:00',
+          Offset(h * kColsPerH * colW + 3, rowTop + 2),
+          fontSize: 8.0,
+          color: labelMajorColor,
+          bold: true,
         );
+
+        if (colW >= 14) {
+          _drawLabel(
+            tp,
+            canvas,
+            '${h.toString().padLeft(2, '0')}:30',
+            Offset((h * kColsPerH + 5) * colW + 3, rowTop + 2),
+            fontSize: 7.0,
+            color: labelMinorColor,
+            bold: false,
+          );
+        }
       }
+    } finally {
+      tp.dispose();
     }
   }
 
   void _drawLabel(
+    TextPainter tp,
     Canvas canvas,
     String text,
     Offset offset, {
@@ -3430,17 +3914,16 @@ class _GridBgPainter extends CustomPainter {
     required Color color,
     required bool bold,
   }) {
-    final tp = TextPainter(
-      text: TextSpan(
+    tp
+      ..text = TextSpan(
         text: text,
         style: TextStyle(
           fontSize: fontSize,
           color: color,
           fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
         ),
-      ),
-      textDirection: ui.TextDirection.ltr,
-    )..layout();
+      )
+      ..layout();
     tp.paint(canvas, offset);
   }
 

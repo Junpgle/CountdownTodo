@@ -230,27 +230,40 @@ class PlanExecutionSummary extends StatelessWidget {
                   Expanded(
                     child: ListView.builder(
                       itemCount: entries.length,
+                      findChildIndexCallback: (Key key) {
+                        if (key is ValueKey<String>) {
+                          final id = key.value;
+                          final index = entries.indexWhere(
+                            (e) =>
+                                'plan-execution-list-${e.kind}-${e.id}' == id,
+                          );
+                          return index != -1 ? index : null;
+                        }
+                        return null;
+                      },
                       itemBuilder: (context, index) {
                         final entry = entries[index];
                         final focus = entry.record;
                         final duration = focus != null
                             ? '有效专注 ${focus.effectiveDuration ~/ 60} 分钟'
                             : '记录时长 ${(entry.end - entry.start) ~/ 60000} 分钟';
-                        return Material(
-                          color: Colors.transparent,
-                          child: ListTile(
-                            key: ValueKey(
-                              'plan-execution-list-${entry.kind}-${entry.id}',
+                        return RepaintBoundary(
+                          key: ValueKey(
+                            'plan-execution-list-${entry.kind}-${entry.id}',
+                          ),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: ListTile(
+                              leading: Icon(
+                                entry.icon,
+                                color: entry.color(context),
+                              ),
+                              title: Text('${entry.kind} · ${entry.title}'),
+                              subtitle: Text('${entry.timeLabel}\n$duration'),
+                              isThreeLine: true,
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => Navigator.pop(sheetContext, entry),
                             ),
-                            leading: Icon(
-                              entry.icon,
-                              color: entry.color(context),
-                            ),
-                            title: Text('${entry.kind} · ${entry.title}'),
-                            subtitle: Text('${entry.timeLabel}\n$duration'),
-                            isThreeLine: true,
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () => Navigator.pop(sheetContext, entry),
                           ),
                         );
                       },

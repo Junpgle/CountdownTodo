@@ -187,6 +187,14 @@ class _CourseTimeRepairDialogState extends State<CourseTimeRepairDialog> {
             const SizedBox(height: 12),
             Expanded(
               child: ListView.separated(
+                findItemIndexCallback: (Key key) {
+                  if (key is ValueKey<String>) {
+                    final k = key.value;
+                    final idx = _groups.indexWhere((g) => g.key == k);
+                    return idx != -1 ? idx : null;
+                  }
+                  return null;
+                },
                 itemCount: _groups.length,
                 separatorBuilder: (_, _) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
@@ -208,58 +216,63 @@ class _CourseTimeRepairDialogState extends State<CourseTimeRepairDialog> {
                       ? '第${weeks.first}-${weeks.last}周等'
                       : '第${weeks.join('、')}周';
 
-                  return DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: colorScheme.surfaceContainerHighest.withValues(
-                        alpha: 0.35,
+                  return RepaintBoundary(
+                    key: ValueKey<String>(group.key),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest.withValues(
+                          alpha: 0.35,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            sample.courseName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            '$weekday · $weekText · ${sample.roomName}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: colorScheme.onSurfaceVariant,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              sample.courseName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _timeButton(
-                                  label: _formatTime(group.start),
-                                  onPressed: () =>
-                                      _pickTime(group, isStart: true),
+                            const SizedBox(height: 3),
+                            Text(
+                              '$weekday · $weekText · ${sample.roomName}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _timeButton(
+                                    label: _formatTime(group.start),
+                                    onPressed: () =>
+                                        _pickTime(group, isStart: true),
+                                  ),
                                 ),
-                              ),
-                              const Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 8),
-                                child: Text('至'),
-                              ),
-                              Expanded(
-                                child: _timeButton(
-                                  label: _formatTime(group.end),
-                                  onPressed: () =>
-                                      _pickTime(group, isStart: false),
+                                const Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 8),
+                                  child: Text('至'),
                                 ),
-                              ),
-                            ],
-                          ),
-                        ],
+                                Expanded(
+                                  child: _timeButton(
+                                    label: _formatTime(group.end),
+                                    onPressed: () =>
+                                        _pickTime(group, isStart: false),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   );

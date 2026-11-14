@@ -35,11 +35,12 @@ class _FadingIndexedStackState extends State<FadingIndexedStack>
     _displayIndex = widget.index;
     _prevIndex = widget.index;
     _ctrl = AnimationController(vsync: this, duration: widget.duration);
-    _fadeAnim = CurvedAnimation(parent: _ctrl, curve: widget.curve);
+    final curved = _ctrl.drive(CurveTween(curve: widget.curve));
+    _fadeAnim = curved;
     _slideAnim = Tween<Offset>(
       begin: const Offset(0.15, 0.0),
       end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _ctrl, curve: widget.curve));
+    ).animate(curved);
     _ctrl.forward();
   }
 
@@ -87,18 +88,25 @@ class _FadingIndexedStackState extends State<FadingIndexedStack>
         }
 
         final activeIndex = _showPrevious ? _prevIndex : _displayIndex;
-        return FadeTransition(
-          opacity: _fadeAnim,
-          child: SlideTransition(
-            position: _slideAnim,
-            child: IndexedStack(
-              index: activeIndex,
-              children: _tickerScopedChildren(
-                activeIndex: activeIndex,
-                parentTickerEnabled: parentTickerEnabled,
-              ),
-            ),
+        final stack = IndexedStack(
+          index: activeIndex,
+          children: _tickerScopedChildren(
+            activeIndex: activeIndex,
+            parentTickerEnabled: parentTickerEnabled,
           ),
+        );
+        return AnimatedBuilder(
+          animation: _ctrl,
+          child: stack,
+          builder: (context, child) {
+            if (!_showPrevious && _ctrl.value >= 0.999) {
+              return child!;
+            }
+            return FadeTransition(
+              opacity: _fadeAnim,
+              child: SlideTransition(position: _slideAnim, child: child!),
+            );
+          },
         );
       },
     );

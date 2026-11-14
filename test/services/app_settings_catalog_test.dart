@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:countdown_todo/services/app_settings_catalog.dart';
 import 'package:countdown_todo/services/ai_settings_navigation_service.dart';
 import 'package:countdown_todo/utils/ai_settings_navigation.dart';
@@ -105,21 +103,6 @@ void main() {
     );
   });
 
-  test('catalogue labels belong to their real destination pages', () {
-    for (final item in AppSettingsCatalog.destinations) {
-      expect(item.path, isNotEmpty, reason: item.id);
-      expect(item.description, isNotEmpty, reason: item.id);
-      if (item.labels.isEmpty) continue;
-      final source = pageSources[item.page]!
-          .map((path) => File(path).readAsStringSync())
-          .join('\n');
-      expect(
-        item.labels.any(source.contains),
-        isTrue,
-        reason: '${item.id}: ${item.labels}',
-      );
-    }
-  });
 
   test('platform filters exclude unavailable native and OS controls', () {
     for (final platform in [

@@ -961,6 +961,16 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (context, index) => _buildTeamCard(_teams[index], isDark),
+                      findChildIndexCallback: (Key key) {
+                        if (key is ValueKey<String>) {
+                          final uuid = key.value;
+                          final index = _teams.indexWhere(
+                            (t) => t.uuid == uuid,
+                          );
+                          return index != -1 ? index : null;
+                        }
+                        return null;
+                      },
                       childCount: _teams.length,
                     ),
                   ),
@@ -1267,77 +1277,95 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
             SliverPadding(
               padding: const EdgeInsets.all(16),
               sliver: SliverList(
-                delegate: SliverChildBuilderDelegate((context, index) {
-                  final team = _teams[index];
-                  final isSelected = _selectedTeam?.uuid == team.uuid;
-                  final pendingCount = _teamPendingCounts[team.uuid] ?? 0;
-                  final conflictCount = _teamConflictCounts[team.uuid] ?? 0;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: InkWell(
-                      onTap: () => setState(() => _selectedTeam = team),
-                      borderRadius: BorderRadius.circular(20),
-                      child: OptionalLiquidGlassCard(
-                        padding: const EdgeInsets.all(16),
-                        borderRadius: 20,
-                        highContrast: true,
-                        fallbackDecoration: BoxDecoration(
-                          color: isSelected
-                              ? Theme.of(context).colorScheme.secondary
-                                    .withValues(alpha: 0.1)
-                              : (isDark
-                                    ? Colors.white.withValues(alpha: 0.05)
-                                    : Colors.white),
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    final team = _teams[index];
+                    final isSelected = _selectedTeam?.uuid == team.uuid;
+                    final pendingCount = _teamPendingCounts[team.uuid] ?? 0;
+                    final conflictCount = _teamConflictCounts[team.uuid] ?? 0;
+                    return RepaintBoundary(
+                      key: ValueKey<String>(team.uuid),
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: InkWell(
+                          onTap: () => setState(() => _selectedTeam = team),
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: isSelected
-                                ? Theme.of(context).colorScheme.secondary
-                                      .withValues(alpha: 0.3)
-                                : Colors.transparent,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            _buildTeamAvatar(team),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    team.name,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 15,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  Text(
-                                    '${team.memberCount} 位成员',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey.shade500,
-                                    ),
-                                  ),
-                                ],
+                          child: OptionalLiquidGlassCard(
+                            padding: const EdgeInsets.all(16),
+                            borderRadius: 20,
+                            highContrast: true,
+                            fallbackDecoration: BoxDecoration(
+                              color: isSelected
+                                  ? Theme.of(context).colorScheme.secondary
+                                        .withValues(alpha: 0.1)
+                                  : (isDark
+                                        ? Colors.white.withValues(alpha: 0.05)
+                                        : Colors.white),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: isSelected
+                                    ? Theme.of(context).colorScheme.secondary
+                                          .withValues(alpha: 0.3)
+                                    : Colors.transparent,
                               ),
                             ),
-                            if (conflictCount > 0) ...[
-                              _buildCountBadge(
-                                conflictCount,
-                                Colors.orangeAccent,
-                                icon: Icons.schedule_rounded,
-                              ),
-                              const SizedBox(width: 6),
-                            ],
-                            if (pendingCount > 0)
-                              _buildCountBadge(pendingCount, Colors.redAccent),
-                          ],
+                            child: Row(
+                              children: [
+                                _buildTeamAvatar(team),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        team.name,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 15,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      Text(
+                                        '${team.memberCount} 位成员',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.grey.shade500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (conflictCount > 0) ...[
+                                  _buildCountBadge(
+                                    conflictCount,
+                                    Colors.orangeAccent,
+                                    icon: Icons.schedule_rounded,
+                                  ),
+                                  const SizedBox(width: 6),
+                                ],
+                                if (pendingCount > 0)
+                                  _buildCountBadge(
+                                    pendingCount,
+                                    Colors.redAccent,
+                                  ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                }, childCount: _teams.length),
+                    );
+                  },
+                  findChildIndexCallback: (Key key) {
+                    if (key is ValueKey<String>) {
+                      final uuid = key.value;
+                      final index = _teams.indexWhere((t) => t.uuid == uuid);
+                      return index != -1 ? index : null;
+                    }
+                    return null;
+                  },
+                  childCount: _teams.length,
+                ),
               ),
             ),
           ],
@@ -1717,233 +1745,240 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
     final pendingCount = _teamPendingCounts[team.uuid] ?? 0;
     final conflictCount = _teamConflictCounts[team.uuid] ?? 0;
 
-    return OptionalLiquidGlassCard(
-      margin: const EdgeInsets.only(bottom: 16),
-      borderRadius: 28,
-      highContrast: true,
-      tint: Theme.of(context).colorScheme.primary.withValues(alpha: 0.16),
-      fallbackDecoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: isDark ? Colors.white10 : Colors.transparent),
-        boxShadow: [
-          BoxShadow(
-            color: isDark
-                ? Colors.black.withValues(alpha: 0.3)
-                : Colors.black.withValues(alpha: 0.04),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
+    return RepaintBoundary(
+      key: ValueKey<String>(team.uuid),
+      child: OptionalLiquidGlassCard(
+        margin: const EdgeInsets.only(bottom: 16),
+        borderRadius: 28,
+        highContrast: true,
+        tint: Theme.of(context).colorScheme.primary.withValues(alpha: 0.16),
+        fallbackDecoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(
+            color: isDark ? Colors.white10 : Colors.transparent,
           ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // 头部：Avatar + 标题 + 角色
-            Row(
-              children: [
-                _buildTeamAvatar(team),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        team.name,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                      ),
-                      if (team.userRole == TeamRole.admin || conflictCount > 0)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            children: [
-                              if (team.userRole == TeamRole.admin)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.blueAccent.withValues(
-                                      alpha: 0.1,
-                                    ),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Text(
-                                    '管理员',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: Colors.blueAccent,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              if (conflictCount > 0)
-                                _buildCountBadge(
-                                  conflictCount,
-                                  Colors.orangeAccent,
-                                  icon: Icons.schedule_rounded,
-                                ),
-                            ],
-                          ),
-                        ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '创建于 ${_teamManagementDateFormat('yyyy年MM月dd日').format(DateTime.fromMillisecondsSinceEpoch(team.createdAt))}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade500,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                _buildTeamMoreMenu(team),
-              ],
+          boxShadow: [
+            BoxShadow(
+              color: isDark
+                  ? Colors.black.withValues(alpha: 0.3)
+                  : Colors.black.withValues(alpha: 0.04),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
             ),
-
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Divider(height: 1),
-            ),
-
-            // 中部：人数 + 邀请码
-            Row(
-              children: [
-                Icon(
-                  Icons.people_alt_rounded,
-                  size: 16,
-                  color: Colors.grey.shade400,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  '${team.memberCount} 位成员',
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const Spacer(),
-                InkWell(
-                  onTap: () => unawaited(_copyTeamInviteText(team)),
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.05)
-                          : Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: Colors.grey.withValues(alpha: 0.2),
-                      ),
-                    ),
-                    child: Row(
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 头部：Avatar + 标题 + 角色
+              Row(
+                children: [
+                  _buildTeamAvatar(team),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          '邀请码: ${_normalizeInviteCode(team.inviteCode) ?? "尚未生成"}',
+                          team.name,
                           style: const TextStyle(
-                            fontSize: 12,
-                            fontFamily: 'monospace',
-                            fontWeight: FontWeight.w600,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
                           ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
                         ),
-                        const SizedBox(width: 6),
-                        Icon(
-                          Icons.copy_rounded,
-                          size: 12,
-                          color: Colors.grey.shade500,
+                        if (team.userRole == TeamRole.admin ||
+                            conflictCount > 0)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Wrap(
+                              spacing: 6,
+                              runSpacing: 4,
+                              children: [
+                                if (team.userRole == TeamRole.admin)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blueAccent.withValues(
+                                        alpha: 0.1,
+                                      ),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Text(
+                                      '管理员',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.blueAccent,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                if (conflictCount > 0)
+                                  _buildCountBadge(
+                                    conflictCount,
+                                    Colors.orangeAccent,
+                                    icon: Icons.schedule_rounded,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '创建于 ${_teamManagementDateFormat('yyyy年MM月dd日').format(DateTime.fromMillisecondsSinceEpoch(team.createdAt))}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
                   ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 20),
-
-            // 底部操作区：两列网格比单行按钮更易扫读，也给中文标签留足空间。
-            Text(
-              '团队操作',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.3,
+                  const SizedBox(width: 8),
+                  _buildTeamMoreMenu(team),
+                ],
               ),
-            ),
-            const SizedBox(height: 10),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final actionWidth = (constraints.maxWidth - 10) / 2;
-                final actions = <Widget>[
-                  _buildTeamActionTile(
-                    label: pendingCount > 0 ? '审批申请' : '成员管理',
-                    icon: pendingCount > 0
-                        ? Icons.admin_panel_settings_rounded
-                        : Icons.manage_accounts_rounded,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    badgeCount: pendingCount,
-                    onTap: () => _showMembersSheet(team),
+
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Divider(height: 1),
+              ),
+
+              // 中部：人数 + 邀请码
+              Row(
+                children: [
+                  Icon(
+                    Icons.people_alt_rounded,
+                    size: 16,
+                    color: Colors.grey.shade400,
                   ),
-                  _buildTeamActionTile(
-                    label: '团队公告',
-                    icon: Icons.campaign_rounded,
-                    color: Colors.orangeAccent,
-                    onTap: () => Navigator.push(
-                      context,
-                      PageTransitions.material(
-                        builder: (_) => TeamAnnouncementScreen(team: team),
+                  const SizedBox(width: 6),
+                  Text(
+                    '${team.memberCount} 位成员',
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const Spacer(),
+                  InkWell(
+                    onTap: () => unawaited(_copyTeamInviteText(team)),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.05)
+                            : Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.grey.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Text(
+                            '邀请码: ${_normalizeInviteCode(team.inviteCode) ?? "尚未生成"}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Icon(
+                            Icons.copy_rounded,
+                            size: 12,
+                            color: Colors.grey.shade500,
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                  _buildTeamActionTile(
-                    label: '邀请加入',
-                    icon: Icons.person_add_alt_1_rounded,
-                    color: Theme.of(context).colorScheme.secondary,
-                    emphasized: true,
-                    onTap: () => _showInviteOptionsSheet(team),
-                  ),
-                  if (team.userRole == TeamRole.admin)
-                    _buildTeamActionTile(
-                      label: '分享',
-                      icon: Icons.link_rounded,
-                      color: Theme.of(context).colorScheme.primary,
-                      onTap: () => _openShareManage(team),
-                    ),
-                ];
+                ],
+              ),
 
-                return Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: actions
-                      .map(
-                        (action) => SizedBox(width: actionWidth, child: action),
-                      )
-                      .toList(),
-                );
-              },
-            ),
-          ],
+              const SizedBox(height: 20),
+
+              // 底部操作区：两列网格比单行按钮更易扫读，也给中文标签留足空间。
+              Text(
+                '团队操作',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const SizedBox(height: 10),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final actionWidth = (constraints.maxWidth - 10) / 2;
+                  final actions = <Widget>[
+                    _buildTeamActionTile(
+                      label: pendingCount > 0 ? '审批申请' : '成员管理',
+                      icon: pendingCount > 0
+                          ? Icons.admin_panel_settings_rounded
+                          : Icons.manage_accounts_rounded,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      badgeCount: pendingCount,
+                      onTap: () => _showMembersSheet(team),
+                    ),
+                    _buildTeamActionTile(
+                      label: '团队公告',
+                      icon: Icons.campaign_rounded,
+                      color: Colors.orangeAccent,
+                      onTap: () => Navigator.push(
+                        context,
+                        PageTransitions.material(
+                          builder: (_) => TeamAnnouncementScreen(team: team),
+                        ),
+                      ),
+                    ),
+                    _buildTeamActionTile(
+                      label: '邀请加入',
+                      icon: Icons.person_add_alt_1_rounded,
+                      color: Theme.of(context).colorScheme.secondary,
+                      emphasized: true,
+                      onTap: () => _showInviteOptionsSheet(team),
+                    ),
+                    if (team.userRole == TeamRole.admin)
+                      _buildTeamActionTile(
+                        label: '分享',
+                        icon: Icons.link_rounded,
+                        color: Theme.of(context).colorScheme.primary,
+                        onTap: () => _openShareManage(team),
+                      ),
+                  ];
+
+                  return Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: actions
+                        .map(
+                          (action) =>
+                              SizedBox(width: actionWidth, child: action),
+                        )
+                        .toList(),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2797,74 +2832,92 @@ class _TeamAnnouncementViewState extends State<_TeamAnnouncementView> {
 
     return ListView.builder(
       padding: const EdgeInsets.all(24),
+      findChildIndexCallback: (Key key) {
+        if (key is ValueKey<String>) {
+          final id = key.value;
+          final index = _announcements.indexWhere(
+            (a) => (a is Map ? (a['uuid'] ?? a['id']) : null)?.toString() == id,
+          );
+          return index != -1 ? index : null;
+        }
+        return null;
+      },
       itemCount: _announcements.length,
       itemBuilder: (context, index) {
         final ann = _announcements[index];
-        return OptionalLiquidGlassCard(
-          margin: const EdgeInsets.only(bottom: 16),
-          borderRadius: 16,
-          highContrast: true,
-          tint: Theme.of(context).colorScheme.primary.withValues(alpha: 0.16),
-          fallbackDecoration: BoxDecoration(
-            color: Theme.of(context).cardColor.withValues(alpha: 0.5),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.fromBorderSide(
-              BorderSide(color: Colors.grey.withValues(alpha: 0.1)),
+        final annKey =
+            (ann is Map ? (ann['uuid'] ?? ann['id']) : null)?.toString() ??
+            '$index';
+        return RepaintBoundary(
+          key: ValueKey<String>(annKey),
+          child: OptionalLiquidGlassCard(
+            key: ValueKey<String>(annKey),
+            margin: const EdgeInsets.only(bottom: 16),
+            borderRadius: 16,
+            highContrast: true,
+            tint: Theme.of(context).colorScheme.primary.withValues(alpha: 0.16),
+            fallbackDecoration: BoxDecoration(
+              color: Theme.of(context).cardColor.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.fromBorderSide(
+                BorderSide(color: Colors.grey.withValues(alpha: 0.1)),
+              ),
             ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.campaign_rounded,
-                      color: Colors.orangeAccent,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        ann['title'] ?? '未命名公告',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.campaign_rounded,
+                        color: Colors.orangeAccent,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          ann['title'] ?? '未命名公告',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
                         ),
                       ),
-                    ),
-                    Builder(
-                      builder: (context) {
-                        DateTime date;
-                        final rawDate = ann['created_at'];
-                        if (rawDate is int) {
-                          date = DateTime.fromMillisecondsSinceEpoch(rawDate);
-                        } else {
-                          date =
-                              DateTime.tryParse(rawDate?.toString() ?? '') ??
-                              DateTime.now();
-                        }
-                        return Text(
-                          _teamManagementDateFormat('MM-dd HH:mm').format(date),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade500,
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Divider(),
-                ),
-                Text(
-                  ann['content'] ?? '',
-                  style: const TextStyle(fontSize: 14, height: 1.5),
-                ),
-              ],
+                      Builder(
+                        builder: (context) {
+                          DateTime date;
+                          final rawDate = ann['created_at'];
+                          if (rawDate is int) {
+                            date = DateTime.fromMillisecondsSinceEpoch(rawDate);
+                          } else {
+                            date =
+                                DateTime.tryParse(rawDate?.toString() ?? '') ??
+                                DateTime.now();
+                          }
+                          return Text(
+                            _teamManagementDateFormat('MM-dd HH:mm')
+                                .format(date),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade500,
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Divider(),
+                  ),
+                  Text(
+                    ann['content'] ?? '',
+                    style: const TextStyle(fontSize: 14, height: 1.5),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -3160,6 +3213,25 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
               : ListView.builder(
                   controller: widget.scrollController,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
+                  findChildIndexCallback: (Key key) {
+                    if (key is ValueKey<String>) {
+                      final keyVal = key.value;
+                      if (keyVal.startsWith('team-req-')) {
+                        final id = keyVal.substring('team-req-'.length);
+                        final idx = _requests.indexWhere(
+                          (r) => '${r['id'] ?? r['user_id']}' == id,
+                        );
+                        if (idx != -1) return idx + 1;
+                      } else if (keyVal.startsWith('team-mem-')) {
+                        final id = keyVal.substring('team-mem-'.length);
+                        final idx = _members.indexWhere(
+                          (m) => '${m['id'] ?? m['user_id']}' == id,
+                        );
+                        if (idx != -1) return idx + memberStartIndex;
+                      }
+                    }
+                    return null;
+                  },
                   itemCount: listItemCount,
                   itemBuilder: (context, index) {
                     if (hasRequests) {
@@ -3179,7 +3251,13 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
                         );
                       }
                       if (index <= requestCount) {
-                        return _buildRequestItem(_requests[index - 1]);
+                        final req = _requests[index - 1];
+                        return RepaintBoundary(
+                          key: ValueKey<String>(
+                            'team-req-${req['id'] ?? req['user_id']}',
+                          ),
+                          child: _buildRequestItem(req),
+                        );
                       }
                       if (index == requestCount + 1) {
                         return const SizedBox(height: 16);
@@ -3203,7 +3281,13 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
                     }
                     final memberIndex = index - memberStartIndex;
                     if (memberIndex < _members.length) {
-                      return _buildMemberItem(_members[memberIndex]);
+                      final mem = _members[memberIndex];
+                      return RepaintBoundary(
+                        key: ValueKey<String>(
+                          'team-mem-${mem['id'] ?? mem['user_id']}',
+                        ),
+                        child: _buildMemberItem(mem),
+                      );
                     }
                     return const SizedBox(height: 40);
                   },

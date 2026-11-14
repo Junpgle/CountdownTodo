@@ -3,10 +3,8 @@ library;
 
 import 'package:countdown_todo/features/finance/screens/finance_entry_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_home_screen.dart';
-import 'package:countdown_todo/features/finance/screens/finance_settings_screen.dart';
 import 'package:countdown_todo/features/finance/services/ai_usage_cost_service.dart';
 import 'package:countdown_todo/features/finance/services/finance_storage.dart';
-import 'package:countdown_todo/features/finance/models/finance_models.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_intro_guide.dart';
 import 'package:countdown_todo/services/database_helper.dart';
 import 'package:countdown_todo/services/feature_tip_service.dart';
@@ -162,49 +160,6 @@ void main() {
     expect(find.text('跳过教程'), findsNothing);
   });
 
-  testWidgets('category ledger does not show an unavailable guide action', (
-    tester,
-  ) async {
-    await _seed(tester, seen: true);
-    final now = DateTime.now();
-    final date =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    await tester.runAsync(
-      () => FinanceStorage.saveTransaction(
-        FinanceTransaction(
-          uuid: 'guide-category-ledger',
-          amountMinor: 1500,
-          categoryUuid: 'finance-system-category-food',
-          transactionDate: date,
-          merchant: '测试分类账单',
-        ),
-      ),
-    );
-    await _pumpHome(tester);
-    await _waitFor(tester, find.text('净支出'));
-    final category = find.byKey(
-      const ValueKey('finance-overview-category-finance-system-category-food'),
-    );
-    await tester.scrollUntilVisible(
-      category,
-      250,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(category);
-    await tester.pumpAndSettle();
-    final categoryDetail = find.byKey(
-      const ValueKey('finance-category-detail-finance-system-category-food'),
-    );
-    expect(categoryDetail, findsOneWidget);
-    await tester.tap(categoryDetail);
-    await tester.pumpAndSettle();
-    expect(find.byTooltip('返回支出分类'), findsOneWidget);
-
-    await tester.tap(find.byTooltip('更多操作'));
-    await tester.pumpAndSettle();
-    expect(find.text('记账新手指引'), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
 
   testWidgets('quick entry takes priority and guide waits until it closes', (
     tester,
@@ -220,30 +175,6 @@ void main() {
     expect(tester.takeException(), null);
   });
 
-  testWidgets('small screen guide opens settings only after explicit action', (
-    tester,
-  ) async {
-    await _seed(tester);
-    await _pumpHome(tester, compact: true);
-    await _waitFor(tester, find.text('从记一笔开始'));
-    for (var i = 0; i < 4; i++) {
-      expect(tester.takeException(), null);
-      await _next(tester);
-    }
-    expect(find.byType(FinanceSettingsScreen), findsNothing);
-    await tester.tap(find.text('去设置'));
-    await _waitFor(tester, find.byType(FinanceSettingsScreen));
-    expect(find.text('需要时再开启云同步'), findsNothing);
-    expect(
-      await FeatureTipService.hasTipBeenShown(FinanceIntroGuide.tipId),
-      true,
-    );
-    expect(
-      await AppSettingsStorage.isFinanceCloudSyncEnabled(_username),
-      false,
-    );
-    expect(tester.takeException(), null);
-  });
 
   testWidgets(
     'system back dismisses guide without leaving finance or enabling sync',

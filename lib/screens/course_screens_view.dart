@@ -123,129 +123,142 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                   )
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(vertical: 8),
+                    findChildIndexCallback: (Key key) {
+                      if (key is ValueKey<String>) {
+                        final id = key.value;
+                        final index = todayAllDay.indexWhere((t) => t.id == id);
+                        return index != -1 ? index : null;
+                      }
+                      return null;
+                    },
                     itemCount: todayAllDay.length,
                     itemBuilder: (context, index) {
                       final todo = todayAllDay[index];
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 4,
-                        ),
-                        child: InkWell(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              PageTransitions.slideHorizontal(
-                                TodoDetailScreen(
-                                  todo: todo,
-                                  onCreateRelatedTodo:
-                                      widget.onCreateRelatedTodo,
+                      return RepaintBoundary(
+                        key: ValueKey<String>(todo.id),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 4,
+                          ),
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                PageTransitions.slideHorizontal(
+                                  TodoDetailScreen(
+                                    todo: todo,
+                                    onCreateRelatedTodo:
+                                        widget.onCreateRelatedTodo,
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: todo.isDone
-                                  ? (isDark
-                                        ? Theme.of(context)
-                                              .colorScheme
-                                              .cdtSuccess
-                                              .withValues(alpha: 0.1)
-                                        : Theme.of(context)
-                                              .colorScheme
-                                              .cdtSuccess
-                                              .withValues(alpha: 0.05))
-                                  : (isDark
-                                        ? Theme.of(context)
-                                              .colorScheme
-                                              .cdtWarning
-                                              .withValues(alpha: 0.1)
-                                        : Theme.of(context)
-                                              .colorScheme
-                                              .cdtWarning
-                                              .withValues(alpha: 0.05)),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
+                              );
+                            },
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
                                 color: todo.isDone
-                                    ? Theme.of(context).colorScheme.cdtSuccess
-                                          .withValues(alpha: 0.3)
-                                    : Theme.of(context).colorScheme.cdtWarning
-                                          .withValues(alpha: 0.3),
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  todo.isDone
-                                      ? Icons.check_circle
-                                      : Icons.task_alt,
-                                  size: 20,
+                                    ? (isDark
+                                          ? Theme.of(context)
+                                                .colorScheme
+                                                .cdtSuccess
+                                                .withValues(alpha: 0.1)
+                                          : Theme.of(context)
+                                                .colorScheme
+                                                .cdtSuccess
+                                                .withValues(alpha: 0.05))
+                                    : (isDark
+                                          ? Theme.of(context)
+                                                .colorScheme
+                                                .cdtWarning
+                                                .withValues(alpha: 0.1)
+                                          : Theme.of(context)
+                                                .colorScheme
+                                                .cdtWarning
+                                                .withValues(alpha: 0.05)),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
                                   color: todo.isDone
                                       ? Theme.of(context).colorScheme.cdtSuccess
-                                      : Theme.of(context)
-                                            .colorScheme
-                                            .cdtWarning,
+                                            .withValues(alpha: 0.3)
+                                      : Theme.of(context).colorScheme.cdtWarning
+                                            .withValues(alpha: 0.3),
                                 ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      if (todo.teamUuid != null)
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                            bottom: 2,
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              Icon(
-                                                Icons.group,
-                                                size: 10,
-                                                color: Theme.of(context)
-                                                    .colorScheme
-                                                    .primary,
-                                              ),
-                                              const SizedBox(width: 4),
-                                              Text(
-                                                todo.teamName ?? '团队',
-                                                style: TextStyle(
-                                                  fontSize: 10,
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    todo.isDone
+                                        ? Icons.check_circle
+                                        : Icons.task_alt,
+                                    size: 20,
+                                    color: todo.isDone
+                                        ? Theme.of(context)
+                                              .colorScheme
+                                              .cdtSuccess
+                                        : Theme.of(context)
+                                              .colorScheme
+                                              .cdtWarning,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        if (todo.teamUuid != null)
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                              bottom: 2,
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.group,
+                                                  size: 10,
                                                   color: Theme.of(context)
                                                       .colorScheme
                                                       .primary,
-                                                  fontWeight: FontWeight.bold,
                                                 ),
-                                              ),
-                                            ],
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  todo.teamName ?? '团队',
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                    color: Theme.of(context)
+                                                        .colorScheme
+                                                        .primary,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
                                           ),
+                                        Text(
+                                          todo.title,
+                                          style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w500,
+                                            decoration: todo.isDone
+                                                ? TextDecoration.lineThrough
+                                                : null,
+                                            color: todo.isDone
+                                                ? (isDark
+                                                      ? Colors.white38
+                                                      : Colors.black38)
+                                                : (isDark
+                                                      ? Colors.white
+                                                      : Colors.black87),
+                                          ),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                      Text(
-                                        todo.title,
-                                        style: TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w500,
-                                          decoration: todo.isDone
-                                              ? TextDecoration.lineThrough
-                                              : null,
-                                          color: todo.isDone
-                                              ? (isDark
-                                                    ? Colors.white38
-                                                    : Colors.black38)
-                                              : (isDark
-                                                    ? Colors.white
-                                                    : Colors.black87),
-                                        ),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -420,6 +433,9 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
             menuChildren: [
               _buildFilterMenuHeader(),
               _buildFilterMenuDivider(),
+              _buildFilterSectionLabel('视角预设'),
+              _buildPerspectivePresetsRow(),
+              _buildFilterMenuDivider(),
               _buildFilterSectionLabel('显示内容'),
               _buildCheckableMenuItem('courses', '课表'),
               _buildCheckableMenuItem('fixedSchedules', '固定日程'),
@@ -451,6 +467,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
               final selectedCount = _selectedFilterCount;
               final hasFilterChanges =
                   selectedCount != 7 ||
+                  _weekPerspective != 'all' ||
                   _activeDataViews.contains('hideCrossDay') ||
                   !_collapseFreeTime;
               return IconButton(
@@ -677,71 +694,91 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                                             }
                                           },
                                         )
-                                      : AnimatedSwitcher(
-                                          key: _gridKey,
-                                          duration: const Duration(
-                                            milliseconds: 400,
-                                          ),
-                                          transitionBuilder:
-                                              (child, animation) {
-                                                return Transform.translate(
-                                                  offset: Offset(
-                                                    _dragOffset *
-                                                        (1.0 - animation.value),
-                                                    0,
-                                                  ),
-                                                  child: SlideTransition(
-                                                    position:
-                                                        Tween<Offset>(
-                                                          begin: Offset(
-                                                            _isNextSlide
-                                                                ? 1.0
-                                                                : -1.0,
-                                                            0.0,
-                                                          ),
-                                                          end: Offset.zero,
-                                                        ).animate(
-                                                          CurvedAnimation(
-                                                            parent: animation,
-                                                            curve: Curves
-                                                                .easeOutCubic,
-                                                          ),
+                                      : LayoutBuilder(
+                                          builder: (context, innerConstraints) {
+                                            double cellWidth =
+                                                (innerConstraints.maxWidth -
+                                                    timeColumnWidth) /
+                                                7;
+                                            double totalMinutes =
+                                                (endHour - startHour) * 60.0 -
+                                                _totalHiddenMinutes;
+                                            double minuteHeight =
+                                                innerConstraints.maxHeight /
+                                                totalMinutes;
+
+                                            return AnimatedSwitcher(
+                                              key: _gridKey,
+                                              duration: const Duration(
+                                                milliseconds: 400,
+                                              ),
+                                              transitionBuilder: (child, animation) {
+                                                final slidePosition =
+                                                    Tween<Offset>(
+                                                      begin: Offset(
+                                                        _isNextSlide
+                                                            ? 1.0
+                                                            : -1.0,
+                                                        0.0,
+                                                      ),
+                                                      end: Offset.zero,
+                                                    ).animate(
+                                                      animation.drive(
+                                                        CurveTween(
+                                                          curve: Curves
+                                                              .easeOutCubic,
                                                         ),
-                                                    child: FadeTransition(
-                                                      opacity: animation,
-                                                      child: child,
-                                                    ),
-                                                  ),
+                                                      ),
+                                                    );
+                                                return AnimatedBuilder(
+                                                  animation: animation,
+                                                  child: child,
+                                                  builder: (context, child) {
+                                                    if (animation.value <=
+                                                        0.001) {
+                                                      return const SizedBox.shrink();
+                                                    }
+                                                    if (animation.value >=
+                                                        0.999) {
+                                                      return child!;
+                                                    }
+                                                    Widget current =
+                                                        SlideTransition(
+                                                          position:
+                                                              slidePosition,
+                                                          child: FadeTransition(
+                                                            opacity: animation,
+                                                            child: child,
+                                                          ),
+                                                        );
+                                                    final dx =
+                                                        _dragOffset *
+                                                        (1.0 - animation.value);
+                                                    if (dx.abs() > 0.01) {
+                                                      current =
+                                                          Transform.translate(
+                                                            offset: Offset(
+                                                              dx,
+                                                              0,
+                                                            ),
+                                                            child: current,
+                                                          );
+                                                    }
+                                                    return current;
+                                                  },
                                                 );
                                               },
-                                          child: RepaintBoundary(
-                                            key: ValueKey(
-                                              'WeekView_$_currentWeek',
-                                            ),
-                                            child: LayoutBuilder(
-                                              builder:
-                                                  (context, innerConstraints) {
-                                                    double cellWidth =
-                                                        (innerConstraints
-                                                                .maxWidth -
-                                                            timeColumnWidth) /
-                                                        7;
-                                                    double totalMinutes =
-                                                        (endHour - startHour) *
-                                                            60.0 -
-                                                        _totalHiddenMinutes;
-                                                    double minuteHeight =
-                                                        innerConstraints
-                                                            .maxHeight /
-                                                        totalMinutes;
-
-                                                    return _buildGrid(
-                                                      cellWidth,
-                                                      minuteHeight,
-                                                    );
-                                                  },
-                                            ),
-                                          ),
+                                              child: RepaintBoundary(
+                                                key: ValueKey(
+                                                  'WeekView_${_currentWeek}_$_weekViewGeneration',
+                                                ),
+                                                child: _buildGrid(
+                                                  cellWidth,
+                                                  minuteHeight,
+                                                ),
+                                              ),
+                                            );
+                                          },
                                         ),
                                 ),
                               ],

@@ -74,6 +74,110 @@ mixin _HomeDashboardViewMixin
     );
   }
 
+  Widget _buildWallpaperWidget({
+    required String wallpaperUrl,
+    required ImageProvider<Object>? localWallpaperProvider,
+    bool extractColor = true,
+  }) {
+    return RepaintBoundary(
+      child: wallpaperUrl.startsWith('assets/')
+          ? Builder(
+              builder: (context) {
+                final provider = AssetImage(wallpaperUrl);
+                if (extractColor) {
+                  _scheduleWallpaperColorExtraction(provider, wallpaperUrl);
+                }
+                return _buildWallpaperDisplay(provider);
+              },
+            )
+          : localWallpaperProvider != null
+          ? Builder(
+              builder: (context) {
+                final provider = localWallpaperProvider;
+                if (extractColor) {
+                  _scheduleWallpaperColorExtraction(provider, wallpaperUrl);
+                }
+                return _buildWallpaperDisplay(provider);
+              },
+            )
+          : _WallpaperNetworkImage(
+              url: _wallpaperUrl!,
+              onImageProvider: extractColor
+                  ? (provider) {
+                      _extractColorFromProvider(provider, _wallpaperUrl!);
+                    }
+                  : null,
+              onSuccess: () {
+                _wallpaperRetryCount = 0;
+              },
+              onError: () {
+                _handleWallpaperError();
+              },
+            ),
+    );
+  }
+
+  static const LinearGradient _wallpaperTopFadeGradient = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    stops: [0.0, 0.18, 0.78, 1.0],
+    colors: [Colors.white, Colors.white, Color(0x24FFFFFF), Colors.transparent],
+  );
+  static Rect? _cachedWallpaperFadeBounds;
+  static Shader? _cachedWallpaperFadeShader;
+
+  static Shader _resolveWallpaperTopFadeShader(Rect bounds) {
+    if (_cachedWallpaperFadeBounds == bounds &&
+        _cachedWallpaperFadeShader != null) {
+      return _cachedWallpaperFadeShader!;
+    }
+    _cachedWallpaperFadeBounds = bounds;
+    return _cachedWallpaperFadeShader = _wallpaperTopFadeGradient.createShader(
+      bounds,
+    );
+  }
+
+  Widget _buildWallpaperTopFadeCap({
+    required double headerExtent,
+    required String wallpaperUrl,
+    required ImageProvider<Object>? localWallpaperProvider,
+  }) {
+    final fadeHeight = headerExtent + floatingGlassTopBarDefaultFadeTail;
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      height: fadeHeight,
+      child: IgnorePointer(
+        child: RepaintBoundary(
+          child: Builder(
+            builder: (context) {
+              final screenSize = MediaQuery.sizeOf(context);
+              return ShaderMask(
+                blendMode: BlendMode.dstIn,
+                shaderCallback: _resolveWallpaperTopFadeShader,
+                child: ClipRect(
+                  child: OverflowBox(
+                    alignment: Alignment.topCenter,
+                    minWidth: screenSize.width,
+                    maxWidth: screenSize.width,
+                    minHeight: screenSize.height,
+                    maxHeight: screenSize.height,
+                    child: _buildWallpaperWidget(
+                      wallpaperUrl: wallpaperUrl,
+                      localWallpaperProvider: localWallpaperProvider,
+                      extractColor: false,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget build(BuildContext context) {
     bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
     bool showWallpaper = !isDarkMode && _wallpaperShow && _wallpaperUrl != null;
@@ -105,41 +209,12 @@ mixin _HomeDashboardViewMixin
         children: [
           if (showWallpaper && wallpaperUrl != null)
             Positioned.fill(
-              child: RepaintBoundary(
-                child: wallpaperUrl.startsWith('assets/')
-                    ? Builder(
-                        builder: (context) {
-                          final provider = AssetImage(wallpaperUrl);
-                          _scheduleWallpaperColorExtraction(
-                            provider,
-                            wallpaperUrl,
-                          );
-                          return _buildWallpaperDisplay(provider);
-                        },
-                      )
-                    : localWallpaperProvider != null
-                    ? Builder(
-                        builder: (context) {
-                          final provider = localWallpaperProvider;
-                          _scheduleWallpaperColorExtraction(
-                            provider,
-                            wallpaperUrl,
-                          );
-                          return _buildWallpaperDisplay(provider);
-                        },
-                      )
-                    : _WallpaperNetworkImage(
-                        url: _wallpaperUrl!,
-                        onImageProvider: (provider) {
-                          _extractColorFromProvider(provider, _wallpaperUrl!);
-                        },
-                        onSuccess: () {
-                          _wallpaperRetryCount = 0;
-                        },
-                        onError: () {
-                          _handleWallpaperError();
-                        },
-                      ),
+              child: IgnorePointer(
+                child: _buildWallpaperWidget(
+                  wallpaperUrl: wallpaperUrl,
+                  localWallpaperProvider: localWallpaperProvider,
+                  extractColor: true,
+                ),
               ),
             ),
           SafeArea(
@@ -148,11 +223,11 @@ mixin _HomeDashboardViewMixin
             top: false,
             bottom: false,
             child: FloatingGlassPinnedHeaderLayout(
+              fadeContent: !showWallpaper,
               initialHeaderExtent:
                   (_selectedTabIndex != _homeFocusTabIndex || isTablet)
                   ? (78.0 + MediaQuery.paddingOf(context).top)
                   : 0.0,
-              fadeContent: !showWallpaper,
               header: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -272,6 +347,11 @@ mixin _HomeDashboardViewMixin
                                         showWallpaper || AppPlatform.isWindows
                                         ? child
                                         : RepaintBoundary(child: child);
+                                    // Keep `addRepaintBoundaries: !showWallpaper`
+                                    // so BackdropFilter / LiquidGlass cards can
+                                    // sample the wallpaper behind them.
+                                    final addListRepaintBoundaries =
+                                        !showWallpaper;
                                     Widget buildCountdown() =>
                                         wrapSectionBoundary(
                                           ValueListenableBuilder<
@@ -784,12 +864,12 @@ mixin _HomeDashboardViewMixin
                                                   ? 'home-focus-sections'
                                                   : 'home-main-sections',
                                             ),
-                                            physics: const BouncingScrollPhysics(
+                                            physics: const AppFluidScrollPhysics(
                                               parent:
                                                   AlwaysScrollableScrollPhysics(),
                                             ),
                                             addRepaintBoundaries:
-                                                !showWallpaper,
+                                                addListRepaintBoundaries,
                                             scrollCacheExtent:
                                                 AppPlatform.isWindows
                                                 ? const ScrollCacheExtent.viewport(
@@ -868,14 +948,18 @@ mixin _HomeDashboardViewMixin
                                             },
                                           ),
                                         );
+                                        final tabContentKey = ValueKey<String>(
+                                          focusPage
+                                              ? 'home-focus-tab-content'
+                                              : 'home-main-tab-content',
+                                        );
                                         return showWallpaper
-                                            ? listContent
+                                            ? KeyedSubtree(
+                                                key: tabContentKey,
+                                                child: listContent,
+                                              )
                                             : RepaintBoundary(
-                                                key: ValueKey<String>(
-                                                  focusPage
-                                                      ? 'home-focus-tab-content'
-                                                      : 'home-main-tab-content',
-                                                ),
+                                                key: tabContentKey,
                                                 child: listContent,
                                               );
                                       }
@@ -943,19 +1027,31 @@ mixin _HomeDashboardViewMixin
                                               const ValueKey<String>(
                                                 'home-focus-tab-content',
                                               );
-                                          final enteringPage = SlideTransition(
-                                            position: Tween<Offset>(
-                                              begin: Offset(
-                                                focusPage ? 0.035 : -0.035,
-                                                0,
-                                              ),
-                                              end: Offset.zero,
-                                            ).animate(animation),
+                                          final slidePosition = Tween<Offset>(
+                                            begin: Offset(
+                                              focusPage ? 0.035 : -0.035,
+                                              0,
+                                            ),
+                                            end: Offset.zero,
+                                          ).animate(animation);
+                                          return AnimatedBuilder(
+                                            animation: animation,
                                             child: child,
-                                          );
-                                          return FadeTransition(
-                                            opacity: animation,
-                                            child: enteringPage,
+                                            builder: (context, child) {
+                                              if (animation.value <= 0.001) {
+                                                return const SizedBox.shrink();
+                                              }
+                                              if (animation.value >= 0.999) {
+                                                return child!;
+                                              }
+                                              return FadeTransition(
+                                                opacity: animation,
+                                                child: SlideTransition(
+                                                  position: slidePosition,
+                                                  child: child,
+                                                ),
+                                              );
+                                            },
                                           );
                                         },
                                         child: buildMobileList(
@@ -1114,7 +1210,7 @@ mixin _HomeDashboardViewMixin
 
                                     return OptionalLiquidGlassScrollOptimizer(
                                       child: SingleChildScrollView(
-                                        physics: const BouncingScrollPhysics(
+                                        physics: const AppFluidScrollPhysics(
                                           parent:
                                               AlwaysScrollableScrollPhysics(),
                                         ),
@@ -1210,6 +1306,14 @@ mixin _HomeDashboardViewMixin
                       );
                     },
                   ),
+                  if (showWallpaper &&
+                      wallpaperUrl != null &&
+                      headerExtent > 0.0)
+                    _buildWallpaperTopFadeCap(
+                      headerExtent: headerExtent,
+                      wallpaperUrl: wallpaperUrl,
+                      localWallpaperProvider: localWallpaperProvider,
+                    ),
                 ],
               ),
             ),

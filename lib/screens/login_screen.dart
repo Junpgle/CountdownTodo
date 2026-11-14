@@ -104,46 +104,44 @@ class _OrbPainter extends CustomPainter {
   final Color primary;
   final Color accent;
 
+  static Size? _cachedSize;
+  static bool? _cachedDark;
+  static Color? _cachedPrimary;
+  static Color? _cachedAccent;
+  static final Paint _orb1Paint = Paint();
+  static final Paint _orb2Paint = Paint();
+
   @override
   void paint(Canvas canvas, Size size) {
-    final a1 = dark ? 0.20 : 0.10;
-    final a2 = dark ? 0.12 : 0.07;
+    final c1 = Offset(size.width * 0.88, size.height * 0.10);
+    final c2 = Offset(size.width * 0.08, size.height * 0.80);
 
-    canvas.drawCircle(
-      Offset(size.width * 0.88, size.height * 0.10),
-      240,
-      Paint()
-        ..shader =
-            RadialGradient(
-              colors: [
-                primary.withValues(alpha: a1),
-                Colors.transparent,
-              ],
-            ).createShader(
-              Rect.fromCircle(
-                center: Offset(size.width * 0.88, size.height * 0.10),
-                radius: 240,
-              ),
-            ),
-    );
+    if (_cachedSize != size ||
+        _cachedDark != dark ||
+        _cachedPrimary != primary ||
+        _cachedAccent != accent) {
+      final a1 = dark ? 0.20 : 0.10;
+      final a2 = dark ? 0.12 : 0.07;
+      _orb1Paint.shader = RadialGradient(
+        colors: [
+          primary.withValues(alpha: a1),
+          Colors.transparent,
+        ],
+      ).createShader(Rect.fromCircle(center: c1, radius: 240));
+      _orb2Paint.shader = RadialGradient(
+        colors: [
+          accent.withValues(alpha: a2),
+          Colors.transparent,
+        ],
+      ).createShader(Rect.fromCircle(center: c2, radius: 200));
+      _cachedSize = size;
+      _cachedDark = dark;
+      _cachedPrimary = primary;
+      _cachedAccent = accent;
+    }
 
-    canvas.drawCircle(
-      Offset(size.width * 0.08, size.height * 0.80),
-      200,
-      Paint()
-        ..shader =
-            RadialGradient(
-              colors: [
-                accent.withValues(alpha: a2),
-                Colors.transparent,
-              ],
-            ).createShader(
-              Rect.fromCircle(
-                center: Offset(size.width * 0.08, size.height * 0.80),
-                radius: 200,
-              ),
-            ),
-    );
+    canvas.drawCircle(c1, 240, _orb1Paint);
+    canvas.drawCircle(c2, 200, _orb2Paint);
   }
 
   @override
@@ -511,64 +509,17 @@ class _LegacyBanner extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────
-//  6-digit OTP input with per-digit scale bounce
+//  6-digit OTP input
 // ─────────────────────────────────────────────
-class _OtpInput extends StatefulWidget {
+class _OtpInput extends StatelessWidget {
   const _OtpInput({required this.controller});
   final TextEditingController controller;
-
-  @override
-  State<_OtpInput> createState() => _OtpInputState();
-}
-
-class _OtpInputState extends State<_OtpInput> with TickerProviderStateMixin {
-  String _prevText = '';
-  final Map<int, AnimationController> _controllers = {};
-  final Map<int, Animation<double>> _animations = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _prevText = widget.controller.text;
-    widget.controller.addListener(_onTextChanged);
-  }
-
-  @override
-  void dispose() {
-    widget.controller.removeListener(_onTextChanged);
-    for (final c in _controllers.values) {
-      c.dispose();
-    }
-    super.dispose();
-  }
-
-  void _onTextChanged() {
-    final current = widget.controller.text;
-    if (current.length != _prevText.length) {
-      if (current.length > _prevText.length) {
-        final idx = current.length - 1;
-        if (!_controllers.containsKey(idx)) {
-          final ctrl = AnimationController(
-            vsync: this,
-            duration: const Duration(milliseconds: 300),
-          );
-          _controllers[idx] = ctrl;
-          _animations[idx] = CurvedAnimation(
-            parent: ctrl,
-            curve: Curves.easeOutBack,
-          );
-        }
-        _controllers[idx]!.forward(from: 0.0);
-      }
-    }
-    _prevText = current;
-  }
 
   @override
   Widget build(BuildContext context) {
     final t = _T(context);
     return TextField(
-      controller: widget.controller,
+      controller: controller,
       keyboardType: TextInputType.number,
       textAlign: TextAlign.center,
       maxLength: 6,
@@ -748,15 +699,13 @@ class _LoginScreenState extends State<LoginScreen>
       vsync: this,
       duration: const Duration(milliseconds: 480),
     );
-    _fadeAnim = CurvedAnimation(
-      parent: _contentTransitionController,
-      curve: Curves.easeOut,
+    _fadeAnim = _contentTransitionController.drive(
+      CurveTween(curve: Curves.easeOut),
     );
     _slideAnim = Tween<Offset>(begin: const Offset(0.15, 0.0), end: Offset.zero)
         .animate(
-          CurvedAnimation(
-            parent: _contentTransitionController,
-            curve: Curves.easeOutCubic,
+          _contentTransitionController.drive(
+            CurveTween(curve: Curves.easeOutCubic),
           ),
         );
     _contentTransitionController.forward();
@@ -1232,13 +1181,7 @@ class _LoginScreenState extends State<LoginScreen>
               padding: const EdgeInsets.symmetric(horizontal: 56, vertical: 40),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 420),
-                child: SlideTransition(
-                  position: _slideAnim,
-                  child: FadeTransition(
-                    opacity: _fadeAnim,
-                    child: _buildFormContent(),
-                  ),
-                ),
+                child: _wrapEntranceTransition(_buildFormContent()),
               ),
             ),
           ),
@@ -1252,21 +1195,33 @@ class _LoginScreenState extends State<LoginScreen>
     return SafeArea(
       child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(24, 16, 24, 32 + bottomInset),
-        child: SlideTransition(
-          position: _slideAnim,
-          child: FadeTransition(
-            opacity: _fadeAnim,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const _BrandLogo(size: 44),
-                const SizedBox(height: 20),
-                _buildFormContent(),
-              ],
-            ),
+        child: _wrapEntranceTransition(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _BrandLogo(size: 44),
+              const SizedBox(height: 20),
+              _buildFormContent(),
+            ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _wrapEntranceTransition(Widget child) {
+    return AnimatedBuilder(
+      animation: _contentTransitionController,
+      child: child,
+      builder: (context, child) {
+        if (_contentTransitionController.value >= 0.999) {
+          return child!;
+        }
+        return SlideTransition(
+          position: _slideAnim,
+          child: FadeTransition(opacity: _fadeAnim, child: child),
+        );
+      },
     );
   }
 

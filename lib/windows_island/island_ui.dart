@@ -153,9 +153,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       vsync: this,
       duration: IslandConfig.transitionDuration,
     );
-    _splitProgress = CurvedAnimation(
-      parent: _splitController,
-      curve: Curves.easeOutCubic,
+    _splitProgress = _splitController.drive(
+      CurveTween(curve: Curves.easeOutCubic),
     );
     _splitRowOpacity = Tween<double>(
       begin: 0.75,
@@ -175,13 +174,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       duration: IslandConfig.transitionDuration,
     );
 
-    _sizeAnimation =
-        Tween<Size>(
-          begin: const Size(100, 34),
-          end: const Size(100, 34),
-        ).animate(
-          CurvedAnimation(parent: _sizeController, curve: Curves.easeOutCubic),
-        );
+    _sizeAnimation = Tween<Size>(
+      begin: const Size(100, 34),
+      end: const Size(100, 34),
+    ).animate(_sizeController.drive(CurveTween(curve: Curves.easeOutCubic)));
     _radiusAnimation = AlwaysStoppedAnimation<double>(
       IslandConfig.capsuleRadius,
     );
@@ -193,24 +189,18 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     );
 
     // 脉冲动画：缩放效果
-    _pulseAnimation =
-        TweenSequence([
-          TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.15), weight: 25),
-          TweenSequenceItem(tween: Tween(begin: 1.15, end: 1.0), weight: 25),
-          TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.15), weight: 25),
-          TweenSequenceItem(tween: Tween(begin: 1.15, end: 1.0), weight: 25),
-        ]).animate(
-          CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-        );
+    _pulseAnimation = TweenSequence([
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.15), weight: 25),
+      TweenSequenceItem(tween: Tween(begin: 1.15, end: 1.0), weight: 25),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.15), weight: 25),
+      TweenSequenceItem(tween: Tween(begin: 1.15, end: 1.0), weight: 25),
+    ]).animate(_pulseController.drive(CurveTween(curve: Curves.easeInOut)));
 
     // 颜色闪烁动画
-    _colorAnimation =
-        ColorTween(
-          begin: IslandConfig.focusColor,
-          end: IslandConfig.warningColor,
-        ).animate(
-          CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-        );
+    _colorAnimation = ColorTween(
+      begin: IslandConfig.focusColor,
+      end: IslandConfig.warningColor,
+    ).animate(_pulseController.drive(CurveTween(curve: Curves.easeInOut)));
 
     widget.payloadNotifier?.addListener(_onNotifierPayload);
 
@@ -312,13 +302,14 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     _resizeDebounce?.cancel();
     _sizeController.stop();
     _sizeController.reset();
-    _sizeAnimation = Tween<Size>(begin: beginSize, end: toSize).animate(
-      CurvedAnimation(parent: _sizeController, curve: Curves.easeOutCubic),
-    );
-    _radiusAnimation = Tween<double>(begin: beginRadius, end: endRadius)
-        .animate(
-          CurvedAnimation(parent: _sizeController, curve: Curves.easeOutCubic),
-        );
+    _sizeAnimation = Tween<Size>(
+      begin: beginSize,
+      end: toSize,
+    ).animate(_sizeController.drive(CurveTween(curve: Curves.easeOutCubic)));
+    _radiusAnimation = Tween<double>(
+      begin: beginRadius,
+      end: endRadius,
+    ).animate(_sizeController.drive(CurveTween(curve: Curves.easeOutCubic)));
 
     if (growsWindow) {
       _resizeWindowOnce(toSize);
@@ -789,20 +780,25 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               children: [...previousChildren, ?currentChild],
             ),
             transitionBuilder: (child, anim) {
-              final curved = CurvedAnimation(
-                parent: anim,
-                curve: Curves.easeOutCubic,
-                reverseCurve: Curves.easeInCubic,
-              );
-              return FadeTransition(
-                opacity: curved,
-                child: ScaleTransition(
-                  scale: Tween<double>(
-                    begin: IslandConfig.switchScaleBegin,
-                    end: IslandConfig.switchScaleEnd,
-                  ).animate(curved),
-                  child: child,
-                ),
+              final scale = Tween<double>(
+                begin: IslandConfig.switchScaleBegin,
+                end: IslandConfig.switchScaleEnd,
+              ).animate(anim);
+              return AnimatedBuilder(
+                animation: anim,
+                child: child,
+                builder: (context, child) {
+                  if (anim.value <= 0.001) {
+                    return const SizedBox.shrink();
+                  }
+                  if (anim.value >= 0.999) {
+                    return child!;
+                  }
+                  return FadeTransition(
+                    opacity: anim,
+                    child: ScaleTransition(scale: scale, child: child),
+                  );
+                },
               );
             },
             child: KeyedSubtree(
@@ -1190,6 +1186,48 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     );
   }
 
+  static Widget _buildCardTransition(Widget child, Animation<double> anim) {
+    final offset = Tween<Offset>(
+      begin: const Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(anim);
+    return AnimatedBuilder(
+      animation: anim,
+      child: child,
+      builder: (context, child) {
+        if (anim.value <= 0.001) {
+          return const SizedBox.shrink();
+        }
+        if (anim.value >= 0.999) {
+          return child!;
+        }
+        return FadeTransition(
+          opacity: anim,
+          child: SlideTransition(position: offset, child: child),
+        );
+      },
+    );
+  }
+
+  static Widget _buildFadeSettleTransition(
+    Widget child,
+    Animation<double> anim,
+  ) {
+    return AnimatedBuilder(
+      animation: anim,
+      child: child,
+      builder: (context, child) {
+        if (anim.value <= 0.001) {
+          return const SizedBox.shrink();
+        }
+        if (anim.value >= 0.999) {
+          return child!;
+        }
+        return FadeTransition(opacity: anim, child: child);
+      },
+    );
+  }
+
   Widget _buildIdleCardContent() {
     if (!_cardsLoaded || _cards.isEmpty) {
       if (!_cardsLoaded) {
@@ -1220,16 +1258,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     if (type == 'time') {
       return AnimatedSwitcher(
         duration: const Duration(milliseconds: 200),
-        transitionBuilder: (child, anim) {
-          final offset = Tween<Offset>(
-            begin: const Offset(0, 0.3),
-            end: Offset.zero,
-          ).animate(anim);
-          return FadeTransition(
-            opacity: anim,
-            child: SlideTransition(position: offset, child: child),
-          );
-        },
+        transitionBuilder: _buildCardTransition,
         child: ValueListenableBuilder<String>(
           key: const ValueKey('idle_time_card'),
           valueListenable: _clockTimeNotifier,
@@ -1251,16 +1280,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     if (type == 'focusing') {
       return AnimatedSwitcher(
         duration: const Duration(milliseconds: 200),
-        transitionBuilder: (child, anim) {
-          final offset = Tween<Offset>(
-            begin: const Offset(0, 0.3),
-            end: Offset.zero,
-          ).animate(anim);
-          return FadeTransition(
-            opacity: anim,
-            child: SlideTransition(position: offset, child: child),
-          );
-        },
+        transitionBuilder: _buildCardTransition,
         child: Container(
           key: ValueKey(_currentCardIndex),
           alignment: Alignment.center,
@@ -1273,16 +1293,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final subtitle = card['subtitle'] as String;
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 200),
-      transitionBuilder: (child, anim) {
-        final offset = Tween<Offset>(
-          begin: const Offset(0, 0.3),
-          end: Offset.zero,
-        ).animate(anim);
-        return FadeTransition(
-          opacity: anim,
-          child: SlideTransition(position: offset, child: child),
-        );
-      },
+      transitionBuilder: _buildCardTransition,
       child: Container(
         key: ValueKey(_currentCardIndex),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -2105,6 +2116,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     );
 
     if (expanded == null) {
+      if (_splitController.value <= 0.001) {
+        return Center(child: row);
+      }
       return FadeTransition(
         opacity: ReverseAnimation(_splitController),
         child: Center(child: row),
@@ -2122,9 +2136,18 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           left: 0,
           right: 0,
           height: 46,
-          child: FadeTransition(
-            opacity: _splitRowOpacity,
+          child: AnimatedBuilder(
+            animation: _splitRowOpacity,
             child: Center(child: row),
+            builder: (context, child) {
+              if (_splitRowOpacity.value >= 0.999) {
+                return child!;
+              }
+              if (_splitRowOpacity.value <= 0.001) {
+                return const SizedBox.shrink();
+              }
+              return FadeTransition(opacity: _splitRowOpacity, child: child);
+            },
           ),
         ),
         AnimatedBuilder(
@@ -2135,13 +2158,22 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             right: 8,
             child: child!,
           ),
-          child: FadeTransition(
-            opacity: _splitProgress,
-            child: ScaleTransition(
-              scale: _splitCardScale,
-              alignment: Alignment.topCenter,
-              child: card,
-            ),
+          child: AnimatedBuilder(
+            animation: _splitProgress,
+            child: card,
+            builder: (context, child) {
+              if (_splitProgress.value >= 0.999) {
+                return child!;
+              }
+              return FadeTransition(
+                opacity: _splitProgress,
+                child: ScaleTransition(
+                  scale: _splitCardScale,
+                  alignment: Alignment.topCenter,
+                  child: child,
+                ),
+              );
+            },
           ),
         ),
       ],
@@ -2759,6 +2791,14 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         child: SizedBox.expand(
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
+            findItemIndexCallback: (Key key) {
+              if (key is ValueKey<String>) {
+                final t = key.value;
+                final idx = visibleCards.indexWhere((c) => c['type'] == t);
+                return idx != -1 ? idx : null;
+              }
+              return null;
+            },
             itemCount: visibleCards.length,
             separatorBuilder: (_, _) => const SizedBox(width: 6),
             itemBuilder: (context, index) {
@@ -2838,22 +2878,25 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 };
               }
 
-              return SizedBox(
-                width: 76,
-                height: 80,
-                child: GestureDetector(
-                  onTap: onTap,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 6,
+              return RepaintBoundary(
+                key: ValueKey<String>(type),
+                child: SizedBox(
+                  width: 76,
+                  height: 80,
+                  child: GestureDetector(
+                    onTap: onTap,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      alignment: Alignment.center,
+                      child: cardContent,
                     ),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    alignment: Alignment.center,
-                    child: cardContent,
                   ),
                 ),
               );
@@ -3350,6 +3393,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                   ),
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 150),
+                    transitionBuilder: _buildFadeSettleTransition,
                     child: Text(
                       '$volumePercent%',
                       key: ValueKey(volumePercent),
@@ -3528,6 +3572,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                   ),
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 150),
+                    transitionBuilder: _buildFadeSettleTransition,
                     child: Text(
                       '$brightnessPercent%',
                       key: ValueKey(brightnessPercent),

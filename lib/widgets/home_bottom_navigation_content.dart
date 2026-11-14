@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../services/liquid_glass_effect_service.dart';
-import '../utils/app_platform.dart';
 
 /// The radius shared by the floating navigation shell and its selection lens.
 ///
@@ -283,6 +282,12 @@ class _FloatingBottomNavigationContentState
 
   @override
   void dispose() {
+    if (_heldItem != null) {
+      final item = _heldItem;
+      _heldItem = null;
+      item?.onLongPressCancel?.call();
+    }
+    widget.onDragStretchChanged?.call(0.0);
     _positionSpring
       ..removeListener(_handleSpringTick)
       ..dispose();
@@ -419,6 +424,11 @@ class _FloatingBottomNavigationContentState
   }
 
   void _startSelectionDrag(DragStartDetails details, double width) {
+    if (_heldItem != null) {
+      final item = _heldItem;
+      _heldItem = null;
+      item?.onLongPressCancel?.call();
+    }
     _motionEpoch++;
     _motionTargetIndex = null;
     _notifyTargetWhenReady = false;
@@ -663,10 +673,8 @@ class _FloatingBottomNavigationContentState
           )
         : _indicatorSettings;
     // The two selection masks clip icon rows; an extra offscreen save layer
-    // for each mask is costly while Android rasterizes the scrolling page.
-    final selectionClipBehavior = AppPlatform.isAndroid
-        ? Clip.antiAlias
-        : Clip.antiAliasWithSaveLayer;
+    // for each mask is unnecessary and costly during rasterization.
+    const selectionClipBehavior = Clip.antiAlias;
     final directionalMotion = (velocity / 14).clamp(-1.0, 1.0).toDouble();
     final contentTransform = Matrix4.identity()
       ..translateByDouble(directionalMotion * 3, 0, 0, 1)
@@ -849,11 +857,12 @@ class _FloatingBottomNavigationContentState
           return _buildActionOnlyNavigationContent(context);
         }
 
-        final interactiveRow = _buildNavigationRow(
-          context,
-          selectedLayer: false,
+        final interactiveRow = RepaintBoundary(
+          child: _buildNavigationRow(context, selectedLayer: false),
         );
-        final selectedRow = _buildNavigationRow(context, selectedLayer: true);
+        final selectedRow = RepaintBoundary(
+          child: _buildNavigationRow(context, selectedLayer: true),
+        );
         return AnimatedBuilder(
           animation: _selectionAnimation,
           builder: (context, _) => _buildNavigationContent(

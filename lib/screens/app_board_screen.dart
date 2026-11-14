@@ -307,6 +307,32 @@ class _AppBoardScreenState extends State<AppBoardScreen>
     );
   }
 
+  static const LinearGradient _titleGradient = LinearGradient(
+    colors: [Colors.white, Colors.white38],
+  );
+  static Rect? _cachedDesktopTitleBounds;
+  static Shader? _cachedDesktopTitleShader;
+  static Rect? _cachedMobileTitleBounds;
+  static Shader? _cachedMobileTitleShader;
+
+  static Shader _resolveDesktopTitleShader(Rect bounds) {
+    if (_cachedDesktopTitleBounds == bounds &&
+        _cachedDesktopTitleShader != null) {
+      return _cachedDesktopTitleShader!;
+    }
+    _cachedDesktopTitleBounds = bounds;
+    return _cachedDesktopTitleShader = _titleGradient.createShader(bounds);
+  }
+
+  static Shader _resolveMobileTitleShader(Rect bounds) {
+    if (_cachedMobileTitleBounds == bounds &&
+        _cachedMobileTitleShader != null) {
+      return _cachedMobileTitleShader!;
+    }
+    _cachedMobileTitleBounds = bounds;
+    return _cachedMobileTitleShader = _titleGradient.createShader(bounds);
+  }
+
   Widget _buildHeader(bool isDesktop) {
     final onBack = widget.onBack ?? () => Navigator.of(context).pop();
     return Container(
@@ -358,9 +384,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
           // Title
           if (isDesktop)
             ShaderMask(
-              shaderCallback: (bounds) =>
-                  const LinearGradient(colors: [Colors.white, Colors.white38])
-                      .createShader(bounds),
+              shaderCallback: _resolveDesktopTitleShader,
               child: const Text(
                 '看板',
                 style: TextStyle(
@@ -375,9 +399,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
             Expanded(
               child: Center(
                 child: ShaderMask(
-                  shaderCallback: (bounds) => const LinearGradient(
-                    colors: [Colors.white, Colors.white38],
-                  ).createShader(bounds),
+                  shaderCallback: _resolveMobileTitleShader,
                   child: const Text(
                     '看板',
                     style: TextStyle(
@@ -400,6 +422,14 @@ class _AppBoardScreenState extends State<AppBoardScreen>
                     scrollDirection: Axis.horizontal,
                     shrinkWrap: true,
                     padding: const EdgeInsets.symmetric(horizontal: 20),
+                    findItemIndexCallback: (Key key) {
+                      if (key is ValueKey<String>) {
+                        final id = key.value;
+                        final idx = _countdowns.indexWhere((c) => c.id == id);
+                        return idx != -1 ? idx : null;
+                      }
+                      return null;
+                    },
                     itemCount: _countdowns.length,
                     separatorBuilder: (_, _) => const SizedBox(width: 16),
                     itemBuilder: (context, index) {
@@ -409,57 +439,62 @@ class _AppBoardScreenState extends State<AppBoardScreen>
                         cd.targetDate,
                       );
                       final isUrgent = diff < 3;
-                      return Container(
-                        width: 140,
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 6,
-                          horizontal: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          color:
-                              (isUrgent
-                                      ? Colors.red
-                                      : Theme.of(context).colorScheme.primary)
-                                  .withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
+                      return RepaintBoundary(
+                        key: ValueKey<String>(cd.id),
+                        child: Container(
+                          width: 140,
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 6,
+                            horizontal: 12,
+                          ),
+                          decoration: BoxDecoration(
                             color:
                                 (isUrgent
                                         ? Colors.red
                                         : Theme.of(context).colorScheme.primary)
-                                    .withValues(alpha: 0.2),
+                                    .withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color:
+                                  (isUrgent
+                                          ? Colors.red
+                                          : Theme.of(context)
+                                                .colorScheme
+                                                .primary)
+                                      .withValues(alpha: 0.2),
+                            ),
                           ),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              cd.title,
-                              style: TextStyle(
-                                color: isUrgent
-                                    ? Colors.redAccent
-                                    : Theme.of(context).colorScheme.secondary,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1,
-                                height: 1.0,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                cd.title,
+                                style: TextStyle(
+                                  color: isUrgent
+                                      ? Colors.redAccent
+                                      : Theme.of(context).colorScheme.secondary,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1,
+                                  height: 1.0,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              '${math.max(0, diff)} 天',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w900,
-                                height: 1.0,
-                                fontFeatures: [FontFeature.tabularFigures()],
+                              const SizedBox(height: 2),
+                              Text(
+                                '${math.max(0, diff)} 天',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
+                                  height: 1.0,
+                                  fontFeatures: [FontFeature.tabularFigures()],
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       );
                     },
@@ -692,22 +727,24 @@ class _AppBoardScreenState extends State<AppBoardScreen>
       width: double.infinity,
       color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
       child: Center(
-        child: SingleChildScrollView(
-          controller: _marqueeController,
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              const SizedBox(width: 1000), // Start from outside
-              Text(
-                '【公告】 实时执行流同步中... 祝您今日工作愉快！',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.6),
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
+        child: RepaintBoundary(
+          child: SingleChildScrollView(
+            controller: _marqueeController,
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                const SizedBox(width: 1000), // Start from outside
+                Text(
+                  '【公告】 实时执行流同步中... 祝您今日工作愉快！',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.6),
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 1000), // Gap
-            ],
+                const SizedBox(width: 1000), // Gap
+              ],
+            ),
           ),
         ),
       ),
@@ -843,7 +880,7 @@ class _AnimatedBackgroundState extends State<AnimatedBackground>
 class _AnimatedBackgroundPainter extends CustomPainter {
   final Animation<double> animation;
   final Color primaryColor;
-  final Paint _paint = Paint()..isAntiAlias = true;
+  static final Paint _paint = Paint()..isAntiAlias = true;
 
   _AnimatedBackgroundPainter({
     required this.animation,
@@ -925,136 +962,141 @@ class TodayHourlyTimeline extends StatelessWidget {
           ? const NeverScrollableScrollPhysics()
           : const BouncingScrollPhysics(),
       padding: const EdgeInsets.symmetric(horizontal: 16),
+      itemExtent: itemHeight ?? 60.0,
       itemCount: 24,
       itemBuilder: (context, hour) {
         final isCurrent = now.hour == hour;
         final hCourses = coursesByHour[hour] ?? const <CourseItem>[];
         final hTasks = tasksByHour[hour] ?? const <TodoItem>[];
 
-        return Container(
-          height: itemHeight ?? 60,
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(color: Colors.white.withValues(alpha: 0.02)),
-            ),
-            color: isCurrent
-                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.05)
-                : null,
-          ),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 30,
-                child: Text(
-                  hour.toString().padLeft(2, '0'),
-                  style: TextStyle(
-                    color: isCurrent
-                        ? Theme.of(context).colorScheme.secondary
-                        : Colors.white.withValues(alpha: 0.1),
-                    fontSize: 9,
-                    fontWeight: FontWeight.w900,
-                    fontFeatures: [const FontFeature.tabularFigures()],
-                  ),
-                  textAlign: TextAlign.right,
-                ),
+        return RepaintBoundary(
+          key: ValueKey<int>(hour),
+          child: Container(
+            height: itemHeight ?? 60,
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: Colors.white.withValues(alpha: 0.02)),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      ...hCourses.map(
-                        (c) => Container(
-                          margin: const EdgeInsets.only(right: 4),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 4,
-                            vertical: 1,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.indigo.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                              color: Colors.indigo.withValues(alpha: 0.1),
-                            ),
-                          ),
-                          child: Text(
-                            c.courseName,
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 8,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                      ...hTasks.map(
-                        (t) => GestureDetector(
-                          onTap: () => onTaskClick(t),
-                          child: Container(
+              color: isCurrent
+                  ? Theme.of(context).colorScheme.primary
+                        .withValues(alpha: 0.05)
+                  : null,
+            ),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 30,
+                  child: Text(
+                    hour.toString().padLeft(2, '0'),
+                    style: TextStyle(
+                      color: isCurrent
+                          ? Theme.of(context).colorScheme.secondary
+                          : Colors.white.withValues(alpha: 0.1),
+                      fontSize: 9,
+                      fontWeight: FontWeight.w900,
+                      fontFeatures: [const FontFeature.tabularFigures()],
+                    ),
+                    textAlign: TextAlign.right,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        ...hCourses.map(
+                          (c) => Container(
                             margin: const EdgeInsets.only(right: 4),
                             padding: const EdgeInsets.symmetric(
                               horizontal: 4,
                               vertical: 1,
                             ),
                             decoration: BoxDecoration(
-                              color:
-                                  (t.isDone
-                                          ? emerald
-                                          : Theme.of(context)
-                                                .colorScheme
-                                                .primary)
-                                      .withValues(alpha: 0.2),
+                              color: Colors.indigo.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(4),
                               border: Border.all(
+                                color: Colors.indigo.withValues(alpha: 0.1),
+                              ),
+                            ),
+                            child: Text(
+                              c.courseName,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 8,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                        ...hTasks.map(
+                          (t) => GestureDetector(
+                            onTap: () => onTaskClick(t),
+                            child: Container(
+                              margin: const EdgeInsets.only(right: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 1,
+                              ),
+                              decoration: BoxDecoration(
                                 color:
                                     (t.isDone
                                             ? emerald
                                             : Theme.of(context)
                                                   .colorScheme
                                                   .primary)
-                                        .withValues(alpha: 0.1),
+                                        .withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(
+                                  color:
+                                      (t.isDone
+                                              ? emerald
+                                              : Theme.of(context)
+                                                    .colorScheme
+                                                    .primary)
+                                          .withValues(alpha: 0.1),
+                                ),
                               ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 3,
-                                  height: 3,
-                                  decoration: BoxDecoration(
-                                    color: t.isDone
-                                        ? emeraldAccent
-                                        : Theme.of(context)
-                                              .colorScheme
-                                              .secondary,
-                                    shape: BoxShape.circle,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 3,
+                                    height: 3,
+                                    decoration: BoxDecoration(
+                                      color: t.isDone
+                                          ? emeraldAccent
+                                          : Theme.of(context)
+                                                .colorScheme
+                                                .secondary,
+                                      shape: BoxShape.circle,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(width: 2),
-                                Text(
-                                  t.title,
-                                  style: TextStyle(
-                                    color: t.isDone
-                                        ? Colors.white30
-                                        : Colors.white,
-                                    fontSize: 8,
-                                    fontWeight: FontWeight.bold,
-                                    decoration: t.isDone
-                                        ? TextDecoration.lineThrough
-                                        : null,
+                                  const SizedBox(width: 2),
+                                  Text(
+                                    t.title,
+                                    style: TextStyle(
+                                      color: t.isDone
+                                          ? Colors.white30
+                                          : Colors.white,
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.bold,
+                                      decoration: t.isDone
+                                          ? TextDecoration.lineThrough
+                                          : null,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
@@ -1152,20 +1194,21 @@ class _GanttDayGridPainter extends CustomPainter {
   static final Paint _paint = Paint()
     ..strokeWidth = 1
     ..style = PaintingStyle.stroke;
+  static final Path _gridPath = Path();
 
   @override
   void paint(Canvas canvas, Size size) {
     if (dayCount <= 0 || size.height <= 0) return;
 
-    final grid = Path();
+    _gridPath.reset();
     for (var day = 1; day <= dayCount; day++) {
       final x = day * dayWidth - 0.5;
-      grid
+      _gridPath
         ..moveTo(x, 0)
         ..lineTo(x, size.height);
     }
     _paint.color = color;
-    canvas.drawPath(grid, _paint);
+    canvas.drawPath(_gridPath, _paint);
   }
 
   @override
@@ -1778,70 +1821,81 @@ class MissionControl extends StatelessWidget {
         Expanded(
           child: ListView.separated(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            findItemIndexCallback: (Key key) {
+              if (key is ValueKey<String>) {
+                final id = key.value;
+                final idx = displayTasks.indexWhere((t) => t.id == id);
+                return idx != -1 ? idx : null;
+              }
+              return null;
+            },
             itemCount: displayTasks.length,
             separatorBuilder: (_, _) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
               final task = displayTasks[index];
               final isOverdue = task.isOverdueAt(now) && !task.isDone;
 
-              return InkWell(
-                onTap: () => onTaskClick(task),
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: isOverdue
-                        ? Colors.red.withValues(alpha: 0.05)
-                        : Colors.white.withValues(alpha: 0.02),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
+              return RepaintBoundary(
+                key: ValueKey<String>(task.id),
+                child: InkWell(
+                  onTap: () => onTaskClick(task),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
                       color: isOverdue
-                          ? Colors.red.withValues(alpha: 0.2)
-                          : Colors.white.withValues(alpha: 0.05),
+                          ? Colors.red.withValues(alpha: 0.05)
+                          : Colors.white.withValues(alpha: 0.02),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isOverdue
+                            ? Colors.red.withValues(alpha: 0.2)
+                            : Colors.white.withValues(alpha: 0.05),
+                      ),
                     ),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: activeTab == 'active'
-                              ? Theme.of(context).colorScheme.secondary
-                              : emeraldAccent,
-                          shape: BoxShape.circle,
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: activeTab == 'active'
+                                ? Theme.of(context).colorScheme.secondary
+                                : emeraldAccent,
+                            shape: BoxShape.circle,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              task.title,
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.9),
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                decoration: task.isDone
-                                    ? TextDecoration.lineThrough
-                                    : null,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                task.title,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.9),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  decoration: task.isDone
+                                      ? TextDecoration.lineThrough
+                                      : null,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            Text(
-                              '${task.creatorName ?? "用户"} · ${task.dueDate != null ? dueTimeFormat.format(task.dueDate!) : "无时间"}',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.2),
-                                fontSize: 8,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 0.5,
+                              Text(
+                                '${task.creatorName ?? "用户"} · ${task.dueDate != null ? dueTimeFormat.format(task.dueDate!) : "无时间"}',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.2),
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.5,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               );

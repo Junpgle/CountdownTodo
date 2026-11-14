@@ -100,7 +100,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
       if (parsedResults.isNotEmpty) {
         final first = parsedResults[0];
         titleCtrl.text = first.title;
-        remarkCtrl.text = first.remark ?? "";
+        remarkCtrl.text = first.effectiveTodoRemark ?? "";
         dueDate = null;
         if (first.startTime != null) {
           createdAt = first.startTime!;
@@ -687,7 +687,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                                         final first = parsedResults[0];
                                         setDialogState(() {
                                           titleCtrl.text = first.title;
-                                          remarkCtrl.text = first.remark ?? "";
+                                          remarkCtrl.text =
+                                              first.effectiveTodoRemark ?? "";
                                           dueDate = null;
                                           if (first.startTime != null) {
                                             createdAt = first.startTime!;
@@ -920,7 +921,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                                         final first = parsedResults[0];
                                         setDialogState(() {
                                           titleCtrl.text = first.title;
-                                          remarkCtrl.text = first.remark ?? "";
+                                          remarkCtrl.text =
+                                              first.effectiveTodoRemark ?? "";
                                           dueDate = null;
                                           if (first.startTime != null) {
                                             createdAt = first.startTime!;
@@ -1225,7 +1227,11 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                               title: titleCtrl.text.trim(),
                               remark: remarkCtrl.text.trim().isEmpty
                                   ? null
-                                  : remarkCtrl.text.trim(),
+                                  : (remarkCtrl.text.trim() ==
+                                            (currentParsed.effectiveTodoRemark ??
+                                                '')
+                                        ? currentParsed.remark
+                                        : remarkCtrl.text.trim()),
                               location: currentParsed.location,
                               isAllDay: isAllDay,
                               startTime: hasParsedDate ? createdAt : null,
@@ -1681,7 +1687,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
   ) {
     setDialogState(() {
       titleCtrl.text = result.title;
-      remarkCtrl.text = result.remark ?? "";
+      remarkCtrl.text = result.effectiveTodoRemark ?? "";
       setDueDate(null);
       if (result.startTime != null) {
         setCreatedAt(result.startTime!);

@@ -1,10 +1,10 @@
 {
-  "version_code": 702208,
-  "version_name": "7.22.8",
+  "version_code": 702310,
+  "version_name": "7.23.10",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 7.22.8",
-    "description": "【新增】理财账单新增日历视图与卡片布局，支持分类账本精准筛选与收支透视。\n【新增】习惯与 30 天挑战支持独立打卡、专注联动与容量规划接入，完善免扣卡机制与防呆逻辑。\n【新增】时间日志支持映射课程与固定日程只读占位；日程与待办关联体验全面优化，提供新建日程待办选择器。\n【新增】动画与特效设置顶部展示实时流畅度指标（FPS）与渲染压力评估，便于直观调优。\n【优化】全面优化全设备滑动性能、多数据源并行拉取与卡片静默平滑刷新，滑动更加跟手。\n【优化】重构毛玻璃与滤镜层级，精细隔离图层、复用画笔与印章实体，大幅降低显存与重绘开销。\n【优化】计划执行时间轴按小时动态分轨，避免空白挤压；精简系统 MediaQuery 监听以减少无效构建。\n【优化】预设壁纸直出与 Bing 每日壁纸本地缓存；日记图片智能下采样，优化缩略图显存与回收站容量。\n【优化】负载压力板块支持默认收起展开，移除冗余控件并优化省电模式提示。\n【优化】番茄钟统计支持按年份维度聚合筛选。\n【修复】全面恢复底栏、悬浮控件与全页面卡片的高斯模糊磨砂玻璃效果，兼顾流畅度与通透质感。\n【修复】修复番茄钟倒计时结束记录和日志时长统计、计划块专注时长重复计算问题。\n【修复】修复番茄钟严格模式息屏重开后无法识别翻转的问题。\n【修复】严格校验习惯印章视口可见度与驻留延迟，杜绝切 Tab 或未滑入时提前落章与误震动。\n【修复】修复屏幕时间统计多余留白、习惯编辑页底部操作栏错位及容器共享动画透明问题。",
+    "title": "版本更新 7.23.10",
+    "description": "【新增】记账概览引入预算看板、快捷模板、消费节奏洞察与账户支出分布；支出分类支持交互式环形图与小类占比查看，并放开跨月导航限制。\n【新增】习惯中心日历支持按习惯筛选查看专属打卡完成日历视图。\n【新增】待办与固定日程支持独立地点解析与录入，并联动桌面小部件展示。\n【新增】番茄专注统计支持日、周、月视图快速选择跳转与下钻；关于界面新增内存占用监控与管理选项。\n【优化】全面优化全应用流体滑动、容器转场与重绘隔离，合批毛玻璃模糊通道、缓存着色器与画笔并卸载静止离屏合成层，大幅降低显存与渲染开销。\n【优化】重构周视图卡片分层聚合、视角预设与文本折行排版，支持重叠日程折叠与 +N 角标弹窗，增强“今天”视觉辨识度。\n【优化】首页采用双层壁纸保障滚动顶栏渐隐过渡，统一今日概览卡片全宽布局；待办文件夹选择改用可搜索自适应弹层及宽屏网格弹窗。\n【优化】macOS 灵动岛支持拖放文件与文本 AI 识别待办及 QuickLook 预览联动；增强小米 HyperOS 焦点通知探测与课程实时常驻通知。\n【修复】修复番茄钟后台恢复与 WebSocket 重连同步本地专注状态，以及手动撤销免扣卡后阻止今日界面自动重复免扣。\n【修复】修复待办完成时间戳云同步误计入时间线、新增待办/日程重复弹出输入法、周视图切周空白与 GlobalKey 冲突。\n【修复】修复全局列表过阻尼回弹、首页卡片高斯模糊、记账切换白屏闪烁及关闭液态毛玻璃后宽屏部分组件模糊问题。",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-release.apk",
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe",
     "mac_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodo-macOS-arm64.zip",
@@ -16,20 +16,6 @@
     "android_delta_packages": {
       "arm64-v8a": [
         {
-          "from_version": "7.1.7",
-          "from_sha256": "75ad477e5707c96fcd4e7665a2c1bc17d9f9862afa08df0fad21f1d1ff77c7f0",
-          "to_version": "7.22.0",
-          "to_sha256": "ef95370fc3af3eeee5be1566bef3ee23eb8d313f10f3e029a5127ef6b9129469",
-          "patch_size": 31321630,
-          "patch_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-7.1.7_to_7.22.0.patch",
-          "operation_count": 14,
-          "full_apk_size": 49350833,
-          "copied_bytes": 18029421,
-          "embedded_bytes": 31321412,
-          "algorithm": "apk-zip-local-spans",
-          "recommended": false
-        },
-        {
           "from_version": "7.22.0",
           "from_sha256": "ef95370fc3af3eeee5be1566bef3ee23eb8d313f10f3e029a5127ef6b9129469",
           "to_version": "7.22.8",
@@ -40,6 +26,20 @@
           "full_apk_size": 49772133,
           "copied_bytes": 22454329,
           "embedded_bytes": 27317804,
+          "algorithm": "apk-zip-local-spans",
+          "recommended": false
+        },
+        {
+          "from_version": "7.22.8",
+          "from_sha256": "8babaa08571796f680c9f21fbae0fbacd3a0ca0e9b0e3715b531d7e3fce677c8",
+          "to_version": "7.23.10",
+          "to_sha256": "21b70d2a5f8e898569a5851ebf979cebe70e55124d878bb3c48a65c75b62c60e",
+          "patch_size": 35596273,
+          "patch_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-7.22.8_to_7.23.10.patch",
+          "operation_count": 17,
+          "full_apk_size": 51139637,
+          "copied_bytes": 15543621,
+          "embedded_bytes": 35596016,
           "algorithm": "apk-zip-local-spans",
           "recommended": true
         }
@@ -77,6 +77,23 @@
     "image_url": "https://gitee.com/Junpgle/CountdownTodo/raw/master/wallpapergitee/15.jpg"
   },
   "changelog_history": [
+    {
+      "version_name": "7.23.10",
+      "date": "2026-11-14",
+      "items": [
+        "【新增】记账概览引入预算看板、快捷模板、消费节奏洞察与账户支出分布；支出分类支持交互式环形图与小类占比查看，并放开跨月导航限制。",
+        "【新增】习惯中心日历支持按习惯筛选查看专属打卡完成日历视图。",
+        "【新增】待办与固定日程支持独立地点解析与录入，并联动桌面小部件展示。",
+        "【新增】番茄专注统计支持日、周、月视图快速选择跳转与下钻；关于界面新增内存占用监控与管理选项。",
+        "【优化】全面优化全应用流体滑动、容器转场与重绘隔离，合批毛玻璃模糊通道、缓存着色器与画笔并卸载静止离屏合成层，大幅降低显存与渲染开销。",
+        "【优化】重构周视图卡片分层聚合、视角预设与文本折行排版，支持重叠日程折叠与 +N 角标弹窗，增强“今天”视觉辨识度。",
+        "【优化】首页采用双层壁纸保障滚动顶栏渐隐过渡，统一今日概览卡片全宽布局；待办文件夹选择改用可搜索自适应弹层及宽屏网格弹窗。",
+        "【优化】macOS 灵动岛支持拖放文件与文本 AI 识别待办及 QuickLook 预览联动；增强小米 HyperOS 焦点通知探测与课程实时常驻通知。",
+        "【修复】修复番茄钟后台恢复与 WebSocket 重连同步本地专注状态，以及手动撤销免扣卡后阻止今日界面自动重复免扣。",
+        "【修复】修复待办完成时间戳云同步误计入时间线、新增待办/日程重复弹出输入法、周视图切周空白与 GlobalKey 冲突。",
+        "【修复】修复全局列表过阻尼回弹、首页卡片高斯模糊、记账切换白屏闪烁及关闭液态毛玻璃后宽屏部分组件模糊问题。"
+      ]
+    },
     {
       "version_name": "7.22.8",
       "date": "2026-10-31",

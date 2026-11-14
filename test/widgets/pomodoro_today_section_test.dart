@@ -1,12 +1,25 @@
 import 'dart:io';
 
 import 'package:countdown_todo/services/database_helper.dart';
+import 'package:countdown_todo/services/home_dashboard_section_data_cache.dart';
 import 'package:countdown_todo/services/pomodoro_service.dart';
+import 'package:countdown_todo/widgets/optional_liquid_glass_surface.dart';
 import 'package:countdown_todo/widgets/pomodoro_today_section.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+Finder findRichOrPlainText(String pattern) {
+  return find.byWidgetPredicate((widget) {
+    if (widget is Text) {
+      if (widget.data != null && widget.data!.contains(pattern)) return true;
+      final spanText = widget.textSpan?.toPlainText();
+      if (spanText != null && spanText.contains(pattern)) return true;
+    }
+    return false;
+  });
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -30,6 +43,7 @@ void main() {
   });
 
   setUp(() async {
+    HomeDashboardSectionDataCache.clearForTesting();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('current_login_user', username);
 
@@ -65,6 +79,33 @@ void main() {
     expect(find.text('今日'), findsOneWidget);
     expect(find.text('暂无专注记录'), findsOneWidget);
     expect(find.text('开启今日专注'), findsOneWidget);
+  });
+
+  testWidgets('PomodoroTodaySection empty state expands to full width', (
+    tester,
+  ) async {
+    const testWidth = 520.0;
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: testWidth,
+              child: PomodoroTodaySection(username: username),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await settle(tester);
+
+    expect(find.text('暂无专注记录'), findsOneWidget);
+
+    final cardFinder = find.byType(OptionalLiquidGlassCard);
+    expect(cardFinder, findsOneWidget);
+    final cardSize = tester.getSize(cardFinder);
+    expect(cardSize.width, equals(testWidth));
   });
 
   testWidgets(
@@ -149,7 +190,7 @@ void main() {
       expect(find.text('今日'), findsOneWidget);
 
       // Total duration: 25 + 45 = 70 minutes = 1 hour 10 minutes
-      expect(find.textContaining('1 时 10 分'), findsOneWidget);
+      expect(findRichOrPlainText('1 时 10 分'), findsOneWidget);
 
       // Verify chips
       expect(find.text('2 次完成'), findsOneWidget);
@@ -230,7 +271,7 @@ void main() {
       await settle(tester);
 
       // Verify duration: 2 hours 50 minutes
-      expect(find.textContaining('2 时 50 分'), findsOneWidget);
+      expect(findRichOrPlainText('2 时 50 分'), findsOneWidget);
 
       // Verify peak hour shows 09:00 (1时)
       expect(find.textContaining('峰值 09:00 (1时)'), findsOneWidget);

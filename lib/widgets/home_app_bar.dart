@@ -314,6 +314,8 @@ class _HomeAppBarState extends State<HomeAppBar>
       child: child,
       builder: (context, value, c) {
         final clamped = value.clamp(0.0, 1.0);
+        if (clamped <= 0.001) return const SizedBox.shrink();
+        if (clamped >= 0.999) return c!;
         return Opacity(
           opacity: clamped,
           child: Transform.translate(

@@ -125,10 +125,12 @@ class QuickVoiceContainerTransitionState
                 fit: StackFit.expand,
                 children: [
                   ColoredBox(color: colors.surfaceContainerHigh),
-                  Opacity(
-                    opacity: contentProgress,
-                    child: Transform(transform: transform, child: child),
-                  ),
+                  contentProgress >= 0.999
+                      ? child!
+                      : Opacity(
+                          opacity: contentProgress,
+                          child: Transform(transform: transform, child: child),
+                        ),
                   if (contentProgress < 1)
                     Positioned.fromRect(
                       rect: rect,
@@ -151,8 +153,14 @@ class _VoiceContainerClipper extends CustomClipper<Path> {
   const _VoiceContainerClipper(this.rect);
   final RRect rect;
 
+  static final Path _path = Path();
+
   @override
-  Path getClip(Size size) => Path()..addRRect(rect);
+  Path getClip(Size size) {
+    _path.reset();
+    _path.addRRect(rect);
+    return _path;
+  }
 
   @override
   bool shouldReclip(_VoiceContainerClipper oldClipper) =>

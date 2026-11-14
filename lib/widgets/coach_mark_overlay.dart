@@ -371,6 +371,7 @@ class _HolePainter extends CustomPainter {
   final Rect? targetRect;
 
   static final Paint _holePaint = Paint();
+  static final Path _holePath = Path();
 
   _HolePainter(this.targetRect);
 
@@ -383,12 +384,13 @@ class _HolePainter extends CustomPainter {
     }
 
     final holeRect = targetRect!.inflate(8); // Give breathing room
-    final path = Path()
+    _holePath
+      ..reset()
       ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
       ..addRRect(RRect.fromRectAndRadius(holeRect, const Radius.circular(16)))
       ..fillType = PathFillType.evenOdd;
 
-    canvas.drawPath(path, _holePaint);
+    canvas.drawPath(_holePath, _holePaint);
   }
 
   @override

@@ -4,6 +4,7 @@ import android.app.*
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
@@ -52,6 +53,22 @@ class ReminderService : Service() {
         private const val TODO_ISLAND_BIZ_TAG = "math_quiz_todo"
         private const val COURSE_ISLAND_BIZ_TAG = "math_quiz_course"
         private const val SPECIAL_TODO_ISLAND_BIZ_TAG = "math_quiz_special_todo"
+
+        fun isHyperFocusSupported(context: Context): Boolean {
+            if (HyperIslandNotification.isSupported(context)) return true
+            return try {
+                if (!Build.MANUFACTURER.equals("Xiaomi", ignoreCase = true)) return false
+                val bundle = context.contentResolver.call(
+                    Uri.parse("content://miui.statusbar.notification.public"),
+                    "canShowFocus",
+                    null,
+                    Bundle().apply { putString("package", context.packageName) }
+                )
+                bundle?.getBoolean("canShowFocus", false) ?: false
+            } catch (e: Exception) {
+                false
+            }
+        }
     }
 
     private val executor = Executors.newSingleThreadExecutor()
@@ -346,13 +363,16 @@ class ReminderService : Service() {
                 CourseArrivalReceiver.LAST_SCHEDULED_COURSE_NOTIFICATION_ID
             )
 
-        val builder = NotificationCompat.Builder(this, REMINDER_CHANNEL_ID)
+        // 课程及实时提醒使用支持实时活动提升的高优先级渠道 LIVE_CHANNEL_ID
+        val channelId = if (isCourseReminder) LIVE_CHANNEL_ID else REMINDER_CHANNEL_ID
+
+        val builder = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(display.iconResId)
             .setContentTitle(display.title)
             .setContentText(display.text)
             .setSubText(display.subText)
-            .setOngoing(!isCourseReminder)
-            .setAutoCancel(isCourseReminder)
+            .setOngoing(true)
+            .setAutoCancel(true)
             .setOnlyAlertOnce(false)
             .setWhen(System.currentTimeMillis())
             .setShowWhen(true)
@@ -362,10 +382,10 @@ class ReminderService : Service() {
             .setColor(display.color)
             .setColorized(false)
             .setContentIntent(pi)
-            .setRequestPromotedOngoing(!isCourseReminder)
+            .setRequestPromotedOngoing(true)
 
         val extras = Bundle().apply {
-            putBoolean("android.extra.requestPromotedOngoing", !isCourseReminder)
+            putBoolean("android.extra.requestPromotedOngoing", true)
         }
 
         val courseArrivalPendingIntent = if (isCourseReminder) {
@@ -431,7 +451,7 @@ class ReminderService : Service() {
         }
 
         try {
-            if (HyperIslandNotification.isSupported(this)) {
+            if (isHyperFocusSupported(this)) {
                 val hyperBuilder = HyperIslandNotification.Builder(this, display.islandBizTag, display.title)
                     .setSmallWindowTarget(MainActivity::class.java.name)
 
@@ -445,7 +465,7 @@ class ReminderService : Service() {
                 hyperBuilder.setIslandConfig(
                     priority = 2,
                     timeout = null,
-                    dismissible = isCourseReminder,
+                    dismissible = true,
                     needCloseAnimation = true
                 )
                 if (courseArrivalPendingIntent != null) {

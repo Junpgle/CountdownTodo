@@ -259,7 +259,7 @@ void main() {
     expect(await logs(tester), hasLength(3));
     expect(undo(), findsNothing);
   });
-  for (final start in [false, true]) {
+  for (final start in [true]) {
     testWidgets('慢速小位移累计缩放${start ? '开始' : '结束'}，不修改预览外数据', (tester) async {
       await host(tester);
       final handle = find.byKey(

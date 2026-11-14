@@ -461,6 +461,14 @@ class _BatchTagPageState extends State<BatchTagPage>
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
+        findChildIndexCallback: (Key key) {
+          if (key is ValueKey<String>) {
+            final uuid = key.value;
+            final index = _tags.indexWhere((t) => t.uuid == uuid);
+            return index != -1 ? index : null;
+          }
+          return null;
+        },
         itemCount: _tags.length,
         itemBuilder: (ctx, i) {
           final tag = _tags[i];
@@ -469,60 +477,63 @@ class _BatchTagPageState extends State<BatchTagPage>
             fallback: Colors.grey,
           );
           final isSelected = _targetTagUuids.contains(tag.uuid);
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: GestureDetector(
-              onTap: () {
-                setState(() {
-                  if (isSelected) {
-                    _targetTagUuids.remove(tag.uuid);
-                  } else {
-                    _targetTagUuids.add(tag.uuid);
-                  }
-                });
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? color.withValues(alpha: 0.2)
-                      : color.withValues(alpha: 0.05),
-                  border: Border.all(
-                    color: isSelected ? color : color.withValues(alpha: 0.3),
-                    width: isSelected ? 2 : 1,
+          return RepaintBoundary(
+            key: ValueKey<String>(tag.uuid),
+            child: Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: GestureDetector(
+                onTap: () {
+                  setState(() {
+                    if (isSelected) {
+                      _targetTagUuids.remove(tag.uuid);
+                    } else {
+                      _targetTagUuids.add(tag.uuid);
+                    }
+                  });
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
                   ),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (isSelected)
-                      Icon(Icons.check, size: 14, color: color)
-                    else
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? color.withValues(alpha: 0.2)
+                        : color.withValues(alpha: 0.05),
+                    border: Border.all(
+                      color: isSelected ? color : color.withValues(alpha: 0.3),
+                      width: isSelected ? 2 : 1,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (isSelected)
+                        Icon(Icons.check, size: 14, color: color)
+                      else
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: color,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      const SizedBox(width: 6),
+                      Text(
+                        tag.name,
+                        style: TextStyle(
+                          fontSize: 12,
                           color: color,
-                          shape: BoxShape.circle,
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.normal,
                         ),
                       ),
-                    const SizedBox(width: 6),
-                    Text(
-                      tag.name,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: color,
-                        fontWeight: isSelected
-                            ? FontWeight.bold
-                            : FontWeight.normal,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -553,6 +564,14 @@ class _BatchTagPageState extends State<BatchTagPage>
                   .copyWith(top: 0);
               return ListView.builder(
                 padding: listPadding,
+                findChildIndexCallback: (Key key) {
+                  if (key is ValueKey<String>) {
+                    final uuid = key.value;
+                    final index = filtered.indexWhere((p) => p.uuid == uuid);
+                    return index != -1 ? index : null;
+                  }
+                  return null;
+                },
                 itemCount: filtered.length,
                 itemBuilder: (ctx, i) {
                   final pom = filtered[i];
@@ -565,34 +584,40 @@ class _BatchTagPageState extends State<BatchTagPage>
                       : startTime.add(Duration(seconds: pom.effectiveDuration));
                   final duration = pom.effectiveDuration ~/ 60;
 
-                  return ListTile(
-                    leading: Checkbox(
-                      value: isSelected,
-                      onChanged: (v) {
-                        setState(() {
-                          if (v == true) {
-                            _selectedPomodoros.add(pom.uuid);
-                          } else {
-                            _selectedPomodoros.remove(pom.uuid);
-                          }
-                        });
-                      },
+                  return RepaintBoundary(
+                    key: ValueKey<String>(pom.uuid),
+                    child: ListTile(
+                      leading: Checkbox(
+                        value: isSelected,
+                        onChanged: (v) {
+                          setState(() {
+                            if (v == true) {
+                              _selectedPomodoros.add(pom.uuid);
+                            } else {
+                              _selectedPomodoros.remove(pom.uuid);
+                            }
+                          });
+                        },
+                      ),
+                      title: Text(
+                        pom.todoTitle ?? '番茄钟',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        '${startDateFormat.format(startTime)} → ${endTimeFormat.format(endTime)}  ${duration}min',
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                      trailing: pom.tagUuids.isNotEmpty
+                          ? _buildTagChips(pom.tagUuids)
+                          : const Text(
+                              '无标签',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey,
+                              ),
+                            ),
                     ),
-                    title: Text(
-                      pom.todoTitle ?? '番茄钟',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: Text(
-                      '${startDateFormat.format(startTime)} → ${endTimeFormat.format(endTime)}  ${duration}min',
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                    trailing: pom.tagUuids.isNotEmpty
-                        ? _buildTagChips(pom.tagUuids)
-                        : const Text(
-                            '无标签',
-                            style: TextStyle(fontSize: 11, color: Colors.grey),
-                          ),
                   );
                 },
               );
@@ -624,6 +649,14 @@ class _BatchTagPageState extends State<BatchTagPage>
                   .copyWith(top: 0);
               return ListView.builder(
                 padding: listPadding,
+                findChildIndexCallback: (Key key) {
+                  if (key is ValueKey<String>) {
+                    final id = key.value;
+                    final index = filtered.indexWhere((l) => l.id == id);
+                    return index != -1 ? index : null;
+                  }
+                  return null;
+                },
                 itemCount: filtered.length,
                 itemBuilder: (ctx, i) {
                   final log = filtered[i];
@@ -636,34 +669,40 @@ class _BatchTagPageState extends State<BatchTagPage>
                   );
                   final duration = (log.endTime - log.startTime) ~/ 60000;
 
-                  return ListTile(
-                    leading: Checkbox(
-                      value: isSelected,
-                      onChanged: (v) {
-                        setState(() {
-                          if (v == true) {
-                            _selectedTimeLogs.add(log.id);
-                          } else {
-                            _selectedTimeLogs.remove(log.id);
-                          }
-                        });
-                      },
+                  return RepaintBoundary(
+                    key: ValueKey<String>(log.id),
+                    child: ListTile(
+                      leading: Checkbox(
+                        value: isSelected,
+                        onChanged: (v) {
+                          setState(() {
+                            if (v == true) {
+                              _selectedTimeLogs.add(log.id);
+                            } else {
+                              _selectedTimeLogs.remove(log.id);
+                            }
+                          });
+                        },
+                      ),
+                      title: Text(
+                        log.title.isNotEmpty ? log.title : '时间日志',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        '${startDateFormat.format(startTime)} → ${endTimeFormat.format(endTime)}  ${duration}min',
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                      trailing: log.tagUuids.isNotEmpty
+                          ? _buildTagChips(log.tagUuids)
+                          : const Text(
+                              '无标签',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey,
+                              ),
+                            ),
                     ),
-                    title: Text(
-                      log.title.isNotEmpty ? log.title : '时间日志',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: Text(
-                      '${startDateFormat.format(startTime)} → ${endTimeFormat.format(endTime)}  ${duration}min',
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                    trailing: log.tagUuids.isNotEmpty
-                        ? _buildTagChips(log.tagUuids)
-                        : const Text(
-                            '无标签',
-                            style: TextStyle(fontSize: 11, color: Colors.grey),
-                          ),
                   );
                 },
               );

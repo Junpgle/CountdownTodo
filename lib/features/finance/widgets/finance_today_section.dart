@@ -190,7 +190,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
         : colorScheme.onSurfaceVariant;
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         InkWell(
           onTap: widget.onTap,
@@ -248,6 +248,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
             onTap: widget.onTap,
             behavior: HitTestBehavior.opaque,
             child: OptionalLiquidGlassCard(
+              width: double.infinity,
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
               borderRadius: 24,
               tint: colorScheme.tertiary.withValues(alpha: 0.16),
@@ -468,6 +469,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
 
   Widget _buildError(Color subColor) {
     return SizedBox(
+      width: double.infinity,
       height: 78,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,

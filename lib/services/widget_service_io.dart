@@ -397,6 +397,12 @@ class WidgetService {
           final start = item.startTime == null
               ? null
               : DateTime.fromMillisecondsSinceEpoch(item.startTime!).toLocal();
+          final loc = item.location?.trim() ?? '';
+          final rem = item.remark?.trim() ?? '';
+          final displayLocation =
+              loc.isNotEmpty && rem.isNotEmpty && loc != rem
+              ? '$loc · $rem'
+              : (loc.isNotEmpty ? loc : rem);
           return <String, dynamic>{
             'id': item.id,
             'title': item.title,
@@ -404,7 +410,8 @@ class WidgetService {
             'startAtMs': item.startTime,
             'startSort': start == null ? 2400 : start.hour * 100 + start.minute,
             'timeText': _formatFixedScheduleTime(item),
-            'location': item.location?.trim() ?? '',
+            'location': displayLocation,
+            'remark': rem,
           };
         })
         .toList();
@@ -1163,6 +1170,11 @@ class WidgetService {
         );
       }
       for (final schedule in fixedSchedules) {
+        final loc = (schedule['location'] as String? ?? '').trim();
+        final rem = (schedule['remark'] as String? ?? '').trim();
+        final resolvedLocation = loc.isNotEmpty && rem.isNotEmpty && loc != rem
+            ? '$loc · $rem'
+            : (loc.isNotEmpty ? loc : rem);
         keepEarliestSchedule(
           id: schedule['id'],
           title: schedule['title'],
@@ -1170,7 +1182,7 @@ class WidgetService {
           startSort: schedule['startSort'],
           startAtMs: schedule['startAtMs'],
           timeText: schedule['timeText'],
-          location: schedule['location'],
+          location: resolvedLocation,
         );
       }
 

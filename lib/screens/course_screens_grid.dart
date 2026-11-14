@@ -299,20 +299,42 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     return virtualMinutes * minuteHeight;
   }
 
+  Color _harmonizeWeekEventColor(
+    Color rawColor, {
+    double opacity = 0.85,
+    double maxSaturation = 0.52,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = colorScheme.brightness == Brightness.dark;
+    final hsl = HSLColor.fromColor(rawColor);
+    final toned = hsl
+        .withSaturation(hsl.saturation.clamp(0.18, maxSaturation))
+        .withLightness(
+          hsl.lightness.clamp(isDark ? 0.34 : 0.38, isDark ? 0.48 : 0.50),
+        )
+        .toColor();
+    final blended = Color.lerp(toned, colorScheme.surfaceTint, 0.14) ?? toned;
+    return blended.withValues(alpha: opacity);
+  }
+
   Color _getCourseColor(String courseName) {
     final colorScheme = Theme.of(context).colorScheme;
-    final List<Color> colors = [
+    final List<Color> baseColors = [
       colorScheme.secondary,
       colorScheme.tertiary,
       colorScheme.primary,
-      colorScheme.cdtWarning,
+      colorScheme.cdtInfo,
       colorScheme.cdtSuccess,
-      colorScheme.error,
-      colorScheme.secondaryContainer,
-      colorScheme.tertiaryContainer,
+      colorScheme.cdtWarning,
+      Color.lerp(colorScheme.primary, colorScheme.tertiary, 0.5)!,
+      Color.lerp(colorScheme.secondary, colorScheme.primary, 0.45)!,
     ];
-    int hash = courseName.hashCode;
-    return colors[hash % colors.length];
+    final int hash = courseName.hashCode.abs();
+    return _harmonizeWeekEventColor(
+      baseColors[hash % baseColors.length],
+      opacity: 1.0,
+      maxSaturation: 0.46,
+    );
   }
 
   Color get _weekLazyLoadPlaceholderColor {
@@ -364,10 +386,19 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 const SizedBox(height: 16),
                 Expanded(
                   child: ListView.builder(
+                    findChildIndexCallback: (Key key) {
+                      if (key is ValueKey<String>) {
+                        final id = key.value;
+                        final index = todos.indexWhere((t) => t.id == id);
+                        return index != -1 ? index : null;
+                      }
+                      return null;
+                    },
                     itemCount: todos.length,
                     itemBuilder: (context, index) {
                       final todo = todos[index];
                       return ListTile(
+                        key: ValueKey<String>(todo.id),
                         leading: Icon(
                           todo.isDone ? Icons.check_circle : Icons.task_alt,
                           color: todo.isDone
@@ -528,6 +559,10 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
       return const SizedBox.shrink();
     }
 
+    final dateKeyFormat = _cachedDateFormat('yyyy-MM-dd');
+    final String todayKey = dateKeyFormat.format(DateTime.now());
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     final showTodos = _activeDataViews.contains('todos');
     final showFixedSchedules = _activeDataViews.contains('fixedSchedules');
     final showDeviceCalendar = _activeDataViews.contains('deviceCalendar');
@@ -563,10 +598,28 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               ? (_allDayDeviceCalendarEventsPerDay[weekday] ?? [])
               : [];
 
+          final currentDay = CalendarDateMath.addDays(monday, index);
+          final dayKey = dateKeyFormat.format(currentDay);
+          final bool isToday = dayKey == todayKey;
+          final colorScheme = Theme.of(context).colorScheme;
+
           if (dayTodos.isEmpty &&
               fixedSchedules.isEmpty &&
               deviceEvents.isEmpty) {
-            return const Expanded(child: SizedBox(height: 22));
+            return Expanded(
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 1.0),
+                decoration: isToday
+                    ? BoxDecoration(
+                        color: colorScheme.primary.withValues(
+                          alpha: isDark ? 0.06 : 0.035,
+                        ),
+                        borderRadius: BorderRadius.circular(4),
+                      )
+                    : null,
+                height: 22,
+              ),
+            );
           }
 
           final labels = <String>[];
@@ -578,11 +631,17 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
             );
           }
           if (fixedSchedules.isNotEmpty) {
-            labels.add(
-              fixedSchedules.length == 1
-                  ? fixedSchedules.first.title
-                  : '${fixedSchedules.length}项固定日程',
-            );
+            String scheduleLabel;
+            if (fixedSchedules.length == 1) {
+              final first = fixedSchedules.first;
+              final loc = first.location?.trim();
+              scheduleLabel = (loc != null && loc.isNotEmpty)
+                  ? '${first.title} ($loc)'
+                  : first.title;
+            } else {
+              scheduleLabel = '${fixedSchedules.length}项固定日程';
+            }
+            labels.add(scheduleLabel);
           }
           if (dayTodos.isNotEmpty) {
             labels.add(
@@ -593,7 +652,6 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           }
           final text = labels.join(' · ');
           bool allDone = dayTodos.every((t) => t.isDone);
-          final colorScheme = Theme.of(context).colorScheme;
           final todoColor = deviceEvents.isNotEmpty
               ? (deviceEvents.first.colorValue == null
                     ? colorScheme.tertiary
@@ -608,11 +666,8 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               : (fixedSchedules.isNotEmpty
                     ? colorScheme.onPrimary
                     : (allDone
-                          ? colorScheme.onTertiary
-                          : colorScheme.onSecondary));
-
-          final currentDay = CalendarDateMath.addDays(monday, index);
-          final dayKey = _cachedDateFormat('yyyy-MM-dd').format(currentDay);
+                          ? colorScheme.onSurface.withValues(alpha: 0.75)
+                          : Colors.white));
           final allDaySourceKey = deviceEvents.isEmpty
               ? null
               : _getDeviceCalendarCardKey(
@@ -622,87 +677,111 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 );
 
           return Expanded(
-            child: GestureDetector(
-              onTap: () {
-                String dateStr = _cachedDateFormat('MM-dd').format(currentDay);
-                if (fixedSchedules.isNotEmpty || dayTodos.isNotEmpty) {
-                  _showDayDetailSheet(currentDay);
-                } else if (deviceEvents.isNotEmpty) {
-                  if (deviceEvents.length == 1) {
-                    _showDeviceCalendarEventDetail(
-                      context,
-                      deviceEvents.first,
-                      sourceKey: allDaySourceKey,
-                      sourceColor: todoColor.withValues(alpha: 0.92),
-                    );
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 1.0),
+              decoration: isToday
+                  ? BoxDecoration(
+                      color: colorScheme.primary.withValues(
+                        alpha: isDark ? 0.06 : 0.035,
+                      ),
+                      borderRadius: BorderRadius.circular(4),
+                    )
+                  : null,
+              child: GestureDetector(
+                onTap: () {
+                  String dateStr = _cachedDateFormat('MM-dd')
+                      .format(currentDay);
+                  if (fixedSchedules.isNotEmpty || dayTodos.isNotEmpty) {
+                    _showDayDetailSheet(currentDay);
+                  } else if (deviceEvents.isNotEmpty) {
+                    if (deviceEvents.length == 1) {
+                      _showDeviceCalendarEventDetail(
+                        context,
+                        deviceEvents.first,
+                        sourceKey: allDaySourceKey,
+                        sourceColor: todoColor.withValues(alpha: 0.92),
+                      );
+                    } else {
+                      _showAllDayDeviceCalendarEvents(
+                        context,
+                        deviceEvents,
+                        dateStr,
+                        sourceKey: allDaySourceKey,
+                        sourceColor: todoColor.withValues(alpha: 0.92),
+                      );
+                    }
                   } else {
-                    _showAllDayDeviceCalendarEvents(
-                      context,
-                      deviceEvents,
-                      dateStr,
-                      sourceKey: allDaySourceKey,
-                      sourceColor: todoColor.withValues(alpha: 0.92),
-                    );
+                    _showAllDayTodos(context, dayTodos, dateStr);
                   }
-                } else {
-                  _showAllDayTodos(context, dayTodos, dateStr);
-                }
-              },
-              child: Container(
-                key: allDaySourceKey,
-                margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 1),
-                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-                decoration: BoxDecoration(
-                  color: todoColor.withValues(
-                    alpha: deviceEvents.isNotEmpty
-                        ? 0.92
-                        : (allDone ? 0.5 : 0.85),
+                },
+                child: Container(
+                  key: allDaySourceKey,
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 1,
+                    vertical: 1,
                   ),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (deviceEvents.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 2),
-                        child: Icon(
-                          Icons.phone_android_rounded,
-                          size: 10,
-                          color: onTodoColor,
-                        ),
-                      )
-                    else if (fixedSchedules.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 2),
-                        child: Icon(
-                          Icons.event_available,
-                          size: 10,
-                          color: onTodoColor,
-                        ),
-                      )
-                    else if (dayTodos.any((t) => t.teamUuid != null))
-                      Padding(
-                        padding: const EdgeInsets.only(right: 2),
-                        child: Icon(Icons.group, size: 10, color: onTodoColor),
-                      ),
-                    Flexible(
-                      child: Text(
-                        text,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: onTodoColor,
-                          decoration: allDone
-                              ? TextDecoration.lineThrough
-                              : null,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                      ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 2,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: todoColor.withValues(
+                      alpha: deviceEvents.isNotEmpty
+                          ? 0.92
+                          : (fixedSchedules.isNotEmpty
+                                ? 0.85
+                                : (allDone ? 0.28 : 0.85)),
                     ),
-                  ],
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (deviceEvents.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 2),
+                          child: Icon(
+                            Icons.phone_android_rounded,
+                            size: 10,
+                            color: onTodoColor,
+                          ),
+                        )
+                      else if (fixedSchedules.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 2),
+                          child: Icon(
+                            Icons.event_available,
+                            size: 10,
+                            color: onTodoColor,
+                          ),
+                        )
+                      else if (dayTodos.any((t) => t.teamUuid != null))
+                        Padding(
+                          padding: const EdgeInsets.only(right: 2),
+                          child: Icon(
+                            Icons.group,
+                            size: 10,
+                            color: onTodoColor,
+                          ),
+                        ),
+                      Flexible(
+                        child: Text(
+                          text,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: onTodoColor,
+                            decoration: allDone
+                                ? TextDecoration.lineThrough
+                                : null,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -782,10 +861,12 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     final dateKeyFormat = _cachedDateFormat('yyyy-MM-dd');
     final headerDateFormat = _cachedDateFormat('M/dd');
     String todayStr = dateKeyFormat.format(now);
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    bool isDark = theme.brightness == Brightness.dark;
 
     return Container(
-      color: Theme.of(context).colorScheme.surface,
+      color: colorScheme.surface,
       padding: EdgeInsets.only(left: timeColumnWidth, top: 4, bottom: 4),
       child: Row(
         children: List.generate(7, (index) {
@@ -799,32 +880,116 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
             isToday = dateKeyFormat.format(currentDate) == todayStr;
           }
 
-          List<String> weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+          const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+          final weekdayLabel = weekdays[index];
 
           return Expanded(
-            child: Column(
-              children: [
-                Text(
-                  weekdays[index],
-                  style: TextStyle(
-                    color: isToday
-                        ? Theme.of(context).colorScheme.primary
-                        : (isDark ? Colors.white70 : Colors.black87),
-                    fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
-                    fontSize: 13,
-                  ),
+            child: Semantics(
+              label: isToday
+                  ? '今天，$weekdayLabel $dateStr'
+                  : '$weekdayLabel $dateStr',
+              child: Container(
+                margin: const EdgeInsets.symmetric(
+                  horizontal: 1.5,
+                  vertical: 1.0,
                 ),
-                if (dateStr.isNotEmpty)
-                  Text(
-                    dateStr,
-                    style: TextStyle(
-                      color: isToday
-                          ? Theme.of(context).colorScheme.primary
-                          : Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontSize: 11,
+                padding: const EdgeInsets.symmetric(
+                  vertical: 3.0,
+                  horizontal: 1.0,
+                ),
+                decoration: isToday
+                    ? BoxDecoration(
+                        color: colorScheme.primaryContainer.withValues(
+                          alpha: isDark ? 0.42 : 0.60,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: colorScheme.primary.withValues(alpha: 0.45),
+                          width: 1,
+                        ),
+                      )
+                    : null,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            weekdayLabel,
+                            style: TextStyle(
+                              color: isToday
+                                  ? colorScheme.primary
+                                  : (isDark ? Colors.white70 : Colors.black87),
+                              fontWeight: isToday
+                                  ? FontWeight.bold
+                                  : FontWeight.w500,
+                              fontSize: 12.5,
+                            ),
+                          ),
+                          if (isToday) ...[
+                            const SizedBox(width: 2),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 3.5,
+                                vertical: 0.5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: colorScheme.primary,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                '今',
+                                style: TextStyle(
+                                  color: colorScheme.onPrimary,
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1.1,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
-                  ),
-              ],
+                    const SizedBox(height: 2),
+                    if (dateStr.isNotEmpty)
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: isToday
+                            ? Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                  vertical: 1,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: colorScheme.primary,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  dateStr,
+                                  style: TextStyle(
+                                    color: colorScheme.onPrimary,
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.bold,
+                                    height: 1.1,
+                                  ),
+                                ),
+                              )
+                            : Text(
+                                dateStr,
+                                style: TextStyle(
+                                  color: colorScheme.onSurfaceVariant,
+                                  fontSize: 11,
+                                ),
+                              ),
+                      ),
+                  ],
+                ),
+              ),
             ),
           );
         }),
@@ -896,10 +1061,445 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
         column[candidateIndex].collisionBottom > event.top;
   }
 
+  int _estimateWrappedLines(String text, double maxWidth, double fontSize) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return 0;
+    final effectiveWidth = maxWidth.clamp(12.0, double.infinity);
+    final charsPerLine = (effectiveWidth / fontSize).floorToDouble().clamp(
+      1.0,
+      100.0,
+    );
+    var totalLines = 0;
+    for (final paragraph in trimmed.split('\n')) {
+      if (paragraph.isEmpty) {
+        totalLines += 1;
+        continue;
+      }
+      var lineUnits = 0.0;
+      for (final rune in paragraph.runes) {
+        lineUnits += rune >= 0x2E80 ? 1.0 : 0.58;
+      }
+      totalLines += (lineUnits / charsPerLine).ceil().clamp(1, 20);
+    }
+    return totalLines.clamp(1, 20);
+  }
+
+  ({int titleMaxLines, int subMaxLines, bool showSubtitle})
+  _computeCardTextLayout({
+    required String title,
+    required String? subtitle,
+    required double width,
+    required double height,
+    required double effectiveHeight,
+    required double titleFontSize,
+    required double subFontSize,
+    double extraReservedHeight = 0.0,
+    double horizontalPadding = 6.0,
+  }) {
+    final double availHeight = (effectiveHeight - 5.0 - extraReservedHeight)
+        .clamp(10.0, double.infinity);
+    final double titleLineHeight = titleFontSize * 1.1;
+    final double subLineHeight = subFontSize * 1.1;
+    const double subTopGap = 1.5;
+
+    final String? cleanSub = subtitle?.trim();
+    final bool hasSub = cleanSub != null && cleanSub.isNotEmpty;
+    final bool showSubtitle =
+        hasSub &&
+        effectiveHeight >= 22.0 &&
+        availHeight >= (titleLineHeight + subTopGap + subLineHeight);
+
+    if (!showSubtitle) {
+      final int titleMaxLines = ((availHeight + 2.0) / titleLineHeight)
+          .floor()
+          .clamp(1, 15);
+      return (
+        titleMaxLines: titleMaxLines,
+        subMaxLines: 0,
+        showSubtitle: false,
+      );
+    }
+
+    final double textWidth = (width - horizontalPadding - 1.0).clamp(
+      10.0,
+      double.infinity,
+    );
+    final int neededTitleLines = _estimateWrappedLines(
+      title,
+      textWidth,
+      titleFontSize,
+    );
+    final int neededSubLines = _estimateWrappedLines(
+      cleanSub,
+      textWidth,
+      subFontSize,
+    );
+
+    final int minSubLines = (availHeight >= 46.0 && neededSubLines >= 2)
+        ? 2
+        : 1;
+    final double minSubReserve = subTopGap + minSubLines * subLineHeight;
+    final int titleMaxLines =
+        ((availHeight - minSubReserve + 2.0) / titleLineHeight).floor().clamp(
+          1,
+          15,
+        );
+    final int actualTitleLines = neededTitleLines < titleMaxLines
+        ? neededTitleLines
+        : titleMaxLines;
+    final double remainingForSub =
+        availHeight - actualTitleLines * titleLineHeight - subTopGap;
+    final int computedSubLines = ((remainingForSub + 2.0) / subLineHeight)
+        .floor()
+        .clamp(1, 15);
+    final int subMaxLines = computedSubLines < minSubLines
+        ? minSubLines
+        : computedSubLines;
+
+    return (
+      titleMaxLines: titleMaxLines,
+      subMaxLines: subMaxLines,
+      showSubtitle: true,
+    );
+  }
+
+  void _showAggregatedTimelineSheet(
+    BuildContext context,
+    int weekday,
+    List<Object> items,
+  ) {
+    final monday = _getMondayOfCurrentWeek();
+    final day = monday != null
+        ? CalendarDateMath.addDays(monday, weekday - 1)
+        : DateTime.now();
+    final dateStr = _cachedDateFormat('M月d日').format(day);
+    final weekdayStr = const [
+      '周一',
+      '周二',
+      '周三',
+      '周四',
+      '周五',
+      '周六',
+      '周日',
+    ][(weekday - 1).clamp(0, 6)];
+    final sourceDate = _cachedDateFormat('yyyy-MM-dd').format(day);
+
+    showAppModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        final colorScheme = Theme.of(ctx).colorScheme;
+        return SafeArea(
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(ctx).height * 0.55,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: colorScheme.outlineVariant,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  '$dateStr $weekdayStr · 重叠日程 (${items.length}项)',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    findItemIndexCallback: (Key key) {
+                      if (key is ValueKey<String> &&
+                          key.value.startsWith('week_agg_modal_')) {
+                        final idx = int.tryParse(
+                          key.value.substring('week_agg_modal_'.length),
+                        );
+                        if (idx != null && idx >= 0 && idx < items.length) {
+                          return idx;
+                        }
+                      }
+                      return null;
+                    },
+                    itemCount: items.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (itemCtx, index) {
+                      return RepaintBoundary(
+                        key: ValueKey<String>('week_agg_modal_$index'),
+                        child: _buildDetailSidebarItem(
+                          itemCtx,
+                          items[index],
+                          sourceDate,
+                          'week_agg_modal_$index',
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _layoutAndRenderEventLayer({
+    required Map<int, List<_TimelineEvent>> layerEventsPerDay,
+    required double cellWidth,
+    required List<Widget> children,
+    required bool allowAggregation,
+  }) {
+    for (int weekday = 1; weekday <= 7; weekday++) {
+      final List<_TimelineEvent> dayEvents = layerEventsPerDay[weekday]!;
+      if (dayEvents.isEmpty) continue;
+
+      dayEvents.sort((a, b) => a.top.compareTo(b.top));
+
+      final List<List<_TimelineEvent>> columns = [];
+      final List<_TimelineEvent> currentGroup = [];
+      double groupBottom = -1;
+      final double leftOffset = timeColumnWidth + (weekday - 1) * cellWidth;
+
+      void flushCurrentGroup() {
+        if (currentGroup.isEmpty) return;
+        final int numCols = columns.length;
+        for (final e in currentGroup) {
+          e.maxColumns = numCols;
+          e.colSpan = 1;
+          for (int i = e.columnIndex + 1; i < numCols; i++) {
+            if (_timelineColumnOverlaps(columns[i], e)) break;
+            e.colSpan++;
+          }
+        }
+
+        final double colWidth = (cellWidth - 2) / numCols;
+        if (allowAggregation && currentGroup.length > 1 && colWidth < 24.0) {
+          final groupSnapshot = List<_TimelineEvent>.of(currentGroup);
+          final firstEvent = groupSnapshot.first;
+          double minTop = firstEvent.top;
+          double maxBottom = firstEvent.bottom;
+          for (final e in groupSnapshot) {
+            if (e.top < minTop) minTop = e.top;
+            if (e.bottom > maxBottom) maxBottom = e.bottom;
+          }
+          final double height = (maxBottom - minTop).clamp(
+            18.0,
+            double.infinity,
+          );
+          final double width = cellWidth - 2;
+          final double left = leftOffset + 1;
+          final int extraCount = groupSnapshot.length - 1;
+          final Color baseColor = firstEvent.color;
+          final Color secondColor = groupSnapshot.length > 1
+              ? groupSnapshot[1].color
+              : baseColor;
+          final double titleFontSize = (height * 0.32).clamp(9.0, 10.5);
+          final double subFontSize = (height * 0.22).clamp(8.0, 9.0);
+          String? previewSubtitle = firstEvent.subtitle;
+          if (previewSubtitle == null || previewSubtitle.trim().isEmpty) {
+            for (final e in groupSnapshot.skip(1)) {
+              final s = e.subtitle?.trim();
+              if (s != null && s.isNotEmpty) {
+                previewSubtitle = s;
+                break;
+              }
+            }
+          }
+          final textLayout = _computeCardTextLayout(
+            title: firstEvent.title,
+            subtitle: previewSubtitle,
+            width: width > 8 ? width - 2 : width,
+            height: height,
+            effectiveHeight: height > 22 ? height - 2 : height,
+            titleFontSize: titleFontSize,
+            subFontSize: subFontSize,
+            extraReservedHeight: height > 48.0 ? 10.0 : 0.0,
+          );
+          final items = [
+            for (final e in groupSnapshot)
+              if (e.sourceItem != null) e.sourceItem!,
+          ];
+
+          children.add(
+            Positioned(
+              top: minTop + 1,
+              left: left,
+              width: width,
+              height: (height - 2).clamp(18.0, double.infinity),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () =>
+                    _showAggregatedTimelineSheet(context, weekday, items),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    // 底部叠牌阴影层，体现多张卡片折叠效果
+                    if (width > 8)
+                      Positioned(
+                        top: 2,
+                        left: 2,
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: secondColor.withValues(alpha: 0.45),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      ),
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: width > 8 ? 2 : 0,
+                      bottom: height > 22 ? 2 : 0,
+                      child: Container(
+                        alignment: Alignment.topLeft,
+                        clipBehavior: Clip.hardEdge,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 3,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: baseColor,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.5),
+                            width: 0.5,
+                          ),
+                        ),
+                        child: SingleChildScrollView(
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                firstEvent.title,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: titleFontSize,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1.1,
+                                ),
+                                maxLines: textLayout.titleMaxLines,
+                                textAlign: TextAlign.left,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if (textLayout.showSubtitle &&
+                                  previewSubtitle != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 1.5),
+                                  child: Text(
+                                    previewSubtitle,
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.84,
+                                      ),
+                                      fontSize: subFontSize,
+                                      height: 1.1,
+                                    ),
+                                    maxLines: textLayout.subMaxLines,
+                                    textAlign: TextAlign.left,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    // 右上角/右下角 +N 角标
+                    Positioned(
+                      right: width > 8 ? 3 : 1,
+                      bottom: height > 22 ? 3 : 1,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 3.5,
+                          vertical: 1,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.65),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '+$extraCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 8.5,
+                            fontWeight: FontWeight.bold,
+                            height: 1.0,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        } else {
+          for (final event in currentGroup) {
+            final double l = leftOffset + 1 + event.columnIndex * colWidth;
+            final double width = colWidth * event.colSpan;
+            children.add(event.builder(l, width));
+          }
+        }
+
+        columns.clear();
+        currentGroup.clear();
+        groupBottom = -1;
+      }
+
+      for (final event in dayEvents) {
+        if (event.top >= groupBottom && currentGroup.isNotEmpty) {
+          flushCurrentGroup();
+        }
+
+        currentGroup.add(event);
+        if (event.collisionBottom > groupBottom) {
+          groupBottom = event.collisionBottom;
+        }
+
+        bool placed = false;
+        for (int i = 0; i < columns.length; i++) {
+          if (columns[i].last.collisionBottom <= event.top) {
+            columns[i].add(event);
+            event.columnIndex = i;
+            placed = true;
+            break;
+          }
+        }
+        if (!placed) {
+          event.columnIndex = columns.length;
+          columns.add([event]);
+        }
+      }
+
+      flushCurrentGroup();
+    }
+  }
+
   Widget _buildGrid(double cellWidth, double minuteHeight) {
     List<Widget> children = [];
     final colorScheme = Theme.of(context).colorScheme;
     final focusColor = colorScheme.cdtFocus;
+    final bool isWideScreen =
+        cellWidth >= 80.0 || MediaQuery.sizeOf(context).width > 900;
     bool isDark = colorScheme.brightness == Brightness.dark;
     Color lineColor = isDark ? Colors.white10 : Colors.black12;
     Color textColor = isDark ? Colors.white70 : Colors.black87;
@@ -933,6 +1533,37 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
         ? _cachedVisiblePlanIndices
         : const <TodoPlanBlock, int>{};
     final planPomodoroProgressIndex = _planPomodoroProgressIndexFor();
+
+    // 🚀 周视图“今天”整列纵向柔和高光：贯穿网格全高，作为底层聚光灯使今天一眼可辨
+    final weekMonday = _getMondayOfCurrentWeek();
+    int? todayColumnIndex;
+    if (weekMonday != null) {
+      final now = DateTime.now();
+      final diff = CalendarDateMath.daysBetween(weekMonday, now);
+      if (diff >= 0 && diff < 7) {
+        todayColumnIndex = diff;
+      }
+    }
+
+    if (todayColumnIndex != null) {
+      children.add(
+        Positioned(
+          top: 0,
+          bottom: 0,
+          left: timeColumnWidth + todayColumnIndex * cellWidth,
+          width: cellWidth,
+          child: IgnorePointer(
+            child: Container(
+              decoration: BoxDecoration(
+                color: colorScheme.primary.withValues(
+                  alpha: isDark ? 0.07 : 0.038,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     for (int hour = startHour; hour <= endHour; hour++) {
       // 🚀 自适应时间隐藏：如果该小时正点落于本周的合并收窄区间中，跳过不绘制
@@ -1073,7 +1704,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
       );
     }
 
-    Map<int, List<_TimelineEvent>> eventsPerDay = {
+    Map<int, List<_TimelineEvent>> backgroundEventsPerDay = {
       1: [],
       2: [],
       3: [],
@@ -1082,6 +1713,36 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
       6: [],
       7: [],
     };
+    Map<int, List<_TimelineEvent>> foregroundEventsPerDay = {
+      1: [],
+      2: [],
+      3: [],
+      4: [],
+      5: [],
+      6: [],
+      7: [],
+    };
+
+    double topInsetForBackgroundCard(
+      int weekday,
+      double bgTop,
+      double bgBottom,
+    ) {
+      final fgEvents = foregroundEventsPerDay[weekday];
+      if (fgEvents == null || fgEvents.isEmpty) return 0.0;
+      double maxFgBottom = bgTop;
+      for (final fg in fgEvents) {
+        if (fg.top <= bgTop + 14.0 &&
+            fg.bottom > maxFgBottom &&
+            bgBottom - fg.bottom >= 18.0) {
+          maxFgBottom = fg.bottom;
+        }
+      }
+      return (maxFgBottom - bgTop).clamp(
+        0.0,
+        (bgBottom - bgTop - 16.0).clamp(0.0, double.infinity),
+      );
+    }
 
     if (_activeDataViews.contains('todos')) {
       final todoIndices = _todoIndexCache.indicesFor(
@@ -1108,17 +1769,28 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           final stackIndex = collisionMap[collisionKey] ?? 0;
           collisionMap[collisionKey] = stackIndex + 1;
 
-          Color todoColor =
-              (todo.isDone ? colorScheme.cdtSuccess : colorScheme.cdtWarning)
-                  .withValues(alpha: todo.isDone ? 0.5 : 0.85);
+          Color todoColor = todo.isDone
+              ? _harmonizeWeekEventColor(
+                  colorScheme.cdtSuccess,
+                  opacity: 0.28,
+                  maxSaturation: 0.40,
+                )
+              : _harmonizeWeekEventColor(colorScheme.cdtWarning, opacity: 0.85);
+          final Color todoTextColor = Colors.white.withValues(
+            alpha: todo.isDone ? 0.65 : 1.0,
+          );
           final todoCardKey = _getTodoCardKey(todo.id, weekday: weekday);
           final todoIndex = todoIndices[todo]!;
 
-          eventsPerDay[weekday]!.add(
+          foregroundEventsPerDay[weekday]!.add(
             _TimelineEvent(
               top: top,
               bottom: top + height,
               collisionBottom: bottom,
+              sourceItem: todo,
+              title: todo.title,
+              subtitle: todo.remark,
+              color: todoColor,
               builder: (left, width) {
                 final double fontScale = (width / (cellWidth - 2)).clamp(
                   0.4,
@@ -1132,13 +1804,22 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                   8.0,
                   9.0,
                 );
-                final double availableForTodo =
-                    (todo.teamUuid != null && height >= 32)
-                    ? height - (teamFontSize + 7.0)
-                    : height - 2.0;
-                int todoMaxLines = (availableForTodo / (titleFontSize + 1.0))
-                    .floor();
-                if (todoMaxLines < 1) todoMaxLines = 1;
+                final bool showTeamBadge =
+                    todo.teamUuid != null && height > 56.0;
+                final textLayout = _computeCardTextLayout(
+                  title: todo.title,
+                  subtitle: todo.remark,
+                  width: width,
+                  height: height,
+                  effectiveHeight: height,
+                  titleFontSize: titleFontSize,
+                  subFontSize: 8.0,
+                  extraReservedHeight: showTeamBadge
+                      ? (teamFontSize + 5.0)
+                      : 0.0,
+                );
+                final bool showRemark = textLayout.showSubtitle;
+                final int todoMaxLines = textLayout.titleMaxLines;
                 final animationDelay = (todoIndex * 0.06).clamp(0.0, 0.5);
                 final animationProgressScale = 1.0 / (1.0 - animationDelay);
 
@@ -1154,11 +1835,12 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                           ((_courseExpandAnim.value - animationDelay) *
                                   animationProgressScale)
                               .clamp(0.0, 1.0);
+                      if (t >= 0.999) return child!;
+                      if (t <= 0.001) return const SizedBox.shrink();
                       final scale = 0.7 + 0.3 * t;
-                      final opacity = t;
                       return Transform.scale(
                         scale: scale,
-                        child: Opacity(opacity: opacity, child: child),
+                        child: Opacity(opacity: t, child: child),
                       );
                     },
                     child: GestureDetector(
@@ -1179,16 +1861,20 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                       },
                       child: Container(
                         key: todoCardKey,
-                        alignment: Alignment.center,
+                        alignment: Alignment.topLeft,
                         clipBehavior: Clip.hardEdge,
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 2,
-                          vertical: 1,
+                          horizontal: 3,
+                          vertical: 2,
                         ),
                         decoration: BoxDecoration(
                           color: todoColor,
                           borderRadius: BorderRadius.circular(4),
-                          boxShadow: stackIndex > 0
+                          border: Border.all(
+                            color: colorScheme.surface.withValues(alpha: 0.7),
+                            width: 0.6,
+                          ),
+                          boxShadow: !todo.isDone && stackIndex > 0
                               ? [
                                   const BoxShadow(
                                     color: Colors.black12,
@@ -1198,111 +1884,87 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                                 ]
                               : null,
                         ),
-                        child: height < 20
-                            ? Icon(
-                                todo.isDone
-                                    ? Icons.check_circle
-                                    : Icons.task_alt,
-                                size: 10,
-                                color: Colors.white,
-                              )
-                            : SingleChildScrollView(
-                                physics: const NeverScrollableScrollPhysics(),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (todo.teamUuid != null && height >= 32)
-                                      Padding(
-                                        padding: const EdgeInsets.only(
-                                          bottom: 2.0,
-                                        ),
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 2,
-                                            vertical: 0.5,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Colors.white.withValues(
-                                              alpha: 0.3,
-                                            ),
-                                            borderRadius: BorderRadius.circular(
-                                              2,
-                                            ),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              const Icon(
-                                                Icons.group,
-                                                size: 8,
-                                                color: Colors.white,
-                                              ),
-                                              const SizedBox(width: 1),
-                                              Flexible(
-                                                // 🚀 强制填满剩余空间并截断
-                                                child: Text(
-                                                  todo.teamName ?? '团队',
-                                                  style: TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: teamFontSize,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                  maxLines: 1,
-                                                  textAlign: TextAlign.center,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    if (height >= 38) ...[
-                                      Icon(
-                                        todo.isDone
-                                            ? Icons.check_circle
-                                            : Icons.task_alt,
-                                        size: 10,
-                                        color: Colors.white,
-                                      ),
-                                      const SizedBox(height: 2),
-                                    ],
-                                    Text(
-                                      todo.title,
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: titleFontSize,
-                                        fontWeight: FontWeight.bold,
-                                        decoration: todo.isDone
-                                            ? TextDecoration.lineThrough
-                                            : null,
-                                        height: 1.0,
-                                      ),
-                                      maxLines: todoMaxLines,
-                                      textAlign: TextAlign.center,
-                                      overflow: TextOverflow.ellipsis,
+                        child: SingleChildScrollView(
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (showTeamBadge)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 2.0),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 2,
+                                      vertical: 0.5,
                                     ),
-                                    if (todo.remark != null &&
-                                        todo.remark!.isNotEmpty &&
-                                        height > 32)
-                                      Flexible(
-                                        child: Text(
-                                          todo.remark!,
-                                          style: TextStyle(
-                                            color: Colors.white.withValues(
-                                              alpha: 0.75,
-                                            ),
-                                            fontSize: 8,
-                                            height: 1.2,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(
+                                        alpha: todo.isDone ? 0.18 : 0.3,
                                       ),
-                                  ],
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.group,
+                                          size: 8,
+                                          color: todoTextColor,
+                                        ),
+                                        const SizedBox(width: 1),
+                                        Flexible(
+                                          child: Text(
+                                            todo.teamName ?? '团队',
+                                            style: TextStyle(
+                                              color: todoTextColor,
+                                              fontSize: teamFontSize,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                            maxLines: 1,
+                                            textAlign: TextAlign.left,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
+                              Text(
+                                todo.title,
+                                style: TextStyle(
+                                  color: todoTextColor,
+                                  fontSize: titleFontSize,
+                                  fontWeight: FontWeight.bold,
+                                  decoration: todo.isDone
+                                      ? TextDecoration.lineThrough
+                                      : null,
+                                  height: 1.1,
+                                ),
+                                maxLines: todoMaxLines,
+                                textAlign: TextAlign.left,
+                                overflow: TextOverflow.ellipsis,
                               ),
+                              if (showRemark && todo.remark != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 1.5),
+                                  child: Text(
+                                    todo.remark!,
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: todo.isDone ? 0.52 : 0.78,
+                                      ),
+                                      fontSize: 8,
+                                      height: 1.1,
+                                    ),
+                                    maxLines: textLayout.subMaxLines,
+                                    textAlign: TextAlign.left,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -1336,28 +1998,48 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
 
           if (height < 18.0) height = 18.0;
 
-          Color logColor = colorScheme.cdtInfo.withValues(alpha: 0.7);
+          Color rawLogColor = colorScheme.cdtInfo;
           String logTitle = log.title.isNotEmpty ? log.title : '时间日志';
           if (log.tagUuids.isNotEmpty) {
             final tag = firstTagFor(log.tagUuids);
             if (tag != null) {
-              logColor = AppColorUtils.hexToColor(
+              rawLogColor = AppColorUtils.hexToColor(
                 tag.color,
                 fallback: colorScheme.cdtInfo,
-                opacity: 0.7,
               );
               if (logTitle == '时间日志') logTitle = tag.name;
             }
           }
+          final Color logColor = _harmonizeWeekEventColor(
+            rawLogColor,
+            opacity: 0.78,
+          );
 
-          final logCardKey = _getTimeLogCardKey(log.id);
+          final int logDurationSeconds = ((log.endTime - log.startTime) / 1000)
+              .round();
+          final String logDurationText = _formatEventDuration(
+            logDurationSeconds,
+          );
+          final logRemark = log.remark?.trim();
+          final String effectiveLogSubtitle =
+              (logRemark != null && logRemark.isNotEmpty)
+              ? (isWideScreen
+                    ? '$logDurationText · $logRemark'
+                    : '$logDurationText $logRemark')
+              : logDurationText;
+
+          final logCardKey = _getTimeLogCardKey(log.id, weekday: weekday);
           final logIndex = logIndices[log]!;
 
-          eventsPerDay[weekday]!.add(
+          foregroundEventsPerDay[weekday]!.add(
             _TimelineEvent(
               top: top,
               bottom: top + height,
               collisionBottom: bottom,
+              sourceItem: log,
+              title: logTitle,
+              subtitle: effectiveLogSubtitle,
+              color: logColor,
               builder: (left, width) {
                 final double fontScale = (width / (cellWidth - 2)).clamp(
                   0.4,
@@ -1367,16 +2049,30 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                   9.0,
                   10.5,
                 );
-                final double timeFontSize = (height * 0.22 * fontScale).clamp(
+                final double subFontSize = (height * 0.22 * fontScale).clamp(
                   8.0,
                   9.0,
                 );
-                final double availableForLog = height > 22
-                    ? height - (timeFontSize + 2.0)
-                    : height - 2.0;
-                int logMaxLines = (availableForLog / (titleFontSize + 1.0))
-                    .floor();
-                if (logMaxLines < 1) logMaxLines = 1;
+                final bool isShortLogCard = height < 22.0;
+                final String displayLogTitle = isShortLogCard
+                    ? (isWideScreen
+                          ? '$logTitle · $logDurationText'
+                          : '$logTitle $logDurationText')
+                    : logTitle;
+                final String? displayLogSubtitle = isShortLogCard
+                    ? null
+                    : effectiveLogSubtitle;
+                final textLayout = _computeCardTextLayout(
+                  title: displayLogTitle,
+                  subtitle: displayLogSubtitle,
+                  width: width,
+                  height: height,
+                  effectiveHeight: height,
+                  titleFontSize: titleFontSize,
+                  subFontSize: subFontSize,
+                );
+                final bool showRemark = textLayout.showSubtitle;
+                final int logMaxLines = textLayout.titleMaxLines;
                 final animationDelay = (logIndex * 0.06).clamp(0.0, 0.5);
                 final animationProgressScale = 1.0 / (1.0 - animationDelay);
 
@@ -1392,11 +2088,12 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                           ((_courseExpandAnim.value - animationDelay) *
                                   animationProgressScale)
                               .clamp(0.0, 1.0);
+                      if (t >= 0.999) return child!;
+                      if (t <= 0.001) return const SizedBox.shrink();
                       final scale = 0.7 + 0.3 * t;
-                      final opacity = t;
                       return Transform.scale(
                         scale: scale,
-                        child: Opacity(opacity: opacity, child: child),
+                        child: Opacity(opacity: t, child: child),
                       );
                     },
                     child: GestureDetector(
@@ -1417,11 +2114,11 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                       },
                       child: Container(
                         key: logCardKey,
-                        alignment: Alignment.center,
+                        alignment: Alignment.topLeft,
                         clipBehavior: Clip.hardEdge,
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 2,
-                          vertical: 1,
+                          horizontal: 3,
+                          vertical: 2,
                         ),
                         decoration: BoxDecoration(
                           color: logColor,
@@ -1431,54 +2128,44 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                             width: 0.5,
                           ),
                         ),
-                        child: height < 18
-                            ? const Icon(
-                                Icons.edit_calendar,
-                                size: 8,
-                                color: Colors.white,
-                              )
-                            : SingleChildScrollView(
-                                physics: const NeverScrollableScrollPhysics(),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (height >= 38) ...[
-                                      Icon(
-                                        Icons.edit_calendar,
-                                        size: 8,
-                                        color: Colors.white,
-                                      ),
-                                      const SizedBox(height: 2),
-                                    ],
-                                    Text(
-                                      logTitle,
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: titleFontSize,
-                                        fontWeight: FontWeight.bold,
-                                        height: 1.0,
-                                      ),
-                                      maxLines: logMaxLines,
-                                      textAlign: TextAlign.center,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    if (height > 22)
-                                      Text(
-                                        '${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')}-${end.hour.toString().padLeft(2, '0')}:${end.minute.toString().padLeft(2, '0')}',
-                                        style: TextStyle(
-                                          color: Colors.white.withValues(
-                                            alpha: 0.8,
-                                          ),
-                                          fontSize: timeFontSize,
-                                          height: 1.0,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                  ],
+                        child: SingleChildScrollView(
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                displayLogTitle,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: titleFontSize,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1.1,
                                 ),
+                                maxLines: logMaxLines,
+                                textAlign: TextAlign.left,
+                                overflow: TextOverflow.ellipsis,
                               ),
+                              if (showRemark && displayLogSubtitle != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 1.5),
+                                  child: Text(
+                                    displayLogSubtitle,
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.82,
+                                      ),
+                                      fontSize: subFontSize,
+                                      height: 1.1,
+                                    ),
+                                    maxLines: textLayout.subMaxLines,
+                                    textAlign: TextAlign.left,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -1513,20 +2200,56 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           final hasAssociatedPomodoro = recordCount > 0;
           final actualFocusSeconds =
               (pomProgress['actualSeconds'] as int?) ?? 0;
+          final double progressRatio =
+              ((pomProgress['progress'] as double?) ?? 0.0).clamp(0.0, 1.0);
           final planStatus = _planStatusForActualFocus(
             plan,
             actualFocusSeconds,
           );
-          final planColor = planStatus == TodoPlanStatus.finished
-              ? colorScheme.cdtSuccess.withValues(alpha: 0.58)
-              : colorScheme.secondary.withValues(alpha: 0.58);
+          final bool isPlanFinished =
+              planStatus == TodoPlanStatus.finished || progressRatio >= 1.0;
+          final planColor = isPlanFinished
+              ? _harmonizeWeekEventColor(
+                  colorScheme.cdtSuccess,
+                  opacity: 0.26,
+                  maxSaturation: 0.36,
+                )
+              : _harmonizeWeekEventColor(
+                  colorScheme.secondary,
+                  opacity: 0.56,
+                  maxSaturation: 0.42,
+                );
+          final Color planTextColor = Colors.white.withValues(
+            alpha: isPlanFinished ? 0.68 : 1.0,
+          );
+          final Color planSubTextColor = Colors.white.withValues(
+            alpha: isPlanFinished ? 0.56 : 0.82,
+          );
+          final String? rawPlanSubtitle = hasAssociatedPomodoro
+              ? '${(progressRatio * 100).toStringAsFixed(0)}%'
+              : (plan.remark != null && plan.remark!.isNotEmpty
+                    ? plan.remark
+                    : null);
 
-          eventsPerDay[weekday]!.add(
+          backgroundEventsPerDay[weekday]!.add(
             _TimelineEvent(
               top: top,
               bottom: top + height,
               collisionBottom: bottom,
+              sourceItem: plan,
+              title: title,
+              subtitle: rawPlanSubtitle,
+              color: planColor,
               builder: (left, width) {
+                final double topOccupied = topInsetForBackgroundCard(
+                  weekday,
+                  top,
+                  top + height,
+                );
+                final double effectiveHeight = (height - topOccupied).clamp(
+                  16.0,
+                  double.infinity,
+                );
                 final double fontScale = (width / (cellWidth - 2)).clamp(
                   0.4,
                   1.0,
@@ -1539,27 +2262,65 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                   8.0,
                   9.0,
                 );
-
-                int planMaxLines = 2;
-                if (hasAssociatedPomodoro) {
-                  double availableForPlan = height > 32
-                      ? height - (subFontSize * 2 + 5.0)
-                      : (height > 24
-                            ? height - (subFontSize + 4.0)
-                            : height - 4.0);
-                  planMaxLines = (availableForPlan / (titleFontSize + 1.0))
-                      .floor();
-                  if (planMaxLines < 1) planMaxLines = 1;
-                } else {
-                  double availableForPlan = height > 24
-                      ? height - (subFontSize + 4.0)
-                      : height - 4.0;
-                  planMaxLines = (availableForPlan / (titleFontSize + 1.0))
-                      .floor();
-                  if (planMaxLines < 1) planMaxLines = 1;
-                }
+                final double cardWidth = width > 6 ? width - 6 : width;
+                final textLayout = _computeCardTextLayout(
+                  title: title,
+                  subtitle: rawPlanSubtitle,
+                  width: cardWidth,
+                  height: height,
+                  effectiveHeight: effectiveHeight,
+                  titleFontSize: titleFontSize,
+                  subFontSize: subFontSize,
+                );
+                final int planMaxLines = textLayout.titleMaxLines;
+                final String? planSubtitle = textLayout.showSubtitle
+                    ? rawPlanSubtitle
+                    : null;
                 final animationDelay = (planIndex * 0.04).clamp(0.0, 0.45);
                 final animationProgressScale = 1.0 / (1.0 - animationDelay);
+
+                final Widget planContent = Padding(
+                  padding: EdgeInsets.fromLTRB(3, 2 + topOccupied, 3, 2),
+                  child: SingleChildScrollView(
+                    physics: const NeverScrollableScrollPhysics(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          title,
+                          style: TextStyle(
+                            color: planTextColor,
+                            fontSize: titleFontSize,
+                            fontWeight: FontWeight.bold,
+                            height: 1.1,
+                          ),
+                          maxLines: planMaxLines,
+                          textAlign: TextAlign.left,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (planSubtitle != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 1.5),
+                            child: Text(
+                              planSubtitle,
+                              style: TextStyle(
+                                color: planSubTextColor,
+                                fontSize: subFontSize,
+                                fontWeight: hasAssociatedPomodoro
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                                height: 1.1,
+                              ),
+                              maxLines: textLayout.subMaxLines,
+                              textAlign: TextAlign.left,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
 
                 return Positioned(
                   top: top + 1,
@@ -1573,6 +2334,8 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                           ((_courseExpandAnim.value - animationDelay) *
                                   animationProgressScale)
                               .clamp(0.0, 1.0);
+                      if (t >= 0.999) return child!;
+                      if (t <= 0.001) return const SizedBox.shrink();
                       return Transform.scale(
                         scale: 0.8 + 0.2 * t,
                         child: Opacity(opacity: t, child: child),
@@ -1596,17 +2359,15 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                       },
                       child: Container(
                         key: planCardKey,
-                        alignment: Alignment.center,
+                        alignment: Alignment.topLeft,
                         clipBehavior: Clip.hardEdge,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 3,
-                          vertical: 2,
-                        ),
                         decoration: BoxDecoration(
                           color: planColor,
                           borderRadius: BorderRadius.circular(4),
                           border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.35),
+                            color: Colors.white.withValues(
+                              alpha: isPlanFinished ? 0.18 : 0.35,
+                            ),
                             width: 0.5,
                           ),
                         ),
@@ -1615,159 +2376,27 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                             ? Stack(
                                 fit: StackFit.expand,
                                 children: [
-                                  // 背景进度条（从下往上）
                                   Align(
                                     alignment: Alignment.bottomCenter,
                                     child: FractionallySizedBox(
-                                      heightFactor:
-                                          ((pomProgress['progress']
-                                                      as double?) ??
-                                                  0.0)
-                                              .clamp(0.0, 1.0),
+                                      heightFactor: progressRatio,
                                       widthFactor: 1.0,
                                       child: Container(
                                         decoration: BoxDecoration(
                                           color: Colors.white.withValues(
-                                            alpha: 0.25,
+                                            alpha: isPlanFinished ? 0.10 : 0.22,
                                           ),
                                         ),
                                       ),
                                     ),
                                   ),
-                                  // 内容层
-                                  Center(
-                                    child: SingleChildScrollView(
-                                      physics:
-                                          const NeverScrollableScrollPhysics(),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.center,
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          if (height >= 38) ...[
-                                            Icon(
-                                              planStatus ==
-                                                      TodoPlanStatus.finished
-                                                  ? Icons.event_available
-                                                  : Icons.event_note,
-                                              size: 9,
-                                              color: Colors.white,
-                                            ),
-                                            const SizedBox(height: 2),
-                                          ],
-                                          Text(
-                                            title,
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontSize: titleFontSize,
-                                              fontWeight: FontWeight.bold,
-                                              height: 1.0,
-                                            ),
-                                            maxLines: height < 28 ? 1 : 2,
-                                            textAlign: TextAlign.center,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          if (height > 24)
-                                            Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.center,
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Text(
-                                                  '${plan.plannedMinutes}min',
-                                                  style: TextStyle(
-                                                    color: Colors.white
-                                                        .withValues(
-                                                          alpha: 0.85,
-                                                        ),
-                                                    fontSize: subFontSize,
-                                                    height: 1.0,
-                                                  ),
-                                                  maxLines: 1,
-                                                  textAlign: TextAlign.center,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                                // 显示番茄钟完成情况
-                                                if (height > 32)
-                                                  Text(
-                                                    '${(((pomProgress['progress'] as double?) ?? 0.0) * 100).toStringAsFixed(0)}%',
-                                                    style: TextStyle(
-                                                      color: Colors.white
-                                                          .withValues(
-                                                            alpha: 0.7,
-                                                          ),
-                                                      fontSize: 6,
-                                                      height: 1.0,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                    ),
-                                                    maxLines: 1,
-                                                    textAlign: TextAlign.center,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                  ),
-                                              ],
-                                            ),
-                                        ],
-                                      ),
-                                    ),
+                                  Align(
+                                    alignment: Alignment.topLeft,
+                                    child: planContent,
                                   ),
                                 ],
                               )
-                            : (height < 18
-                                  ? const Icon(
-                                      Icons.event_note,
-                                      size: 8,
-                                      color: Colors.white,
-                                    )
-                                  : SingleChildScrollView(
-                                      physics:
-                                          const NeverScrollableScrollPhysics(),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.center,
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          if (height >= 38) ...[
-                                            Icon(
-                                              planStatus ==
-                                                      TodoPlanStatus.finished
-                                                  ? Icons.event_available
-                                                  : Icons.event_note,
-                                              size: titleFontSize,
-                                              color: Colors.white,
-                                            ),
-                                            const SizedBox(height: 2),
-                                          ],
-                                          Text(
-                                            title,
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontSize: titleFontSize,
-                                              fontWeight: FontWeight.bold,
-                                              height: 1.0,
-                                            ),
-                                            maxLines: height < 28 ? 1 : 2,
-                                            textAlign: TextAlign.center,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          if (height > 24)
-                                            Text(
-                                              '${plan.plannedMinutes}min',
-                                              style: TextStyle(
-                                                color: Colors.white.withValues(
-                                                  alpha: 0.85,
-                                                ),
-                                                fontSize: subFontSize,
-                                                height: 1.0,
-                                              ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                        ],
-                                      ),
-                                    )),
+                            : planContent,
                       ),
                     ),
                   ),
@@ -1842,15 +2471,64 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               schedule.id,
               weekday,
             );
-            eventsPerDay[weekday]!.add(
+            final locText = schedule.location?.trim();
+            final remText = schedule.remark?.trim();
+            final detailParts = <String>[
+              if (locText != null && locText.isNotEmpty) locText,
+              if (remText != null && remText.isNotEmpty && remText != locText)
+                remText,
+            ];
+            final String? location = detailParts.isEmpty
+                ? null
+                : detailParts.join(' · ');
+            final bool isShortFixedCard = height < 24.0;
+            final String displayFixedTitle =
+                isShortFixedCard && location != null
+                ? '${schedule.title} · $location'
+                : schedule.title;
+            final String? displayFixedLocation = isShortFixedCard
+                ? null
+                : location;
+            backgroundEventsPerDay[weekday]!.add(
               _TimelineEvent(
                 top: top,
                 bottom: top + height,
                 collisionBottom: bottom,
+                sourceItem: schedule,
+                title: schedule.title,
+                subtitle: location,
+                color: fixedColor,
                 builder: (left, width) {
-                  final titleSize =
-                      (height * 0.3 * (width / (cellWidth - 2)).clamp(0.4, 1.0))
-                          .clamp(9.0, 10.5);
+                  final double topOccupied = topInsetForBackgroundCard(
+                    weekday,
+                    top,
+                    top + height,
+                  );
+                  final double effectiveHeight = (height - topOccupied).clamp(
+                    16.0,
+                    double.infinity,
+                  );
+                  final double fontScale = (width / (cellWidth - 2)).clamp(
+                    0.4,
+                    1.0,
+                  );
+                  final double titleSize = (height * 0.3 * fontScale).clamp(
+                    9.0,
+                    10.5,
+                  );
+                  final double subFontSize = (height * 0.22 * fontScale).clamp(
+                    8.0,
+                    9.0,
+                  );
+                  final textLayout = _computeCardTextLayout(
+                    title: displayFixedTitle,
+                    subtitle: displayFixedLocation,
+                    width: width,
+                    height: height,
+                    effectiveHeight: effectiveHeight,
+                    titleFontSize: titleSize,
+                    subFontSize: subFontSize,
+                  );
                   return Positioned(
                     top: top + 1,
                     left: left,
@@ -1867,12 +2545,9 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                       ),
                       child: Container(
                         key: fixedScheduleCardKey,
-                        alignment: Alignment.center,
+                        alignment: Alignment.topLeft,
                         clipBehavior: Clip.hardEdge,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 2,
-                          vertical: 1,
-                        ),
+                        padding: EdgeInsets.fromLTRB(3, 2 + topOccupied, 3, 2),
                         decoration: BoxDecoration(
                           color: fixedColor,
                           borderRadius: BorderRadius.circular(4),
@@ -1881,49 +2556,70 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                             width: 0.5,
                           ),
                         ),
-                        child: height < 28
-                            ? const Icon(
-                                Icons.event_available,
-                                size: 9,
-                                color: Colors.white,
-                              )
-                            : Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  if (height >= 40)
-                                    const Icon(
-                                      Icons.event_available,
-                                      size: 9,
-                                      color: Colors.white,
-                                    ),
-                                  if (height >= 40) const SizedBox(height: 2),
-                                  Text(
-                                    schedule.title,
-                                    maxLines: height >= 52 ? 2 : 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: titleSize,
-                                      fontWeight: FontWeight.bold,
-                                      height: 1.0,
-                                    ),
-                                  ),
-                                  if (height > 32)
-                                    Text(
-                                      _fixedScheduleTimeLabel(schedule),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.82,
-                                        ),
-                                        fontSize: 8,
-                                        height: 1.0,
-                                      ),
-                                    ),
-                                ],
+                        child: SingleChildScrollView(
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                displayFixedTitle,
+                                maxLines: textLayout.titleMaxLines,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.left,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: titleSize,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1.1,
+                                ),
                               ),
+                              if (textLayout.showSubtitle &&
+                                  displayFixedLocation != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 1.5),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      if (locText != null &&
+                                          locText.isNotEmpty) ...[
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            top: 0.5,
+                                            right: 1.5,
+                                          ),
+                                          child: Icon(
+                                            Icons.location_on_rounded,
+                                            size: subFontSize * 0.95,
+                                            color: Colors.white.withValues(
+                                              alpha: 0.85,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                      Expanded(
+                                        child: Text(
+                                          displayFixedLocation,
+                                          maxLines: textLayout.subMaxLines,
+                                          overflow: TextOverflow.ellipsis,
+                                          textAlign: TextAlign.left,
+                                          style: TextStyle(
+                                            color: Colors.white.withValues(
+                                              alpha: 0.85,
+                                            ),
+                                            fontSize: subFontSize,
+                                            height: 1.1,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   );
@@ -1942,7 +2638,9 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
       );
       for (int weekday = 1; weekday <= 7; weekday++) {
         final dayRecords = _pomodorosPerDay[weekday]!;
-        final dayPlans = _planBlocksPerDay[weekday] ?? const <TodoPlanBlock>[];
+        final dayPlans = _activeDataViews.contains('plans')
+            ? (_planBlocksPerDay[weekday] ?? const <TodoPlanBlock>[])
+            : const <TodoPlanBlock>[];
         final planAssociationIndex =
             dayPlans.length <= 1 || dayPlans.length * dayRecords.length <= 128
             ? null
@@ -2014,36 +2712,74 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
             if (height < 5.0) continue;
             if (height < 18.0) height = 18.0;
 
-            Color pomColor = colorScheme.cdtFocus.withValues(alpha: 0.6);
+            Color rawPomColor = colorScheme.cdtFocus;
             String pomTitle = '专注';
+            String? pomTagName;
 
             if (record.tagUuids.isNotEmpty) {
               final tag = firstTagFor(record.tagUuids);
               if (tag != null) {
-                pomColor = AppColorUtils.hexToColor(
+                rawPomColor = AppColorUtils.hexToColor(
                   tag.color,
                   fallback: colorScheme.cdtFocus,
-                  opacity: 0.6,
                 );
                 pomTitle = tag.name;
+                pomTagName = tag.name;
               }
             }
+            final Color pomColor = _harmonizeWeekEventColor(
+              rawPomColor,
+              opacity: 0.78,
+            );
 
             // 优先显示任务名，其次显示标签名
             if (record.todoTitle != null && record.todoTitle!.isNotEmpty) {
               pomTitle = record.todoTitle!;
             }
+            final String? pomSubtitle =
+                (pomTagName != null && pomTagName != pomTitle)
+                ? pomTagName
+                : null;
+
+            final int segDurationSeconds =
+                segments.length == 1 && record.effectiveDuration > 0
+                ? record.effectiveDuration
+                : ((end.millisecondsSinceEpoch - start.millisecondsSinceEpoch) /
+                          1000)
+                      .round();
+            final String durationText = _formatPomodoroDuration(
+              segDurationSeconds,
+            );
+            final String effectivePomSubtitle = pomSubtitle != null
+                ? (isWideScreen
+                      ? '$pomSubtitle · $durationText'
+                      : '$pomSubtitle $durationText')
+                : durationText;
+            final bool isShortPomCard = height < 22.0;
+            final String displayPomTitle = isShortPomCard
+                ? (isWideScreen
+                      ? '$pomTitle · $durationText'
+                      : '$pomTitle $durationText')
+                : pomTitle;
+            final String? displayPomSubtitle = isShortPomCard
+                ? null
+                : effectivePomSubtitle;
 
             final pomCardKey = _getPomodoroCardKey(
               '${record.uuid}_${segmentIndex++}',
+              weekday: weekday,
             );
             final pomIndex = pomodoroIndices[record]!;
 
-            eventsPerDay[weekday]!.add(
+            foregroundEventsPerDay[weekday]!.add(
               _TimelineEvent(
                 top: top,
                 bottom: top + height,
                 collisionBottom: bottom,
+                sourceItem: record,
+                title: pomTitle,
+                subtitle: effectivePomSubtitle,
+                color: pomColor,
                 builder: (left, width) {
                   final double fontScale = (width / (cellWidth - 2)).clamp(
                     0.4,
@@ -2051,16 +2787,20 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                   );
                   final double titleFontSize = (height * 0.32 * fontScale)
                       .clamp(9.0, 10.5);
-                  final double timeFontSize = (height * 0.22 * fontScale).clamp(
+                  final double subFontSize = (height * 0.22 * fontScale).clamp(
                     8.0,
                     9.0,
                   );
-                  final double availableForPom = height > 22
-                      ? height - (timeFontSize + 2.0)
-                      : height - 2.0;
-                  int pomMaxLines = (availableForPom / (titleFontSize + 1.0))
-                      .floor();
-                  if (pomMaxLines < 1) pomMaxLines = 1;
+                  final textLayout = _computeCardTextLayout(
+                    title: displayPomTitle,
+                    subtitle: displayPomSubtitle,
+                    width: width,
+                    height: height,
+                    effectiveHeight: height,
+                    titleFontSize: titleFontSize,
+                    subFontSize: subFontSize,
+                  );
+                  final int pomMaxLines = textLayout.titleMaxLines;
                   final animationDelay = (pomIndex * 0.06).clamp(0.0, 0.5);
                   final animationProgressScale = 1.0 / (1.0 - animationDelay);
 
@@ -2076,11 +2816,12 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                             ((_courseExpandAnim.value - animationDelay) *
                                     animationProgressScale)
                                 .clamp(0.0, 1.0);
+                        if (t >= 0.999) return child!;
+                        if (t <= 0.001) return const SizedBox.shrink();
                         final scale = 0.7 + 0.3 * t;
-                        final opacity = t;
                         return Transform.scale(
                           scale: scale,
-                          child: Opacity(opacity: opacity, child: child),
+                          child: Opacity(opacity: t, child: child),
                         );
                       },
                       child: GestureDetector(
@@ -2101,11 +2842,11 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                         },
                         child: Container(
                           key: pomCardKey,
-                          alignment: Alignment.center,
+                          alignment: Alignment.topLeft,
                           clipBehavior: Clip.hardEdge,
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 2,
-                            vertical: 1,
+                            horizontal: 3,
+                            vertical: 2,
                           ),
                           decoration: BoxDecoration(
                             color: pomColor,
@@ -2115,56 +2856,45 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                               width: 0.5,
                             ),
                           ),
-                          child: height < 18
-                              ? const Icon(
-                                  Icons.local_fire_department,
-                                  size: 8,
-                                  color: Colors.white,
-                                )
-                              : SingleChildScrollView(
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.center,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      if (height >= 38) ...[
-                                        Icon(
-                                          Icons.local_fire_department,
-                                          size: titleFontSize,
-                                          color: Colors.white,
-                                        ),
-                                        const SizedBox(height: 2),
-                                      ],
-                                      Text(
-                                        pomTitle,
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: titleFontSize,
-                                          fontWeight: FontWeight.bold,
-                                          height: 1.0,
-                                        ),
-                                        maxLines: pomMaxLines,
-                                        textAlign: TextAlign.center,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      if (height > 22)
-                                        Text(
-                                          '${end.difference(start).inMinutes}min',
-                                          textAlign: TextAlign.center,
-                                          style: TextStyle(
-                                            color: Colors.white.withValues(
-                                              alpha: 0.85,
-                                            ),
-                                            fontSize: timeFontSize,
-                                            height: 1.0,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                    ],
+                          child: SingleChildScrollView(
+                            physics: const NeverScrollableScrollPhysics(),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  displayPomTitle,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: titleFontSize,
+                                    fontWeight: FontWeight.bold,
+                                    height: 1.1,
                                   ),
+                                  maxLines: pomMaxLines,
+                                  textAlign: TextAlign.left,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
+                                if (textLayout.showSubtitle &&
+                                    displayPomSubtitle != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 1.5),
+                                    child: Text(
+                                      displayPomSubtitle,
+                                      textAlign: TextAlign.left,
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.85,
+                                        ),
+                                        fontSize: subFontSize,
+                                        height: 1.1,
+                                      ),
+                                      maxLines: textLayout.subMaxLines,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -2220,26 +2950,61 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
             );
             var height = bottom - top;
             if (height < 18.0) height = 18.0;
-            final color = event.colorValue == null
-                ? colorScheme.tertiary.withValues(alpha: 0.78)
-                : Color(event.colorValue!).withValues(alpha: 0.78);
+            final color = _harmonizeWeekEventColor(
+              event.colorValue == null
+                  ? colorScheme.tertiary
+                  : Color(event.colorValue!),
+              opacity: 0.78,
+            );
             final calendarCardKey = _getDeviceCalendarCardKey(
               event.id,
               _cachedDateFormat('yyyy-MM-dd').format(dayStart),
               surface: 'week-timed',
             );
+            final String? location = event.location?.trim().isNotEmpty == true
+                ? event.location!.trim()
+                : null;
 
-            eventsPerDay[weekday]!.add(
+            backgroundEventsPerDay[weekday]!.add(
               _TimelineEvent(
                 top: top,
                 bottom: top + height,
                 collisionBottom: bottom,
+                sourceItem: event,
+                title: event.title,
+                subtitle: location,
+                color: color,
                 builder: (left, width) {
-                  final titleSize =
-                      (height *
-                              0.28 *
-                              (width / (cellWidth - 2)).clamp(0.4, 1.0))
-                          .clamp(9.0, 10.5);
+                  final double topOccupied = topInsetForBackgroundCard(
+                    weekday,
+                    top,
+                    top + height,
+                  );
+                  final double effectiveHeight = (height - topOccupied).clamp(
+                    16.0,
+                    double.infinity,
+                  );
+                  final double fontScale = (width / (cellWidth - 2)).clamp(
+                    0.4,
+                    1.0,
+                  );
+                  final double titleSize = (height * 0.28 * fontScale).clamp(
+                    9.0,
+                    10.5,
+                  );
+                  final double subFontSize = (height * 0.22 * fontScale).clamp(
+                    8.0,
+                    9.0,
+                  );
+                  final textLayout = _computeCardTextLayout(
+                    title: event.title,
+                    subtitle: location,
+                    width: width,
+                    height: height,
+                    effectiveHeight: effectiveHeight,
+                    titleFontSize: titleSize,
+                    subFontSize: subFontSize,
+                  );
                   return Positioned(
                     top: top + 1,
                     left: left,
@@ -2254,12 +3019,9 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                       ),
                       child: Container(
                         key: calendarCardKey,
-                        alignment: Alignment.center,
+                        alignment: Alignment.topLeft,
                         clipBehavior: Clip.hardEdge,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 2,
-                          vertical: 1,
-                        ),
+                        padding: EdgeInsets.fromLTRB(3, 2 + topOccupied, 3, 2),
                         decoration: BoxDecoration(
                           color: color,
                           borderRadius: BorderRadius.circular(4),
@@ -2268,36 +3030,44 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                             width: 0.5,
                           ),
                         ),
-                        child: height < 28
-                            ? const Icon(
-                                Icons.phone_android_rounded,
-                                size: 9,
-                                color: Colors.white,
-                              )
-                            : Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  if (height >= 40)
-                                    const Icon(
-                                      Icons.phone_android_rounded,
-                                      size: 9,
-                                      color: Colors.white,
-                                    ),
-                                  if (height >= 40) const SizedBox(height: 2),
-                                  Text(
-                                    event.title,
-                                    maxLines: height >= 52 ? 2 : 1,
+                        child: SingleChildScrollView(
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                event.title,
+                                maxLines: textLayout.titleMaxLines,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.left,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: titleSize,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1.1,
+                                ),
+                              ),
+                              if (textLayout.showSubtitle && location != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 1.5),
+                                  child: Text(
+                                    location,
+                                    maxLines: textLayout.subMaxLines,
                                     overflow: TextOverflow.ellipsis,
-                                    textAlign: TextAlign.center,
+                                    textAlign: TextAlign.left,
                                     style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: titleSize,
-                                      fontWeight: FontWeight.bold,
-                                      height: 1.0,
+                                      color: Colors.white.withValues(
+                                        alpha: 0.85,
+                                      ),
+                                      fontSize: subFontSize,
+                                      height: 1.1,
                                     ),
                                   ),
-                                ],
-                              ),
+                                ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   );
@@ -2314,6 +3084,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
         _weekCourses,
         _weekCourses,
       );
+      final bool isReviewCourse = _isReviewPerspective;
       for (var course in _weekCourses) {
         int sh = course.startTime ~/ 100;
         int sm = course.startTime % 100;
@@ -2323,19 +3094,46 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
         double top = _timeToY(sh, sm, minuteHeight);
         double height = _timeToY(eh, em, minuteHeight) - top;
 
-        Color bgColor = _getCourseColor(course.courseName);
+        final Color bgColor = isReviewCourse
+            ? colorScheme.surfaceContainerHighest.withValues(
+                alpha: isDark ? 0.35 : 0.65,
+              )
+            : _getCourseColor(course.courseName).withValues(alpha: 0.92);
+        final Color courseTitleColor = isReviewCourse
+            ? colorScheme.onSurfaceVariant.withValues(alpha: 0.62)
+            : Colors.white;
+        final Color courseSubColor = isReviewCourse
+            ? colorScheme.onSurfaceVariant.withValues(alpha: 0.50)
+            : Colors.white.withValues(alpha: 0.85);
         final cardKey = _getCourseCardKey(
           course.courseName,
           course.weekday,
           course.startTime,
+          courseUuid: course.uuid,
         );
         final courseIndex = courseIndices[course]!;
+        final String? courseSubtitle = course.roomName.trim().isNotEmpty
+            ? course.roomName.trim()
+            : null;
 
-        eventsPerDay[course.weekday]!.add(
+        backgroundEventsPerDay[course.weekday]!.add(
           _TimelineEvent(
             top: top,
             bottom: top + height,
+            sourceItem: course,
+            title: course.courseName,
+            subtitle: courseSubtitle,
+            color: bgColor,
             builder: (left, width) {
+              final double topOccupied = topInsetForBackgroundCard(
+                course.weekday,
+                top,
+                top + height,
+              );
+              final double effectiveHeight = (height - topOccupied).clamp(
+                16.0,
+                double.infinity,
+              );
               final double fontScale = (width / (cellWidth - 2)).clamp(
                 0.4,
                 1.0,
@@ -2348,21 +3146,18 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 8.0,
                 9.0,
               );
-              final double titleLineHeight = titleFontSize * 1.15 + 1.0;
-              const double paddingTotal = 2.0;
-              const double gapHeight = 2.0;
-
-              int courseMaxLines = 1;
-              if (course.roomName.isNotEmpty && height > 30) {
-                // 标题最多占一半高度，剩余给地点
-                double halfHeight = (height - paddingTotal - gapHeight) / 2;
-                courseMaxLines = (halfHeight / titleLineHeight).floor();
-                if (courseMaxLines < 1) courseMaxLines = 1;
-              } else {
-                double availableForTitle = (height - paddingTotal) - 5.0;
-                courseMaxLines = (availableForTitle / titleLineHeight).floor();
-                if (courseMaxLines < 1) courseMaxLines = 1;
-              }
+              final textLayout = _computeCardTextLayout(
+                title: course.courseName,
+                subtitle: courseSubtitle,
+                width: width,
+                height: height,
+                effectiveHeight: effectiveHeight,
+                titleFontSize: titleFontSize,
+                subFontSize: subFontSize,
+              );
+              final bool showRoom =
+                  textLayout.showSubtitle && courseSubtitle != null;
+              final int courseMaxLines = textLayout.titleMaxLines;
               final animationDelay = (courseIndex * 0.06).clamp(0.0, 0.5);
               final animationProgressScale = 1.0 / (1.0 - animationDelay);
 
@@ -2378,11 +3173,12 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                         ((_courseExpandAnim.value - animationDelay) *
                                 animationProgressScale)
                             .clamp(0.0, 1.0);
+                    if (t >= 0.999) return child!;
+                    if (t <= 0.001) return const SizedBox.shrink();
                     final scale = 0.7 + 0.3 * t;
-                    final opacity = t;
                     return Transform.scale(
                       scale: scale,
-                      child: Opacity(opacity: opacity, child: child),
+                      child: Opacity(opacity: t, child: child),
                     );
                   },
                   child: GestureDetector(
@@ -2403,52 +3199,65 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                     },
                     child: Container(
                       key: cardKey,
-                      alignment: Alignment.center,
+                      alignment: Alignment.topLeft,
                       clipBehavior: Clip.hardEdge,
-                      padding: const EdgeInsets.all(3),
+                      padding: EdgeInsets.fromLTRB(3, 2 + topOccupied, 3, 2),
                       decoration: BoxDecoration(
-                        color: bgColor.withValues(alpha: 0.95),
+                        color: bgColor,
                         borderRadius: BorderRadius.circular(4),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Colors.black12,
-                            blurRadius: 1,
-                            offset: Offset(0, 1),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Text(
-                            course.courseName,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: titleFontSize,
-                              fontWeight: FontWeight.bold,
-                              height: 1.15,
-                            ),
-                            maxLines: courseMaxLines,
-                            textAlign: TextAlign.center,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          if (height > 30) ...[
-                            const SizedBox(height: 2),
-                            Flexible(
-                              child: Text(
-                                course.roomName,
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.85),
-                                  fontSize: subFontSize,
-                                  height: 1.1,
+                        border: isReviewCourse
+                            ? Border.all(
+                                color: colorScheme.outlineVariant.withValues(
+                                  alpha: 0.35,
                                 ),
-                                overflow: TextOverflow.clip,
-                                textAlign: TextAlign.center,
+                                width: 0.5,
+                              )
+                            : null,
+                        boxShadow: isReviewCourse
+                            ? null
+                            : const [
+                                BoxShadow(
+                                  color: Colors.black12,
+                                  blurRadius: 1,
+                                  offset: Offset(0, 1),
+                                ),
+                              ],
+                      ),
+                      child: SingleChildScrollView(
+                        physics: const NeverScrollableScrollPhysics(),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              course.courseName,
+                              style: TextStyle(
+                                color: courseTitleColor,
+                                fontSize: titleFontSize,
+                                fontWeight: FontWeight.bold,
+                                height: 1.1,
                               ),
+                              maxLines: courseMaxLines,
+                              textAlign: TextAlign.left,
+                              overflow: TextOverflow.ellipsis,
                             ),
+                            if (showRoom)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 1.5),
+                                child: Text(
+                                  courseSubtitle,
+                                  style: TextStyle(
+                                    color: courseSubColor,
+                                    fontSize: subFontSize,
+                                    height: 1.1,
+                                  ),
+                                  maxLines: textLayout.subMaxLines,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.left,
+                                ),
+                              ),
                           ],
-                        ],
+                        ),
                       ),
                     ),
                   ),
@@ -2460,68 +3269,21 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
       }
     }
 
-    for (int weekday = 1; weekday <= 7; weekday++) {
-      List<_TimelineEvent> dayEvents = eventsPerDay[weekday]!;
-      if (dayEvents.isEmpty) continue;
+    // 🚀 先绘制底层背景（课程、固定日程、规划块、手机日历），占满单日列宽，不与前景碎待办/专注记录平分列宽
+    _layoutAndRenderEventLayer(
+      layerEventsPerDay: backgroundEventsPerDay,
+      cellWidth: cellWidth,
+      children: children,
+      allowAggregation: true,
+    );
 
-      dayEvents.sort((a, b) => a.top.compareTo(b.top));
-
-      List<List<_TimelineEvent>> columns = [];
-      List<_TimelineEvent> currentGroup = [];
-      double groupBottom = -1;
-
-      for (var event in dayEvents) {
-        if (event.top >= groupBottom && currentGroup.isNotEmpty) {
-          for (var e in currentGroup) {
-            e.maxColumns = columns.length;
-            e.colSpan = 1;
-            for (int i = e.columnIndex + 1; i < columns.length; i++) {
-              if (_timelineColumnOverlaps(columns[i], e)) break;
-              e.colSpan++;
-            }
-          }
-          columns.clear();
-          currentGroup.clear();
-          groupBottom = -1;
-        }
-
-        currentGroup.add(event);
-        if (event.collisionBottom > groupBottom) {
-          groupBottom = event.collisionBottom;
-        }
-
-        bool placed = false;
-        for (int i = 0; i < columns.length; i++) {
-          if (columns[i].last.collisionBottom <= event.top) {
-            columns[i].add(event);
-            event.columnIndex = i;
-            placed = true;
-            break;
-          }
-        }
-        if (!placed) {
-          event.columnIndex = columns.length;
-          columns.add([event]);
-        }
-      }
-
-      for (var e in currentGroup) {
-        e.maxColumns = columns.length;
-        e.colSpan = 1;
-        for (int i = e.columnIndex + 1; i < columns.length; i++) {
-          if (_timelineColumnOverlaps(columns[i], e)) break;
-          e.colSpan++;
-        }
-      }
-
-      double leftOffset = timeColumnWidth + (weekday - 1) * cellWidth;
-      for (var event in dayEvents) {
-        double w = (cellWidth - 2) / event.maxColumns;
-        double l = leftOffset + 1 + event.columnIndex * w;
-        double width = w * event.colSpan;
-        children.add(event.builder(l, width));
-      }
-    }
+    // 🚀 再绘制前景层（日内待办、番茄钟记录、时间日志），当计算卡片宽度 < 24px 时自动折叠为叠牌 +N 角标
+    _layoutAndRenderEventLayer(
+      layerEventsPerDay: foregroundEventsPerDay,
+      cellWidth: cellWidth,
+      children: children,
+      allowAggregation: true,
+    );
 
     DateTime now = DateTime.now();
     if (now.hour >= startHour && now.hour <= endHour) {
@@ -2554,15 +3316,15 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           );
           children.add(
             Positioned(
-              top: nowY - 1,
-              left: lineLeft,
-              width: cellWidth,
-              height: 2,
+              top: nowY - 5,
+              left: lineLeft - 5,
+              width: cellWidth + 5,
+              height: 10,
               child: RepaintBoundary(
                 child: CustomPaint(
                   painter: _CurrentTimeMarkerPainter(
                     animation: _pulseAnimation,
-                    color: focusColor,
+                    color: colorScheme.primary,
                   ),
                 ),
               ),
@@ -2584,7 +3346,7 @@ class _CurrentTimeRulePainter extends CustomPainter {
 
   final Animation<double> animation;
   final Color color;
-  final Paint _paint = Paint();
+  static final Paint _paint = Paint();
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -2603,8 +3365,13 @@ class _CurrentTimeMarkerPainter extends CustomPainter {
 
   final Animation<double> animation;
   final Color color;
-  final Paint _fillPaint = Paint();
-  late final Paint _shadowPaint = BoxShadow(
+  static final Paint _fillPaint = Paint();
+  static final Paint _glowPaint = Paint()..style = PaintingStyle.fill;
+  static final Paint _dotPaint = Paint()..style = PaintingStyle.fill;
+  static final Paint _innerDotPaint = Paint()
+    ..color = Colors.white.withValues(alpha: 0.95)
+    ..style = PaintingStyle.fill;
+  static final Paint _shadowPaint = BoxShadow(
     color: Colors.transparent,
     blurRadius: 6,
     spreadRadius: 1,
@@ -2612,12 +3379,25 @@ class _CurrentTimeMarkerPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
     final progress = animation.value;
-    _shadowPaint.color = color.withValues(alpha: 0.4 * progress);
-    canvas.drawRect(rect.inflate(1), _shadowPaint);
-    _fillPaint.color = color.withValues(alpha: 0.7 + 0.3 * progress);
-    canvas.drawRect(rect, _fillPaint);
+    final centerY = size.height / 2;
+
+    // 绘制横贯当天列的高亮时间线
+    final lineRect = Rect.fromLTWH(5, centerY - 1.25, size.width - 5, 2.5);
+    _shadowPaint.color = color.withValues(alpha: 0.45 * progress);
+    canvas.drawRect(lineRect.inflate(1), _shadowPaint);
+    _fillPaint.color = color.withValues(alpha: 0.8 + 0.2 * progress);
+    canvas.drawRect(lineRect, _fillPaint);
+
+    // 绘制当天时间线左侧的时间指示圆点（Time Dot）
+    final dotCenter = Offset(5, centerY);
+    _glowPaint.color = color.withValues(alpha: 0.35 * progress);
+    canvas.drawCircle(dotCenter, 5.0 + 1.5 * progress, _glowPaint);
+
+    _dotPaint.color = color;
+    canvas.drawCircle(dotCenter, 3.5, _dotPaint);
+
+    canvas.drawCircle(dotCenter, 1.2, _innerDotPaint);
   }
 
   @override

@@ -11,10 +11,18 @@ class DatabaseSchemaChange {
 }
 
 abstract final class DatabaseSchemaHistory {
-  static const int currentVersion = 60;
+  static const int currentVersion = 61;
 
   /// SQLite 架构版本记录，按新到旧排列。
   static const List<DatabaseSchemaChange> changes = [
+    DatabaseSchemaChange(
+      version: 61,
+      title: '待办完成时间戳',
+      changes: [
+        '为待办增加独立的 completed_at 字段，区分完成时间与最后修改时间。',
+        '时间轴基于完成时间而非同步修改时间展示，防止旧打卡穿越到今天。',
+      ],
+    ),
     DatabaseSchemaChange(
       version: 60,
       title: '未安排时间的待办',

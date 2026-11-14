@@ -623,9 +623,19 @@ class _HabitCardState extends State<HabitCard> {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 350),
       transitionBuilder: (child, animation) {
-        return ScaleTransition(
-          scale: CurvedAnimation(parent: animation, curve: Curves.elasticOut),
+        final scale = animation.drive(CurveTween(curve: Curves.elasticOut));
+        return AnimatedBuilder(
+          animation: animation,
           child: child,
+          builder: (context, child) {
+            if (animation.value <= 0.001) {
+              return const SizedBox.shrink();
+            }
+            if (animation.value >= 0.999) {
+              return child!;
+            }
+            return ScaleTransition(scale: scale, child: child);
+          },
         );
       },
       child: Container(

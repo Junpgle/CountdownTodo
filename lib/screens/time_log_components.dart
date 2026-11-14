@@ -154,9 +154,6 @@ class _DayViewState extends State<_DayView> {
   List<TodoPlanBlock> _dayPlanBlocks = const [];
   List<TimeLogMappedSchedule> _daySchedules = const [];
   List<PomodoroRecord> _dayPomodoros = const [];
-  final Paint _selectionPaint = Paint();
-  final Paint _currentTimeLinePaint = Paint();
-  final Paint _currentTimeDotPaint = Paint();
 
   @override
   void initState() {
@@ -412,6 +409,14 @@ class _DayViewState extends State<_DayView> {
                     Flexible(
                       child: ListView.separated(
                         shrinkWrap: true,
+                        findItemIndexCallback: (Key key) {
+                          if (key is ValueKey<String>) {
+                            final id = key.value;
+                            final idx = dayLogs.indexWhere((l) => l.id == id);
+                            return idx != -1 ? idx : null;
+                          }
+                          return null;
+                        },
                         itemCount: dayLogs.length,
                         separatorBuilder: (_, _) => const SizedBox(height: 8),
                         itemBuilder: (ctx2, i) {
@@ -437,147 +442,150 @@ class _DayViewState extends State<_DayView> {
                           final e = DateTime.fromMillisecondsSinceEpoch(
                             log.endTime,
                           );
-                          return Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 12,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _TC.inputFill(ctx2),
-                              border: Border(
-                                left: BorderSide(color: c, width: 3),
+                          return RepaintBoundary(
+                            key: ValueKey<String>(log.id),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
                               ),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        log.title.isNotEmpty
-                                            ? log.title
-                                            : (tag?.name ?? '补录记录'),
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: _TC.text(ctx2),
+                              decoration: BoxDecoration(
+                                color: _TC.inputFill(ctx2),
+                                border: Border(
+                                  left: BorderSide(color: c, width: 3),
+                                ),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          log.title.isNotEmpty
+                                              ? log.title
+                                              : (tag?.name ?? '补录记录'),
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                            color: _TC.text(ctx2),
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(height: 3),
-                                      Row(
-                                        children: [
-                                          if (tag != null) ...[
-                                            Container(
-                                              width: 6,
-                                              height: 6,
-                                              decoration: BoxDecoration(
-                                                color: c,
-                                                shape: BoxShape.circle,
+                                        const SizedBox(height: 3),
+                                        Row(
+                                          children: [
+                                            if (tag != null) ...[
+                                              Container(
+                                                width: 6,
+                                                height: 6,
+                                                decoration: BoxDecoration(
+                                                  color: c,
+                                                  shape: BoxShape.circle,
+                                                ),
                                               ),
-                                            ),
-                                            const SizedBox(width: 4),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                tag.name,
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  color: c,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 6),
+                                            ],
                                             Text(
-                                              tag.name,
+                                              '${timeFormat.format(s)} → ${timeFormat.format(e)}',
                                               style: TextStyle(
                                                 fontSize: 10,
-                                                color: c,
-                                                fontWeight: FontWeight.w600,
+                                                color: _TC.textHint(ctx2),
                                               ),
                                             ),
-                                            const SizedBox(width: 6),
                                           ],
-                                          Text(
-                                            '${timeFormat.format(s)} → ${timeFormat.format(e)}',
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              color: _TC.textHint(ctx2),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  '${dur}min',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                    color: c,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                IconButton(
-                                  icon: Icon(
-                                    Icons.delete_outline,
-                                    size: 20,
-                                    color: colorScheme.error.withValues(
-                                      alpha: 0.6,
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(
-                                    minWidth: 36,
-                                    minHeight: 36,
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '${dur}min',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      color: c,
+                                    ),
                                   ),
-                                  onPressed: () {
-                                    showAppDialog(
-                                      context: ctx,
-                                      builder: (dCtx) => AlertDialog(
-                                        backgroundColor: _TC.card(ctx),
-                                        title: Text(
-                                          '删除记录',
-                                          style: TextStyle(
-                                            color: _TC.text(ctx),
-                                            fontSize: 16,
-                                          ),
-                                        ),
-                                        content: Text(
-                                          '确定删除「${log.title.isNotEmpty ? log.title : (tag?.name ?? '补录记录')}」吗？',
-                                          style: TextStyle(
-                                            color: _TC.textSub(ctx),
-                                            fontSize: 13,
-                                          ),
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () =>
-                                                Navigator.pop(dCtx),
-                                            child: Text(
-                                              '取消',
-                                              style: TextStyle(
-                                                color: _TC.textSub(ctx),
-                                              ),
-                                            ),
-                                          ),
-                                          TextButton(
-                                            onPressed: () {
-                                              Navigator.pop(dCtx);
-                                              widget.onDeleteLog(log.id);
-                                              if (dayLogs.length <= 1) {
-                                                Navigator.pop(ctx);
-                                              } else {
-                                                setModal(() {});
-                                              }
-                                            },
-                                            child: Text(
-                                              '删除',
-                                              style: TextStyle(
-                                                color: colorScheme.error,
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
+                                  const SizedBox(width: 4),
+                                  IconButton(
+                                    icon: Icon(
+                                      Icons.delete_outline,
+                                      size: 20,
+                                      color: colorScheme.error.withValues(
+                                        alpha: 0.6,
                                       ),
-                                    );
-                                  },
-                                ),
-                              ],
+                                    ),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(
+                                      minWidth: 36,
+                                      minHeight: 36,
+                                    ),
+                                    onPressed: () {
+                                      showAppDialog(
+                                        context: ctx,
+                                        builder: (dCtx) => AlertDialog(
+                                          backgroundColor: _TC.card(ctx),
+                                          title: Text(
+                                            '删除记录',
+                                            style: TextStyle(
+                                              color: _TC.text(ctx),
+                                              fontSize: 16,
+                                            ),
+                                          ),
+                                          content: Text(
+                                            '确定删除「${log.title.isNotEmpty ? log.title : (tag?.name ?? '补录记录')}」吗？',
+                                            style: TextStyle(
+                                              color: _TC.textSub(ctx),
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(dCtx),
+                                              child: Text(
+                                                '取消',
+                                                style: TextStyle(
+                                                  color: _TC.textSub(ctx),
+                                                ),
+                                              ),
+                                            ),
+                                            TextButton(
+                                              onPressed: () {
+                                                Navigator.pop(dCtx);
+                                                widget.onDeleteLog(log.id);
+                                                if (dayLogs.length <= 1) {
+                                                  Navigator.pop(ctx);
+                                                } else {
+                                                  setModal(() {});
+                                                }
+                                              },
+                                              child: Text(
+                                                '删除',
+                                                style: TextStyle(
+                                                  color: colorScheme.error,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
                             ),
                           );
                         },
@@ -859,9 +867,6 @@ class _DayViewState extends State<_DayView> {
                                   : accent.withValues(alpha: 0.45),
                               nowColor: colorScheme.cdtFocus,
                               hourH: hourH,
-                              selectionPaint: _selectionPaint,
-                              currentTimeLinePaint: _currentTimeLinePaint,
-                              currentTimeDotPaint: _currentTimeDotPaint,
                             ),
                           ),
                         ),
@@ -955,12 +960,21 @@ class _DayViewState extends State<_DayView> {
         ),
         Expanded(
           child: ListView.builder(
+            findChildIndexCallback: (Key key) {
+              if (key is ValueKey<String>) {
+                final uuid = key.value;
+                final index = widget.tags.indexWhere((t) => t.uuid == uuid);
+                return index != -1 ? index : null;
+              }
+              return null;
+            },
             itemCount: widget.tags.length,
             itemBuilder: (ctx, i) {
               final t = widget.tags[i];
               final c = hexColor(t.color);
               final sel = _selectedTagId == t.uuid;
               return GestureDetector(
+                key: ValueKey<String>(t.uuid),
                 onTap: () => setState(() => _selectedTagId = t.uuid),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
@@ -1147,6 +1161,11 @@ class _DayGridPainter extends CustomPainter {
     return firstIndex == null ? null : tags[firstIndex];
   }
 
+  static final Paint _majorGridPaint = Paint()..strokeWidth = 0.5;
+  static final Paint _minorGridPaint = Paint()..strokeWidth = 0.5;
+  static final Paint _eventFillPaint = Paint();
+  static final Paint _eventBarPaint = Paint();
+
   @override
   void paint(Canvas canvas, Size size) {
     final bpr = 60 ~/ minutesPerBlock;
@@ -1154,14 +1173,10 @@ class _DayGridPainter extends CustomPainter {
     final gsMs = gridStart.millisecondsSinceEpoch;
     final geMs = _dayEndMs(gridStart);
 
-    final mj = Paint()
-      ..color = gridMajorColor
-      ..strokeWidth = 0.5;
-    final mn = Paint()
-      ..color = gridMinorColor
-      ..strokeWidth = 0.5;
-    final eventFillPaint = Paint();
-    final eventBarPaint = Paint();
+    final mj = _majorGridPaint..color = gridMajorColor;
+    final mn = _minorGridPaint..color = gridMinorColor;
+    final eventFillPaint = _eventFillPaint;
+    final eventBarPaint = _eventBarPaint;
 
     for (int h = 0; h <= 24; h++) {
       canvas.drawLine(
@@ -1332,9 +1347,9 @@ class _DayGridInteractionPainter extends CustomPainter {
   final Color selColor;
   final Color nowColor;
   final double hourH;
-  final Paint selectionPaint;
-  final Paint currentTimeLinePaint;
-  final Paint currentTimeDotPaint;
+  static final Paint _selectionPaint = Paint();
+  static final Paint _currentTimeLinePaint = Paint();
+  static final Paint _currentTimeDotPaint = Paint();
 
   _DayGridInteractionPainter({
     required this.minutesPerBlock,
@@ -1344,9 +1359,6 @@ class _DayGridInteractionPainter extends CustomPainter {
     required this.selColor,
     required this.nowColor,
     required this.hourH,
-    required this.selectionPaint,
-    required this.currentTimeLinePaint,
-    required this.currentTimeDotPaint,
   });
 
   @override
@@ -1359,7 +1371,7 @@ class _DayGridInteractionPainter extends CustomPainter {
     if (dragStart != null && dragEnd != null) {
       final firstBlock = min(dragStart!, dragEnd!);
       final lastBlock = max(dragStart!, dragEnd!);
-      selectionPaint.color = selColor;
+      _selectionPaint.color = selColor;
       for (var index = firstBlock; index <= lastBlock; index++) {
         final rowStartMs = gridStartMs + index * 60 * minutesPerBlock * 1000;
         final rowEndMs = rowStartMs + 60 * minutesPerBlock * 1000;
@@ -1373,7 +1385,7 @@ class _DayGridInteractionPainter extends CustomPainter {
             Rect.fromLTWH(left, index ~/ bpr * hourH + 1, width, hourH - 2),
             const Radius.circular(3),
           ),
-          selectionPaint,
+          _selectionPaint,
         );
       }
     }
@@ -1382,16 +1394,16 @@ class _DayGridInteractionPainter extends CustomPainter {
     if (!DateUtils.isSameDay(now, gridStart)) return;
     final hour = now.hour;
     final x = (now.minute + now.second / 60) / 60 * size.width;
-    currentTimeLinePaint
+    _currentTimeLinePaint
       ..color = nowColor.withValues(alpha: 0.7)
       ..strokeWidth = 1.5;
-    currentTimeDotPaint.color = nowColor;
+    _currentTimeDotPaint.color = nowColor;
     canvas.drawLine(
       Offset(x, hour * hourH),
       Offset(x, (hour + 1) * hourH),
-      currentTimeLinePaint,
+      _currentTimeLinePaint,
     );
-    canvas.drawCircle(Offset(x, hour * hourH), 3, currentTimeDotPaint);
+    canvas.drawCircle(Offset(x, hour * hourH), 3, _currentTimeDotPaint);
   }
 
   @override
@@ -1857,6 +1869,8 @@ class _TimeLogEntrySheetState extends State<TimeLogEntrySheet> {
   late DateTime _baselineStart, _baselineEnd;
   late String? _baselineTagId;
   late String _baselineTitle;
+  String _lastObservedTitle = '';
+  bool? _lastCanPop;
   late String _draftId;
   late int _draftCreatedAt;
   TimeLogItem? _pendingSaveLog;
@@ -1881,8 +1895,15 @@ class _TimeLogEntrySheetState extends State<TimeLogEntrySheet> {
 
   void _onTitleChanged() {
     if (!mounted) return;
+    final title = _tc.text;
+    if (title == _lastObservedTitle) return;
+    _lastObservedTitle = title;
+    final hadSaveError = _saveError != null;
     _invalidatePendingSave();
-    setState(() {});
+    final canPop = _allowExit || (!_isSaving && !_hasUnsavedChanges);
+    if (hadSaveError || canPop != _lastCanPop) {
+      setState(() {});
+    }
   }
 
   @override
@@ -1908,6 +1929,7 @@ class _TimeLogEntrySheetState extends State<TimeLogEntrySheet> {
     _baselineEnd = _end;
     _baselineTagId = _tagId;
     _baselineTitle = _tc.text;
+    _lastObservedTitle = _tc.text;
     _draftId = widget.existingLog?.id ?? const Uuid().v4();
     _draftCreatedAt =
         widget.existingLog?.createdAt ?? DateTime.now().millisecondsSinceEpoch;
@@ -2186,8 +2208,10 @@ class _TimeLogEntrySheetState extends State<TimeLogEntrySheet> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final accent = colorScheme.primary;
+    final canPop = _allowExit || (!_isSaving && !_hasUnsavedChanges);
+    _lastCanPop = canPop;
     return PopScope<Object?>(
-      canPop: _allowExit || (!_isSaving && !_hasUnsavedChanges),
+      canPop: canPop,
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) unawaited(_requestExit());
       },
@@ -2926,82 +2950,93 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
             constraints: const BoxConstraints(maxHeight: 220),
             child: ListView.separated(
               shrinkWrap: true,
+              findItemIndexCallback: (Key key) {
+                if (key is ValueKey<String>) {
+                  final id = key.value;
+                  final idx = _recentRecs.indexWhere((r) => r.id == id);
+                  return idx != -1 ? idx : null;
+                }
+                return null;
+              },
               itemCount: _recentRecs.length,
               primary: false,
               separatorBuilder: (_, _) => const SizedBox(height: 6),
               itemBuilder: (ctx, i) {
                 final r = _recentRecs[i];
                 final colorScheme = Theme.of(ctx).colorScheme;
-                return Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _TC.inputFill(ctx),
-                    border: Border(
-                      left: BorderSide(
-                        color: r.isPomodoro ? colorScheme.cdtFocus : c,
-                        width: 3,
-                      ),
+                return RepaintBoundary(
+                  key: ValueKey<String>(r.id),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
                     ),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      if (r.isPomodoro) ...[
-                        Icon(
-                          Icons.timer_outlined,
-                          size: 12,
-                          color: colorScheme.cdtFocus.withValues(alpha: 0.6),
-                        ),
-                        const SizedBox(width: 4),
-                      ],
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              r.title,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: _TC.text(ctx),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              r.timeRangeLabel,
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: _TC.textHint(ctx),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Text(
-                        '${r.durationMin}min',
-                        style: TextStyle(
-                          fontSize: 13,
+                    decoration: BoxDecoration(
+                      color: _TC.inputFill(ctx),
+                      border: Border(
+                        left: BorderSide(
                           color: r.isPomodoro ? colorScheme.cdtFocus : c,
-                          fontWeight: FontWeight.w700,
+                          width: 3,
                         ),
                       ),
-                      if (!r.isPomodoro)
-                        IconButton(
-                          icon: Icon(
-                            Icons.delete_outline,
-                            color: colorScheme.error.withValues(alpha: 0.55),
-                            size: 18,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        if (r.isPomodoro) ...[
+                          Icon(
+                            Icons.timer_outlined,
+                            size: 12,
+                            color: colorScheme.cdtFocus.withValues(alpha: 0.6),
                           ),
-                          onPressed: () => widget.onDelete(r.id),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                        )
-                      else
-                        const SizedBox(width: 40),
-                    ],
+                          const SizedBox(width: 4),
+                        ],
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                r.title,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: _TC.text(ctx),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                r.timeRangeLabel,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: _TC.textHint(ctx),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          '${r.durationMin}min',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: r.isPomodoro ? colorScheme.cdtFocus : c,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        if (!r.isPomodoro)
+                          IconButton(
+                            icon: Icon(
+                              Icons.delete_outline,
+                              color: colorScheme.error.withValues(alpha: 0.55),
+                              size: 18,
+                            ),
+                            onPressed: () => widget.onDelete(r.id),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          )
+                        else
+                          const SizedBox(width: 40),
+                      ],
+                    ),
                   ),
                 );
               },
@@ -3028,10 +3063,6 @@ class _LineChartGeometry {
   final Path linePath;
   final Paint fillPaint;
   final Paint linePaint;
-  final Paint pointPaint;
-  final Paint hoverGlowPaint;
-  final Paint hoverLinePaint;
-  final Paint bubblePaint;
 
   _LineChartGeometry._({
     required this.data,
@@ -3047,10 +3078,6 @@ class _LineChartGeometry {
     required this.linePath,
     required this.fillPaint,
     required this.linePaint,
-    required this.pointPaint,
-    required this.hoverGlowPaint,
-    required this.hoverLinePaint,
-    required this.bubblePaint,
   });
 
   factory _LineChartGeometry.create({
@@ -3129,12 +3156,6 @@ class _LineChartGeometry {
       linePath: linePath,
       fillPaint: fillPaint,
       linePaint: linePaint,
-      pointPaint: Paint()..color = color,
-      hoverGlowPaint: Paint()..color = color.withValues(alpha: 0.2),
-      hoverLinePaint: Paint()
-        ..color = color.withValues(alpha: 0.5)
-        ..strokeWidth = 1.0,
-      bubblePaint: Paint()..color = color,
     );
   }
 
@@ -3385,6 +3406,11 @@ class _LineChartPainter extends CustomPainter {
   final List<TextPainter?> xLabelPainters;
   final Offset? touchPos;
 
+  static final Paint _pointPaint = Paint();
+  static final Paint _hoverGlowPaint = Paint();
+  static final Paint _hoverLinePaint = Paint()..strokeWidth = 1.0;
+  static final Paint _bubblePaint = Paint();
+
   _LineChartPainter({
     required this.geometry,
     required this.xLabels,
@@ -3398,10 +3424,15 @@ class _LineChartPainter extends CustomPainter {
     if (data.isEmpty) return;
     final pts = geometry.points;
 
+    _pointPaint.color = geometry.color;
+    _hoverGlowPaint.color = geometry.color.withValues(alpha: 0.2);
+    _hoverLinePaint.color = geometry.color.withValues(alpha: 0.5);
+    _bubblePaint.color = geometry.color;
+
     if (data.length < 2) {
       // 只有一个点的情况
       final p = pts[0];
-      canvas.drawCircle(p, 6, geometry.pointPaint);
+      canvas.drawCircle(p, 6, _pointPaint);
       return;
     }
 
@@ -3423,9 +3454,9 @@ class _LineChartPainter extends CustomPainter {
       final isHover = i == activeIdx;
 
       // 节点点
-      canvas.drawCircle(p, isHover ? 6 : 4, geometry.pointPaint);
+      canvas.drawCircle(p, isHover ? 6 : 4, _pointPaint);
       if (isHover) {
-        canvas.drawCircle(p, 10, geometry.hoverGlowPaint);
+        canvas.drawCircle(p, 10, _hoverGlowPaint);
       }
 
       // X轴标签
@@ -3439,7 +3470,7 @@ class _LineChartPainter extends CustomPainter {
         canvas.drawLine(
           Offset(p.dx, 0),
           Offset(p.dx, size.height - 30),
-          geometry.hoverLinePaint,
+          _hoverLinePaint,
         );
 
         final valTp = geometry.tooltipPainterAt(i);
@@ -3452,7 +3483,7 @@ class _LineChartPainter extends CustomPainter {
         );
         canvas.drawRRect(
           RRect.fromRectAndRadius(bgR, const Radius.circular(8)),
-          geometry.bubblePaint,
+          _bubblePaint,
         );
         valTp.paint(
           canvas,

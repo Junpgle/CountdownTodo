@@ -122,6 +122,13 @@ class _LeaderboardListState extends State<_LeaderboardList> {
 
           return ListView.separated(
             padding: EdgeInsets.fromLTRB(10, widget.topPadding + 10, 10, 10),
+            findItemIndexCallback: (Key key) {
+              if (key is ValueKey<int>) {
+                final idx = key.value;
+                return (idx >= 0 && idx < list.length) ? idx : null;
+              }
+              return null;
+            },
             itemCount: list.length,
             separatorBuilder: (ctx, i) => const Divider(),
             itemBuilder: (ctx, i) {
@@ -141,29 +148,32 @@ class _LeaderboardListState extends State<_LeaderboardList> {
               String timeStr = (item['duration'] ?? item['time'] ?? 0)
                   .toString();
 
-              return ListTile(
-                leading: CircleAvatar(
-                  backgroundColor:
-                      rankColor ?? Theme.of(context).colorScheme.primary,
-                  foregroundColor: rankColor != null
-                      ? Colors.white
-                      : Colors.black87,
-                  child: Text(
-                    "${i + 1}",
+              return RepaintBoundary(
+                key: ValueKey<int>(i),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor:
+                        rankColor ?? Theme.of(context).colorScheme.primary,
+                    foregroundColor: rankColor != null
+                        ? Colors.white
+                        : Colors.black87,
+                    child: Text(
+                      "${i + 1}",
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  title: Text(
+                    item['username'] ?? 'Unknown',
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                ),
-                title: Text(
-                  item['username'] ?? 'Unknown',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: Text("用时: $timeStr秒"),
-                trailing: Text(
-                  "${item['score']}分",
-                  style: const TextStyle(
-                    fontSize: 20,
-                    color: Colors.indigo,
-                    fontWeight: FontWeight.bold,
+                  subtitle: Text("用时: $timeStr秒"),
+                  trailing: Text(
+                    "${item['score']}分",
+                    style: const TextStyle(
+                      fontSize: 20,
+                      color: Colors.indigo,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               );

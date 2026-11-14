@@ -445,7 +445,12 @@ class HomeAgendaRepository {
                   ),
                   allDay: f.startTime == null,
                   completed: f.status == FixedScheduleStatus.finished,
-                  detail: f.location ?? '',
+                  detail: [
+                    f.location?.trim(),
+                    f.remark?.trim(),
+                  ].whereType<String>().where((s) => s.isNotEmpty).toSet().join(
+                    ' · ',
+                  ),
                   fixed: f,
                 ),
               )

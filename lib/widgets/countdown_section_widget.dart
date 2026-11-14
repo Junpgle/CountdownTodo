@@ -669,6 +669,14 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
           ),
           addRepaintBoundaries: true,
           scrollCacheExtent: ScrollCacheExtent.pixels(1000),
+          findChildIndexCallback: (Key key) {
+            if (key is ValueKey<String>) {
+              final id = key.value;
+              final index = activeCountdowns.indexWhere((c) => c.id == id);
+              return index != -1 ? index : null;
+            }
+            return null;
+          },
           controller: _listScrollController,
           padding: const EdgeInsets.only(right: 12),
           clipBehavior: Clip.none,
@@ -822,115 +830,117 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                         'countdowns',
                         item.title,
                       ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12.0),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    item.title,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: textColor,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 13,
-                                      height: 1.2,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                InkWell(
-                                  onTap: () => _deleteCountdown(item),
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Container(
-                                    padding: const EdgeInsets.all(4),
-                                    decoration: BoxDecoration(
-                                      color: closeBgColor,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Icon(
-                                      Icons.close,
-                                      size: 12,
-                                      color: subTextColor,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            if (item.teamUuid != null) ...[
-                              const SizedBox(height: 2), // 🚀 紧凑化
+                      child: RepaintBoundary(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12.0),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
                               Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Icon(
-                                    Icons.groups_rounded,
-                                    size: 10,
-                                    color: accentColor.withValues(alpha: 0.6),
-                                  ),
-                                  const SizedBox(width: 3),
                                   Expanded(
                                     child: Text(
-                                      "${item.teamName ?? '团队'} · ${item.creatorName ?? '成员'}",
-                                      maxLines: 1,
+                                      item.title,
+                                      maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
-                                        fontSize: 8,
-                                        color: subTextColor.withValues(
-                                          alpha: 0.8,
-                                        ),
+                                        color: textColor,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                        height: 1.2,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  InkWell(
+                                    onTap: () => _deleteCountdown(item),
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(4),
+                                      decoration: BoxDecoration(
+                                        color: closeBgColor,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Icon(
+                                        Icons.close,
+                                        size: 12,
+                                        color: subTextColor,
                                       ),
                                     ),
                                   ),
                                 ],
                               ),
-                            ] else ...[
-                              const SizedBox(height: 12),
-                              // 填补未绑定团队时的空白，保持与其他卡片高度一致 (2 + 10)
-                            ],
-                            const SizedBox(height: 6),
-                            // 🚀 取代 Spacer()，提供稳定间距
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text(
-                                  "$diff",
-                                  style: TextStyle(
-                                    fontSize: 28, // 🚀 稍微缩小，防止垂直挤压
-                                    height: 1.0,
-                                    fontWeight: FontWeight.bold,
-                                    color: accentColor,
-                                  ),
+                              if (item.teamUuid != null) ...[
+                                const SizedBox(height: 2), // 🚀 紧凑化
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.groups_rounded,
+                                      size: 10,
+                                      color: accentColor.withValues(alpha: 0.6),
+                                    ),
+                                    const SizedBox(width: 3),
+                                    Expanded(
+                                      child: Text(
+                                        "${item.teamName ?? '团队'} · ${item.creatorName ?? '成员'}",
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 8,
+                                          color: subTextColor.withValues(
+                                            alpha: 0.8,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(width: 4),
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 4.0),
-                                  child: Text(
-                                    "天",
+                              ] else ...[
+                                const SizedBox(height: 12),
+                                // 填补未绑定团队时的空白，保持与其他卡片高度一致 (2 + 10)
+                              ],
+                              const SizedBox(height: 6),
+                              // 🚀 取代 Spacer()，提供稳定间距
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    "$diff",
                                     style: TextStyle(
-                                      fontSize: 11,
-                                      color: subTextColor,
-                                      fontWeight: FontWeight.w500,
+                                      fontSize: 28, // 🚀 稍微缩小，防止垂直挤压
+                                      height: 1.0,
+                                      fontWeight: FontWeight.bold,
+                                      color: accentColor,
                                     ),
                                   ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 2),
-                            // 🚀 紧凑化
-                            Text(
-                              "目标日: ${_countdownSectionDateFormat('yyyy-MM-dd').format(item.targetDate)}",
-                              style: TextStyle(
-                                fontSize: 9,
-                                color: subTextColor,
-                                letterSpacing: 0.2,
+                                  const SizedBox(width: 4),
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 4.0),
+                                    child: Text(
+                                      "天",
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: subTextColor,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                          ],
+                              const SizedBox(height: 2),
+                              // 🚀 紧凑化
+                              Text(
+                                "目标日: ${_countdownSectionDateFormat('yyyy-MM-dd').format(item.targetDate)}",
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  color: subTextColor,
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -938,9 +948,13 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                 ),
               ),
             );
-            return (widget.isLight || !isUrgent)
+            final rootItem = (widget.isLight || !isUrgent)
                 ? countdownItem
                 : RepaintBoundary(child: countdownItem);
+            return KeyedSubtree(
+              key: ValueKey<String>(item.id),
+              child: rootItem,
+            );
           },
         ),
       ),

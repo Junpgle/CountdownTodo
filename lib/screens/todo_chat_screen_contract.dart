@@ -40,6 +40,7 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   DateTime? _customInjectStart;
   DateTime? _customInjectEnd;
   bool _inputHasText = false;
+  String _lastObservedInputText = '';
   String _liveSmartContextPreview = '';
   String _liveActionProtocolPreview = '';
   int _liveEstimatedTokens = 0;

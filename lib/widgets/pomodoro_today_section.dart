@@ -337,10 +337,12 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
     required Widget child,
     EdgeInsetsGeometry? padding,
     AlignmentGeometry? alignment,
+    double? width = double.infinity,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = colorScheme.brightness == Brightness.dark;
     final card = OptionalLiquidGlassCard(
+      width: width,
       borderRadius: borderRadius,
       padding: padding,
       alignment: alignment,
@@ -369,7 +371,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
         : colorScheme.onSurfaceVariant;
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // ── 顶部区域标题栏 ──
         Padding(
@@ -475,7 +477,11 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
         const SizedBox(height: 6),
 
         // ── 一体化液态毛玻璃卡片 ──
-        Container(key: _cardKey, child: _buildUnifiedCard(colorScheme, isDark)),
+        SizedBox(
+          key: _cardKey,
+          width: double.infinity,
+          child: _buildUnifiedCard(colorScheme, isDark),
+        ),
       ],
     );
   }
@@ -512,10 +518,14 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
       borderRadius: 24,
       fallbackDecoration: fallbackDecoration,
       padding: const EdgeInsets.all(18),
+      width: double.infinity,
       child: (_loading && !_hasLoaded)
-          ? const Padding(
-              padding: EdgeInsets.symmetric(vertical: 36),
-              child: Center(child: CircularProgressIndicator(strokeWidth: 3)),
+          ? const SizedBox(
+              width: double.infinity,
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 36),
+                child: Center(child: CircularProgressIndicator(strokeWidth: 3)),
+              ),
             )
           : _records.isEmpty
           ? _buildEmptyState(colorScheme, isDark)
@@ -989,6 +999,14 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                 alignment: Alignment.centerRight,
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 200),
+                  transitionBuilder: (child, animation) => AnimatedBuilder(
+                    animation: animation,
+                    child: child,
+                    builder: (context, child) {
+                      if (animation.value >= 0.999) return child!;
+                      return FadeTransition(opacity: animation, child: child);
+                    },
+                  ),
                   child: _selectedHour != null
                       ? Container(
                           key: ValueKey('sel_$_selectedHour'),
@@ -1100,7 +1118,36 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                             alignment: Alignment.bottomCenter,
                             child: AnimatedBuilder(
                               animation: _chartAnimationController,
-                              builder: (context, _) {
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.bottomCenter,
+                                    end: Alignment.topCenter,
+                                    colors: isSelected
+                                        ? [
+                                            colorScheme.tertiary,
+                                            colorScheme.primary,
+                                          ]
+                                        : [
+                                            primaryColor.withValues(alpha: 0.6),
+                                            primaryColor,
+                                          ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(4),
+                                  boxShadow: isSelected
+                                      ? [
+                                          BoxShadow(
+                                            color: primaryColor.withValues(
+                                              alpha: 0.4,
+                                            ),
+                                            blurRadius: 4,
+                                          ),
+                                        ]
+                                      : null,
+                                ),
+                                child: const SizedBox.expand(),
+                              ),
+                              builder: (context, barChild) {
                                 final animatedFactor =
                                     factor * _chartAnimationController.value;
                                 if (animatedFactor <= 0) {
@@ -1109,36 +1156,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                                 return FractionallySizedBox(
                                   heightFactor: max(animatedFactor, 0.08),
                                   alignment: Alignment.bottomCenter,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        begin: Alignment.bottomCenter,
-                                        end: Alignment.topCenter,
-                                        colors: isSelected
-                                            ? [
-                                                colorScheme.tertiary,
-                                                colorScheme.primary,
-                                              ]
-                                            : [
-                                                primaryColor.withValues(
-                                                  alpha: 0.6,
-                                                ),
-                                                primaryColor,
-                                              ],
-                                      ),
-                                      borderRadius: BorderRadius.circular(4),
-                                      boxShadow: isSelected
-                                          ? [
-                                              BoxShadow(
-                                                color: primaryColor.withValues(
-                                                  alpha: 0.4,
-                                                ),
-                                                blurRadius: 4,
-                                              ),
-                                            ]
-                                          : null,
-                                    ),
-                                  ),
+                                  child: barChild,
                                 );
                               },
                             ),
@@ -1476,55 +1494,58 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
         ? Colors.white.withValues(alpha: 0.7)
         : colorScheme.onSurfaceVariant;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
-      child: Column(
-        children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: colorScheme.primary.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.hourglass_empty_rounded,
-              size: 26,
-              color: colorScheme.primary,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            '暂无专注记录',
-            style: TextStyle(
-              color: isDark ? Colors.white : colorScheme.onSurface,
-              fontSize: 14.5,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '保持心流，立即开启你的第一个番茄钟吧！',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: subColor,
-              fontSize: 12,
-              fontWeight: FontWeight.normal,
-            ),
-          ),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: _openPomodoroWorkbench,
-            icon: const Icon(Icons.play_arrow_rounded, size: 18),
-            label: const Text('开启今日专注'),
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
+    return SizedBox(
+      width: double.infinity,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+        child: Column(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: colorScheme.primary.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.hourglass_empty_rounded,
+                size: 26,
+                color: colorScheme.primary,
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+            Text(
+              '暂无专注记录',
+              style: TextStyle(
+                color: isDark ? Colors.white : colorScheme.onSurface,
+                fontSize: 14.5,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '保持心流，立即开启你的第一个番茄钟吧！',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: subColor,
+                fontSize: 12,
+                fontWeight: FontWeight.normal,
+              ),
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _openPomodoroWorkbench,
+              icon: const Icon(Icons.play_arrow_rounded, size: 18),
+              label: const Text('开启今日专注'),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1540,15 +1561,19 @@ class _FocusRingPainter extends CustomPainter {
   final Color? overflowColor;
   final double strokeWidth;
 
-  final Paint _trackPaint = Paint()
+  static final Paint _trackPaint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeCap = StrokeCap.round;
-  final Paint _basePaint = Paint()
+  static final Paint _basePaint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeCap = StrokeCap.round;
-  final Paint _overflowPaint = Paint()
+  static final Paint _overflowPaint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeCap = StrokeCap.round;
+  static Rect? _cachedShaderRect;
+  static Color? _cachedStartColor;
+  static Color? _cachedEndColor;
+  static Shader? _cachedShader;
 
   _FocusRingPainter({
     required this.progress,
@@ -1577,8 +1602,20 @@ class _FocusRingPainter extends CustomPainter {
     final baseProgress = progress.clamp(0.0, 1.0);
     final baseSweep = 2 * pi * baseProgress;
 
+    final startColor = gradientColors.first;
+    final endColor = gradientColors.last;
+    if (_cachedShaderRect != rect ||
+        _cachedStartColor != startColor ||
+        _cachedEndColor != endColor ||
+        _cachedShader == null) {
+      _cachedShaderRect = rect;
+      _cachedStartColor = startColor;
+      _cachedEndColor = endColor;
+      _cachedShader = SweepGradient(colors: gradientColors).createShader(rect);
+    }
+
     _basePaint
-      ..shader = SweepGradient(colors: gradientColors).createShader(rect)
+      ..shader = _cachedShader
       ..strokeWidth = strokeWidth;
 
     canvas.save();

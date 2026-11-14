@@ -35,6 +35,8 @@ class JournalEditorScreen extends StatefulWidget {
 class _JournalEditorScreenState extends State<JournalEditorScreen> {
   final _titleController = TextEditingController();
   final _contentController = TextEditingController();
+  String _initialTitle = '';
+  String _initialContent = '';
   DateTime _occurredAt = DateTime.now();
   List<JournalAttachment> _attachments = [];
   bool _isSaving = false;
@@ -55,8 +57,8 @@ class _JournalEditorScreenState extends State<JournalEditorScreen> {
       _occurredAt = entry.occurredAt;
       _attachments = List.of(entry.attachments);
     }
-    _titleController.addListener(_markDirty);
-    _contentController.addListener(_markDirty);
+    _initialTitle = _titleController.text;
+    _initialContent = _contentController.text;
     if (widget.restoredDraftId != null || widget.recoveredFiles.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _restoreAfterRestart();
@@ -69,10 +71,6 @@ class _JournalEditorScreenState extends State<JournalEditorScreen> {
     _titleController.dispose();
     _contentController.dispose();
     super.dispose();
-  }
-
-  void _markDirty() {
-    if (!_dirty && mounted) setState(() => _dirty = true);
   }
 
   Future<void> _pickImages() async {
@@ -293,7 +291,10 @@ class _JournalEditorScreenState extends State<JournalEditorScreen> {
       _showMessage('正在保存，请稍候');
       return false;
     }
-    if (!_dirty) return true;
+    final hasTextChanges =
+        _titleController.text != _initialTitle ||
+        _contentController.text != _initialContent;
+    if (!_dirty && !hasTextChanges) return true;
     final discard = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -550,6 +551,7 @@ class _AttachmentEditor extends StatelessWidget {
       child: ReorderableListView.builder(
         scrollDirection: Axis.horizontal,
         buildDefaultDragHandles: false,
+        itemExtent: 130.0,
         itemCount: attachments.length,
         onReorderItem: (oldIndex, newIndex) {
           final next = List<JournalAttachment>.of(attachments);

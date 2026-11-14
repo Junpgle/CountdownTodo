@@ -49,6 +49,8 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
     'pomodoros',
     'deviceCalendar',
   };
+  String _weekPerspective = 'all'; // 'all' | 'schedule' | 'review' | 'custom'
+  bool get _isReviewPerspective => _weekPerspective == 'review';
   bool _collapseFreeTime = true;
 
   DateFormat _cachedDateFormat(String pattern) {
@@ -91,33 +93,48 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   final GlobalKey _dayHeaderKey = GlobalKey();
 
   bool _showCoachMarks = false;
+  int _weekViewGeneration = 0;
 
-  GlobalKey _getCourseCardKey(String courseName, int weekday, int startTime) {
-    // Include current week to avoid key collisions while AnimatedSwitcher keeps
-    // both previous and next week grids in the tree during transition.
-    final keyStr = 'w${_currentWeek}_${courseName}_${weekday}_$startTime';
+  String get _weekKeyPrefix => 'w${_currentWeek}_g$_weekViewGeneration';
+
+  GlobalKey _getCourseCardKey(
+    String courseName,
+    int weekday,
+    int startTime, {
+    String? courseUuid,
+  }) {
+    // Include current week and generation to avoid key collisions while
+    // AnimatedSwitcher keeps outgoing and incoming week grids in the tree.
+    final idPart = (courseUuid != null && courseUuid.isNotEmpty)
+        ? courseUuid
+        : courseName;
+    final keyStr = '${_weekKeyPrefix}_${idPart}_${weekday}_$startTime';
     return _courseCardKeys.putIfAbsent(keyStr, () => GlobalKey());
   }
 
   GlobalKey _getTodoCardKey(String id, {int? weekday}) {
     final keyStr = weekday != null
-        ? 'w${_currentWeek}_${id}_d$weekday'
-        : 'w${_currentWeek}_$id';
+        ? '${_weekKeyPrefix}_${id}_d$weekday'
+        : '${_weekKeyPrefix}_$id';
     return _todoCardKeys.putIfAbsent(keyStr, () => GlobalKey());
   }
 
   GlobalKey _getPlanBlockCardKey(String id, int weekday) {
-    final keyStr = 'w${_currentWeek}_${id}_d$weekday';
+    final keyStr = '${_weekKeyPrefix}_${id}_d$weekday';
     return _planBlockCardKeys.putIfAbsent(keyStr, () => GlobalKey());
   }
 
-  GlobalKey _getTimeLogCardKey(String id) {
-    final keyStr = 'w${_currentWeek}_$id';
+  GlobalKey _getTimeLogCardKey(String id, {int? weekday}) {
+    final keyStr = weekday != null
+        ? '${_weekKeyPrefix}_${id}_d$weekday'
+        : '${_weekKeyPrefix}_$id';
     return _timeLogCardKeys.putIfAbsent(keyStr, () => GlobalKey());
   }
 
-  GlobalKey _getPomodoroCardKey(String id) {
-    final keyStr = 'w${_currentWeek}_$id';
+  GlobalKey _getPomodoroCardKey(String id, {int? weekday}) {
+    final keyStr = weekday != null
+        ? '${_weekKeyPrefix}_${id}_d$weekday'
+        : '${_weekKeyPrefix}_$id';
     return _pomodoroCardKeys.putIfAbsent(keyStr, () => GlobalKey());
   }
 
@@ -127,14 +144,14 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
     String surface = 'week',
   }) {
     final periodKey = surface.startsWith('week')
-        ? 'w$_currentWeek'
+        ? _weekKeyPrefix
         : 'm${_selectedMonth.year}_${_selectedMonth.month}_mode$_viewMode';
     final keyStr = '${surface}_${periodKey}_${eventId}_$dateKey';
     return _deviceCalendarCardKeys.putIfAbsent(keyStr, () => GlobalKey());
   }
 
   GlobalKey _getFixedScheduleCardKey(String scheduleId, int weekday) {
-    final keyStr = 'w${_currentWeek}_${scheduleId}_d$weekday';
+    final keyStr = '${_weekKeyPrefix}_${scheduleId}_d$weekday';
     return _fixedScheduleCardKeys.putIfAbsent(keyStr, () => GlobalKey());
   }
 
@@ -202,6 +219,14 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
     }
     final end = DateTime.fromMillisecondsSinceEpoch(item.endTime!);
     return '${timeFormat.format(start)} - ${timeFormat.format(end)}';
+  }
+
+  String _formatEventDuration(int seconds) {
+    return formatDurationHMin(seconds);
+  }
+
+  String _formatPomodoroDuration(int seconds) {
+    return formatDurationHMin(seconds);
   }
 
   Future<void> _openFixedScheduleDetail(
@@ -277,6 +302,7 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   Widget _buildFilterMenuHeader();
   Widget _buildFilterMenuDivider();
   Widget _buildFilterSectionLabel(String label);
+  Widget _buildPerspectivePresetsRow();
   Widget _buildCheckableMenuItem(String key, String label);
   Widget _buildFilterActionItem(
     String value,

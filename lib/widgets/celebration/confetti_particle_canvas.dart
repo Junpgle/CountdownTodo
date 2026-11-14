@@ -43,7 +43,7 @@ class ConfettiPainter extends CustomPainter {
   final List<ConfettiParticle> particles;
   final Animation<double> animation;
   final List<Color> palette;
-  final Paint _paint = Paint()..style = PaintingStyle.fill;
+  static final Paint _paint = Paint()..style = PaintingStyle.fill;
   final List<Color> _paintColors;
 
   ConfettiPainter({
@@ -72,13 +72,12 @@ class ConfettiPainter extends CustomPainter {
       final colorIdx = p.paletteIndex % palette.length;
       _paint.color = _paintColors[colorIdx];
 
-      canvas.save();
-      canvas.translate(p.x, p.y);
-      canvas.rotate(p.rotation);
-
       if (p.isCircle) {
-        canvas.drawCircle(Offset.zero, p.size / 2, _paint);
+        canvas.drawCircle(Offset(p.x, p.y), p.size / 2, _paint);
       } else {
+        canvas.save();
+        canvas.translate(p.x, p.y);
+        canvas.rotate(p.rotation);
         canvas.drawRect(
           Rect.fromCenter(
             center: Offset.zero,
@@ -87,9 +86,8 @@ class ConfettiPainter extends CustomPainter {
           ),
           _paint,
         );
+        canvas.restore();
       }
-
-      canvas.restore();
     }
   }
 

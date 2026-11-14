@@ -195,7 +195,8 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
             builder: (context, child) {
               final anim = _completingAnimations[todo.id];
               final isAnimating = anim != null && anim.isAnimating;
-              final value = isAnimating ? anim.value : 0.0;
+              if (!isAnimating) return child!;
+              final value = anim.value;
               final scale = 1.0 - (value * 0.08);
               final opacity = 1.0 - (value * 0.7);
 
@@ -262,6 +263,9 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                 duration: const Duration(milliseconds: 1100),
                                 curve: Curves.easeOutCubic,
                                 builder: (context, value, _) {
+                                  if (value <= 0.001) {
+                                    return const SizedBox.shrink();
+                                  }
                                   return Container(
                                     decoration: BoxDecoration(
                                       borderRadius: BorderRadius.circular(14),
@@ -295,6 +299,9 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                 duration: const Duration(milliseconds: 900),
                                 curve: Curves.easeOutCubic,
                                 builder: (context, value, _) {
+                                  if (value >= 0.999) {
+                                    return const SizedBox.shrink();
+                                  }
                                   return Align(
                                     alignment: Alignment(-1.4 + 2.8 * value, 0),
                                     child: FractionallySizedBox(
@@ -324,10 +331,12 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                         if (!todo.isDone)
                           Positioned.fill(
                             child: TweenAnimationBuilder<double>(
-                              duration: const Duration(milliseconds: 1200),
+                              duration: const Duration(milliseconds: 600),
                               curve: Curves.easeOutQuart,
                               tween: Tween<double>(
-                                begin: 0.0,
+                                begin: progress < 0.08
+                                    ? 0.08
+                                    : progress.clamp(0.0, 1.0),
                                 end: progress < 0.08
                                     ? 0.08
                                     : progress.clamp(0.0, 1.0),
@@ -839,6 +848,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                               duration: const Duration(milliseconds: 650),
                               curve: Curves.easeOutCubic,
                               builder: (context, scale, child) {
+                                if (scale >= 0.999) return child!;
                                 return Transform.scale(
                                   scale: scale,
                                   child: child,
@@ -935,13 +945,17 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
     );
   }
 
-  Widget _buildAnimatedSection({
-    required bool expanded,
-    required Widget child,
-  }) {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 300),
-      transitionBuilder: (Widget child, Animation<double> animation) {
+  Widget _buildExpandTransition(Widget child, Animation<double> animation) {
+    return AnimatedBuilder(
+      animation: animation,
+      child: child,
+      builder: (context, child) {
+        if (animation.value <= 0.001) {
+          return const SizedBox.shrink();
+        }
+        if (animation.value >= 0.999) {
+          return child!;
+        }
         return FadeTransition(
           opacity: animation,
           child: SizeTransition(
@@ -951,6 +965,16 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildAnimatedSection({
+    required bool expanded,
+    required Widget child,
+  }) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 300),
+      transitionBuilder: _buildExpandTransition,
       child: expanded
           ? Container(key: const ValueKey('expanded_content'), child: child)
           : const SizedBox.shrink(key: ValueKey('collapsed_empty')),
@@ -1131,16 +1155,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
       sections.add(
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 400),
-          transitionBuilder: (child, animation) {
-            return FadeTransition(
-              opacity: animation,
-              child: SizeTransition(
-                sizeFactor: animation,
-                alignment: AlignmentDirectional.topStart,
-                child: child,
-              ),
-            );
-          },
+          transitionBuilder: _buildExpandTransition,
           child: (!showTodayItems && todayItems.isNotEmpty)
               ? GestureDetector(
                   key: const ValueKey('today_summary_card'),
@@ -1404,16 +1419,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 500),
-      transitionBuilder: (Widget child, Animation<double> animation) {
-        return FadeTransition(
-          opacity: animation,
-          child: SizeTransition(
-            sizeFactor: animation,
-            alignment: AlignmentDirectional.topStart,
-            child: child,
-          ),
-        );
-      },
+      transitionBuilder: _buildExpandTransition,
       child: !_isWholeListExpanded
           ? GestureDetector(
               key: const ValueKey('collapsed_card'),

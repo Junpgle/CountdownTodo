@@ -4,7 +4,7 @@ enum MacPomodoroAction { togglePause, stopFocus }
 
 enum MacIslandReminderActionType { acknowledged, snoozed }
 
-enum MacIslandCommandType { openEntity, startFocus, completeTodo }
+enum MacIslandCommandType { openEntity, startFocus, completeTodo, aiRecognize }
 
 class MacIslandCommand {
   const MacIslandCommand({

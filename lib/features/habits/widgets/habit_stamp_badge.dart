@@ -76,17 +76,17 @@ class _HabitStampBadgeState extends State<HabitStampBadge>
     ]).animate(_controller);
 
     _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.0, 0.35, curve: Curves.easeIn),
+      _controller.drive(
+        CurveTween(curve: const Interval(0.0, 0.35, curve: Curves.easeIn)),
       ),
     );
 
     // 落地瞬间向外扩散的印泥震波
     _shockwaveAnimation = Tween<double>(begin: 0.8, end: 1.6).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.40, 1.0, curve: Curves.easeOutCubic),
+      _controller.drive(
+        CurveTween(
+          curve: const Interval(0.40, 1.0, curve: Curves.easeOutCubic),
+        ),
       ),
     );
 
@@ -194,14 +194,23 @@ class _HabitStampBadgeState extends State<HabitStampBadge>
         animation: _controller,
         child: stampBody,
         builder: (context, child) {
-          final shockwaveProgress = (_controller.value - 0.45) / 0.55;
-          final shockwaveAlpha =
-              (1.0 - shockwaveProgress).clamp(0.0, 1.0) * 0.45 * widget.opacity;
-
           final badgeOpacity = (_opacityAnimation.value * widget.opacity).clamp(
             0.0,
             1.0,
           );
+
+          if (_controller.value >= 0.999) {
+            final settled = badgeOpacity >= 0.999
+                ? child!
+                : Opacity(opacity: badgeOpacity, child: child);
+            return widget.angle.abs() <= 0.0001
+                ? settled
+                : Transform.rotate(angle: widget.angle, child: settled);
+          }
+
+          final shockwaveProgress = (_controller.value - 0.45) / 0.55;
+          final shockwaveAlpha =
+              (1.0 - shockwaveProgress).clamp(0.0, 1.0) * 0.45 * widget.opacity;
 
           return Transform.rotate(
             angle: widget.angle,

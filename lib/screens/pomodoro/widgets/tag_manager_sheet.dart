@@ -167,22 +167,16 @@ class _TagManagerSheetState extends State<TagManagerSheet>
                 itemBuilder: (_, index, animation) {
                   final tag = _tags[index];
                   final color = AppColorUtils.parseHex(tag.color);
+                  final curved = animation.drive(
+                    CurveTween(curve: Curves.easeOutCubic),
+                  );
                   return SizeTransition(
-                    sizeFactor: CurvedAnimation(
-                      parent: animation,
-                      curve: Curves.easeOutCubic,
-                    ),
+                    sizeFactor: curved,
                     child: SlideTransition(
-                      position:
-                          Tween<Offset>(
-                            begin: const Offset(1.0, 0.0),
-                            end: Offset.zero,
-                          ).animate(
-                            CurvedAnimation(
-                              parent: animation,
-                              curve: Curves.easeOutCubic,
-                            ),
-                          ),
+                      position: Tween<Offset>(
+                        begin: const Offset(1.0, 0.0),
+                        end: Offset.zero,
+                      ).animate(curved),
                       child: FadeTransition(
                         opacity: animation,
                         child: ListTile(
@@ -220,64 +214,60 @@ class _TagManagerSheetState extends State<TagManagerSheet>
                                   final removedIndex = index;
                                   _listKey.currentState?.removeItem(
                                     removedIndex,
-                                    (_, animation) => SizeTransition(
-                                      sizeFactor: CurvedAnimation(
-                                        parent: animation,
-                                        curve: Curves.easeInCubic,
-                                      ),
-                                      child: SlideTransition(
-                                        position:
-                                            Tween<Offset>(
-                                              begin: Offset.zero,
-                                              end: const Offset(-1.0, 0.0),
-                                            ).animate(
-                                              CurvedAnimation(
-                                                parent: animation,
-                                                curve: Curves.easeInCubic,
+                                    (_, animation) {
+                                      final outCurved = animation.drive(
+                                        CurveTween(curve: Curves.easeInCubic),
+                                      );
+                                      return SizeTransition(
+                                        sizeFactor: outCurved,
+                                        child: SlideTransition(
+                                          position: Tween<Offset>(
+                                            begin: Offset.zero,
+                                            end: const Offset(-1.0, 0.0),
+                                          ).animate(outCurved),
+                                          child: FadeTransition(
+                                            opacity: animation,
+                                            child: ListTile(
+                                              key: ValueKey(removedTag.uuid),
+                                              leading: CircleAvatar(
+                                                radius: 8,
+                                                backgroundColor:
+                                                    AppColorUtils.parseHex(
+                                                      removedTag.color,
+                                                    ),
                                               ),
-                                            ),
-                                        child: FadeTransition(
-                                          opacity: animation,
-                                          child: ListTile(
-                                            key: ValueKey(removedTag.uuid),
-                                            leading: CircleAvatar(
-                                              radius: 8,
-                                              backgroundColor:
-                                                  AppColorUtils.parseHex(
-                                                    removedTag.color,
+                                              title: Text(removedTag.name),
+                                              trailing: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Checkbox(
+                                                    value: _selected.contains(
+                                                      removedTag.uuid,
+                                                    ),
+                                                    activeColor:
+                                                        AppColorUtils.parseHex(
+                                                          removedTag.color,
+                                                        ),
+                                                    onChanged: null,
                                                   ),
-                                            ),
-                                            title: Text(removedTag.name),
-                                            trailing: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Checkbox(
-                                                  value: _selected.contains(
-                                                    removedTag.uuid,
+                                                  const Icon(
+                                                    Icons.delete_outline,
+                                                    size: 20,
+                                                    color: Colors.grey,
                                                   ),
-                                                  activeColor:
-                                                      AppColorUtils.parseHex(
-                                                        removedTag.color,
-                                                      ),
-                                                  onChanged: null,
-                                                ),
-                                                const Icon(
-                                                  Icons.delete_outline,
-                                                  size: 20,
-                                                  color: Colors.grey,
-                                                ),
-                                                const Icon(
-                                                  Icons.drag_handle,
-                                                  size: 20,
-                                                  color: Colors.grey,
-                                                ),
-                                                const SizedBox(width: 4),
-                                              ],
+                                                  const Icon(
+                                                    Icons.drag_handle,
+                                                    size: 20,
+                                                    color: Colors.grey,
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                ],
+                                              ),
                                             ),
                                           ),
                                         ),
-                                      ),
-                                    ),
+                                      );
+                                    },
                                     duration: const Duration(milliseconds: 250),
                                   );
                                   setState(() {

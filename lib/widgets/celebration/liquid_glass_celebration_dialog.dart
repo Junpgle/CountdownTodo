@@ -143,6 +143,7 @@ class _LiquidGlassCelebrationDialogState
               duration: const Duration(milliseconds: 480),
               curve: Curves.elasticOut,
               builder: (context, scale, child) {
+                if ((scale - 1.0).abs() <= 0.0005) return child!;
                 return Transform.scale(scale: scale, child: child);
               },
               child: Container(

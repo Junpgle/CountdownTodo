@@ -313,7 +313,7 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
             );
           }
 
-          final filtered = BackdropFilter(
+          final filtered = BackdropFilter.grouped(
             filter: blurFilter,
             child: Container(
               key: const ValueKey<String>('optional-liquid-glass-static-panel'),
@@ -399,7 +399,7 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
               ),
             ],
           );
-          final filtered = BackdropFilter(
+          final filtered = BackdropFilter.grouped(
             filter: configuration.blurFilter,
             child: Container(
               key: const ValueKey<String>(
@@ -543,14 +543,12 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
           return fallback;
         }
         final enhanced = configuration.mode == LiquidGlassEffectMode.enhanced;
-        final useStaticAndroidMaterial = AppPlatform.isAndroid;
 
-        if (useStaticAndroidMaterial || useStaticWindowsMaterial) {
-          // Android keeps its static performance path. Windows uses this
-          // no-blur material only while Liquid Glass is disabled; opting in
-          // restores the standard glass implementation below. Windows keeps
-          // fixed floating controls on the cached material path while content
-          // scrolls behind them.
+        if (useStaticWindowsMaterial) {
+          // Windows uses this no-blur material only while Liquid Glass is
+          // disabled; opting in restores the standard glass implementation
+          // below. Windows keeps fixed floating controls on the cached material
+          // path while content scrolls behind them.
           final staticShell = OptionalLiquidGlassPanel(
             height: height,
             borderRadius: borderRadius,

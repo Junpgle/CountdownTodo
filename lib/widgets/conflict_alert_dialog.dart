@@ -35,27 +35,37 @@ class ConflictAlertDialog extends StatelessWidget {
         width: double.maxFinite,
         child: ListView.separated(
           shrinkWrap: true,
+          findItemIndexCallback: (Key key) {
+            if (key is ValueKey<int>) {
+              final idx = key.value;
+              return (idx >= 0 && idx < conflicts.length) ? idx : null;
+            }
+            return null;
+          },
           itemCount: conflicts.length,
           separatorBuilder: (_, _) => Divider(),
           itemBuilder: (context, index) {
             final c = conflicts[index];
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  c.type == 'schedule_conflict' ? '检测到日程时间重叠：' : '检测到版本冲突：',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 8),
-                _buildConflictDetail('您的版本', c.item),
-                if (c.conflictWith.isNotEmpty) ...[
-                  SizedBox(height: 4),
-                  _buildConflictDetail(
-                    c.type == 'schedule_conflict' ? '冲突日程' : '服务器版本',
-                    c.conflictWith,
+            return RepaintBoundary(
+              key: ValueKey<int>(index),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    c.type == 'schedule_conflict' ? '检测到日程时间重叠：' : '检测到版本冲突：',
+                    style: TextStyle(fontWeight: FontWeight.bold),
                   ),
+                  SizedBox(height: 8),
+                  _buildConflictDetail('您的版本', c.item),
+                  if (c.conflictWith.isNotEmpty) ...[
+                    SizedBox(height: 4),
+                    _buildConflictDetail(
+                      c.type == 'schedule_conflict' ? '冲突日程' : '服务器版本',
+                      c.conflictWith,
+                    ),
+                  ],
                 ],
-              ],
+              ),
             );
           },
         ),

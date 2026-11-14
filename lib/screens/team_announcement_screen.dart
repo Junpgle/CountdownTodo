@@ -377,6 +377,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                       )
                     : ListView.builder(
                         shrinkWrap: true,
+                        itemExtent: 56.0,
                         itemCount: readMembers.length,
                         itemBuilder: (context, index) {
                           final member = readMembers[index] is Map
@@ -390,18 +391,21 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                           final time = _cachedDateFormat(
                             'MM-dd HH:mm',
                           ).format(DateTime.fromMillisecondsSinceEpoch(readAt));
-                          return ListTile(
-                            leading: const CircleAvatar(
-                              child: Icon(Icons.person, size: 16),
-                            ),
-                            title: Text(
-                              member['username']?.toString() ?? '未知成员',
-                            ),
-                            trailing: Text(
-                              time,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
+                          return RepaintBoundary(
+                            key: ValueKey(member['username'] ?? index),
+                            child: ListTile(
+                              leading: const CircleAvatar(
+                                child: Icon(Icons.person, size: 16),
+                              ),
+                              title: Text(
+                                member['username']?.toString() ?? '未知成员',
+                              ),
+                              trailing: Text(
+                                time,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
                               ),
                             ),
                           );
@@ -467,6 +471,16 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                 onRefresh: _loadAnnouncements,
                 child: ListView.builder(
                   padding: EdgeInsets.fromLTRB(16, topBarHeight + 12, 16, 12),
+                  findChildIndexCallback: (Key key) {
+                    if (key is ValueKey<String>) {
+                      final uuid = key.value;
+                      final index = _announcements.indexWhere(
+                        (a) => a.uuid == uuid,
+                      );
+                      return index != -1 ? index : null;
+                    }
+                    return null;
+                  },
                   itemCount: _announcements.length,
                   itemBuilder: (context, index) => _buildAnnouncementCard(
                     _announcements[index],
@@ -517,8 +531,10 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
               .format(DateTime.fromMillisecondsSinceEpoch(ann.expiresAt!))
         : '永久';
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+    return RepaintBoundary(
+      key: ValueKey<String>(ann.uuid),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white,
         borderRadius: BorderRadius.circular(24),
@@ -726,6 +742,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
           ),
         ],
       ),
+    ),
     );
   }
 }

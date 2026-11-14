@@ -354,109 +354,111 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
     final scheme = theme.colorScheme;
     final color = AppColorUtils.hexToColor(tag.color, fallback: scheme.primary);
     final editing = isWide && _editingTag?.uuid == tag.uuid && !_isAddingNewTag;
-    return ManagementCard(
-      key: ValueKey(tag.uuid),
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      backgroundColor: editing ? scheme.primaryContainer : null,
-      borderColor: editing ? scheme.primary : null,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Center(
-                  child: Container(
-                    width: 18,
-                    height: 18,
-                    decoration: BoxDecoration(
-                      color: color,
-                      shape: BoxShape.circle,
+    return RepaintBoundary(
+      key: ValueKey<String>(tag.uuid),
+      child: ManagementCard(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(12),
+        backgroundColor: editing ? scheme.primaryContainer : null,
+        borderColor: editing ? scheme.primary : null,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Center(
+                    child: Container(
+                      width: 18,
+                      height: 18,
+                      decoration: BoxDecoration(
+                        color: color,
+                        shape: BoxShape.circle,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: tag.isArchived
-                    ? Text(tag.name, style: theme.textTheme.titleMedium)
-                    : InkWell(
-                        borderRadius: BorderRadius.circular(8),
-                        onTap: () => _editTag(tag, isWide),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          child: Text(
-                            tag.name,
-                            style: theme.textTheme.titleMedium,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: tag.isArchived
+                      ? Text(tag.name, style: theme.textTheme.titleMedium)
+                      : InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () => _editTag(tag, isWide),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            child: Text(
+                              tag.name,
+                              style: theme.textTheme.titleMedium,
+                            ),
                           ),
                         ),
-                      ),
-              ),
-              if (dragIndex != null)
-                ReorderableDragStartListener(
-                  index: dragIndex,
-                  child: Tooltip(
-                    message: '拖动排序',
-                    child: SizedBox(
-                      width: 40,
-                      height: 48,
-                      child: Icon(
-                        Icons.drag_indicator_rounded,
-                        color: scheme.onSurfaceVariant,
+                ),
+                if (dragIndex != null)
+                  ReorderableDragStartListener(
+                    index: dragIndex,
+                    child: Tooltip(
+                      message: '拖动排序',
+                      child: SizedBox(
+                        width: 40,
+                        height: 48,
+                        child: Icon(
+                          Icons.drag_indicator_rounded,
+                          color: scheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
                   ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          ManagementActionBar(
-            spacing: 4,
-            runSpacing: 4,
-            children: [
-              if (widget.showSelection && !tag.isArchived)
-                FilterChip(
-                  label: Text(_selected.contains(tag.uuid) ? '已选中' : '选择'),
-                  selected: _selected.contains(tag.uuid),
-                  onSelected: (value) {
-                    setState(() {
-                      if (value) {
-                        _selected.add(tag.uuid);
-                      } else {
-                        _selected.remove(tag.uuid);
-                      }
-                    });
-                    _notifyChanges();
-                  },
-                ),
-              if (!tag.isArchived) ...[
-                TextButton.icon(
-                  onPressed: () => _editTag(tag, isWide),
-                  icon: const Icon(Icons.edit_outlined, size: 18),
-                  label: const Text('编辑'),
-                ),
-                if (widget.showArchive)
-                  TextButton.icon(
-                    onPressed: () => _archiveTag(_tags.indexOf(tag)),
-                    icon: const Icon(Icons.archive_outlined, size: 18),
-                    label: const Text('归档'),
+              ],
+            ),
+            const SizedBox(height: 4),
+            ManagementActionBar(
+              spacing: 4,
+              runSpacing: 4,
+              children: [
+                if (widget.showSelection && !tag.isArchived)
+                  FilterChip(
+                    label: Text(_selected.contains(tag.uuid) ? '已选中' : '选择'),
+                    selected: _selected.contains(tag.uuid),
+                    onSelected: (value) {
+                      setState(() {
+                        if (value) {
+                          _selected.add(tag.uuid);
+                        } else {
+                          _selected.remove(tag.uuid);
+                        }
+                      });
+                      _notifyChanges();
+                    },
                   ),
-              ] else
-                FilledButton.tonalIcon(
-                  onPressed: () => _restoreTag(tag),
-                  icon: const Icon(Icons.unarchive_outlined, size: 18),
-                  label: const Text('恢复'),
-                ),
-            ],
-          ),
-        ],
+                if (!tag.isArchived) ...[
+                  TextButton.icon(
+                    onPressed: () => _editTag(tag, isWide),
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    label: const Text('编辑'),
+                  ),
+                  if (widget.showArchive)
+                    TextButton.icon(
+                      onPressed: () => _archiveTag(_tags.indexOf(tag)),
+                      icon: const Icon(Icons.archive_outlined, size: 18),
+                      label: const Text('归档'),
+                    ),
+                ] else
+                  FilledButton.tonalIcon(
+                    onPressed: () => _restoreTag(tag),
+                    icon: const Icon(Icons.unarchive_outlined, size: 18),
+                    label: const Text('恢复'),
+                  ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

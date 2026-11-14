@@ -1,5 +1,6 @@
 import Cocoa
 import FlutterMacOS
+import QuickLookUI
 
 @main
 class AppDelegate: FlutterAppDelegate {
@@ -40,5 +41,17 @@ class AppDelegate: FlutterAppDelegate {
         channel.invokeMethod("openDeepLink", arguments: url.absoluteString)
       }
     }
+  }
+
+  override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool {
+    return true
+  }
+
+  override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+    panel.dataSource = MacPomodoroStatusBarController.shared
+    panel.delegate = MacPomodoroStatusBarController.shared
+  }
+
+  override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
   }
 }

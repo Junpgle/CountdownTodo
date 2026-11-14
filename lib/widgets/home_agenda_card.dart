@@ -136,191 +136,194 @@ class _HomeAgendaCardState extends State<HomeAgendaCard> {
               : colors.primary);
 
     final cardKey = _keyForItem(item.id);
-    return OptionalLiquidGlassCard(
-      key: cardKey,
-      margin: const EdgeInsets.only(bottom: 6),
-      borderRadius: 14,
-      tint: accent.withValues(alpha: current ? 0.22 : 0.12),
-      fallbackDecoration: BoxDecoration(
-        color: current
-            ? colors.primaryContainer.withValues(alpha: 0.35)
-            : colors.surface.withValues(
-                alpha: widget.isLight ? 0.95 : (quiet ? 0.5 : 0.72),
-              ),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
+    return RepaintBoundary(
+      key: ValueKey<String>('agenda_card_${item.id}'),
+      child: OptionalLiquidGlassCard(
+        key: cardKey,
+        margin: const EdgeInsets.only(bottom: 6),
+        borderRadius: 14,
+        tint: accent.withValues(alpha: current ? 0.22 : 0.12),
+        fallbackDecoration: BoxDecoration(
           color: current
-              ? colors.primary.withValues(alpha: 0.45)
-              : (attention
-                    ? colors.error.withValues(alpha: 0.35)
-                    : colors.outlineVariant.withValues(
-                        alpha: widget.isLight ? 0.15 : 0.25,
-                      )),
-        ),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          key: plan == null
-              ? ValueKey('agenda-row-${item.id}')
-              : ValueKey('plan-today-row-${plan.entry.id}'),
-          onTap: widget.enabled ? () => widget.onItem(item, cardKey) : null,
+              ? colors.primaryContainer.withValues(alpha: 0.35)
+              : colors.surface.withValues(
+                  alpha: widget.isLight ? 0.95 : (quiet ? 0.5 : 0.72),
+                ),
           borderRadius: BorderRadius.circular(14),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 3.5,
-                      height: 36,
-                      margin: const EdgeInsets.only(right: 10),
-                      decoration: BoxDecoration(
-                        color: accent,
-                        borderRadius: BorderRadius.circular(2),
+          border: Border.all(
+            color: current
+                ? colors.primary.withValues(alpha: 0.45)
+                : (attention
+                      ? colors.error.withValues(alpha: 0.35)
+                      : colors.outlineVariant.withValues(
+                          alpha: widget.isLight ? 0.15 : 0.25,
+                        )),
+          ),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(14),
+          child: InkWell(
+            key: plan == null
+                ? ValueKey('agenda-row-${item.id}')
+                : ValueKey('plan-today-row-${plan.entry.id}'),
+            onTap: widget.enabled ? () => widget.onItem(item, cardKey) : null,
+            borderRadius: BorderRadius.circular(14),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 3.5,
+                        height: 36,
+                        margin: const EdgeInsets.only(right: 10),
+                        decoration: BoxDecoration(
+                          color: accent,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
-                    ),
-                    SizedBox(
-                      width: crossDay ? 56 : 48,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            item.allDay ? '全天' : format.format(item.start),
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: current
-                                  ? colors.primary
-                                  : (quiet
-                                        ? colors.onSurfaceVariant
-                                        : colors.onSurface),
-                              height: 1.2,
+                      SizedBox(
+                        width: crossDay ? 56 : 48,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              item.allDay ? '全天' : format.format(item.start),
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: current
+                                    ? colors.primary
+                                    : (quiet
+                                          ? colors.onSurfaceVariant
+                                          : colors.onSurface),
+                                height: 1.2,
+                              ),
                             ),
-                          ),
-                          if (!item.allDay)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 2),
-                              child: Text(
-                                endLabel,
+                            if (!item.allDay)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  endLabel,
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    color: colors.onSurfaceVariant,
+                                    height: 1.1,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    item.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 14.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: quiet
+                                          ? colors.onSurfaceVariant
+                                          : colors.onSurface,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                    vertical: 1.5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: accent.withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    item.sourceLabel,
+                                    style: TextStyle(
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: accent,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (item.detail.isNotEmpty) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                item.detail,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  fontSize: 10.5,
+                                  fontSize: 11,
                                   color: colors.onSurfaceVariant,
-                                  height: 1.1,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  item.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 14.5,
-                                    fontWeight: FontWeight.w600,
-                                    color: quiet
-                                        ? colors.onSurfaceVariant
-                                        : colors.onSurface,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 5,
-                                  vertical: 1.5,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: accent.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  item.sourceLabel,
-                                  style: TextStyle(
-                                    fontSize: 9.5,
-                                    fontWeight: FontWeight.w700,
-                                    color: accent,
-                                  ),
                                 ),
                               ),
                             ],
-                          ),
-                          if (item.detail.isNotEmpty) ...[
-                            const SizedBox(height: 2),
-                            Text(
-                              item.detail,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: colors.onSurfaceVariant,
+                            if (current || attention || item.completed) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                attention
+                                    ? (plan!.status == 6 ? '漏做' : '已结束待确认')
+                                    : item.completed
+                                    ? '已完成'
+                                    : item.isFocusing
+                                    ? '正在专注'
+                                    : '时段进行中${item.fixed?.isEndTimeTbd == true ? ' · 结束待定' : ''}',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w500,
+                                  color: attention
+                                      ? colors.error
+                                      : current
+                                      ? colors.primary
+                                      : colors.onSurfaceVariant,
+                                ),
                               ),
-                            ),
+                            ],
                           ],
-                          if (current || attention || item.completed) ...[
-                            const SizedBox(height: 2),
-                            Text(
-                              attention
-                                  ? (plan!.status == 6 ? '漏做' : '已结束待确认')
-                                  : item.completed
-                                  ? '已完成'
-                                  : item.isFocusing
-                                  ? '正在专注'
-                                  : '时段进行中${item.fixed?.isEndTimeTbd == true ? ' · 结束待定' : ''}',
-                              style: TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w500,
-                                color: attention
-                                    ? colors.error
-                                    : current
-                                    ? colors.primary
-                                    : colors.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 6),
-                    Icon(
-                      plan != null
-                          ? (expanded
-                                ? Icons.expand_less_rounded
-                                : Icons.expand_more_rounded)
-                          : Icons.chevron_right_rounded,
-                      size: 18,
-                      color: colors.onSurfaceVariant,
-                    ),
-                  ],
-                ),
-                if (plan != null)
-                  AnimatedSize(
-                    duration: widget.duration,
-                    alignment: Alignment.topCenter,
-                    child: expanded
-                        ? Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: widget.planActions(plan, cardKey),
-                          )
-                        : const SizedBox.shrink(),
+                      const SizedBox(width: 6),
+                      Icon(
+                        plan != null
+                            ? (expanded
+                                  ? Icons.expand_less_rounded
+                                  : Icons.expand_more_rounded)
+                            : Icons.chevron_right_rounded,
+                        size: 18,
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ],
                   ),
-              ],
+                  if (plan != null)
+                    AnimatedSize(
+                      duration: widget.duration,
+                      alignment: Alignment.topCenter,
+                      child: expanded
+                          ? Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: widget.planActions(plan, cardKey),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                ],
+              ),
             ),
           ),
         ),

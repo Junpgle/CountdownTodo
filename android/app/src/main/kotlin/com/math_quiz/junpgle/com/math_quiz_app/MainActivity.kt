@@ -1745,7 +1745,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                 // 处理 Flutter 的检测请求
                 "checkIslandSupport" -> {
                     try {
-                        val isSupported = HyperIslandNotification.isSupported(this@MainActivity)
+                        val isSupported = isHyperFocusSupported(this@MainActivity)
                         result.success(isSupported)
                     } catch (e: Exception) {
                         result.success(false)
@@ -2401,7 +2401,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             text = text,
             subText = subText,
             progress = 0,
-            isOngoing = false,
+            isOngoing = true,
             color = color,
             currentStep = 0,
             totalSteps = 0,
@@ -2949,6 +2949,22 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         }
     }
 
+    private fun isHyperFocusSupported(context: Context): Boolean {
+        if (HyperIslandNotification.isSupported(context)) return true
+        return try {
+            if (!Build.MANUFACTURER.equals("Xiaomi", ignoreCase = true)) return false
+            val bundle = context.contentResolver.call(
+                Uri.parse("content://miui.statusbar.notification.public"),
+                "canShowFocus",
+                null,
+                Bundle().apply { putString("package", context.packageName) }
+            )
+            bundle?.getBoolean("canShowFocus", false) ?: false
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     private fun buildAndNotify(
         title: String,
         text: String,
@@ -3061,9 +3077,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                 ).build()
             )
         }
-        if (!isCourseNotification) {
-            builder.setRequestPromotedOngoing(true)
-        }
+        builder.setRequestPromotedOngoing(true)
 
         if (timerAnchorMs != null) {
             builder
@@ -3073,9 +3087,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
         // 🚨 显式要求系统提升为“推荐的持续通知”(Live Updates)
         val extras = Bundle()
-        if (!isCourseNotification) {
-            extras.putBoolean("android.extra.requestPromotedOngoing", true)
-        }
+        extras.putBoolean("android.extra.requestPromotedOngoing", true)
 
         // ==========================================
         // 🚀 构建完全对齐官方的 ProgressStyle / Short Text
@@ -3279,7 +3291,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         //  小米 HyperOS 超级岛 (Dynamic Island) 适配
         // ==========================================
         try {
-            if (HyperIslandNotification.isSupported(this)) {
+            if (isHyperFocusSupported(this)) {
                 val hyperTitle = islandTitle ?: title
                 val hyperBuilder = HyperIslandNotification.Builder(
                     this,
@@ -3308,7 +3320,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                 hyperBuilder.setIslandConfig(
                     priority = 2,
                     timeout = null,
-                    dismissible = !isOngoing,
+                    dismissible = if (isCourseNotification) true else !isOngoing,
                     needCloseAnimation = true
                 )
 

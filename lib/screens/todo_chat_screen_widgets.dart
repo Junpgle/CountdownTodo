@@ -18,6 +18,16 @@ class _StaggeredFadeSlide extends StatelessWidget {
             : ((value * (360 + delay.inMilliseconds) - delay.inMilliseconds) /
                       360)
                   .clamp(0.0, 1.0);
+        if (delayedValue >= 0.999) return child!;
+        if (delayedValue <= 0.001) {
+          return Visibility(
+            visible: false,
+            maintainSize: true,
+            maintainAnimation: true,
+            maintainState: true,
+            child: child!,
+          );
+        }
         return Opacity(
           opacity: delayedValue,
           child: Transform.translate(
@@ -136,7 +146,12 @@ class _IridescentActionPanelState extends State<_IridescentActionPanel>
           animation: _controller,
           isDark: widget.isDark,
         ),
-        child: Padding(padding: const EdgeInsets.all(2.5), child: widget.child),
+        child: RepaintBoundary(
+          child: Padding(
+            padding: const EdgeInsets.all(2.5),
+            child: widget.child,
+          ),
+        ),
       ),
     );
   }
@@ -168,6 +183,21 @@ class _IridescentBorderPainter extends CustomPainter {
 
   final Animation<double> animation;
   final bool isDark;
+  static const BorderRadius _baseBorderRadius = BorderRadius.all(
+    Radius.circular(18),
+  );
+  static const List<BorderRadius> _rippleBorderRadii = [
+    BorderRadius.all(Radius.circular(18)),
+    BorderRadius.all(Radius.circular(17)),
+    BorderRadius.all(Radius.circular(16)),
+  ];
+  static const BorderRadius _highlightBorderRadius = BorderRadius.all(
+    Radius.circular(16),
+  );
+  Size? _cachedSize;
+  Rect? _cachedRect;
+  Rect? _cachedBorderRect;
+  RRect? _cachedBaseRRect;
   late final List<Color> _gradientColors = [
     const Color(0xFF5EFCE8).withValues(alpha: isDark ? 0.88 : 0.82),
     const Color(0xFF736EFE).withValues(alpha: isDark ? 0.82 : 0.74),
@@ -204,11 +234,20 @@ class _IridescentBorderPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
 
+    if (_cachedSize != size) {
+      _cachedSize = size;
+      final rect = Offset.zero & size;
+      final borderRect = rect.deflate(2.0);
+      _cachedRect = rect;
+      _cachedBorderRect = borderRect;
+      _cachedBaseRRect = _baseBorderRadius.toRRect(borderRect);
+    }
+
     final progress = animation.value;
-    final rect = Offset.zero & size;
+    final rect = _cachedRect!;
     final center = rect.center;
-    final borderRect = rect.deflate(2.0);
-    final radius = BorderRadius.circular(18).toRRect(borderRect);
+    final borderRect = _cachedBorderRect!;
+    final radius = _cachedBaseRRect!;
     final shader = _gradient.createShader(rect);
 
     _glowPaint.shader = shader;
@@ -225,7 +264,7 @@ class _IridescentBorderPainter extends CustomPainter {
         width: borderRect.width - (i * 1.2) + wave,
         height: borderRect.height - (i * 1.2) - wave,
       );
-      final ripple = BorderRadius.circular(18.0 - i).toRRect(rippleRect);
+      final ripple = _rippleBorderRadii[i].toRRect(rippleRect);
       final paint = _ripplePaints[i]..shader = shader;
       canvas.drawRRect(ripple, paint);
     }
@@ -239,7 +278,7 @@ class _IridescentBorderPainter extends CustomPainter {
           ),
         );
     canvas.drawRRect(
-      BorderRadius.circular(16).toRRect(highlightRect),
+      _highlightBorderRadius.toRRect(highlightRect),
       _sheenPaint,
     );
   }
@@ -272,7 +311,7 @@ class _PulseAvatarState extends State<_PulseAvatar>
     _scaleAnimation = Tween<double>(
       begin: 0.95,
       end: 1.05,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+    ).animate(_controller.drive(CurveTween(curve: Curves.easeInOut)));
     PowerSaveModeService.enabledListenable.addListener(_syncAnimation);
     _syncAnimation();
   }
@@ -301,8 +340,17 @@ class _PulseAvatarState extends State<_PulseAvatar>
 
   @override
   Widget build(BuildContext context) {
-    return RepaintBoundary(
-      child: ScaleTransition(scale: _scaleAnimation, child: widget.child),
+    return AnimatedBuilder(
+      animation: _controller,
+      child: widget.child,
+      builder: (context, child) {
+        if (!_controller.isAnimating && _controller.value == 0.0) {
+          return child!;
+        }
+        return RepaintBoundary(
+          child: ScaleTransition(scale: _scaleAnimation, child: child),
+        );
+      },
     );
   }
 }
@@ -414,7 +462,7 @@ class _ThinkingDotPainter extends CustomPainter {
   final Animation<double> animation;
   final Color color;
   final int index;
-  final Paint _dotPaint = Paint()..isAntiAlias = true;
+  static final Paint _dotPaint = Paint()..isAntiAlias = true;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -608,11 +656,13 @@ class _DanmakuSuggestionsState extends State<_DanmakuSuggestions>
         physics: const NeverScrollableScrollPhysics(),
         itemCount: items.length,
         itemBuilder: (context, index) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: _DanmakuItem(
-              text: items[index],
-              onTap: () => widget.onTap(items[index]),
+          return RepaintBoundary(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: _DanmakuItem(
+                text: items[index],
+                onTap: () => widget.onTap(items[index]),
+              ),
             ),
           );
         },
@@ -632,28 +682,30 @@ class _DanmakuItem extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Material(
-      color: isDark ? colorScheme.surfaceContainerHigh : colorScheme.surface,
-      borderRadius: BorderRadius.circular(20),
-      elevation: 1,
-      shadowColor: Colors.black.withValues(alpha: 0.1),
-      child: InkWell(
-        onTap: onTap,
+    return RepaintBoundary(
+      child: Material(
+        color: isDark ? colorScheme.surfaceContainerHigh : colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+        elevation: 1,
+        shadowColor: Colors.black.withValues(alpha: 0.1),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+              ),
             ),
-          ),
-          child: Text(
-            text,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: colorScheme.onSurface,
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: colorScheme.onSurface,
+              ),
             ),
           ),
         ),

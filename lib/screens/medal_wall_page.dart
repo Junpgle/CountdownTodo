@@ -355,6 +355,17 @@ class _MedalWallPageState extends State<MedalWallPage>
                   reason: reasons[medals[medalIndex].medal.id],
                 );
               },
+              findChildIndexCallback: (Key key) {
+                if (key is ValueKey<String>) {
+                  final id = key.value;
+                  final index = medals.indexWhere((m) => m.medal.id == id);
+                  if (index != -1) {
+                    final target = showFeatured ? index - 1 : index;
+                    return target >= 0 ? target : null;
+                  }
+                }
+                return null;
+              },
               childCount: showFeatured
                   ? (medals.length > 1 ? medals.length - 1 : 0)
                   : medals.length,
@@ -539,228 +550,234 @@ class _MedalWallPageState extends State<MedalWallPage>
     final earned = medal.earned;
     final progress = (medal.progress * 100).toInt();
 
-    return GestureDetector(
-      onTap: () => _showMedalDetail(context, medal),
-      child: OptionalLiquidGlassCard(
-        borderRadius: 24,
-        fallbackDecoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: Stack(
-            children: [
-              // Background glow for earned medals
-              if (earned)
-                Positioned(
-                  top: -20,
-                  right: -20,
-                  child: Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: medal.medal.color.withValues(alpha: 0.1),
+    return RepaintBoundary(
+      key: ValueKey<String>(medal.medal.id),
+      child: GestureDetector(
+        onTap: () => _showMedalDetail(context, medal),
+        child: OptionalLiquidGlassCard(
+          borderRadius: 24,
+          fallbackDecoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: Stack(
+              children: [
+                // Background glow for earned medals
+                if (earned)
+                  Positioned(
+                    top: -20,
+                    right: -20,
+                    child: Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: medal.medal.color.withValues(alpha: 0.1),
+                      ),
                     ),
                   ),
-                ),
 
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    const Spacer(),
-                    // Icon Container
-                    Hero(
-                      tag: 'medal_${medal.medal.title}',
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        alignment: Alignment.center,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: medal.medal.color.withValues(
-                                alpha: earned ? 0.15 : 0.05,
-                              ),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Center(
-                              child: Icon(
-                                medal.medal.icon,
-                                size: 36,
-                                color: earned
-                                    ? medal.medal.color
-                                    : theme.colorScheme.onSurface.withValues(
-                                        alpha: 0.3,
-                                      ),
-                              ),
-                            ),
-                          ),
-                          if (earned && medal.earnedCount > 1)
-                            Positioned(
-                              right: -8,
-                              bottom: -4,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 2,
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      const Spacer(),
+                      // Icon Container
+                      Hero(
+                        tag: 'medal_${medal.medal.title}',
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          alignment: Alignment.center,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: medal.medal.color.withValues(
+                                  alpha: earned ? 0.15 : 0.05,
                                 ),
-                                decoration: BoxDecoration(
-                                  color: medal.medal.color,
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                    color: Colors.white,
-                                    width: 1.5,
-                                  ),
-                                ),
-                                child: Text(
-                                  'x${medal.earnedCount}',
-                                  style: const TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w900,
-                                    color: Colors.white,
-                                  ),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Center(
+                                child: Icon(
+                                  medal.medal.icon,
+                                  size: 36,
+                                  color: earned
+                                      ? medal.medal.color
+                                      : theme.colorScheme.onSurface.withValues(
+                                          alpha: 0.3,
+                                        ),
                                 ),
                               ),
                             ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      medal.medal.title,
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: earned
-                            ? theme.colorScheme.onSurface
-                            : theme.colorScheme.onSurface.withValues(
-                                alpha: 0.5,
-                              ),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    SizedBox(
-                      height: 32, // Fixed height for 2 lines of bodySmall
-                      child: reason != null
-                          ? Column(
-                              children: [
-                                Text(
-                                  medal.medal.description,
-                                  textAlign: TextAlign.center,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    fontSize: 10,
-                                    height: 1.2,
-                                    color: theme.colorScheme.onSurface
-                                        .withValues(alpha: earned ? 0.6 : 0.3),
+                            if (earned && medal.earnedCount > 1)
+                              Positioned(
+                                right: -8,
+                                bottom: -4,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
                                   ),
-                                ),
-                                const SizedBox(height: 2),
-                                Expanded(
+                                  decoration: BoxDecoration(
+                                    color: medal.medal.color,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 1.5,
+                                    ),
+                                  ),
                                   child: Text(
-                                    reason,
+                                    'x${medal.earnedCount}',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        medal.medal.title,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: earned
+                              ? theme.colorScheme.onSurface
+                              : theme.colorScheme.onSurface.withValues(
+                                  alpha: 0.5,
+                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      SizedBox(
+                        height: 32, // Fixed height for 2 lines of bodySmall
+                        child: reason != null
+                            ? Column(
+                                children: [
+                                  Text(
+                                    medal.medal.description,
                                     textAlign: TextAlign.center,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: theme.textTheme.bodySmall?.copyWith(
-                                      fontSize: 9,
+                                      fontSize: 10,
                                       height: 1.2,
-                                      color: medal.medal.color.withValues(
-                                        alpha: 0.6,
-                                      ),
-                                      fontStyle: FontStyle.italic,
+                                      color: theme.colorScheme.onSurface
+                                          .withValues(
+                                            alpha: earned ? 0.6 : 0.3,
+                                          ),
                                     ),
                                   ),
+                                  const SizedBox(height: 2),
+                                  Expanded(
+                                    child: Text(
+                                      reason,
+                                      textAlign: TextAlign.center,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            fontSize: 9,
+                                            height: 1.2,
+                                            color: medal.medal.color.withValues(
+                                              alpha: 0.6,
+                                            ),
+                                            fontStyle: FontStyle.italic,
+                                          ),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : Text(
+                                medal.medal.description,
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  fontSize: 10,
+                                  height: 1.2,
+                                  color: theme.colorScheme.onSurface.withValues(
+                                    alpha: earned ? 0.6 : 0.3,
+                                  ),
                                 ),
-                              ],
-                            )
-                          : Text(
-                              medal.medal.description,
-                              textAlign: TextAlign.center,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                fontSize: 10,
-                                height: 1.2,
-                                color: theme.colorScheme.onSurface.withValues(
-                                  alpha: earned ? 0.6 : 0.3,
+                              ),
+                      ),
+                      const Spacer(),
+                      if (earned)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.check_circle,
+                                size: 12,
+                                color: Colors.green,
+                              ),
+                              SizedBox(width: 4),
+                              Text(
+                                '已获得',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.green,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        Column(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: LinearProgressIndicator(
+                                value: medal.progress,
+                                minHeight: 6,
+                                backgroundColor:
+                                    theme.colorScheme.surfaceContainerHighest,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  medal.medal.color,
                                 ),
                               ),
                             ),
-                    ),
-                    const Spacer(),
-                    if (earned)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.green.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.check_circle,
-                              size: 12,
-                              color: Colors.green,
-                            ),
-                            SizedBox(width: 4),
+                            const SizedBox(height: 6),
                             Text(
-                              '已获得',
-                              style: TextStyle(
-                                fontSize: 10,
+                              '$progress%',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: medal.medal.color,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.green,
                               ),
                             ),
                           ],
                         ),
-                      )
-                    else
-                      Column(
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: LinearProgressIndicator(
-                              value: medal.progress,
-                              minHeight: 6,
-                              backgroundColor:
-                                  theme.colorScheme.surfaceContainerHighest,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                medal.medal.color,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            '$progress%',
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: medal.medal.color,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

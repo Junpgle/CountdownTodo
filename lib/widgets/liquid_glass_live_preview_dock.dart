@@ -31,18 +31,33 @@ class LiquidGlassLivePreviewDock extends StatelessWidget {
                 return AnimatedSwitcher(
                   duration: const Duration(milliseconds: 280),
                   transitionBuilder: (child, animation) {
-                    return SlideTransition(
-                      position:
-                          Tween<Offset>(
-                            begin: const Offset(0, 0.4),
-                            end: Offset.zero,
-                          ).animate(
-                            CurvedAnimation(
-                              parent: animation,
-                              curve: Curves.easeOutCubic,
-                            ),
+                    final slide =
+                        Tween<Offset>(
+                          begin: const Offset(0, 0.4),
+                          end: Offset.zero,
+                        ).animate(
+                          animation.drive(
+                            CurveTween(curve: Curves.easeOutCubic),
                           ),
-                      child: FadeTransition(opacity: animation, child: child),
+                        );
+                    return AnimatedBuilder(
+                      animation: animation,
+                      child: child,
+                      builder: (context, child) {
+                        if (animation.value <= 0.001) {
+                          return const SizedBox.shrink();
+                        }
+                        if (animation.value >= 0.999) {
+                          return child!;
+                        }
+                        return SlideTransition(
+                          position: slide,
+                          child: FadeTransition(
+                            opacity: animation,
+                            child: child,
+                          ),
+                        );
+                      },
                     );
                   },
                   child: visible

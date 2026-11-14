@@ -65,5 +65,14 @@ void main() {
       expect(result.endTime!.hour, 2);
       expect(result.timeSemantics, ParsedTimeSemantics.range);
     });
+
+    test('extracts location separately from remark and merges for todo remark', () {
+      final result = TodoParserService.parse('明天下午2点到4点开会 @第一会议室 备注：带投影转接头');
+
+      expect(result.title, '开会');
+      expect(result.location, '第一会议室');
+      expect(result.remark, '带投影转接头');
+      expect(result.effectiveTodoRemark, '第一会议室 · 带投影转接头');
+    });
   });
 }
