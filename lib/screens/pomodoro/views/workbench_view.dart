@@ -842,20 +842,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       } catch (e) {
         debugPrint('[PomodoroWorkbench] 连接跨设备服务失败: $e');
       }
-
-      if (mounted && _userId.isNotEmpty && _deviceId.isNotEmpty) {
-        try {
-          try {
-            await _syncService
-                .forceReconnect(_userId, 'flutter_$_deviceId')
-                .timeout(const Duration(seconds: 5));
-          } on TimeoutException catch (e) {
-            debugPrint('[PomodoroWorkbench] 强制重连同步服务超时: $e');
-          }
-        } catch (e) {
-          debugPrint('[PomodoroWorkbench] 强制重连同步服务失败: $e');
-        }
-      }
     } finally {
       _isInitProcessing = false;
       initWatchdog.cancel();
@@ -881,11 +867,56 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         );
 
     _connSub?.cancel();
-    _connSub = _syncService.onConnectionChanged.listen((state) {
+    _connSub = _syncService.onConnectionChanged.listen((state) async {
       if (!mounted) return;
       setState(() {
         _syncConnState = state;
       });
+      if (state == SyncConnectionState.connected &&
+          (_phase == PomodoroPhase.focusing ||
+              _phase == PomodoroPhase.breaking) &&
+          _currentSessionUuid.isNotEmpty) {
+        _syncService.setLocalFocusing(true);
+        final sourceDeviceName = await StorageService.getDeviceFriendlyName();
+        if (!mounted ||
+            (_phase != PomodoroPhase.focusing &&
+                _phase != PomodoroPhase.breaking) ||
+            _currentSessionUuid.isEmpty) {
+          return;
+        }
+        final isCountUp = _settings.mode == TimerMode.countUp;
+        final plannedFocusSeconds = isCountUp
+            ? 0
+            : (_activeFocusSeconds ?? _settings.focusMinutes * 60);
+        final durationSeconds = _phase == PomodoroPhase.focusing
+            ? plannedFocusSeconds
+            : _settings.breakMinutes * 60;
+        final targetEndMs = isCountUp ? _sessionStartMs : _targetEndMs;
+        final tagNames = _tags
+            .where((t) => _selectedTagUuids.contains(t.uuid))
+            .map((t) => t.name)
+            .toList();
+        _syncService.sendReconnectSyncSignal(
+          sessionUuid: _currentSessionUuid,
+          todoUuid: _boundTodo?.id.isNotEmpty == true ? _boundTodo!.id : null,
+          todoTitle: _boundTodo?.title,
+          planBlockId: _planBlockId,
+          durationSeconds: durationSeconds,
+          targetEndMs: targetEndMs,
+          tagNames: tagNames,
+          sourceDeviceName: sourceDeviceName,
+          mode: _settings.mode.index,
+          currentCycle: _currentCycle,
+          totalCycles: _settings.cycles,
+          plannedFocusSeconds: plannedFocusSeconds,
+          note: _currentNote.isNotEmpty ? _currentNote : null,
+          doNotDisturb:
+              _phase == PomodoroPhase.focusing &&
+              _settings.doNotDisturbDuringFocus &&
+              !_strictWaitingForFlip,
+          customTimestamp: _sessionStartMs > 0 ? _sessionStartMs : null,
+        );
+      }
       // debugPrint('[工作台] 同步通道连接状态变更: $state');
     });
 
@@ -920,7 +951,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
     final myDeviceId = 'flutter_$_deviceId';
     if (_deviceId.isEmpty ||
-        (signal.sourceDevice != null && signal.sourceDevice == myDeviceId)) {
+        (signal.sourceDevice != null &&
+            (signal.sourceDevice == myDeviceId ||
+                _syncService.isFromCurrentDevice(signal.sourceDevice)))) {
       return;
     }
 
@@ -944,10 +977,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       case 'SYNC':
       case 'SYNC_FOCUS':
       case 'RECONNECT_SYNC':
-        if (signal.sessionUuid != null &&
-            signal.sessionUuid == _currentSessionUuid) {
-          break;
-        }
         if (_phase == PomodoroPhase.focusing ||
             _phase == PomodoroPhase.breaking ||
             _phase == PomodoroPhase.finished) {
@@ -1203,6 +1232,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         _stopRemoteTicker();
         setState(() {
           _phase = PomodoroPhase.idle;
+          _currentSessionUuid = '';
           _remainingSeconds = _settings.mode == TimerMode.countUp
               ? 0
               : _settings.focusMinutes * 60;

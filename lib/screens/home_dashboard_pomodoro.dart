@@ -39,7 +39,10 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
     _connStateSub = _syncService.onConnectionChanged.listen((state) async {
       if (state == SyncConnectionState.connected) {
         final saved = await PomodoroService.loadRunState();
-        if (saved == null) return;
+        if (saved == null) {
+          _syncService.setLocalFocusing(false);
+          return;
+        }
 
         if (saved.phase == PomodoroPhase.focusing ||
             saved.phase == PomodoroPhase.breaking) {
@@ -48,6 +51,7 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
               ? 1
               : saved.targetEndMs - DateTime.now().millisecondsSinceEpoch;
           if (remaining > 0) {
+            _syncService.setLocalFocusing(true);
             // debugPrint("🔗 [首页] WS已连上，主动向云端同步本地运行中的专注状态");
 
             final realTagNames = List<String>.from(saved.tagNames);
@@ -85,7 +89,11 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
                   !saved.strictWaitingForFlip,
               customTimestamp: saved.sessionStartMs, // 🚀 关键：使用真实的起点时间
             );
+          } else {
+            _syncService.setLocalFocusing(false);
           }
+        } else {
+          _syncService.setLocalFocusing(false);
         }
       }
     });
@@ -99,6 +107,15 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
 
     // 🚀 获取 auth token 用于 WebSocket 鉴权
     final authToken = await StorageService.getAuthToken();
+
+    final initialSaved = await PomodoroService.loadRunState();
+    final initialActive =
+        initialSaved != null &&
+        (initialSaved.phase == PomodoroPhase.focusing ||
+            initialSaved.phase == PomodoroPhase.breaking) &&
+        (initialSaved.mode == TimerMode.countUp ||
+            initialSaved.targetEndMs > DateTime.now().millisecondsSinceEpoch);
+    _syncService.setLocalFocusing(initialActive);
 
     await _syncService.ensureConnected(
       userIdInt.toString(),
@@ -116,7 +133,8 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
   ) async {
     if (!mounted || _deviceId.isEmpty) return;
     if (signal.sourceDevice == _deviceId ||
-        signal.sourceDevice == 'flutter_$_deviceId') {
+        signal.sourceDevice == 'flutter_$_deviceId' ||
+        _syncService.isFromCurrentDevice(signal.sourceDevice)) {
       return;
     }
 
@@ -451,6 +469,7 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
       if (saved != null &&
           (saved.phase == PomodoroPhase.focusing ||
               saved.phase == PomodoroPhase.breaking)) {
+        _syncService.setLocalFocusing(true);
         final now = DateTime.now().millisecondsSinceEpoch;
         final isCountUp = saved.mode == TimerMode.countUp;
         final rem = isCountUp
@@ -463,6 +482,7 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
         });
         _startLocalTicker(isCountUp);
       } else {
+        _syncService.setLocalFocusing(false);
         _stopLocalTicker();
         setState(() {
           _localPomodoro = null;
@@ -475,9 +495,13 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
     PomodoroService.loadRunState().then((saved) {
       if (!mounted) return;
       unawaited(_syncLocalFocusDoNotDisturb(saved));
-      if (saved == null) return;
+      if (saved == null) {
+        _syncService.setLocalFocusing(false);
+        return;
+      }
       if (saved.phase == PomodoroPhase.focusing ||
           saved.phase == PomodoroPhase.breaking) {
+        _syncService.setLocalFocusing(true);
         final now = DateTime.now().millisecondsSinceEpoch;
         final isCountUp = saved.mode == TimerMode.countUp;
         final rem = isCountUp
@@ -489,6 +513,8 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
           _localPomodoroRemaining = rem;
         });
         _startLocalTicker(isCountUp);
+      } else {
+        _syncService.setLocalFocusing(false);
       }
     });
   }
