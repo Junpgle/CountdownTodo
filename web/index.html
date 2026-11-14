@@ -277,8 +277,40 @@
   </div>
 
   <script>
-    // ── Loading progress --------------------------------------------------
+    // ── Route Detection: Lightweight Team Share vs Full Flutter Web ──
     (function () {
+      function extractShareCodeFrom(raw) {
+        if (!raw) return null;
+        var clean = String(raw).trim();
+        if (clean.charAt(0) === '#') clean = clean.slice(1);
+        if (!clean) return null;
+        try {
+          var url = new URL(clean.charAt(0) === '/' ? clean : '/' + clean, window.location.origin);
+          var path = url.pathname.replace(/\/+$/, '');
+          if (path === '/share' || path.indexOf('/share/') === 0) {
+            var qCode = (url.searchParams.get('code') || '').trim();
+            if (qCode) return qCode;
+            var segs = path.split('/').filter(Boolean);
+            var idx = segs.lastIndexOf('share');
+            if (idx !== -1 && idx + 1 < segs.length) {
+              var segCode = decodeURIComponent(segs[idx + 1]).trim();
+              if (segCode) return segCode;
+            }
+          }
+        } catch (_) {}
+        return null;
+      }
+
+      window.cdtDetectShareCode = function () {
+        return extractShareCodeFrom(window.location.hash) ||
+          extractShareCodeFrom(window.location.pathname + window.location.search);
+      };
+    })();
+
+    // ── Loading progress --------------------------------------------------
+    window.cdtStartLoadingProgress = function () {
+      if (window.__cdtLoadingProgressStarted) return;
+      window.__cdtLoadingProgressStarted = true;
       var progress = 0;
       var completed = false;
       var splashRemoved = false;
@@ -359,7 +391,7 @@
           window.cdtHideLoadingSplash('surface');
         }
       }, 250);
-    })();
+    };
 
     // ── Browser Notification Bridge ─────────────────────────
     (function () {
@@ -579,41 +611,105 @@
       });
     })();
 
-    // ── Service Worker Registration ──────────────────────────
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', function () {
-        navigator.serviceWorker.register('sw.js?v=20261021a', { scope: './' }).then(function (reg) {
-          // Listen for updates and prompt user to reload.
-          reg.addEventListener('updatefound', function () {
-            var newWorker = reg.installing;
-            if (newWorker) {
-              newWorker.addEventListener('statechange', function () {
-                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                  window.cdtSetPendingServiceWorker(newWorker);
-                }
-              });
+    // ── Service Worker & App Bootstrap (On-Demand for Share) ─
+    (function () {
+      var flutterBooted = false;
+      var swRegistered = false;
+
+      function registerServiceWorker() {
+        if (swRegistered || !('serviceWorker' in navigator)) return;
+        swRegistered = true;
+        var register = function () {
+          navigator.serviceWorker.register('sw.js?v=20261021a', { scope: './' }).then(function (reg) {
+            // Listen for updates and prompt user to reload.
+            reg.addEventListener('updatefound', function () {
+              var newWorker = reg.installing;
+              if (newWorker) {
+                newWorker.addEventListener('statechange', function () {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    window.cdtSetPendingServiceWorker(newWorker);
+                  }
+                });
+              }
+            });
+
+            if (reg.waiting && navigator.serviceWorker.controller) {
+              window.cdtSetPendingServiceWorker(reg.waiting);
             }
+          }).catch(function (err) {
+            console.warn('SW registration failed:', err);
           });
 
-          if (reg.waiting && navigator.serviceWorker.controller) {
-            window.cdtSetPendingServiceWorker(reg.waiting);
-          }
-        }).catch(function (err) {
-          console.warn('SW registration failed:', err);
-        });
+          // Reload the page when the new SW takes over.
+          var refreshing = false;
+          navigator.serviceWorker.addEventListener('controllerchange', function () {
+            var shouldReload = window.sessionStorage.getItem('cdt-pwa-apply-update') === '1';
+            if (!refreshing && shouldReload) {
+              refreshing = true;
+              window.sessionStorage.removeItem('cdt-pwa-apply-update');
+              window.location.reload();
+            }
+          });
+        };
 
-        // Reload the page when the new SW takes over.
-        var refreshing = false;
-        navigator.serviceWorker.addEventListener('controllerchange', function () {
-          var shouldReload = window.sessionStorage.getItem('cdt-pwa-apply-update') === '1';
-          if (!refreshing && shouldReload) {
-            refreshing = true;
-            window.sessionStorage.removeItem('cdt-pwa-apply-update');
-            window.location.reload();
+        if (document.readyState === 'complete') {
+          register();
+        } else {
+          window.addEventListener('load', register);
+        }
+      }
+
+      function bootFlutterApp() {
+        if (flutterBooted) return;
+        flutterBooted = true;
+        var splash = document.getElementById('loading-indicator');
+        if (splash) splash.style.display = 'flex';
+        if (window.cdtStartLoadingProgress) {
+          window.cdtStartLoadingProgress();
+        }
+        registerServiceWorker();
+        var script = document.createElement('script');
+        script.src = 'flutter_bootstrap.js?v=20261021a';
+        script.async = true;
+        document.body.appendChild(script);
+      }
+
+      window.cdtOpenFullApp = function () {
+        var shareRoot = document.getElementById('share-root');
+        if (shareRoot) shareRoot.remove();
+        bootFlutterApp();
+      };
+
+      var initialShareCode = window.cdtDetectShareCode && window.cdtDetectShareCode();
+      if (initialShareCode) {
+        // Lightweight share mode: skip Flutter engine, CanvasKit, CJK font, and SW pre-cache.
+        var splash = document.getElementById('loading-indicator');
+        if (splash) splash.style.display = 'none';
+        window.cdtShareCode = initialShareCode;
+
+        var shareRoot = document.createElement('div');
+        shareRoot.id = 'share-root';
+        document.body.appendChild(shareRoot);
+
+        var link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'share-viewer.css?v=20261114a';
+        document.head.appendChild(link);
+
+        var shareScript = document.createElement('script');
+        shareScript.src = 'share-viewer.js?v=20261114a';
+        shareScript.defer = true;
+        document.body.appendChild(shareScript);
+
+        window.addEventListener('hashchange', function () {
+          if (!flutterBooted && (!window.cdtDetectShareCode || !window.cdtDetectShareCode())) {
+            window.cdtOpenFullApp();
           }
         });
-      });
-    }
+      } else {
+        bootFlutterApp();
+      }
+    })();
 
     // ── Remove loading splash once Flutter signals ready ─────
     window.addEventListener('flutter-first-frame', function () {
@@ -622,7 +718,5 @@
       }
     });
   </script>
-
-  <script src="flutter_bootstrap.js?v=20261021a" async></script>
 </body>
 </html>
