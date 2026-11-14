@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/services/macos_pomodoro_status_bar_service_io.dart';
 import 'package:countdown_todo/services/ongoing_activity_service.dart';
@@ -617,6 +619,52 @@ void main() {
 
       expect(payload['countdownDays'], 1);
     });
+
+    test('MacIslandCommand 支持 aiRecognize 命令', () {
+      const command = MacIslandCommand(
+        type: MacIslandCommandType.aiRecognize,
+        entityKind: 'image',
+        entityId: '/path/to/screenshot.png',
+      );
+      expect(command.type, MacIslandCommandType.aiRecognize);
+      expect(command.entityKind, 'image');
+      expect(command.entityId, '/path/to/screenshot.png');
+    });
+
+    test(
+      'buildAiRecognitionCommand 会读取纯文本文件内容而非把路径当作文本，且拦截不支持的文件扩展名',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'island_ai_test_',
+        );
+        try {
+          final mdFile = File('${tempDir.path}/notes.md');
+          await mdFile.writeAsString('明天上午10点提交周报');
+
+          final textCommand =
+              await MacPomodoroStatusBarService.buildAiRecognitionCommand({
+                'path': mdFile.path,
+                'text': '',
+                'isImage': false,
+              });
+          expect(textCommand, isNotNull);
+          expect(textCommand!.entityKind, 'text');
+          expect(textCommand.entityId, '明天上午10点提交周报');
+
+          final binaryCommand =
+              await MacPomodoroStatusBarService.buildAiRecognitionCommand({
+                'path': '${tempDir.path}/archive.zip',
+                'text': '',
+                'isImage': false,
+              });
+          expect(binaryCommand, isNotNull);
+          expect(binaryCommand!.entityKind, 'file');
+          expect(binaryCommand.entityId, '${tempDir.path}/archive.zip');
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
 
     test('日历日差不受 23 小时夏令日影响', () {
       final start = DateTime.utc(2026, 3, 8, 5);

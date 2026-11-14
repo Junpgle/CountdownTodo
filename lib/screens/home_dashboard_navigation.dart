@@ -446,7 +446,93 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
         await _startIslandEntityFocus(command.entityKind, command.entityId);
       case MacIslandCommandType.completeTodo:
         await _completeIslandTodo(command.entityId);
+      case MacIslandCommandType.aiRecognize:
+        await _handleIslandAiRecognition(command.entityKind, command.entityId);
     }
+  }
+
+  Future<void> _handleIslandAiRecognition(
+    String kind,
+    String pathOrText,
+  ) async {
+    if (!mounted || pathOrText.trim().isEmpty) return;
+    final isImage = kind == 'image' || _isLikelyImageFilePath(pathOrText);
+    if (!isImage && kind == 'file') {
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('暂不支持直接识别该文件格式')),
+      );
+      return;
+    }
+
+    AiRecognitionHandle? handle;
+    try {
+      if (isImage) {
+        handle = await AiRecognitionChatBridge.startImage(
+          pathOrText,
+          recognizer: '灵动岛识别',
+        );
+      } else {
+        handle = await AiRecognitionChatBridge.startText(
+          pathOrText,
+          recognizer: '灵动岛识别',
+        );
+      }
+    } catch (_) {}
+
+    try {
+      List<Map<String, dynamic>> results;
+      if (isImage) {
+        final rawResults = await LLMService.parseTodoFromImage(pathOrText);
+        results = RecognizedTodoAdapter.normalizeImageResults(rawResults);
+      } else {
+        final rawResults = await LLMService.parseTodoWithLLM(pathOrText);
+        results = RecognizedTodoAdapter.normalizeResults(rawResults);
+      }
+
+      if (handle != null) {
+        await AiRecognitionChatBridge.complete(handle, todoResults: results);
+      }
+
+      if (results.isNotEmpty && mounted) {
+        await _navigateToTodoConfirm(
+          results,
+          isImage ? pathOrText : null,
+          isImage ? null : pathOrText,
+        );
+      } else if (mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(content: Text('未能从内容中识别出待办事项')),
+        );
+      }
+    } catch (e) {
+      if (handle != null) {
+        await AiRecognitionChatBridge.fail(handle, e.toString());
+      }
+      if (mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(content: Text('灵动岛 AI 识别失败: $e')),
+        );
+      }
+    }
+  }
+
+  bool _isLikelyImageFilePath(String path) {
+    final dot = path.lastIndexOf('.');
+    if (dot == -1) return false;
+    final ext = path.substring(dot + 1).toLowerCase();
+    return const {
+      'png',
+      'jpg',
+      'jpeg',
+      'webp',
+      'gif',
+      'heic',
+      'tiff',
+      'bmp',
+    }.contains(ext);
   }
 
   Future<void> _openIslandEntity(String kind, String id) async {

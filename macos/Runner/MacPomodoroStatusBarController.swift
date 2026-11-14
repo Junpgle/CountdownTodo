@@ -8,6 +8,12 @@ import CoreAudio
 import CoreServices
 import Darwin
 import SQLite3
+import QuickLook
+import QuickLookThumbnailing
+import QuickLookUI
+import PDFKit
+import UniformTypeIdentifiers
+import Vision
 
 
 private let islandVisibilityHotKeySignature: OSType = 0x43445449 // "CDTI"
@@ -1585,10 +1591,576 @@ private func islandVisibilityHotKeyHandler(
     return noErr
 }
 
+fileprivate var cdtAppIconImage: NSImage {
+    if let icon = NSApp.applicationIconImage {
+        return icon
+    }
+    return NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath)
+}
+
+fileprivate func localizedMusicAppName(for rawName: String, bundleId: String) -> String {
+    let lower = (bundleId + " " + rawName).lowercased()
+    if lower.contains("163") || lower.contains("netease") {
+        return "网易云音乐"
+    }
+    if lower.contains("qqmusic") || lower.contains("tencent") {
+        return "QQ音乐"
+    }
+    if lower.contains("apple") || (lower.contains("music") && bundleId == "com.apple.Music") {
+        return "Apple Music"
+    }
+    if lower.contains("spotify") {
+        return "Spotify"
+    }
+    if lower.contains("kugou") {
+        return "酷狗音乐"
+    }
+    if lower.contains("kuwo") {
+        return "酷我音乐"
+    }
+    if lower.contains("iina") {
+        return "IINA"
+    }
+    if lower.contains("vlc") {
+        return "VLC"
+    }
+    return rawName.isEmpty ? "音乐播放器" : rawName
+}
+
+fileprivate func detectPlayingMusicApp(bundleIdentifier: String) -> (name: String, icon: NSImage?, bundleId: String) {
+    var targetBundleId = bundleIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
+    
+    if targetBundleId.isEmpty {
+        let knownMusicBundles = [
+            "com.netease.163music",
+            "com.apple.Music",
+            "com.tencent.QQMusicMac",
+            "com.kugou.mac",
+            "com.kuwo.mac",
+            "com.spotify.client",
+            "com.colliderli.iina",
+            "org.videolan.vlc"
+        ]
+        for candidate in knownMusicBundles {
+            if !NSRunningApplication.runningApplications(withBundleIdentifier: candidate).isEmpty {
+                targetBundleId = candidate
+                break
+            }
+        }
+    }
+    
+    if !targetBundleId.isEmpty,
+       let runningApp = NSRunningApplication.runningApplications(withBundleIdentifier: targetBundleId).first {
+        let rawName = runningApp.localizedName ?? ""
+        let friendlyName = localizedMusicAppName(for: rawName, bundleId: targetBundleId)
+        let icon = runningApp.icon ?? (NSWorkspace.shared.urlForApplication(withBundleIdentifier: targetBundleId).map { NSWorkspace.shared.icon(forFile: $0.path) })
+        return (friendlyName, icon, targetBundleId)
+    }
+    
+    if !targetBundleId.isEmpty,
+       let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: targetBundleId) {
+        let rawName = FileManager.default.displayName(atPath: appURL.path)
+            .replacingOccurrences(of: ".app", with: "")
+        let friendlyName = localizedMusicAppName(for: rawName, bundleId: targetBundleId)
+        let icon = NSWorkspace.shared.icon(forFile: appURL.path)
+        return (friendlyName, icon, targetBundleId)
+    }
+    
+    return ("音乐播放器", nil, "")
+}
+
+fileprivate func systemIcon(forFilePath path: String, fileExtension: String) -> NSImage {
+    if !path.isEmpty && FileManager.default.fileExists(atPath: path) {
+        return NSWorkspace.shared.icon(forFile: path)
+    }
+    let lower = fileExtension.lowercased()
+    if #available(macOS 12.0, *), let uti = UTType(filenameExtension: lower) {
+        return NSWorkspace.shared.icon(for: uti)
+    }
+    if #available(macOS 12.0, *) {
+        return NSWorkspace.shared.icon(for: .data)
+    } else {
+        return NSWorkspace.shared.icon(forFileType: lower)
+    }
+}
+
+fileprivate func generateThumbnailForURL(_ url: URL, completion: @escaping (NSImage?) -> Void) {
+    let ext = url.pathExtension.lowercased()
+    let imageExts: Set<String> = ["png", "jpg", "jpeg", "webp", "gif", "heic", "tiff", "bmp"]
+    if imageExts.contains(ext), let img = NSImage(contentsOf: url) {
+        completion(img)
+        return
+    }
+
+    let fallback = systemIcon(forFilePath: url.path, fileExtension: url.pathExtension)
+    let size = CGSize(width: 120, height: 120)
+    let scale = NSScreen.main?.backingScaleFactor ?? 2.0
+    let request = QLThumbnailGenerator.Request(
+        fileAt: url,
+        size: size,
+        scale: scale,
+        representationTypes: .thumbnail
+    )
+    QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { rep, _ in
+        if let rep = rep {
+            DispatchQueue.main.async { completion(rep.nsImage) }
+        } else {
+            DispatchQueue.main.async { completion(fallback) }
+        }
+    }
+}
+
+enum MacShelfItemType: String, Codable {
+    case file
+    case image
+    case audio
+    case video
+    case document
+    case textSnippet
+    case folder
+
+    static func detect(url: URL) -> MacShelfItemType {
+        var isDir: ObjCBool = false
+        if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
+            return .folder
+        }
+        let ext = url.pathExtension.lowercased()
+        let imageExts: Set<String> = ["png", "jpg", "jpeg", "webp", "gif", "heic", "tiff", "bmp", "svg", "ico"]
+        let videoExts: Set<String> = ["mp4", "mov", "m4v", "avi", "mkv", "webm"]
+        let audioExts: Set<String> = ["mp3", "m4a", "wav", "flac", "aac", "ogg"]
+        let docExts: Set<String> = ["pdf", "doc", "docx", "pages", "xls", "xlsx", "numbers", "ppt", "pptx", "key", "txt", "md", "csv", "json"]
+
+        if imageExts.contains(ext) { return .image }
+        if videoExts.contains(ext) { return .video }
+        if audioExts.contains(ext) { return .audio }
+        if docExts.contains(ext) { return .document }
+        return .file
+    }
+
+    var systemIconName: String {
+        switch self {
+        case .folder: return "folder.fill"
+        case .image: return "photo.fill"
+        case .video: return "film.fill"
+        case .audio: return "music.note"
+        case .document: return "doc.text.fill"
+        case .textSnippet: return "note.text"
+        case .file: return "doc.fill"
+        }
+    }
+}
+
+fileprivate struct MacShelfPersistedRecord: Codable {
+    let id: String
+    let bookmarkDataBase64: String
+    let fallbackPath: String
+    let name: String
+    let fileExtension: String
+    let fileSize: Int64
+    let formattedSize: String
+    let contentType: String
+    let createdAtTimestamp: Double
+    let textSnippet: String?
+}
+
+final class MacShelfItem: Identifiable, ObservableObject, Equatable {
+    let id: String
+    var url: URL
+    let bookmarkData: Data?
+    let name: String
+    let fileExtension: String
+    let fileSize: Int64
+    let formattedSize: String
+    let contentType: MacShelfItemType
+    @Published var thumbnail: NSImage?
+    let createdAt: Date
+    @Published var isAvailable: Bool
+    var textSnippet: String?
+
+    init(
+        id: String = UUID().uuidString,
+        url: URL,
+        bookmarkData: Data?,
+        name: String,
+        fileExtension: String,
+        fileSize: Int64,
+        formattedSize: String,
+        contentType: MacShelfItemType,
+        thumbnail: NSImage? = nil,
+        createdAt: Date = Date(),
+        isAvailable: Bool = true,
+        textSnippet: String? = nil
+    ) {
+        self.id = id
+        self.url = url
+        self.bookmarkData = bookmarkData
+        self.name = name
+        self.fileExtension = fileExtension
+        self.fileSize = fileSize
+        self.formattedSize = formattedSize
+        self.contentType = contentType
+        self.thumbnail = thumbnail
+        self.createdAt = createdAt
+        self.isAvailable = isAvailable
+        self.textSnippet = textSnippet
+    }
+
+    static func == (lhs: MacShelfItem, rhs: MacShelfItem) -> Bool {
+        lhs.id == rhs.id && lhs.url == rhs.url && lhs.isAvailable == rhs.isAvailable
+    }
+
+    static let recognizableFileExtensions: Set<String> = [
+        "pdf", "txt", "md", "markdown", "csv", "json", "log",
+        "yaml", "yml", "xml", "html", "htm", "rtf", "doc", "docx"
+    ]
+
+    static let recognizableImageExtensions: Set<String> = [
+        "png", "jpg", "jpeg", "webp", "gif", "heic", "tiff", "bmp", "svg", "ico"
+    ]
+
+    static func isAiRecognizableFileURL(_ url: URL) -> Bool {
+        let ext = url.pathExtension.lowercased()
+        return recognizableImageExtensions.contains(ext) || recognizableFileExtensions.contains(ext)
+    }
+
+    var isAiRecognizable: Bool {
+        switch contentType {
+        case .image, .textSnippet:
+            return true
+        case .document, .file:
+            return Self.recognizableFileExtensions.contains(fileExtension.lowercased())
+        default:
+            return false
+        }
+    }
+}
+
+private func formatShelfFileSize(_ bytes: Int64) -> String {
+    if bytes <= 0 { return "0 B" }
+    if bytes < 1024 { return "\(bytes) B" }
+    let kb = Double(bytes) / 1024.0
+    if kb < 1024 { return String(format: "%.1f KB", kb) }
+    let mb = kb / 1024.0
+    if mb < 1024 { return String(format: "%.1f MB", mb) }
+    let gb = mb / 1024.0
+    return String(format: "%.2f GB", gb)
+}
+
+final class MacShelfManager: ObservableObject {
+    static let shared = MacShelfManager()
+
+    @Published var items: [MacShelfItem] = []
+    var onItemsChanged: (([MacShelfItem]) -> Void)?
+    private var undoStack: [MacShelfItem] = []
+    private let queue = DispatchQueue(label: "me.junpgle.countdowntodo.macShelfManager", qos: .utility)
+
+    var canUndo: Bool {
+        !undoStack.isEmpty
+    }
+
+    private var storageDirectory: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dir = appSupport.appendingPathComponent("CountdownTodo/IslandShelf", isDirectory: true)
+        if !FileManager.default.fileExists(atPath: dir.path) {
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: nil)
+        }
+        return dir
+    }
+
+    private var snippetsDirectory: URL {
+        let dir = storageDirectory.appendingPathComponent("Snippets", isDirectory: true)
+        if !FileManager.default.fileExists(atPath: dir.path) {
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: nil)
+        }
+        return dir
+    }
+
+    private var jsonFileURL: URL {
+        storageDirectory.appendingPathComponent("shelf_items.json")
+    }
+
+    private init() {
+        loadPersistedItems()
+    }
+
+    func loadPersistedItems() {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            guard FileManager.default.fileExists(atPath: self.jsonFileURL.path),
+                  let data = try? Data(contentsOf: self.jsonFileURL),
+                  let records = try? JSONDecoder().decode([MacShelfPersistedRecord].self, from: data) else {
+                return
+            }
+
+            var loaded: [MacShelfItem] = []
+            var didRefreshBookmark = false
+            for record in records {
+                var resolvedURL: URL?
+                var isStale = false
+                let storedBookmarkData = Data(base64Encoded: record.bookmarkDataBase64)
+                var resolvedBookmarkData = storedBookmarkData
+                if let bookmarkData = storedBookmarkData {
+                    resolvedURL = (try? URL(
+                        resolvingBookmarkData: bookmarkData,
+                        options: [.withSecurityScope],
+                        relativeTo: nil,
+                        bookmarkDataIsStale: &isStale
+                    )) ?? (try? URL(
+                        resolvingBookmarkData: bookmarkData,
+                        options: [],
+                        relativeTo: nil,
+                        bookmarkDataIsStale: &isStale
+                    ))
+                    if let resolved = resolvedURL {
+                        _ = resolved.startAccessingSecurityScopedResource()
+                        if isStale {
+                            let refreshed = (try? resolved.bookmarkData(
+                                options: [.withSecurityScope],
+                                includingResourceValuesForKeys: nil,
+                                relativeTo: nil
+                            )) ?? (try? resolved.bookmarkData(
+                                options: [],
+                                includingResourceValuesForKeys: nil,
+                                relativeTo: nil
+                            ))
+                            if let refreshed = refreshed {
+                                resolvedBookmarkData = refreshed
+                                didRefreshBookmark = true
+                            }
+                        }
+                    }
+                }
+                let fileURL = resolvedURL ?? URL(fileURLWithPath: record.fallbackPath)
+                let exists = FileManager.default.fileExists(atPath: fileURL.path)
+                let type = MacShelfItemType(rawValue: record.contentType) ?? .file
+                let item = MacShelfItem(
+                    id: record.id,
+                    url: fileURL,
+                    bookmarkData: resolvedBookmarkData,
+                    name: record.name,
+                    fileExtension: record.fileExtension,
+                    fileSize: record.fileSize,
+                    formattedSize: record.formattedSize,
+                    contentType: type,
+                    thumbnail: systemIcon(forFilePath: fileURL.path, fileExtension: record.fileExtension),
+                    createdAt: Date(timeIntervalSince1970: record.createdAtTimestamp),
+                    isAvailable: exists,
+                    textSnippet: record.textSnippet
+                )
+                loaded.append(item)
+                if exists {
+                    self.generateThumbnail(for: item)
+                }
+            }
+
+            DispatchQueue.main.async {
+                self.items = loaded
+                if didRefreshBookmark {
+                    self.savePersistedItems()
+                }
+                self.onItemsChanged?(self.items)
+            }
+        }
+    }
+
+    func savePersistedItems() {
+        let currentItems = self.items
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            let records = currentItems.map { item -> MacShelfPersistedRecord in
+                let b64 = item.bookmarkData?.base64EncodedString() ?? ""
+                return MacShelfPersistedRecord(
+                    id: item.id,
+                    bookmarkDataBase64: b64,
+                    fallbackPath: item.url.path,
+                    name: item.name,
+                    fileExtension: item.fileExtension,
+                    fileSize: item.fileSize,
+                    formattedSize: item.formattedSize,
+                    contentType: item.contentType.rawValue,
+                    createdAtTimestamp: item.createdAt.timeIntervalSince1970,
+                    textSnippet: item.textSnippet
+                )
+            }
+            if let data = try? JSONEncoder().encode(records) {
+                try? data.write(to: self.jsonFileURL, options: .atomic)
+            }
+        }
+    }
+
+    private func insertItem(_ item: MacShelfItem) {
+        let apply = {
+            self.items.insert(item, at: 0)
+            self.savePersistedItems()
+            self.onItemsChanged?(self.items)
+        }
+        if Thread.isMainThread {
+            apply()
+        } else {
+            DispatchQueue.main.async(execute: apply)
+        }
+    }
+
+    @discardableResult
+    func addURLs(_ urls: [URL]) -> [MacShelfItem] {
+        urls.compactMap { addURL($0) }
+    }
+
+    @discardableResult
+    func addURL(_ url: URL) -> MacShelfItem? {
+        if let existing = items.first(where: { $0.url.standardizedFileURL.path == url.standardizedFileURL.path }) {
+            return existing
+        }
+
+        let name = url.lastPathComponent
+        let ext = url.pathExtension
+        let type = MacShelfItemType.detect(url: url)
+
+        var size: Int64 = 0
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path) {
+            size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
+        }
+
+        let bookmark = (try? url.bookmarkData(
+            options: [.withSecurityScope],
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        )) ?? (try? url.bookmarkData(
+            options: [],
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        ))
+
+        let item = MacShelfItem(
+            url: url,
+            bookmarkData: bookmark,
+            name: name,
+            fileExtension: ext,
+            fileSize: size,
+            formattedSize: formatShelfFileSize(size),
+            contentType: type,
+            thumbnail: systemIcon(forFilePath: url.path, fileExtension: ext),
+            createdAt: Date(),
+            isAvailable: true
+        )
+
+        insertItem(item)
+        generateThumbnail(for: item)
+        return item
+    }
+
+    @discardableResult
+    func addScreenshot(_ image: NSImage) -> MacShelfItem? {
+        let id = UUID().uuidString
+        let fileURL = snippetsDirectory.appendingPathComponent("screenshot_\(id).png")
+        guard let tiffData = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiffData),
+              let pngData = bitmap.representation(using: .png, properties: [:]) else {
+            return nil
+        }
+        try? pngData.write(to: fileURL, options: .atomic)
+        let size = Int64(pngData.count)
+        let bookmark = try? fileURL.bookmarkData()
+        let item = MacShelfItem(
+            id: id,
+            url: fileURL,
+            bookmarkData: bookmark,
+            name: "截图 \(DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)).png",
+            fileExtension: "png",
+            fileSize: size,
+            formattedSize: formatShelfFileSize(size),
+            contentType: .image,
+            thumbnail: image,
+            createdAt: Date(),
+            isAvailable: true
+        )
+
+        insertItem(item)
+        return item
+    }
+
+    @discardableResult
+    func addTextSnippet(_ text: String) -> MacShelfItem? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let id = UUID().uuidString
+        let fileURL = snippetsDirectory.appendingPathComponent("note_\(id).txt")
+        try? trimmed.write(to: fileURL, atomically: true, encoding: .utf8)
+        let size = Int64(trimmed.utf8.count)
+        let firstLine = trimmed.components(separatedBy: .newlines).first ?? "便签"
+        let displayName = String(firstLine.prefix(20)) + ".txt"
+        let bookmark = try? fileURL.bookmarkData()
+        let item = MacShelfItem(
+            id: id,
+            url: fileURL,
+            bookmarkData: bookmark,
+            name: displayName,
+            fileExtension: "txt",
+            fileSize: size,
+            formattedSize: formatShelfFileSize(size),
+            contentType: .textSnippet,
+            thumbnail: systemIcon(forFilePath: "", fileExtension: "txt"),
+            createdAt: Date(),
+            isAvailable: true,
+            textSnippet: trimmed
+        )
+
+        insertItem(item)
+        return item
+    }
+
+    func removeItem(id: String) {
+        if let idx = items.firstIndex(where: { $0.id == id }) {
+            let removed = items.remove(at: idx)
+            undoStack.append(removed)
+            savePersistedItems()
+            onItemsChanged?(items)
+        }
+    }
+
+    func undoRemove() {
+        guard let last = undoStack.popLast() else { return }
+        items.insert(last, at: 0)
+        savePersistedItems()
+        onItemsChanged?(items)
+    }
+
+    func clearAll() {
+        guard !items.isEmpty else { return }
+        undoStack.append(contentsOf: items)
+        items.removeAll()
+        savePersistedItems()
+        onItemsChanged?(items)
+    }
+
+    private func generateThumbnail(for item: MacShelfItem) {
+        if item.thumbnail == nil {
+            item.thumbnail = systemIcon(forFilePath: item.url.path, fileExtension: item.fileExtension)
+        }
+        let size = CGSize(width: 120, height: 120)
+        let scale = NSScreen.main?.backingScaleFactor ?? 2.0
+        let request = QLThumbnailGenerator.Request(
+            fileAt: item.url,
+            size: size,
+            scale: scale,
+            representationTypes: .thumbnail
+        )
+        QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { [weak item] rep, _ in
+            guard let rep = rep else { return }
+            DispatchQueue.main.async {
+                item?.thumbnail = rep.nsImage
+            }
+        }
+    }
+}
 
 private final class MacIslandHostingView: NSHostingView<AnyView> {
     var onMouseEntered: (() -> Void)?
     var onMouseExited: (() -> Void)?
+    var onDraggingEntered: ((NSDraggingInfo) -> NSDragOperation)?
+    var onDraggingUpdated: ((NSDraggingInfo, NSPoint, NSRect) -> NSDragOperation)?
+    var onDraggingExited: ((NSDraggingInfo?) -> Void)?
+    var onPerformDragOperation: ((NSDraggingInfo) -> Bool)?
     
     private var trackingArea: NSTrackingArea?
     
@@ -1599,6 +2171,13 @@ private final class MacIslandHostingView: NSHostingView<AnyView> {
         // 窗口高度动画时不要缩放一张旧的居中快照，否则顶部会短暂
         // 离开菜单栏。逐帧重绘可以让新增高度只向下显露。
         self.layerContentsRedrawPolicy = .duringViewResize
+        registerForDraggedTypes([
+            .fileURL,
+            .string,
+            .png,
+            .tiff,
+            .rtf
+        ])
     }
 
     // 灵动岛本身已经按真实刘海高度预留了 topInset。NSHostingView 再
@@ -1634,11 +2213,50 @@ private final class MacIslandHostingView: NSHostingView<AnyView> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
         true
     }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        onDraggingEntered?(sender) ?? []
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        let location = convert(sender.draggingLocation, from: nil)
+        return onDraggingUpdated?(sender, location, bounds) ?? []
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        onDraggingExited?(sender)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        onPerformDragOperation?(sender) ?? false
+    }
 }
 
 private final class MacIslandPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+
+    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool {
+        true
+    }
+
+    override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        panel.dataSource = MacPomodoroStatusBarController.shared
+        panel.delegate = MacPomodoroStatusBarController.shared
+    }
+
+    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 49 { // Spacebar for QuickLook
+            if let item = MacShelfManager.shared.items.first {
+                MacPomodoroStatusBarController.shared.toggleQuickLook(for: item.url)
+                return
+            }
+        }
+        super.keyDown(with: event)
+    }
 }
 
 class IslandStateModel: ObservableObject {
@@ -1717,8 +2335,32 @@ class IslandStateModel: ObservableObject {
     @Published var nowPlayingPlaybackRate: Double = 0
     @Published var nowPlayingUpdatedAt = Date()
     @Published var nowPlayingIsPlaying = false
+    @Published var nowPlayingAppName = ""
+    @Published var nowPlayingAppIcon: NSImage?
     @Published fileprivate var nowPlayingLyrics: [MacLyricLine] = []
     @Published var revealHeight: CGFloat = 0
+
+    // MARK: - Shelf & Clipboard Extension
+    @Published var isDragActive: Bool = false
+    @Published var activeDropZone: Int = 0 // 0: none, 1: shelf, 2: aiTodo
+    @Published var shelfExpanded: Bool = false
+    @Published var shelfItems: [MacShelfItem] = []
+    @Published var shelfCanUndo: Bool = false
+    @Published var clipboardHasFiles: Bool = false
+    @Published var clipboardFileCount: Int = 0
+    @Published var clipboardFiles: [URL] = []
+    @Published var clipboardFirstFileName: String = ""
+    @Published var clipboardFirstFileExtension: String = ""
+    @Published var clipboardFirstFileSize: String = ""
+    @Published var clipboardFirstFileThumbnail: NSImage?
+    @Published var clipboardFirstFileIsAiRecognizable: Bool = false
+    @Published var clipboardHasImage: Bool = false
+    @Published var clipboardImage: NSImage?
+    @Published var clipboardHasText: Bool = false
+    @Published var clipboardText: String = ""
+    @Published var clipboardTextPreview: String = ""
+    @Published var clipboardTextExtension: String = "txt"
+    @Published var clipboardTextCharCount: Int = 0
 
     var onExpansionChanged: ((Bool, Bool) -> Void)?
     var onTodayTodosExpansionChanged: ((Bool) -> Void)?
@@ -1736,6 +2378,22 @@ class IslandStateModel: ObservableObject {
     var onPreviousTrack: (() -> Void)?
     var onToggleMediaPlayback: (() -> Void)?
     var onNextTrack: (() -> Void)?
+    var onOpenMusicApp: (() -> Void)?
+    var onAddShelfURLs: (([URL]) -> Void)?
+    var onRemoveShelfItem: ((String) -> Void)?
+    var onUndoRemoveShelfItem: (() -> Void)?
+    var onClearShelf: (() -> Void)?
+    var onTriggerAiRecognition: ((MacShelfItem) -> Void)?
+    var onPinClipboardFiles: (() -> Void)?
+    var onDismissClipboardFiles: (() -> Void)?
+    var onTriggerAiRecognitionForClipboardFiles: (() -> Void)?
+    var onPinClipboardImage: (() -> Void)?
+    var onTriggerAiRecognitionForClipboardImage: (() -> Void)?
+    var onDismissClipboardImage: (() -> Void)?
+    var onPinClipboardText: (() -> Void)?
+    var onTriggerAiRecognitionForClipboardText: (() -> Void)?
+    var onDismissClipboardText: (() -> Void)?
+    var onQuickLookItem: ((MacShelfItem) -> Void)?
 
     var isFocusActive: Bool {
         phase == "focusing" || phase == "breaking"
@@ -1890,7 +2548,9 @@ struct MacIslandSwiftUIView: View {
                         }
 
                         VStack(spacing: 0) {
-                            if model.expanded {
+                            if model.isDragActive {
+                                shelfDropZoneView
+                            } else if model.expanded {
                                 if model.isFocusActive {
                                     expandedFocusView
                                     if model.reminderActive {
@@ -1908,12 +2568,14 @@ struct MacIslandSwiftUIView: View {
                                     expandedActivityView
                                 }
 
-                                if model.nowPlayingActive && !model.isIdle {
-                                    nowPlayingCard.padding(.top, 12)
+                                if !model.shelfItems.isEmpty || model.clipboardHasFiles || model.clipboardHasImage || model.clipboardHasText {
+                                    if model.isFocusActive || model.reminderActive || model.clipboardLinkActive || hasActiveActivity {
+                                        shelfDrawerCard.padding(.top, 10)
+                                    }
                                 }
 
                                 if model.detailed && !model.isIdle {
-                                    overviewCards.padding(.top, 20)
+                                    overviewCards.padding(.top, 12)
                                 }
                             } else {
                                 if model.isFocusActive {
@@ -1935,8 +2597,8 @@ struct MacIslandSwiftUIView: View {
                                 }
                             }
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 20)
+                        .padding(.horizontal, 18)
+                        .padding(.bottom, 16)
                         .padding(.top, 8)
                     }
                 }
@@ -2067,29 +2729,47 @@ struct MacIslandSwiftUIView: View {
             Color.clear
                 .frame(width: max(model.notchWidth, 160))
 
-            VStack(alignment: .trailing, spacing: 1) {
-                if model.isFocusActive {
-                    Text(model.timeText)
-                        .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
-                        .foregroundColor(.white)
-                        .fixedSize(horizontal: true, vertical: true)
-                        .matchedGeometryEffect(
-                            id: "focusTimer",
-                            in: focusTimerNamespace,
-                            properties: .position,
-                            anchor: .center
-                        )
-                        .zIndex(10)
-                } else {
-                    Text(rightTopText)
-                        .font(.system(size: 11.5, weight: .semibold))
-                        .foregroundColor(.white)
+            HStack(spacing: 6) {
+                if !model.shelfItems.isEmpty
+                    && (model.isFocusActive || hasCompactPriorityActivity || compactHasMedia) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "paperclip")
+                            .font(.system(size: 8.5, weight: .bold))
+                            .foregroundColor(.cyan)
+                        Text("\(model.shelfItems.count)")
+                            .font(.system(size: 9.5, weight: .bold).monospacedDigit())
+                            .foregroundColor(.cyan)
+                    }
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(Color.cyan.opacity(0.18))
+                    .clipShape(Capsule())
+                }
+
+                VStack(alignment: .trailing, spacing: 1) {
+                    if model.isFocusActive {
+                        Text(model.timeText)
+                            .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
+                            .foregroundColor(.white)
+                            .fixedSize(horizontal: true, vertical: true)
+                            .matchedGeometryEffect(
+                                id: "focusTimer",
+                                in: focusTimerNamespace,
+                                properties: .position,
+                                anchor: .center
+                            )
+                            .zIndex(10)
+                    } else {
+                        Text(rightTopText)
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                    }
+                    Text(rightBottomText)
+                        .font(.system(size: 8.5, weight: .medium))
+                        .foregroundColor(.white.opacity(0.5))
                         .lineLimit(1)
                 }
-                Text(rightBottomText)
-                    .font(.system(size: 8.5, weight: .medium))
-                    .foregroundColor(.white.opacity(0.5))
-                    .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
@@ -2121,12 +2801,18 @@ struct MacIslandSwiftUIView: View {
         if compactHasMedia {
             return "music.note"
         }
+        if !model.shelfItems.isEmpty {
+            return "tray.full.fill"
+        }
         return "checklist"
     }
 
     private var compactLeadingIconColor: Color {
         if model.isFocusActive {
             return model.phase == "breaking" ? .blue : .orange
+        }
+        if !model.shelfItems.isEmpty && !hasCompactPriorityActivity && !compactHasMedia {
+            return .cyan
         }
         return hasCompactPriorityActivity ? .orange : .purple
     }
@@ -2137,6 +2823,9 @@ struct MacIslandSwiftUIView: View {
         }
         if compactHasMedia {
             return model.nowPlayingIsPlaying ? "播放中" : "已暂停"
+        }
+        if !model.shelfItems.isEmpty {
+            return "\(model.shelfItems.count) 个文件"
         }
         return "进行中"
     }
@@ -2150,6 +2839,9 @@ struct MacIslandSwiftUIView: View {
                 ? (model.activityActive ? "待办" : "待处理")
                 : activityKindLabel(compactPriorityActivityKind)
         }
+        if !model.shelfItems.isEmpty && !compactHasMedia {
+            return "中转暂存"
+        }
         return compactHasMedia ? "音乐" : compactStatusText
     }
 
@@ -2162,6 +2854,9 @@ struct MacIslandSwiftUIView: View {
         }
         if compactHasMedia {
             return model.nowPlayingTitle
+        }
+        if !model.shelfItems.isEmpty {
+            return "中转暂存"
         }
         return "CountDownTodo"
     }
@@ -2177,6 +2872,9 @@ struct MacIslandSwiftUIView: View {
         }
         if compactHasMedia {
             return nowPlayingSubtitle
+        }
+        if !model.shelfItems.isEmpty {
+            return "已暂存 \(model.shelfItems.count) 项 · 随时拖出"
         }
         return "当前事项"
     }
@@ -2236,8 +2934,8 @@ struct MacIslandSwiftUIView: View {
     }
 
     private var showsCompactContent: Bool {
-        // 有实时活动时展示两侧内容；只有空闲概览或暂停媒体时才收回原刘海尺寸。
-        return !model.isIdle
+        // 有实时活动或暂存文件时展示两侧内容；只有完全空闲时才收回原刘海尺寸。
+        return !model.isIdle || !model.shelfItems.isEmpty
     }
 
     private var focusTagSummary: String {
@@ -2354,57 +3052,57 @@ struct MacIslandSwiftUIView: View {
 
     
     var overviewCards: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 8) {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text("今日专注")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 10.5, weight: .medium))
                         .foregroundColor(.white.opacity(0.5))
                     Spacer()
                     Text(model.overviewLoaded
                          ? "\(model.todayFocusDisplayCount) 次"
                          : "同步中")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 10.5, weight: .medium))
                         .foregroundColor(.white.opacity(0.5))
                 }
                 .frame(height: 14)
                 
                 Text(model.overviewLoaded ? model.todayFocusDurationText : "—")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: 13.5, weight: .bold))
                     .foregroundColor(Color(red: 1.0, green: 0.6, blue: 0.0))
                     .frame(height: 18)
             }
-            .padding(14)
+            .padding(10)
             .frame(maxWidth: .infinity)
             .background(Color.white.opacity(0.06))
-            .cornerRadius(12)
+            .cornerRadius(11)
             
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text(!model.overviewLoaded || model.countdownTitle.isEmpty
                          ? "倒数日"
                          : model.countdownTitle)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 10.5, weight: .medium))
                         .foregroundColor(.white.opacity(0.5))
                         .lineLimit(1)
                     Spacer()
                     Text(model.overviewLoaded ? model.countdownDateText : "同步中")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 10.5, weight: .medium))
                         .foregroundColor(.white.opacity(0.5))
                 }
                 .frame(height: 14)
                 
                 Text(model.overviewLoaded ? model.countdownRemainingText : "—")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: 13.5, weight: .bold))
                     .foregroundColor(Color.purple)
                     .frame(height: 18)
             }
-            .padding(14)
+            .padding(10)
             .frame(maxWidth: .infinity)
             .background(Color.white.opacity(0.06))
-            .cornerRadius(12)
+            .cornerRadius(11)
         }
-        .frame(height: 68)
+        .frame(height: 56)
     }
 
     var nowPlayingCard: some View {
@@ -2417,25 +3115,25 @@ struct MacIslandSwiftUIView: View {
                             .scaledToFill()
                     } else {
                         ZStack {
-                            RoundedRectangle(cornerRadius: 9)
+                            RoundedRectangle(cornerRadius: 8)
                                 .fill(Color.white.opacity(0.08))
                             Image(systemName: "music.note")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.system(size: 15, weight: .semibold))
                                 .foregroundColor(.white.opacity(0.65))
                         }
                     }
                 }
-                .frame(width: 42, height: 42)
-                .clipShape(RoundedRectangle(cornerRadius: 9))
+                .frame(width: 38, height: 38)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(model.nowPlayingTitle)
-                        .font(.system(size: 12.5, weight: .semibold))
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.white)
                         .lineLimit(1)
 
                     Text(nowPlayingSubtitle)
-                        .font(.system(size: 10.5, weight: .medium))
+                        .font(.system(size: 10, weight: .medium))
                         .foregroundColor(.white.opacity(0.48))
                         .lineLimit(1)
 
@@ -2460,7 +3158,7 @@ struct MacIslandSwiftUIView: View {
                 }
             }
             .padding(.horizontal, 10)
-            .frame(height: 64)
+            .frame(height: 52)
 
             if !model.nowPlayingLyrics.isEmpty {
                 Rectangle()
@@ -2471,9 +3169,9 @@ struct MacIslandSwiftUIView: View {
                 nowPlayingLyricsView
             }
         }
-        .frame(height: model.nowPlayingLyrics.isEmpty ? 64 : 104)
-        .background(Color.white.opacity(0.07))
-        .cornerRadius(12)
+        .frame(height: model.nowPlayingLyrics.isEmpty ? 52 : 92)
+        .background(Color.white.opacity(0.06))
+        .cornerRadius(11)
     }
 
     @ViewBuilder
@@ -2588,19 +3286,138 @@ struct MacIslandSwiftUIView: View {
 
     private func mediaControlButton(
         systemName: String,
+        size: CGFloat = 10.5,
+        buttonSize: CGFloat = 26,
         emphasized: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 10.5, weight: .semibold))
+                .font(.system(size: size, weight: .semibold))
                 .foregroundColor(.white)
-                .frame(width: 27, height: 27)
+                .frame(width: buttonSize, height: buttonSize)
                 .background(Color.white.opacity(emphasized ? 0.16 : 0.06))
                 .clipShape(Circle())
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
+    }
+
+    private var compactNowPlayingBar: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    ZStack(alignment: .bottomTrailing) {
+                        Group {
+                            if let artwork = model.nowPlayingArtwork {
+                                Image(nsImage: artwork)
+                                    .resizable()
+                                    .scaledToFill()
+                            } else {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(Color.white.opacity(0.08))
+                                    Image(systemName: "music.note")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(.white.opacity(0.7))
+                                }
+                            }
+                        }
+                        .frame(width: 28, height: 28)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                        if let appIcon = model.nowPlayingAppIcon {
+                            Image(nsImage: appIcon)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 11, height: 11)
+                                .clipShape(RoundedRectangle(cornerRadius: 2.5))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 2.5)
+                                        .stroke(Color.black.opacity(0.65), lineWidth: 0.8)
+                                    )
+                                    .offset(x: 2.5, y: 2.5)
+                            }
+                        }
+                        .frame(width: 30, height: 30)
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            HStack(spacing: 3) {
+                                Text(model.nowPlayingTitle)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                                Image(systemName: "arrow.up.forward")
+                                    .font(.system(size: 7.5, weight: .bold))
+                                    .foregroundColor(.white.opacity(0.45))
+                            }
+
+                            HStack(spacing: 4) {
+                                if !model.nowPlayingAppName.isEmpty {
+                                    Text(model.nowPlayingAppName)
+                                        .font(.system(size: 8.5, weight: .semibold))
+                                        .foregroundColor(.white.opacity(0.85))
+                                        .padding(.horizontal, 3.5)
+                                        .padding(.vertical, 0.5)
+                                        .background(Color.white.opacity(0.12))
+                                        .cornerRadius(3)
+                                }
+                                Text(nowPlayingSubtitle)
+                                    .font(.system(size: 9.5))
+                                    .foregroundColor(.white.opacity(0.48))
+                                    .lineLimit(1)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        model.onOpenMusicApp?()
+                    }
+                    .help("打开 \(model.nowPlayingAppName)")
+
+                HStack(spacing: 3) {
+                    mediaControlButton(
+                        systemName: "backward.fill",
+                        size: 8.5,
+                        buttonSize: 22,
+                        action: { model.onPreviousTrack?() }
+                    )
+                    mediaControlButton(
+                        systemName: model.nowPlayingIsPlaying ? "pause.fill" : "play.fill",
+                        size: 10,
+                        buttonSize: 24,
+                        emphasized: true,
+                        action: { model.onToggleMediaPlayback?() }
+                    )
+                    mediaControlButton(
+                        systemName: "forward.fill",
+                        size: 8.5,
+                        buttonSize: 22,
+                        action: { model.onNextTrack?() }
+                    )
+                }
+            }
+            .padding(.horizontal, 9)
+            .frame(height: 38)
+
+            if !model.nowPlayingLyrics.isEmpty {
+                Rectangle()
+                    .fill(Color.white.opacity(0.07))
+                    .frame(height: 0.5)
+                    .padding(.horizontal, 8)
+
+                nowPlayingLyricsView
+                    .frame(height: 36)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        model.onOpenMusicApp?()
+                    }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .background(Color.white.opacity(0.06))
+        .cornerRadius(11)
     }
 
     var compactFocusView: some View {
@@ -2723,110 +3540,194 @@ struct MacIslandSwiftUIView: View {
     }
     
     var expandedFocusView: some View {
-        VStack(spacing: 0) {
-            HStack {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
                 let color = model.phase == "breaking" ? Color.blue : Color.purple
                 let title = model.phase == "breaking" ? "休息时间" : (model.isRemote ? "其他设备正在专注" : "正在专注")
                 Image(systemName: model.phase == "breaking" ? "cup.and.saucer.fill" : "hourglass.tophalf.filled")
                     .foregroundColor(color)
-                    .font(.system(size: 14))
+                    .font(.system(size: 13, weight: .semibold))
                 Text(title)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(.white)
                 Spacer()
                 Text(model.focusCycleText)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(color)
+
+                Button(action: { model.onOpenApp?() }) {
+                    HStack(spacing: 4) {
+                        Image(nsImage: cdtAppIconImage)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 12, height: 12)
+                            .cornerRadius(2.5)
+                        Text("打开 CDT")
+                            .font(.system(size: 11, weight: .medium))
+                        Image(systemName: "arrow.up.forward")
+                            .font(.system(size: 7.5, weight: .bold))
+                            .foregroundColor(.white.opacity(0.6))
+                    }
+                    .foregroundColor(.white.opacity(0.85))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3.5)
+                    .background(Color.white.opacity(0.12))
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("打开倒数待办 (CountdownTodo)")
             }
-            .frame(height: 20)
+            .frame(height: 22)
             .contentShape(Rectangle())
             .onTapGesture { toggleDetailed() }
-            
-            Text(model.timeText)
-                .font(.system(size: 42, weight: .bold).monospacedDigit())
-                .foregroundColor(.white)
-                .fixedSize(horizontal: true, vertical: true)
-                .matchedGeometryEffect(
-                    id: "focusTimer",
-                    in: focusTimerNamespace,
-                    properties: .position,
-                    anchor: .center
-                )
-                .zIndex(10)
-                .frame(maxWidth: .infinity, minHeight: 50, maxHeight: 50)
-                .padding(.top, 10)
-            
-            // 与收起态保持完全相同的内容，matched geometry 才不会在滑动中交叉换字。
-            let titleStr = compactContextTitle
-            Text(titleStr)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(.white)
-                .lineLimit(1)
-                .matchedGeometryEffect(
-                    id: "focusEventTitle",
-                    in: focusTimerNamespace,
-                    properties: .position,
-                    anchor: .center
-                )
-                .zIndex(9)
-                .frame(height: 20)
-                .padding(.top, 8)
-            
-            let device = model.sourceDeviceName.isEmpty ? (model.isRemote ? "其他设备" : "本机") : model.sourceDeviceName
-            let focusMeta = "\(device)  ·  \(model.focusEndText)  ·  \(model.focusPausedText)"
-            Text(focusMeta)
-                .font(.system(size: 13))
-                .foregroundColor(.white.opacity(0.6))
-                .frame(height: 16)
-                .padding(.top, 4)
-                
-            progressView
-                .padding(.top, 16)
-                .padding(.bottom, 16)
-            
-            if !focusTagSummary.isEmpty {
-                HStack(spacing: 8) {
-                    Text(focusTagSummary)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(.purple)
-                        .lineLimit(1)
-                        .matchedGeometryEffect(
-                            id: "focusTags",
-                            in: focusTimerNamespace,
-                            properties: .position,
-                            anchor: .center
-                        )
-                        .zIndex(8)
 
-                    if model.focusTagNames.count > 2 {
-                        Text(model.focusTagNames.dropFirst(2).joined(separator: " · "))
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.purple)
+            // 紧凑横向双栏专注卡片：左侧任务与标签，右侧计时与状态
+            VStack(spacing: 8) {
+                HStack(alignment: .center, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(compactContextTitle)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                            .matchedGeometryEffect(
+                                id: "focusEventTitle",
+                                in: focusTimerNamespace,
+                                properties: .position,
+                                anchor: .center
+                            )
+                            .zIndex(9)
+
+                        HStack(spacing: 6) {
+                            if !focusTagSummary.isEmpty {
+                                let tagText = model.focusTagNames.count > 2
+                                    ? "\(focusTagSummary) +\(model.focusTagNames.count - 2)"
+                                    : focusTagSummary
+                                Text(tagText)
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(model.phase == "breaking" ? .blue : .purple)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background((model.phase == "breaking" ? Color.blue : Color.purple).opacity(0.18))
+                                    .cornerRadius(5)
+                                    .lineLimit(1)
+                                    .matchedGeometryEffect(
+                                        id: "focusTags",
+                                        in: focusTimerNamespace,
+                                        properties: .position,
+                                        anchor: .center
+                                    )
+                                    .zIndex(8)
+                            }
+
+                            let device = model.sourceDeviceName.isEmpty ? (model.isRemote ? "其他设备" : "本机") : model.sourceDeviceName
+                            Text("\(device) · \(model.focusPausedText)")
+                                .font(.system(size: 11))
+                                .foregroundColor(.white.opacity(0.52))
+                                .lineLimit(1)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(model.timeText)
+                            .font(.system(size: 26, weight: .bold).monospacedDigit())
+                            .foregroundColor(.white)
+                            .fixedSize(horizontal: true, vertical: true)
+                            .matchedGeometryEffect(
+                                id: "focusTimer",
+                                in: focusTimerNamespace,
+                                properties: .position,
+                                anchor: .center
+                            )
+                            .zIndex(10)
+
+                        Text(model.focusEndText)
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundColor(.white.opacity(0.48))
                             .lineLimit(1)
                     }
                 }
-                    .frame(height: 16)
-                    .padding(.bottom, 16)
+
+                progressView
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color.white.opacity(0.06))
+            .cornerRadius(12)
+            .contentShape(Rectangle())
+            .onTapGesture { model.onOpenApp?() }
+            .help("点击打开倒数待办 (CountdownTodo)")
 
             if model.detailed {
                 if !model.focusNote.isEmpty {
                     Text(model.focusNote)
-                        .font(.system(size: 13))
+                        .font(.system(size: 12))
                         .foregroundColor(.white.opacity(0.8))
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(12)
-                        .background(Color.white.opacity(0.06))
+                        .padding(10)
+                        .background(Color.white.opacity(0.05))
                         .cornerRadius(8)
-                        .padding(.bottom, 16)
                 }
             }
             
-            HStack(spacing: 12) {
+            if model.nowPlayingActive {
                 if !model.isRemote {
+                    let mediaRowHeight: CGFloat = model.nowPlayingLyrics.isEmpty ? 38 : 74.5
+                    HStack(spacing: 10) {
+                        compactNowPlayingBar
+
+                        VStack(spacing: 6) {
+                            Button(action: { model.onTogglePause?() }) {
+                                Text(model.isPaused ? "继续" : "暂停")
+                                    .font(.system(size: 12.5, weight: .medium))
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .frame(height: model.nowPlayingLyrics.isEmpty ? 38 : 34)
+                            .background(Color.white.opacity(0.15))
+                            .cornerRadius(10)
+
+                            if !model.nowPlayingLyrics.isEmpty {
+                                Button(action: { model.onStop?() }) {
+                                    Text("结束")
+                                        .font(.system(size: 12.5, weight: .medium))
+                                        .foregroundColor(.white)
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .frame(height: 34)
+                                .background(Color.red.opacity(0.8))
+                                .cornerRadius(10)
+                            }
+                        }
+                        .frame(width: 75)
+
+                        if model.nowPlayingLyrics.isEmpty {
+                            Button(action: { model.onStop?() }) {
+                                Text("结束")
+                                    .font(.system(size: 12.5, weight: .medium))
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .frame(width: 75, height: 38)
+                            .background(Color.red.opacity(0.8))
+                            .cornerRadius(10)
+                        }
+                    }
+                    .frame(height: mediaRowHeight)
+                } else {
+                    compactNowPlayingBar
+                }
+            } else if !model.isRemote {
+                HStack(spacing: 10) {
                     Button(action: { model.onTogglePause?() }) {
                         Text(model.isPaused ? "继续" : "暂停")
-                            .font(.system(size: 14, weight: .medium))
+                            .font(.system(size: 13, weight: .medium))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .contentShape(Rectangle())
@@ -2834,11 +3735,11 @@ struct MacIslandSwiftUIView: View {
                     .buttonStyle(.plain)
                     .frame(height: 38)
                     .background(Color.white.opacity(0.15))
-                    .cornerRadius(12)
-                    
+                    .cornerRadius(11)
+
                     Button(action: { model.onStop?() }) {
                         Text("结束")
-                            .font(.system(size: 14, weight: .medium))
+                            .font(.system(size: 13, weight: .medium))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .contentShape(Rectangle())
@@ -2846,22 +3747,9 @@ struct MacIslandSwiftUIView: View {
                     .buttonStyle(.plain)
                     .frame(height: 38)
                     .background(Color.red.opacity(0.8))
-                    .cornerRadius(12)
-                } else {
-                    Button(action: { model.onOpenApp?() }) {
-                        Text("打开应用")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .frame(height: 38)
-                    .background(Color.white.opacity(0.15))
-                    .cornerRadius(12)
+                    .cornerRadius(11)
                 }
             }
-            .frame(height: 38)
         }
     }
     
@@ -2905,15 +3793,15 @@ struct MacIslandSwiftUIView: View {
             // Media playback also makes the compact island non-idle. It must
             // not make an empty activity payload render as an ongoing task.
             if !hasActiveActivity {
-                VStack(spacing: 12) {
+                VStack(spacing: 10) {
                     HStack(spacing: 10) {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundColor(.green)
-                            .font(.system(size: 17, weight: .semibold))
-                            .frame(width: 24)
-                        VStack(alignment: .leading, spacing: 3) {
+                            .font(.system(size: 16, weight: .semibold))
+                            .frame(width: 20)
+                        VStack(alignment: .leading, spacing: 2) {
                             Text("当前暂无进行中的事项")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.system(size: 13.5, weight: .semibold))
                                 .foregroundColor(.white)
                             Text(model.nextActivityTitle.isEmpty
                                  ? (model.todayTodos.isEmpty
@@ -2924,70 +3812,53 @@ struct MacIslandSwiftUIView: View {
                                 .foregroundColor(.white.opacity(0.5))
                         }
                         Spacer()
-                    }
 
-                    if !model.nextActivityTitle.isEmpty {
-                        Button(action: {
-                            if model.nextActivityId.isEmpty {
-                                model.onOpenApp?()
-                            } else {
-                                model.onOpenEntity?(model.nextActivityKind, model.nextActivityId)
+                        Button(action: { model.onOpenApp?() }) {
+                            HStack(spacing: 5) {
+                                Image(nsImage: cdtAppIconImage)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 14, height: 14)
+                                    .cornerRadius(3)
+                                Text("打开 CDT")
+                                    .font(.system(size: 11.5, weight: .medium))
+                                Image(systemName: "arrow.up.forward")
+                                    .font(.system(size: 9.5, weight: .semibold))
+                                    .foregroundColor(.white.opacity(0.7))
                             }
-                        }) {
-                            HStack(spacing: 10) {
-                                Image(systemName: activityIconName(model.nextActivityKind))
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(.orange)
-                                    .frame(width: 20)
-
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text("下一项 · \(activityKindLabel(model.nextActivityKind))")
-                                        .font(.system(size: 10.5, weight: .medium))
-                                        .foregroundColor(.white.opacity(0.45))
-                                    Text(model.nextActivityTitle)
-                                        .font(.system(size: 12.5, weight: .semibold))
-                                        .foregroundColor(.white)
-                                        .lineLimit(1)
-                                }
-
-                                Spacer(minLength: 8)
-
-                                VStack(alignment: .trailing, spacing: 3) {
-                                    Text(nextActivityStartText)
-                                        .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
-                                        .foregroundColor(.orange)
-                                    Text(nextActivityLeadText)
-                                        .font(.system(size: 10.5, weight: .medium))
-                                        .foregroundColor(.white.opacity(0.42))
-                                }
-                            }
-                            .padding(.horizontal, 12)
-                            .frame(maxWidth: .infinity, minHeight: 58, maxHeight: 58)
-                            .background(Color.white.opacity(0.07))
-                            .cornerRadius(11)
+                            .foregroundColor(.white.opacity(0.88))
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(Color.white.opacity(0.12))
+                            .cornerRadius(8)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .help("打开倒数待办 (CountdownTodo)")
+                    }
+                    .frame(height: 34)
+
+                    if !model.nextActivityTitle.isEmpty && !model.todayTodosExpanded {
+                        HStack(spacing: 10) {
+                            nextActivityCard
+                            todayTodosCard
+                        }
+                    } else {
+                        if !model.nextActivityTitle.isEmpty {
+                            nextActivityCard
+                        }
+                        todayTodosCard
                     }
 
-                    todayTodosCard
+                    if !model.shelfItems.isEmpty || model.clipboardHasFiles || model.clipboardHasImage || model.clipboardHasText {
+                        shelfDrawerCard
+                    }
 
-                    // 有下一项安排或待办时优先展示这些内容，媒体卡片放在后面。
                     if model.nowPlayingActive {
-                        nowPlayingCard
+                        compactNowPlayingBar
                     }
 
                     overviewCards
-
-                    Button(action: { model.onOpenApp?() }) {
-                        Text("打开应用")
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 36)
-                            .background(Color.white.opacity(0.15))
-                            .cornerRadius(11)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
                 }
             } else {
                 VStack(spacing: 0) {
@@ -3084,46 +3955,137 @@ struct MacIslandSwiftUIView: View {
                 .padding(.top, 10)
             }
 
-            HStack(spacing: 12) {
-                Button(action: {
-                    if model.activityId.isEmpty {
-                        model.onOpenApp?()
-                    } else {
-                        model.onOpenEntity?(model.activityKind, model.activityId)
-                    }
-                }) {
-                    Text("打开详情")
-                        .font(.system(size: 12.5, weight: .medium))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .contentShape(Rectangle())
+            let mediaRowHeight: CGFloat = model.nowPlayingActive
+                ? (model.nowPlayingLyrics.isEmpty ? 38 : 74.5)
+                : 38
+            HStack(spacing: 10) {
+                if model.nowPlayingActive {
+                    compactNowPlayingBar
                 }
-                .buttonStyle(.plain)
-                .frame(height: 36)
-                .background(Color.white.opacity(0.15))
-                .cornerRadius(11)
 
-                if canStartActivityFocus {
+                if model.nowPlayingActive && !model.nowPlayingLyrics.isEmpty && canStartActivityFocus {
+                    VStack(spacing: 6) {
+                        Button(action: {
+                            if model.activityId.isEmpty {
+                                model.onOpenApp?()
+                            } else {
+                                model.onOpenEntity?(model.activityKind, model.activityId)
+                            }
+                        }) {
+                            Text("打开详情")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .frame(height: 34)
+                        .background(Color.white.opacity(0.15))
+                        .cornerRadius(10)
+
+                        Button(action: {
+                            model.onStartFocus?(activityFocusKind, activityFocusId)
+                        }) {
+                            Text("开始专注")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .frame(height: 34)
+                        .background(Color.orange.opacity(0.85))
+                        .cornerRadius(10)
+                    }
+                    .frame(width: 75)
+                } else {
                     Button(action: {
-                        model.onStartFocus?(activityFocusKind, activityFocusId)
+                        if model.activityId.isEmpty {
+                            model.onOpenApp?()
+                        } else {
+                            model.onOpenEntity?(model.activityKind, model.activityId)
+                        }
                     }) {
-                        Text("开始专注")
-                            .font(.system(size: 12.5, weight: .medium))
+                        Text("打开详情")
+                            .font(.system(size: 12, weight: .medium))
                             .foregroundColor(.white)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .frame(maxWidth: model.nowPlayingActive ? (canStartActivityFocus ? 75 : 95) : .infinity, maxHeight: .infinity)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .frame(height: 36)
-                    .background(Color.orange.opacity(0.85))
+                    .frame(height: mediaRowHeight)
+                    .background(Color.white.opacity(0.15))
                     .cornerRadius(11)
+
+                    if canStartActivityFocus {
+                        Button(action: {
+                            model.onStartFocus?(activityFocusKind, activityFocusId)
+                        }) {
+                            Text("开始专注")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: model.nowPlayingActive ? 75 : .infinity, maxHeight: .infinity)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .frame(height: mediaRowHeight)
+                        .background(Color.orange.opacity(0.85))
+                        .cornerRadius(11)
+                    }
                 }
             }
-            .frame(height: 36)
+            .frame(height: mediaRowHeight)
             .padding(.top, 12)
                 }
             }
         }
+    }
+
+    private var nextActivityCard: some View {
+        Button(action: {
+            if model.nextActivityId.isEmpty {
+                model.onOpenApp?()
+            } else {
+                model.onOpenEntity?(model.nextActivityKind, model.nextActivityId)
+            }
+        }) {
+            HStack(spacing: 8) {
+                Image(systemName: activityIconName(model.nextActivityKind))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.orange)
+                    .frame(width: 18)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("下一项 · \(activityKindLabel(model.nextActivityKind))")
+                        .font(.system(size: 9.5, weight: .medium))
+                        .foregroundColor(.white.opacity(0.45))
+                        .lineLimit(1)
+                    Text(model.nextActivityTitle)
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 4)
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(nextActivityStartText)
+                        .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                        .foregroundColor(.orange)
+                        .lineLimit(1)
+                    Text(nextActivityLeadText)
+                        .font(.system(size: 9.5, weight: .medium))
+                        .foregroundColor(.white.opacity(0.42))
+                        .lineLimit(1)
+                }
+            }
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, minHeight: 46, maxHeight: 46)
+            .background(Color.white.opacity(0.06))
+            .cornerRadius(11)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private var todayTodosCard: some View {
@@ -3141,33 +4103,40 @@ struct MacIslandSwiftUIView: View {
                 }
                 model.onTodayTodosExpansionChanged?(expanded)
             }) {
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     Image(systemName: "checklist")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(model.todayTodos.isEmpty ? .green : .orange)
-                        .frame(width: 20)
+                        .frame(width: 18)
 
-                    Text("今日还有 \(model.todayTodos.count) 项待办")
-                        .font(.system(size: 12.5, weight: .semibold))
-                        .foregroundColor(.white)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("今日待办")
+                            .font(.system(size: 9.5, weight: .medium))
+                            .foregroundColor(.white.opacity(0.45))
+                        Text(model.todayTodos.isEmpty ? "全部已完成" : "还有 \(model.todayTodos.count) 项")
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                    }
 
-                    Spacer()
+                    Spacer(minLength: 4)
 
                     Text(model.todayTodos.isEmpty
                          ? "已完成"
                          : (model.todayTodosExpanded ? "收起" : "展开"))
-                        .font(.system(size: 10.5, weight: .medium))
-                        .foregroundColor(.white.opacity(0.42))
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(model.todayTodos.isEmpty ? .green.opacity(0.85) : .white.opacity(0.42))
+                        .lineLimit(1)
 
                     if !model.todayTodos.isEmpty {
                         Image(systemName: "chevron.down")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: 8, weight: .semibold))
                             .foregroundColor(.white.opacity(0.45))
                             .rotationEffect(.degrees(model.todayTodosExpanded ? 180 : 0))
                     }
                 }
-                .padding(.horizontal, 12)
-                .frame(maxWidth: .infinity, minHeight: 44, maxHeight: 44)
+                .padding(.horizontal, 10)
+                .frame(maxWidth: .infinity, minHeight: 46, maxHeight: 46)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -3508,6 +4477,557 @@ struct MacIslandSwiftUIView: View {
         .cornerRadius(12)
     }
 
+    // MARK: - Shelf Views
+
+    var shelfDropZoneView: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 10) {
+                // Zone 1: 暂存中转站
+                VStack(spacing: 6) {
+                    Image(systemName: "tray.and.arrow.down.fill")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(model.activeDropZone == 1 ? .blue : .white.opacity(0.8))
+                    Text("暂存中转站")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white)
+                    Text("拖入即存 · 支持任意大文件")
+                        .font(.system(size: 9.5, weight: .regular))
+                        .foregroundColor(.white.opacity(0.6))
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 84)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(model.activeDropZone == 1 ? Color.blue.opacity(0.2) : Color.white.opacity(0.06))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(
+                            model.activeDropZone == 1 ? Color.blue : Color.white.opacity(0.12),
+                            lineWidth: model.activeDropZone == 1 ? 2 : 1
+                        )
+                )
+                .animation(.easeInOut(duration: 0.18), value: model.activeDropZone)
+
+                // Zone 2: AI 识别转待办
+                VStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(model.activeDropZone == 2 ? .purple : .white.opacity(0.8))
+                    Text("AI 识别转待办")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white)
+                    Text("图片 / 文档提取行动项")
+                        .font(.system(size: 9.5, weight: .regular))
+                        .foregroundColor(.white.opacity(0.6))
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 84)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(model.activeDropZone == 2 ? Color.purple.opacity(0.25) : Color.white.opacity(0.06))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(
+                            model.activeDropZone == 2 ? Color.purple : Color.white.opacity(0.12),
+                            lineWidth: model.activeDropZone == 2 ? 2 : 1
+                        )
+                )
+                .animation(.easeInOut(duration: 0.18), value: model.activeDropZone)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+fileprivate struct MacFileIconView: View {
+    let extensionName: String
+    let fallbackIconName: String
+    var thumbnail: NSImage? = nil
+    var width: CGFloat = 64
+    var height: CGFloat = 46
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.black.opacity(0.45))
+
+            if let thumb = thumbnail {
+                Image(nsImage: thumb)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: width - 8, maxHeight: height - 8)
+                    .cornerRadius(5)
+            } else {
+                let ext = extensionName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                let badgeColor = extensionColor(ext)
+
+                VStack(spacing: 2) {
+                    Image(systemName: fallbackIconName.isEmpty ? systemIconName(for: ext) : fallbackIconName)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(badgeColor.opacity(0.9))
+
+                    if !ext.isEmpty && ext.count <= 5 {
+                        Text(ext.uppercased())
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundColor(badgeColor)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(badgeColor.opacity(0.2))
+                            .clipShape(Capsule())
+                    }
+                }
+            }
+        }
+        .frame(width: width, height: height)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+        )
+    }
+
+    private func systemIconName(for ext: String) -> String {
+        let type = MacShelfItemType.detect(url: URL(fileURLWithPath: "dummy.\(ext)"))
+        return type.systemIconName
+    }
+
+    private func extensionColor(_ ext: String) -> Color {
+        switch ext {
+        case "pdf": return .red
+        case "doc", "docx", "pages": return .blue
+        case "xls", "xlsx", "csv", "numbers": return .green
+        case "ppt", "pptx", "key": return .orange
+        case "md", "markdown": return .purple
+        case "txt", "text", "log": return .gray
+        case "zip", "rar", "7z", "tar", "gz": return .yellow
+        case "swift", "dart", "py", "js", "ts", "json", "html", "css", "c", "cpp", "h", "java", "kt", "sh", "sql": return .cyan
+        case "png", "jpg", "jpeg", "webp", "gif", "svg", "heic": return .pink
+        case "mp3", "wav", "m4a", "flac": return .indigo
+        case "mp4", "mov", "mkv", "avi": return .purple
+        default: return .cyan
+        }
+    }
+}
+
+    var shelfDrawerCard: some View {
+        VStack(spacing: 8) {
+            // Header
+            HStack(spacing: 8) {
+                Image(systemName: "tray.full.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.cyan)
+                Text("中转暂存")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white)
+                Text("\(model.shelfItems.count) 项")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.white.opacity(0.45))
+                
+                Spacer()
+
+                if !model.shelfItems.isEmpty {
+                    Button(action: {
+                        model.onClearShelf?()
+                    }) {
+                        Text("清空")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.white.opacity(0.55))
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+
+                if model.shelfCanUndo {
+                    Button(action: {
+                        model.onUndoRemoveShelfItem?()
+                    }) {
+                        Image(systemName: "arrow.uturn.backward")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.white.opacity(0.55))
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .help("撤销删除 (⌘Z)")
+                }
+            }
+            .frame(height: 16)
+
+            // Clipboard Banner if any
+            if model.clipboardHasImage {
+                HStack(spacing: 10) {
+                    MacFileIconView(
+                        extensionName: "png",
+                        fallbackIconName: "photo",
+                        thumbnail: model.clipboardImage,
+                        width: 64,
+                        height: 46
+                    )
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 5) {
+                            Text("剪贴板截图")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(.white)
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundColor(.purple)
+                        }
+
+                        if let image = model.clipboardImage {
+                            let w = Int(image.size.width)
+                            let h = Int(image.size.height)
+                            Text("\(w) × \(h) 像素 · 随时暂存或识别")
+                                .font(.system(size: 10))
+                                .foregroundColor(.white.opacity(0.5))
+                                .lineLimit(1)
+                        } else {
+                            Text("已捕获截图 · 随时暂存或识别")
+                                .font(.system(size: 10))
+                                .foregroundColor(.white.opacity(0.5))
+                                .lineLimit(1)
+                        }
+                    }
+
+                    Spacer(minLength: 8)
+
+                    HStack(spacing: 6) {
+                        Button(action: {
+                            model.onTriggerAiRecognitionForClipboardImage?()
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 9.5, weight: .bold))
+                                Text("AI识别")
+                                    .font(.system(size: 11, weight: .semibold))
+                            }
+                            .foregroundColor(.purple)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 6)
+                            .background(Color.purple.opacity(0.2))
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .help("使用 AI 提取待办与要点")
+
+                        Button(action: {
+                            model.onPinClipboardImage?()
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "pin.fill")
+                                    .font(.system(size: 9, weight: .bold))
+                                Text("暂存")
+                                    .font(.system(size: 11, weight: .semibold))
+                            }
+                            .foregroundColor(.white.opacity(0.85))
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 6)
+                            .background(Color.white.opacity(0.12))
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .help("保存至中转暂存抽屉")
+
+                        Button(action: {
+                            model.onDismissClipboardImage?()
+                        }) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.45))
+                                .frame(width: 20, height: 20)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .help("忽略截图")
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .frame(height: 56)
+                .background(Color.white.opacity(0.04))
+                .cornerRadius(10)
+            } else if model.clipboardHasFiles {
+                HStack(spacing: 10) {
+                    MacFileIconView(
+                        extensionName: model.clipboardFirstFileExtension,
+                        fallbackIconName: "doc.fill",
+                        thumbnail: model.clipboardFirstFileThumbnail,
+                        width: 64,
+                        height: 46
+                    )
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(model.clipboardFirstFileName.isEmpty ? "剪贴板文件" : model.clipboardFirstFileName)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+
+                        let detailText = model.clipboardFileCount > 1
+                            ? "\(model.clipboardFirstFileSize) · 共 \(model.clipboardFileCount) 个文件"
+                            : "\(model.clipboardFirstFileSize) · 复制的文件"
+                        Text(detailText)
+                            .font(.system(size: 10))
+                            .foregroundColor(.white.opacity(0.5))
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    HStack(spacing: 6) {
+                        if model.clipboardFirstFileIsAiRecognizable {
+                            Button(action: {
+                                model.onTriggerAiRecognitionForClipboardFiles?()
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "sparkles")
+                                        .font(.system(size: 9.5, weight: .bold))
+                                    Text("AI识别")
+                                        .font(.system(size: 11, weight: .semibold))
+                                }
+                                .foregroundColor(.purple)
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 6)
+                                .background(Color.purple.opacity(0.2))
+                                .clipShape(Capsule())
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .help("使用 AI 提取待办与要点")
+                        }
+
+                        Button(action: {
+                            model.onPinClipboardFiles?()
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "pin.fill")
+                                    .font(.system(size: 9, weight: .bold))
+                                Text("暂存")
+                                    .font(.system(size: 11, weight: .semibold))
+                            }
+                            .foregroundColor(.cyan)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 6)
+                            .background(Color.cyan.opacity(0.18))
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .help("保存至中转暂存抽屉")
+
+                        Button(action: {
+                            model.onDismissClipboardFiles?()
+                        }) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.45))
+                                .frame(width: 20, height: 20)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .help("忽略文件")
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .frame(height: 56)
+                .background(Color.white.opacity(0.04))
+                .cornerRadius(10)
+            } else if model.clipboardHasText {
+                HStack(spacing: 10) {
+                    MacFileIconView(
+                        extensionName: model.clipboardTextExtension,
+                        fallbackIconName: "note.text",
+                        thumbnail: nil,
+                        width: 64,
+                        height: 46
+                    )
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        let headerTitle: String = {
+                            if model.clipboardTextExtension != "txt" {
+                                return "剪贴板文本 (\(model.clipboardTextExtension.uppercased()))"
+                            }
+                            return "剪贴板文本便签"
+                        }()
+                        Text(headerTitle)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+
+                        Text("\"\(model.clipboardTextPreview)\" · \(model.clipboardTextCharCount) 字")
+                            .font(.system(size: 10))
+                            .foregroundColor(.white.opacity(0.5))
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    HStack(spacing: 6) {
+                        Button(action: {
+                            model.onTriggerAiRecognitionForClipboardText?()
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 9.5, weight: .bold))
+                                Text("AI识别")
+                                    .font(.system(size: 11, weight: .semibold))
+                            }
+                            .foregroundColor(.purple)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 6)
+                            .background(Color.purple.opacity(0.2))
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .help("使用 AI 提取待办与要点")
+
+                        Button(action: {
+                            model.onPinClipboardText?()
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "pin.fill")
+                                    .font(.system(size: 9, weight: .bold))
+                                Text("存便签")
+                                    .font(.system(size: 11, weight: .semibold))
+                            }
+                            .foregroundColor(.white.opacity(0.85))
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 6)
+                            .background(Color.white.opacity(0.12))
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .help("保存为文本便签")
+
+                        Button(action: {
+                            model.onDismissClipboardText?()
+                        }) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.45))
+                                .frame(width: 20, height: 20)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .help("忽略文本")
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .frame(height: 56)
+                .background(Color.white.opacity(0.04))
+                .cornerRadius(10)
+            }
+
+            // Staged Items Scroll List
+            if !model.shelfItems.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(model.shelfItems) { item in
+                            shelfItemCard(item: item)
+                        }
+                    }
+                    .padding(.horizontal, 2)
+                    .padding(.vertical, 2)
+                }
+                .frame(height: 98)
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color.white.opacity(0.06))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+        )
+    }
+
+    private func shelfItemCard(item: MacShelfItem) -> some View {
+        VStack(spacing: 4) {
+            ZStack(alignment: .topTrailing) {
+                // Thumbnail or Icon
+                MacFileIconView(
+                    extensionName: item.fileExtension,
+                    fallbackIconName: item.contentType.systemIconName,
+                    thumbnail: item.thumbnail,
+                    width: 86,
+                    height: 48
+                )
+
+                // Delete Button
+                Button(action: {
+                    model.onRemoveShelfItem?(item.id)
+                }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 13))
+                        .foregroundColor(.white.opacity(0.65))
+                        .background(Color.black.opacity(0.4).clipShape(Circle()))
+                }
+                .buttonStyle(PlainButtonStyle())
+                .offset(x: 3, y: -3)
+            }
+
+            // Name
+            Text(item.name)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(item.isAvailable ? .white : .white.opacity(0.4))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(width: 86)
+
+            // Bottom Actions & Size
+            HStack(spacing: 4) {
+                Text(item.isAvailable ? item.formattedSize : "已离线")
+                    .font(.system(size: 8.5))
+                    .foregroundColor(item.isAvailable ? .white.opacity(0.45) : .red.opacity(0.7))
+                    .lineLimit(1)
+
+                Spacer()
+
+                if item.isAiRecognizable {
+                    Button(action: {
+                        model.onTriggerAiRecognition?(item)
+                    }) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.purple)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .help("AI 识别待办")
+                }
+
+                Button(action: {
+                    model.onQuickLookItem?(item)
+                }) {
+                    Image(systemName: "eye")
+                        .font(.system(size: 9))
+                        .foregroundColor(.white.opacity(0.6))
+                }
+                .buttonStyle(PlainButtonStyle())
+                .help("空格预览 (QuickLook)")
+            }
+            .frame(width: 86)
+        }
+        .padding(6)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.white.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+        )
+        .onDrag {
+            let provider = NSItemProvider(object: item.url as NSURL)
+            let suggested = item.name.isEmpty ? item.url.lastPathComponent : item.name
+            provider.suggestedName = suggested
+            if item.contentType == .textSnippet, let snippet = item.textSnippet, !snippet.isEmpty {
+                provider.registerObject(snippet as NSString, visibility: .all)
+            }
+            return provider
+        }
+    }
+
     @ViewBuilder
     private var clipboardBrowserSelector: some View {
         HStack(spacing: 8) {
@@ -3567,7 +5087,7 @@ struct MacIslandSwiftUIView: View {
 /// macOS 刘海灵动岛控制器。
 ///
 /// 保留原类名以兼容现有 Flutter MethodChannel，展示层不再创建 NSStatusItem。
-class MacPomodoroStatusBarController {
+class MacPomodoroStatusBarController: NSObject {
     static let shared = MacPomodoroStatusBarController()
 
     private let nowPlayingMonitor = MacNowPlayingMonitor()
@@ -3603,6 +5123,8 @@ class MacPomodoroStatusBarController {
     private var clipboardDidForceExpansion = false
     private var clipboardBrowsers: [MacClipboardBrowser] = []
     private var selectedClipboardBrowserID = ""
+    private var clipboardBannerExpiresAt: TimeInterval = 0
+    private var dragDidForceExpansion = false
 
     private let selectedClipboardBrowserPreferenceKey =
         "macos_island_clipboard_selected_browser"
@@ -3649,10 +5171,11 @@ class MacPomodoroStatusBarController {
     private var countdownTargetMs: Int64 = 0
     private var countdownDays = -1
 
-    private init() {
+    private override init() {
         selectedClipboardBrowserID = UserDefaults.standard.string(
             forKey: selectedClipboardBrowserPreferenceKey
         ) ?? ""
+        super.init()
     }
 
     func setup() {
@@ -3692,6 +5215,13 @@ class MacPomodoroStatusBarController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
             guard let self = self, self.islandEnabled, !self.isShortcutHidden else { return }
             self.ensureNowPlayingMonitoring()
+        }
+
+        MacShelfManager.shared.onItemsChanged = { [weak self] items in
+            guard let self = self else { return }
+            self.islandModel?.shelfItems = items
+            self.islandModel?.shelfCanUndo = MacShelfManager.shared.canUndo
+            self.refreshDisplay()
         }
     }
 
@@ -4035,14 +5565,24 @@ class MacPomodoroStatusBarController {
         return !activityTitle.isEmpty && activityStartMs <= now && now < activityEndMs
     }
 
+    private func shelfCardContentHeight(for view: IslandStateModel) -> CGFloat {
+        let hasClipboardBanner = view.clipboardHasFiles || view.clipboardHasImage || view.clipboardHasText
+        if view.shelfItems.isEmpty {
+            return hasClipboardBanner ? 100 : 36
+        } else {
+            return 142 + (hasClipboardBanner ? 64 : 0)
+        }
+    }
+
     private func refreshDisplay() {
         expireStartedReminders()
         lastMinuteRefreshKey = Int64(Date().timeIntervalSince1970) / 60
         let hasReminder = remindersEnabled && currentReminder != nil
         let hasActivity = isOngoingActivityActive
         let hasClipboardLink = clipboardLinksEnabled && clipboardURL != nil
+        let hasShelfContent = !MacShelfManager.shared.items.isEmpty
         let hasNowPlaying = nowPlayingSnapshot.isAvailable
-        let hasLiveContent = isPomodoroActive || hasReminder || hasActivity || hasClipboardLink
+        let hasLiveContent = isPomodoroActive || hasReminder || hasActivity || hasClipboardLink || hasShelfContent
         let hasPlayingMedia = hasNowPlaying && nowPlayingSnapshot.isPlaying
         let hasUpcomingActivity = !nextActivityTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !todayTodos.isEmpty
@@ -4079,13 +5619,14 @@ class MacPomodoroStatusBarController {
             isPinnedExpanded = false
             isExpanded = isPointerInsideIsland
         }
-        let expanded = hasReminder || hasClipboardLink || isExpanded
+        let view = ensureIslandModel()
+        view.shelfItems = MacShelfManager.shared.items
+        view.shelfCanUndo = MacShelfManager.shared.canUndo
+        let expanded = hasReminder || hasClipboardLink || isExpanded || view.isDragActive
         let detailed = hasReminder || isPinnedExpanded
         if expanded {
             ensureNowPlayingMonitoring()
         }
-
-        let view = ensureIslandModel()
         view.phase = phase
         view.timeText = calculateTimeText()
         view.todoTitle = todoTitle
@@ -4167,6 +5708,9 @@ class MacPomodoroStatusBarController {
         view.nowPlayingUpdatedAt = nowPlayingSnapshot.updatedAt
         view.nowPlayingIsPlaying = nowPlayingSnapshot.isPlaying
         view.nowPlayingLyrics = nowPlayingSnapshot.lyrics
+        let musicApp = detectPlayingMusicApp(bundleIdentifier: nowPlayingSnapshot.sourceBundleIdentifier)
+        view.nowPlayingAppName = musicApp.name
+        view.nowPlayingAppIcon = musicApp.icon
         updateExpansionState(view, expanded: expanded, detailed: detailed)
 
         let collapsedNotchWidth = geometry.notchWidth > 0 ? geometry.notchWidth : 180
@@ -4181,60 +5725,51 @@ class MacPomodoroStatusBarController {
             : 68
         let compactHeight = compactBaseHeight
             + (hasCompactLyrics ? macCompactLyricsHeight : 0)
-        let focusWithReminder = isPomodoroActive && hasReminder
+        let hasShelf = !view.shelfItems.isEmpty || view.clipboardHasFiles || view.clipboardHasImage || view.clipboardHasText
+        let expandedTargetWidth: CGFloat = 540
         let expandedWidthFloor: CGFloat = geometry.hasNotch
-            ? max(360, geometry.notchWidth + 80)
-            : 320
-        let width = expanded
-            ? max(
-                detailed ? 360 : ((focusWithReminder || hasClipboardLink || hasActivity || hasNowPlaying) ? 360 : 320),
-                expandedWidthFloor
-            )
+            ? max(expandedTargetWidth, geometry.notchWidth + 120)
+            : expandedTargetWidth
+        let width = (expanded || view.isDragActive)
+            ? expandedWidthFloor
             : compactWidth
         let height: CGFloat
 
         let hasNotch = geometry.hasNotch
         let topInset = hasNotch ? max(geometry.topInset, 28) : 6
         
-        if !expanded {
+        let topPadding: CGFloat = 8
+        let bottomPadding: CGFloat = 16
+        var contentHeight: CGFloat = 0
+
+        if view.isDragActive {
+            contentHeight = 92
+            height = topInset + topPadding + contentHeight + bottomPadding
+        } else if !expanded {
             height = compactHeight
         } else {
-            let topPadding: CGFloat = 8
-            let bottomPadding: CGFloat = 20
-            var contentHeight: CGFloat
-
             if isPomodoroActive {
-                // expandedFocusView 的固定内容总高为 204pt。
-                contentHeight = 204
-                if !view.focusTagNames.isEmpty {
-                    contentHeight += 32
+                let hasBottomRow = !isRemote || hasNowPlaying
+                contentHeight = hasBottomRow ? 156 : 110
+                if hasNowPlaying && !view.nowPlayingLyrics.isEmpty {
+                    contentHeight += 36.5
                 }
-                // 备注可能换行，最终高度由 SwiftUI 实际布局回传；这里不再
-                // 预留猜测值，避免不可见/空白备注把首次展开窗口撑高。
-
-                // reminderCard 的关闭按钮使单行卡片实际高度约为 48pt；activityCard
-                // 仍为单行内容加 12pt 内边距，实际约 39pt。
+                if detailed && !view.focusNote.isEmpty {
+                    contentHeight += 8 + 38
+                }
                 if hasReminder && !view.reminderTitle.isEmpty {
                     contentHeight += 12 + 48
                 } else if hasClipboardLink {
-                    // clipboardLinkCard includes the browser selector and a
-                    // little extra room for accessibility/font metric changes.
                     contentHeight += 12 + 112
                 } else if hasActivity && !view.activityTitle.isEmpty {
-                    contentHeight += 12 + 39
+                    contentHeight += 12 + 40
                 }
             } else if hasReminder {
-                // 标题行包含关闭按钮，预留其 28pt 点击区域，避免提醒正文或
-                // 操作按钮被展开窗口的 reveal mask 截断。
                 contentHeight = 116
             } else if hasClipboardLink {
-                // The expanded clipboard card now has four rows: title, URL,
-                // browser selector, and actions. Keep a safety margin so the
-                // selector cannot be clipped by the window mask.
                 contentHeight = 164
             } else if hasActivity {
-                // 标题 36 + 时间卡 48 + 操作区 48。
-                contentHeight = 132
+                contentHeight = 134
                 let secondaryValues = [
                     view.activitySubtitle,
                     view.activityDetail,
@@ -4243,31 +5778,56 @@ class MacPomodoroStatusBarController {
                     let value = $0.trimmingCharacters(in: .whitespacesAndNewlines)
                     return !value.isEmpty && value != view.activityTitle
                 }) {
-                    contentHeight += 42
+                    contentHeight += 40
                 }
                 if !view.nextActivityTitle.isEmpty {
                     contentHeight += 54
                 }
+                if hasNowPlaying && !view.nowPlayingLyrics.isEmpty {
+                    contentHeight += 36.5
+                }
             } else {
-                // 空闲展开态：状态标题 34 + 今日概览 68 + 打开按钮 36，
-                // 加上两段 12pt 间距；存在下一项时再加入 58pt 卡片和间距。
-                contentHeight = 162
-                if !view.nextActivityTitle.isEmpty {
-                    contentHeight += 70
+                // 空闲展开态 (Idle Dashboard)
+                // 顶部状态栏（包含右侧打开应用按钮）: 34pt
+                contentHeight = 34
+                
+                let hasNext = !view.nextActivityTitle.isEmpty
+                if hasNext && view.todayTodosExpanded {
+                    // 待办展开时，纵向堆叠展示
+                    contentHeight += 10 + 46 // 下一项卡片
+                    contentHeight += 10 + 46 + 1 + min(CGFloat(view.todayTodos.count) * 40, 160) // 待办卡片 + 列表
+                } else if hasNext {
+                    // 下一项与待办折叠态并排双栏展示
+                    contentHeight += 10 + 46
+                } else {
+                    // 仅待办卡片
+                    contentHeight += 10 + 46
+                    if view.todayTodosExpanded {
+                        contentHeight += 1 + min(CGFloat(view.todayTodos.count) * 40, 160)
+                    }
                 }
-                // 折叠标题 44pt + 与前一项的 12pt 间距；展开列表最多
-                // 显示四行，其余内容在卡片内滚动。
-                contentHeight += 56
-                if view.todayTodosExpanded {
-                    contentHeight += 1 + min(CGFloat(view.todayTodos.count) * 40, 160)
+
+                // 中转暂存抽屉卡片（位于日程与媒体之间）
+                if hasShelf {
+                    contentHeight += 10 + shelfCardContentHeight(for: view)
                 }
+
+                // 媒体播放卡片（38pt 或带歌词 74.5pt）
+                if hasNowPlaying {
+                    let mediaHeight: CGFloat = view.nowPlayingLyrics.isEmpty ? 38 : 74.5
+                    contentHeight += 10 + mediaHeight
+                }
+
+                // 今日专注与倒数日概览
+                contentHeight += 10 + 56
             }
 
-            if hasNowPlaying {
-                contentHeight += 12 + (view.nowPlayingLyrics.isEmpty ? 64 : 104)
+            // 非空闲态下若有暂存抽屉，计算追加高度
+            if hasShelf && (isPomodoroActive || hasReminder || hasClipboardLink || hasActivity) {
+                contentHeight += 10 + shelfCardContentHeight(for: view)
             }
             if detailed && !view.isIdle {
-                contentHeight += 20 + 68
+                contentHeight += 12 + 56
             }
             height = topInset + topPadding + contentHeight + bottomPadding
         }
@@ -4493,6 +6053,111 @@ class MacPomodoroStatusBarController {
         view.onNextTrack = { [weak self] in
             self?.nowPlayingMonitor.next()
         }
+        view.shelfItems = MacShelfManager.shared.items
+        view.shelfCanUndo = MacShelfManager.shared.canUndo
+        view.onRemoveShelfItem = { [weak self, weak view] id in
+            MacShelfManager.shared.removeItem(id: id)
+            view?.shelfItems = MacShelfManager.shared.items
+            view?.shelfCanUndo = MacShelfManager.shared.canUndo
+            self?.refreshDisplay()
+        }
+        view.onUndoRemoveShelfItem = { [weak self, weak view] in
+            MacShelfManager.shared.undoRemove()
+            view?.shelfItems = MacShelfManager.shared.items
+            view?.shelfCanUndo = MacShelfManager.shared.canUndo
+            self?.refreshDisplay()
+        }
+        view.onClearShelf = { [weak self, weak view] in
+            MacShelfManager.shared.clearAll()
+            view?.shelfItems = MacShelfManager.shared.items
+            view?.shelfCanUndo = MacShelfManager.shared.canUndo
+            self?.refreshDisplay()
+        }
+        view.onTriggerAiRecognition = { [weak self] item in
+            if item.contentType == .textSnippet {
+                self?.triggerAiRecognition(for: item.textSnippet ?? item.url.path, isImage: false, isText: true)
+            } else if item.contentType == .image {
+                self?.triggerAiRecognition(for: item.url.path, isImage: true)
+            } else {
+                self?.triggerAiRecognitionForFile(url: item.url)
+            }
+        }
+        view.onPinClipboardFiles = { [weak self, weak view] in
+            guard let self = self, let view = view, !view.clipboardFiles.isEmpty else { return }
+            MacShelfManager.shared.addURLs(view.clipboardFiles)
+            self.clearClipboardShelfBanner(view: view, refresh: false)
+            view.shelfItems = MacShelfManager.shared.items
+            view.shelfCanUndo = MacShelfManager.shared.canUndo
+            self.refreshDisplay()
+        }
+        view.onTriggerAiRecognitionForClipboardFiles = { [weak self, weak view] in
+            guard let self = self, let view = view, !view.clipboardFiles.isEmpty else { return }
+            let files = view.clipboardFiles
+            let added = MacShelfManager.shared.addURLs(files)
+            self.clearClipboardShelfBanner(view: view, refresh: false)
+            view.shelfItems = MacShelfManager.shared.items
+            view.shelfCanUndo = MacShelfManager.shared.canUndo
+            if let first = added.first?.url ?? files.first {
+                if MacShelfItemType.detect(url: first) == .image {
+                    self.triggerAiRecognition(for: first.path, isImage: true)
+                } else {
+                    self.triggerAiRecognitionForFile(url: first)
+                }
+            }
+            self.refreshDisplay()
+        }
+        view.onDismissClipboardFiles = { [weak self, weak view] in
+            self?.clearClipboardShelfBanner(view: view, refresh: true)
+        }
+        view.onPinClipboardImage = { [weak self, weak view] in
+            guard let self = self, let view = view, let image = view.clipboardImage else { return }
+            MacShelfManager.shared.addScreenshot(image)
+            self.clearClipboardShelfBanner(view: view, refresh: false)
+            view.shelfItems = MacShelfManager.shared.items
+            view.shelfCanUndo = MacShelfManager.shared.canUndo
+            self.refreshDisplay()
+        }
+        view.onTriggerAiRecognitionForClipboardImage = { [weak self, weak view] in
+            guard let self = self, let view = view, let image = view.clipboardImage else { return }
+            let item = MacShelfManager.shared.addScreenshot(image)
+            self.clearClipboardShelfBanner(view: view, refresh: false)
+            view.shelfItems = MacShelfManager.shared.items
+            view.shelfCanUndo = MacShelfManager.shared.canUndo
+            if let item = item {
+                self.triggerAiRecognition(for: item.url.path, isImage: true)
+            }
+            self.refreshDisplay()
+        }
+        view.onDismissClipboardImage = { [weak self, weak view] in
+            self?.clearClipboardShelfBanner(view: view, refresh: true)
+        }
+        view.onPinClipboardText = { [weak self, weak view] in
+            guard let self = self, let view = view, !view.clipboardText.isEmpty else { return }
+            MacShelfManager.shared.addTextSnippet(view.clipboardText)
+            self.clearClipboardShelfBanner(view: view, refresh: false)
+            view.shelfItems = MacShelfManager.shared.items
+            view.shelfCanUndo = MacShelfManager.shared.canUndo
+            self.refreshDisplay()
+        }
+        view.onTriggerAiRecognitionForClipboardText = { [weak self, weak view] in
+            guard let self = self, let view = view, !view.clipboardText.isEmpty else { return }
+            let text = view.clipboardText
+            MacShelfManager.shared.addTextSnippet(text)
+            self.clearClipboardShelfBanner(view: view, refresh: false)
+            view.shelfItems = MacShelfManager.shared.items
+            view.shelfCanUndo = MacShelfManager.shared.canUndo
+            self.triggerAiRecognition(for: text, isImage: false, isText: true)
+            self.refreshDisplay()
+        }
+        view.onDismissClipboardText = { [weak self, weak view] in
+            self?.clearClipboardShelfBanner(view: view, refresh: true)
+        }
+        view.onQuickLookItem = { [weak self] item in
+            self?.toggleQuickLook(for: item.url)
+        }
+        view.onOpenMusicApp = { [weak self] in
+            self?.openNowPlayingApp()
+        }
         islandModel = view
         return view
     }
@@ -4630,12 +6295,39 @@ class MacPomodoroStatusBarController {
         clipboardMonitorTimer = monitor
     }
 
+    private func clearClipboardShelfBanner(view: IslandStateModel?, refresh: Bool = false) {
+        clipboardBannerExpiresAt = 0
+        guard let view = view else {
+            if refresh { refreshDisplay() }
+            return
+        }
+        view.clipboardFiles = []
+        view.clipboardHasFiles = false
+        view.clipboardFileCount = 0
+        view.clipboardFirstFileName = ""
+        view.clipboardFirstFileExtension = ""
+        view.clipboardFirstFileSize = ""
+        view.clipboardFirstFileThumbnail = nil
+        view.clipboardFirstFileIsAiRecognizable = false
+        view.clipboardImage = nil
+        view.clipboardHasImage = false
+        view.clipboardText = ""
+        view.clipboardTextPreview = ""
+        view.clipboardTextExtension = "txt"
+        view.clipboardTextCharCount = 0
+        view.clipboardHasText = false
+        if refresh {
+            refreshDisplay()
+        }
+    }
+
     private func stopClipboardMonitoring(clearLink: Bool) {
         clipboardMonitorTimer?.invalidate()
         clipboardMonitorTimer = nil
         lastClipboardChangeCount = NSPasteboard.general.changeCount
         if clearLink {
             clearClipboardLink(restoreExpansion: true, refresh: false)
+            clearClipboardShelfBanner(view: islandModel, refresh: false)
         }
     }
 
@@ -4647,11 +6339,87 @@ class MacPomodoroStatusBarController {
             dismissClipboardLink()
         }
 
+        if let view = islandModel,
+           (view.clipboardHasFiles || view.clipboardHasImage || view.clipboardHasText),
+           clipboardBannerExpiresAt > 0,
+           Date().timeIntervalSince1970 >= clipboardBannerExpiresAt,
+           !isPointerInsideIsland,
+           !view.isDragActive {
+            clearClipboardShelfBanner(view: view, refresh: true)
+        }
+
         let pasteboard = NSPasteboard.general
         let changeCount = pasteboard.changeCount
         guard changeCount != lastClipboardChangeCount else { return }
         lastClipboardChangeCount = changeCount
         guard !isShortcutHidden else { return }
+
+        let view = ensureIslandModel()
+
+        // Enhanced clipboard monitoring: files, images, and text
+        if pasteboard.canReadItem(withDataConformingToTypes: [NSPasteboard.PasteboardType.fileURL.rawValue]),
+           let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
+           !urls.isEmpty {
+            view.clipboardFiles = urls
+            view.clipboardFileCount = urls.count
+            view.clipboardHasFiles = true
+            view.clipboardHasImage = false
+            view.clipboardImage = nil
+            view.clipboardHasText = false
+            view.clipboardText = ""
+            view.clipboardTextPreview = ""
+            view.clipboardTextExtension = "txt"
+            view.clipboardTextCharCount = 0
+            clipboardBannerExpiresAt = Date().timeIntervalSince1970 + 30
+
+            if let first = urls.first {
+                let name = first.lastPathComponent
+                let ext = first.pathExtension.lowercased()
+                let sizeBytes = (try? FileManager.default.attributesOfItem(atPath: first.path)[.size] as? Int64) ?? 0
+                let formattedSize = ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file)
+                let isAi = MacShelfItem.isAiRecognizableFileURL(first)
+                let initialThumb = systemIcon(forFilePath: first.path, fileExtension: ext)
+
+                view.clipboardFirstFileName = name
+                view.clipboardFirstFileExtension = ext
+                view.clipboardFirstFileSize = formattedSize
+                view.clipboardFirstFileThumbnail = initialThumb
+                view.clipboardFirstFileIsAiRecognizable = isAi
+
+                generateThumbnailForURL(first) { [weak view] thumb in
+                    if let thumb = thumb {
+                        view?.clipboardFirstFileThumbnail = thumb
+                    }
+                }
+            }
+
+            if clipboardURL != nil {
+                dismissClipboardLink()
+            } else {
+                refreshDisplay()
+            }
+            return
+        } else if pasteboard.canReadItem(withDataConformingToTypes: [NSPasteboard.PasteboardType.png.rawValue, NSPasteboard.PasteboardType.tiff.rawValue]) {
+            if let image = NSImage(pasteboard: pasteboard) {
+                view.clipboardImage = image
+                view.clipboardHasImage = true
+                view.clipboardHasFiles = false
+                view.clipboardFiles = []
+                view.clipboardFileCount = 0
+                view.clipboardHasText = false
+                view.clipboardText = ""
+                view.clipboardTextPreview = ""
+                view.clipboardTextExtension = "txt"
+                view.clipboardTextCharCount = 0
+                clipboardBannerExpiresAt = Date().timeIntervalSince1970 + 30
+                if clipboardURL != nil {
+                    dismissClipboardLink()
+                } else {
+                    refreshDisplay()
+                }
+                return
+            }
+        }
 
         let rawValue = pasteboard.string(forType: .URL)
             ?? pasteboard.string(forType: .string)
@@ -4660,8 +6428,26 @@ class MacPomodoroStatusBarController {
             if clipboardURL != nil {
                 dismissClipboardLink()
             }
+            let hadBanner = view.clipboardHasFiles || view.clipboardHasImage || view.clipboardHasText
+            let trimmed = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if trimmed.count >= 2 {
+                clearClipboardShelfBanner(view: view, refresh: false)
+                view.clipboardHasText = true
+                view.clipboardText = trimmed
+                view.clipboardTextExtension = "txt"
+                view.clipboardTextCharCount = trimmed.count
+                let firstLine = trimmed.components(separatedBy: .newlines).first ?? trimmed
+                let preview = firstLine.count > 45 ? String(firstLine.prefix(45)) + "…" : firstLine
+                view.clipboardTextPreview = preview
+                clipboardBannerExpiresAt = Date().timeIntervalSince1970 + 30
+                refreshDisplay()
+            } else {
+                clearClipboardShelfBanner(view: view, refresh: hadBanner)
+            }
             return
         }
+
+        clearClipboardShelfBanner(view: view, refresh: false)
 
         if clipboardURL == nil {
             clipboardDidForceExpansion = !isExpanded
@@ -4798,6 +6584,25 @@ class MacPomodoroStatusBarController {
         _ = setPreferredClipboardBrowser(browserID)
     }
 
+    private static let nonWebSchemelessExtensions: Set<String> = [
+        // 文档、笔记与文本
+        "md", "markdown", "mdown", "mkd", "txt", "text", "rtf", "doc", "docx", "pdf",
+        "pages", "xls", "xlsx", "csv", "tsv", "numbers", "ppt", "pptx", "key", "keynote",
+        // 图片
+        "png", "jpg", "jpeg", "webp", "gif", "heic", "heif", "tiff", "tif", "bmp", "svg", "ico", "psd",
+        // 音视频
+        "mp3", "wav", "m4a", "flac", "aac", "ogg", "wma",
+        "mp4", "mov", "m4v", "avi", "mkv", "webm", "wmv", "flv",
+        // 归档压缩包
+        "zip", "tar", "gz", "tgz", "bz2", "7z", "rar", "xz", "iso", "dmg", "pkg",
+        // 代码与配置
+        "c", "cpp", "cc", "cxx", "h", "hpp", "m", "mm", "swift", "dart", "java", "kt", "kts",
+        "py", "pyw", "go", "rs", "rb", "php", "sh", "bash", "zsh", "fish", "bat", "cmd", "ps1",
+        "js", "jsx", "ts", "tsx", "vue", "html", "htm", "css", "scss", "sass", "less",
+        "json", "xml", "yaml", "yml", "toml", "ini", "conf", "config", "log", "sql",
+        "exe", "dll", "dylib", "bin", "apk", "aab", "ipa"
+    ]
+
     private func normalizedClipboardURL(_ value: String) -> URL? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.count <= 2048 else { return nil }
@@ -4805,16 +6610,20 @@ class MacPomodoroStatusBarController {
             return nil
         }
 
+        // 本地绝对路径、家目录路径或 Windows 反斜杠路径一律不视作网址
+        guard !trimmed.hasPrefix("/"), !trimmed.hasPrefix("~"), !trimmed.contains("\\") else {
+            return nil
+        }
+
         let lowercased = trimmed.lowercased()
+        let hasExplicitWebScheme = lowercased.hasPrefix("http://") || lowercased.hasPrefix("https://")
+
         let candidate: String
-        if lowercased.hasPrefix("http://") || lowercased.hasPrefix("https://") {
+        if hasExplicitWebScheme {
             candidate = trimmed
         } else {
-            // 其他显式 scheme 一律拒绝；无 scheme 时只为看起来像域名的
-            // 内容补 https，避免把普通单词误判成网址。
-            guard !trimmed.contains("://"), trimmed.contains(".") else {
-                return nil
-            }
+            // file://, mailto:, vscode:// 等显式非 Web 协议一律拒绝
+            guard !trimmed.contains("://") else { return nil }
             candidate = "https://\(trimmed)"
         }
 
@@ -4823,11 +6632,54 @@ class MacPomodoroStatusBarController {
               scheme == "http" || scheme == "https",
               components.user == nil,
               components.password == nil,
-              let host = components.host,
-              !host.isEmpty,
-              host == "localhost" || host.contains(".") || host.contains(":") else {
+              let rawHost = components.host,
+              !rawHost.isEmpty else {
             return nil
         }
+
+        let host = rawHost.lowercased()
+
+        if host == "localhost" {
+            let hasPort = components.port != nil
+            let hasPath = !components.path.isEmpty && components.path != "/"
+            return (hasExplicitWebScheme || hasPort || hasPath) ? components.url : nil
+        }
+
+        // IPv4 格式检查
+        let ipv4Parts = host.split(separator: ".")
+        if ipv4Parts.count == 4 && ipv4Parts.allSatisfy({ Int($0) != nil && (0...255).contains(Int($0)!) }) {
+            return components.url
+        }
+
+        // 域名必须是纯 ASCII 字符：字母、数字、连字符、点。不可含中文、空格或下划线
+        guard host.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == ".") }) else {
+            return nil
+        }
+
+        let labels = host.split(separator: ".")
+        guard labels.count >= 2 else { return nil }
+
+        for label in labels {
+            guard !label.isEmpty, !label.hasPrefix("-"), !label.hasSuffix("-") else {
+                return nil
+            }
+        }
+
+        guard let tld = labels.last.map(String.init) else { return nil }
+        guard tld.allSatisfy({ $0.isLetter && $0.isASCII }), (2...24).contains(tld.count) else {
+            return nil
+        }
+
+        // 无显式协议时，若顶级域名与常见文件扩展名重名（如 .md, .txt, .sh, .rs），
+        // 仅当包含路径、查询参数、片段或端口时才视为网址，避免将纯文件名误判为链接。
+        if !hasExplicitWebScheme && Self.nonWebSchemelessExtensions.contains(tld) {
+            let hasWebContext = components.port != nil
+                || (!components.path.isEmpty && components.path != "/")
+                || components.query != nil
+                || components.fragment != nil
+            guard hasWebContext else { return nil }
+        }
+
         return components.url
     }
 
@@ -4977,6 +6829,102 @@ class MacPomodoroStatusBarController {
                 view.onExpansionChanged?(false, false)
             }
         }
+        hostingView.onDraggingEntered = { [weak self, weak view] sender in
+            guard let self = self, let view = view else { return [] }
+            if let sourceView = sender.draggingSource as? NSView,
+               sourceView.window === self.islandWindow {
+                return []
+            }
+            let pasteboard = sender.draggingPasteboard
+            if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
+               !urls.isEmpty {
+                let existingPaths = Set(MacShelfManager.shared.items.map { $0.url.standardizedFileURL.path })
+                if urls.allSatisfy({ existingPaths.contains($0.standardizedFileURL.path) }) {
+                    return []
+                }
+            }
+            let hasFiles = pasteboard.canReadItem(withDataConformingToTypes: [NSPasteboard.PasteboardType.fileURL.rawValue])
+            let hasStrings = pasteboard.canReadItem(withDataConformingToTypes: [NSPasteboard.PasteboardType.string.rawValue])
+            let hasImages = pasteboard.canReadItem(withDataConformingToTypes: [
+                NSPasteboard.PasteboardType.png.rawValue,
+                NSPasteboard.PasteboardType.tiff.rawValue
+            ])
+            guard hasFiles || hasStrings || hasImages else { return [] }
+
+            self.dragDidForceExpansion = !self.isExpanded
+            view.isDragActive = true
+            view.activeDropZone = 1
+            self.isExpanded = true
+            self.refreshDisplay()
+            return .copy
+        }
+        hostingView.onDraggingUpdated = { [weak view] sender, location, bounds in
+            guard let view = view else { return [] }
+            let midX = bounds.width / 2.0
+            let nextZone = (location.x >= midX) ? 2 : 1
+            if view.activeDropZone != nextZone {
+                view.activeDropZone = nextZone
+            }
+            return .copy
+        }
+        hostingView.onDraggingExited = { [weak self, weak view] _ in
+            guard let self = self, let view = view else { return }
+            view.isDragActive = false
+            view.activeDropZone = 0
+            self.isPointerInsideIsland = false
+            let hasActiveReminder = self.remindersEnabled && self.currentReminder != nil
+            let hasActiveClipboard = self.clipboardLinksEnabled && self.clipboardURL != nil
+            if !self.isPinnedExpanded && !hasActiveReminder && !hasActiveClipboard {
+                self.isExpanded = false
+            }
+            self.dragDidForceExpansion = false
+            self.refreshDisplay()
+        }
+        hostingView.onPerformDragOperation = { [weak self, weak view] sender in
+            guard let self = self, let view = view else { return false }
+            let pasteboard = sender.draggingPasteboard
+            var handled = false
+            let dropZone = view.activeDropZone
+
+            if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
+                let added = MacShelfManager.shared.addURLs(urls)
+                if dropZone == 2, let first = added.first?.url ?? urls.first {
+                    if MacShelfItemType.detect(url: first) == .image {
+                        self.triggerAiRecognition(for: first.path, isImage: true)
+                    } else {
+                        self.triggerAiRecognitionForFile(url: first)
+                    }
+                }
+                handled = true
+            } else if let str = pasteboard.string(forType: .string), !str.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if dropZone == 2 {
+                    self.triggerAiRecognition(for: str, isImage: false, isText: true)
+                } else {
+                    MacShelfManager.shared.addTextSnippet(str)
+                }
+                handled = true
+            } else if let image = NSImage(pasteboard: pasteboard) {
+                let item = MacShelfManager.shared.addScreenshot(image)
+                if dropZone == 2, let item = item {
+                    self.triggerAiRecognition(for: item.url.path, isImage: true)
+                }
+                handled = true
+            }
+
+            view.isDragActive = false
+            view.activeDropZone = 0
+            view.shelfItems = MacShelfManager.shared.items
+            view.shelfCanUndo = MacShelfManager.shared.canUndo
+            let mouseInWindow = self.islandWindow?.frame.contains(NSEvent.mouseLocation) ?? false
+            if mouseInWindow {
+                self.isPointerInsideIsland = true
+            } else if self.dragDidForceExpansion && !self.isPinnedExpanded {
+                self.isExpanded = false
+            }
+            self.dragDidForceExpansion = false
+            self.refreshDisplay()
+            return handled
+        }
         window.contentView = hostingView
         islandWindow = window
         return window
@@ -5108,5 +7056,182 @@ class MacPomodoroStatusBarController {
         if let value = value as? Int64 { return value }
         if let value = value as? Int { return Int64(value) }
         return 0
+    }
+
+    // MARK: - Shelf & QuickLook & AI Recognition
+    private var currentQuickLookURL: URL?
+
+    func toggleQuickLook(for url: URL) {
+        if let panel = QLPreviewPanel.shared(), panel.isVisible && currentQuickLookURL == url {
+            panel.orderOut(nil)
+            currentQuickLookURL = nil
+        } else {
+            currentQuickLookURL = url
+            if let panel = QLPreviewPanel.shared() {
+                if #available(macOS 14.0, *) {
+                    NSApp.activate()
+                } else {
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+                panel.updateController()
+                panel.dataSource = self
+                panel.delegate = self
+                panel.reloadData()
+                panel.makeKeyAndOrderFront(nil)
+            }
+        }
+    }
+
+    private func extractRecognizableContent(from url: URL) -> (isImage: Bool, value: String)? {
+        let ext = url.pathExtension.lowercased()
+        let isTrackedInShelf = MacShelfManager.shared.items.contains {
+            $0.url.standardizedFileURL.path == url.standardizedFileURL.path
+        }
+        var didStartTemporaryAccess = false
+        if !isTrackedInShelf {
+            didStartTemporaryAccess = url.startAccessingSecurityScopedResource()
+        }
+        defer {
+            if didStartTemporaryAccess {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        if MacShelfItem.recognizableImageExtensions.contains(ext) {
+            return (true, url.path)
+        }
+
+        let maxCharacters = 15_000
+        func clampText(_ raw: String) -> String? {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+            return trimmed.count > maxCharacters ? String(trimmed.prefix(maxCharacters)) : trimmed
+        }
+
+        if ext == "pdf" {
+            if let document = PDFDocument(url: url),
+               let rawText = document.string,
+               let text = clampText(rawText) {
+                return (false, text)
+            }
+            return nil
+        }
+
+        if ["rtf", "doc", "docx", "html", "htm"].contains(ext) {
+            if let attributed = try? NSAttributedString(
+                url: url,
+                options: [:],
+                documentAttributes: nil
+            ), let text = clampText(attributed.string) {
+                return (false, text)
+            }
+            if ["html", "htm"].contains(ext),
+               let rawText = try? String(contentsOf: url, encoding: .utf8),
+               let text = clampText(rawText) {
+                return (false, text)
+            }
+            return nil
+        }
+
+        if MacShelfItem.recognizableFileExtensions.contains(ext) {
+            if let rawText = try? String(contentsOf: url, encoding: .utf8),
+               let text = clampText(rawText) {
+                return (false, text)
+            }
+            var detectedEncoding = String.Encoding.utf8
+            if let rawText = try? String(contentsOf: url, usedEncoding: &detectedEncoding),
+               let text = clampText(rawText) {
+                return (false, text)
+            }
+            return nil
+        }
+
+        return nil
+    }
+
+    func triggerAiRecognitionForFile(url: URL) {
+        if let extracted = extractRecognizableContent(from: url) {
+            if extracted.isImage {
+                triggerAiRecognition(for: extracted.value, isImage: true, isText: false)
+            } else {
+                triggerAiRecognition(for: extracted.value, isImage: false, isText: true)
+            }
+        } else {
+            // 无法提取正文（如不支持的二进制文件或纯扫描件/空文件），传 path 交由 Dart 端拦截提示
+            triggerAiRecognition(for: url.path, isImage: false, isText: false)
+        }
+    }
+
+    func triggerAiRecognition(for pathOrText: String, isImage: Bool, isText: Bool = false) {
+        showMainWindow()
+        flutterChannel?.invokeMethod("startIslandAiRecognition", arguments: [
+            "path": isText ? "" : pathOrText,
+            "text": isText ? pathOrText : "",
+            "isImage": isImage
+        ])
+    }
+
+    func openNowPlayingApp() {
+        let musicApp = detectPlayingMusicApp(bundleIdentifier: nowPlayingSnapshot.sourceBundleIdentifier)
+        let bundleId = musicApp.bundleId
+        if !bundleId.isEmpty {
+            // 1. 如果已在运行，确保 unhide 并请求激活
+            if let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).first {
+                running.unhide()
+                if #available(macOS 14.0, *) {
+                    running.activate()
+                } else {
+                    running.activate(options: [.activateIgnoringOtherApps, .activateAllWindows])
+                }
+            }
+
+            // 2. 通过 LaunchServices 打开或激活目标 App
+            if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
+                let config = NSWorkspace.OpenConfiguration()
+                config.activates = true
+                config.createsNewApplicationInstance = false
+                NSWorkspace.shared.openApplication(at: appURL, configuration: config, completionHandler: nil)
+            }
+
+            // 3. AppleScript 保底：能直接解冻并置顶最小化至 Dock 的窗口
+            DispatchQueue.global(qos: .userInitiated).async {
+                let script = NSAppleScript(source: "tell application id \"\(bundleId)\" to activate")
+                var error: NSDictionary?
+                script?.executeAndReturnError(&error)
+            }
+            return
+        }
+
+        // 兜底至 Apple Music
+        if let running = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music").first {
+            running.unhide()
+            if #available(macOS 14.0, *) {
+                running.activate()
+            } else {
+                running.activate(options: [.activateIgnoringOtherApps, .activateAllWindows])
+            }
+        }
+        if let musicURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Music") {
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = true
+            config.createsNewApplicationInstance = false
+            NSWorkspace.shared.openApplication(at: musicURL, configuration: config, completionHandler: nil)
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let script = NSAppleScript(source: "tell application \"Music\" to activate")
+            var error: NSDictionary?
+            script?.executeAndReturnError(&error)
+        }
+    }
+}
+
+extension MacPomodoroStatusBarController: QLPreviewPanelDataSource, QLPreviewPanelDelegate {
+    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
+        currentQuickLookURL != nil ? 1 : 0
+    }
+
+    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
+        guard let url = currentQuickLookURL else { return nil }
+        return url as NSURL
     }
 }
