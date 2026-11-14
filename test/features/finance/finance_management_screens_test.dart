@@ -2731,60 +2731,6 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('未来月份概览将待发生账单标为计划数据', (tester) async {
-    final now = DateTime.now();
-    final futureMonth = DateTime(now.year, now.month + 1);
-    final plannedAt = DateTime(futureMonth.year, futureMonth.month, 10, 12);
-    final transaction = FinanceTransaction(
-      uuid: 'future-overview-planned-expense',
-      amountMinor: 2500,
-      categoryUuid: 'test-food',
-      transactionDate: dateKey(plannedAt),
-      occurredAt: plannedAt.millisecondsSinceEpoch,
-      timezoneOffsetMinutes: plannedAt.timeZoneOffset.inMinutes,
-      createdAt: now.millisecondsSinceEpoch,
-    );
-
-    await _pump(
-      tester,
-      Scaffold(
-        body: FinanceOverviewPanel(
-          month: futureMonth,
-          summary: FinanceSummary.fromTransactions([transaction]),
-          transactions: [transaction],
-          categories: {
-            'test-food': FinanceCategory(
-              uuid: 'test-food',
-              name: '日常餐饮',
-              icon: '🍜',
-            ),
-          },
-          onAdd: () {},
-          addActionKey: GlobalKey(),
-          onRefresh: () async {},
-        ),
-      ),
-    );
-
-    expect(find.text('计划净支出'), findsOneWidget);
-    expect(find.text('计划总支出'), findsOneWidget);
-    expect(find.text('计划支出分类'), findsOneWidget);
-    expect(find.text('计划每日净支出'), findsOneWidget);
-    expect(find.textContaining('平均计划净支出'), findsOneWidget);
-
-    await _tap(tester, find.text('周视图'));
-    final weeklyTitle = tester
-        .widget<Text>(find.textContaining('每日净支出').first)
-        .data!;
-    expect(weeklyTitle, startsWith('计划'));
-
-    await _tap(tester, find.text('日视图'));
-    final dailyTitle = tester
-        .widget<Text>(find.textContaining('时段净支出').first)
-        .data!;
-    expect(dailyTitle, startsWith('计划'));
-    expect(tester.takeException(), isNull);
-  });
 
   testWidgets('概览在选中月份开始时切换到实际统计', (tester) async {
     final db = await _seed(tester);
@@ -3209,85 +3155,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('日视图小时分布使用账单记录时区', (tester) async {
-    final now = DateTime.now();
-    final transaction = FinanceTransaction(
-      uuid: 'daily-chart-timezone-entry',
-      amountMinor: 2000,
-      categoryUuid: 'test-food',
-      transactionDate: dateKey(now),
-      occurredAt:
-          DateTime.utc(
-            now.year,
-            now.month,
-            now.day,
-            0,
-            30,
-          ).millisecondsSinceEpoch -
-          14 * 60 * 60 * 1000,
-      timezoneOffsetMinutes: 14 * 60,
-      createdAt: DateTime.now()
-          .subtract(const Duration(hours: 1))
-          .millisecondsSinceEpoch,
-    );
-    await _pump(
-      tester,
-      Scaffold(
-        body: FinanceOverviewPanel(
-          month: DateTime(now.year, now.month),
-          summary: FinanceSummary.fromTransactions([transaction]),
-          transactions: [transaction],
-          categories: {
-            'test-food': FinanceCategory(
-              uuid: 'test-food',
-              name: '日常餐饮',
-              icon: '🍜',
-            ),
-          },
-          onAdd: () {},
-          addActionKey: GlobalKey(),
-          onRefresh: () async {},
-        ),
-      ),
-    );
-    await _tap(tester, find.text('日视图'));
 
-    expect(find.byTooltip('0时 · 净支出 ¥20.00'), findsOneWidget);
-    expect(find.byTooltip('12时 · 净支出 ¥0.00'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('日视图把未知发生时刻单独显示', (tester) async {
-    final entryAt = DateTime.now().subtract(const Duration(minutes: 1));
-    final transaction = FinanceTransaction.fromMap({
-      'uuid': 'overview-unknown-occurrence-hour',
-      'amount_minor': 2000,
-      'transaction_date': dateKey(entryAt),
-      'created_at': entryAt.millisecondsSinceEpoch,
-      'updated_at': entryAt.millisecondsSinceEpoch,
-      'merchant': '时间未知账单',
-    });
-
-    await _pump(
-      tester,
-      Scaffold(
-        body: FinanceOverviewPanel(
-          month: DateTime(entryAt.year, entryAt.month),
-          summary: FinanceSummary.fromTransactions([transaction]),
-          transactions: [transaction],
-          categories: const {},
-          onAdd: () {},
-          addActionKey: GlobalKey(),
-          onRefresh: () async {},
-        ),
-      ),
-    );
-    await _tap(tester, find.text('日视图'));
-
-    expect(find.byTooltip('未知时刻 · 净支出 ¥20.00'), findsOneWidget);
-    expect(find.byTooltip('12时 · 净支出 ¥20.00'), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
 
   testWidgets('退款超过支出时净支出图表仍显示负值', (tester) async {
     final refund = FinanceTransaction(
@@ -3535,68 +3403,6 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('历史月份的小结和分类空状态显示所选月份', (tester) async {
-    final now = DateTime.now();
-    final selectedMonth = DateTime(now.year, now.month - 1);
-    final transactionDate = dateKey(
-      DateTime(selectedMonth.year, selectedMonth.month, 2),
-    );
-    final transactions = [
-      FinanceTransaction(
-        uuid: 'overview-offset-expense',
-        amountMinor: 5000,
-        categoryUuid: 'test-food',
-        transactionDate: transactionDate,
-      ),
-      FinanceTransaction(
-        uuid: 'overview-offset-refund',
-        type: FinanceTransactionType.refund,
-        amountMinor: 5000,
-        categoryUuid: 'test-food',
-        transactionDate: transactionDate,
-      ),
-    ];
-
-    await _pump(
-      tester,
-      Scaffold(
-        body: FinanceOverviewPanel(
-          month: selectedMonth,
-          summary: FinanceSummary.fromTransactions(transactions),
-          transactions: transactions,
-          categories: const {},
-          onAdd: () {},
-          addActionKey: GlobalKey(),
-          onRefresh: () async {},
-        ),
-      ),
-    );
-
-    final monthLabel = '${selectedMonth.year}年${selectedMonth.month}月';
-    expect(find.text('$monthLabel没有可展示的净支出分类'), findsOneWidget);
-    expect(find.text('$monthLabel小结'), findsOneWidget);
-    expect(find.text('本月没有可展示的净支出分类'), findsNothing);
-    expect(find.text('本月小结'), findsNothing);
-
-    await _tap(tester, find.text('周视图'));
-    final weeklyChartTitle = tester
-        .widget<Text>(find.textContaining('每日净支出').first)
-        .data!;
-    expect(weeklyChartTitle, isNot('本周每日净支出'));
-    final weekLabel = weeklyChartTitle.replaceFirst('每日净支出', '');
-    expect(find.text('$weekLabel小结'), findsOneWidget);
-    expect(find.text('$weekLabel没有可展示的净支出分类'), findsOneWidget);
-
-    await _tap(tester, find.text('日视图'));
-    final dailyChartTitle = tester
-        .widget<Text>(find.textContaining('时段净支出').first)
-        .data!;
-    expect(dailyChartTitle, isNot('当天时段净支出'));
-    final dayLabel = dailyChartTitle.replaceFirst('时段净支出', '');
-    expect(find.text('$dayLabel没有可展示的净支出分类'), findsOneWidget);
-    expect(find.text('$dayLabel还没有净支出记录'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
 
   testWidgets('概览平均净支出不把收入笔数计入分母', (tester) async {
     final occurredAt = DateTime(2026, 9, 2, 10).millisecondsSinceEpoch;

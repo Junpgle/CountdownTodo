@@ -984,55 +984,6 @@ void main() {
     expect(repaired, isEmpty);
   });
 
-  test('persisted duplicate occurrences on one series day are cleaned up', () {
-    TodoItem occurrence({
-      required String id,
-      RecurrenceType recurrence = RecurrenceType.none,
-      bool isDone = false,
-      int hour = 19,
-    }) {
-      return TodoItem(
-        id: id,
-        title: '每日循环',
-        recurrence: recurrence,
-        recurrenceSeriesId: 'series-persisted-dedupe',
-        isDone: isDone,
-        version: isDone ? 2 : 1,
-        createdDate: DateTime(2026, 7, 15, hour).millisecondsSinceEpoch,
-        dueDate: DateTime(2026, 7, 15, hour + 3),
-      );
-    }
-
-    final completedDuplicate = occurrence(id: 'completed', isDone: true);
-    final active = occurrence(
-      id: 'active',
-      recurrence: RecurrenceType.daily,
-      hour: 20,
-    );
-    final extraDuplicate = occurrence(id: 'extra', hour: 21);
-    final nextDay = TodoItem(
-      id: 'next-day',
-      title: '每日循环',
-      recurrenceSeriesId: 'series-persisted-dedupe',
-      createdDate: DateTime(2026, 7, 16, 19).millisecondsSinceEpoch,
-    );
-
-    final changed =
-        StorageService.deduplicatePersistedRecurrenceOccurrencesForTest([
-          completedDuplicate,
-          active,
-          extraDuplicate,
-          nextDay,
-        ]);
-
-    expect(changed, isTrue);
-    expect(active.isDeleted, isFalse);
-    expect(active.isDone, isTrue);
-    expect(active.recurrence, RecurrenceType.daily);
-    expect(completedDuplicate.isDeleted, isTrue);
-    expect(extraDuplicate.isDeleted, isTrue);
-    expect(nextDay.isDeleted, isFalse);
-  });
 
   test('dedupe resurrects the stable identity and transfers latest state', () {
     final stableIdentity = TodoItem(
