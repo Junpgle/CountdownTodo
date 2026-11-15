@@ -1512,7 +1512,14 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
               AiMemoryService.applyTextMemoryCommands(
                 widget.username,
                 actionContent,
-              ),
+              ).then((notices) {
+                if (mounted && notices.isNotEmpty) {
+                  AppSnackBars.showSnackBar(
+                    context,
+                    SnackBar(content: Text(notices.join('；'))),
+                  );
+                }
+              }),
             );
           }
           final interruptedContent = _appendPendingWriteConfirmationNotice(
@@ -1636,7 +1643,14 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           AiMemoryService.applyTextMemoryCommands(
             widget.username,
             actionContent,
-          ),
+          ).then((notices) {
+            if (mounted && notices.isNotEmpty) {
+              AppSnackBars.showSnackBar(
+                context,
+                SnackBar(content: Text(notices.join('；'))),
+              );
+            }
+          }),
         );
       }
       final parsedFallbackCdtActionNames = nativeToolMode
@@ -1944,7 +1958,15 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
 
   String _queryResultSummary(Map<String, dynamic>? result) {
     if (result == null) return '查询尚未完成。';
-    if (result['ok'] == false) return '查询失败：${result['error']}';
+    if (result['action'] == 'save' ||
+        result['action'] == 'delete' ||
+        result['status'] == 'memory_disabled') {
+      final message = result['message']?.toString().trim();
+      if (message != null && message.isNotEmpty) return message;
+    }
+    if (result['ok'] == false) {
+      return '查询失败：${result['error'] ?? result['message'] ?? '未知错误'}';
+    }
     if (result['status'] == 'awaiting_confirmation') return '操作草案等待确认，尚未执行。';
     final summary = result['summary'];
     final count =
@@ -1991,6 +2013,9 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     return calls
         .map((call) {
           final summary = switch (call.name) {
+            AiMemoryService.toolName =>
+              _queryToolResults[call.id]?['message']?.toString().trim() ??
+                  '记忆已更新。',
             AiSettingsNavigationService.toolName =>
               AiSettingsNavigationService.targetsFromArguments(call.arguments)
                       .isNotEmpty

@@ -380,7 +380,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('思考过程'), findsOneWidget);
-    expect(find.text('20 次工具调用'), findsOneWidget);
+    expect(find.text('已查询待办（共 20 次）'), findsOneWidget);
     expect(find.byType(AiToolCallTile), findsNothing);
     expect(find.text('App 返回的数据'), findsNothing);
     expect(
@@ -809,4 +809,55 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('思考过程折叠态展示当前正在执行或已完成的详细动作', (tester) async {
+    await tester.pumpWidget(
+      _page(
+        panel: const AiChatThinkingPanel(
+          reasoning: '先查看账单再记住偏好',
+          isStreaming: true,
+        ),
+      ),
+    );
+    expect(find.text('正在思考…'), findsOneWidget);
+
+    await tester.pumpWidget(
+      _page(
+        panel: const AiChatThinkingPanel(
+          calls: [
+            ChatNativeToolCall(
+              id: 'q-fin',
+              name: 'query_finance',
+              arguments: '{}',
+            ),
+          ],
+          isStreaming: true,
+        ),
+      ),
+    );
+    expect(find.text('正在查询账单…'), findsOneWidget);
+
+    await tester.pumpWidget(
+      _page(
+        panel: const AiChatThinkingPanel(
+          calls: [
+            ChatNativeToolCall(
+              id: 'q-fin',
+              name: 'query_finance',
+              arguments: '{}',
+              result: {'ok': true, 'total_count': 2},
+            ),
+            ChatNativeToolCall(
+              id: 'm-1',
+              name: 'manage_user_memory',
+              arguments: '{"action":"save","content":"少喝奶茶"}',
+              result: {'ok': true, 'action': 'save'},
+            ),
+          ],
+          hasReply: true,
+        ),
+      ),
+    );
+    expect(find.text('已查询账单 · 已更新记忆（共 2 次）'), findsOneWidget);
+  });
 }
