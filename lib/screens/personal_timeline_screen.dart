@@ -2811,6 +2811,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
             )
           else
             GridView.builder(
+              padding: EdgeInsets.zero,
+              primary: false,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               findChildIndexCallback: (Key key) {
@@ -3829,6 +3831,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
           incomeCount++;
         case FinanceTransactionType.refund:
           refundCount++;
+        case FinanceTransactionType.transfer:
+          break;
       }
     }
 

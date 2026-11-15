@@ -932,6 +932,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       FinanceTransactionType.expense => '支出',
       FinanceTransactionType.income => '收入',
       FinanceTransactionType.refund => '退款',
+      FinanceTransactionType.transfer => '互转',
     };
     final merchant = existing.merchant?.trim();
     final note = existing.note?.trim();

@@ -287,8 +287,7 @@ class _FinanceCategoryDetailScreenState
   List<FinanceTransaction> get _matchingTransactions => transactions
       .where(
         (transaction) =>
-            transaction.type != FinanceTransactionType.income &&
-            _belongsToRoot(transaction),
+            transaction.isExpenseLike && _belongsToRoot(transaction),
       )
       .toList();
 
@@ -302,7 +301,7 @@ class _FinanceCategoryDetailScreenState
       final contribution = switch (transaction.type) {
         FinanceTransactionType.expense => transaction.amountMinor,
         FinanceTransactionType.refund => -transaction.amountMinor,
-        FinanceTransactionType.income => 0,
+        FinanceTransactionType.income || FinanceTransactionType.transfer => 0,
       };
       total += contribution;
       final categoryUuid = transaction.categoryUuid;
@@ -1081,7 +1080,7 @@ class _FinanceCategoryDetailScreenState
   ) {
     final matches = <FinanceTransaction>[];
     for (final transaction in transactions) {
-      if (transaction.type == FinanceTransactionType.income) continue;
+      if (!transaction.isExpenseLike) continue;
       final matchesCategory =
           item.categoryUuid == financeUncategorizedCategoryFilterUuid
           ? transaction.categoryUuid == null ||

@@ -791,6 +791,7 @@ class DatabaseHelper {
         currency_code TEXT NOT NULL DEFAULT 'CNY',
         category_uuid TEXT,
         payment_method_uuid TEXT,
+        target_payment_method_uuid TEXT,
         transaction_date TEXT NOT NULL,
         occurred_at INTEGER,
         timezone_offset_minutes INTEGER NOT NULL DEFAULT 0,
@@ -1006,6 +1007,7 @@ class DatabaseHelper {
           {'name': 'installment_index', 'type': 'INTEGER'},
           {'name': 'installment_count', 'type': 'INTEGER'},
           {'name': 'installment_total_minor', 'type': 'INTEGER'},
+          {'name': 'target_payment_method_uuid', 'type': 'TEXT'},
         ];
         for (final column in installmentColumns) {
           if (!columns.any((row) => row['name'] == column['name'])) {

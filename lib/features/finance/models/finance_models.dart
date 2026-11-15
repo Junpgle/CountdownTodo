@@ -7,7 +7,7 @@ import '../../../utils/json_value_parser.dart';
 /// 账单的现金流类型。
 ///
 /// 金额在模型中始终保存为正整数（人民币分），方向由该枚举决定。
-enum FinanceTransactionType { expense, income, refund }
+enum FinanceTransactionType { expense, income, refund, transfer }
 
 /// Reserved ledger filter value for transactions without a category.
 const String financeUncategorizedCategoryFilterUuid =
@@ -634,10 +634,16 @@ extension FinanceTransactionTypeLabel on FinanceTransactionType {
         return '收入';
       case FinanceTransactionType.refund:
         return '退款';
+      case FinanceTransactionType.transfer:
+        return '互转';
     }
   }
 
-  String get signedPrefix => this == FinanceTransactionType.expense ? '-' : '+';
+  String get signedPrefix => switch (this) {
+    FinanceTransactionType.expense => '-',
+    FinanceTransactionType.income || FinanceTransactionType.refund => '+',
+    FinanceTransactionType.transfer => '',
+  };
 }
 
 extension FinanceCategoryTypeLabel on FinanceCategoryType {
@@ -1640,6 +1646,7 @@ class FinanceTransaction {
   String currencyCode;
   String? categoryUuid;
   String? paymentMethodUuid;
+  String? targetPaymentMethodUuid;
   String transactionDate;
   int? occurredAt;
   int timezoneOffsetMinutes;
@@ -1667,6 +1674,7 @@ class FinanceTransaction {
     this.currencyCode = FinanceDefaults.defaultCurrencyCode,
     this.categoryUuid,
     this.paymentMethodUuid,
+    this.targetPaymentMethodUuid,
     required this.transactionDate,
     int? occurredAt,
     int? timezoneOffsetMinutes,
@@ -1774,6 +1782,7 @@ class FinanceTransaction {
     'currency_code': currencyCode,
     'category_uuid': categoryUuid,
     'payment_method_uuid': paymentMethodUuid,
+    'target_payment_method_uuid': targetPaymentMethodUuid,
     'transaction_date': transactionDate,
     'occurred_at': occurredAt,
     'timezone_offset_minutes': timezoneOffsetMinutes,
@@ -1819,6 +1828,9 @@ class FinanceTransaction {
       ),
       paymentMethodUuid: _nullableString(
         map['payment_method_uuid'] ?? map['paymentMethodUuid'],
+      ),
+      targetPaymentMethodUuid: _nullableString(
+        map['target_payment_method_uuid'] ?? map['targetPaymentMethodUuid'],
       ),
       transactionDate: transactionDate,
       occurredAt: occurredAt,
@@ -2713,6 +2725,9 @@ class FinanceSummary {
           expenseByDate[transaction.transactionDate] =
               (expenseByDate[transaction.transactionDate] ?? 0) -
               transaction.amountMinor;
+        case FinanceTransactionType.transfer:
+          // 账户互转不计入月度收支与预算统计，仅影响转出/转入账户余额。
+          break;
       }
     }
 

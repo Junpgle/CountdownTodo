@@ -1175,6 +1175,7 @@ abstract final class FinanceAiContextService {
         FinanceTransactionType.expense => '已删除或未知付款方式',
         FinanceTransactionType.income => '已删除或未知到账账户',
         FinanceTransactionType.refund => '已删除或未知退款到账账户',
+        FinanceTransactionType.transfer => '已删除或未知转出账户',
       };
     }
 
@@ -1332,6 +1333,7 @@ abstract final class FinanceAiContextService {
           FinanceTransactionType.expense => '付款方式',
           FinanceTransactionType.income => '到账账户',
           FinanceTransactionType.refund => '退款到账账户',
+          FinanceTransactionType.transfer => '转出账户',
         };
         final account =
             ' | $accountLabel: ${transactionAccountName(transaction.paymentMethodUuid, transaction.type)}';

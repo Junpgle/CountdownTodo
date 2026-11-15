@@ -188,6 +188,7 @@ class _FinanceTransactionDetailScreenState
             FinanceTransactionType.expense => '已删除或未知付款方式',
             FinanceTransactionType.income => '已删除或未知到账账户',
             FinanceTransactionType.refund => '已删除或未知退款到账账户',
+            FinanceTransactionType.transfer => '已删除或未知转出账户',
           }
         : transaction.type == FinanceTransactionType.expense
         ? '未指定'
@@ -199,7 +200,23 @@ class _FinanceTransactionDetailScreenState
       FinanceTransactionType.expense => '付款方式',
       FinanceTransactionType.income => '到账账户',
       FinanceTransactionType.refund => '退款到账账户',
+      FinanceTransactionType.transfer => '转出账户',
     };
+  }
+
+  String _targetPaymentMethodLabel() {
+    final targetUuid = transaction.targetPaymentMethodUuid?.trim();
+    if (targetUuid == null || targetUuid.isEmpty) {
+      return '未指定（不更新转入账户余额）';
+    }
+    for (final method in _paymentMethods) {
+      if (method.uuid == targetUuid) {
+        final name = financePaymentMethodDisplayName(method, _paymentMethods);
+        final archivedLabel = method.isArchived ? '（已归档）' : '';
+        return '${method.icon} $name$archivedLabel';
+      }
+    }
+    return '已删除或未知转入账户';
   }
 
   String _occurredAtLabel() {
@@ -320,16 +337,23 @@ class _FinanceTransactionDetailScreenState
                 ],
               ),
             ),
-            AppDetailWideCard(
-              icon: Icons.category_outlined,
-              title: '分类',
-              value: _categoryLabel(),
-            ),
+            if (transaction.type != FinanceTransactionType.transfer)
+              AppDetailWideCard(
+                icon: Icons.category_outlined,
+                title: '分类',
+                value: _categoryLabel(),
+              ),
             AppDetailWideCard(
               icon: Icons.account_balance_wallet_outlined,
               title: _paymentMethodTitle(),
               value: _paymentMethodLabel(),
             ),
+            if (transaction.type == FinanceTransactionType.transfer)
+              AppDetailWideCard(
+                icon: Icons.savings_outlined,
+                title: '转入账户',
+                value: _targetPaymentMethodLabel(),
+              ),
             if (transaction.isInstallment)
               AppDetailWideCard(
                 icon: Icons.event_repeat_outlined,
