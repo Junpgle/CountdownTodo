@@ -140,6 +140,15 @@ abstract final class AppSettingsCatalog {
       platforms: {},
     ),
     AiSettingsDestination(
+      id: 'offline_mode',
+      title: '离线模式',
+      path: '设置 > 账户与同步 > 离线模式',
+      description: '关闭云端服务器同步与WebSocket 仅走本地与局域网同步',
+      page: SettingsPageId.account,
+      labels: ['离线模式', '离线模式（不走服务器同步）'],
+      platforms: {},
+    ),
+    AiSettingsDestination(
       id: 'sync_health',
       title: '同步状态',
       path: '设置 > 账户与同步 > 同步状态',

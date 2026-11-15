@@ -127,6 +127,7 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
   Future<void> openAiAssistant({
     GlobalKey? sourceKey,
     String? initialMessage,
+    String? initialSessionId,
     bool sendInitialMessage = true,
     ChatUsageSummary? initialVoiceUsageSummary,
   }) async {
@@ -140,6 +141,7 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
       username: widget.username,
       sourceKey: sourceKey,
       initialMessage: initialMessage,
+      initialSessionId: initialSessionId,
       sendInitialMessage: sendInitialMessage,
       initialVoiceUsageSummary: initialVoiceUsageSummary,
       todos: widget.todos

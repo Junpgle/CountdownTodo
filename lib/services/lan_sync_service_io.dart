@@ -22,6 +22,7 @@ import 'lan_sync_crypto.dart';
 import 'lan_sync_pairing.dart';
 import 'lan_sync_private_data.dart';
 import 'power_save_mode_service.dart';
+import 'storage/app_settings_storage.dart';
 
 class LanDevice {
   final String deviceId;
@@ -287,12 +288,11 @@ class LanSyncService {
     });
   }
 
-  bool _isSameUser(String? a, String? b) {
-    if (a == null || b == null) return false;
-    final na = a.trim().toLowerCase();
-    final nb = b.trim().toLowerCase();
-    return na.isNotEmpty && nb.isNotEmpty && na == nb;
-  }
+  String get _hashedDiscoveryUserId =>
+      LanDiscoveryIdentity.hashUserId(_currentUserId);
+
+  bool _isSameUser(String? a, String? b) =>
+      LanDiscoveryIdentity.isSameUser(a, b);
 
   bool _isVirtualInterfaceName(String name) {
     final lower = name.toLowerCase();
@@ -868,7 +868,7 @@ class LanSyncService {
     }
     final response = {
       'deviceId': _currentDeviceId,
-      'userId': _currentUserId,
+      'userId': _hashedDiscoveryUserId,
       'deviceName': _currentDeviceName,
       'port': _serverPort,
     };
@@ -915,7 +915,7 @@ class LanSyncService {
 
     // quick_pair 使用一次性二维码令牌授权，允许跨账号或离线 local 账号直接互传。
     if (action != 'quick_pair' &&
-        remoteUserId != _currentUserId &&
+        !_isSameUser(remoteUserId, _currentUserId) &&
         !_discoverAllDevices) {
       await _writeEncryptedError(
         req,
@@ -986,7 +986,7 @@ class LanSyncService {
         // 一次性令牌用完即销毁，防止重放。
         cancelQuickPairSession();
       } else if (action == 'auto_sync') {
-        if (!_autoSyncEnabled || remoteUserId != _currentUserId) {
+        if (!_autoSyncEnabled || !_isSameUser(remoteUserId, _currentUserId)) {
           await _writeEncryptedError(
             req,
             sessionKey,
@@ -1570,7 +1570,7 @@ class LanSyncService {
           final reply = jsonEncode({
             'type': 'discovery',
             'deviceId': _currentDeviceId,
-            'userId': _currentUserId,
+            'userId': _hashedDiscoveryUserId,
             'deviceName': _currentDeviceName,
             'port': _serverPort,
           });
@@ -1601,7 +1601,7 @@ class LanSyncService {
           final reply = jsonEncode({
             'type': 'discovery',
             'deviceId': _currentDeviceId,
-            'userId': _currentUserId,
+            'userId': _hashedDiscoveryUserId,
             'deviceName': _currentDeviceName,
             'port': _serverPort,
           });
@@ -1696,7 +1696,7 @@ class LanSyncService {
     try {
       final packet = LanMdnsCodec.buildAnnouncement(
         deviceId: _currentDeviceId ?? '',
-        userId: _currentUserId ?? 'local',
+        userId: _hashedDiscoveryUserId,
         deviceName: _currentDeviceName ?? '未知设备',
         ip: ip,
         port: _serverPort!,
@@ -1715,7 +1715,14 @@ class LanSyncService {
     if (!_isSameUser(device.userId, _currentUserId)) return;
     final now = DateTime.now().millisecondsSinceEpoch;
     final last = _lastAutoSyncAt[device.deviceId] ?? 0;
-    if (now - last < _autoSyncCooldownMs) return;
+    if (AppSettingsStorage.offlineModeNotifier.value &&
+        _cachedOfflineSyncIntervalMinutes != null) {
+      final interval = _cachedOfflineSyncIntervalMinutes!;
+      if (interval <= 0 && last > 0) return;
+      if (interval > 0 && now - last < interval * 60 * 1000) return;
+    } else if (now - last < _autoSyncCooldownMs) {
+      return;
+    }
     _lastAutoSyncAt[device.deviceId] = now;
     unawaited(_autoSyncWithDevice(device));
   }
@@ -1740,7 +1747,7 @@ class LanSyncService {
           jsonEncode({
             'type': 'discovery',
             'deviceId': _currentDeviceId,
-            'userId': _currentUserId,
+            'userId': _hashedDiscoveryUserId,
             'deviceName': _currentDeviceName,
             'port': _serverPort,
           }),
@@ -1801,9 +1808,29 @@ class LanSyncService {
   }
 
   bool _backgroundAutoSyncInProgress = false;
+  bool _hasRunStartupBackgroundSync = false;
+  DateTime? _lastOfflineBackgroundSyncAt;
+  int? _cachedOfflineSyncIntervalMinutes;
+
+  Future<bool> _shouldAllowBackgroundAutoSync({required bool isStartup}) async {
+    final isOffline = await AppSettingsStorage.isOfflineModeEnabled();
+    if (!isOffline) return true;
+
+    final intervalMinutes = await StorageService.getSyncInterval();
+    _cachedOfflineSyncIntervalMinutes = intervalMinutes;
+    if (intervalMinutes <= 0) {
+      return isStartup && !_hasRunStartupBackgroundSync;
+    }
+    final lastSync = _lastOfflineBackgroundSyncAt;
+    if (lastSync != null &&
+        DateTime.now().difference(lastSync).inMinutes < intervalMinutes) {
+      return false;
+    }
+    return true;
+  }
 
   /// 应用启动或切回前台时，按配置执行一次轻量局域网无感发现并双向合并。
-  Future<void> triggerBackgroundAutoSync() async {
+  Future<void> triggerBackgroundAutoSync({bool isStartup = false}) async {
     if (_backgroundAutoSyncInProgress || _isSyncing || _isPowerSaveMode) {
       return;
     }
@@ -1814,11 +1841,14 @@ class LanSyncService {
       final autoEnabled = prefs.getBool(_prefAutoSyncEnabled) ?? true;
       _autoSyncEnabled = autoEnabled;
       if (!autoEnabled) return;
+      if (!await _shouldAllowBackgroundAutoSync(isStartup: isStartup)) return;
 
       final loggedInUser = (await UserSessionStorage.getCurrentUsername())
           ?.trim();
       if (loggedInUser == null || loggedInUser.isEmpty) return;
 
+      _hasRunStartupBackgroundSync = true;
+      _lastOfflineBackgroundSyncAt = DateTime.now();
       await _ensureIdentity();
 
       if (!_isRunning) {
@@ -2015,7 +2045,7 @@ class LanSyncService {
             jsonEncode({
               'type': 'discovery_probe',
               'deviceId': _currentDeviceId,
-              'userId': _currentUserId,
+              'userId': _hashedDiscoveryUserId,
               'deviceName': _currentDeviceName,
             }),
           );

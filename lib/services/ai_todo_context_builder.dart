@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../models/ai_todo_action.dart';
 import '../models.dart';
+import 'ai_memory_service.dart';
 import 'ai_team_binding_resolver.dart';
 import 'chat_storage_service.dart';
 import 'pomodoro_service.dart';
@@ -164,6 +165,8 @@ class AiTodoContextBuilder {
     bool nativeToolCalls = false,
     bool queryTools = false,
     bool settingsNavigation = true,
+    bool memoryEnabled = false,
+    String memoryPromptBlock = '',
     DateTime? now,
   }) {
     final nowValue = now ?? DateTime.now();
@@ -200,9 +203,14 @@ $fallbackNowLine所有上下文时间均为本地时间，格式为yyyy-MM-dd HH
 
 【动作输出规则】
 当用户明确要求管理数据时，按本轮动作协议输出对应操作块；只按用户明确意图生成，信息不足时先追问。具体动作、字段和确认要求按本轮协议执行。''';
+    final memoryBlock = memoryEnabled
+        ? '\n\n${AiMemoryService.buildInstructionPrompt(nativeToolCalls: nativeToolCalls)}'
+              '${memoryPromptBlock.trim().isNotEmpty ? '\n\n${memoryPromptBlock.trim()}' : ''}'
+        : '';
     return '$resolvedBasePrompt\n\n$sharedRules\n\n$_dynamicSuggestionRules\n\n'
         '历史消息中的READ_ONLY_TOOL_HISTORY等上下文块只供参考，不要在回复中复述其标记或JSON。'
         '只有实际输出操作调用或操作块后才能说已生成待确认草案。'
+        '$memoryBlock'
         '${settingsNavigation ? '\n\n${AiSettingsNavigationService.buildPrompt(nativeToolCalls: nativeToolCalls)}' : ''}';
   }
 

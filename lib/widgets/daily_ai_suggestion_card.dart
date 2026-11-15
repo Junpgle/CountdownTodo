@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../services/daily_ai_suggestion_service.dart';
 import '../utils/app_image_filters.dart';
+import 'ai_water_border.dart';
+import 'floating_glass_control.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'platform_backdrop_filter.dart';
 
@@ -76,9 +78,7 @@ class DailyAiSuggestionCard extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final useLightHeader = isDark || isLight;
     final headerTextColor = useLightHeader ? Colors.white : scheme.onSurface;
-    final headerSubColor = useLightHeader
-        ? Colors.white.withValues(alpha: 0.72)
-        : scheme.onSurfaceVariant;
+    final headerIconColor = useLightHeader ? Colors.white70 : scheme.primary;
 
     final suggestion = snapshot.suggestion;
     final isExpanded = suggestion?.isExpanded ?? true;
@@ -154,100 +154,90 @@ class DailyAiSuggestionCard extends StatelessWidget {
                         color: useLightHeader ? Colors.white : scheme.primary,
                       ),
                     ),
-                  )
-                else if (!snapshot.showFirstOpenPrompt &&
-                    !snapshot.showManualGenerateCard)
-                  GestureDetector(
-                    key: const ValueKey<String>(
-                      'daily-ai-suggestion-refresh-btn',
-                    ),
-                    onTap: onRefresh,
-                    behavior: HitTestBehavior.opaque,
-                    child: Padding(
-                      padding: const EdgeInsets.all(4),
-                      child: Icon(
-                        Icons.refresh_rounded,
-                        size: 19,
-                        color: headerSubColor,
-                      ),
-                    ),
                   ),
                 if (suggestion != null)
-                  GestureDetector(
+                  IconButton(
                     key: const ValueKey<String>(
                       'daily-ai-suggestion-expand-btn',
                     ),
-                    onTap: () => onToggleExpanded(!isExpanded),
-                    behavior: HitTestBehavior.opaque,
-                    child: Padding(
-                      padding: const EdgeInsets.all(4),
-                      child: Icon(
-                        isExpanded
-                            ? Icons.keyboard_arrow_up
-                            : Icons.keyboard_arrow_down,
-                        size: 20,
-                        color: headerSubColor,
-                      ),
+                    constraints: const BoxConstraints.tightFor(
+                      width: floatingGlassStandardControlSize,
+                      height: floatingGlassStandardControlSize,
+                    ),
+                    visualDensity: VisualDensity.standard,
+                    style: floatingGlassPlainIconButtonStyle(),
+                    tooltip: isExpanded ? '收起今日 AI 建议' : '展开今日 AI 建议',
+                    onPressed: () => onToggleExpanded(!isExpanded),
+                    icon: Icon(
+                      isExpanded
+                          ? Icons.expand_less_rounded
+                          : Icons.expand_more_rounded,
+                      size: 20,
+                      color: headerIconColor,
                     ),
                   ),
-                GestureDetector(
+                IconButton(
                   key: const ValueKey<String>(
                     'daily-ai-suggestion-dismiss-btn',
                   ),
-                  onTap:
-                      snapshot.showFirstOpenPrompt ||
-                          snapshot.showManualGenerateCard
-                      ? onDeclinePrompt
-                      : onDismiss,
-                  behavior: HitTestBehavior.opaque,
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: Icon(
-                      Icons.close_rounded,
-                      size: 18,
-                      color: headerSubColor,
-                    ),
+                  constraints: const BoxConstraints.tightFor(
+                    width: floatingGlassStandardControlSize,
+                    height: floatingGlassStandardControlSize,
+                  ),
+                  visualDensity: VisualDensity.standard,
+                  style: floatingGlassPlainIconButtonStyle(),
+                  tooltip: '前往今日 AI 建议设置',
+                  onPressed: onDismiss,
+                  icon: Icon(
+                    Icons.close_rounded,
+                    size: 20,
+                    color: headerIconColor,
                   ),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 6),
-          PlatformBackdropFilter(
-            filter: AppImageFilters.blur10,
-            bypassWhenLiquidGlassEnabled: true,
-            clipBorderRadius: BorderRadius.circular(24),
-            child: OptionalLiquidGlassCard(
-              width: double.infinity,
-              padding: const EdgeInsets.all(18),
-              borderRadius: 24,
-              tint: scheme.primary.withValues(alpha: 0.08),
-              isDark: isDark,
-              fallbackDecoration: BoxDecoration(
-                color: isLight
-                    ? (isDark
-                          ? scheme.surfaceContainerLow.withValues(alpha: 0.78)
-                          : scheme.surface.withValues(alpha: 0.9))
-                    : scheme.surfaceContainerHighest.withValues(
-                        alpha: isDark ? 0.35 : 0.45,
-                      ),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(
+          AiWaterRippleBorder(
+            isLight: isLight,
+            visibleOnlyWhenInViewport: true,
+            borderRadius: BorderRadius.circular(24),
+            child: PlatformBackdropFilter(
+              filter: AppImageFilters.blur10,
+              bypassWhenLiquidGlassEnabled: true,
+              clipBorderRadius: BorderRadius.circular(24),
+              child: OptionalLiquidGlassCard(
+                width: double.infinity,
+                padding: const EdgeInsets.all(18),
+                borderRadius: 24,
+                tint: scheme.primary.withValues(alpha: 0.08),
+                isDark: isDark,
+                fallbackDecoration: BoxDecoration(
                   color: isLight
                       ? (isDark
-                            ? Colors.white.withValues(alpha: 0.15)
-                            : Colors.white.withValues(alpha: 0.6))
-                      : scheme.outlineVariant.withValues(
-                          alpha: isDark ? 0.25 : 0.4,
+                            ? scheme.surfaceContainerLow.withValues(alpha: 0.78)
+                            : scheme.surface.withValues(alpha: 0.9))
+                      : scheme.surfaceContainerHighest.withValues(
+                          alpha: isDark ? 0.35 : 0.45,
                         ),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: isLight
+                        ? (isDark
+                              ? Colors.white.withValues(alpha: 0.15)
+                              : Colors.white.withValues(alpha: 0.6))
+                        : scheme.outlineVariant.withValues(
+                            alpha: isDark ? 0.25 : 0.4,
+                          ),
+                  ),
                 ),
-              ),
-              child: _buildBody(
-                context,
-                scheme: scheme,
-                isDark: isDark,
-                suggestion: suggestion,
-                isExpanded: isExpanded,
+                child: _buildBody(
+                  context,
+                  scheme: scheme,
+                  isDark: isDark,
+                  suggestion: suggestion,
+                  isExpanded: isExpanded,
+                ),
               ),
             ),
           ),
@@ -304,9 +294,7 @@ class DailyAiSuggestionCard extends StatelessWidget {
                 child: const Text('以后每天打开都提供建议'),
               ),
               OutlinedButton(
-                key: const ValueKey<String>(
-                  'daily-ai-prompt-keep-manual-btn',
-                ),
+                key: const ValueKey<String>('daily-ai-prompt-keep-manual-btn'),
                 onPressed: onKeepManualSection,
                 child: const Text('保留板块，手动生成'),
               ),
@@ -502,11 +490,7 @@ class DailyAiSuggestionCard extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      Icons.refresh_rounded,
-                      size: 14,
-                      color: subTextColor,
-                    ),
+                    Icon(Icons.refresh_rounded, size: 14, color: subTextColor),
                     const SizedBox(width: 4),
                     Text(
                       snapshot.isLoading ? '生成中...' : '重新生成',

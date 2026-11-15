@@ -38,6 +38,7 @@ import '../services/ai_plan_draft_repository.dart';
 import '../services/llm_service.dart';
 import '../services/minor_mode_policy.dart';
 import '../services/minor_mode_service.dart';
+import '../services/ai_memory_service.dart';
 import '../services/chat_storage_service.dart';
 import '../services/ai_recognition_chat_bridge.dart';
 import '../services/pomodoro_control_service.dart';
@@ -104,6 +105,7 @@ String _formatTodoChatDateRange(DateTime start, DateTime end) {
 class TodoChatScreen extends StatefulWidget {
   /// A voice transcript prepared after session, settings, and context are ready.
   final String? initialMessage;
+  final String? initialSessionId;
   final bool sendInitialMessage;
   final ChatUsageSummary? initialVoiceUsageSummary;
   final String username;
@@ -136,6 +138,7 @@ class TodoChatScreen extends StatefulWidget {
     required this.username,
     required this.todos,
     this.initialMessage,
+    this.initialSessionId,
     this.sendInitialMessage = true,
     this.initialVoiceUsageSummary,
     this.todoGroups = const [],

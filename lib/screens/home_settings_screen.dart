@@ -354,6 +354,7 @@ class _SettingsPageState extends State<SettingsPage> {
       'account',
       'change_password',
       'sync_interval',
+      'offline_mode',
       'conflict_detection',
       'server_choice',
       'llm_retry',
@@ -838,6 +839,7 @@ class _SettingsPageState extends State<SettingsPage> {
   String? get _accountSyncTarget {
     const targets = {
       'sync_interval',
+      'offline_mode',
       'conflict_detection',
       'server_choice',
       'llm_retry',

@@ -11,6 +11,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     super.initState();
     _inputCtrl.addListener(_handleInputChanged);
     AiRecognitionChatBridge.changes.addListener(_handleRecognitionChatChanged);
+    AiMemoryService.revision.addListener(_handleMemoryRevisionChanged);
     _fixedSchedules = List<FixedScheduleItem>.from(widget.fixedSchedules);
     _pendingVoiceUsageSummary = widget.initialVoiceUsageSummary;
 
@@ -147,6 +148,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     AiRecognitionChatBridge.changes.removeListener(
       _handleRecognitionChatChanged,
     );
+    AiMemoryService.revision.removeListener(_handleMemoryRevisionChanged);
     _inputCtrl.dispose();
     _scrollCtrl.dispose();
     _streamingBubbleRevision.dispose();
@@ -158,6 +160,23 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   void _handleRecognitionChatChanged() {
     if (_isLoading || !mounted || _activeSessionId == null) return;
     _loadHistory();
+  }
+
+  void _handleMemoryRevisionChanged() {
+    if (!mounted) return;
+    unawaited(_loadMemorySettings());
+  }
+
+  Future<void> _loadMemorySettings() async {
+    final memoryEnabled = await AiMemoryService.isEnabled(widget.username);
+    final memoryBlock = memoryEnabled
+        ? await AiMemoryService.loadPromptBlock(widget.username)
+        : '';
+    if (!mounted) return;
+    setState(() {
+      _memoryEnabled = memoryEnabled;
+      _memoryPromptBlock = memoryBlock;
+    });
   }
 
   void _handleInputChanged() {
@@ -401,7 +420,23 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   }
 
   Future<void> _initSessions() async {
-    final session = await ChatStorageService.openEmptySession();
+    final requestedId = widget.initialSessionId?.trim();
+    ChatSession? requestedSession;
+    if (requestedId != null && requestedId.isNotEmpty) {
+      final existingSessions = await ChatStorageService.loadSessions();
+      for (final candidate in existingSessions) {
+        if (candidate.id == requestedId) {
+          requestedSession = candidate;
+          break;
+        }
+      }
+      if (requestedSession != null) {
+        await ChatStorageService.setActiveSessionId(requestedSession.id);
+      }
+    }
+
+    final session =
+        requestedSession ?? await ChatStorageService.openEmptySession();
     final sessions = await ChatStorageService.loadSessions();
     if (!mounted) return;
     setState(() {
@@ -566,10 +601,16 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     final injectMoreContext =
         await ChatStorageService.shouldInjectMoreContext();
     final toolBudget = await ChatStorageService.getToolBudget();
+    final memoryEnabled = await AiMemoryService.isEnabled(widget.username);
+    final memoryBlock = memoryEnabled
+        ? await AiMemoryService.loadPromptBlock(widget.username)
+        : '';
     if (mounted) {
       setState(() {
         _customPrompt = prompt;
         _promptEnabled = enabled;
+        _memoryEnabled = memoryEnabled;
+        _memoryPromptBlock = memoryBlock;
         _smartContext = smartContext;
         _contextMode = contextMode;
         _showInjectedContextPreview = showContextPreview;
@@ -642,6 +683,8 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
               _smartContext &&
               _contextMode == AiContextMode.functionCalling),
       settingsNavigation: settingsNavigation,
+      memoryEnabled: _memoryEnabled,
+      memoryPromptBlock: _memoryPromptBlock,
     );
   }
 

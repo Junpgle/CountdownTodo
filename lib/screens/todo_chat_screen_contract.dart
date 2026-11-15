@@ -17,6 +17,8 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   List<String> _suggestions = [];
   String _customPrompt = '';
   bool _promptEnabled = true;
+  bool _memoryEnabled = true;
+  String _memoryPromptBlock = '';
   bool _deepThinking = true;
   String _chatModel = '';
   String _chatApiKey = '';

@@ -356,7 +356,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       _handleWindowsWindowActivityChanged,
     );
     _handleWindowsWindowActivityChanged();
-    if (AppPlatform.isAndroid) {
+    if (AppPlatform.isAndroid || AppPlatform.isMacOS) {
       PowerSaveModeService.enabledListenable.addListener(
         _handlePowerSaveModeChanged,
       );
@@ -1015,7 +1015,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       _handleWindowsWindowActivityChanged,
     );
     WidgetsBinding.instance.removeObserver(this);
-    if (AppPlatform.isAndroid) {
+    if (AppPlatform.isAndroid || AppPlatform.isMacOS) {
       PowerSaveModeService.enabledListenable.removeListener(
         _handlePowerSaveModeChanged,
       );
@@ -1064,7 +1064,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
     unawaited(
       LanSyncService.instance.initFromPreferences().then(
-        (_) => LanSyncService.instance.triggerBackgroundAutoSync(),
+        (_) => LanSyncService.instance.triggerBackgroundAutoSync(isStartup: true),
       ),
     );
 

@@ -8,6 +8,7 @@ mixin _HomeDashboardContract {
   Future<void> _openAiAssistantFromAppBar({
     GlobalKey? sourceKey,
     String? initialMessage,
+    String? initialSessionId,
     bool sendInitialMessage = true,
     ChatUsageSummary? initialVoiceUsageSummary,
   });

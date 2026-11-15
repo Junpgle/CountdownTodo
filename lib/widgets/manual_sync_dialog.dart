@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/lan_sync_pairing.dart';
 import '../services/lan_sync_service.dart';
 import '../utils/app_dialogs.dart';
 
@@ -216,9 +217,7 @@ class _ManualSyncOptionsContentState extends State<_ManualSyncOptionsContent> {
 
   bool _matchesUser(String? deviceUserId, String? currentUser) {
     if (currentUser == null || currentUser.trim().isEmpty) return true;
-    if (deviceUserId == null) return false;
-    return deviceUserId.trim().toLowerCase() ==
-        currentUser.trim().toLowerCase();
+    return LanDiscoveryIdentity.isSameUser(deviceUserId, currentUser);
   }
 
   List<LanDevice> _filterPeers(List<LanDevice> devices) {

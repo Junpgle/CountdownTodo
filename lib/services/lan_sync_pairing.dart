@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:crypto/crypto.dart';
+
 import '../models.dart';
 import 'todo_lww_service.dart';
 
@@ -141,4 +143,29 @@ class LanSyncLww {
         currentUpdatedAt: current.updatedAt,
         currentVersion: current.version,
       );
+}
+
+/// 局域网发现阶段使用的账号摘要工具，避免在广播/mDNS 中明文暴露用户名或邮箱。
+class LanDiscoveryIdentity {
+  static const String _hashSalt = 'cdtodo_lan_user_v1:';
+  static const String _hashPrefix = 'u1:';
+
+  static String hashUserId(String? rawUserId) {
+    final normalized = (rawUserId ?? '').trim().toLowerCase();
+    if (normalized.isEmpty || normalized == 'local') return 'local';
+    final digest = sha256.convert(utf8.encode('$_hashSalt$normalized'));
+    return '$_hashPrefix${digest.toString().substring(0, 16)}';
+  }
+
+  static bool isSameUser(String? candidate, String? currentRawUserId) {
+    final c = (candidate ?? '').trim();
+    final current = (currentRawUserId ?? '').trim();
+    if (c.isEmpty || current.isEmpty) return false;
+    if (c == hashUserId(current)) return true;
+    // 兼容尚未升级的旧版客户端明文 userId
+    if (!c.startsWith(_hashPrefix)) {
+      return c.toLowerCase() == current.toLowerCase();
+    }
+    return false;
+  }
 }

@@ -17,6 +17,7 @@ mixin _TodoSectionContract {
   Future<void> openAiAssistant({
     GlobalKey? sourceKey,
     String? initialMessage,
+    String? initialSessionId,
     bool sendInitialMessage = true,
     ChatUsageSummary? initialVoiceUsageSummary,
   });

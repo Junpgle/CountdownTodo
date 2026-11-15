@@ -34,6 +34,7 @@ class AiTodoChatLauncher {
     Map<String, int> categoryReminderDefaults = const {},
     GlobalKey? sourceKey,
     String? initialMessage,
+    String? initialSessionId,
     bool sendInitialMessage = true,
     ChatUsageSummary? initialVoiceUsageSummary,
     FutureOr<void> Function(
@@ -63,7 +64,10 @@ class AiTodoChatLauncher {
       return;
     }
 
-    final initialCategorizationActions = initialMessage != null
+    final hasExplicitTarget =
+        initialMessage != null ||
+        (initialSessionId?.trim().isNotEmpty ?? false);
+    final initialCategorizationActions = hasExplicitTarget
         ? const <AiTodoAction>[]
         : await TodoClassificationService.buildCategorizeActions(
             todos: todos,
@@ -77,6 +81,7 @@ class AiTodoChatLauncher {
     final page = TodoChatScreen(
       username: username,
       initialMessage: initialMessage,
+      initialSessionId: initialSessionId,
       sendInitialMessage: sendInitialMessage,
       initialVoiceUsageSummary: initialVoiceUsageSummary,
       todos: toChatTodoMaps(todos),

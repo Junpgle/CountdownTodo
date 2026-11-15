@@ -72,6 +72,7 @@ import '../widgets/quick_voice_chat_sheet.dart';
 import '../widgets/quick_voice_chat_guide.dart';
 import '../widgets/quick_voice_gesture.dart';
 import 'settings/llm_config_page.dart';
+import 'settings/pages/ai_assistant_settings_page.dart';
 import '../services/ai_recognition_chat_bridge.dart';
 import '../services/chat_storage_service.dart';
 import '../services/daily_ai_suggestion_service.dart';

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../models.dart';
 import '../models/ai_todo_action.dart';
+import 'ai_memory_service.dart';
 import 'ai_team_binding_resolver.dart';
 import 'ai_settings_navigation_service.dart';
 import 'ai_tool_result_context.dart';
@@ -338,8 +339,10 @@ class AiActionParser {
       caseSensitive: false,
     ).hasMatch(content);
     String cleaned =
-        AiSettingsNavigationService.cleanContent(
-              AiToolResultContext.withoutHistory(content),
+        AiMemoryService.cleanContent(
+              AiSettingsNavigationService.cleanContent(
+                AiToolResultContext.withoutHistory(content),
+              ),
             )
             .replaceAll(
               RegExp(r'\[ACTION_START\].*?\[ACTION_END\]', dotAll: true),

@@ -4,6 +4,7 @@ import 'dart:convert';
 import '../features/finance/models/finance_models.dart';
 import 'ai_action_parser.dart';
 import 'ai_chat_service.dart';
+import 'ai_memory_service.dart';
 import 'ai_native_tool_call_parser.dart';
 import 'ai_native_tool_definition_builder.dart';
 import 'ai_query_tool_service.dart';
@@ -290,6 +291,8 @@ abstract final class AiToolChatRunner {
     int? maxQueryRounds = 4,
     int? maxCalls = 8,
     int? maxTurnChars = AiToolResultContext.maxTurnChars,
+    Future<Map<String, dynamic>> Function(Map<String, dynamic> arguments)?
+    onManageMemory,
   }) async* {
     final effectiveMaxTurnChars = maxTurnChars == null
         ? null
@@ -363,9 +366,11 @@ abstract final class AiToolChatRunner {
       return '已生成部分待确认操作卡，但模型未能补齐：$labels。现有卡片尚未写入，请核对后再补充缺少的操作。';
     }
 
-    for (var round = 0;
-        maxQueryRounds == null || round <= maxQueryRounds + 1;
-        round++) {
+    for (
+      var round = 0;
+      maxQueryRounds == null || round <= maxQueryRounds + 1;
+      round++
+    ) {
       if (cancelled()) return;
       final finalRound =
           (maxQueryRounds != null && round >= maxQueryRounds) ||
@@ -924,7 +929,10 @@ abstract final class AiToolChatRunner {
       final validWriteProposalNames = <String>{};
       for (final call in calls) {
         if (cancelled()) return;
-        callCount++;
+        final isMemoryTool = call.name == AiMemoryService.toolName;
+        if (!isMemoryTool) {
+          callCount++;
+        }
         final requiredProposalNotYetSubmitted =
             requiredWriteProposalNames.contains(call.name) &&
             !completedWriteProposalNames.contains(call.name);
@@ -935,7 +943,8 @@ abstract final class AiToolChatRunner {
           result = {'ok': false, 'error': '重复的工具调用ID，未再次执行'};
         } else if (maxCalls != null &&
             callCount > maxCalls &&
-            !requiredProposalNotYetSubmitted) {
+            !requiredProposalNotYetSubmitted &&
+            !isMemoryTool) {
           result = {'ok': false, 'error': '本轮工具调用次数达到上限'};
         } else if (AiQueryToolService.toolNames.contains(call.name) &&
             effectiveMaxTurnChars != null &&
@@ -978,6 +987,23 @@ abstract final class AiToolChatRunner {
               'saved': false,
               'message': '操作草案交给App解析并展示确认卡，尚未执行。请用户核对确认。',
             };
+          }
+        } else if (call.name == AiMemoryService.toolName) {
+          if (onManageMemory == null) {
+            result = {'ok': false, 'message': '当前会话未启用 AI 记忆写入。'};
+          } else {
+            try {
+              final decoded = jsonDecode(call.arguments);
+              if (decoded is Map) {
+                result = await onManageMemory(
+                  Map<String, dynamic>.from(decoded),
+                );
+              } else {
+                result = {'ok': false, 'message': 'AI 记忆工具参数格式无效。'};
+              }
+            } catch (_) {
+              result = {'ok': false, 'message': 'AI 记忆工具参数解析失败。'};
+            }
           }
         } else if (call.name == AiSettingsNavigationService.toolName) {
           proposalsProduced = true;

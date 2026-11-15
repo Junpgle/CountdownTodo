@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models.dart';
 import 'ai_chat_service.dart';
+import 'ai_memory_service.dart';
 import 'chat_storage_service.dart';
 import 'llm_service.dart';
 import 'minor_mode_service.dart';
@@ -171,18 +172,17 @@ class DailyAiSuggestionSnapshot {
   }
 }
 
-typedef DailyAiChatCompleter =
-    Future<String> Function({
-      required String apiUrl,
-      required String apiKey,
-      required String model,
-      required List<Map<String, dynamic>> messages,
-      String provider,
-      double temperature,
-      int maxTokens,
-      Duration timeout,
-      String usageOperation,
-    });
+typedef DailyAiChatCompleter = Future<String> Function({
+  required String apiUrl,
+  required String apiKey,
+  required String model,
+  required List<Map<String, dynamic>> messages,
+  String provider,
+  double temperature,
+  int maxTokens,
+  Duration timeout,
+  String usageOperation,
+});
 
 typedef DailyAiConfigResolver =
     Future<({String model, String apiKey, String apiUrl, String provider})?>
@@ -241,10 +241,7 @@ class DailyAiSuggestionService {
     return prefs.getBool(_scoped(_manualSectionKeptKey, username)) ?? false;
   }
 
-  static Future<void> setManualSectionKept(
-    String? username,
-    bool kept,
-  ) async {
+  static Future<void> setManualSectionKept(String? username, bool kept) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_scoped(_manualSectionKeptKey, username), kept);
     if (kept) {
@@ -296,14 +293,14 @@ class DailyAiSuggestionService {
   }) async {
     final cached = await loadCachedSuggestion(username, now: now);
     if (cached == null || cached.isExpanded == expanded) return;
-    await _saveCachedSuggestion(username, cached.copyWith(isExpanded: expanded));
+    await _saveCachedSuggestion(
+      username,
+      cached.copyWith(isExpanded: expanded),
+    );
     revision.value++;
   }
 
-  static Future<void> dismissForToday(
-    String? username, {
-    DateTime? now,
-  }) async {
+  static Future<void> dismissForToday(String? username, {DateTime? now}) async {
     final cached = await loadCachedSuggestion(username, now: now);
     if (cached == null || cached.isDismissed) return;
     await _saveCachedSuggestion(username, cached.copyWith(isDismissed: true));
@@ -332,7 +329,9 @@ class DailyAiSuggestionService {
     revision.value++;
   }
 
-  static Future<({String model, String apiKey, String apiUrl, String provider})?>
+  static Future<
+    ({String model, String apiKey, String apiUrl, String provider})?
+  >
   resolveAiConfig() async {
     final chatConfig = await ChatStorageService.getChatConfig();
     final chatModel = chatConfig?['model']?.trim() ?? '';
@@ -381,21 +380,22 @@ class DailyAiSuggestionService {
     final existing = _inFlight[scopeKey];
     if (existing != null && !forceRefresh) return existing;
 
-    final future = _runEnsureTodaySuggestion(
-      username: username,
-      todos: todos,
-      countdowns: countdowns,
-      planBlocks: planBlocks,
-      fixedSchedules: fixedSchedules,
-      courses: courses,
-      forceRefresh: forceRefresh,
-      allowWhenDisabled: allowWhenDisabled,
-      now: now,
-      completer: completer ?? AiChatService.completeChat,
-      configResolver: configResolver ?? resolveAiConfig,
-    ).whenComplete(() {
-      _inFlight.remove(scopeKey);
-    });
+    final future =
+        _runEnsureTodaySuggestion(
+          username: username,
+          todos: todos,
+          countdowns: countdowns,
+          planBlocks: planBlocks,
+          fixedSchedules: fixedSchedules,
+          courses: courses,
+          forceRefresh: forceRefresh,
+          allowWhenDisabled: allowWhenDisabled,
+          now: now,
+          completer: completer ?? AiChatService.completeChat,
+          configResolver: configResolver ?? resolveAiConfig,
+        ).whenComplete(() {
+          _inFlight.remove(scopeKey);
+        });
     _inFlight[scopeKey] = future;
     return future;
   }
@@ -466,6 +466,7 @@ class DailyAiSuggestionService {
     }
 
     try {
+      final memoryPromptBlock = await AiMemoryService.loadPromptBlock(username);
       final messages = buildPromptMessages(
         now: current,
         todos: todos,
@@ -473,6 +474,7 @@ class DailyAiSuggestionService {
         planBlocks: planBlocks,
         fixedSchedules: fixedSchedules,
         courses: courses,
+        memoryPromptBlock: memoryPromptBlock,
       );
       final rawReply = await completer(
         apiUrl: aiConfig.apiUrl,
@@ -516,6 +518,7 @@ class DailyAiSuggestionService {
     required List<TodoPlanBlock> planBlocks,
     required List<FixedScheduleItem> fixedSchedules,
     required List<CourseItem> courses,
+    String memoryPromptBlock = '',
   }) {
     final todayStart = DateTime(now.year, now.month, now.day);
     final tomorrowStart = todayStart.add(const Duration(days: 1));
@@ -550,39 +553,35 @@ class DailyAiSuggestionService {
     todayTodos.sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
     upcomingTodos.sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
 
-    final todayCourses = courses
-        .where((c) => !c.isDeleted && c.date == todayKey)
-        .toList()
-      ..sort((a, b) => a.startTime.compareTo(b.startTime));
+    final todayCourses =
+        courses.where((c) => !c.isDeleted && c.date == todayKey).toList()
+          ..sort((a, b) => a.startTime.compareTo(b.startTime));
 
-    final todaySchedules = fixedSchedules
-        .where((s) => !s.isDeleted && s.date == todayKey)
-        .toList()
-      ..sort((a, b) => (a.startTime ?? 0).compareTo(b.startTime ?? 0));
+    final todaySchedules =
+        fixedSchedules.where((s) => !s.isDeleted && s.date == todayKey).toList()
+          ..sort((a, b) => (a.startTime ?? 0).compareTo(b.startTime ?? 0));
 
-    final todayPlans = planBlocks
-        .where(
-          (p) =>
-              !p.isDeleted &&
-              p.endTime > todayStart.millisecondsSinceEpoch &&
-              p.startTime < tomorrowStart.millisecondsSinceEpoch,
-        )
-        .toList()
-      ..sort((a, b) => a.startTime.compareTo(b.startTime));
+    final todayPlans =
+        planBlocks
+            .where(
+              (p) =>
+                  !p.isDeleted &&
+                  p.endTime > todayStart.millisecondsSinceEpoch &&
+                  p.startTime < tomorrowStart.millisecondsSinceEpoch,
+            )
+            .toList()
+          ..sort((a, b) => a.startTime.compareTo(b.startTime));
 
-    final upcomingCountdowns = countdowns
-        .where((c) {
-          if (c.isDeleted) return false;
-          final target = DateTime(
-            c.targetDate.year,
-            c.targetDate.month,
-            c.targetDate.day,
-          );
-          final diffDays = target.difference(todayStart).inDays;
-          return diffDays >= 0 && diffDays <= 14;
-        })
-        .toList()
-      ..sort((a, b) => a.targetDate.compareTo(b.targetDate));
+    final upcomingCountdowns = countdowns.where((c) {
+      if (c.isDeleted) return false;
+      final target = DateTime(
+        c.targetDate.year,
+        c.targetDate.month,
+        c.targetDate.day,
+      );
+      final diffDays = target.difference(todayStart).inDays;
+      return diffDays >= 0 && diffDays <= 14;
+    }).toList()..sort((a, b) => a.targetDate.compareTo(b.targetDate));
 
     final buffer = StringBuffer();
     buffer.writeln(
@@ -619,9 +618,9 @@ class DailyAiSuggestionService {
         final start = DateFormat('HH:mm').format(
           DateTime.fromMillisecondsSinceEpoch(course.startTime).toLocal(),
         );
-        final end = DateFormat('HH:mm').format(
-          DateTime.fromMillisecondsSinceEpoch(course.endTime).toLocal(),
-        );
+        final end = DateFormat(
+          'HH:mm',
+        ).format(DateTime.fromMillisecondsSinceEpoch(course.endTime).toLocal());
         final room = course.roomName.trim().isNotEmpty
             ? ' @${course.roomName.trim()}'
             : '';
@@ -635,12 +634,12 @@ class DailyAiSuggestionService {
         buffer.writeln('- 日程 $timeText ${schedule.title}');
       }
       for (final plan in todayPlans) {
-        final start = DateFormat('HH:mm').format(
-          DateTime.fromMillisecondsSinceEpoch(plan.startTime).toLocal(),
-        );
-        final end = DateFormat('HH:mm').format(
-          DateTime.fromMillisecondsSinceEpoch(plan.endTime).toLocal(),
-        );
+        final start = DateFormat(
+          'HH:mm',
+        ).format(DateTime.fromMillisecondsSinceEpoch(plan.startTime).toLocal());
+        final end = DateFormat(
+          'HH:mm',
+        ).format(DateTime.fromMillisecondsSinceEpoch(plan.endTime).toLocal());
         final title = plan.titleSnapshot?.trim().isNotEmpty == true
             ? plan.titleSnapshot!.trim()
             : '规划块';
@@ -658,7 +657,9 @@ class DailyAiSuggestionService {
           item.targetDate.day,
         );
         final daysLeft = target.difference(todayStart).inDays;
-        buffer.writeln('- ${item.title}（${daysLeft == 0 ? '就是今天' : '还有$daysLeft天'}）');
+        buffer.writeln(
+          '- ${item.title}（${daysLeft == 0 ? '就是今天' : '还有$daysLeft天'}）',
+        );
       }
     }
 
@@ -668,6 +669,11 @@ class DailyAiSuggestionService {
         todayPlans.isEmpty &&
         upcomingCountdowns.isEmpty) {
       buffer.writeln('当前暂无待办、课程、日程或近期倒数日。请给出一条轻量、积极的今日启动建议。');
+    }
+
+    if (memoryPromptBlock.trim().isNotEmpty) {
+      buffer.writeln();
+      buffer.writeln(memoryPromptBlock.trim());
     }
 
     const systemPrompt = '''

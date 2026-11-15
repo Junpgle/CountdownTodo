@@ -159,7 +159,7 @@ class LanSyncService {
 
   Future<void> setSyncSettingsEnabled(bool enabled) async {}
 
-  Future<void> triggerBackgroundAutoSync() async {}
+  Future<void> triggerBackgroundAutoSync({bool isStartup = false}) async {}
 
   Future<void> scanForPeersOnce() async {}
 

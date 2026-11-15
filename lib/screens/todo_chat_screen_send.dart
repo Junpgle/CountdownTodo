@@ -647,6 +647,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
                     requestText,
                   ))
                 AiSettingsNavigationService.buildDefinition(),
+              if (_memoryEnabled) AiMemoryService.buildDefinition(),
               if (useQueryTools) ...AiQueryToolService.buildDefinitions(),
               ...AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
                 requestText,
@@ -885,6 +886,12 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
               maxQueryRounds: _toolBudget.maxQueryRounds,
               maxCalls: _toolBudget.maxCalls,
               maxTurnChars: _toolBudget.maxTurnChars,
+              onManageMemory: _memoryEnabled
+                  ? (arguments) => AiMemoryService.executeToolCall(
+                      widget.username,
+                      arguments,
+                    )
+                  : null,
               requirePlanningProposal:
                   (_planningProposalRequestPattern.hasMatch(requestText) ||
                       AiNativeToolDefinitionBuilder.isMissingActionCardReport(
@@ -1500,6 +1507,14 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           final cleanContent = FinanceTextParser.cleanAssistantContent(
             AiActionParser.cleanActionContent(actionContent),
           );
+          if (_memoryEnabled && !nativeToolMode) {
+            unawaited(
+              AiMemoryService.applyTextMemoryCommands(
+                widget.username,
+                actionContent,
+              ),
+            );
+          }
           final interruptedContent = _appendPendingWriteConfirmationNotice(
             content: financeDrafts.isNotEmpty
                 ? _financeDraftSummary(financeDrafts.length)
@@ -1616,6 +1631,14 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       final cleanContent = FinanceTextParser.cleanAssistantContent(
         AiActionParser.cleanActionContent(actionContent),
       );
+      if (_memoryEnabled && !nativeToolMode) {
+        unawaited(
+          AiMemoryService.applyTextMemoryCommands(
+            widget.username,
+            actionContent,
+          ),
+        );
+      }
       final parsedFallbackCdtActionNames = nativeToolMode
           ? const <String>{}
           : _parsedCdtActionNames(todoActions);

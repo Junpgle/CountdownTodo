@@ -18,6 +18,24 @@ void main() {
     );
   });
 
+  test('phone scroll top padding clears status bar when header is absent', () {
+    expect(
+      homeDashboardPhoneScrollTopPadding(headerExtent: 0, topInset: 44),
+      50,
+    );
+    expect(
+      homeDashboardPhoneScrollTopPadding(headerExtent: 4, topInset: 44),
+      50,
+    );
+  });
+
+  test('phone scroll top padding uses pinned header extent when larger', () {
+    expect(
+      homeDashboardPhoneScrollTopPadding(headerExtent: 122, topInset: 44),
+      128,
+    );
+  });
+
   testWidgets(
     'pinned header layout updates headerExtent when an internal banner collapses',
     (tester) async {

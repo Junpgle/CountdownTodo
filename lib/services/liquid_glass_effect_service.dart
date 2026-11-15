@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -200,9 +201,21 @@ class LiquidGlassEffectService {
 
   static bool get isSettingsPageActive => _isSettingsPageActiveNotifier.value;
 
+  static void _setNotifierSafely(ValueNotifier<bool> notifier, bool value) {
+    if (notifier.value == value) return;
+    final binding = WidgetsBinding.instance;
+    if (binding.schedulerPhase == SchedulerPhase.persistentCallbacks ||
+        binding.buildOwner?.debugBuilding == true) {
+      binding.addPostFrameCallback((_) {
+        notifier.value = value;
+      });
+    } else {
+      notifier.value = value;
+    }
+  }
+
   static set isSettingsPageActive(bool value) {
-    if (_isSettingsPageActiveNotifier.value == value) return;
-    _isSettingsPageActiveNotifier.value = value;
+    _setNotifierSafely(_isSettingsPageActiveNotifier, value);
   }
 
   /// Whether the floating adjustment panel is currently expanded to show sliders.
@@ -213,14 +226,7 @@ class LiquidGlassEffectService {
       _isFloatingPanelExpandedNotifier.value;
 
   static set isFloatingPanelExpanded(bool value) {
-    if (_isFloatingPanelExpandedNotifier.value == value) return;
-    if (WidgetsBinding.instance.buildOwner?.debugBuilding == true) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _isFloatingPanelExpandedNotifier.value = value;
-      });
-    } else {
-      _isFloatingPanelExpandedNotifier.value = value;
-    }
+    _setNotifierSafely(_isFloatingPanelExpandedNotifier, value);
   }
 
   static void toggleFloatingPanel() {
@@ -242,8 +248,7 @@ class LiquidGlassEffectService {
   static bool get isLivePreviewForced => _isLivePreviewForcedNotifier.value;
 
   static set isLivePreviewForced(bool value) {
-    if (_isLivePreviewForcedNotifier.value == value) return;
-    _isLivePreviewForcedNotifier.value = value;
+    _setNotifierSafely(_isLivePreviewForcedNotifier, value);
   }
 
   /// Starts live preview mode across all application screens and optionally expands the panel.

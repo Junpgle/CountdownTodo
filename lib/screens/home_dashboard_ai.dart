@@ -127,7 +127,7 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
     if (sessionId != null && sessionId.isNotEmpty) {
       await ChatStorageService.setActiveSessionId(sessionId);
       if (!mounted) return;
-      await _openAiAssistantFromAppBar();
+      await _openAiAssistantFromAppBar(initialSessionId: sessionId);
       return;
     }
 
@@ -144,6 +144,7 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
   Future<void> _openAiAssistantFromAppBar({
     GlobalKey? sourceKey,
     String? initialMessage,
+    String? initialSessionId,
     bool sendInitialMessage = true,
     ChatUsageSummary? initialVoiceUsageSummary,
   }) async {
@@ -153,6 +154,7 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
       await todoState.openAiAssistant(
         sourceKey: transitionSourceKey,
         initialMessage: initialMessage,
+        initialSessionId: initialSessionId,
         sendInitialMessage: sendInitialMessage,
         initialVoiceUsageSummary: initialVoiceUsageSummary,
       );
@@ -188,6 +190,7 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
         username: widget.username,
         sourceKey: transitionSourceKey,
         initialMessage: initialMessage,
+        initialSessionId: initialSessionId,
         sendInitialMessage: sendInitialMessage,
         initialVoiceUsageSummary: initialVoiceUsageSummary,
         todos: _todos
@@ -349,9 +352,20 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
               onToggleExpanded: (expanded) => unawaited(
                 DailyAiSuggestionService.setExpanded(widget.username, expanded),
               ),
-              onDismiss: () => unawaited(
-                DailyAiSuggestionService.dismissForToday(widget.username),
-              ),
+              onDismiss: () async {
+                await Navigator.push(
+                  context,
+                  PageTransitions.material(
+                    builder: (_) => const AiAssistantSettingsPage(
+                      initialTarget:
+                          AiAssistantSettingsPage.dailyAiSuggestionTarget,
+                    ),
+                  ),
+                );
+                if (mounted) {
+                  unawaited(_syncDailyAiSuggestion());
+                }
+              },
               onOpenModelConfig: () async {
                 await Navigator.push(
                   context,

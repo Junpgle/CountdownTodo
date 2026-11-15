@@ -14,6 +14,20 @@ double homeDashboardPhoneScrollTailExtent({
   required double bottomInset,
 }) => headerExtent.clamp(0.0, 2000.0).toDouble() + 100.0 + bottomInset;
 
+/// Computes the effective top padding for phone dashboard scroll views.
+/// When the pinned header is collapsed or omitted (e.g. on the Focus tab),
+/// the list must still clear the system status bar safe area.
+@visibleForTesting
+double homeDashboardPhoneScrollTopPadding({
+  required double headerExtent,
+  required double topInset,
+}) =>
+    max(
+      headerExtent.clamp(0.0, 2000.0).toDouble(),
+      topInset.clamp(0.0, 2000.0).toDouble(),
+    ) +
+    6.0;
+
 mixin _HomeDashboardViewMixin
     on _HomeDashboardStateBase, _HomeDashboardWallpaperMixin {
   late final Listenable _todoSectionListenable = Listenable.merge([
@@ -193,6 +207,7 @@ mixin _HomeDashboardViewMixin
       screenWidth: screenWidth,
       isWide: isTablet,
     );
+    final double topSystemInset = MediaQuery.paddingOf(context).top;
     final double bottomSystemInset = MediaQuery.viewPaddingOf(context).bottom;
     final Brightness cardBackgroundBrightness = isDarkMode
         ? Brightness.dark
@@ -226,7 +241,7 @@ mixin _HomeDashboardViewMixin
               fadeContent: !showWallpaper,
               initialHeaderExtent:
                   (_selectedTabIndex != _homeFocusTabIndex || isTablet)
-                  ? (78.0 + MediaQuery.paddingOf(context).top)
+                  ? (78.0 + topSystemInset)
                   : 0.0,
               header: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -339,7 +354,11 @@ mixin _HomeDashboardViewMixin
                                       .isEmpty)
                               ? _buildDashboardSkeleton(
                                   isLight,
-                                  topPadding: headerExtent + 6,
+                                  topPadding:
+                                      homeDashboardPhoneScrollTopPadding(
+                                        headerExtent: headerExtent,
+                                        topInset: topSystemInset,
+                                      ),
                                 )
                               : LayoutBuilder(
                                   builder: (context, constraints) {
@@ -905,7 +924,10 @@ mixin _HomeDashboardViewMixin
                                                 : ScrollCacheExtent.pixels(600),
                                             padding: EdgeInsets.fromLTRB(
                                               16,
-                                              listHeaderExtent + 6,
+                                              homeDashboardPhoneScrollTopPadding(
+                                                headerExtent: listHeaderExtent,
+                                                topInset: topSystemInset,
+                                              ),
                                               16,
                                               16,
                                             ),
@@ -966,8 +988,10 @@ mixin _HomeDashboardViewMixin
                                                 // to keep short pages scrollable.
                                                 height:
                                                     homeDashboardPhoneScrollTailExtent(
-                                                      headerExtent:
-                                                          listHeaderExtent,
+                                                      headerExtent: max(
+                                                        listHeaderExtent,
+                                                        topSystemInset,
+                                                      ),
                                                       bottomInset:
                                                           bottomSystemInset,
                                                     ),
@@ -1162,9 +1186,8 @@ mixin _HomeDashboardViewMixin
                                         ],
                                       );
 
-                                      final leftSpecs = buildSpecs(
-                                        currentLeft,
-                                      ).toList();
+                                      final leftSpecs = buildSpecs(currentLeft)
+                                          .toList();
                                       final windowsBannersIdx = leftSpecs
                                           .indexWhere((s) => s.id == 'banners');
                                       leftSpecs.insert(
@@ -1174,15 +1197,14 @@ mixin _HomeDashboardViewMixin
                                         WindowsDashboardSection(
                                           id: 'daily_ai_suggestion',
                                           estimatedHeight: 220,
-                                          builder: (context) =>
-                                              AppSystemUiRegion(
-                                                backgroundBrightness:
-                                                    cardBackgroundBrightness,
-                                                child:
-                                                    _buildDailyAiSuggestionSection(
-                                                      isLight,
-                                                    ),
-                                              ),
+                                          builder: (context) => AppSystemUiRegion(
+                                            backgroundBrightness:
+                                                cardBackgroundBrightness,
+                                            child:
+                                                _buildDailyAiSuggestionSection(
+                                                  isLight,
+                                                ),
+                                          ),
                                         ),
                                       );
 

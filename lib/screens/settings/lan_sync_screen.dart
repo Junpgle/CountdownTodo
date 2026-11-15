@@ -8,8 +8,6 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../services/file_open_service.dart';
 import '../../services/lan_sync_service.dart';
-import '../../services/pomodoro_sync_service.dart';
-import '../../services/storage/app_settings_storage.dart';
 import 'lan_qr_scanner_screen.dart';
 import '../../services/permission_request_coordinator.dart';
 import '../../utils/app_platform.dart';
@@ -38,7 +36,6 @@ class _LanSyncScreenState extends State<LanSyncScreen>
   bool _autoSyncEnabled = true;
   bool _syncSecretsEnabled = true;
   bool _syncSettingsEnabled = false;
-  bool _offlineModeEnabled = false;
 
   StreamSubscription<List<LanDevice>>? _devicesSubscription;
   StreamSubscription<String>? _statusSubscription;
@@ -96,16 +93,8 @@ class _LanSyncScreenState extends State<LanSyncScreen>
     _syncSecretsEnabled = _service.syncSecretsEnabled;
     _syncSettingsEnabled = _service.syncSettingsEnabled;
     _service.daemonRunningNotifier.addListener(_onDaemonRunningChanged);
-    unawaited(_loadOfflineMode());
     if (AppPlatform.isAndroid) {
       unawaited(_stopIfLocalNetworkAccessWasRevoked());
-    }
-  }
-
-  Future<void> _loadOfflineMode() async {
-    final enabled = await AppSettingsStorage.isOfflineModeEnabled();
-    if (mounted) {
-      setState(() => _offlineModeEnabled = enabled);
     }
   }
 
@@ -800,20 +789,6 @@ class _LanSyncScreenState extends State<LanSyncScreen>
             onChanged: (value) async {
               setState(() => _syncSettingsEnabled = value);
               await _service.setSyncSettingsEnabled(value);
-            },
-          ),
-          SwitchListTile.adaptive(
-            dense: true,
-            secondary: const Icon(Icons.cloud_off_outlined, size: 20),
-            title: const Text('离线模式（不走服务器同步）'),
-            subtitle: const Text('保留登录、更新检查与公告，其余同步仅走本地与局域网'),
-            value: _offlineModeEnabled,
-            onChanged: (value) async {
-              setState(() => _offlineModeEnabled = value);
-              await AppSettingsStorage.setOfflineModeEnabled(value);
-              if (value) {
-                await PomodoroSyncService.instance.disconnectForOfflineMode();
-              }
             },
           ),
         ],
