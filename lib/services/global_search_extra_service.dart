@@ -854,6 +854,7 @@ abstract final class GlobalSearchExtraService {
           ChatStorageService.loadHistory(session.id),
           'AI chat history',
         );
+        if (history.isEmpty) continue;
         if (shouldContinue?.call() == false) return results;
         if (_matches(
           terms,

@@ -20,6 +20,15 @@ mixin _HomeDashboardContract {
 
   Future<void> _openPendingRecognitionChat();
 
+  Future<void> _syncDailyAiSuggestion({
+    bool forceRefresh = false,
+    bool allowWhenDisabled = false,
+  });
+
+  void _onDailyAiSuggestionRevisionChanged();
+
+  Widget _buildDailyAiSuggestionSection(bool isLight);
+
   Future<void> _handleAiTodoGroupsChanged(List<TodoGroup> groups);
 
   Future<void> _handleAiTodosBatchAction(
@@ -151,6 +160,8 @@ mixin _HomeDashboardContract {
   });
 
   void _openTodoEditor(TodoItem todo);
+
+  Future<TodoCreateSaveResult> _saveManualTodo(TodoItem todo);
 
   String _specialTodoBannerLabel(String specialType);
 

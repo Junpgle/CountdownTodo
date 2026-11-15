@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../services/chat_storage_service.dart';
+import '../../../services/daily_ai_suggestion_service.dart';
+import '../../../services/storage/user_session_storage.dart';
 import '../../../models/ai_context_mode.dart';
 import '../../../models/ai_tool_budget.dart';
 import '../../../widgets/ai_context_mode_selector.dart';
@@ -40,6 +42,9 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
   bool _deepThinking = true;
   bool _promptEnabled = true;
   bool _promptDirty = false;
+  bool _dailyAiSuggestionEnabled = false;
+  bool _dailyAiManualSectionKept = false;
+  String? _currentUsername;
   late Future<LLMConfig?> _llmConfigFuture;
 
   @override
@@ -56,6 +61,7 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
   }
 
   Future<void> _loadSettings() async {
+    final username = await UserSessionStorage.getCurrentUsername();
     final values = await Future.wait<dynamic>([
       ChatStorageService.getCustomPrompt(),
       ChatStorageService.isPromptEnabled(),
@@ -65,10 +71,13 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
       ChatStorageService.isDeepThinkingEnabled(),
       ChatStorageService.getContextMode(),
       ChatStorageService.getToolBudget(),
+      DailyAiSuggestionService.isEnabled(username),
+      DailyAiSuggestionService.isManualSectionKept(username),
     ]);
     if (!mounted) return;
     _promptController.text = values[0] as String;
     setState(() {
+      _currentUsername = username;
       _promptEnabled = values[1] as bool;
       _smartContext = values[2] as bool;
       _showContextPreview = values[3] as bool;
@@ -76,6 +85,8 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
       _deepThinking = values[5] as bool;
       _contextMode = values[6] as AiContextMode;
       _toolBudget = values[7] as AiToolBudget;
+      _dailyAiSuggestionEnabled = values[8] as bool;
+      _dailyAiManualSectionKept = values[9] as bool;
       _isLoading = false;
     });
   }
@@ -443,6 +454,71 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
                         update: (next) => _deepThinking = next,
                         persist: ChatStorageService.setDeepThinkingEnabled,
                       ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                AppSettingsSection(
+                  title: '每日 AI 建议',
+                  children: [
+                    _buildSwitch(
+                      title: '每天首次打开生成今日建议',
+                      subtitle: '每天首次打开 App 时自动调用 AI 结合待办与日程生成建议，置顶展示在首页第一页',
+                      value: _dailyAiSuggestionEnabled,
+                      onChanged: (value) => _setSetting(
+                        value: value,
+                        update: (next) => _dailyAiSuggestionEnabled = next,
+                        persist: (next) => DailyAiSuggestionService.setEnabled(
+                          _currentUsername,
+                          next,
+                        ),
+                      ),
+                    ),
+                    const AppSettingsDivider(indent: 16),
+                    _buildSwitch(
+                      title: '在首页保留板块（手动生成）',
+                      subtitle: '关闭自动生成时，仍在首页保留「今日 AI 建议」板块，仅在手动点击时调用 AI',
+                      value: _dailyAiManualSectionKept,
+                      enabled: !_dailyAiSuggestionEnabled,
+                      onChanged: (value) => _setSetting(
+                        value: value,
+                        update: (next) => _dailyAiManualSectionKept = next,
+                        persist: (next) =>
+                            DailyAiSuggestionService.setManualSectionKept(
+                              _currentUsername,
+                              next,
+                            ),
+                      ),
+                    ),
+                    const AppSettingsDivider(indent: 16),
+                    ListTile(
+                      enabled:
+                          _dailyAiSuggestionEnabled || _dailyAiManualSectionKept,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                      ),
+                      leading: Icon(
+                        Icons.refresh_rounded,
+                        color:
+                            (_dailyAiSuggestionEnabled ||
+                                _dailyAiManualSectionKept)
+                            ? colorScheme.primary
+                            : colorScheme.onSurfaceVariant,
+                      ),
+                      title: const Text('立即重新生成今日建议'),
+                      subtitle: const Text('清除今日缓存并重新调用 AI 生成，若今天曾关闭卡片也会重新展示'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap:
+                          (_dailyAiSuggestionEnabled ||
+                              _dailyAiManualSectionKept)
+                          ? () async {
+                              await DailyAiSuggestionService.requestRegenerate(
+                                _currentUsername,
+                              );
+                              if (!mounted) return;
+                              _showSnackBar('已触发重新生成，返回首页即可查看最新今日建议');
+                            }
+                          : null,
                     ),
                   ],
                 ),

@@ -588,6 +588,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
 
     setState(() {
       _messages.add(userMsg);
+      _ensureActiveSessionInList();
       _streamingContent = '';
       _streamingReasoning = '';
       _streamingToolCalls = [];
@@ -2930,10 +2931,10 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         title = content.substring(0, content.length > 15 ? 15 : content.length);
       }
 
-      await ChatStorageService.updateSessionTitle(session.id, title);
+      await ChatStorageService.updateSessionTitle(sessionId, title);
       if (mounted) {
         setState(() {
-          final idx = _sessions.indexWhere((s) => s.id == session.id);
+          final idx = _sessions.indexWhere((s) => s.id == sessionId);
           if (idx != -1) {
             _sessions[idx].title = title;
             _sessions[idx].updatedAt = DateTime.now();
@@ -2965,7 +2966,10 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     if (confirmed == true) {
       await ChatStorageService.clearHistory();
       if (mounted) {
-        setState(() => _messages = []);
+        setState(() {
+          _messages = [];
+          _sessions.removeWhere((s) => s.id == _activeSessionId);
+        });
       }
     }
   }

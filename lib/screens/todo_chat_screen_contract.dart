@@ -312,6 +312,7 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   Future<void> _switchSession(String sessionId);
   Future<void> _newSession();
   Future<void> _deleteSession(String sessionId);
+  void _ensureActiveSessionInList();
   Future<void> _loadHistory();
   void _injectInitialCategorizationSuggestion();
   Future<void> _loadPromptSettings();

@@ -878,6 +878,17 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
               const Spacer(),
               IconButton(
                 icon: Icon(
+                  Icons.cleaning_services_outlined,
+                  size: 20,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                onPressed: _isLoading
+                    ? null
+                    : () => _pruneEmptySessions(context),
+                tooltip: '清理空对话',
+              ),
+              IconButton(
+                icon: Icon(
                   Icons.delete_sweep_outlined,
                   size: 20,
                   color: colorScheme.onSurfaceVariant,
@@ -1005,6 +1016,19 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
     );
   }
 
+  Future<void> _pruneEmptySessions(BuildContext sidebarCtx) async {
+    final removedCount = await ChatStorageService.deleteEmptySessions(
+      excludeSessionId: _messages.isNotEmpty ? _activeSessionId : null,
+    );
+    final sessions = await ChatStorageService.loadSessions();
+    if (!mounted || !sidebarCtx.mounted) return;
+    setState(() {
+      _sessions = sessions;
+    });
+    final message = removedCount > 0 ? '已清理 $removedCount 条空对话' : '暂无空对话需要清理';
+    AppSnackBars.showSnackBar(context, SnackBar(content: Text(message)));
+  }
+
   Future<void> _deleteAllSessions(BuildContext sidebarCtx) async {
     final confirmed = await showAppDialog<bool>(
       context: sidebarCtx,
@@ -1029,11 +1053,12 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
 
     if (confirmed == true) {
       await ChatStorageService.clearAllSessions();
+      final newSession = await ChatStorageService.openEmptySession();
       if (!mounted || !sidebarCtx.mounted) return;
       setState(() {
         _sessions = [];
         _messages = [];
-        _activeSessionId = '';
+        _activeSessionId = newSession.id;
         _suggestions = [];
       });
       // 关闭侧边栏

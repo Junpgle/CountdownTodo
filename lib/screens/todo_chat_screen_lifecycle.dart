@@ -426,11 +426,11 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   }
 
   Future<void> _newSession() async {
-    if (_isLoading) return;
-    final newSession = await ChatStorageService.createSession();
+    if (_isLoading || _messages.isEmpty) return;
+    final newSession = ChatSession(title: '新对话');
+    await ChatStorageService.setActiveSessionId(newSession.id);
     if (mounted) {
       setState(() {
-        _sessions.insert(0, newSession);
         _activeSessionId = newSession.id;
         _messages = [];
         _suggestions = [];
@@ -439,38 +439,43 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     }
   }
 
+  void _ensureActiveSessionInList() {
+    final sid = _activeSessionId;
+    if (sid == null || sid.isEmpty) return;
+    if (_sessions.any((s) => s.id == sid)) return;
+    _sessions.insert(0, ChatSession(id: sid, title: '新对话'));
+  }
+
   Future<void> _deleteSession(String sessionId) async {
     if (_isLoading) return;
-    if (_sessions.length <= 1) {
-      await ChatStorageService.deleteSession(sessionId);
-      final newSession = await ChatStorageService.createSession();
-      if (mounted) {
-        setState(() {
-          _sessions = [newSession];
-          _activeSessionId = newSession.id;
-          _messages = [];
-          _suggestions = [];
-          _streamingContent = '';
-        });
-      }
+    await ChatStorageService.deleteSession(sessionId);
+    final sessions = await ChatStorageService.loadSessions();
+    if (!mounted) return;
+    if (sessions.isEmpty) {
+      final newSession = await ChatStorageService.openEmptySession();
+      if (!mounted) return;
+      setState(() {
+        _sessions = [];
+        _activeSessionId = newSession.id;
+        _messages = [];
+        _suggestions = [];
+        _streamingContent = '';
+      });
       return;
     }
 
-    await ChatStorageService.deleteSession(sessionId);
-    final sessions = await ChatStorageService.loadSessions();
-    if (mounted) {
-      setState(() {
-        _sessions = sessions;
-        if (_activeSessionId == sessionId) {
-          _activeSessionId = sessions.first.id;
-          _messages = [];
-          _suggestions = [];
-          _streamingContent = '';
-        }
-      });
-      if (_activeSessionId != sessionId) {
-        _loadHistory();
+    final wasActive = _activeSessionId == sessionId;
+    setState(() {
+      _sessions = sessions;
+      if (wasActive) {
+        _activeSessionId = sessions.first.id;
+        _messages = [];
+        _suggestions = [];
+        _streamingContent = '';
       }
+    });
+    if (wasActive) {
+      _loadHistory();
     }
   }
 

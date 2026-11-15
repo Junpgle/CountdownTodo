@@ -280,5 +280,149 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
     }
   }
 
+  Future<void> _syncDailyAiSuggestion({
+    bool forceRefresh = false,
+    bool allowWhenDisabled = false,
+  }) async {
+    final enabled = await DailyAiSuggestionService.isEnabled(widget.username);
+    if (!mounted) return;
+    final cached = await DailyAiSuggestionService.loadCachedSuggestion(
+      widget.username,
+    );
+    if (!mounted) return;
+
+    if (enabled || allowWhenDisabled) {
+      if (cached != null && !forceRefresh) {
+        _dailyAiSuggestionNotifier.value = DailyAiSuggestionSnapshot(
+          enabled: enabled,
+          suggestion: cached,
+        );
+      } else {
+        _dailyAiSuggestionNotifier.value = DailyAiSuggestionSnapshot(
+          enabled: enabled,
+          isLoading: true,
+          suggestion: cached,
+        );
+      }
+    }
+
+    final snapshot = await DailyAiSuggestionService.ensureTodaySuggestion(
+      username: widget.username,
+      todos: _todos,
+      countdowns: _countdowns,
+      planBlocks: _planBlocks,
+      fixedSchedules: _fixedSchedules,
+      courses:
+          (_dashboardCourseData['courses'] as List?)
+              ?.whereType<CourseItem>()
+              .toList() ??
+          const [],
+      forceRefresh: forceRefresh,
+      allowWhenDisabled: allowWhenDisabled,
+    );
+    if (!mounted) return;
+    _dailyAiSuggestionNotifier.value = snapshot;
+  }
+
+  void _onDailyAiSuggestionRevisionChanged() {
+    if (!mounted) return;
+    unawaited(_syncDailyAiSuggestion());
+  }
+
+  Widget _buildDailyAiSuggestionSection(bool isLight) {
+    return ValueListenableBuilder<DailyAiSuggestionSnapshot>(
+      valueListenable: _dailyAiSuggestionNotifier,
+      builder: (context, snapshot, _) {
+        return AnimatedBuilder(
+          animation: _todosNotifier,
+          builder: (context, _) {
+            return DailyAiSuggestionCard(
+              snapshot: snapshot,
+              isLight: isLight,
+              todos: _todos,
+              onRefresh: () => unawaited(
+                _syncDailyAiSuggestion(
+                  forceRefresh: true,
+                  allowWhenDisabled: true,
+                ),
+              ),
+              onToggleExpanded: (expanded) => unawaited(
+                DailyAiSuggestionService.setExpanded(widget.username, expanded),
+              ),
+              onDismiss: () => unawaited(
+                DailyAiSuggestionService.dismissForToday(widget.username),
+              ),
+              onOpenModelConfig: () async {
+                await Navigator.push(
+                  context,
+                  PageTransitions.material(
+                    builder: (_) => const LLMConfigPage(),
+                  ),
+                );
+                if (mounted) {
+                  unawaited(_syncDailyAiSuggestion());
+                }
+              },
+              onOpenTodo: _openTodoEditor,
+              onOpenAiChat: (prompt) {
+                unawaited(
+                  _openAiAssistantFromAppBar(
+                    initialMessage: prompt,
+                    sendInitialMessage: true,
+                  ),
+                );
+              },
+              onAskAiOnce: () async {
+                await DailyAiSuggestionService.setManualSectionKept(
+                  widget.username,
+                  true,
+                );
+                if (!mounted) return;
+                unawaited(
+                  _syncDailyAiSuggestion(
+                    forceRefresh: true,
+                    allowWhenDisabled: true,
+                  ),
+                );
+              },
+              onEnableDaily: () async {
+                await DailyAiSuggestionService.setEnabled(
+                  widget.username,
+                  true,
+                );
+                if (!mounted) return;
+                unawaited(_syncDailyAiSuggestion(forceRefresh: true));
+              },
+              onKeepManualSection: () async {
+                await DailyAiSuggestionService.setManualSectionKept(
+                  widget.username,
+                  true,
+                );
+                if (!mounted) return;
+                unawaited(_syncDailyAiSuggestion());
+              },
+              onDeclinePrompt: () async {
+                await DailyAiSuggestionService.dismissFirstOpenPrompt(
+                  widget.username,
+                );
+                if (!mounted) return;
+                _dailyAiSuggestionNotifier.value =
+                    const DailyAiSuggestionSnapshot(enabled: false);
+                AppSnackBars.showSnackBar(
+                  context,
+                  const SnackBar(
+                    content: Text(
+                      '已隐藏每日 AI 建议引导；之后可在「设置 → AI 助手设置 → 每日 AI 建议」中随时开启',
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
   // === 初始化与生命周期 ===
 }

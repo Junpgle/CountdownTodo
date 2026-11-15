@@ -53,6 +53,7 @@ class ChatSession {
 
 class ChatStorageService {
   static Future<void> _sessionCreationQueue = Future<void>.value();
+  static ChatSession? _pendingEmptySession;
 
   static const String _sessionsKey = 'chat_sessions';
   static const String _activeSessionKey = 'chat_active_session';
@@ -178,6 +179,7 @@ class ChatStorageService {
     final aKey = await _getScopedKey(_activeSessionKey);
     await prefs.remove(sKey);
     await prefs.remove(aKey);
+    _pendingEmptySession = null;
   }
 
   static Future<String?> getActiveSessionId() async {
@@ -205,20 +207,71 @@ class ChatStorageService {
     return newSession;
   }
 
-  /// Opens the assistant without history, reusing only the last empty session.
+  /// Opens the assistant with an unsaved empty session and prunes any
+  /// persisted empty sessions so empty conversations are not kept in history.
   static Future<ChatSession> openEmptySession() async {
     return _withSessionCreationLock(() async {
-      final sessions = await loadSessions();
+      await _deleteEmptySessionsLocked();
       final activeId = await getActiveSessionId();
-      final previousSession = sessions
-          .where((session) => session.id == activeId)
-          .firstOrNull;
-      if (previousSession != null &&
-          (await loadHistory(previousSession.id)).isEmpty) {
-        return previousSession;
+      final pending = _pendingEmptySession;
+      if (pending != null &&
+          pending.id == activeId &&
+          (await loadHistory(pending.id)).isEmpty) {
+        return pending;
       }
-      return _createSession();
+      final draft = ChatSession(title: '新对话');
+      _pendingEmptySession = draft;
+      await setActiveSessionId(draft.id);
+      return draft;
     });
+  }
+
+  /// Batch-deletes all persisted sessions that have no messages.
+  static Future<int> deleteEmptySessions({String? excludeSessionId}) {
+    return _withSessionCreationLock(
+      () => _deleteEmptySessionsLocked(excludeSessionId: excludeSessionId),
+    );
+  }
+
+  static Future<int> _deleteEmptySessionsLocked({
+    String? excludeSessionId,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final sessions = await loadSessions();
+    if (sessions.isEmpty) return 0;
+
+    final kept = <ChatSession>[];
+    var removedCount = 0;
+    for (final session in sessions) {
+      if (session.id == excludeSessionId) {
+        kept.add(session);
+        continue;
+      }
+      final history = await loadHistory(session.id);
+      if (history.isEmpty) {
+        final hKey = await _getScopedKey(_historyKey(session.id));
+        await prefs.remove(hKey);
+        removedCount++;
+      } else {
+        kept.add(session);
+      }
+    }
+
+    if (removedCount > 0) {
+      await saveSessions(kept);
+      final activeId = await getActiveSessionId();
+      if (activeId != null && !kept.any((s) => s.id == activeId)) {
+        if (excludeSessionId != null) {
+          await setActiveSessionId(excludeSessionId);
+        } else if (kept.isNotEmpty) {
+          await setActiveSessionId(kept.first.id);
+        } else {
+          final aKey = await _getScopedKey(_activeSessionKey);
+          await prefs.remove(aKey);
+        }
+      }
+    }
+    return removedCount;
   }
 
   static Future<T> _withSessionCreationLock<T>(
@@ -308,10 +361,44 @@ class ChatStorageService {
   ]) async {
     final prefs = await SharedPreferences.getInstance();
     final sid = sessionId ?? await getActiveSessionId();
-    if (sid == null) return;
-    final jsonList = history.map((msg) => msg.toJson()).toList();
+    if (sid == null || sid.isEmpty) return;
     final hKey = await _getScopedKey(_historyKey(sid));
+    if (history.isEmpty) {
+      await prefs.remove(hKey);
+      await _removeSessionEntry(sid);
+      return;
+    }
+    final jsonList = history.map((msg) => msg.toJson()).toList();
     await prefs.setString(hKey, jsonEncode(jsonList));
+    await _ensureSessionSaved(sid);
+  }
+
+  static Future<void> _ensureSessionSaved(String sid) {
+    return _withSessionCreationLock(() async {
+      final sessions = await loadSessions();
+      if (sessions.any((s) => s.id == sid)) return;
+      final pending = _pendingEmptySession;
+      final session = (pending != null && pending.id == sid)
+          ? pending
+          : ChatSession(id: sid, title: '新对话');
+      if (pending != null && pending.id == sid) {
+        _pendingEmptySession = null;
+      }
+      sessions.insert(0, session);
+      await saveSessions(sessions);
+      await setActiveSessionId(sid);
+    });
+  }
+
+  static Future<void> _removeSessionEntry(String sid) {
+    return _withSessionCreationLock(() async {
+      final sessions = await loadSessions();
+      final before = sessions.length;
+      sessions.removeWhere((s) => s.id == sid);
+      if (sessions.length != before) {
+        await saveSessions(sessions);
+      }
+    });
   }
 
   static Future<void> addMessage(
@@ -357,9 +444,10 @@ class ChatStorageService {
   static Future<void> clearHistory() async {
     final prefs = await SharedPreferences.getInstance();
     final sid = await getActiveSessionId();
-    if (sid != null) {
+    if (sid != null && sid.isNotEmpty) {
       final hKey = await _getScopedKey(_historyKey(sid));
       await prefs.remove(hKey);
+      await _removeSessionEntry(sid);
     }
   }
 

@@ -77,7 +77,12 @@ abstract final class AiToolChatRunner {
     return visible.toString();
   }
 
-  static ({String content, List<AiChatFunctionCall> calls, bool hadToolMarkup})
+  static ({
+    String content,
+    List<AiChatFunctionCall> calls,
+    bool hadToolMarkup,
+    bool hadDisallowedWriteMarkup,
+  })
   _parseLegacyTextToolCalls(
     String content,
     List<Map<String, dynamic>> tools,
@@ -97,6 +102,7 @@ abstract final class AiToolChatRunner {
 
     final calls = <AiChatFunctionCall>[];
     var callIndex = 0;
+    var hadDisallowedWriteMarkup = false;
     for (final blockMatch in _legacyTextToolBlock.allMatches(content)) {
       final block = blockMatch.group(1) ?? '';
       final functionMatch = RegExp(
@@ -118,7 +124,12 @@ abstract final class AiToolChatRunner {
         }
       }
       final function = allowedTools[canonicalName];
-      if (function == null) continue;
+      if (function == null) {
+        if (_writeProposalToolNames.contains(canonicalName)) {
+          hadDisallowedWriteMarkup = true;
+        }
+        continue;
+      }
 
       final parameters = function['parameters'];
       final properties = parameters is Map ? parameters['properties'] : null;
@@ -204,7 +215,12 @@ abstract final class AiToolChatRunner {
       cleaned = cleaned.substring(0, malformedToolCall.start);
     }
     cleaned = cleaned.replaceAll(_legacyTextToolClose, '');
-    return (content: cleaned, calls: calls, hadToolMarkup: hadToolMarkup);
+    return (
+      content: cleaned,
+      calls: calls,
+      hadToolMarkup: hadToolMarkup,
+      hadDisallowedWriteMarkup: hadDisallowedWriteMarkup,
+    );
   }
 
   static dynamic _decodeLegacyJsonValue(String value) {
@@ -460,6 +476,10 @@ abstract final class AiToolChatRunner {
         if (hasPlanningTool || hasWriteProposalTool) {
           if (content.trim().isEmpty) {
             content = '上一轮返回了当前未开放的文本工具调用。';
+          }
+        } else if (legacyCalls.hadDisallowedWriteMarkup) {
+          if (content.trim().isEmpty) {
+            content = '上一轮返回了当前未开放的写入建议；如需生成待办或日程确认卡，请明确说明“帮我创建/添加”。';
           }
         } else {
           content = [
