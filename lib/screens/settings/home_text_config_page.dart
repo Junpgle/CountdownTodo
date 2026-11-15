@@ -973,6 +973,8 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
               )
             else
               ReorderableListView.builder(
+                padding: EdgeInsets.zero,
+                primary: false,
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: _salutationSlots.length,
@@ -1167,6 +1169,8 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
               )
             else
               ReorderableListView.builder(
+                padding: EdgeInsets.zero,
+                primary: false,
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: _timeSlots.length,

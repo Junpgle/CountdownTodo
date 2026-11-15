@@ -8,6 +8,7 @@ import '../../../utils/app_dialogs.dart';
 import '../../../utils/theme_color_tokens.dart';
 import '../../../widgets/app_settings_widgets.dart';
 import '../../../widgets/app_state_views.dart';
+import '../../../widgets/changelog_bullet_item.dart';
 
 class AboutSection extends StatefulWidget {
   const AboutSection({super.key});
@@ -160,7 +161,14 @@ class _AboutSectionState extends State<AboutSection> {
                                     ),
                                   ),
                                   const SizedBox(height: 8),
-                                  ...entry.items.map((item) => Text('• $item')),
+                                  ...entry.items.map(
+                                    (item) => ChangelogBulletItem(
+                                      item: item,
+                                      fontSize: 13,
+                                      textAlpha: 0.85,
+                                      bottomPadding: 5,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),

@@ -1721,7 +1721,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   subtitle: Text(
                     AppPlatform.isWeb
                         ? '浏览器导入导出、MCP 说明与 ICS 日历文件'
-                        : '局域网同步、MCP、手环与日历同步',
+                        : AppPlatform.isAndroid
+                        ? '局域网同步、MCP、手环与日历同步'
+                        : '局域网同步、MCP 与数据备份迁移',
                   ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => _openSettingsPage(

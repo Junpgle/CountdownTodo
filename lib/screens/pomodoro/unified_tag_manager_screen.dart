@@ -273,6 +273,8 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
           )
         else if (canReorder)
           ReorderableListView.builder(
+            padding: EdgeInsets.zero,
+            primary: false,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             buildDefaultDragHandles: false,
