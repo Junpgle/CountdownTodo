@@ -24,6 +24,7 @@ import 'habit_detail_screen.dart';
 /// - 选中具体习惯时显示该习惯专属的打卡完成日历视图。
 class HabitCalendarTab extends StatefulWidget {
   final double topPadding;
+  final double extraBottomPadding;
   final String username;
 
   /// 数据变化后自增，触发重新加载。
@@ -35,6 +36,7 @@ class HabitCalendarTab extends StatefulWidget {
   const HabitCalendarTab({
     super.key,
     this.topPadding = 0,
+    this.extraBottomPadding = 0,
     required this.username,
     this.reloadTick = 0,
     this.initialHabitUuid,
@@ -378,9 +380,9 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isWide = constraints.maxWidth > 600;
-        final bottomPadding = floatingBottomNavigationContentPaddingFor(
-          context,
-        );
+        final bottomPadding =
+            floatingBottomNavigationContentPaddingFor(context) +
+            widget.extraBottomPadding;
         final selectedGoal = _selectedGoal;
 
         // 1. 选中具体习惯：单习惯打卡大日历视图
@@ -542,6 +544,7 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
           Expanded(
             flex: 5,
             child: RefreshIndicator(
+              edgeOffset: widget.topPadding,
               onRefresh: _loadData,
               child: ListView(
                 padding: EdgeInsets.fromLTRB(
@@ -584,6 +587,7 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     }
 
     return RefreshIndicator(
+      edgeOffset: widget.topPadding,
       onRefresh: _loadData,
       child: ListView(
         padding: EdgeInsets.fromLTRB(
@@ -881,6 +885,8 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     }
 
     return GridView.count(
+      padding: EdgeInsets.zero,
+      primary: false,
       crossAxisCount: 7,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -1001,6 +1007,7 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
           Expanded(
             flex: 5,
             child: RefreshIndicator(
+              edgeOffset: widget.topPadding,
               onRefresh: _loadData,
               child: ListView(
                 padding: EdgeInsets.fromLTRB(
@@ -1041,6 +1048,7 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     }
 
     return RefreshIndicator(
+      edgeOffset: widget.topPadding,
       onRefresh: _loadData,
       child: ListView(
         padding: EdgeInsets.fromLTRB(
@@ -1206,6 +1214,8 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     }
 
     return GridView.count(
+      padding: EdgeInsets.zero,
+      primary: false,
       crossAxisCount: 7,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),

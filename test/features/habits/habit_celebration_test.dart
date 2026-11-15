@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:countdown_todo/features/habits/models/habit_goal.dart';
 import 'package:countdown_todo/features/habits/services/habit_celebration_service.dart';
+import 'package:countdown_todo/features/habits/services/habit_freeze_service.dart';
 import 'package:countdown_todo/features/habits/widgets/habit_celebration_overlay.dart';
 import 'package:countdown_todo/features/habits/widgets/habit_celebration_settings_dialog.dart';
 import 'package:countdown_todo/features/habits/widgets/habit_checkin_button.dart';
@@ -407,11 +408,21 @@ void main() {
       await tester.tap(find.text('Open Settings'));
       await tester.pumpAndSettle();
 
+      expect(find.text('习惯中心设置'), findsOneWidget);
+      expect(find.text('自动使用免扣卡'), findsOneWidget);
       expect(find.text('打卡仪式感设置'), findsOneWidget);
       expect(find.text('长按蓄力打卡'), findsOneWidget);
       expect(find.text('手感与动效试玩'), findsOneWidget);
 
+      // Toggle auto-freeze off and verify persistence
+      expect(await HabitFreezeService.isAutoProtectEnabled(), isTrue);
+      await tester.tap(find.text('自动使用免扣卡'));
+      await tester.pumpAndSettle();
+      expect(await HabitFreezeService.isAutoProtectEnabled(), isFalse);
+
       // Tap trial button
+      await tester.ensureVisible(find.text('点击打卡体验'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('点击打卡体验'));
       await tester.pump();
 
@@ -421,7 +432,41 @@ void main() {
       await tester.tap(find.text('完成'));
       await tester.pumpAndSettle();
 
-      expect(find.text('打卡仪式感设置'), findsNothing);
+      expect(find.text('习惯中心设置'), findsNothing);
+    });
+
+    testWidgets('sleep migration entry closes settings and invokes callback', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      await HabitCelebrationService.ensureInitialized();
+      var migrationOpened = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => ElevatedButton(
+                onPressed: () => HabitCelebrationSettingsDialog.show(
+                  context,
+                  onOpenSleepLogMigration: () => migrationOpened = true,
+                ),
+                child: const Text('Open Settings'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open Settings'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('从时间日志迁移睡眠'), findsOneWidget);
+      await tester.tap(find.text('从时间日志迁移睡眠'));
+      await tester.pumpAndSettle();
+
+      expect(migrationOpened, isTrue);
+      expect(find.text('习惯中心设置'), findsNothing);
     });
 
     testWidgets('HabitStampBadge renders watermark text and animates', (
