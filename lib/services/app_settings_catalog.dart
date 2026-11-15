@@ -953,7 +953,7 @@ abstract final class AppSettingsCatalog {
       id: 'power_save',
       title: '应用省电模式',
       path: '设置 > 动画与特效 > 应用省电模式',
-      description: '跟随Android系统省电',
+      description: '跟随系统省电/低电量模式',
       page: SettingsPageId.animation,
       labels: ['应用省电模式'],
       platforms: {'android'},

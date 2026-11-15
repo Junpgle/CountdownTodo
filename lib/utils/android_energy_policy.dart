@@ -40,7 +40,7 @@ abstract final class AndroidEnergyPolicy {
     required bool isAndroid,
     bool isPowerSaveMode = false,
   }) {
-    if (isAndroid && isPowerSaveMode) {
+    if (isPowerSaveMode) {
       return androidPowerSaveStrictFocusSensorPeriod;
     }
     return isAndroid
@@ -61,7 +61,7 @@ abstract final class AndroidEnergyPolicy {
     required bool isAndroid,
     bool isPowerSaveMode = false,
   }) {
-    if (isAndroid && isPowerSaveMode) {
+    if (isPowerSaveMode) {
       return androidPowerSaveDisconnectedSyncProbeInterval;
     }
     return isAndroid
@@ -69,9 +69,9 @@ abstract final class AndroidEnergyPolicy {
         : defaultDisconnectedSyncProbeInterval;
   }
 
-  /// Low-priority marquee/danmaku motion needs fewer timer wakeups on Android.
-  /// Callers scale their movement distance by the returned interval so the
-  /// perceived pixels-per-second speed remains unchanged.
+  /// Low-priority marquee/danmaku motion needs fewer timer wakeups on Android
+  /// and in system power saver. Callers scale their movement distance by the
+  /// returned interval so the perceived pixels-per-second speed remains unchanged.
   static Duration decorativeScrollInterval(Duration defaultInterval) {
     return decorativeScrollIntervalFor(
       isAndroid: AppPlatform.isAndroid,
@@ -86,14 +86,14 @@ abstract final class AndroidEnergyPolicy {
     required Duration defaultInterval,
   }) {
     assert(defaultInterval > Duration.zero);
-    if (!isAndroid) return defaultInterval;
+    if (!isAndroid && !isPowerSaveMode) return defaultInterval;
     return Duration(
       microseconds: defaultInterval.inMicroseconds * (isPowerSaveMode ? 4 : 2),
     );
   }
 
   /// Continuous decorative motion is disabled on Windows and paused while
-  /// Android Battery Saver is active.
+  /// system Battery Saver / Low Power Mode is active.
   static bool get shouldRunDecorativeMotion => shouldRunDecorativeMotionFor(
     isAndroid: AppPlatform.isAndroid,
     isPowerSaveMode: PowerSaveModeService.isEnabled,
@@ -105,7 +105,7 @@ abstract final class AndroidEnergyPolicy {
     required bool isPowerSaveMode,
     bool isWindows = false,
   }) {
-    return !isWindows && (!isAndroid || !isPowerSaveMode);
+    return !isWindows && !isPowerSaveMode;
   }
 
   /// Android's native widget providers already perform their own scheduled
@@ -124,7 +124,7 @@ abstract final class AndroidEnergyPolicy {
     required bool isAndroid,
     required bool isPowerSaveMode,
   }) {
-    return !isAndroid || !isPowerSaveMode;
+    return !isPowerSaveMode;
   }
 
   static Duration foregroundWidgetRefreshIntervalFor({
@@ -135,8 +135,8 @@ abstract final class AndroidEnergyPolicy {
         : defaultForegroundWidgetRefreshInterval;
   }
 
-  /// Android loops settle after a few passes; Windows loops are limited to
-  /// one pass as a fallback for callers that do not gate motion separately.
+  /// Android loops settle after a few passes; Windows and power-save loops are
+  /// limited to one pass as a fallback for callers that do not gate motion separately.
   static int? decorativeRepeatCount({int androidCount = 4}) {
     return decorativeRepeatCountFor(
       isAndroid: AppPlatform.isAndroid,
@@ -153,13 +153,14 @@ abstract final class AndroidEnergyPolicy {
     int androidCount = 4,
   }) {
     assert(androidCount > 0);
-    if (isWindows) return 1;
+    if (isWindows || isPowerSaveMode) return 1;
     if (!isAndroid) return null;
-    return isPowerSaveMode ? 1 : androidCount;
+    return androidCount;
   }
 
-  /// Visible clocks only need minute-level updates while Android Battery Saver
-  /// is active. Countdown engines and notification timing remain untouched.
+  /// Visible clocks only need minute-level updates while system Battery Saver /
+  /// Low Power Mode is active. Countdown engines and notification timing remain
+  /// untouched.
   static Duration get visibleClockInterval => visibleClockIntervalFor(
     isAndroid: AppPlatform.isAndroid,
     isPowerSaveMode: PowerSaveModeService.isEnabled,
@@ -169,7 +170,7 @@ abstract final class AndroidEnergyPolicy {
     required bool isAndroid,
     required bool isPowerSaveMode,
   }) {
-    return isAndroid && isPowerSaveMode
+    return isPowerSaveMode
         ? androidPowerSaveVisibleClockInterval
         : defaultVisibleClockInterval;
   }

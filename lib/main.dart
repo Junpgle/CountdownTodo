@@ -419,8 +419,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         state == AppLifecycleState.resumed;
 
     if (state == AppLifecycleState.resumed) {
-      if (AppPlatform.isAndroid) {
+      if (AppPlatform.isAndroid || AppPlatform.isMacOS) {
         unawaited(PowerSaveModeService.refresh());
+      }
+      if (AppPlatform.isAndroid) {
         WidgetService.setAppForeground(true);
       }
       _scheduleSystemUiRestore();

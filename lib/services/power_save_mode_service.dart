@@ -5,10 +5,11 @@ import 'package:flutter/services.dart';
 
 import '../utils/app_platform.dart';
 
-/// App-wide view of Android's system Battery Saver state.
+/// App-wide view of the system Battery Saver / Low Power Mode state
+/// (Android Battery Saver and macOS Low Power Mode).
 ///
-/// Android pushes changes through an EventChannel. A method call is retained as
-/// a cold-start/resume fallback for vendor systems that delay broadcasts.
+/// The native platform pushes changes through an EventChannel. A method call is
+/// retained as a cold-start/resume fallback for systems that delay broadcasts.
 abstract final class PowerSaveModeService {
   static const MethodChannel _methodChannel = MethodChannel(
     'com.math_quiz_app/power_save_mode',
@@ -21,15 +22,18 @@ abstract final class PowerSaveModeService {
   static StreamSubscription<dynamic>? _eventSubscription;
   static Future<void>? _initializeFuture;
 
+  static bool get _isSupportedPlatform =>
+      AppPlatform.isAndroid || AppPlatform.isMacOS;
+
   static ValueListenable<bool> get enabledListenable => _enabledNotifier;
 
-  static bool get isEnabled => AppPlatform.isAndroid && _enabledNotifier.value;
+  static bool get isEnabled => _isSupportedPlatform && _enabledNotifier.value;
 
   static Future<void> initialize() =>
       _initializeFuture ??= _initializePlatformState();
 
   static Future<void> _initializePlatformState() async {
-    if (!AppPlatform.isAndroid) {
+    if (!_isSupportedPlatform) {
       _setEnabled(false);
       return;
     }
@@ -39,19 +43,19 @@ abstract final class PowerSaveModeService {
   }
 
   static void _ensureEventSubscription() {
-    if (!AppPlatform.isAndroid || _eventSubscription != null) return;
+    if (!_isSupportedPlatform || _eventSubscription != null) return;
     _eventSubscription = _eventChannel.receiveBroadcastStream().listen(
       _updateFromPlatform,
       onError: (_) {
         // Keep the last confirmed native state. A resume refresh provides the
-        // fallback when an OEM drops or delays the broadcast stream.
+        // fallback when an OS drops or delays the broadcast stream.
       },
       onDone: () => _eventSubscription = null,
     );
   }
 
   static Future<void> refresh() async {
-    if (!AppPlatform.isAndroid) {
+    if (!_isSupportedPlatform) {
       _setEnabled(false);
       return;
     }
@@ -63,7 +67,7 @@ abstract final class PowerSaveModeService {
       );
       if (enabled != null) _setEnabled(enabled);
     } on MissingPluginException {
-      // Older/non-Android embeddings do not expose this bridge.
+      // Older/unsupported embeddings do not expose this bridge.
     } on PlatformException {
       // Preserve the last event-driven value and retry on the next resume.
     }

@@ -21,6 +21,7 @@ import 'lan_mdns_codec.dart';
 import 'lan_sync_crypto.dart';
 import 'lan_sync_pairing.dart';
 import 'lan_sync_private_data.dart';
+import 'power_save_mode_service.dart';
 
 class LanDevice {
   final String deviceId;
@@ -167,7 +168,19 @@ class LanSyncService {
 
   static final LanSyncService instance = LanSyncService._();
   factory LanSyncService() => instance;
-  LanSyncService._();
+  LanSyncService._() {
+    PowerSaveModeService.enabledListenable.addListener(
+      _handlePowerSaveModeChanged,
+    );
+  }
+
+  @visibleForTesting
+  bool? powerSaveModeOverrideForTesting;
+
+  bool get _isPowerSaveMode =>
+      powerSaveModeOverrideForTesting ?? PowerSaveModeService.isEnabled;
+
+  bool _initialized = false;
 
   HttpServer? _server;
   RawDatagramSocket? _udpSocket;
@@ -499,6 +512,7 @@ class LanSyncService {
 
   /// 从本地配置初始化桌面端常驻服务与自动无感同步状态。
   Future<void> initFromPreferences() async {
+    _initialized = true;
     final prefs = await SharedPreferences.getInstance();
     _isDaemonMode = prefs.getBool(_prefDesktopDaemonEnabled) ?? true;
     _autoSyncEnabled = prefs.getBool(_prefAutoSyncEnabled) ?? true;
@@ -508,7 +522,7 @@ class LanSyncService {
         Platform.isWindows || Platform.isMacOS || Platform.isLinux;
     if (isDesktop && _isDaemonMode) {
       await start(daemonMode: true);
-    } else if (_autoSyncEnabled) {
+    } else if (_autoSyncEnabled && !_isPowerSaveMode) {
       await start(daemonMode: false);
     }
     daemonRunningNotifier.value = _isRunning && _isDaemonMode;
@@ -538,7 +552,7 @@ class LanSyncService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefAutoSyncEnabled, enabled);
     _autoSyncEnabled = enabled;
-    if (_isRunning) {
+    if (_isRunning && enabled && !_isPowerSaveMode) {
       _broadcastDiscovery();
     }
   }
@@ -576,10 +590,16 @@ class LanSyncService {
       await _startHttpServer();
       await _startUdpDiscovery();
       await _startMdnsDiscovery();
-      _startDiscoveryBroadcast();
-      _startTimedScan();
+      if (!_isPowerSaveMode) {
+        _startDiscoveryBroadcast();
+        _startTimedScan();
+      }
       daemonRunningNotifier.value = _isDaemonMode;
-      _emitStatus(_isDaemonMode ? '常驻服务运行中（mDNS）' : '正在扫描设备...');
+      _emitStatus(
+        _isPowerSaveMode
+            ? '省电模式已暂停自动探测'
+            : (_isDaemonMode ? '常驻服务运行中（mDNS）' : '正在扫描设备...'),
+      );
     } catch (e) {
       _emitStatus('启动失败: $e');
       _isRunning = false;
@@ -1625,11 +1645,13 @@ class LanSyncService {
           _processMdnsDatagram(datagram);
         }
       }, onError: (_) {});
-      _mdnsSocket!.send(
-        LanMdnsCodec.buildQuery(),
-        InternetAddress(LanMdnsCodec.multicastAddress),
-        LanMdnsCodec.mdnsPort,
-      );
+      if (!_isPowerSaveMode) {
+        _mdnsSocket!.send(
+          LanMdnsCodec.buildQuery(),
+          InternetAddress(LanMdnsCodec.multicastAddress),
+          LanMdnsCodec.mdnsPort,
+        );
+      }
     } catch (_) {
       // 部分平台或受限网络可能禁止绑定 5353，保留已有 UDP 组播与子网扫描兜底。
     }
@@ -1757,11 +1779,34 @@ class LanSyncService {
     } catch (_) {}
   }
 
+  void _handlePowerSaveModeChanged() {
+    if (_isPowerSaveMode) {
+      _discoveryTimer?.cancel();
+      _discoveryTimer = null;
+      _fallbackScanTimer?.cancel();
+      _fallbackScanTimer = null;
+      if (_isRunning) {
+        _emitStatus('省电模式已暂停自动探测');
+      }
+      return;
+    }
+
+    if (_isRunning) {
+      _startDiscoveryBroadcast();
+      _startTimedScan();
+      _emitStatus(_isDaemonMode ? '常驻服务运行中（mDNS）' : '正在扫描设备...');
+    } else if (_initialized) {
+      unawaited(initFromPreferences());
+    }
+  }
+
   bool _backgroundAutoSyncInProgress = false;
 
   /// 应用启动或切回前台时，按配置执行一次轻量局域网无感发现并双向合并。
   Future<void> triggerBackgroundAutoSync() async {
-    if (_backgroundAutoSyncInProgress || _isSyncing) return;
+    if (_backgroundAutoSyncInProgress || _isSyncing || _isPowerSaveMode) {
+      return;
+    }
     _backgroundAutoSyncInProgress = true;
 
     try {
@@ -2596,6 +2641,9 @@ class LanSyncService {
   }
 
   void dispose() {
+    PowerSaveModeService.enabledListenable.removeListener(
+      _handlePowerSaveModeChanged,
+    );
     stop();
     _devicesCtrl.close();
     _statusCtrl.close();

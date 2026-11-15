@@ -4,6 +4,8 @@ import WidgetKit
 import LaunchAtLogin
 
 class MainFlutterWindow: NSWindow {
+  private var powerSaveStreamHandler: MacPowerSaveModeStreamHandler?
+
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
     let windowFrame = self.frame
@@ -233,6 +235,88 @@ class MainFlutterWindow: NSWindow {
       }
     }
 
+    let powerSaveMethodChannel = FlutterMethodChannel(
+      name: "com.math_quiz_app/power_save_mode",
+      binaryMessenger: flutterViewController.engine.binaryMessenger
+    )
+    powerSaveMethodChannel.setMethodCallHandler { (call, result) in
+      switch call.method {
+      case "getPowerSaveMode", "refreshPowerSaveMode":
+        result(MacPowerSaveModeStreamHandler.isLowPowerModeEnabled())
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
+    let powerSaveEventChannel = FlutterEventChannel(
+      name: "com.math_quiz_app/power_save_mode_events",
+      binaryMessenger: flutterViewController.engine.binaryMessenger
+    )
+    let powerSaveHandler = MacPowerSaveModeStreamHandler()
+    self.powerSaveStreamHandler = powerSaveHandler
+    powerSaveEventChannel.setStreamHandler(powerSaveHandler)
+
     super.awakeFromNib()
+  }
+}
+
+private final class MacPowerSaveModeStreamHandler: NSObject, FlutterStreamHandler {
+  private var eventSink: FlutterEventSink?
+  private var observer: NSObjectProtocol?
+  private var lastPublishedState: Bool?
+
+  static func isLowPowerModeEnabled() -> Bool {
+    if #available(macOS 12.0, *) {
+      return ProcessInfo.processInfo.isLowPowerModeEnabled
+    }
+    return false
+  }
+
+  func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
+    eventSink = events
+    lastPublishedState = nil
+    registerObserverIfNeeded()
+    publishState(force: true)
+    return nil
+  }
+
+  func onCancel(withArguments arguments: Any?) -> FlutterError? {
+    removeObserver()
+    eventSink = nil
+    lastPublishedState = nil
+    return nil
+  }
+
+  private func registerObserverIfNeeded() {
+    guard observer == nil else { return }
+    if #available(macOS 12.0, *) {
+      observer = NotificationCenter.default.addObserver(
+        forName: .NSProcessInfoPowerStateDidChange,
+        object: nil,
+        queue: .main
+      ) { [weak self] _ in
+        self?.publishState(force: false)
+      }
+    }
+  }
+
+  private func removeObserver() {
+    if let observer = observer {
+      NotificationCenter.default.removeObserver(observer)
+      self.observer = nil
+    }
+  }
+
+  private func publishState(force: Bool) {
+    let enabled = Self.isLowPowerModeEnabled()
+    if !force && lastPublishedState == enabled {
+      return
+    }
+    lastPublishedState = enabled
+    eventSink?(enabled)
+  }
+
+  deinit {
+    removeObserver()
   }
 }
