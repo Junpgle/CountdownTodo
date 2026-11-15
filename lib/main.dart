@@ -39,6 +39,7 @@ import 'services/windows_render_cache_policy.dart';
 import 'services/pomodoro_service.dart';
 import 'services/focus_do_not_disturb_service.dart';
 import 'services/auto_backup_service.dart';
+import 'services/lan_sync_service.dart';
 import 'widgets/macos_menu_bar.dart';
 import 'services/pomodoro_sync_service.dart';
 import 'services/widget_service.dart';
@@ -424,6 +425,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       }
       _scheduleSystemUiRestore();
       unawaited(AutoBackupService.runBackupIfDue());
+      unawaited(
+      LanSyncService.instance.initFromPreferences().then(
+        (_) => LanSyncService.instance.triggerBackgroundAutoSync(),
+      ),
+    );
     } else if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.paused ||
@@ -1053,6 +1059,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         _applySplashTransitionIfReady();
       });
     }
+
+    unawaited(
+      LanSyncService.instance.initFromPreferences().then(
+        (_) => LanSyncService.instance.triggerBackgroundAutoSync(),
+      ),
+    );
 
     if (AutoBackupService.isSupported) {
       _autoBackupStartupTimer?.cancel();

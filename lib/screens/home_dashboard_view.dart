@@ -793,6 +793,20 @@ mixin _HomeDashboardViewMixin
                                       Widget buildScrollableSection(
                                         String key,
                                       ) {
+                                        if (key == 'daily_ai_suggestion') {
+                                          return HomeDashboardScrollSection(
+                                            key: ValueKey<String>(key),
+                                            keepAlive: !AppPlatform.isWindows,
+                                            child: AppSystemUiRegion(
+                                              backgroundBrightness:
+                                                  cardBackgroundBrightness,
+                                              child:
+                                                  _buildDailyAiSuggestionSection(
+                                                    isLight,
+                                                  ),
+                                            ),
+                                          );
+                                        }
                                         return HomeDashboardScrollSection(
                                           key: ValueKey<String>(key),
                                           keepAlive: !AppPlatform.isWindows,
@@ -846,9 +860,22 @@ mixin _HomeDashboardViewMixin
                                         bool focusPage,
                                         double listHeaderExtent,
                                       ) {
-                                        final sectionKeys = focusPage
+                                        final baseSectionKeys = focusPage
                                             ? tab3SectionKeys
                                             : tab1SectionKeys;
+                                        final sectionKeys = List<String>.from(
+                                          baseSectionKeys,
+                                        );
+                                        if (!focusPage) {
+                                          final bannersIndex = sectionKeys
+                                              .indexOf('banners');
+                                          sectionKeys.insert(
+                                            bannersIndex >= 0
+                                                ? bannersIndex + 1
+                                                : 0,
+                                            'daily_ai_suggestion',
+                                          );
+                                        }
                                         final hasOnboarding = !focusPage;
                                         final onboardingIndex = hasOnboarding
                                             ? sectionKeys.length
@@ -1135,12 +1162,34 @@ mixin _HomeDashboardViewMixin
                                         ],
                                       );
 
+                                      final leftSpecs = buildSpecs(
+                                        currentLeft,
+                                      ).toList();
+                                      final windowsBannersIdx = leftSpecs
+                                          .indexWhere((s) => s.id == 'banners');
+                                      leftSpecs.insert(
+                                        windowsBannersIdx >= 0
+                                            ? windowsBannersIdx + 1
+                                            : 0,
+                                        WindowsDashboardSection(
+                                          id: 'daily_ai_suggestion',
+                                          estimatedHeight: 220,
+                                          builder: (context) =>
+                                              AppSystemUiRegion(
+                                                backgroundBrightness:
+                                                    cardBackgroundBrightness,
+                                                child:
+                                                    _buildDailyAiSuggestionSection(
+                                                      isLight,
+                                                    ),
+                                              ),
+                                        ),
+                                      );
+
                                       return OptionalLiquidGlassScrollOptimizer(
                                         child:
                                             WindowsDashboardScrollCoordinator(
-                                              leftSections: buildSpecs(
-                                                currentLeft,
-                                              ),
+                                              leftSections: leftSpecs,
                                               rightSections: buildSpecs(
                                                 currentRight,
                                               ),
@@ -1203,8 +1252,30 @@ mixin _HomeDashboardViewMixin
                                           .toList();
                                     }
 
+                                    final visibleLeftKeys = currentLeft
+                                        .where(
+                                          (key) =>
+                                              (_sectionVisibility[key] ??
+                                                  true) &&
+                                              sectionBuilders.containsKey(key),
+                                        )
+                                        .toList();
                                     List<Widget> leftWidgets =
-                                        buildColumnWidgets(currentLeft);
+                                        buildColumnWidgets(visibleLeftKeys);
+                                    final tabletBannersIdx = visibleLeftKeys
+                                        .indexOf('banners');
+                                    leftWidgets.insert(
+                                      tabletBannersIdx >= 0
+                                          ? tabletBannersIdx + 1
+                                          : 0,
+                                      AppSystemUiRegion(
+                                        backgroundBrightness:
+                                            cardBackgroundBrightness,
+                                        child: _buildDailyAiSuggestionSection(
+                                          isLight,
+                                        ),
+                                      ),
+                                    );
                                     List<Widget> rightWidgets =
                                         buildColumnWidgets(currentRight);
 

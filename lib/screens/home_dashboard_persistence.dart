@@ -307,6 +307,19 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
     final syncAttempt = ++_syncAttemptGeneration;
 
     try {
+      if (await AppSettingsStorage.isOfflineModeEnabled()) {
+        if (silent) {
+          unawaited(LanSyncService.instance.triggerBackgroundAutoSync());
+        } else if (mounted) {
+          AppStatusToast.show(
+            context: context,
+            anchorKey: _syncButtonKey,
+            message: '离线模式已开启，已跳过服务器同步',
+          );
+        }
+        return;
+      }
+
       // 🚀 核心修复：同步前先强制保存用户未持久化的修改（如取消勾选），
       // 防止 syncData 的 saveTodos(isSyncSource=true) 覆盖用户意图。
       final flushedTodoIds = <String>{};
@@ -435,7 +448,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
           AppStatusToast.show(
             context: context,
             anchorKey: _syncButtonKey,
-            message: '数据同步完成',
+            message: '服务器同步完成',
           );
         }
         if (hasChanges) {
@@ -496,17 +509,21 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
 
   /// 🚀 Uni-Sync 4.0: 链路可视化诊断报告
   Future<void> _showLinkDiagnostics() async {
+    final isOfflineMode = await AppSettingsStorage.isOfflineModeEnabled();
+    if (!mounted) return;
+
     showAppDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
+          final colorScheme = Theme.of(context).colorScheme;
           return AlertDialog(
             title: Row(
               children: [
                 Icon(
                   Icons.analytics_outlined,
-                  color: Theme.of(context).colorScheme.secondary,
+                  color: colorScheme.secondary,
                 ),
                 const SizedBox(width: 10),
                 const Text(
@@ -530,11 +547,47 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
                       PomodoroSyncService.instance.connectionState ==
                           SyncConnectionState.connected,
                     ),
+                    isOfflinePaused: isOfflineMode,
+                    offlineMessage: "离线模式已开启，已强制断开 WebSocket",
                   ),
                   _buildDiagnosticItem(
                     "增量引擎状态",
                     Future.value(true),
                   ), // 逻辑始终为真，仅展示
+                  if (isOfflineMode) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: colorScheme.secondaryContainer.withValues(
+                          alpha: 0.55,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.info_outline_rounded,
+                            size: 16,
+                            color: colorScheme.onSecondaryContainer,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              "当前已开启离线模式：系统会强制断开 WebSocket 并暂停服务器同步，实时同步通道未连接属于正常现象；如需恢复实时同步，请在同步设置中关闭离线模式。",
+                              style: TextStyle(
+                                fontSize: 11,
+                                height: 1.4,
+                                color: colorScheme.onSecondaryContainer,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   const Divider(height: 32),
                   _buildEnvironmentInfo(),
                 ],
@@ -572,12 +625,20 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
     );
   }
 
-  Widget _buildDiagnosticItem(String label, Future<bool> checkFuture) {
+  Widget _buildDiagnosticItem(
+    String label,
+    Future<bool> checkFuture, {
+    bool isOfflinePaused = false,
+    String? offlineMessage,
+  }) {
     return FutureBuilder<bool>(
       future: checkFuture,
       builder: (context, snapshot) {
-        bool? isOk = snapshot.data;
-        bool isLoading = snapshot.connectionState == ConnectionState.waiting;
+        final bool? isOk = snapshot.data;
+        final bool isLoading =
+            snapshot.connectionState == ConnectionState.waiting;
+        final bool pausedByOffline = isOfflinePaused && isOk != true;
+        final colorScheme = Theme.of(context).colorScheme;
 
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
@@ -589,9 +650,17 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
                 child: isLoading
                     ? const CircularProgressIndicator(strokeWidth: 2)
                     : Icon(
-                        isOk == true ? Icons.check_circle : Icons.error,
+                        isOk == true
+                            ? Icons.check_circle
+                            : pausedByOffline
+                            ? Icons.cloud_off_rounded
+                            : Icons.error,
                         size: 20,
-                        color: isOk == true ? Colors.green : Colors.redAccent,
+                        color: isOk == true
+                            ? Colors.green
+                            : pausedByOffline
+                            ? colorScheme.secondary
+                            : Colors.redAccent,
                       ),
               ),
               const SizedBox(width: 12),
@@ -605,11 +674,17 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
                     ),
                     if (!isLoading)
                       Text(
-                        isOk == true ? "服务运行正常" : "连接受阻，部分功能受限",
+                        isOk == true
+                            ? "服务运行正常"
+                            : pausedByOffline
+                            ? (offlineMessage ?? "离线模式已开启，已主动断开连接")
+                            : "连接受阻，部分功能受限",
                         style: TextStyle(
                           fontSize: 11,
                           color: isOk == true
                               ? Colors.grey
+                              : pausedByOffline
+                              ? colorScheme.secondary
                               : Colors.redAccent.withValues(alpha: 0.8),
                         ),
                       ),
@@ -667,137 +742,78 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
   }
 
   Future<void> _showSyncOptionsDialog() async {
-    bool syncTodos = true;
-    bool syncCountdowns = true;
-    bool syncScreenTime = true;
-    bool syncPomodoro = true;
-    bool syncTimeLogs = true;
-    bool syncPlanBlocks = true;
-    bool syncFixedSchedules = true;
-    bool syncHabits = true;
-    bool syncFinance = await AppSettingsStorage.isFinanceCloudSyncEnabled(
-      widget.username,
-    );
+    final initialSyncFinance =
+        await AppSettingsStorage.isFinanceCloudSyncEnabled(widget.username);
+    final isOfflineMode = await AppSettingsStorage.isOfflineModeEnabled();
     if (!mounted) return;
 
-    showAppDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            title: const Text(
-              "手动同步",
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            content: SingleChildScrollView(
-              // 加入滚动防止选项过多溢出屏幕
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "请勾选你需要同步的数据模块：",
-                    style: TextStyle(fontSize: 13, color: Colors.grey),
-                  ),
-                  const SizedBox(height: 12),
-                  CheckboxListTile(
-                    title: const Text("待办事项"),
-                    value: syncTodos,
-                    onChanged: (val) =>
-                        setDialogState(() => syncTodos = val ?? false),
-                  ),
-                  CheckboxListTile(
-                    title: const Text("重要日与倒计时"),
-                    value: syncCountdowns,
-                    onChanged: (val) =>
-                        setDialogState(() => syncCountdowns = val ?? false),
-                  ),
-                  CheckboxListTile(
-                    title: const Text("屏幕使用时间"),
-                    value: syncScreenTime,
-                    onChanged: (val) =>
-                        setDialogState(() => syncScreenTime = val ?? false),
-                  ),
-                  CheckboxListTile(
-                    title: const Text("番茄钟记录"),
-                    value: syncPomodoro,
-                    onChanged: (val) =>
-                        setDialogState(() => syncPomodoro = val ?? false),
-                  ),
-                  CheckboxListTile(
-                    title: const Text("时间日志 (补录)"),
-                    value: syncTimeLogs,
-                    onChanged: (val) =>
-                        setDialogState(() => syncTimeLogs = val ?? false),
-                  ),
-                  CheckboxListTile(
-                    title: const Text("今日规划"),
-                    value: syncPlanBlocks,
-                    onChanged: (val) =>
-                        setDialogState(() => syncPlanBlocks = val ?? false),
-                  ),
-                  CheckboxListTile(
-                    title: const Text("固定日程"),
-                    value: syncFixedSchedules,
-                    onChanged: (val) =>
-                        setDialogState(() => syncFixedSchedules = val ?? false),
-                  ),
-                  CheckboxListTile(
-                    title: const Text("习惯"),
-                    value: syncHabits,
-                    onChanged: (val) =>
-                        setDialogState(() => syncHabits = val ?? false),
-                  ),
-                  CheckboxListTile(
-                    title: const Text("记账"),
-                    value: syncFinance,
-                    onChanged: (val) =>
-                        setDialogState(() => syncFinance = val ?? false),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text("取消"),
-              ),
-              FilledButton(
-                // 🚀 3. 按钮启用条件加入 syncTimeLogs
-                onPressed:
-                    (syncTodos ||
-                        syncCountdowns ||
-                        syncScreenTime ||
-                        syncPomodoro ||
-                        syncTimeLogs ||
-                        syncPlanBlocks ||
-                        syncFixedSchedules ||
-                        syncHabits ||
-                        syncFinance)
-                    ? () {
-                        Navigator.pop(ctx);
-                        _handleManualSync(
-                          silent: false,
-                          syncTodos: syncTodos,
-                          syncCountdowns: syncCountdowns,
-                          syncScreenTime: syncScreenTime,
-                          syncPomodoro: syncPomodoro,
-                          syncTimeLogs: syncTimeLogs,
-                          syncPlanBlocks: syncPlanBlocks,
-                          syncFixedSchedules: syncFixedSchedules,
-                          syncHabits: syncHabits,
-                          syncFinance: syncFinance,
-                          financeSyncExplicitlyAuthorized: syncFinance,
-                        );
-                      }
-                    : null,
-                child: const Text("开始同步"),
-              ),
-            ],
-          );
-        },
-      ),
+    final selection = await showManualSyncOptionsDialog(
+      context,
+      initialSyncFinance: initialSyncFinance,
+      isOfflineMode: isOfflineMode,
+      lanPeerCount: LanSyncService.instance.devices.length,
     );
+    if (selection == null || !selection.hasAnySelected || !mounted) return;
+
+    if (selection.target == ManualSyncTarget.lan) {
+      await _handleManualLanSync(selection);
+      return;
+    }
+
+    _handleManualSync(
+      silent: false,
+      syncTodos: selection.syncTodos,
+      syncCountdowns: selection.syncCountdowns,
+      syncScreenTime: selection.syncScreenTime,
+      syncPomodoro: selection.syncPomodoro,
+      syncTimeLogs: selection.syncTimeLogs,
+      syncPlanBlocks: selection.syncPlanBlocks,
+      syncFixedSchedules: selection.syncFixedSchedules,
+      syncHabits: selection.syncHabits,
+      syncFinance: selection.syncFinance,
+      financeSyncExplicitlyAuthorized: selection.syncFinance,
+    );
+  }
+
+  Future<void> _handleManualLanSync(ManualSyncSelection selection) async {
+    if (_isSyncing || !mounted) return;
+    setState(() => _isSyncing = true);
+    _suppressNextLanToast = true;
+    try {
+      final config = LanSyncConfig(
+        syncTodos: selection.syncTodos,
+        syncCountdowns: selection.syncCountdowns,
+        syncTimeLogs: selection.syncTimeLogs,
+        syncPomodoroTags: selection.syncPomodoro,
+        syncPomodoroRecords: selection.syncPomodoro,
+      );
+      final result = await LanSyncService.instance.syncManualWithPeers(
+        config: config,
+      );
+      if (!mounted) return;
+      if (result.success) {
+        await _loadAllData();
+        if (!mounted) return;
+        AppStatusToast.show(
+          context: context,
+          anchorKey: _syncButtonKey,
+          message: result.message.isNotEmpty ? result.message : '局域网同步成功',
+        );
+      } else {
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(
+            content: Text(result.message),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } finally {
+      _suppressNextLanToast = false;
+      if (mounted) {
+        setState(() => _isSyncing = false);
+      }
+    }
   }
 
   // --- Wallpaper Fallback Logic ---

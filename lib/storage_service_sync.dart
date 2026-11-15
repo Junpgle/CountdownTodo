@@ -587,6 +587,14 @@ mixin _StorageSync on _StorageServiceBase {
     if (username.isEmpty) {
       return {'success': false, 'hasChanges': false, 'error': '账户未登录，无法同步'};
     }
+    if (await AppSettingsStorage.isOfflineModeEnabled()) {
+      return {
+        'success': false,
+        'hasChanges': false,
+        'offline': true,
+        'error': '离线模式已开启，已跳过服务器同步',
+      };
+    }
     final session = await UserSessionStorage.captureSession(username);
     if (session == null) {
       return {'success': false, 'hasChanges': false, 'error': '账户已切换，已取消旧账户同步'};

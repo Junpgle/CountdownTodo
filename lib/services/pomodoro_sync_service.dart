@@ -7,6 +7,7 @@ import 'package:web_socket_channel/status.dart' as ws_status;
 
 import 'api_service.dart';
 import 'notification_service.dart';
+import 'storage/app_settings_storage.dart';
 import '../storage_service.dart';
 import '../models.dart';
 import '../update_service.dart';
@@ -306,12 +307,30 @@ class PomodoroSyncService {
     return current.isNotEmpty && source.isNotEmpty && current == source;
   }
 
+  /// 离线模式开启时主动断开 WebSocket 同步通道。
+  Future<void> disconnectForOfflineMode() async {
+    _reconnectTimer?.cancel();
+    _heartbeatTimer?.cancel();
+    await _wsSub?.cancel();
+    _wsSub = null;
+    await _channel?.sink.close(ws_status.normalClosure);
+    _channel = null;
+    _connState = SyncConnectionState.disconnected;
+    if (!_connStateCtrl.isClosed) {
+      _connStateCtrl.add(_connState);
+    }
+  }
+
   Future<void> ensureConnected(
     String userId,
     String deviceId, {
     String? authToken,
     String? appVersion,
   }) async {
+    if (await AppSettingsStorage.isOfflineModeEnabled()) {
+      await disconnectForOfflineMode();
+      return;
+    }
     _isInBackground = false;
     await _transportSuspendFuture;
     if (appVersion != null) _appVersion = appVersion;

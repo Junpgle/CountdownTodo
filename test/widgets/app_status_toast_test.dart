@@ -84,4 +84,71 @@ void main() {
       expect(toastFinder, findsNothing);
     },
   );
+
+  testWidgets(
+    'status toast keeps glass panel element mounted across entrance settle',
+    (tester) async {
+      await LiquidGlassEffectService.setEnabled(true);
+      final anchorKey = GlobalKey();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Stack(
+              children: [
+                Positioned(
+                  top: 24,
+                  right: 20,
+                  child: Builder(
+                    builder: (context) => SizedBox(
+                      key: anchorKey,
+                      width: 40,
+                      height: 40,
+                      child: IconButton(
+                        onPressed: () {
+                          AppStatusToast.show(
+                            context: context,
+                            anchorKey: anchorKey,
+                            message: '服务器同步完成',
+                            duration: const Duration(milliseconds: 600),
+                          );
+                        },
+                        icon: const Icon(Icons.sync),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byIcon(Icons.sync));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      final toastFinder = find.byKey(
+        const ValueKey<String>('app-status-toast'),
+      );
+      expect(toastFinder, findsOneWidget);
+      expect(
+        find.byKey(
+          const ValueKey<String>('optional-liquid-glass-static-panel'),
+        ),
+        findsOneWidget,
+      );
+      final elementMidTransition = tester.element(toastFinder);
+
+      // Advance past the 220ms entrance animation so it settles at opacity 1.0.
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(toastFinder, findsOneWidget);
+      final elementSettled = tester.element(toastFinder);
+      expect(identical(elementMidTransition, elementSettled), isTrue);
+
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      expect(toastFinder, findsNothing);
+    },
+  );
 }
