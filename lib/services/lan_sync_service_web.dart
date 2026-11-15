@@ -1,5 +1,9 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
+import 'lan_sync_pairing.dart';
+
 class LanDevice {
   final String deviceId;
   final String userId;
@@ -79,6 +83,8 @@ class LanSyncConfig {
   final bool syncPomodoroTags;
   final bool syncPomodoroRecords;
   final bool syncCourses;
+  final bool syncSecrets;
+  final bool syncSettings;
 
   LanSyncConfig({
     this.syncTodos = true,
@@ -87,6 +93,8 @@ class LanSyncConfig {
     this.syncPomodoroTags = true,
     this.syncPomodoroRecords = true,
     this.syncCourses = true,
+    this.syncSecrets = true,
+    this.syncSettings = false,
   });
 
   int get totalCount =>
@@ -95,7 +103,9 @@ class LanSyncConfig {
       (syncTimeLogs ? 1 : 0) +
       (syncPomodoroTags ? 1 : 0) +
       (syncPomodoroRecords ? 1 : 0) +
-      (syncCourses ? 1 : 0);
+      (syncCourses ? 1 : 0) +
+      (syncSecrets ? 1 : 0) +
+      (syncSettings ? 1 : 0);
 }
 
 enum LanSyncState { idle, requesting, sending, receiving, completed }
@@ -113,9 +123,16 @@ class LanSyncService {
   Stream<LanDevice> get onIncomingRequest => const Stream.empty();
   Stream<double> get onProgressChanged => const Stream.empty();
   Stream<Map<String, String>> get onFileReceived => const Stream.empty();
+  Stream<LanSyncResult> get onQuickPairCompleted => const Stream.empty();
+  Stream<LanSyncResult> get onSyncCompleted => const Stream.empty();
+
+  final ValueNotifier<bool> daemonRunningNotifier = ValueNotifier<bool>(false);
 
   bool get isRunning => false;
   bool get isSyncing => false;
+  bool get isDaemonMode => false;
+  bool get autoSyncEnabled => true;
+  int? get serverPort => null;
   bool discoverAllDevices = false;
 
   List<LanDevice> get devices => const [];
@@ -128,9 +145,42 @@ class LanSyncService {
     _statusCtrl.add('浏览器不支持局域网发现');
   }
 
-  Future<void> start() async {
+  Future<void> initFromPreferences() async {}
+
+  bool get syncSecretsEnabled => true;
+
+  bool get syncSettingsEnabled => false;
+
+  Future<void> setDesktopDaemonEnabled(bool enabled) async {}
+
+  Future<void> setAutoSyncEnabled(bool enabled) async {}
+
+  Future<void> setSyncSecretsEnabled(bool enabled) async {}
+
+  Future<void> setSyncSettingsEnabled(bool enabled) async {}
+
+  Future<void> triggerBackgroundAutoSync() async {}
+
+  Future<void> scanForPeersOnce() async {}
+
+  Future<LanSyncResult> syncManualWithPeers({LanSyncConfig? config}) async =>
+      LanSyncResult(message: '浏览器不支持局域网同步');
+
+  Future<void> start({bool daemonMode = false}) async {
     _statusCtrl.add('浏览器不支持局域网同步');
   }
+
+  Future<LanPairingPayload?> startQuickPairSession() async {
+    _statusCtrl.add('浏览器不支持局域网面对面快传');
+    return null;
+  }
+
+  void cancelQuickPairSession() {}
+
+  Future<LanSyncResult> syncWithPairingCode(
+    String rawCode, {
+    LanSyncConfig? config,
+  }) async => LanSyncResult(message: '浏览器不支持局域网同步');
 
   Future<void> stop() async {}
 

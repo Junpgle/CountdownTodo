@@ -4,6 +4,8 @@
 <dict>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>用于快速语音对话，将你的语音转换为文字交给 AI 助手。</string>
+	<key>NSCameraUsageDescription</key>
+	<string>用于扫描局域网面对面同步二维码。</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleExecutable</key>

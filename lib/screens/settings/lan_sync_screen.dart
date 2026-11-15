@@ -1,11 +1,16 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../services/file_open_service.dart';
 import '../../services/lan_sync_service.dart';
+import '../../services/pomodoro_sync_service.dart';
+import '../../services/storage/app_settings_storage.dart';
+import 'lan_qr_scanner_screen.dart';
 import '../../services/permission_request_coordinator.dart';
 import '../../utils/app_platform.dart';
 import '../../widgets/floating_glass_control.dart';
@@ -29,6 +34,11 @@ class _LanSyncScreenState extends State<LanSyncScreen>
   double _progressValue = 0;
   bool _isLoading = false;
   bool _discoverAll = false;
+  bool _isDaemonMode = false;
+  bool _autoSyncEnabled = true;
+  bool _syncSecretsEnabled = true;
+  bool _syncSettingsEnabled = false;
+  bool _offlineModeEnabled = false;
 
   StreamSubscription<List<LanDevice>>? _devicesSubscription;
   StreamSubscription<String>? _statusSubscription;
@@ -36,6 +46,7 @@ class _LanSyncScreenState extends State<LanSyncScreen>
   StreamSubscription<double>? _progressValueSubscription;
   StreamSubscription<LanDevice>? _incomingRequestSubscription;
   StreamSubscription<Map<String, String>>? _fileReceivedSubscription;
+  StreamSubscription<LanSyncResult>? _quickPairCompletedSubscription;
 
   @override
   void initState() {
@@ -60,13 +71,52 @@ class _LanSyncScreenState extends State<LanSyncScreen>
     _fileReceivedSubscription = _service.onFileReceived.listen(
       _showFileReceivedDialog,
     );
+    _quickPairCompletedSubscription = _service.onQuickPairCompleted.listen((
+      result,
+    ) {
+      if (!mounted) return;
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(
+          content: Text(
+            '面对面同步完成: 待办${result.todosSynced} 倒数日${result.countdownsSynced} 时间日志${result.timeLogsSynced} 番茄标签${result.pomodoroTagsSynced} 番茄记录${result.pomodoroRecordsSynced} 课程${result.coursesSynced}',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    });
 
     _devices = _service.devices;
-    _status = _service.isRunning ? '运行中' : '已停止';
+    _status = _service.isRunning
+        ? (_service.isDaemonMode ? '常驻服务运行中（mDNS）' : '运行中')
+        : '已停止';
     _discoverAll = _service.discoverAllDevices;
+    _isDaemonMode = _service.isDaemonMode;
+    _autoSyncEnabled = _service.autoSyncEnabled;
+    _syncSecretsEnabled = _service.syncSecretsEnabled;
+    _syncSettingsEnabled = _service.syncSettingsEnabled;
+    _service.daemonRunningNotifier.addListener(_onDaemonRunningChanged);
+    unawaited(_loadOfflineMode());
     if (AppPlatform.isAndroid) {
       unawaited(_stopIfLocalNetworkAccessWasRevoked());
     }
+  }
+
+  Future<void> _loadOfflineMode() async {
+    final enabled = await AppSettingsStorage.isOfflineModeEnabled();
+    if (mounted) {
+      setState(() => _offlineModeEnabled = enabled);
+    }
+  }
+
+  void _onDaemonRunningChanged() {
+    if (!mounted) return;
+    setState(() {
+      _isDaemonMode = _service.isDaemonMode;
+      _status = _service.isRunning
+          ? (_service.isDaemonMode ? '常驻服务运行中（mDNS）' : '运行中')
+          : '已停止';
+    });
   }
 
   @override
@@ -155,6 +205,8 @@ class _LanSyncScreenState extends State<LanSyncScreen>
     bool syncPomodoroTags = true;
     bool syncPomodoroRecords = true;
     bool syncCourses = true;
+    bool syncSecrets = _syncSecretsEnabled;
+    bool syncSettings = _syncSettingsEnabled;
 
     showAppDialog(
       context: context,
@@ -197,6 +249,17 @@ class _LanSyncScreenState extends State<LanSyncScreen>
                   value: syncCourses,
                   onChanged: (v) => setDialogState(() => syncCourses = v!),
                 ),
+                CheckboxListTile(
+                  title: const Text('API Key 与大模型配置'),
+                  subtitle: const Text('仅通过局域网加密通道传输'),
+                  value: syncSecrets,
+                  onChanged: (v) => setDialogState(() => syncSecrets = v!),
+                ),
+                CheckboxListTile(
+                  title: const Text('偏好设置（通知 / 界面 / 提醒）'),
+                  value: syncSettings,
+                  onChanged: (v) => setDialogState(() => syncSettings = v!),
+                ),
               ],
             ),
           ),
@@ -215,6 +278,8 @@ class _LanSyncScreenState extends State<LanSyncScreen>
                   syncPomodoroTags: syncPomodoroTags,
                   syncPomodoroRecords: syncPomodoroRecords,
                   syncCourses: syncCourses,
+                  syncSecrets: syncSecrets,
+                  syncSettings: syncSettings,
                 );
                 if (isAccept) {
                   _confirmSync(device, config);
@@ -425,6 +490,337 @@ class _LanSyncScreenState extends State<LanSyncScreen>
     );
   }
 
+  Future<bool> _ensureLocalNetworkPermission() async {
+    if (!AppPlatform.isAndroid) return true;
+    final permission = await _permissionCoordinator.request(
+      AppPermissionKind.localNetwork,
+    );
+    if (!mounted) return false;
+    if (!permission.granted) {
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('未获得局域网访问权限，局域网同步未启动。')),
+      );
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _showQuickPairQrDialog() async {
+    if (!await _ensureLocalNetworkPermission()) return;
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+    var payload = await _service.startQuickPairSession();
+    if (!mounted) return;
+    setState(() {
+      _isLoading = false;
+      _status = _service.isRunning ? '运行中' : _status;
+    });
+
+    if (payload == null) {
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(
+          content: Text('无法获取本机局域网 IP 或启动临时服务'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    await showAppDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final currentPayload = payload!;
+          final uriString = currentPayload.toUriString();
+          return AlertDialog(
+            title: const Text('面对面同步二维码'),
+            content: SizedBox(
+              width: 280,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: QrImageView(
+                      data: uriString,
+                      version: QrVersions.auto,
+                      size: 200,
+                      backgroundColor: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    '${currentPayload.ip}:${currentPayload.port}',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '一次性令牌 5 分钟内有效，另一台设备扫码或粘贴配对码即可直接互同步。',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton.icon(
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('刷新'),
+                onPressed: () async {
+                  final next = await _service.startQuickPairSession();
+                  if (next != null && context.mounted) {
+                    setDialogState(() => payload = next);
+                  }
+                },
+              ),
+              TextButton.icon(
+                icon: const Icon(Icons.copy, size: 18),
+                label: const Text('复制配对码'),
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: uriString));
+                  if (context.mounted) {
+                    AppSnackBars.showSnackBar(
+                      context,
+                      const SnackBar(content: Text('已复制配对码')),
+                    );
+                  }
+                },
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('关闭'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _showEnterPairingCodeDialog() async {
+    final codeController = TextEditingController();
+    try {
+      await showAppDialog(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('连接面对面设备'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '粘贴或输入对方“面对面同步二维码”中的配对码（cdt-lan://...）：',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: codeController,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: 'cdt-lan://sync?...',
+                  border: const OutlineInputBorder(),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.paste),
+                    tooltip: '从剪贴板粘贴',
+                    onPressed: () async {
+                      final clip = await Clipboard.getData(Clipboard.kTextPlain);
+                      if (clip?.text != null) {
+                        codeController.text = clip!.text!.trim();
+                      }
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('取消'),
+            ),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.sync, size: 18),
+              label: const Text('立即互同步'),
+              onPressed: () async {
+                final raw = codeController.text.trim();
+                if (raw.isEmpty) return;
+                Navigator.pop(dialogContext);
+                await _syncWithPairingCodeAndShowResult(raw);
+              },
+            ),
+          ],
+        ),
+      );
+    } finally {
+      codeController.dispose();
+    }
+  }
+
+  Future<void> _scanQrAndSync() async {
+    final scanned = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => const LanQrScannerScreen()),
+    );
+    if (!mounted || scanned == null || scanned.trim().isEmpty) return;
+    await _syncWithPairingCodeAndShowResult(scanned.trim());
+  }
+
+  Future<void> _syncWithPairingCodeAndShowResult(String raw) async {
+    setState(() => _isLoading = true);
+    final result = await _service.syncWithPairingCode(raw);
+    if (!mounted) return;
+    setState(() {
+      _isLoading = false;
+      _progressValue = 0;
+    });
+    AppSnackBars.showSnackBar(
+      context,
+      SnackBar(
+        content: Text(
+          result.success
+              ? '面对面同步成功: 待办${result.todosSynced} 倒数日${result.countdownsSynced} 时间日志${result.timeLogsSynced} 番茄标签${result.pomodoroTagsSynced} 番茄记录${result.pomodoroRecordsSynced} 课程${result.coursesSynced}'
+              : result.message,
+        ),
+        backgroundColor: result.success ? Colors.green : Colors.red,
+      ),
+    );
+  }
+
+  Widget _buildQuickPairBar() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final supportsCameraScan =
+        AppPlatform.isAndroid || AppPlatform.isIOS || AppPlatform.isMacOS;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          Expanded(
+            child: FilledButton.tonalIcon(
+              icon: const Icon(Icons.qr_code_2, size: 18),
+              label: const Text('生成同步二维码'),
+              onPressed: _isLoading ? null : _showQuickPairQrDialog,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton.icon(
+              icon: Icon(
+                Icons.qr_code_scanner,
+                size: 18,
+                color: colorScheme.primary,
+              ),
+              label: Text(supportsCameraScan ? '扫码互同步' : '输入配对码'),
+              onPressed: _isLoading
+                  ? null
+                  : (supportsCameraScan
+                        ? _scanQrAndSync
+                        : _showEnterPairingCodeDialog),
+            ),
+          ),
+          if (supportsCameraScan) ...[
+            const SizedBox(width: 4),
+            IconButton(
+              icon: const Icon(Icons.keyboard_alt_outlined),
+              tooltip: '手动输入配对码',
+              onPressed: _isLoading ? null : _showEnterPairingCodeDialog,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDesktopAndAutoSyncCard() {
+    if (AppPlatform.isWeb) return const SizedBox.shrink();
+    final isDesktop =
+        AppPlatform.isWindows || AppPlatform.isMacOS || AppPlatform.isLinux;
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isDesktop)
+            SwitchListTile.adaptive(
+              dense: true,
+              secondary: const Icon(Icons.dns_outlined, size: 20),
+              title: const Text('桌面端常驻局域网服务'),
+              subtitle: const Text('关闭页面或最小化到托盘后保持运行（mDNS）'),
+              value: _isDaemonMode,
+              onChanged: (value) async {
+                setState(() => _isDaemonMode = value);
+                await _service.setDesktopDaemonEnabled(value);
+                if (mounted) {
+                  setState(() {
+                    _status = _service.isRunning ? '常驻服务运行中（mDNS）' : '已停止';
+                  });
+                }
+              },
+            ),
+          SwitchListTile.adaptive(
+            dense: true,
+            secondary: const Icon(Icons.autorenew, size: 20),
+            title: const Text('同账号自动无感同步'),
+            subtitle: const Text('连上同一 Wi-Fi 发现同账号设备后静默合并数据'),
+            value: _autoSyncEnabled,
+            onChanged: (value) async {
+              setState(() => _autoSyncEnabled = value);
+              await _service.setAutoSyncEnabled(value);
+            },
+          ),
+          SwitchListTile.adaptive(
+            dense: true,
+            secondary: const Icon(Icons.key_outlined, size: 20),
+            title: const Text('同步 API Key 与大模型配置'),
+            subtitle: const Text('仅通过局域网加密通道传输，补充缺失配置'),
+            value: _syncSecretsEnabled,
+            onChanged: (value) async {
+              setState(() => _syncSecretsEnabled = value);
+              await _service.setSyncSecretsEnabled(value);
+            },
+          ),
+          SwitchListTile.adaptive(
+            dense: true,
+            secondary: const Icon(Icons.tune_outlined, size: 20),
+            title: const Text('同步应用偏好设置'),
+            subtitle: const Text('默认关闭，开启后仅补充本机尚未设置的通知与界面偏好'),
+            value: _syncSettingsEnabled,
+            onChanged: (value) async {
+              setState(() => _syncSettingsEnabled = value);
+              await _service.setSyncSettingsEnabled(value);
+            },
+          ),
+          SwitchListTile.adaptive(
+            dense: true,
+            secondary: const Icon(Icons.cloud_off_outlined, size: 20),
+            title: const Text('离线模式（不走服务器同步）'),
+            subtitle: const Text('保留登录、更新检查与公告，其余同步仅走本地与局域网'),
+            value: _offlineModeEnabled,
+            onChanged: (value) async {
+              setState(() => _offlineModeEnabled = value);
+              await AppSettingsStorage.setOfflineModeEnabled(value);
+              if (value) {
+                await PomodoroSyncService.instance.disconnectForOfflineMode();
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildFilterBar() {
     if (!_service.isRunning) return const SizedBox.shrink();
     return Container(
@@ -496,6 +892,8 @@ class _LanSyncScreenState extends State<LanSyncScreen>
           child: Column(
             children: [
               _buildStatusCard(),
+              _buildQuickPairBar(),
+              _buildDesktopAndAutoSyncCard(),
               _buildFilterBar(),
               const Divider(height: 1),
               Expanded(
@@ -559,16 +957,18 @@ class _LanSyncScreenState extends State<LanSyncScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    // The service is only consumed by this page. Keeping its HTTP server and
-    // multicast timer alive after the page is gone cannot surface an incoming
-    // approval dialog, so release them together with the UI.
-    unawaited(_service.stop());
+    _service.daemonRunningNotifier.removeListener(_onDaemonRunningChanged);
+    // 桌面端常驻或同账号无感同步开启时，关闭页面后继续保持 HTTP + mDNS 监听。
+    if (!_service.isDaemonMode && !_service.autoSyncEnabled) {
+      unawaited(_service.stop());
+    }
     unawaited(_devicesSubscription?.cancel());
     unawaited(_statusSubscription?.cancel());
     unawaited(_progressSubscription?.cancel());
     unawaited(_progressValueSubscription?.cancel());
     unawaited(_incomingRequestSubscription?.cancel());
     unawaited(_fileReceivedSubscription?.cancel());
+    unawaited(_quickPairCompletedSubscription?.cancel());
     _permissionCoordinator.dispose();
     super.dispose();
   }

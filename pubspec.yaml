@@ -1,7 +1,7 @@
 name: countdown_todo
 description: A new Flutter project.
 publish_to: 'none'
-version: 7.24.0
+version: 7.24.5
 environment:
   sdk: '>=3.13.0 <4.0.0'
   flutter: '>=3.47.0'
@@ -80,6 +80,7 @@ dependencies:
   archive: ^4.7.1
   xml: ^7.1.0
   charset: ^2.0.1
+  mobile_scanner: ^7.5.0
 
 # Keep the Android host API on the last version before the Pigeon JNI switch.
 dependency_overrides:
