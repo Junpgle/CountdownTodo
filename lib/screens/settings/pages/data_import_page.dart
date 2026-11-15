@@ -19,8 +19,15 @@ import '../widgets/import_restore_widgets.dart';
 
 class DataImportPage extends StatefulWidget {
   final bool isEmbedded;
+  final String? initialFilePath;
+  final String? initialFileName;
 
-  const DataImportPage({super.key, this.isEmbedded = false});
+  const DataImportPage({
+    super.key,
+    this.isEmbedded = false,
+    this.initialFilePath,
+    this.initialFileName,
+  });
 
   @override
   State<DataImportPage> createState() => _DataImportPageState();
@@ -39,6 +46,33 @@ class _DataImportPageState extends State<DataImportPage> {
 
   // 导入选项
   TeamDataStrategy _teamStrategy = TeamDataStrategy.skip;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialFilePath != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadInitialFile();
+      });
+    }
+  }
+
+  Future<void> _loadInitialFile() async {
+    final filePath = widget.initialFilePath;
+    if (filePath == null) return;
+    try {
+      final jsonString = await readTextFile(filePath);
+      if (!mounted) return;
+      final fallbackName = filePath.split(RegExp(r'[/\\]')).last;
+      await _loadJsonString(
+        filePath: filePath,
+        fileName: widget.initialFileName ?? fallbackName,
+        jsonString: jsonString,
+      );
+    } catch (_) {
+      // 文件不可读时保持空状态，用户可重新选择文件。
+    }
+  }
 
   Future<void> _pickFile() async {
     final pickedFile = await FilePicker.pickFile(
@@ -60,7 +94,18 @@ class _DataImportPageState extends State<DataImportPage> {
         ? utf8.decode(bytes)
         : (filePath != null ? await readTextFile(filePath) : null);
     if (jsonString == null) return;
+    await _loadJsonString(
+      filePath: filePath,
+      fileName: fileName,
+      jsonString: jsonString,
+    );
+  }
 
+  Future<void> _loadJsonString({
+    required String? filePath,
+    required String fileName,
+    required String jsonString,
+  }) async {
     setState(() {
       _filePath = filePath;
       _fileName = fileName;

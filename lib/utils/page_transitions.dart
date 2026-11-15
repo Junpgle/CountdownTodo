@@ -211,6 +211,7 @@ class PageTransitions {
     ('ConflictInboxScreen', Icons.rule_rounded),
     ('DataExportPage', Icons.ios_share_rounded),
     ('DataImportPage', Icons.download_for_offline_rounded),
+    ('AutoBackupPage', Icons.backup_outlined),
     ('BandSyncScreen', Icons.watch_rounded),
     ('ServerChoicePage', Icons.dns_rounded),
     ('DeviceVersionDetailPage', Icons.smartphone_rounded),
