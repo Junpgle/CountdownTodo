@@ -243,6 +243,7 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
       'planCenter' => widget.onPlanCenter,
       'habits' => widget.onHabits,
       'challengeCenter' => widget.onChallengeCenter,
+      'featureExplorer' => widget.onFeatureExplorer,
       'changelog' => widget.onChangelog,
       'update' => widget.onUpdate,
       _ => null,
@@ -522,15 +523,6 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                             padding: const EdgeInsets.symmetric(vertical: 8),
                             child: Column(
                               children: [
-                                if (widget.onFeatureExplorer != null)
-                                  _buildMenuItem(
-                                    context,
-                                    icon: Icons.explore_rounded,
-                                    title: '功能百宝箱',
-                                    sourceKey: _sourceKeyFor('featureExplorer'),
-                                    onTap: widget.onFeatureExplorer!,
-                                    isCompact: true,
-                                  ),
                                 ..._utilityOrder
                                     .map(
                                       (key) => _buildConfiguredMenuItem(

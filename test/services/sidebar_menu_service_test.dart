@@ -12,7 +12,7 @@ void main() {
     expect(pair.features, contains('journal'));
     expect(pair.features, isNot(contains('unknown')));
     expect(pair.features.where((key) => key == 'journal'), hasLength(1));
-    expect(pair.utilities, ['update', 'changelog']);
+    expect(pair.utilities, ['update', 'featureExplorer', 'changelog']);
     expect(
       pair.features,
       containsAll(<String>[
