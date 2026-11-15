@@ -225,7 +225,7 @@ class LanSyncService {
   bool _isSyncing = false;
   bool _discoverAllDevices = false;
   bool _isDaemonMode = false;
-  bool _autoSyncEnabled = true;
+  bool _autoSyncEnabled = false;
   bool _syncSecretsEnabled = true;
   bool _syncSettingsEnabled = false;
 
@@ -514,8 +514,9 @@ class LanSyncService {
   Future<void> initFromPreferences() async {
     _initialized = true;
     final prefs = await SharedPreferences.getInstance();
-    _isDaemonMode = prefs.getBool(_prefDesktopDaemonEnabled) ?? true;
-    _autoSyncEnabled = prefs.getBool(_prefAutoSyncEnabled) ?? true;
+    final isOffline = await AppSettingsStorage.isOfflineModeEnabled();
+    _isDaemonMode = prefs.getBool(_prefDesktopDaemonEnabled) ?? isOffline;
+    _autoSyncEnabled = prefs.getBool(_prefAutoSyncEnabled) ?? isOffline;
     _syncSecretsEnabled = prefs.getBool(_prefSyncSecretsEnabled) ?? true;
     _syncSettingsEnabled = prefs.getBool(_prefSyncSettingsEnabled) ?? false;
     final isDesktop =
@@ -526,6 +527,23 @@ class LanSyncService {
       await start(daemonMode: false);
     }
     daemonRunningNotifier.value = _isRunning && _isDaemonMode;
+  }
+
+  /// 离线模式切换时联动局域网探测开关与服务状态：
+  /// - 开启离线模式：默认打开局域网自动探测（桌面端同时开启常驻服务）。
+  /// - 关闭离线模式：关闭局域网自动探测与常驻服务，并停止正在运行的探测。
+  Future<void> onOfflineModeChanged(bool offlineEnabled) async {
+    final isDesktop =
+        Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+    if (offlineEnabled) {
+      if (isDesktop) {
+        await setDesktopDaemonEnabled(true);
+      }
+      await setAutoSyncEnabled(true);
+    } else {
+      await setAutoSyncEnabled(false);
+      await setDesktopDaemonEnabled(false);
+    }
   }
 
   /// 桌面端“局域网同步服务”常驻开关。
@@ -552,8 +570,12 @@ class LanSyncService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefAutoSyncEnabled, enabled);
     _autoSyncEnabled = enabled;
-    if (_isRunning && enabled && !_isPowerSaveMode) {
-      _broadcastDiscovery();
+    if (enabled && !_isPowerSaveMode) {
+      if (!_isRunning) {
+        await start(daemonMode: _isDaemonMode);
+      } else {
+        _broadcastDiscovery();
+      }
     }
   }
 
@@ -1838,7 +1860,8 @@ class LanSyncService {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      final autoEnabled = prefs.getBool(_prefAutoSyncEnabled) ?? true;
+      final isOffline = await AppSettingsStorage.isOfflineModeEnabled();
+      final autoEnabled = prefs.getBool(_prefAutoSyncEnabled) ?? isOffline;
       _autoSyncEnabled = autoEnabled;
       if (!autoEnabled) return;
       if (!await _shouldAllowBackgroundAutoSync(isStartup: isStartup)) return;
@@ -1855,7 +1878,8 @@ class LanSyncService {
         final isDesktop =
             Platform.isWindows || Platform.isMacOS || Platform.isLinux;
         final desktopDaemon =
-            isDesktop && (prefs.getBool(_prefDesktopDaemonEnabled) ?? true);
+            isDesktop &&
+            (prefs.getBool(_prefDesktopDaemonEnabled) ?? isOffline);
         await start(daemonMode: desktopDaemon);
       } else {
         _broadcastDiscovery();
@@ -1881,10 +1905,11 @@ class LanSyncService {
     await _ensureIdentity();
     if (!_isRunning) {
       final prefs = await SharedPreferences.getInstance();
+      final isOffline = await AppSettingsStorage.isOfflineModeEnabled();
       final isDesktop =
           Platform.isWindows || Platform.isMacOS || Platform.isLinux;
       final desktopDaemon =
-          isDesktop && (prefs.getBool(_prefDesktopDaemonEnabled) ?? true);
+          isDesktop && (prefs.getBool(_prefDesktopDaemonEnabled) ?? isOffline);
       await start(daemonMode: desktopDaemon);
     } else {
       _broadcastDiscovery();

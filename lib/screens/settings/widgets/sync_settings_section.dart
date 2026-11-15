@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../services/api_service.dart';
+import '../../../services/lan_sync_service.dart';
 import '../../../services/pomodoro_sync_service.dart';
 import '../../../services/storage/app_settings_storage.dart';
 import '../../../storage_service.dart';
@@ -173,6 +174,7 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
     if (enabled) {
       await PomodoroSyncService.instance.disconnectForOfflineMode();
     }
+    await LanSyncService.instance.onOfflineModeChanged(enabled);
   }
 
   @override

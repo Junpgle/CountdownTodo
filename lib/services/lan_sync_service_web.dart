@@ -131,7 +131,7 @@ class LanSyncService {
   bool get isRunning => false;
   bool get isSyncing => false;
   bool get isDaemonMode => false;
-  bool get autoSyncEnabled => true;
+  bool get autoSyncEnabled => false;
   int? get serverPort => null;
   bool discoverAllDevices = false;
 
@@ -146,6 +146,8 @@ class LanSyncService {
   }
 
   Future<void> initFromPreferences() async {}
+
+  Future<void> onOfflineModeChanged(bool offlineEnabled) async {}
 
   bool get syncSecretsEnabled => true;
 
