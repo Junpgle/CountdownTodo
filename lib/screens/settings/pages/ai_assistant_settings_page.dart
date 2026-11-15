@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 
 import '../../../services/chat_storage_service.dart';
 import '../../../models/ai_context_mode.dart';
+import '../../../models/ai_tool_budget.dart';
 import '../../../widgets/ai_context_mode_selector.dart';
+import '../../../widgets/ai_tool_budget_dialog.dart';
 import '../../../services/llm_service.dart';
 import '../../../utils/settings_navigation.dart';
 import '../../../widgets/app_settings_widgets.dart';
@@ -32,6 +34,7 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
   bool _isSavingPrompt = false;
   bool _smartContext = true;
   AiContextMode _contextMode = AiContextMode.functionCalling;
+  AiToolBudget _toolBudget = AiToolBudget.standard;
   bool _showContextPreview = false;
   bool _injectMoreContext = false;
   bool _deepThinking = true;
@@ -61,6 +64,7 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
       ChatStorageService.shouldInjectMoreContext(),
       ChatStorageService.isDeepThinkingEnabled(),
       ChatStorageService.getContextMode(),
+      ChatStorageService.getToolBudget(),
     ]);
     if (!mounted) return;
     _promptController.text = values[0] as String;
@@ -71,6 +75,7 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
       _injectMoreContext = values[4] as bool;
       _deepThinking = values[5] as bool;
       _contextMode = values[6] as AiContextMode;
+      _toolBudget = values[7] as AiToolBudget;
       _isLoading = false;
     });
   }
@@ -115,6 +120,23 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
       if (!mounted) return;
       setState(() => _contextMode = previous);
       _showSnackBar('保存上下文模式失败：$error');
+    }
+  }
+
+  Future<void> _editToolBudget() async {
+    final next = await showAiToolBudgetDialog(
+      context,
+      initialBudget: _toolBudget,
+    );
+    if (next == null || next == _toolBudget) return;
+    final previous = _toolBudget;
+    setState(() => _toolBudget = next);
+    try {
+      await ChatStorageService.setToolBudget(next);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _toolBudget = previous);
+      _showSnackBar('保存工具调用预算失败：$error');
     }
   }
 
@@ -368,6 +390,20 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
                           onChanged: _setContextMode,
                         ),
                       ),
+                    ),
+                    const AppSettingsDivider(indent: 16),
+                    ListTile(
+                      enabled:
+                          _smartContext &&
+                          _contextMode == AiContextMode.functionCalling,
+                      title: const Text('单轮工具调用预算'),
+                      subtitle: Text(_toolBudget.summaryLabel),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap:
+                          _smartContext &&
+                              _contextMode == AiContextMode.functionCalling
+                          ? _editToolBudget
+                          : null,
                     ),
                     const AppSettingsDivider(indent: 16),
                     _buildSwitch(

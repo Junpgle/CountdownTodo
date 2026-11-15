@@ -271,9 +271,13 @@ abstract final class AiToolChatRunner {
     Map<String, Set<String>>? knownFinanceCatalogIdsByKind,
     Map<String, Set<String>>? knownReferenceIdsByDomain,
     DateTime? planningNow,
-    int maxQueryRounds = 4,
-    int maxCalls = 8,
+    int? maxQueryRounds = 4,
+    int? maxCalls = 8,
+    int? maxTurnChars = AiToolResultContext.maxTurnChars,
   }) async* {
+    final effectiveMaxTurnChars = maxTurnChars == null
+        ? null
+        : (maxTurnChars < 400 ? 400 : maxTurnChars);
     final history = _initialHistory(
       messages,
       compactForPlanning:
@@ -343,12 +347,15 @@ abstract final class AiToolChatRunner {
       return '已生成部分待确认操作卡，但模型未能补齐：$labels。现有卡片尚未写入，请核对后再补充缺少的操作。';
     }
 
-    for (var round = 0; round <= maxQueryRounds + 1; round++) {
+    for (var round = 0;
+        maxQueryRounds == null || round <= maxQueryRounds + 1;
+        round++) {
       if (cancelled()) return;
       final finalRound =
-          round >= maxQueryRounds ||
-          callCount >= maxCalls ||
-          resultChars > AiToolResultContext.maxTurnChars - 400;
+          (maxQueryRounds != null && round >= maxQueryRounds) ||
+          (maxCalls != null && callCount >= maxCalls) ||
+          (effectiveMaxTurnChars != null &&
+              resultChars > effectiveMaxTurnChars - 400);
       final unsubmittedWriteProposalNames = requiredWriteProposalNames
           .difference(completedWriteProposalNames);
       final roundTools = tools.where((tool) {
@@ -906,10 +913,13 @@ abstract final class AiToolChatRunner {
           result = {'ok': false, 'error': '本轮未开放此工具'};
         } else if (!usedIds.add(call.id)) {
           result = {'ok': false, 'error': '重复的工具调用ID，未再次执行'};
-        } else if (callCount > maxCalls && !requiredProposalNotYetSubmitted) {
+        } else if (maxCalls != null &&
+            callCount > maxCalls &&
+            !requiredProposalNotYetSubmitted) {
           result = {'ok': false, 'error': '本轮工具调用次数达到上限'};
         } else if (AiQueryToolService.toolNames.contains(call.name) &&
-            resultChars > AiToolResultContext.maxTurnChars - 400) {
+            effectiveMaxTurnChars != null &&
+            resultChars > effectiveMaxTurnChars - 400) {
           result = {'ok': false, 'error': '本轮数据预算达到上限，请根据已有结果回答'};
         } else if (AiQueryToolService.toolNames.contains(call.name)) {
           final key = AiToolResultContext.queryKey(call.name, call.arguments);
@@ -1015,10 +1025,15 @@ abstract final class AiToolChatRunner {
                 'message': '相同条件已查询，直接使用该调用的结果；未重复读取或回传明细。',
               }
             : result;
-        final remaining = AiToolResultContext.maxTurnChars - resultChars;
+        final maxResultChars = effectiveMaxTurnChars == null
+            ? AiToolResultContext.maxResultChars
+            : (effectiveMaxTurnChars - resultChars).clamp(
+                400,
+                AiToolResultContext.maxResultChars,
+              );
         final modelResult = AiToolResultContext.forModel(
           modelSource,
-          maxChars: remaining.clamp(400, AiToolResultContext.maxResultChars),
+          maxChars: maxResultChars,
         );
         final encoded = jsonEncode(modelResult);
         resultChars += encoded.length;
@@ -1040,7 +1055,7 @@ abstract final class AiToolChatRunner {
             actionRepairQueriesUsed &&
             !referenceProposalRetryUsed;
         if ((actionProposalRepairAttempted && !canRetryWithReadyReferences) ||
-            round >= maxQueryRounds + 1) {
+            (maxQueryRounds != null && round >= maxQueryRounds + 1)) {
           yield AiChatStreamChunk(
             content: deferredReferenceProposal
                 ? '本轮查询与依赖现有对象的写入提案仍未能分步完成；应用没有生成该确认卡，也没有写入数据。请重试，或先查询并确认具体对象。'

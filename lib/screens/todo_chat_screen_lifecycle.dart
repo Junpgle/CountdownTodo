@@ -560,6 +560,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
         await ChatStorageService.shouldShowContextPreview();
     final injectMoreContext =
         await ChatStorageService.shouldInjectMoreContext();
+    final toolBudget = await ChatStorageService.getToolBudget();
     if (mounted) {
       setState(() {
         _customPrompt = prompt;
@@ -568,6 +569,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
         _contextMode = contextMode;
         _showInjectedContextPreview = showContextPreview;
         _injectMoreContext = injectMoreContext;
+        _toolBudget = toolBudget;
       });
       _handleInputChanged();
     }
@@ -667,14 +669,28 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     final protocolSourceText = pendingUserText?.trim().isNotEmpty == true
         ? pendingUserText!.trim()
         : _latestUserTextFromHistory();
-    if (queryTools ??
+    final queryToolsEnabled =
+        queryTools ??
         (nativeToolCalls &&
             _smartContext &&
-            _contextMode == AiContextMode.functionCalling)) {
+            _contextMode == AiContextMode.functionCalling);
+    if (queryToolsEnabled) {
       apiMessages.add({
         'role': 'system',
         'content': AiQueryToolService.systemPrompt,
       });
+      if (AiQueryToolService.hasPriorBudgetLimit(
+        _messages,
+        maxCalls: _toolBudget.maxCalls,
+      )) {
+        apiMessages.add({
+          'role': 'system',
+          'content':
+              '注意：历史对话轮次曾触发单轮工具调用次数或数据预算上限。'
+              '当前是全新的用户回合，单轮工具调用次数与数据预算限制已重置解除；'
+              '若用户要求继续查询、补充或核对数据，请正常调用本轮提供的 query_* 工具。',
+        });
+      }
     }
     final currentUserMessageId = pendingUserText?.trim().isNotEmpty == true
         ? null

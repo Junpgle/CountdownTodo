@@ -30,6 +30,7 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   List<ChatSession> _sessions = [];
   bool _smartContext = true;
   AiContextMode _contextMode = AiContextMode.functionCalling;
+  AiToolBudget _toolBudget = AiToolBudget.standard;
   bool get _usesContextInjection =>
       _smartContext && _contextMode == AiContextMode.smartContextInjection;
   final Map<String, Map<String, dynamic>> _queryToolResults = {};

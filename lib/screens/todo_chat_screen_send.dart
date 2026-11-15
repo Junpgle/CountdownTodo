@@ -881,6 +881,9 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
               knownFinanceCatalogIdsByKind:
                   knownFinanceCatalogIdsByKindForToolValidation,
               knownReferenceIdsByDomain: knownReferenceIdsByDomain,
+              maxQueryRounds: _toolBudget.maxQueryRounds,
+              maxCalls: _toolBudget.maxCalls,
+              maxTurnChars: _toolBudget.maxTurnChars,
               requirePlanningProposal:
                   (_planningProposalRequestPattern.hasMatch(requestText) ||
                       AiNativeToolDefinitionBuilder.isMissingActionCardReport(
@@ -1696,7 +1699,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
                 : settingsTargets.isNotEmpty
                 ? '已找到相关设置，点击卡片即可前往调整。'
                 : nativeToolCalls.isNotEmpty
-                ? '工具调用已记录；应用没有自动修改数据。请查看调用详情和处理结果。'
+                ? '本轮已完成 ${nativeToolCalls.length} 次工具调用，但模型未返回总结正文${_streamingFinishReason != null ? '（finish_reason=$_streamingFinishReason）' : ''}。可点击重试或继续追问；若因单轮预算触发上限，可在 AI 助手设置中调高预算。'
                 : cleanContent),
         todoActions: todoActions,
         financeDrafts: financeDrafts,
@@ -1768,11 +1771,11 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
             ? null
             : ChatMessage(
                 role: ChatRole.assistant,
-                content: useQueryTools
-                    ? '工具查询过程中断；已返回的数据保留在调用记录中。'
+                content: useQueryTools && partialToolCalls.isNotEmpty
+                    ? '工具查询过程中断（已执行 ${partialToolCalls.length} 次调用，原因：$e）；已返回的数据保留在调用记录中。'
                     : finishReason != null
-                    ? '模型已结束本轮内容（finish_reason=$finishReason），但响应流未收尾；应用记录了已收到的内容，未修改本地数据。'
-                    : '请求中断；应用记录了已收到的部分内容，未修改本地数据。',
+                    ? '模型已结束本轮内容（finish_reason=$finishReason），但未收到有效回复（$e）；未修改本地数据。'
+                    : '请求中断（$e）；应用记录了已收到的部分内容，未修改本地数据。',
                 rawContent: _streamingContent,
                 reasoningContent: _streamingReasoning,
                 smartContext: _lastRequestSmartContext,

@@ -180,13 +180,15 @@ class AiTodoContextBuilder {
         resolvedBasePrompt,
       );
     }
+    final hasInjectedNow = resolvedBasePrompt.contains('{now}');
     resolvedBasePrompt = resolvedBasePrompt
         .replaceAll('{now}', nowText)
         .replaceAll('{todos}', queryTools ? '待办需按需调用查询工具读取' : '待办将按需通过智能上下文注入');
     resolvedBasePrompt = _compactCapabilitySection(resolvedBasePrompt);
+    final fallbackNowLine = hasInjectedNow ? '' : '当前基准时间：$nowText。\n';
     final sharedRules = nativeToolCalls
         ? '''【全局规则】
-所有时间按本地时间理解，并以当前基准时间和括号中的时区判断相对日期。
+$fallbackNowLine所有时间按本地时间理解，并以当前基准时间和括号中的时区判断相对日期；未指定年份的月份或日期默认按当前基准时间所在年份理解。
 待办表示待完成的结果；规划块是可调整的执行时段；课程、会议、预约等外部约束是固定日程。没有日期和具体时间时不要默认今天全天。
 重复是周期机制，不等于习惯；周期事项未明确选择习惯或循环待办时先询问。循环修改默认只作用于本期，只有用户明确要求才作用于本期及以后。
 当本轮提供了与用户明确写入请求匹配的propose_*工具且信息完整时，必须调用对应工具生成待确认草案；不得只用自然语言声称已完成。工具调用只生成待确认草案，不直接保存或删除。query_*工具用于只读查询，可按需调用。不确定对象或缺少关键信息时先查询或追问，不得伪造参数。
@@ -194,7 +196,7 @@ class AiTodoContextBuilder {
 用户已要求生成规划或已同意方案时，必须调用propose_cdt_actions生成实际确认卡，Markdown表格不等于草案。只要时间范围和任务已明确，时长、顺序等偏好可给出可编辑建议，不必反复要求用户确认后才生成草案。保存只能由用户点击App确认卡完成，聊天回复“确认/要的/可以”只表达方案意图，绝不保存，也不要要求用户继续回复确认以保存。
 '''
         : '''【时间规则】
-所有上下文时间均为本地时间，格式为yyyy-MM-dd HH:mm。判断今天、昨天、明天时必须以当前基准时间和括号中的时区为准，不要按UTC重新换算。
+$fallbackNowLine所有上下文时间均为本地时间，格式为yyyy-MM-dd HH:mm。判断今天、昨天、明天时必须以当前基准时间和括号中的时区为准，不要按UTC重新换算；未指定年份的月份或日期默认按当前基准时间所在年份理解。
 
 【动作输出规则】
 当用户明确要求管理数据时，按本轮动作协议输出对应操作块；只按用户明确意图生成，信息不足时先追问。具体动作、字段和确认要求按本轮协议执行。''';

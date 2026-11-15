@@ -986,6 +986,15 @@ abstract final class AppSettingsCatalog {
       platforms: {},
     ),
     AiSettingsDestination(
+      id: 'ai_tool_budget',
+      title: '单轮工具调用预算',
+      path: '设置 > AI 助手设置 > 单轮工具调用预算',
+      description: '工具调用 轮数 次数 字符预算 上限',
+      page: SettingsPageId.ai,
+      labels: ['单轮工具调用预算'],
+      platforms: {},
+    ),
+    AiSettingsDestination(
       id: 'ai_context_preview',
       title: '在输入区显示注入预览',
       path: '设置 > AI 助手设置 > 在输入区显示注入预览',

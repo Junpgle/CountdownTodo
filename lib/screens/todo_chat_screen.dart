@@ -12,6 +12,7 @@ import '../models/ai_todo_action.dart';
 import '../services/suggestion_feedback_service.dart';
 import '../models/chat_message.dart';
 import '../models/ai_context_mode.dart';
+import '../models/ai_tool_budget.dart';
 import '../widgets/ai_chat_markdown.dart';
 import '../widgets/ai_chat_thinking_panel.dart';
 import '../widgets/ai_chat_composer.dart';

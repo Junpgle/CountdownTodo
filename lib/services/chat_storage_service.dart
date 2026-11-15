@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/ai_context_mode.dart';
+import '../models/ai_tool_budget.dart';
 import '../models/chat_message.dart';
 import 'ai_action_parser.dart';
 import 'legacy_ai_prompt_sanitizer.dart';
@@ -69,6 +70,7 @@ class ChatStorageService {
   static const String _contextModeKey = 'chat_context_mode';
   static const String _showContextPreviewKey = 'chat_show_context_preview';
   static const String _injectMoreContextKey = 'chat_inject_more_context';
+  static const String _toolBudgetKey = 'chat_tool_budget';
 
   // 🚀 私有助手：获取隔离的存储 Key
   static Future<String> _getScopedKey(String baseKey) async {
@@ -567,4 +569,18 @@ class ChatStorageService {
     final scopedKey = await _getScopedKey(_injectMoreContextKey);
     await prefs.setBool(scopedKey, enabled);
   }
+
+  static Future<AiToolBudget> getToolBudget() async {
+    final prefs = await SharedPreferences.getInstance();
+    final scopedKey = await _getScopedKey(_toolBudgetKey);
+    return AiToolBudget.fromStorage(prefs.getString(scopedKey));
+  }
+
+  static Future<void> setToolBudget(AiToolBudget budget) async {
+    final prefs = await SharedPreferences.getInstance();
+    final scopedKey = await _getScopedKey(_toolBudgetKey);
+    await prefs.setString(scopedKey, budget.toStorageString());
+  }
+
+  static Future<void> resetToolBudget() => setToolBudget(AiToolBudget.standard);
 }
