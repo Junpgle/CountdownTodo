@@ -373,6 +373,17 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
           results = await LLMService.parseTodoFromImage(
             imagePath,
             onUsage: usageSummaries.add,
+            onStream: recognitionHandle == null
+                ? null
+                : (content, reasoning) {
+                    AiRecognitionChatBridge.updateStream(
+                      recognitionHandle!,
+                      AiRecognitionChatBridge.formatModelStream(
+                        content: content,
+                        reasoningContent: reasoning,
+                      ),
+                    );
+                  },
           ).timeout(const Duration(seconds: 90));
 
           success = true;
