@@ -70,8 +70,13 @@ class PomodoroStorage {
       await batch.commit(noResult: true);
     }
 
-    await prefs.remove("${_timeLogsKey}_$username");
-    await prefs.remove(_timeLogsKey);
+    final scopedTimeLogsKey = "${_timeLogsKey}_$username";
+    if (prefs.containsKey(scopedTimeLogsKey)) {
+      await prefs.remove(scopedTimeLogsKey);
+    }
+    if (prefs.containsKey(_timeLogsKey)) {
+      await prefs.remove(_timeLogsKey);
+    }
 
     if (sync) requestSync(username);
   }
@@ -87,12 +92,14 @@ class PomodoroStorage {
     final dbHelper = DatabaseHelper.instance;
 
     try {
+      final db = await dbHelper.databaseForUser(username);
       final String migrationKey = "migrated_timelogs_$username";
       final bool migrated = prefs.getBool(migrationKey) ?? false;
+      final scopedLegacyKey = "${_timeLogsKey}_$username";
 
       if (!migrated) {
         List<String> legacyJsonList =
-            prefs.getStringList("${_timeLogsKey}_$username") ?? [];
+            prefs.getStringList(scopedLegacyKey) ?? [];
         if (legacyJsonList.isEmpty && username.isNotEmpty) {
           legacyJsonList = prefs.getStringList(_timeLogsKey) ?? [];
         }
@@ -106,19 +113,21 @@ class PomodoroStorage {
             } catch (_) {}
           }
           await saveMigratedTimeLogs(username, legacyItems, sync: false);
-          await prefs.remove("${_timeLogsKey}_$username");
-          await prefs.remove(_timeLogsKey);
+          if (prefs.containsKey(scopedLegacyKey)) {
+            await prefs.remove(scopedLegacyKey);
+          }
+          if (prefs.containsKey(_timeLogsKey)) {
+            await prefs.remove(_timeLogsKey);
+          }
           //           debugPrint("✅ 专注记录迁移完成并已物理清理。");
         }
         await prefs.setBool(migrationKey, true);
-      } else {
-        final db = await dbHelper.databaseForUser(username);
+      } else if (prefs.containsKey(scopedLegacyKey)) {
         final existingRows = await db.rawQuery(
           'SELECT 1 FROM time_logs LIMIT 1',
         );
         final hasSqlRows = existingRows.isNotEmpty;
-        final legacyJsonList =
-            prefs.getStringList("${_timeLogsKey}_$username") ?? [];
+        final legacyJsonList = prefs.getStringList(scopedLegacyKey) ?? [];
         if (!hasSqlRows && legacyJsonList.isNotEmpty) {
           final legacyItems = <TimeLogItem>[];
           for (final e in legacyJsonList) {
@@ -132,8 +141,6 @@ class PomodoroStorage {
           }
         }
       }
-
-      final db = await dbHelper.databaseForUser(username);
       final timeConditions = <String>[];
       final timeArgs = <Object?>[];
       if (from != null) {

@@ -114,9 +114,17 @@ class DatabaseHelper {
       );
     }
 
+    final existingDb = _database;
+    if (existingDb != null &&
+        _openingDatabase == null &&
+        _activeUsername == username &&
+        (!hasActiveUsername || activeUsername == username) &&
+        existingDb.path.contains('uni_sync_$username')) {
+      return existingDb;
+    }
+
     final db = await database;
-    final latestActiveUsername = (await SharedPreferences.getInstance())
-        .getString('current_login_user');
+    final latestActiveUsername = prefs.getString('current_login_user');
     final latestHasActiveUsername =
         latestActiveUsername != null && latestActiveUsername.isNotEmpty;
     if (latestHasActiveUsername && latestActiveUsername != username) {

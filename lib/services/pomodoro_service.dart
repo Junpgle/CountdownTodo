@@ -1085,8 +1085,13 @@ class PomodoroService {
   }
 
   // ── 私有助手：获取隔离的存储 Key ──────────────────────────
-  static Future<String> _getScopedKey(String baseKey) async {
-    final username = await UserSessionStorage.getCurrentUsername();
+  static Future<String> _getScopedKey(
+    String baseKey, {
+    SharedPreferences? prefs,
+  }) async {
+    final username = prefs != null
+        ? prefs.getString(StorageService.keyCurrentUser)
+        : await UserSessionStorage.getCurrentUsername();
     return StorageKeyScope.scoped(baseKey, username);
   }
 
@@ -1132,7 +1137,7 @@ class PomodoroService {
 
   static Future<PomodoroRunState?> loadRunState() async {
     final prefs = await SharedPreferences.getInstance();
-    final scopedKey = await _getScopedKey(_keyRunState);
+    final scopedKey = await _getScopedKey(_keyRunState, prefs: prefs);
     final s = prefs.getString(scopedKey);
     if (s == null) return null;
     try {
@@ -1144,15 +1149,17 @@ class PomodoroService {
 
   static Future<void> saveRunState(PomodoroRunState state) async {
     final prefs = await SharedPreferences.getInstance();
-    final scopedKey = await _getScopedKey(_keyRunState);
+    final scopedKey = await _getScopedKey(_keyRunState, prefs: prefs);
     await prefs.setString(scopedKey, jsonEncode(state.toJson()));
     _runStateCtrl.add(state); // 🚀 发送变更信号
   }
 
   static Future<void> clearRunState() async {
     final prefs = await SharedPreferences.getInstance();
-    final scopedKey = await _getScopedKey(_keyRunState);
-    await prefs.remove(scopedKey);
+    final scopedKey = await _getScopedKey(_keyRunState, prefs: prefs);
+    if (prefs.containsKey(scopedKey)) {
+      await prefs.remove(scopedKey);
+    }
     await FocusDoNotDisturbService.setActive(false, force: true);
     _runStateCtrl.add(null); // 🚀 发送清除信号
   }
@@ -1484,10 +1491,7 @@ class PomodoroService {
 
     // SQL 已是主存储。全量记录 JSON 写入 SharedPreferences 会通过
     // Android MethodChannel 传输超大字符串，在低内存设备上触发 OOM。
-    final prefs = await SharedPreferences.getInstance();
-    final scopedKey = await _getScopedKey(_keyRecords);
-    await prefs.remove(scopedKey);
-    await prefs.remove(_keyRecords);
+    await _clearRecordPrefsMirror();
   }
 
   /// 添加一条专注记录，本地保存后立即尝试上传云端
@@ -1559,9 +1563,7 @@ class PomodoroService {
     // 2. 清理旧 Prefs 备份，避免 shared_preferences 通过 MethodChannel
     // 写入全量记录 JSON 导致 Android OOM。
     final prefs = await SharedPreferences.getInstance();
-    final scopedKey = await _getScopedKey(_keyRecords);
-    await prefs.remove(scopedKey);
-    await prefs.remove(_keyRecords);
+    await _clearRecordPrefsMirror(prefs: prefs);
 
     await _updateLinkedPlanBlocks(
       previousRecord,
@@ -1959,14 +1961,13 @@ class PomodoroService {
             .map((m) => PomodoroRecord.fromJson(m))
             .toList();
 
-        final scopedKey = await _getScopedKey(_keyRecords);
+        final scopedKey = await _getScopedKey(_keyRecords, prefs: prefs);
         String? legacyRaw;
         if (sqlRows.isEmpty) {
           legacyRaw =
               prefs.getString(scopedKey) ?? prefs.getString(_keyRecords);
         } else {
-          await prefs.remove(scopedKey);
-          await prefs.remove(_keyRecords);
+          await _clearRecordPrefsMirror(prefs: prefs);
         }
         final legacyRecords = legacyRaw == null
             ? <PomodoroRecord>[]
@@ -2356,11 +2357,17 @@ class PomodoroService {
     return [];
   }
 
-  static Future<void> _clearRecordPrefsMirror() async {
-    final prefs = await SharedPreferences.getInstance();
-    final scopedKey = await _getScopedKey(_keyRecords);
-    await prefs.remove(scopedKey);
-    await prefs.remove(_keyRecords);
+  static Future<void> _clearRecordPrefsMirror({
+    SharedPreferences? prefs,
+  }) async {
+    final resolvedPrefs = prefs ?? await SharedPreferences.getInstance();
+    final scopedKey = await _getScopedKey(_keyRecords, prefs: resolvedPrefs);
+    if (resolvedPrefs.containsKey(scopedKey)) {
+      await resolvedPrefs.remove(scopedKey);
+    }
+    if (resolvedPrefs.containsKey(_keyRecords)) {
+      await resolvedPrefs.remove(_keyRecords);
+    }
   }
 
   /// 今日专注记录（本地，不含已删除）
