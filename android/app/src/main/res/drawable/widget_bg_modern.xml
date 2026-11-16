@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <inset xmlns:android="http://schemas.android.com/apk/res/android"
-    android:insetTop="16dp">
+    android:insetTop="@dimen/widget_bg_inset_top">
     <shape>
         <!-- 动态载入浅/深色背景色 -->
         <solid android:color="@color/widget_bg" />

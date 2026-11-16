@@ -574,33 +574,44 @@ class WidgetService {
   }) {
     final entries = transactions.toList(growable: false);
     final asOfAt = now.millisecondsSinceEpoch;
-    FinanceTransaction? latest;
-    var latestEventAt = 0;
-    for (final transaction in entries) {
-      final eventAt = transaction.balanceEventAt();
-      if (eventAt > asOfAt) continue;
-      if (latest == null ||
-          eventAt > latestEventAt ||
-          (eventAt == latestEventAt &&
-              transaction.updatedAt > latest.updatedAt)) {
-        latest = transaction;
-        latestEventAt = eventAt;
-      }
-    }
+    final eligible = entries
+        .where((transaction) => transaction.balanceEventAt() <= asOfAt)
+        .toList(growable: false)
+      ..sort((a, b) {
+        final eventCompare = b.balanceEventAt().compareTo(a.balanceEventAt());
+        if (eventCompare != 0) return eventCompare;
+        return b.updatedAt.compareTo(a.updatedAt);
+      });
+    final latest = eligible.isEmpty ? null : eligible.first;
     final summary = FinanceSummary.fromTransactions(entries, asOfAt: asOfAt);
-    final latestTitle = latest?.merchant?.trim().isNotEmpty == true
-        ? latest!.merchant!.trim()
-        : latest?.type.label ?? '';
+    String titleFor(FinanceTransaction transaction) {
+      final merchant = transaction.merchant?.trim();
+      if (merchant != null && merchant.isNotEmpty) return merchant;
+      return transaction.type.label;
+    }
+
+    final recentItems = eligible
+        .take(4)
+        .map(
+          (transaction) => WidgetFinanceTransactionItem(
+            title: titleFor(transaction),
+            amountMinor: transaction.amountMinor,
+            type: transaction.type.name,
+            date: transaction.transactionDate,
+          ),
+        )
+        .toList(growable: false);
     return WidgetFinanceSummary(
       monthLabel: '${now.year}年${now.month}月',
       incomeMinor: summary.incomeMinor,
       netExpenseMinor: summary.netExpenseMinor,
       balanceMinor: summary.balanceMinor,
       transactionCount: summary.transactionCount,
-      latestTitle: latestTitle,
+      latestTitle: latest == null ? '' : titleFor(latest),
       latestAmountMinor: latest?.amountMinor ?? 0,
       latestType: latest?.type.name ?? '',
       latestDate: latest?.transactionDate ?? '',
+      recentTransactions: recentItems,
     );
   }
 
