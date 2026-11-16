@@ -32,6 +32,11 @@ class AiTodoChatLauncher {
     List<PomodoroTag> pomodoroTags = const [],
     List<FixedScheduleItem>? fixedSchedules,
     Map<String, int> categoryReminderDefaults = const {},
+    Future<List<CourseItem>> Function()? loadCourses,
+    Future<List<TimeLogItem>> Function()? loadTimeLogs,
+    Future<List<PomodoroRecord>> Function()? loadPomodoroRecords,
+    Future<List<Team>> Function()? loadTeams,
+    Future<List<FixedScheduleItem>> Function()? loadFixedSchedules,
     GlobalKey? sourceKey,
     String? initialMessage,
     String? initialSessionId,
@@ -67,16 +72,6 @@ class AiTodoChatLauncher {
     final hasExplicitTarget =
         initialMessage != null ||
         (initialSessionId?.trim().isNotEmpty ?? false);
-    final initialCategorizationActions = hasExplicitTarget
-        ? const <AiTodoAction>[]
-        : await TodoClassificationService.buildCategorizeActions(
-            todos: todos,
-            groups: todoGroups,
-            categoryReminderDefaults: categoryReminderDefaults,
-          );
-    final resolvedFixedSchedules =
-        fixedSchedules ??
-        await StorageService.getFixedSchedules(username, includeDeleted: true);
     if (!context.mounted) return;
     final page = TodoChatScreen(
       username: username,
@@ -93,8 +88,25 @@ class AiTodoChatLauncher {
       teams: teams,
       countdowns: countdowns,
       pomodoroTags: pomodoroTags,
-      fixedSchedules: resolvedFixedSchedules,
-      initialCategorizationActions: initialCategorizationActions,
+      fixedSchedules: fixedSchedules ?? const [],
+      loadCourses: loadCourses,
+      loadTimeLogs: loadTimeLogs,
+      loadPomodoroRecords: loadPomodoroRecords,
+      loadTeams: loadTeams,
+      loadFixedSchedules: fixedSchedules == null
+          ? (loadFixedSchedules ??
+                () => StorageService.getFixedSchedules(
+                  username,
+                  includeDeleted: true,
+                ))
+          : null,
+      loadInitialCategorizationActions: hasExplicitTarget
+          ? null
+          : () => TodoClassificationService.buildCategorizeActions(
+              todos: todos,
+              groups: todoGroups,
+              categoryReminderDefaults: categoryReminderDefaults,
+            ),
       onTodosBatchAction: onTodosBatchAction,
       onTodoGroupsChanged: onTodoGroupsChanged,
       onFixedSchedulesChanged: onFixedSchedulesChanged,

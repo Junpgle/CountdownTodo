@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../utils/app_platform.dart';
 import '../utils/app_dialogs.dart';
+import 'ai_device_context_service.dart';
 import 'band_sync_service.dart';
 import 'minor_mode_policy.dart';
 import 'minor_mode_service.dart';
@@ -26,6 +27,7 @@ enum AppPermissionKind {
   liveUpdates,
   localNetwork,
   bandDeviceManagement,
+  location,
 }
 
 extension AppPermissionKindDetails on AppPermissionKind {
@@ -40,6 +42,7 @@ extension AppPermissionKindDetails on AppPermissionKind {
     AppPermissionKind.liveUpdates => '实时通知',
     AppPermissionKind.localNetwork => '局域网访问',
     AppPermissionKind.bandDeviceManagement => '小米手环设备管理',
+    AppPermissionKind.location => '位置',
   };
 
   String get rationale => switch (this) {
@@ -53,6 +56,7 @@ extension AppPermissionKindDetails on AppPermissionKind {
     AppPermissionKind.liveUpdates => '用于在支持的 Android 设备上展示专注等实时活动和状态更新。',
     AppPermissionKind.localNetwork => '用于发现同一局域网中的其他设备并进行局域网互传与同步。',
     AppPermissionKind.bandDeviceManagement => '用于向已连接的小米手环同步待办、课程、倒数日和专注状态。',
+    AppPermissionKind.location => '用于让 AI 助手按需查询你当前所在城市与位置，提供更贴合当地的日程、出行与时间建议。',
   };
 
   bool get opensDedicatedSettings => switch (this) {
@@ -76,7 +80,8 @@ extension AppPermissionKindDetails on AppPermissionKind {
     AppPermissionKind.requestInstall ||
     AppPermissionKind.exactAlarm ||
     AppPermissionKind.calendar ||
-    AppPermissionKind.localNetwork => false,
+    AppPermissionKind.localNetwork ||
+    AppPermissionKind.location => false,
   };
 }
 
@@ -394,6 +399,8 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
           return connection['hasPermission'] == true
               ? PermissionStatus.granted
               : PermissionStatus.denied;
+        case AppPermissionKind.location:
+          return await AiDeviceContextService.getLocationPermissionStatus();
       }
     } catch (_) {
       return PermissionStatus.granted;
@@ -422,6 +429,8 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
           return await BandSyncService.requestPermission()
               ? PermissionStatus.granted
               : PermissionStatus.denied;
+        case AppPermissionKind.location:
+          return await AiDeviceContextService.requestLocationPermission();
         case AppPermissionKind.localNetwork:
           if (!AppPlatform.isAndroid) return PermissionStatus.granted;
           try {

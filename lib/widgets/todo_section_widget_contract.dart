@@ -157,7 +157,6 @@ mixin _TodoSectionContract {
     required bool useDarkUI,
   });
 
-  Future<_AiAssistantContext> _loadAiAssistantContext();
 
   void _showIndependentTodoStatus(TodoItem todo);
 }

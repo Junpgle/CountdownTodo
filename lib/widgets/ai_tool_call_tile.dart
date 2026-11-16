@@ -39,6 +39,8 @@ class AiToolCallTile extends StatefulWidget {
         },
       },
       'query_habits' => '习惯进度',
+      'query_device_context' =>
+        args['include_location'] == false ? '时间与时区信息' : '位置与时区信息',
       _ => switch (args['domain']) {
         'todos' => switch (args['status']) {
           'pending' => '未完成待办',

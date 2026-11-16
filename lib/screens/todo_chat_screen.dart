@@ -17,7 +17,9 @@ import '../widgets/ai_chat_markdown.dart';
 import '../widgets/ai_chat_thinking_panel.dart';
 import '../widgets/ai_chat_composer.dart';
 import '../widgets/ai_water_border.dart';
+import '../services/ai_device_context_service.dart';
 import '../services/ai_query_tool_service.dart';
+import '../services/permission_request_coordinator.dart';
 import '../services/ai_tool_result_context.dart';
 import '../services/ai_tool_chat_runner.dart';
 import '../services/ai_action_parser.dart';
@@ -120,6 +122,12 @@ class TodoChatScreen extends StatefulWidget {
   final List<PomodoroTag> pomodoroTags;
   final List<FixedScheduleItem> fixedSchedules;
   final List<AiTodoAction> initialCategorizationActions;
+  final Future<List<CourseItem>> Function()? loadCourses;
+  final Future<List<TimeLogItem>> Function()? loadTimeLogs;
+  final Future<List<PomodoroRecord>> Function()? loadPomodoroRecords;
+  final Future<List<Team>> Function()? loadTeams;
+  final Future<List<FixedScheduleItem>> Function()? loadFixedSchedules;
+  final Future<List<AiTodoAction>> Function()? loadInitialCategorizationActions;
   final FutureOr<void> Function(TodoItem)? onTodoInserted;
   final FutureOr<void> Function(List<TodoItem>)? onTodosBatchInserted;
   final FutureOr<void> Function(List<TodoItem>)? onTodosUpdated;
@@ -151,6 +159,12 @@ class TodoChatScreen extends StatefulWidget {
     this.pomodoroTags = const [],
     this.fixedSchedules = const [],
     this.initialCategorizationActions = const [],
+    this.loadCourses,
+    this.loadTimeLogs,
+    this.loadPomodoroRecords,
+    this.loadTeams,
+    this.loadFixedSchedules,
+    this.loadInitialCategorizationActions,
     this.onTodoInserted,
     this.onTodosBatchInserted,
     this.onTodosUpdated,

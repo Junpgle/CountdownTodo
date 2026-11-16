@@ -56,6 +56,8 @@
 	<string>CountDownTodo 仅在本机读取日历日程，用于首页和周视图展示；不会写入或同步日历内容。</string>
 	<key>NSCalendarsUsageDescription</key>
 	<string>CountDownTodo 仅在本机读取日历日程，用于首页和周视图展示；不会写入或同步日历内容。</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>CountDownTodo 需要访问你的位置信息，以便 AI 助手在函数调用中按需查询当前所在城市与位置。</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

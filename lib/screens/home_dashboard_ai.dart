@@ -162,28 +162,6 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
     }
 
     try {
-      final results = await Future.wait<dynamic>([
-        CourseService.getAllCourses(widget.username),
-        StorageService.getTimeLogs(widget.username),
-        PomodoroService.getRecords(),
-        ApiService.fetchTeams(),
-      ]);
-      final courses = (results[0] as List<CourseItem>)
-          .where((course) => !course.isDeleted)
-          .toList();
-      final timeLogs = (results[1] as List<TimeLogItem>)
-          .where((log) => !log.isDeleted)
-          .toList();
-      final pomodoroRecords = (results[2] as List<PomodoroRecord>)
-          .where((record) => !record.isDeleted)
-          .toList();
-      final teams = (results[3] as List)
-          .whereType<Map>()
-          .map((t) => Team.fromJson(Map<String, dynamic>.from(t)))
-          .toList();
-      final categoryReminderDefaults =
-          await StorageService.getCategoryReminderMinutes(widget.username);
-
       if (!mounted) return;
       await AiTodoChatLauncher.open(
         context,
@@ -197,13 +175,27 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
             .where((t) => !t.isDone && !t.isDeleted && !t.isSkipped)
             .toList(),
         todoGroups: _todoGroups,
-        courses: courses,
-        timeLogs: timeLogs,
-        pomodoroRecords: pomodoroRecords,
         conflicts: _latestSyncConflicts,
-        teams: teams,
         fixedSchedules: _fixedSchedules,
-        categoryReminderDefaults: categoryReminderDefaults,
+        loadCourses: () async {
+          final list = await CourseService.getAllCourses(widget.username);
+          return list.where((course) => !course.isDeleted).toList();
+        },
+        loadTimeLogs: () async {
+          final list = await StorageService.getTimeLogs(widget.username);
+          return list.where((log) => !log.isDeleted).toList();
+        },
+        loadPomodoroRecords: () async {
+          final list = await PomodoroService.getRecords();
+          return list.where((record) => !record.isDeleted).toList();
+        },
+        loadTeams: () async {
+          final raw = await ApiService.fetchTeams();
+          return raw
+              .whereType<Map>()
+              .map((t) => Team.fromJson(Map<String, dynamic>.from(t)))
+              .toList();
+        },
         onTodoGroupsChanged: (groups) {
           unawaited(_handleAiTodoGroupsChanged(groups));
         },

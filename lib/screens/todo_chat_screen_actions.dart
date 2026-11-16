@@ -1806,7 +1806,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     final resolvedTeam = AiTeamBindingResolver.resolveReference(
       name: action.teamName,
       uuid: action.teamUuid,
-      teams: widget.teams,
+      teams: _teams,
     );
     var teamChoice =
         resolvedTeam?.uuid ??
@@ -1885,7 +1885,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                             enabled: false,
                             child: Text('请选择本地团队'),
                           ),
-                        for (final team in widget.teams)
+                        for (final team in _teams)
                           DropdownMenuItem(
                             value: team.uuid,
                             child: Text(team.name),
@@ -2094,7 +2094,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                       action.teamUuid = null;
                       action.teamName = null;
                     } else {
-                      for (final team in widget.teams) {
+                      for (final team in _teams) {
                         if (team.uuid == teamChoice) {
                           action.teamUuid = team.uuid;
                           action.teamName = team.name;
@@ -2237,7 +2237,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     final team = AiTeamBindingResolver.resolveReference(
       name: action.teamName,
       uuid: action.teamUuid,
-      teams: widget.teams,
+      teams: _teams,
     );
     if (team != null) return team.name;
     if (action.teamName?.trim().isNotEmpty == true ||
@@ -2810,7 +2810,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       final team = AiTeamBindingResolver.resolveReference(
         name: name,
         uuid: uuid,
-        teams: widget.teams,
+        teams: _teams,
       );
       if (team == null) return true;
 
@@ -2929,7 +2929,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     );
     final existingTimeLogs = needsCurrentTimeLogCatalog
         ? await StorageService.getTimeLogs(widget.username)
-        : widget.timeLogs;
+        : _timeLogs;
 
     final existingCountdowns = widget.countdowns.isNotEmpty
         ? widget.countdowns

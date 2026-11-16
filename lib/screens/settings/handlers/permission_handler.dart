@@ -78,6 +78,14 @@ class PermissionHandler {
       'platforms': {'android', 'ios', 'macos'},
     },
     {
+      'key': 'location',
+      'label': '位置信息',
+      'desc': '用于让 AI 助手在函数调用中按需查询当前所在城市与位置，结合时区提供更准确的本地建议（可提前授权）',
+      'icon': Icons.location_on_outlined,
+      'critical': false,
+      'platforms': {'android', 'ios', 'macos'},
+    },
+    {
       'key': 'local_network',
       'label': '局域网访问',
       'desc': '用于发现同一局域网下的同账号设备，实现局域网互传与数据同步',
@@ -179,6 +187,7 @@ class PermissionHandler {
     'exact_alarm' => AppPermissionKind.exactAlarm,
     'battery_optimization' => AppPermissionKind.batteryOptimization,
     'calendar' => AppPermissionKind.calendar,
+    'location' => AppPermissionKind.location,
     'live_updates' => AppPermissionKind.liveUpdates,
     'local_network' => AppPermissionKind.localNetwork,
     _ => null,

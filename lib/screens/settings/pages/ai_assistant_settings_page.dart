@@ -1,8 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 
+import '../../../services/ai_device_context_service.dart';
 import '../../../services/ai_memory_service.dart';
+import '../../../services/permission_request_coordinator.dart';
 import '../../../services/chat_storage_service.dart';
 import '../../../services/daily_ai_suggestion_service.dart';
 import '../../../services/storage/user_session_storage.dart';
@@ -57,6 +60,7 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
   bool _dailyAiSuggestionEnabled = false;
   bool _dailyAiManualSectionKept = false;
   bool _aiMemoryEnabled = true;
+  PermissionStatus _locationPermissionStatus = PermissionStatus.denied;
   List<AiMemoryItem> _aiMemories = const [];
   String? _currentUsername;
   late Future<LLMConfig?> _llmConfigFuture;
@@ -127,6 +131,7 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
       DailyAiSuggestionService.isManualSectionKept(username),
       AiMemoryService.isEnabled(username),
       AiMemoryService.loadMemories(username),
+      AiDeviceContextService.getLocationPermissionStatus(),
     ]);
     if (!mounted) return;
     _promptController.text = values[0] as String;
@@ -143,6 +148,7 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
       _dailyAiManualSectionKept = values[9] as bool;
       _aiMemoryEnabled = values[10] as bool;
       _aiMemories = values[11] as List<AiMemoryItem>;
+      _locationPermissionStatus = values[12] as PermissionStatus;
       _isLoading = false;
     });
     if (widget.initialTarget != null) {
@@ -150,6 +156,16 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
         if (mounted) _scrollToTarget(widget.initialTarget!);
       });
     }
+  }
+
+  Future<void> _requestLocationPermission() async {
+    final result = await PermissionRequestCoordinator(
+      context: context,
+    ).request(AppPermissionKind.location, fallbackToSettingsOnDenied: true);
+    if (!mounted) return;
+    setState(() {
+      _locationPermissionStatus = result.status;
+    });
   }
 
   Future<void> _setSetting({
@@ -687,6 +703,32 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
                         persist: ChatStorageService.setDeepThinkingEnabled,
                       ),
                     ),
+                    if (AiDeviceContextService.supportsNativeLocation) ...[
+                      const AppSettingsDivider(indent: 16),
+                      ListTile(
+                        title: const Text('位置权限（函数调用基础信息）'),
+                        subtitle: Text(
+                          _locationPermissionStatus.isGranted ||
+                                  _locationPermissionStatus.isLimited
+                              ? '已提前授权，AI 助手可按需查询当前城市、位置与时区'
+                              : _locationPermissionStatus.isPermanentlyDenied
+                              ? '已被拒绝，点击前往系统设置开启位置权限'
+                              : '未授权；可提前授权供函数调用读取所在位置与时区',
+                        ),
+                        trailing: FilledButton.tonal(
+                          onPressed: _requestLocationPermission,
+                          child: Text(
+                            _locationPermissionStatus.isGranted ||
+                                    _locationPermissionStatus.isLimited
+                                ? '已授权'
+                                : _locationPermissionStatus.isPermanentlyDenied
+                                ? '去设置'
+                                : '提前授权',
+                          ),
+                        ),
+                        onTap: _requestLocationPermission,
+                      ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 8),

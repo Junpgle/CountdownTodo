@@ -46,7 +46,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     final team = AiTeamBindingResolver.resolveReference(
       name: name,
       uuid: uuid,
-      teams: widget.teams,
+      teams: _teams,
     );
     if (team == null) return true;
     action
@@ -564,12 +564,12 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     final hasRequestedCountdownTeamBinding =
         AiTeamBindingResolver.hasExplicitBindingIntent(requestText);
     final requestedCountdownTeam = hasRequestedCountdownTeamBinding
-        ? AiTeamBindingResolver.requestedTeam(requestText, teams: widget.teams)
+        ? AiTeamBindingResolver.requestedTeam(requestText, teams: _teams)
         : null;
     final requestedCountdownTeamName = hasRequestedCountdownTeamBinding
         ? AiTeamBindingResolver.requestedTeamName(
             requestText,
-            teams: widget.teams,
+            teams: _teams,
           )
         : null;
     final pendingCountdownDraftsToReplace =
@@ -653,7 +653,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
                 requestText,
                 previousUserMessage: previousUserMessage,
                 previousAssistantMessage: previousAssistantMessage,
-                availableTeams: widget.teams,
+                availableTeams: _teams,
               ),
             ]
           : null;
@@ -663,7 +663,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
                   requestText,
                   previousUserMessage: previousUserMessage,
                   previousAssistantMessage: previousAssistantMessage,
-                  availableTeams: widget.teams,
+                  availableTeams: _teams,
                 )
                 .where((tool) {
                   final name =
@@ -1483,7 +1483,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
             originalText: requestText,
             existingTodoTitles: existingTodoTitles,
             existingScheduleTitles: existingScheduleTitles,
-            availableTeams: widget.teams,
+            availableTeams: _teams,
             allowedActionNames: allowedCdtActionNames,
           );
           final financeDrafts =
@@ -1596,7 +1596,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         originalText: requestText,
         existingTodoTitles: existingTodoTitles,
         existingScheduleTitles: existingScheduleTitles,
-        availableTeams: widget.teams,
+        availableTeams: _teams,
         allowedActionNames: allowedCdtActionNames,
       );
       final hasUnresolvedCountdownTeamBinding =
@@ -1968,6 +1968,23 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       return '查询失败：${result['error'] ?? result['message'] ?? '未知错误'}';
     }
     if (result['status'] == 'awaiting_confirmation') return '操作草案等待确认，尚未执行。';
+    if (result['timezone_name'] != null && result['local_time'] != null) {
+      final loc = result['location'];
+      if (loc is Map) {
+        final city = loc['city']?.toString().trim() ?? '';
+        final region = loc['region']?.toString().trim() ?? '';
+        final place = [region, city].where((s) => s.isNotEmpty).join(' · ');
+        if (loc['authorized'] == true && loc['available'] == true) {
+          return place.isNotEmpty
+              ? '已获取当前位置（$place）与时区（${result['timezone_name']}）。'
+              : '已获取当前位置与时区（${result['timezone_name']}）。';
+        }
+        if (loc['authorized'] == false) {
+          return '已获取时间与时区（${result['timezone_name']}），位置尚未授权。';
+        }
+      }
+      return '已获取时间与时区（${result['timezone_name']}）。';
+    }
     final summary = result['summary'];
     final count =
         result['total_count'] ??
@@ -2292,6 +2309,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     );
     setState(() {
       _messages.addAll([userMsg, assistantMsg]);
+      _ensureActiveSessionInList();
       _inputCtrl.clear();
       _suggestions = [];
     });
@@ -2604,7 +2622,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           originalText,
           previousUserMessage: previousUserMessage,
           previousAssistantMessage: previousAssistantMessage,
-          availableTeams: widget.teams,
+          availableTeams: _teams,
         );
     final allowedManualCdtActions =
         AiNativeToolDefinitionBuilder.allowedCdtActionNames(
@@ -2629,7 +2647,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       originalText: originalText,
       existingTodoTitles: existingTodoTitles,
       existingScheduleTitles: existingScheduleTitles,
-      availableTeams: widget.teams,
+      availableTeams: _teams,
       allowedActionNames: allowedManualCdtActions,
     );
     final settingsTargets =
@@ -2753,6 +2771,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     var supersededDraftsIgnored = false;
     setState(() {
       _messages.addAll(newMessages);
+      _ensureActiveSessionInList();
       if (financeDrafts.length == 1) {
         supersededDraftsIgnored = _ignoreSupersededDateCorrectionDrafts(
           assistantMsg,
@@ -2925,6 +2944,14 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     _sendMessage();
   }
 
+  Future<void> _syncSessionsFromStorage() async {
+    final sessions = await ChatStorageService.loadSessions();
+    if (!mounted) return;
+    setState(() {
+      _sessions = sessions;
+    });
+  }
+
   Future<void> _generateSessionTitle({required String sessionId}) async {
     final session = _sessions.firstWhere(
       (s) => s.id == sessionId,
@@ -2946,6 +2973,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           apiUrl = globalConfig.apiUrl;
           provider = globalConfig.provider;
         } else {
+          await _syncSessionsFromStorage();
           return;
         }
       }
@@ -2959,6 +2987,12 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         orElse: () => history.first,
       );
 
+      final questionText = firstUserMsg.content.trim();
+      if (questionText.isEmpty) {
+        await _syncSessionsFromStorage();
+        return;
+      }
+
       String title = await AiChatService.completeChat(
         apiUrl: apiUrl,
         apiKey: apiKey,
@@ -2966,30 +3000,54 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         messages: [
           {
             'role': 'system',
-            'content': '请根据用户的第一个问题生成一个简短的对话标题，不超过10个字，只返回标题文本，不要任何其他内容。',
+            'content': '你是一个对话标题生成器。只输出一个不超过10个字的简短标题，不要回答问题，不要打招呼，不要解释，不要带引号或句末标点。',
           },
-          {'role': 'user', 'content': firstUserMsg.content},
+          {
+            'role': 'user',
+            'content':
+                '请将以下用户提问总结为一个不超过10个字的对话标题（只输出标题文本，不要回答或寒暄）：\n<question>\n$questionText\n</question>',
+          },
         ],
         provider: provider,
+        maxTokens: 120,
+        timeout: const Duration(seconds: 15),
       );
-      title = title.trim().replaceAll('"', '').replaceAll("'", '');
+      title = title
+          .replaceAll(
+            RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false),
+            '',
+          )
+          .replaceAll(RegExp(r'<think>[\s\S]*$', caseSensitive: false), '')
+          .replaceAll(RegExp(r'[\r\n]+'), ' ')
+          .trim()
+          .replaceAll('"', '')
+          .replaceAll("'", '');
       if (title.length > 15) title = '${title.substring(0, 15)}...';
       if (title.isEmpty) {
-        final content = firstUserMsg.content;
-        title = content.substring(0, content.length > 15 ? 15 : content.length);
+        final content = firstUserMsg.content.trim();
+        if (content.isEmpty) {
+          await _syncSessionsFromStorage();
+          return;
+        }
+        title = content.length > 15
+            ? '${content.substring(0, 15)}...'
+            : content;
       }
 
       await ChatStorageService.updateSessionTitle(sessionId, title);
-      if (mounted) {
+      if (!mounted) return;
+      final idx = _sessions.indexWhere((s) => s.id == sessionId);
+      if (idx != -1) {
         setState(() {
-          final idx = _sessions.indexWhere((s) => s.id == sessionId);
-          if (idx != -1) {
-            _sessions[idx].title = title;
-            _sessions[idx].updatedAt = DateTime.now();
-          }
+          _sessions[idx].title = title;
+          _sessions[idx].updatedAt = DateTime.now();
         });
+      } else {
+        await _syncSessionsFromStorage();
       }
-    } catch (_) {}
+    } catch (_) {
+      await _syncSessionsFromStorage();
+    }
   }
 
   Future<void> _clearHistory() async {

@@ -5,6 +5,7 @@ import '../features/finance/services/finance_repository.dart';
 import '../models/chat_message.dart';
 import '../utils/calendar_date_math.dart';
 import 'ai_chat_service.dart';
+import 'ai_device_context_service.dart';
 import 'pomodoro_service.dart';
 
 typedef AiAppDataLoader = Future<List<Map<String, dynamic>>> Function(
@@ -46,6 +47,8 @@ class AiQueryToolService {
     Future<List<FinanceBudget>> Function()? loadBudgets,
     AiFinanceBalanceTransactionLoader? loadBalanceTransactions,
     AiFinanceLoanRepaymentLoader? loadPaidLoanInstallments,
+    Future<Map<String, dynamic>> Function({required bool includeLocation})?
+        loadDeviceContext,
     DateTime Function()? now,
   }) : loadFinanceData =
            loadFinanceData ??
@@ -67,7 +70,14 @@ class AiQueryToolService {
        loadBudgets = loadBudgets ?? (() => FinanceRepository.getBudgets()),
        loadScreenTimeData =
            loadScreenTimeData ?? ((_, _) => loadAppData('screen_time')),
-       now = now ?? DateTime.now;
+       now = now ?? DateTime.now {
+    this.loadDeviceContext =
+        loadDeviceContext ??
+        ({required includeLocation}) => AiDeviceContextService.readDeviceContext(
+          includeLocation: includeLocation,
+          nowOverride: this.now(),
+        );
+  }
 
   final AiAppDataLoader loadAppData;
   final AiScreenTimeDataLoader loadScreenTimeData;
@@ -80,8 +90,16 @@ class AiQueryToolService {
   final Future<List<FinanceCategory>> Function() loadCategories;
   final Future<List<FinancePaymentMethod>> Function() loadPaymentMethods;
   final Future<List<FinanceBudget>> Function() loadBudgets;
+  late final Future<Map<String, dynamic>> Function({
+    required bool includeLocation,
+  }) loadDeviceContext;
 
-  static const toolNames = {'query_finance', 'query_app_data', 'query_habits'};
+  static const toolNames = {
+    'query_finance',
+    'query_app_data',
+    'query_habits',
+    'query_device_context',
+  };
   static final RegExp _datePattern = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$');
   static const domains = [
     'todos',
@@ -228,6 +246,17 @@ class AiQueryToolService {
       },
       ['start_date', 'end_date_exclusive'],
     ),
+    _tool(
+      'query_device_context',
+      '查询用户当前的基础环境信息，包括本地时间、星期、时区、语言地区、设备平台以及（若已授权）当前所在城市与地理位置。涉及当前时间、时区或用户所在位置时按需调用。',
+      {
+        'include_location': {
+          'type': 'boolean',
+          'description': '是否同时读取当前位置（默认true；仅需时间或时区时可设为false）。',
+        },
+      },
+      const [],
+    ),
   ];
 
   static Map<String, dynamic> _tool(
@@ -291,7 +320,8 @@ query_*自动执行只读查询；propose_*只生成待确认操作草案，不�
       if (!toolNames.contains(call.name)) {
         throw const FormatException('未开放的查询工具');
       }
-      final decoded = jsonDecode(call.arguments);
+      final rawArgs = call.arguments.trim();
+      final decoded = rawArgs.isEmpty ? const <String, dynamic>{} : jsonDecode(rawArgs);
       if (decoded is! Map) throw const FormatException('参数必须是JSON对象');
       final args = Map<String, dynamic>.from(decoded);
       final schema = buildDefinitions().firstWhere(
@@ -304,7 +334,8 @@ query_*自动执行只读查询；propose_*只生成待确认操作草案，不�
         final spec = properties[key] as Map;
         final value = args[key];
         if (spec['type'] == 'string' && value is! String ||
-            spec['type'] == 'integer' && value is! int) {
+            spec['type'] == 'integer' && value is! int ||
+            spec['type'] == 'boolean' && value is! bool) {
           throw FormatException('$key类型错误');
         }
         if (spec['enum'] is List && !(spec['enum'] as List).contains(value)) {
@@ -322,6 +353,9 @@ query_*自动执行只读查询；propose_*只生成待确认操作草案，不�
       final result = switch (call.name) {
         'query_finance' => await _finance(args),
         'query_habits' => await _habits(args),
+        'query_device_context' => await loadDeviceContext(
+          includeLocation: args['include_location'] as bool? ?? true,
+        ),
         _ => await _appData(args),
       };
       return {'ok': true, 'trust': 'read-only-data', ...result};

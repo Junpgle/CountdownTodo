@@ -29,7 +29,9 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   String _lastRequestSmartContext = '';
   String _pendingManualOriginalText = '';
   String _pendingManualSmartContext = '';
+  static const int _sessionPageSize = 15;
   List<ChatSession> _sessions = [];
+  int _visibleSessionCount = _sessionPageSize;
   bool _smartContext = true;
   AiContextMode _contextMode = AiContextMode.functionCalling;
   AiToolBudget _toolBudget = AiToolBudget.standard;
@@ -65,7 +67,13 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   GlobalKey _todoActionPanelKeyFor(ChatMessage message) =>
       _todoActionPanelKeys.putIfAbsent(message.id, GlobalKey.new);
   List<HabitGoal> _habitGoals = [];
+  List<CourseItem> _courses = [];
+  List<TimeLogItem> _timeLogs = [];
+  List<PomodoroRecord> _pomodoroRecords = [];
+  List<Team> _teams = [];
   List<FixedScheduleItem> _fixedSchedules = [];
+  List<AiTodoAction> _initialCategorizationActions = [];
+  bool _historyLoaded = false;
   Completer<void>? _cancelGeneration;
   bool _classificationSuggestionInjected = false;
 
@@ -387,6 +395,7 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   Widget _buildHistorySidebarContent(
     BuildContext context, {
     required bool isWideMode,
+    VoidCallback? onRefresh,
   });
   Future<void> _deleteAllSessions(BuildContext sidebarCtx);
   Widget _buildModelSelector();

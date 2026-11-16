@@ -420,11 +420,14 @@ class ChatStorageService {
           (m) => m.role == ChatRole.user,
           orElse: () => message,
         );
-        session.title = firstUserMsg.content.length > 20
-            ? '${firstUserMsg.content.substring(0, 20)}...'
-            : firstUserMsg.content;
-        session.updatedAt = DateTime.now();
-        await saveSessions(sessions);
+        final fallbackTitle = firstUserMsg.content.trim();
+        if (fallbackTitle.isNotEmpty) {
+          session.title = fallbackTitle.length > 20
+              ? '${fallbackTitle.substring(0, 20)}...'
+              : fallbackTitle;
+          session.updatedAt = DateTime.now();
+          await saveSessions(sessions);
+        }
       }
     }
   }
