@@ -88,9 +88,21 @@ abstract final class HabitDayLoader {
     DateTime date, {
     String username = '',
   }) async {
+    var allGoals = await HabitRepository.getGoals();
     // 早睡/早起新增或修正后，睡眠时长在下一次刷新首页时自动重算。
-    await HabitSleepDurationService.syncAll();
-    await HabitRepository.migrateLegacyRecurringTodoHabits(username: username);
+    await HabitSleepDurationService.syncAll(goals: allGoals);
+    if (allGoals.any(
+      (goal) =>
+          !goal.isDeleted &&
+          goal.sourceType == HabitSourceType.recurringTodo &&
+          goal.sourceIds.any((id) => id.trim().isNotEmpty),
+    )) {
+      await HabitRepository.migrateLegacyRecurringTodoHabits(
+        username: username,
+        goals: allGoals,
+      );
+      allGoals = await HabitRepository.getGoals();
+    }
     HabitSleepCoachingSnapshot? sleepCoachingSnapshot;
     if (username.trim().isNotEmpty) {
       try {
@@ -103,7 +115,7 @@ abstract final class HabitDayLoader {
       }
     }
     final goals = HabitSleepGoalResolver.forDisplay(
-      await HabitRepository.getActiveGoals(),
+      allGoals.where((goal) => !goal.isArchived).toList(growable: false),
     );
     final goalUuids = goals.map((goal) => goal.uuid).toSet();
     final allRules = goalUuids.isEmpty

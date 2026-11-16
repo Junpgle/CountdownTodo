@@ -7,9 +7,21 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
   void initState() {
     super.initState();
     _selectedSubTeamUuid = widget.initialSelectedTeamUuid;
+    StorageService.scopedDataRefreshNotifier.addListener(
+      _onScopedDataRefreshForHabits,
+    );
     _loadSettings();
     _loadHabitDisplaySettings();
     _fetchTeamRoles(); // 🚀 获取角色
+  }
+
+  void _onScopedDataRefreshForHabits() {
+    if (!mounted) return;
+    final domains = StorageService.scopedDataRefreshNotifier.value.domains;
+    if (domains.contains(DataRefreshDomain.all) ||
+        domains.contains(DataRefreshDomain.habits)) {
+      _loadHabitDisplaySettings();
+    }
   }
 
   Future<void> _loadHabitDisplaySettings() async {
@@ -76,6 +88,9 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
 
   @override
   void dispose() {
+    StorageService.scopedDataRefreshNotifier.removeListener(
+      _onScopedDataRefreshForHabits,
+    );
     for (final controller in _completingAnimations.values) {
       controller.dispose();
     }
@@ -113,7 +128,7 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
     _cachedVmSignature = nextSignature;
     _cachedVmSignatureDate = today;
 
-    if (inputListsChanged) {
+    if (oldWidget.username != widget.username) {
       _loadHabitDisplaySettings();
     }
     if (!_hasInitializedExpansion && widget.todos.isNotEmpty) {
@@ -131,8 +146,6 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
     bool sendInitialMessage = true,
     ChatUsageSummary? initialVoiceUsageSummary,
   }) async {
-    final aiContext = await _loadAiAssistantContext();
-    if (!mounted) return;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
@@ -150,11 +163,20 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
           )
           .toList(),
       todoGroups: widget.todoGroups,
-      courses: aiContext.courses,
-      timeLogs: aiContext.timeLogs,
-      pomodoroRecords: aiContext.pomodoroRecords,
       conflicts: widget.conflicts,
-      teams: aiContext.teams,
+      teams: _teams,
+      loadCourses: () async {
+        final list = await CourseService.getAllCourses(widget.username);
+        return list.where((course) => !course.isDeleted).toList();
+      },
+      loadTimeLogs: () async {
+        final list = await StorageService.getTimeLogs(widget.username);
+        return list.where((log) => !log.isDeleted).toList();
+      },
+      loadPomodoroRecords: () async {
+        final list = await PomodoroService.getRecords();
+        return list.where((record) => !record.isDeleted).toList();
+      },
       onTodoGroupsChanged: widget.onGroupsChanged,
       onFixedSchedulesChanged: (_) => widget.onRefreshRequested(),
       onTodosBatchAction:

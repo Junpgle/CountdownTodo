@@ -240,9 +240,10 @@ abstract final class HabitRepository {
   /// 并清空习惯上的 [HabitGoal.sourceIds]。
   static Future<void> migrateLegacyRecurringTodoHabits({
     String username = '',
+    List<HabitGoal>? goals,
   }) async {
-    final goals = await HabitStorage.getHabitGoals();
-    final legacyGoals = goals
+    final resolvedGoals = goals ?? await HabitStorage.getHabitGoals();
+    final legacyGoals = resolvedGoals
         .where(
           (goal) =>
               !goal.isDeleted &&
