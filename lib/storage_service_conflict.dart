@@ -225,11 +225,35 @@ mixin _StorageConflict on _StorageServiceBase {
   ) => _clearResolvedRecurrenceMigrationConflicts(todos);
   List<TodoItem> _clearResolvedRecurrenceMigrationConflicts(
     List<TodoItem> todos,
-  ) {
+  ) => _clearResolvedVersionConflicts(
+    todos,
+    requireRecurrenceSeries: true,
+    bumpMaintenanceVersion: true,
+  );
+
+  List<TodoItem> clearResolvedCollabCompletionConflictsForTest(
+    List<TodoItem> todos,
+  ) => _clearResolvedCollabCompletionConflicts(todos);
+  List<TodoItem> _clearResolvedCollabCompletionConflicts(
+    List<TodoItem> todos,
+  ) => _clearResolvedVersionConflicts(
+    todos,
+    requireCollabIndependent: true,
+    bumpMaintenanceVersion: false,
+  );
+
+  List<TodoItem> _clearResolvedVersionConflicts(
+    List<TodoItem> todos, {
+    bool requireRecurrenceSeries = false,
+    bool requireCollabIndependent = false,
+    required bool bumpMaintenanceVersion,
+  }) {
     final resolved = <TodoItem>[];
     for (final todo in todos) {
       if (!todo.hasConflict ||
-          todo.recurrenceSeriesId?.isNotEmpty != true ||
+          (requireRecurrenceSeries &&
+              todo.recurrenceSeriesId?.isNotEmpty != true) ||
+          (requireCollabIndependent && todo.collabType != 1) ||
           !ConflictVisibilityService.isVersionConflictData(
             todo.serverVersionData,
           ) ||
@@ -249,7 +273,8 @@ mixin _StorageConflict on _StorageServiceBase {
           (server['recurrence_series_id'] ?? server['recurrenceSeriesId'])
               ?.toString()
               .trim();
-      if (serverSeriesId != null &&
+      if (requireRecurrenceSeries &&
+          serverSeriesId != null &&
           serverSeriesId.isNotEmpty &&
           serverSeriesId != todo.recurrenceSeriesId) {
         continue;
@@ -277,7 +302,9 @@ mixin _StorageConflict on _StorageServiceBase {
 
       todo.hasConflict = false;
       todo.serverVersionData = null;
-      todo.markRecurrenceMaintenanceChanged();
+      if (bumpMaintenanceVersion) {
+        todo.markRecurrenceMaintenanceChanged();
+      }
       resolved.add(todo);
     }
     return resolved;

@@ -647,6 +647,10 @@ mixin _StorageSettings on _StorageServiceBase {
 
     switch (table) {
       case 'todos':
+        final resolvedCollabType =
+            resolvedData['collab_type'] ?? resolvedData['collabType'] ?? 0;
+        final isIndependentCollab =
+            resolvedCollabType == 1 || resolvedCollabType == '1';
         batch.update(
           'todos',
           {
@@ -663,11 +667,12 @@ mixin _StorageSettings on _StorageServiceBase {
                     resolvedData['is_deleted'] == true
                 ? 1
                 : 0,
-            'is_completed':
-                resolvedData['is_completed'] == 1 ||
-                    resolvedData['is_completed'] == true
-                ? 1
-                : 0,
+            if (!isIndependentCollab)
+              'is_completed':
+                  resolvedData['is_completed'] == 1 ||
+                      resolvedData['is_completed'] == true
+                  ? 1
+                  : 0,
             'due_date':
                 resolvedData['due_date'] ?? resolvedData['dueDate'] ?? 0,
             'remark': resolvedData['remark'],
