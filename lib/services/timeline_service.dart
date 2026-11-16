@@ -135,8 +135,12 @@ class TimelineService {
         );
       }
 
-      // 3. 课程
-      final courses = await CourseService.getAllCourses(username);
+      // 3. 课程（按天索引范围查询，避免全量反序列化整学期课表）
+      final courses = await CourseService.getCoursesForDateRange(
+        username,
+        from: startOfDay,
+        to: endOfDay,
+      );
       for (var course in courses) {
         if (course.date == dayStr) {
           // startTime is int (HHMM)
