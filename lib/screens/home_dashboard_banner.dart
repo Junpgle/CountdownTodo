@@ -59,6 +59,7 @@ DateFormat _dashboardDateFormat(String pattern) {
 }
 
 mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
+  bool _hasCheckedCourseNotification = false;
   List<TodoItem>? _dashboardTodoCandidateSource;
   int? _dashboardTodoCandidateRevision;
   int? _dashboardTodoCandidateTimeZoneOffsetSeconds;
@@ -1347,12 +1348,15 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
       }
     }
 
-    // 没有课程在窗口内，仅取消课程通知（不影响待办等其他通知）
-    if (!hasUpcomingCourse || activeCourseKey == null) {
+    // 没有课程在窗口内，仅在首次检查或此前有活跃通知时才调用原生取消，避免每分钟无意义跨平台调用
+    if ((!hasUpcomingCourse || activeCourseKey == null) &&
+        (!_hasCheckedCourseNotification ||
+            _activeCourseNotificationKey != null)) {
       await NotificationService.cancelSpecialTodoNotification(
         courseNotificationId,
       );
     }
+    _hasCheckedCourseNotification = true;
     _activeCourseNotificationKey = activeCourseKey;
 
     // ── 待办提醒 ────────────────────────────────────────────────

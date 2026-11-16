@@ -92,6 +92,8 @@ class WidgetService {
   static bool _appInForeground = true;
   static bool _periodicRefreshConfigured = false;
   static bool _powerSaveListenerRegistered = false;
+  static final Map<String, dynamic> _lastAndroidWidgetData = {};
+  static String? _lastMacOSWidgetSnapshotJson;
 
   static const MethodChannel _macOSWidgetChannel = MethodChannel(
     'com.countdowntodo/widget',
@@ -104,6 +106,8 @@ class WidgetService {
     _widgetRefreshDebouncer = null;
     _periodicRefreshConfigured = false;
     _initialized = false;
+    _lastAndroidWidgetData.clear();
+    _lastMacOSWidgetSnapshotJson = null;
     if (_powerSaveListenerRegistered) {
       PowerSaveModeService.enabledListenable.removeListener(
         _onPowerSaveModeChanged,
@@ -399,8 +403,7 @@ class WidgetService {
               : DateTime.fromMillisecondsSinceEpoch(item.startTime!).toLocal();
           final loc = item.location?.trim() ?? '';
           final rem = item.remark?.trim() ?? '';
-          final displayLocation =
-              loc.isNotEmpty && rem.isNotEmpty && loc != rem
+          final displayLocation = loc.isNotEmpty && rem.isNotEmpty && loc != rem
               ? '$loc · $rem'
               : (loc.isNotEmpty ? loc : rem);
           return <String, dynamic>{
@@ -916,11 +919,18 @@ class WidgetService {
   ) async {
     try {
       final List<Future<void>> widgetWrites = [];
+      final changedEntries = <String, dynamic>{};
       widgetData.forEach((key, value) {
-        widgetWrites.add(HomeWidget.saveWidgetData(key, value));
+        if (!_lastAndroidWidgetData.containsKey(key) ||
+            _lastAndroidWidgetData[key] != value) {
+          changedEntries[key] = value;
+          widgetWrites.add(HomeWidget.saveWidgetData(key, value));
+        }
       });
 
+      if (widgetWrites.isEmpty) return;
       await Future.wait(widgetWrites);
+      _lastAndroidWidgetData.addAll(changedEntries);
 
       try {
         await Future.wait([
@@ -985,9 +995,12 @@ class WidgetService {
 
   static Future<void> _updateMacOSWidget(WidgetSnapshot snapshot) async {
     try {
+      final json = snapshot.toJsonString();
+      if (json == _lastMacOSWidgetSnapshotJson) return;
       await _macOSWidgetChannel.invokeMethod('saveWidgetSnapshot', {
-        'json': snapshot.toJsonString(),
+        'json': json,
       });
+      _lastMacOSWidgetSnapshotJson = json;
     } catch (e) {
       //       debugPrint('⚠️ [WidgetService] macOS Widget update failed: $e');
     }
@@ -1400,6 +1413,8 @@ class WidgetService {
   }
 
   static Future<void> updateTodoWidget(List<TodoItem> todos) async {
+    _widgetRefreshDebouncer?.cancel();
+    _widgetRefreshDebouncer = null;
     await _updateCurrentUserWidgets(todos: todos);
   }
 }
