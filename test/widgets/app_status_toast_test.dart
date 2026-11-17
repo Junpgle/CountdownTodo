@@ -151,4 +151,58 @@ void main() {
       expect(toastFinder, findsNothing);
     },
   );
+
+  testWidgets('status toast wraps long messages across multiple lines', (
+    tester,
+  ) async {
+    final anchorKey = GlobalKey();
+    const longMessage = '对方设备未开启自动同步，请在对方“局域网同步”设置中开启“自动同步”后再试';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Stack(
+            children: [
+              Positioned(
+                top: 24,
+                right: 20,
+                child: Builder(
+                  builder: (context) => SizedBox(
+                    key: anchorKey,
+                    width: 40,
+                    height: 40,
+                    child: IconButton(
+                      onPressed: () {
+                        AppStatusToast.show(
+                          context: context,
+                          anchorKey: anchorKey,
+                          message: longMessage,
+                          duration: const Duration(milliseconds: 600),
+                        );
+                      },
+                      icon: const Icon(Icons.sync),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byIcon(Icons.sync));
+    await tester.pump();
+
+    final textWidget = tester.widget<Text>(find.text(longMessage));
+    expect(textWidget.maxLines, isNull);
+    expect(textWidget.softWrap, isTrue);
+    expect(
+      tester.getSize(find.byKey(const ValueKey<String>('app-status-toast'))).height,
+      greaterThan(44),
+    );
+
+    await tester.pump(const Duration(milliseconds: 800));
+    await tester.pumpAndSettle();
+  });
 }

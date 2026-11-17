@@ -41,6 +41,8 @@ class AppStatusToast {
             ? 16.0
             : math.max(16.0, mediaQuery.size.width - anchorRect.right);
         final top = anchorRect?.bottom ?? mediaQuery.padding.top + 12;
+        final availableWidth = mediaQuery.size.width - right - 16.0;
+        final maxWidth = availableWidth.clamp(160.0, 320.0).toDouble();
         return Positioned(
           top: top + 8,
           right: right,
@@ -48,6 +50,7 @@ class AppStatusToast {
             message: message,
             icon: icon,
             duration: duration,
+            maxWidth: maxWidth,
             onDismissed: () => _remove(entry),
           ),
         );
@@ -75,12 +78,14 @@ class _AppStatusToastView extends StatefulWidget {
     required this.message,
     required this.icon,
     required this.duration,
+    required this.maxWidth,
     required this.onDismissed,
   });
 
   final String message;
   final IconData icon;
   final Duration duration;
+  final double maxWidth;
   final VoidCallback onDismissed;
 
   @override
@@ -142,12 +147,12 @@ class _AppStatusToastViewState extends State<_AppStatusToastView>
           Flexible(
             child: Text(
               widget.message,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              softWrap: true,
               style: TextStyle(
                 color: foregroundColor,
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
+                height: 1.35,
                 decoration: TextDecoration.none,
               ),
             ),
@@ -181,7 +186,7 @@ class _AppStatusToastViewState extends State<_AppStatusToastView>
 
     final panel = ConstrainedBox(
       key: const ValueKey<String>('app-status-toast'),
-      constraints: const BoxConstraints(maxWidth: 260),
+      constraints: BoxConstraints(maxWidth: widget.maxWidth),
       child: OptionalLiquidGlassOverlayScope(
         child: OptionalLiquidGlassPanel(
           borderRadius: 18,
