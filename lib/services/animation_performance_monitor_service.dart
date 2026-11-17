@@ -19,10 +19,10 @@ class LoadPressureEvaluation {
     required this.isHighPressure,
   });
 
-  /// 综合负载压力得分 (0 - 100)
+  /// 综合负载压力得分 (可超过 100，表示设备不堪重负)
   final int scorePercent;
 
-  /// 压力等级描述 (极低、轻度、适中、较高、极高)
+  /// 压力等级描述 (极低、轻度、适中、较高、极高、过载)
   final String levelLabel;
 
   /// 激活的动效负载细项
@@ -80,6 +80,8 @@ LoadPressureEvaluation evaluateLoadPressure({
   required bool screenRadiusEnabled,
   required bool lazyLoadEnabled,
   double? frameBudgetUtilizationPercent,
+  double? logicalWidth,
+  int? physicalPixels,
 }) {
   if (powerSaveModeEnabled) {
     return const LoadPressureEvaluation(
@@ -138,13 +140,40 @@ LoadPressureEvaluation evaluateLoadPressure({
     factors.add('懒加载优化已开启 (削峰填谷)');
   }
 
+  final hasActiveEffect =
+      animationsEnabled ||
+      motionBlurEnabled ||
+      layerBlurEnabled ||
+      liquidGlassEnabled ||
+      screenRadiusEnabled ||
+      !lazyLoadEnabled;
+  final isHighRes = physicalPixels != null && physicalPixels >= 2800000;
+  final isWideScreen = logicalWidth != null && logicalWidth >= 768;
+
+  if (hasActiveEffect) {
+    staticScore += 35;
+    if (physicalPixels != null) {
+      if (physicalPixels >= 4500000) {
+        staticScore += 16;
+        factors.add('高分屏像素填充负载 (+16%)');
+      } else if (isHighRes) {
+        staticScore += 8;
+        factors.add('较高分辨率屏幕 (+8%)');
+      }
+    }
+    if (isWideScreen) {
+      staticScore += 18;
+      factors.add('宽屏双栏并行渲染 (+18%)');
+    }
+  }
+
   // 结合实测帧预算占用率微调压力指数
   double combinedScore = staticScore.toDouble();
   if (frameBudgetUtilizationPercent != null &&
       frameBudgetUtilizationPercent > 0) {
     combinedScore = staticScore * 0.75 + frameBudgetUtilizationPercent * 0.25;
   }
-  final clampedScore = combinedScore.round().clamp(6, 100);
+  final clampedScore = combinedScore.round().clamp(6, 999);
 
   final String levelLabel;
   final bool isHighPressure;
@@ -166,10 +195,27 @@ LoadPressureEvaluation evaluateLoadPressure({
     levelLabel = '较高';
     isHighPressure = true;
     cautionDesc = '已开启较多高负载特效（如 Liquid Glass、模糊效果等）。在高分屏或 120Hz 刷新率下可能导致 CPU/GPU 负载过重出现掉帧与发热，中低端设备建议选用「平衡」预设。';
-  } else {
+  } else if (clampedScore <= 100) {
     levelLabel = '极高';
     isHighPressure = true;
     cautionDesc = '多项重度动效与渲染特效同时处于开启状态，系统负载与图层混合处于满载边缘，中低端机型极易出现明显卡顿、发热与掉帧。强烈建议关闭部分高耗特效或切换至「性能」预设。';
+  } else {
+    levelLabel = '过载';
+    isHighPressure = true;
+    cautionDesc = '当前特效负载已超出常规渲染预算上限（>100%），设备处于不堪重负状态，大屏或高刷设备上极易出现明显掉帧、卡顿与发热。强烈建议关闭 Liquid Glass 或部分模糊特效。';
+  }
+
+  final String deviceNote;
+  if (!hasActiveEffect) {
+    deviceNote = '';
+  } else if (isWideScreen && isHighRes) {
+    deviceNote = '\n\n平板/宽屏提示：当前为高分屏且处于宽屏双栏布局，单帧需同时渲染两列板块与更多像素，因此即使保持默认设置，基础渲染压力也会明显高于手机。';
+  } else if (isWideScreen) {
+    deviceNote = '\n\n宽屏提示：当前处于宽屏双栏布局，单帧需同时渲染两列板块，因此基础渲染压力会高于单列手机。';
+  } else if (isHighRes) {
+    deviceNote = '\n\n高分屏提示：当前屏幕分辨率较高，单帧像素填充与合成开销更大，因此渲染压力会高于常规分辨率设备。';
+  } else {
+    deviceNote = '';
   }
 
   return LoadPressureEvaluation(
@@ -177,7 +223,7 @@ LoadPressureEvaluation evaluateLoadPressure({
     levelLabel: levelLabel,
     factors: factors,
     cautionTitle: '开启较多特效可能会导致卡顿',
-    cautionDescription: cautionDesc,
+    cautionDescription: '$cautionDesc$deviceNote',
     isHighPressure: isHighPressure,
   );
 }
@@ -467,6 +513,13 @@ class AnimationPerformanceMonitorService {
   static LoadPressureEvaluation evaluateCurrentPressure() {
     final liquidGlassConfig = LiquidGlassEffectService.configuration;
     final powerSave = PowerSaveModeService.isEnabled;
+    final view = PlatformDispatcher.instance.views.firstOrNull;
+    final double? logicalWidth = view != null && view.devicePixelRatio > 0
+        ? view.physicalSize.width / view.devicePixelRatio
+        : null;
+    final int? physicalPixels = view != null
+        ? (view.physicalSize.width * view.physicalSize.height).round()
+        : null;
 
     return evaluateLoadPressure(
       powerSaveModeEnabled: powerSave,
@@ -481,6 +534,8 @@ class AnimationPerformanceMonitorService {
       lazyLoadEnabled: _lazyLoadEnabled,
       frameBudgetUtilizationPercent:
           metricsListenable.value.frameBudgetUtilization,
+      logicalWidth: logicalWidth,
+      physicalPixels: physicalPixels,
     );
   }
 
