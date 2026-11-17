@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../services/lan_sync_pairing.dart';
 import '../services/lan_sync_service.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/page_transitions.dart';
 
 /// 手动同步目标通道：服务器同步或局域网同步。
 enum ManualSyncTarget { server, lan }
@@ -153,7 +154,27 @@ Future<ManualSyncSelection?> showManualSyncOptionsDialog(
   required bool initialSyncFinance,
   bool isOfflineMode = false,
   int lanPeerCount = 0,
+  GlobalKey? sourceKey,
 }) {
+  if (sourceKey != null) {
+    return PageTransitions.showDialogFromRect<ManualSyncSelection>(
+      context: context,
+      sourceKey: sourceKey,
+      placeholderIcon: Icons.cloud_sync_rounded,
+      sourceBorderRadius: const BorderRadius.all(Radius.circular(20)),
+      targetBorderRadius: const BorderRadius.all(Radius.circular(28)),
+      builder: (dialogContext) => ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: _ManualSyncOptionsContent(
+          initialSyncFinance: initialSyncFinance,
+          isBottomSheet: false,
+          isOfflineMode: isOfflineMode,
+          lanPeerCount: lanPeerCount,
+        ),
+      ),
+    );
+  }
+
   final isCompact = MediaQuery.sizeOf(context).width < 600;
   if (isCompact) {
     return showAppModalBottomSheet<ManualSyncSelection>(

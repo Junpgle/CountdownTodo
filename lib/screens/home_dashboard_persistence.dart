@@ -752,6 +752,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
       initialSyncFinance: initialSyncFinance,
       isOfflineMode: isOfflineMode,
       lanPeerCount: LanSyncService.instance.devices.length,
+      sourceKey: _syncButtonKey,
     );
     if (selection == null || !selection.hasAnySelected || !mounted) return;
 
