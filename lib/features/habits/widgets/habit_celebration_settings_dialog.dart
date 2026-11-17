@@ -2,19 +2,37 @@ import 'package:flutter/material.dart';
 
 import '../../../utils/app_dialogs.dart';
 import '../services/habit_celebration_service.dart';
+import '../services/habit_freeze_service.dart';
 import 'habit_checkin_button.dart';
 
-/// 习惯打卡仪式感与偏好设置对话框。
+/// 习惯中心设置对话框（收录免扣卡自动守护与打卡仪式感设置）。
 class HabitCelebrationSettingsDialog extends StatefulWidget {
-  const HabitCelebrationSettingsDialog({super.key});
+  final bool initialAutoProtectEnabled;
+  final VoidCallback? onOpenSleepLogMigration;
 
-  /// 打开打卡设置对话框。
-  static Future<void> show(BuildContext context) async {
-    await HabitCelebrationService.ensureInitialized();
+  const HabitCelebrationSettingsDialog({
+    super.key,
+    this.initialAutoProtectEnabled = true,
+    this.onOpenSleepLogMigration,
+  });
+
+  /// 打开习惯中心设置对话框。
+  static Future<void> show(
+    BuildContext context, {
+    VoidCallback? onOpenSleepLogMigration,
+  }) async {
+    final results = await Future.wait<dynamic>([
+      HabitCelebrationService.ensureInitialized(),
+      HabitFreezeService.isAutoProtectEnabled(),
+    ]);
+    final autoProtectEnabled = results[1] as bool;
     if (!context.mounted) return;
     await showAppDialog<void>(
       context: context,
-      builder: (_) => const HabitCelebrationSettingsDialog(),
+      builder: (_) => HabitCelebrationSettingsDialog(
+        initialAutoProtectEnabled: autoProtectEnabled,
+        onOpenSleepLogMigration: onOpenSleepLogMigration,
+      ),
     );
   }
 
@@ -25,6 +43,7 @@ class HabitCelebrationSettingsDialog extends StatefulWidget {
 
 class _HabitCelebrationSettingsDialogState
     extends State<HabitCelebrationSettingsDialog> {
+  late bool _autoProtectEnabled;
   late bool _holdToCheckin;
   late bool _hapticsEnabled;
   late bool _celebrationEnabled;
@@ -33,6 +52,7 @@ class _HabitCelebrationSettingsDialogState
   @override
   void initState() {
     super.initState();
+    _autoProtectEnabled = widget.initialAutoProtectEnabled;
     _holdToCheckin = HabitCelebrationService.isHoldToCheckinEnabled;
     _hapticsEnabled = HabitCelebrationService.isHapticsEnabled;
     _celebrationEnabled = HabitCelebrationService.isCelebrationEnabled;
@@ -44,11 +64,11 @@ class _HabitCelebrationSettingsDialogState
     final colorScheme = theme.colorScheme;
 
     return AlertDialog(
-      title: const Row(
+      title: Row(
         children: [
-          Icon(Icons.auto_awesome_rounded, color: Color(0xFFFFB300)),
-          SizedBox(width: 8),
-          Text('打卡仪式感设置'),
+          Icon(Icons.settings_rounded, color: colorScheme.primary),
+          const SizedBox(width: 8),
+          const Text('习惯中心设置'),
         ],
       ),
       content: SingleChildScrollView(
@@ -56,6 +76,87 @@ class _HabitCelebrationSettingsDialogState
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.shield_outlined,
+                  size: 18,
+                  color: colorScheme.primary,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '免扣卡守护',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: colorScheme.primary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('自动使用免扣卡'),
+              subtitle: const Text('昨日漏打卡且有可用免扣卡时，次日自动使用免扣卡守住连续记录；关闭后仅可手动补用。'),
+              value: _autoProtectEnabled,
+              onChanged: (val) async {
+                setState(() => _autoProtectEnabled = val);
+                await HabitFreezeService.setAutoProtectEnabled(val);
+              },
+            ),
+            if (widget.onOpenSleepLogMigration != null) ...[
+              const Divider(height: 24),
+              Row(
+                children: [
+                  Icon(
+                    Icons.bedtime_outlined,
+                    size: 18,
+                    color: colorScheme.primary,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    '数据迁移',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('从时间日志迁移睡眠'),
+                subtitle: const Text('根据近期睡眠记录生成早睡和早起习惯建议。'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  widget.onOpenSleepLogMigration?.call();
+                },
+              ),
+            ],
+            const Divider(height: 24),
+            const Row(
+              children: [
+                Icon(
+                  Icons.auto_awesome_rounded,
+                  size: 18,
+                  color: Color(0xFFFFB300),
+                ),
+                SizedBox(width: 6),
+                Text(
+                  '打卡仪式感设置',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFFFFB300),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('长按蓄力打卡'),

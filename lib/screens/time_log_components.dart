@@ -2949,6 +2949,7 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
           ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 220),
             child: ListView.separated(
+              padding: EdgeInsets.zero,
               shrinkWrap: true,
               findItemIndexCallback: (Key key) {
                 if (key is ValueKey<String>) {

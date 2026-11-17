@@ -127,7 +127,7 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
     if (sessionId != null && sessionId.isNotEmpty) {
       await ChatStorageService.setActiveSessionId(sessionId);
       if (!mounted) return;
-      await _openAiAssistantFromAppBar();
+      await _openAiAssistantFromAppBar(initialSessionId: sessionId);
       return;
     }
 
@@ -144,6 +144,7 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
   Future<void> _openAiAssistantFromAppBar({
     GlobalKey? sourceKey,
     String? initialMessage,
+    String? initialSessionId,
     bool sendInitialMessage = true,
     ChatUsageSummary? initialVoiceUsageSummary,
   }) async {
@@ -153,6 +154,7 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
       await todoState.openAiAssistant(
         sourceKey: transitionSourceKey,
         initialMessage: initialMessage,
+        initialSessionId: initialSessionId,
         sendInitialMessage: sendInitialMessage,
         initialVoiceUsageSummary: initialVoiceUsageSummary,
       );
@@ -160,47 +162,40 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
     }
 
     try {
-      final results = await Future.wait<dynamic>([
-        CourseService.getAllCourses(widget.username),
-        StorageService.getTimeLogs(widget.username),
-        PomodoroService.getRecords(),
-        ApiService.fetchTeams(),
-      ]);
-      final courses = (results[0] as List<CourseItem>)
-          .where((course) => !course.isDeleted)
-          .toList();
-      final timeLogs = (results[1] as List<TimeLogItem>)
-          .where((log) => !log.isDeleted)
-          .toList();
-      final pomodoroRecords = (results[2] as List<PomodoroRecord>)
-          .where((record) => !record.isDeleted)
-          .toList();
-      final teams = (results[3] as List)
-          .whereType<Map>()
-          .map((t) => Team.fromJson(Map<String, dynamic>.from(t)))
-          .toList();
-      final categoryReminderDefaults =
-          await StorageService.getCategoryReminderMinutes(widget.username);
-
       if (!mounted) return;
       await AiTodoChatLauncher.open(
         context,
         username: widget.username,
         sourceKey: transitionSourceKey,
         initialMessage: initialMessage,
+        initialSessionId: initialSessionId,
         sendInitialMessage: sendInitialMessage,
         initialVoiceUsageSummary: initialVoiceUsageSummary,
         todos: _todos
             .where((t) => !t.isDone && !t.isDeleted && !t.isSkipped)
             .toList(),
         todoGroups: _todoGroups,
-        courses: courses,
-        timeLogs: timeLogs,
-        pomodoroRecords: pomodoroRecords,
         conflicts: _latestSyncConflicts,
-        teams: teams,
         fixedSchedules: _fixedSchedules,
-        categoryReminderDefaults: categoryReminderDefaults,
+        loadCourses: () async {
+          final list = await CourseService.getAllCourses(widget.username);
+          return list.where((course) => !course.isDeleted).toList();
+        },
+        loadTimeLogs: () async {
+          final list = await StorageService.getTimeLogs(widget.username);
+          return list.where((log) => !log.isDeleted).toList();
+        },
+        loadPomodoroRecords: () async {
+          final list = await PomodoroService.getRecords();
+          return list.where((record) => !record.isDeleted).toList();
+        },
+        loadTeams: () async {
+          final raw = await ApiService.fetchTeams();
+          return raw
+              .whereType<Map>()
+              .map((t) => Team.fromJson(Map<String, dynamic>.from(t)))
+              .toList();
+        },
         onTodoGroupsChanged: (groups) {
           unawaited(_handleAiTodoGroupsChanged(groups));
         },
@@ -278,6 +273,169 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
     } catch (error) {
       debugPrint('AI todo widget refresh failed after save: $error');
     }
+  }
+
+  Future<void> _syncDailyAiSuggestion({
+    bool forceRefresh = false,
+    bool allowWhenDisabled = false,
+  }) async {
+    final enabled = await DailyAiSuggestionService.isEnabled(widget.username);
+    if (!mounted) return;
+    final cached = await DailyAiSuggestionService.loadCachedSuggestion(
+      widget.username,
+    );
+    if (!mounted) return;
+
+    if (enabled || allowWhenDisabled) {
+      if (cached != null && !forceRefresh) {
+        _dailyAiSuggestionNotifier.value = DailyAiSuggestionSnapshot(
+          enabled: enabled,
+          suggestion: cached,
+        );
+      } else {
+        _dailyAiSuggestionNotifier.value = DailyAiSuggestionSnapshot(
+          enabled: enabled,
+          isLoading: true,
+          suggestion: cached,
+        );
+      }
+    }
+
+    final snapshot = await DailyAiSuggestionService.ensureTodaySuggestion(
+      username: widget.username,
+      todos: _todos,
+      countdowns: _countdowns,
+      planBlocks: _planBlocks,
+      fixedSchedules: _fixedSchedules,
+      courses:
+          (_dashboardCourseData['courses'] as List?)
+              ?.whereType<CourseItem>()
+              .toList() ??
+          const [],
+      loadTodayPomodoroRecords: PomodoroService.getTodayRecords,
+      loadYesterdayPomodoroRecords: PomodoroService.getYesterdayRecords,
+      loadTodayTimeLogs: () async {
+        final list = await StorageService.getTimeLogs(widget.username);
+        return list.where((log) => !log.isDeleted).toList();
+      },
+      loadHabitSummary: DailyAiSuggestionService.loadHabitSummaryBlock,
+      loadChallengeSummary: DailyAiSuggestionService.loadChallengeSummaryBlock,
+      forceRefresh: forceRefresh,
+      allowWhenDisabled: allowWhenDisabled,
+    );
+    if (!mounted) return;
+    _dailyAiSuggestionNotifier.value = snapshot;
+  }
+
+  void _onDailyAiSuggestionRevisionChanged() {
+    if (!mounted) return;
+    unawaited(_syncDailyAiSuggestion());
+  }
+
+  Widget _buildDailyAiSuggestionSection(bool isLight) {
+    return ValueListenableBuilder<DailyAiSuggestionSnapshot>(
+      valueListenable: _dailyAiSuggestionNotifier,
+      builder: (context, snapshot, _) {
+        return AnimatedBuilder(
+          animation: _todosNotifier,
+          builder: (context, _) {
+            return DailyAiSuggestionCard(
+              snapshot: snapshot,
+              isLight: isLight,
+              todos: _todos,
+              onRefresh: () => unawaited(
+                _syncDailyAiSuggestion(
+                  forceRefresh: true,
+                  allowWhenDisabled: true,
+                ),
+              ),
+              onToggleExpanded: (expanded) => unawaited(
+                DailyAiSuggestionService.setExpanded(widget.username, expanded),
+              ),
+              onDismiss: () async {
+                await Navigator.push(
+                  context,
+                  PageTransitions.material(
+                    builder: (_) => const AiAssistantSettingsPage(
+                      initialTarget:
+                          AiAssistantSettingsPage.dailyAiSuggestionTarget,
+                    ),
+                  ),
+                );
+                if (mounted) {
+                  unawaited(_syncDailyAiSuggestion());
+                }
+              },
+              onOpenModelConfig: () async {
+                await Navigator.push(
+                  context,
+                  PageTransitions.material(
+                    builder: (_) => const LLMConfigPage(),
+                  ),
+                );
+                if (mounted) {
+                  unawaited(_syncDailyAiSuggestion());
+                }
+              },
+              onOpenTodo: _openTodoEditor,
+              onOpenAiChat: (prompt) {
+                unawaited(
+                  _openAiAssistantFromAppBar(
+                    initialMessage: prompt,
+                    sendInitialMessage: true,
+                  ),
+                );
+              },
+              onAskAiOnce: () async {
+                await DailyAiSuggestionService.setManualSectionKept(
+                  widget.username,
+                  true,
+                );
+                if (!mounted) return;
+                unawaited(
+                  _syncDailyAiSuggestion(
+                    forceRefresh: true,
+                    allowWhenDisabled: true,
+                  ),
+                );
+              },
+              onEnableDaily: () async {
+                await DailyAiSuggestionService.setEnabled(
+                  widget.username,
+                  true,
+                );
+                if (!mounted) return;
+                unawaited(_syncDailyAiSuggestion(forceRefresh: true));
+              },
+              onKeepManualSection: () async {
+                await DailyAiSuggestionService.setManualSectionKept(
+                  widget.username,
+                  true,
+                );
+                if (!mounted) return;
+                unawaited(_syncDailyAiSuggestion());
+              },
+              onDeclinePrompt: () async {
+                await DailyAiSuggestionService.dismissFirstOpenPrompt(
+                  widget.username,
+                );
+                if (!mounted) return;
+                _dailyAiSuggestionNotifier.value =
+                    const DailyAiSuggestionSnapshot(enabled: false);
+                AppSnackBars.showSnackBar(
+                  context,
+                  const SnackBar(
+                    content: Text(
+                      '已隐藏每日 AI 建议引导；之后可在「设置 → AI 助手设置 → 每日 AI 建议」中随时开启',
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
   }
 
   // === 初始化与生命周期 ===

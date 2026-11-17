@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../update_service.dart';
 import '../utils/page_transitions.dart';
+import '../widgets/changelog_bullet_item.dart';
 import 'help/feature_explorer_screen.dart';
 import 'home_dashboard.dart';
 import 'login_screen.dart';
@@ -313,47 +314,6 @@ class _WhatsNewScreenState extends State<WhatsNewScreen> {
   }
 
   Widget _buildBulletItem(String item, ColorScheme scheme) {
-    Color dotColor = scheme.onSurface.withValues(alpha: 0.4);
-    if (item.startsWith('【新增】')) {
-      dotColor = Colors.green;
-    } else if (item.startsWith('【优化】')) {
-      dotColor = scheme.primary;
-    } else if (item.startsWith('【修复】')) {
-      dotColor = Colors.orange;
-    } else if (item.startsWith('【重构】')) {
-      dotColor = Colors.purple;
-    } else if (item.startsWith('⚠️')) {
-      dotColor = Colors.red;
-    }
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 7),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 5),
-            child: Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(
-                color: dotColor,
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              item,
-              style: TextStyle(
-                fontSize: 13.5,
-                color: scheme.onSurface.withValues(alpha: 0.75),
-                height: 1.45,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    return ChangelogBulletItem(item: item);
   }
 }

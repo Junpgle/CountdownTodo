@@ -1,3 +1,11 @@
+allprojects {
+    repositories {
+        maven { url = uri("https://maven.aliyun.com/repository/google") }
+        google()
+        mavenCentral()
+    }
+}
+
 // 1. 先配置 Kotlin 和 Android 编译选项
 subprojects {
     configurations.configureEach {

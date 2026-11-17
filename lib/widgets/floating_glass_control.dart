@@ -3062,36 +3062,8 @@ class _FloatingGlassControlFallback extends StatelessWidget {
       height: height,
       margin: margin,
       decoration: decoration,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          // A right- or left-positioned control can have unbounded width. An
-          // expanding Stack turns that infinity into a tight child constraint,
-          // which fails during layout. Let the child choose its width there;
-          // retain the existing fill behavior when both axes are bounded.
-          final fit = height != null && constraints.hasBoundedWidth
-              ? StackFit.expand
-              : StackFit.passthrough;
-          return Stack(
-            fit: fit,
-            clipBehavior: allowChildOverflow ? Clip.none : Clip.hardEdge,
-            children: [
-              // Avoid BackdropFilter in the Windows fallback path; its
-              // offscreen pass can expand across the transparent desktop window.
-              if (!AppPlatform.isWindows)
-                Positioned.fill(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(borderRadius),
-                    child: BackdropFilter.grouped(
-                      filter: AppImageFilters.blur16,
-                      child: const SizedBox.expand(),
-                    ),
-                  ),
-                ),
-              child,
-            ],
-          );
-        },
-      ),
+      clipBehavior: allowChildOverflow ? Clip.none : Clip.hardEdge,
+      child: child,
     );
   }
 }

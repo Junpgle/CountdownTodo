@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../../services/api_service.dart';
+import '../../../services/lan_sync_service.dart';
+import '../../../services/pomodoro_sync_service.dart';
+import '../../../services/storage/app_settings_storage.dart';
 import '../../../storage_service.dart';
 import '../../../utils/app_platform.dart';
 import '../../../utils/settings_navigation.dart';
@@ -28,6 +31,7 @@ class SyncSettingsSection extends StatefulWidget {
 class _SyncSettingsSectionState extends State<SyncSettingsSection> {
   final Map<String, GlobalKey> _itemKeys = {
     'sync_interval': GlobalKey(),
+    'offline_mode': GlobalKey(),
     'sync_health': GlobalKey(),
     'conflict_detection': GlobalKey(),
     'server_choice': GlobalKey(),
@@ -36,6 +40,7 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
 
   bool _isLoading = true;
   int _syncInterval = 0;
+  bool _offlineModeEnabled = false;
   bool _conflictDetectionEnabled = false;
   String _serverChoice = ApiService.serverChoiceAliyunDirect;
   int _llmRetryCount = 3;
@@ -43,11 +48,29 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
   @override
   void initState() {
     super.initState();
+    AppSettingsStorage.offlineModeNotifier.addListener(_onOfflineModeChanged);
     _loadSettings();
+  }
+
+  @override
+  void dispose() {
+    AppSettingsStorage.offlineModeNotifier.removeListener(
+      _onOfflineModeChanged,
+    );
+    super.dispose();
+  }
+
+  void _onOfflineModeChanged() {
+    if (!mounted) return;
+    final latest = AppSettingsStorage.offlineModeNotifier.value;
+    if (_offlineModeEnabled != latest) {
+      setState(() => _offlineModeEnabled = latest);
+    }
   }
 
   Future<void> _loadSettings() async {
     int interval = await StorageService.getSyncInterval();
+    bool offlineMode = await AppSettingsStorage.isOfflineModeEnabled();
     bool conflict = await StorageService.getConflictDetectionEnabled();
     String server = await StorageService.getServerChoice();
     int llmRetryCount = await StorageService.getLLMRetryCount();
@@ -55,6 +78,7 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
     if (mounted) {
       setState(() {
         _syncInterval = interval;
+        _offlineModeEnabled = offlineMode;
         _conflictDetectionEnabled = conflict;
         _serverChoice = server;
         _llmRetryCount = llmRetryCount;
@@ -89,6 +113,68 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
     if (!enabled && widget.username.isNotEmpty && widget.username != '加载中...') {
       await StorageService.clearLocalTodoScheduleConflicts(widget.username);
     }
+  }
+
+  Future<void> _setOfflineModeEnabled(bool enabled) async {
+    if (enabled) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          final colorScheme = Theme.of(dialogContext).colorScheme;
+          return AlertDialog(
+            icon: Icon(
+              Icons.cloud_off_outlined,
+              color: colorScheme.error,
+              size: 28,
+            ),
+            title: const Text('确认开启离线模式？'),
+            content: const SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '开启后将立即生效，具体影响如下：',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  SizedBox(height: 10),
+                  Text('• 将关闭/断开：', style: TextStyle(fontWeight: FontWeight.w600)),
+                  Text('  - 主动断开 WebSocket 实时同步通道'),
+                  Text('  - 暂停待办、习惯、专注、课程表、计划、记账等数据的云端服务器同步'),
+                  Text('  - 禁用手动同步中的云端服务器同步入口'),
+                  SizedBox(height: 8),
+                  Text('• 以下功能将无法使用：', style: TextStyle(fontWeight: FontWeight.w600)),
+                  Text('  - 跨公网的多设备实时同步与云端数据备份/恢复'),
+                  Text('  - 团队协作、共享空间及在线番茄钟多端实时状态同步'),
+                  SizedBox(height: 8),
+                  Text('• 仍保留的功能：', style: TextStyle(fontWeight: FontWeight.w600)),
+                  Text('  - 账号登录态、版本更新检查与系统公告'),
+                  Text('  - 同一局域网下的设备互传与局域网同步（遵循上方自动同步频率）'),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('确认开启'),
+              ),
+            ],
+          );
+        },
+      );
+      if (confirmed != true || !mounted) return;
+    }
+
+    setState(() => _offlineModeEnabled = enabled);
+    await AppSettingsStorage.setOfflineModeEnabled(enabled);
+    if (enabled) {
+      await PomodoroSyncService.instance.disconnectForOfflineMode();
+    }
+    await LanSyncService.instance.onOfflineModeChanged(enabled);
   }
 
   @override
@@ -164,6 +250,19 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
                 ),
               ],
             ),
+          ),
+        ),
+        const AppSettingsDivider(),
+        KeyedSubtree(
+          key: _itemKeys['offline_mode'],
+          child: _buildToggleCard(
+            title: '离线模式（不走服务器同步）',
+            subtitle: '保留登录、更新检查与公告；其余同步仅走本地与局域网，并遵循上方自动同步频率',
+            icon: Icons.cloud_off_outlined,
+            value: _offlineModeEnabled,
+            onChanged: (val) {
+              _setOfflineModeEnabled(val ?? false);
+            },
           ),
         ),
         const AppSettingsDivider(),

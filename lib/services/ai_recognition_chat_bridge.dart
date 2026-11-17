@@ -18,6 +18,30 @@ class AiRecognitionHandle {
 /// can be opened from the home page without coupling the UI to the recognizer.
 class AiRecognitionChatBridge {
   static final ValueNotifier<int> changes = ValueNotifier<int>(0);
+  static final ValueNotifier<int> streamChanges = ValueNotifier<int>(0);
+  static final Map<String, String> _liveContentByMessageId = {};
+
+  static String? liveContentFor(String messageId) =>
+      _liveContentByMessageId[messageId];
+
+  static String formatModelStream({
+    String content = '',
+    String reasoningContent = '',
+  }) {
+    final trimmedReasoning = reasoningContent.trim();
+    final trimmedContent = content.trim();
+    if (trimmedReasoning.isEmpty) return trimmedContent;
+    if (trimmedContent.isEmpty) return '**思考过程**\n$trimmedReasoning';
+    return '**思考过程**\n$trimmedReasoning\n\n---\n\n**识别输出**\n$trimmedContent';
+  }
+
+  static void updateStream(AiRecognitionHandle handle, String content) {
+    final trimmed = content.trim();
+    if (trimmed.isEmpty) return;
+    if (_liveContentByMessageId[handle.messageId] == trimmed) return;
+    _liveContentByMessageId[handle.messageId] = trimmed;
+    streamChanges.value++;
+  }
 
   static Future<AiRecognitionHandle> startText(
     String text, {
@@ -86,6 +110,8 @@ class AiRecognitionChatBridge {
   }
 
   static Future<void> markProcessing(AiRecognitionHandle handle) async {
+    _liveContentByMessageId.remove(handle.messageId);
+    streamChanges.value++;
     try {
       final existing = await _findMessage(handle);
       final info = existing?.recognition;
@@ -93,6 +119,7 @@ class AiRecognitionChatBridge {
       await ChatStorageService.updateMessage(
         existing.copyWith(
           content: 'AI识别中…',
+          rawContent: '',
           clearUsageSummary: true,
           clearFinanceDrafts: true,
           recognition: info.copyWith(
@@ -116,7 +143,13 @@ class AiRecognitionChatBridge {
     required List<Map<String, dynamic>> todoResults,
     List<FinanceEntryDraft> financeDrafts = const [],
     ChatUsageSummary? usageSummary,
+    String? rawOutput,
   }) async {
+    final streamedOutput = _liveContentByMessageId.remove(handle.messageId);
+    final preservedOutput = rawOutput?.trim().isNotEmpty == true
+        ? rawOutput!.trim()
+        : (streamedOutput ?? '');
+    streamChanges.value++;
     try {
       final existing = await _findMessage(handle);
       final info = existing?.recognition;
@@ -133,6 +166,9 @@ class AiRecognitionChatBridge {
       await ChatStorageService.updateMessage(
         existing.copyWith(
           content: content,
+          rawContent: preservedOutput.isNotEmpty
+              ? preservedOutput
+              : existing.rawContent,
           financeDrafts: financeDrafts.isEmpty ? null : financeDrafts,
           usageSummary: usageSummary,
           clearUsageSummary: usageSummary == null,
@@ -153,7 +189,16 @@ class AiRecognitionChatBridge {
     }
   }
 
-  static Future<void> fail(AiRecognitionHandle handle, Object error) async {
+  static Future<void> fail(
+    AiRecognitionHandle handle,
+    Object error, {
+    String? rawOutput,
+  }) async {
+    final streamedOutput = _liveContentByMessageId.remove(handle.messageId);
+    final preservedOutput = rawOutput?.trim().isNotEmpty == true
+        ? rawOutput!.trim()
+        : (streamedOutput ?? '');
+    streamChanges.value++;
     try {
       final existing = await _findMessage(handle);
       final info = existing?.recognition;
@@ -162,6 +207,9 @@ class AiRecognitionChatBridge {
       await ChatStorageService.updateMessage(
         existing.copyWith(
           content: '识别失败：${message.isEmpty ? '未知错误' : message}',
+          rawContent: preservedOutput.isNotEmpty
+              ? preservedOutput
+              : existing.rawContent,
           clearUsageSummary: true,
           clearFinanceDrafts: true,
           recognition: info.copyWith(

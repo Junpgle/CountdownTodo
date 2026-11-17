@@ -486,7 +486,7 @@ class _AnimationPerformanceFloatingWindowState
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
-                value: pressure.scorePercent / 100.0,
+                value: (pressure.scorePercent / 100.0).clamp(0.0, 1.0),
                 minHeight: 5,
                 backgroundColor: colorScheme.surfaceContainerHighest,
                 color: pressure.getLevelColor(colorScheme),

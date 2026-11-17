@@ -6,6 +6,18 @@ mixin _TodoChatQueries on _TodoChatScreenStateBase {
     loadAppData: _loadQueryAppData,
     loadScreenTimeData: _loadQueryScreenTimeData,
     loadHabitData: _loadQueryHabitData,
+    loadDeviceContext: ({required includeLocation}) =>
+        AiDeviceContextService.readDeviceContext(
+          includeLocation: includeLocation,
+          requestPermission: includeLocation && mounted
+              ? () async {
+                  final result = await PermissionRequestCoordinator(
+                    context: context,
+                  ).request(AppPermissionKind.location);
+                  return result.status;
+                }
+              : null,
+        ),
   );
 
   Future<List<Map<String, dynamic>>> _loadQueryAppData(String domain) async {
@@ -39,7 +51,7 @@ mixin _TodoChatQueries on _TodoChatScreenStateBase {
         ];
       case 'courses':
         rows = [
-          for (final item in widget.courses)
+          for (final item in _courses)
             {
               ...item.toJson(),
               'start_time': '${item.date}T${item.formattedStartTime}:00',
@@ -96,7 +108,7 @@ mixin _TodoChatQueries on _TodoChatScreenStateBase {
         ];
       case 'teams':
         rows = [
-          for (final item in widget.teams)
+          for (final item in _teams)
             {
               'id': item.uuid,
               'name': item.name,

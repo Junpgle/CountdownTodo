@@ -19,7 +19,7 @@ class _HomeLayoutSettingsPageState extends State<HomeLayoutSettingsPage> {
     'countdowns': '重要日 / 倒数日',
     'agenda': '今日安排',
     'todos': '待办',
-    'timeline': '时间轴',
+    'timeline': '个人时间轴',
     'pomodoro': '今日专注',
     'finance': '记账',
     'habits': '今日习惯',
@@ -261,6 +261,8 @@ class _HomeLayoutSettingsPageState extends State<HomeLayoutSettingsPage> {
             else
               ReorderableListView.builder(
                 key: ValueKey('layout-list-$target'),
+                padding: EdgeInsets.zero,
+                primary: false,
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 buildDefaultDragHandles: false,
@@ -275,7 +277,10 @@ class _HomeLayoutSettingsPageState extends State<HomeLayoutSettingsPage> {
                     type: MaterialType.transparency,
                     child: ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: Icon(_icons[key], color: colorScheme.primary),
+                      leading: Icon(
+                        _icons[key] ?? Icons.widgets_outlined,
+                        color: colorScheme.primary,
+                      ),
                       title: Text(
                         _labels[key] ?? key,
                         style: isVisible
@@ -303,6 +308,7 @@ class _HomeLayoutSettingsPageState extends State<HomeLayoutSettingsPage> {
                             button: true,
                             label: '移到${_groupLabel(otherTarget)}',
                             child: IconButton(
+                              tooltip: '移到${_groupLabel(otherTarget)}',
                               onPressed: () =>
                                   _moveTo(target, otherTarget, key),
                               icon: Icon(
@@ -430,7 +436,7 @@ class _HomeLayoutSettingsPageState extends State<HomeLayoutSettingsPage> {
                         children: [
                           SwitchListTile(
                             title: const Text('今日安排：课程与日程'),
-                            subtitle: const Text('课程、固定日程、手机日历和带时间的待办'),
+                            subtitle: const Text('课程、固定日程、系统日历和带时间的待办'),
                             value: _visibility['agendaSchedules'] ?? true,
                             onChanged: (value) =>
                                 _setVisibility('agendaSchedules', value),

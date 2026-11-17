@@ -5,6 +5,7 @@ import 'dart:async';
 import '../services/api_service.dart';
 import '../services/pomodoro_sync_service.dart';
 import '../services/power_save_mode_service.dart';
+import '../services/storage/app_settings_storage.dart';
 import '../utils/android_energy_policy.dart';
 import '../utils/app_image_filters.dart';
 import 'platform_backdrop_filter.dart';
@@ -57,6 +58,8 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
       _onWsStateChanged,
     );
     PowerSaveModeService.enabledListenable.addListener(_onPowerSaveModeChanged);
+    AppSettingsStorage.offlineModeNotifier.addListener(_onOfflineModeChanged);
+    unawaited(AppSettingsStorage.isOfflineModeEnabled());
   }
 
   @override
@@ -68,6 +71,9 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
     _wsConnSub?.cancel();
     PowerSaveModeService.enabledListenable.removeListener(
       _onPowerSaveModeChanged,
+    );
+    AppSettingsStorage.offlineModeNotifier.removeListener(
+      _onOfflineModeChanged,
     );
     super.dispose();
   }
@@ -114,8 +120,34 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
     _updateStatusProbe(connectionState);
   }
 
+  void _suppressBannerForOfflineMode() {
+    _stopHeartbeat();
+    _showDelayTimer?.cancel();
+    _autoHideTimer?.cancel();
+    _isWaitingToShow = false;
+    if (_status != SyncPathStatus.online || _isExpanded) {
+      setState(() {
+        _status = SyncPathStatus.online;
+        _isExpanded = false;
+      });
+    }
+  }
+
+  void _onOfflineModeChanged() {
+    if (!mounted) return;
+    if (AppSettingsStorage.offlineModeNotifier.value) {
+      _suppressBannerForOfflineMode();
+      return;
+    }
+    final connectionState = PomodoroSyncService.instance.connectionState;
+    _evaluateStatus(connectionState);
+    _updateStatusProbe(connectionState);
+  }
+
   void _updateStatusProbe(SyncConnectionState state) {
-    if (!_canProbeStatus || state == SyncConnectionState.connected) {
+    if (!_canProbeStatus ||
+        AppSettingsStorage.offlineModeNotifier.value ||
+        state == SyncConnectionState.connected) {
       _stopHeartbeat();
       return;
     }
@@ -123,7 +155,11 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
   }
 
   void _startHeartbeat({bool checkImmediately = true}) {
-    if (!_canProbeStatus || _heartbeatTimer?.isActive == true) return;
+    if (!_canProbeStatus ||
+        AppSettingsStorage.offlineModeNotifier.value ||
+        _heartbeatTimer?.isActive == true) {
+      return;
+    }
     if (checkImmediately) unawaited(_checkRealStatus());
     // WebSocket 健康时不再额外轮询 HTTP；仅在断线期间低频区分
     // “无网络”和“服务异常”。
@@ -142,13 +178,19 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
     if (!mounted) return;
     _stopHeartbeat();
     final connectionState = PomodoroSyncService.instance.connectionState;
-    if (_canProbeStatus && connectionState != SyncConnectionState.connected) {
+    if (_canProbeStatus &&
+        !AppSettingsStorage.offlineModeNotifier.value &&
+        connectionState != SyncConnectionState.connected) {
       _startHeartbeat(checkImmediately: false);
     }
   }
 
   Future<void> _checkRealStatus() async {
-    if (!_canProbeStatus || _statusCheckInFlight) return;
+    if (!_canProbeStatus ||
+        AppSettingsStorage.offlineModeNotifier.value ||
+        _statusCheckInFlight) {
+      return;
+    }
     // 先取当前 WS 状态（同步读取，无需 await）
     final wsState = PomodoroSyncService.instance.connectionState;
     if (wsState == SyncConnectionState.connected) {
@@ -161,7 +203,11 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
     try {
       // 🚀 核心逻辑：发起一个轻量级的健康检查
       final isAlive = await ApiService.ping();
-      if (!mounted || !_canProbeStatus) return;
+      if (!mounted ||
+          !_canProbeStatus ||
+          AppSettingsStorage.offlineModeNotifier.value) {
+        return;
+      }
       final latestState = PomodoroSyncService.instance.connectionState;
       if (latestState == SyncConnectionState.connected) {
         _evaluateStatus(latestState);
@@ -175,7 +221,11 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
         updateStatus(SyncPathStatus.serverError, message: "同步服务器响应异常");
       }
     } catch (e) {
-      if (!mounted || !_canProbeStatus) return;
+      if (!mounted ||
+          !_canProbeStatus ||
+          AppSettingsStorage.offlineModeNotifier.value) {
+        return;
+      }
       updateStatus(SyncPathStatus.offline, message: "网络连接已断开，进入离线模式");
     } finally {
       _statusCheckInFlight = false;
@@ -184,6 +234,10 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
 
   /// 🚀 双维度评估：HTTP 可达 + WS 连接状态
   void _evaluateStatus(dynamic wsState) {
+    if (AppSettingsStorage.offlineModeNotifier.value) {
+      _suppressBannerForOfflineMode();
+      return;
+    }
     switch (wsState) {
       case SyncConnectionState.connected:
         updateStatus(SyncPathStatus.online, message: "数据已实时同步");

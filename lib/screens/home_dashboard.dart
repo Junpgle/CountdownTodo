@@ -9,6 +9,7 @@ import 'dart:async';
 import '../widgets/home_dashboard_banner_layout.dart';
 import '../widgets/home_drawer_menu.dart';
 import '../widgets/ai_water_border.dart';
+import '../widgets/manual_sync_dialog.dart';
 
 import 'package:intl/intl.dart';
 
@@ -34,6 +35,7 @@ import '../models/chat_message.dart';
 import '../storage_service.dart';
 import '../update_service.dart';
 import '../services/api_service.dart';
+import '../services/lan_sync_service.dart';
 import '../services/github_resource_service.dart';
 import '../services/background_notification_service.dart';
 import '../services/notification_service.dart';
@@ -70,8 +72,11 @@ import '../widgets/quick_voice_chat_sheet.dart';
 import '../widgets/quick_voice_chat_guide.dart';
 import '../widgets/quick_voice_gesture.dart';
 import 'settings/llm_config_page.dart';
+import 'settings/pages/ai_assistant_settings_page.dart';
 import '../services/ai_recognition_chat_bridge.dart';
 import '../services/chat_storage_service.dart';
+import '../services/daily_ai_suggestion_service.dart';
+import '../widgets/daily_ai_suggestion_card.dart';
 import '../services/recognized_todo_adapter.dart';
 import '../utils/app_platform.dart';
 import '../utils/json_value_parser.dart';
@@ -263,6 +268,8 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   final GlobalKey _homePomodoroActionKey = GlobalKey();
   final GlobalKey _financeCardKey = GlobalKey();
   final GlobalKey _homeAddActionKey = GlobalKey();
+  StreamSubscription<LanSyncResult>? _lanSyncCompletedSub;
+  bool _suppressNextLanToast = false;
   final GlobalKey _courseButtonKey = GlobalKey();
 
   // 🚀 新增：首页引导用的新增 Keys
@@ -275,6 +282,10 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   final ValueNotifier<int> _timelineRevision = ValueNotifier<int>(0);
   final ValueNotifier<int> _pomodoroRevision = ValueNotifier<int>(0);
   final ValueNotifier<int> _habitsRevision = ValueNotifier<int>(0);
+  final ValueNotifier<DailyAiSuggestionSnapshot> _dailyAiSuggestionNotifier =
+      ValueNotifier<DailyAiSuggestionSnapshot>(
+        const DailyAiSuggestionSnapshot(),
+      );
   int _todoDataRevision = 0;
 
   Future<void> _extractColorFromProvider(

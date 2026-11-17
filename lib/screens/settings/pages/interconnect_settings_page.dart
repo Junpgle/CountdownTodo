@@ -12,6 +12,7 @@ import '../calendar_sync_page.dart';
 import '../device_calendar_read_page.dart';
 import '../batch_tag_page.dart';
 import '../../../widgets/floating_glass_control.dart';
+import 'auto_backup_page.dart';
 import 'data_export_page.dart';
 import 'data_import_page.dart';
 import 'mcp_introduction_page.dart';
@@ -43,6 +44,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
     'calendar_read': GlobalKey(),
     'batch_tag': GlobalKey(),
     'recurrence_merge': GlobalKey(),
+    'auto_backup': GlobalKey(),
     'data_export': GlobalKey(),
     'data_import': GlobalKey(),
   };
@@ -160,7 +162,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
   Widget _buildTile({required String targetId, required Widget child}) {
     final bool isHighlighted = _highlightTarget == targetId;
     return Container(
-      key: _itemKeys[targetId],
+      key: _navigationKey(targetId),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 500),
         curve: Curves.easeInOut,
@@ -362,6 +364,19 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
               isEmbedded: widget.isEmbedded,
             ),
             settings: const RouteSettings(name: '合并重复待办'),
+          );
+        },
+      ),
+      _buildFeatureCard(
+        id: 'auto_backup',
+        icon: Icons.backup_outlined,
+        title: '定期自动备份',
+        subtitle: isWeb ? 'Web 端暂不支持静默本地备份' : '定期自动保存本地快照，支持自定义目录与一键恢复',
+        onTap: () {
+          _openSettingsPage(
+            'auto_backup',
+            AutoBackupPage(isEmbedded: widget.isEmbedded),
+            settings: const RouteSettings(name: '定期自动备份'),
           );
         },
       ),

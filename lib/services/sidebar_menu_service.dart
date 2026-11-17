@@ -103,10 +103,16 @@ class SidebarMenuService {
       icon: Icons.auto_awesome_rounded,
       defaultTarget: SidebarMenuTarget.features,
     ),
+    'featureExplorer': SidebarMenuItemDefinition(
+      key: 'featureExplorer',
+      title: '功能百宝箱',
+      icon: Icons.explore_rounded,
+      defaultTarget: SidebarMenuTarget.utilities,
+    ),
     'changelog': SidebarMenuItemDefinition(
       key: 'changelog',
       title: '更新日志',
-      icon: Icons.system_update_rounded,
+      icon: Icons.history_edu_outlined,
       defaultTarget: SidebarMenuTarget.utilities,
     ),
     'update': SidebarMenuItemDefinition(
@@ -129,7 +135,11 @@ class SidebarMenuService {
     'challengeCenter',
   ];
 
-  static const List<String> _defaultUtilities = ['changelog', 'update'];
+  static const List<String> _defaultUtilities = [
+    'featureExplorer',
+    'changelog',
+    'update',
+  ];
 
   static List<String> defaultOrder(SidebarMenuTarget target) {
     return List<String>.from(

@@ -16,6 +16,10 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.content.res.Configuration
 import android.graphics.drawable.Icon
+import android.location.Geocoder
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -69,6 +73,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private val APP_UPDATE_CHANNEL = "com.math_quiz.junpgle.com.math_quiz_app/app_update"
     private val DEVICE_CALENDAR_READ_CHANNEL = "countdown_todo/device_calendar_read"
     private val DEVICE_IDENTITY_CHANNEL = "countdown_todo/device_identity"
+    private val DEVICE_CONTEXT_CHANNEL = "com.math_quiz_app/device_context"
     private val CALENDAR_PERMISSION_REQUEST = 2407
     private val LOCAL_NETWORK_PERMISSION_REQUEST = 2408
     private val CALENDAR_READ_PERMISSION_REQUEST = 2409
@@ -1519,6 +1524,15 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         null
                     )
                 }
+                else -> result.notImplemented()
+            }
+        }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            DEVICE_CONTEXT_CHANNEL
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getLocation" -> readDeviceLocationForAi(result)
                 else -> result.notImplemented()
             }
         }
@@ -3426,4 +3440,142 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     @Suppress("DEPRECATION")
     private fun readApkPackageInfoLegacy(path: String) =
         packageManager.getPackageArchiveInfo(path, 0)
+
+    @Suppress("MissingPermission")
+    private fun readDeviceLocationForAi(result: MethodChannel.Result) {
+        val hasFine = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        val hasCoarse = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!hasFine && !hasCoarse) {
+            result.error("LOCATION_DENIED", "位置权限未授权", null)
+            return
+        }
+
+        val locationManager = getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+        if (locationManager == null) {
+            result.success(null)
+            return
+        }
+
+        val providers = listOfNotNull(
+            if (hasFine && locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER))
+                LocationManager.GPS_PROVIDER else null,
+            if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER))
+                LocationManager.NETWORK_PROVIDER else null,
+            if (locationManager.isProviderEnabled(LocationManager.PASSIVE_PROVIDER))
+                LocationManager.PASSIVE_PROVIDER else null
+        )
+
+        var bestLastKnown: Location? = null
+        for (provider in providers) {
+            val candidate = runCatching { locationManager.getLastKnownLocation(provider) }.getOrNull()
+            if (candidate != null && (bestLastKnown == null || candidate.time > bestLastKnown.time)) {
+                bestLastKnown = candidate
+            }
+        }
+
+        val nowMs = System.currentTimeMillis()
+        if (bestLastKnown != null && nowMs - bestLastKnown.time <= 10 * 60 * 1000L) {
+            deliverLocationWithGeocode(bestLastKnown, result)
+            return
+        }
+
+        val activeProvider = providers.firstOrNull { it != LocationManager.PASSIVE_PROVIDER }
+        if (activeProvider == null) {
+            if (bestLastKnown != null) {
+                deliverLocationWithGeocode(bestLastKnown, result)
+            } else {
+                result.success(null)
+            }
+            return
+        }
+
+        val handler = Handler(Looper.getMainLooper())
+        var completed = false
+        val finish: (Location?) -> Unit = { loc ->
+            if (!completed) {
+                completed = true
+                val resolved = loc ?: bestLastKnown
+                if (resolved != null) {
+                    deliverLocationWithGeocode(resolved, result)
+                } else {
+                    result.success(null)
+                }
+            }
+        }
+
+        val timeoutRunnable = Runnable { finish(null) }
+        handler.postDelayed(timeoutRunnable, 6000L)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            runCatching {
+                locationManager.getCurrentLocation(
+                    activeProvider,
+                    null,
+                    mainExecutor
+                ) { location ->
+                    handler.removeCallbacks(timeoutRunnable)
+                    finish(location)
+                }
+            }.onFailure {
+                handler.removeCallbacks(timeoutRunnable)
+                finish(null)
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            val listener = object : LocationListener {
+                override fun onLocationChanged(location: Location) {
+                    handler.removeCallbacks(timeoutRunnable)
+                    locationManager.removeUpdates(this)
+                    finish(location)
+                }
+                @Deprecated("Deprecated in Java")
+                override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+                override fun onProviderEnabled(provider: String) {}
+                override fun onProviderDisabled(provider: String) {}
+            }
+            runCatching {
+                @Suppress("DEPRECATION")
+                locationManager.requestSingleUpdate(activeProvider, listener, Looper.getMainLooper())
+            }.onFailure {
+                handler.removeCallbacks(timeoutRunnable)
+                finish(null)
+            }
+        }
+    }
+
+    private fun deliverLocationWithGeocode(location: Location, result: MethodChannel.Result) {
+        val payload = HashMap<String, Any?>()
+        payload["latitude"] = location.latitude
+        payload["longitude"] = location.longitude
+        payload["accuracy_meters"] = location.accuracy.toDouble()
+        payload["source"] = location.provider
+        payload["timestamp"] = location.time
+
+        Thread {
+            if (Geocoder.isPresent()) {
+                runCatching {
+                    val geocoder = Geocoder(this, Locale.getDefault())
+                    @Suppress("DEPRECATION")
+                    val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
+                    val addr = addresses?.firstOrNull()
+                    if (addr != null) {
+                        payload["country"] = addr.countryName
+                        payload["region"] = addr.adminArea
+                        payload["city"] = addr.locality ?: addr.subAdminArea
+                        payload["district"] = addr.subLocality
+                        payload["address"] = addr.getAddressLine(0)
+                    }
+                }
+            }
+            Handler(Looper.getMainLooper()).post {
+                result.success(payload)
+            }
+        }.start()
+    }
 }

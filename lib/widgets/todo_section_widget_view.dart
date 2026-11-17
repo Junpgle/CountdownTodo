@@ -2127,34 +2127,6 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
     );
   }
 
-  Future<_AiAssistantContext> _loadAiAssistantContext() async {
-    try {
-      final results = await Future.wait<dynamic>([
-        CourseService.getAllCourses(widget.username),
-        StorageService.getTimeLogs(widget.username),
-        PomodoroService.getRecords(),
-      ]);
-      final courses = (results[0] as List<CourseItem>)
-          .where((course) => !course.isDeleted)
-          .toList();
-      final timeLogs = (results[1] as List<TimeLogItem>)
-          .where((log) => !log.isDeleted)
-          .toList();
-      final pomodoroRecords = (results[2] as List<PomodoroRecord>)
-          .where((record) => !record.isDeleted)
-          .toList();
-      return _AiAssistantContext(
-        courses: courses,
-        timeLogs: timeLogs,
-        pomodoroRecords: pomodoroRecords,
-        teams: _teams,
-      );
-    } catch (e) {
-      debugPrint('加载 AI 助手上下文失败: $e');
-      return _AiAssistantContext(teams: _teams);
-    }
-  }
-
   void _showIndependentTodoStatus(TodoItem todo) async {
     // 🚀 不再使用全局阻塞 Dialog，改为弹窗内局部加载
     showAppDialog(

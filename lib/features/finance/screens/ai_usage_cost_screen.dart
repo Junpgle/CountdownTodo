@@ -16,6 +16,8 @@ class AiUsageCostScreen extends StatefulWidget {
   State<AiUsageCostScreen> createState() => _AiUsageCostScreenState();
 }
 
+enum _AiUsageGroupBy { model, category, date }
+
 class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
   bool _loading = true;
   bool _autoLedger = true;
@@ -23,9 +25,33 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
   List<AiUsageRecord> _records = const [];
   List<AiUsagePricing> _pricing = const [];
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
+  _AiUsageGroupBy _groupBy = _AiUsageGroupBy.model;
+  String? _selectedCategory;
+  DateTime? _selectedDate;
   int _loadGeneration = 0;
 
   int get _pricedCalls => _summary.calls - _summary.unpricedCalls;
+
+  List<AiUsageRecord> get _visibleRecords {
+    if (_selectedCategory != null) {
+      return _records
+          .where(
+            (item) =>
+                AiUsageCostService.operationCategoryKey(item.operation) ==
+                _selectedCategory,
+          )
+          .toList();
+    }
+    if (_selectedDate != null) {
+      return _records.where((item) {
+        final local = item.createdAt.toLocal();
+        return local.year == _selectedDate!.year &&
+            local.month == _selectedDate!.month &&
+            local.day == _selectedDate!.day;
+      }).toList();
+    }
+    return _records.take(20).toList();
+  }
 
   String get _averageCost {
     if (_pricedCalls <= 0) {
@@ -60,7 +86,7 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
     final values = await Future.wait<dynamic>([
       AiUsageCostService.isAutoLedgerEnabled(),
       AiUsageCostService.getSummary(from: monthStart, to: monthEnd),
-      AiUsageCostService.getRecords(from: monthStart, to: monthEnd, limit: 20),
+      AiUsageCostService.getRecords(from: monthStart, to: monthEnd),
       AiUsageCostService.getPricing(),
     ]);
     if (!mounted || generation != _loadGeneration) return;
@@ -74,7 +100,11 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
   }
 
   Future<void> _changeMonth(DateTime month) async {
-    setState(() => _month = DateTime(month.year, month.month));
+    setState(() {
+      _month = DateTime(month.year, month.month);
+      _selectedCategory = null;
+      _selectedDate = null;
+    });
     await _load(showLoading: true);
   }
 
@@ -533,57 +563,209 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
       onChanged: _toggleAutoLedger,
     ),
     const SizedBox(height: 20),
-    Text('按服务商与模型', style: Theme.of(context).textTheme.titleMedium),
-    const SizedBox(height: 8),
-    if (_summary.breakdowns.isEmpty)
-      const Card(
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Text('所选月份尚未收到带用量信息的 AI 调用。'),
-        ),
-      )
-    else
-      ..._summary.breakdowns.map(
-        (item) => Card(
-          child: ListTile(
-            leading: const Icon(Icons.auto_awesome_outlined),
+    ..._buildBreakdownSection(colorScheme),
+    const SizedBox(height: 20),
+    ..._buildRecordsSection(),
+  ];
+
+  List<Widget> _buildBreakdownSection(ColorScheme colorScheme) {
+    final sectionTitle = switch (_groupBy) {
+      _AiUsageGroupBy.model => '按服务商与模型',
+      _AiUsageGroupBy.category => '按调用类别',
+      _AiUsageGroupBy.date => '按日期',
+    };
+    return [
+      Text(sectionTitle, style: Theme.of(context).textTheme.titleMedium),
+      const SizedBox(height: 8),
+      SegmentedButton<_AiUsageGroupBy>(
+        showSelectedIcon: false,
+        segments: const [
+          ButtonSegment<_AiUsageGroupBy>(
+            value: _AiUsageGroupBy.model,
+            label: Text('按模型'),
+          ),
+          ButtonSegment<_AiUsageGroupBy>(
+            value: _AiUsageGroupBy.category,
+            label: Text('按类别'),
+          ),
+          ButtonSegment<_AiUsageGroupBy>(
+            value: _AiUsageGroupBy.date,
+            label: Text('按日期'),
+          ),
+        ],
+        selected: {_groupBy},
+        onSelectionChanged: (selection) {
+          setState(() {
+            _groupBy = selection.first;
+            _selectedCategory = null;
+            _selectedDate = null;
+          });
+        },
+      ),
+      const SizedBox(height: 10),
+      if (_summary.calls == 0)
+        const Card(
+          child: Padding(
+            padding: EdgeInsets.all(16),
+            child: Text('所选月份尚未收到带用量信息的 AI 调用。'),
+          ),
+        )
+      else
+        ...switch (_groupBy) {
+          _AiUsageGroupBy.model => _summary.breakdowns.map(
+            (item) => Card(
+              child: ListTile(
+                leading: const Icon(Icons.auto_awesome_outlined),
+                title: Text('${item.provider} · ${item.model}'),
+                subtitle: Text(
+                  _metricsSubtitle(
+                    item,
+                    primaryUsage: _usageDescription(
+                      item.provider,
+                      item.model,
+                      item.totalTokens,
+                      item.audioSeconds,
+                    ),
+                  ),
+                ),
+                trailing: Text(
+                  AiUsageCostService.formatMicros(item.costMicros),
+                ),
+              ),
+            ),
+          ),
+          _AiUsageGroupBy.category => _summary.categoryBreakdowns.map((item) {
+            final selected = _selectedCategory == item.category;
+            return Card(
+              color: selected
+                  ? colorScheme.secondaryContainer.withValues(alpha: 0.55)
+                  : null,
+              child: ListTile(
+                leading: Icon(_categoryIcon(item.category)),
+                title: Text(item.label),
+                subtitle: Text(_metricsSubtitle(item)),
+                trailing: Text(
+                  AiUsageCostService.formatMicros(item.costMicros),
+                ),
+                onTap: () {
+                  setState(() {
+                    _selectedDate = null;
+                    _selectedCategory = selected ? null : item.category;
+                  });
+                },
+              ),
+            );
+          }),
+          _AiUsageGroupBy.date => _summary.dateBreakdowns.map((item) {
+            final selected = _selectedDate == item.date;
+            return Card(
+              color: selected
+                  ? colorScheme.secondaryContainer.withValues(alpha: 0.55)
+                  : null,
+              child: ListTile(
+                leading: const Icon(Icons.calendar_today_outlined),
+                title: Text(AppTimeFormats.format(item.date, 'M月d日')),
+                subtitle: Text(_metricsSubtitle(item)),
+                trailing: Text(
+                  AiUsageCostService.formatMicros(item.costMicros),
+                ),
+                onTap: () {
+                  setState(() {
+                    _selectedCategory = null;
+                    _selectedDate = selected ? null : item.date;
+                  });
+                },
+              ),
+            );
+          }),
+        },
+    ];
+  }
+
+  List<Widget> _buildRecordsSection() {
+    final visibleRecords = _visibleRecords;
+    String? activeFilterLabel;
+    if (_selectedCategory != null) {
+      activeFilterLabel = AiUsageCostService.operationCategoryLabel(
+        _selectedCategory!,
+      );
+    } else if (_selectedDate != null) {
+      activeFilterLabel = AppTimeFormats.format(_selectedDate!, 'M月d日');
+    }
+
+    return [
+      Row(
+        children: [
+          Expanded(
+            child: Text(
+              activeFilterLabel == null ? '最近调用' : '调用明细 · $activeFilterLabel',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
+          if (activeFilterLabel != null)
+            TextButton.icon(
+              onPressed: () {
+                setState(() {
+                  _selectedCategory = null;
+                  _selectedDate = null;
+                });
+              },
+              icon: const Icon(Icons.close, size: 16),
+              label: const Text('清除筛选'),
+            ),
+        ],
+      ),
+      const SizedBox(height: 8),
+      if (visibleRecords.isEmpty)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child: Text('所选月份暂无调用记录。'),
+        )
+      else
+        ...visibleRecords.map(
+          (item) => ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 4),
             title: Text('${item.provider} · ${item.model}'),
             subtitle: Text(
-              '${item.calls} 次 · ${_usageDescription(item.provider, item.model, item.totalTokens, item.audioSeconds)}'
+              '${AiUsageCostService.operationDisplayLabel(item.operation)} · ${_usageDescription(item.provider, item.model, item.totalTokens, item.audioSeconds)}'
               '${item.cachedPromptTokens == 0 ? '' : ' · 缓存 ${item.cachedPromptTokens}'}'
-              '${item.imageTokens == 0 ? '' : ' · 图片 ${item.imageTokens}'}'
-              '${item.unpricedCalls == 0 ? '' : ' · ${item.unpricedCalls} 次待定价'}',
+              '${item.imageTokens == 0 ? '' : ' · 图片 ${item.imageTokens}'}',
             ),
-            trailing: Text(AiUsageCostService.formatMicros(item.costMicros)),
+            trailing: Text(
+              item.isPriced
+                  ? AiUsageCostService.formatMicros(item.costMicros ?? 0)
+                  : '待定价',
+            ),
           ),
         ),
-      ),
-    const SizedBox(height: 20),
-    Text('最近调用', style: Theme.of(context).textTheme.titleMedium),
-    const SizedBox(height: 8),
-    if (_records.isEmpty)
-      const Padding(
-        padding: EdgeInsets.symmetric(vertical: 8),
-        child: Text('所选月份暂无调用记录。'),
-      )
-    else
-      ..._records.map(
-        (item) => ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-          title: Text('${item.provider} · ${item.model}'),
-          subtitle: Text(
-            '${item.operation == 'voice_asr' || item.operation == 'asr' ? '语音识别' : item.operation} · ${_usageDescription(item.provider, item.model, item.totalTokens, item.audioSeconds)}'
-            '${item.cachedPromptTokens == 0 ? '' : ' · 缓存 ${item.cachedPromptTokens}'}'
-            '${item.imageTokens == 0 ? '' : ' · 图片 ${item.imageTokens}'}',
-          ),
-          trailing: Text(
-            item.isPriced
-                ? AiUsageCostService.formatMicros(item.costMicros ?? 0)
-                : '待定价',
-          ),
-        ),
-      ),
-  ];
+    ];
+  }
+
+  String _metricsSubtitle(AiUsageMetrics item, {String? primaryUsage}) {
+    final usage =
+        primaryUsage ??
+        (item.totalTokens == 0 && item.audioSeconds > 0
+            ? '音频 ${item.audioSeconds}s'
+            : '${NumberFormat.decimalPattern().format(item.totalTokens)} Token'
+                  '${item.audioSeconds == 0 ? '' : ' · 音频 ${item.audioSeconds}s'}');
+    return '${item.calls} 次 · $usage'
+        '${item.cachedPromptTokens == 0 ? '' : ' · 缓存 ${item.cachedPromptTokens}'}'
+        '${item.imageTokens == 0 ? '' : ' · 图片 ${item.imageTokens}'}'
+        '${item.unpricedCalls == 0 ? '' : ' · ${item.unpricedCalls} 次待定价'}';
+  }
+
+  IconData _categoryIcon(String category) {
+    return switch (category) {
+      'vision' => Icons.visibility_outlined,
+      'daily_suggestion' => Icons.lightbulb_outline,
+      'chat' => Icons.chat_bubble_outline,
+      'title' => Icons.title,
+      'todo_text' => Icons.checklist_outlined,
+      'voice_asr' => Icons.mic_none_outlined,
+      'connection_test' => Icons.wifi_tethering_outlined,
+      _ => Icons.category_outlined,
+    };
+  }
 
   String _usageDescription(
     String provider,

@@ -613,6 +613,7 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
         if (domains == null || domains.contains(DataRefreshDomain.all)) {
           _debouncedFetchTeamPending();
           _debouncedFetchAnnouncements();
+          unawaited(_syncDailyAiSuggestion());
         }
         _debouncedUpdateTodoWidget(allTodos, todosChanged);
         _debouncedScheduleAllReminders(

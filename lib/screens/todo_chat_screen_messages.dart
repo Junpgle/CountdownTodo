@@ -614,11 +614,68 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
               ],
             ],
           ),
-          if (msg.content.isNotEmpty) ...[
+          if (isProcessing) ...[
             const SizedBox(height: 7),
-            AiChatMarkdown(
-              data: AiActionParser.cleanActionContent(msg.content),
+            ValueListenableBuilder<int>(
+              valueListenable: AiRecognitionChatBridge.streamChanges,
+              builder: (context, _, _) {
+                final live = AiRecognitionChatBridge.liveContentFor(msg.id);
+                final displayContent =
+                    (live != null && live.trim().isNotEmpty)
+                        ? live
+                        : msg.content;
+                if (displayContent.isEmpty) return const SizedBox.shrink();
+                return AiChatMarkdown(
+                  data: AiActionParser.cleanActionContent(displayContent),
+                );
+              },
             ),
+          ] else ...[
+            if (msg.content.isNotEmpty) ...[
+              const SizedBox(height: 7),
+              AiChatMarkdown(
+                data: AiActionParser.cleanActionContent(msg.content),
+              ),
+            ],
+            if (msg.rawContent.trim().isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Theme(
+                data: Theme.of(
+                  context,
+                ).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: const EdgeInsets.only(top: 4),
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                  title: Text(
+                    '查看模型原始输出',
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerHighest.withValues(
+                          alpha: 0.45,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: AiChatMarkdown(
+                        data: AiActionParser.cleanActionContent(
+                          msg.rawContent,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
           if (info.todoResults.isNotEmpty) ...[
             const SizedBox(height: 8),

@@ -313,12 +313,13 @@ class ExternalShareHandler {
       return;
     }
 
-    ValueNotifier<String> statusNotifier = ValueNotifier("正在准备分享内容...");
+    final ValueNotifier<String> statusNotifier = ValueNotifier("正在准备分享内容...");
     NavigatorState? dialogNavigator;
     var isDialogOpen = false;
     var closeRequestedBeforeBuild = false;
 
     void closeDialogSafely() {
+      if (isImage) return;
       final navigator = dialogNavigator;
       if (!isDialogOpen || navigator == null || !navigator.mounted) {
         // showDialog installs its route on the next frame. Remember an early
@@ -330,69 +331,86 @@ class ExternalShareHandler {
       navigator.pop();
     }
 
-    try {
-      unawaited(
-        showAppDialog<void>(
-          context: context,
-          barrierDismissible: false,
-          useRootNavigator: true,
-          builder: (ctx) {
-            dialogNavigator = Navigator.of(ctx, rootNavigator: true);
-            isDialogOpen = true;
-            if (closeRequestedBeforeBuild) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                closeDialogSafely();
-              });
-            }
-            return AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              content: Row(
-                children: [
-                  const CircularProgressIndicator(),
-                  const SizedBox(width: 20),
-                  Expanded(
-                    child: ValueListenableBuilder<String>(
-                      valueListenable: statusNotifier,
-                      builder: (context, value, child) {
-                        return Text(
-                          value,
-                          style: const TextStyle(fontSize: 15, height: 1.4),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      );
-    } catch (error) {
-      statusNotifier.dispose();
-      _finishCurrentRequest();
-      if (context.mounted) {
-        AppSnackBars.showSnackBar(
-          context,
-          SnackBar(content: Text('无法打开分享处理窗口: $error')),
-        );
+    void notifyShareMessage(String message) {
+      if (!isImage) {
+        statusNotifier.value = message;
+        return;
       }
-      return;
+      if (!context.mounted) return;
+      final singleLine = message.replaceAll('\n', '，');
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(content: Text(singleLine)),
+      );
+    }
+
+    if (!isImage) {
+      try {
+        unawaited(
+          showAppDialog<void>(
+            context: context,
+            barrierDismissible: false,
+            useRootNavigator: true,
+            builder: (ctx) {
+              dialogNavigator = Navigator.of(ctx, rootNavigator: true);
+              isDialogOpen = true;
+              if (closeRequestedBeforeBuild) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  closeDialogSafely();
+                });
+              }
+              return AlertDialog(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                content: Row(
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(width: 20),
+                    Expanded(
+                      child: ValueListenableBuilder<String>(
+                        valueListenable: statusNotifier,
+                        builder: (context, value, child) {
+                          return Text(
+                            value,
+                            style: const TextStyle(fontSize: 15, height: 1.4),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      } catch (error) {
+        statusNotifier.dispose();
+        _finishCurrentRequest();
+        if (context.mounted) {
+          AppSnackBars.showSnackBar(
+            context,
+            SnackBar(content: Text('无法打开分享处理窗口: $error')),
+          );
+        }
+        return;
+      }
     }
 
     String? claimedFileKey;
     AiRecognitionHandle? recognitionHandle;
     try {
-      statusNotifier.value = isImage
-          ? "正在准备图片..."
-          : isFinanceImport
-          ? "正在准备记账内容..."
-          : "正在等待分享课表文件...";
-      await Future.delayed(const Duration(milliseconds: 400));
+      if (!isImage) {
+        statusNotifier.value = isFinanceImport
+            ? "正在准备记账内容..."
+            : "正在等待分享课表文件...";
+        await Future.delayed(const Duration(milliseconds: 400));
+      }
 
       File file = await _waitForReadableFile(filePath);
-      statusNotifier.value = "正在校验分享文件...";
+      if (!isImage) {
+        statusNotifier.value = "正在校验分享文件...";
+      }
 
       // 生成文件唯一标识。getInitialMedia 和 getMediaStream 可能同时返回
       // 同一份分享内容，因此两条入口必须使用同一套去重规则。
@@ -403,15 +421,19 @@ class ExternalShareHandler {
       final shouldDeduplicate = !needsCourseImport;
       if (shouldDeduplicate &&
           await _isShareAlreadyHandled(fileKey, filePath)) {
-        statusNotifier.value = "分享内容已经处理过";
-        await Future.delayed(const Duration(milliseconds: 600));
-        closeDialogSafely();
+        notifyShareMessage("分享内容已经处理过");
+        if (!isImage) {
+          await Future.delayed(const Duration(milliseconds: 600));
+          closeDialogSafely();
+        }
         return;
       }
       if (!_processingFileKeys.add(fileKey)) {
-        statusNotifier.value = "分享内容正在处理中";
-        await Future.delayed(const Duration(milliseconds: 600));
-        closeDialogSafely();
+        notifyShareMessage("分享内容正在处理中");
+        if (!isImage) {
+          await Future.delayed(const Duration(milliseconds: 600));
+          closeDialogSafely();
+        }
         return;
       }
       claimedFileKey = fileKey;
@@ -419,30 +441,23 @@ class ExternalShareHandler {
       if (isImage) {
         if (requestedMode == ExternalShareMode.imageRecognition &&
             !await _isLikelyImageFile(file, media, imageExtensions)) {
-          statusNotifier.value = "❌ 识别图片仅支持图片文件";
-          await Future.delayed(const Duration(seconds: 2));
-          closeDialogSafely();
+          notifyShareMessage("❌ 识别图片仅支持图片文件");
           return;
         }
 
-        // 图片处理：调用大模型识别事项并保留类型声明
-        statusNotifier.value = "识别到图片\n正在压缩图片...";
-
+        // 图片处理：调用大模型识别事项并保留类型声明（不再弹出阻塞全局的加载框，
+        // 仅通过首页置顶的「AI识别中...」卡片和灵动岛/聊天镜像展示进度）。
         final config = await LLMService.getConfig();
         if (config == null || !config.isConfigured) {
-          statusNotifier.value = "⚠️ 需要配置大模型API\n请在设置中配置后重试";
-          await Future.delayed(const Duration(seconds: 2));
-          closeDialogSafely();
+          notifyShareMessage("⚠️ 需要配置大模型API\n请在设置中配置后重试");
           return;
         }
 
         // 检查原始图片大小
         final fileSize = await file.length();
         if (fileSize > 20 * 1024 * 1024) {
-          statusNotifier.value = "⚠️ 图片太大\n请分享小于20MB的图片";
+          notifyShareMessage("⚠️ 图片太大\n请分享小于20MB的图片");
           await NotificationService.cancelTodoRecognizeNotification();
-          await Future.delayed(const Duration(seconds: 2));
-          closeDialogSafely();
           return;
         }
 
@@ -459,9 +474,6 @@ class ExternalShareHandler {
         if (!await compressedFile.exists()) {
           throw Exception('图片压缩结果不可读取');
         }
-        final compressedSize = await compressedFile.length();
-        statusNotifier.value =
-            "图片已压缩 (${(compressedSize / 1024).toStringAsFixed(0)}KB)\n正在调用大模型分析...";
 
         try {
           recognitionHandle = await AiRecognitionChatBridge.startImage(
@@ -492,17 +504,15 @@ class ExternalShareHandler {
         );
 
         try {
-          final recognition = await _recognizeImage(compressedPath);
+          final recognition = await _recognizeImage(
+            compressedPath,
+            recognitionHandle: recognitionHandle,
+          );
           final results = recognition.todoResults;
           final financeDrafts = recognition.financeDrafts;
           final totalCount = results.length + financeDrafts.length;
-          statusNotifier.value = totalCount == 0
-              ? '✅ 识别完成，未发现可编辑事件'
-              : '✅ 识别成功！\n发现${results.length}个事项，${financeDrafts.length}笔账单';
           // 标记文件为已处理，防止重复处理
           await _markFileProcessed(fileKey);
-          await Future.delayed(const Duration(milliseconds: 800));
-          closeDialogSafely();
 
           // 保存成功状态
           await StorageService.savePendingTodoConfirm(
@@ -532,8 +542,8 @@ class ExternalShareHandler {
             todoCount: totalCount,
           );
 
-          // 通知首页刷新（dialog 已关闭）。两个回调按顺序执行，避免
-          // 记账编辑页和待办确认页同时抢占导航栈。
+          // 通知首页刷新。两个回调按顺序执行，避免记账编辑页和待办确认页
+          // 同时抢占导航栈。
           if (context.mounted && financeDrafts.isNotEmpty) {
             await onFinanceRecognized?.call(financeDrafts, filePath);
           }
@@ -551,10 +561,6 @@ class ExternalShareHandler {
 
           if (maxRetries > 0) {
             // 有重试次数，启动后台重试
-            statusNotifier.value = "首次识别失败\n正在后台重试...";
-            await Future.delayed(const Duration(milliseconds: 500));
-            closeDialogSafely();
-
             // 保存失败状态（首次尝试）
             await StorageService.updatePendingTodoConfirmStatus(
               status: 'failed',
@@ -572,16 +578,7 @@ class ExternalShareHandler {
               recognitionHandle: recognitionHandle,
             );
           } else {
-            // 没有重试次数，直接显示错误
-            if (errorMsg.contains('TimeoutException')) {
-              statusNotifier.value = "❌ 请求超时\n请检查网络或稍后重试";
-            } else if (errorMsg.contains('SocketException')) {
-              statusNotifier.value = "❌ 网络连接失败\n请检查网络设置";
-            } else {
-              statusNotifier.value =
-                  "❌ 图片识别失败\n${errorMsg.length > 50 ? errorMsg.substring(0, 50) : errorMsg}";
-            }
-            // 保存失败状态
+            // 没有重试次数，直接保存失败状态并更新卡片与通知
             await StorageService.savePendingTodoConfirm(
               imagePath: filePath,
               status: 'failed',
@@ -600,9 +597,6 @@ class ExternalShareHandler {
             await NotificationService.showTodoRecognizeFailed(
               errorMsg: errorMsg,
             );
-
-            await Future.delayed(const Duration(seconds: 3));
-            closeDialogSafely();
           }
         }
       } else if (isFinanceImport) {
@@ -779,9 +773,16 @@ class ExternalShareHandler {
       }
     } catch (e) {
       // debugPrint("处理外部共享文件崩溃: $e");
-      statusNotifier.value = "❌ 发生异常\n读取文件失败或格式崩溃";
-      await Future.delayed(const Duration(seconds: 2));
-      closeDialogSafely();
+      if (isImage) {
+        if (recognitionHandle != null) {
+          await AiRecognitionChatBridge.fail(recognitionHandle, e);
+        }
+        notifyShareMessage("❌ 发生异常\n读取文件失败或格式崩溃");
+      } else {
+        statusNotifier.value = "❌ 发生异常\n读取文件失败或格式崩溃";
+        await Future.delayed(const Duration(seconds: 2));
+        closeDialogSafely();
+      }
     } finally {
       if (claimedFileKey != null) {
         _processingFileKeys.remove(claimedFileKey);
@@ -801,15 +802,43 @@ class ExternalShareHandler {
   /// 同一张图片走两条互不排斥的识别通道：待办通道负责取餐/取件码，
   /// 账单通道负责支付记录。任一通道失败都不影响另一类结果。
   static Future<_ImageRecognitionResult> _recognizeImage(
-    String imagePath,
-  ) async {
+    String imagePath, {
+    AiRecognitionHandle? recognitionHandle,
+  }) async {
     final errors = <Object>[];
     final usageSummaries = <ChatUsageSummary>[];
+    var todoStream = '';
+    var financeStream = '';
+
+    void publishStream() {
+      if (recognitionHandle == null) return;
+      final sections = <String>[];
+      if (todoStream.isNotEmpty) {
+        sections.add('**待办识别**\n$todoStream');
+      }
+      if (financeStream.isNotEmpty) {
+        sections.add('**账单识别**\n$financeStream');
+      }
+      if (sections.isNotEmpty) {
+        AiRecognitionChatBridge.updateStream(
+          recognitionHandle,
+          sections.join('\n\n'),
+        );
+      }
+    }
+
     final results = await Future.wait<List<Map<String, dynamic>>>([
       _runVisionPass(
         () => LLMService.parseTodoFromImage(
           imagePath,
           onUsage: usageSummaries.add,
+          onStream: (content, reasoning) {
+            todoStream = AiRecognitionChatBridge.formatModelStream(
+              content: content,
+              reasoningContent: reasoning,
+            );
+            publishStream();
+          },
         ),
         errors,
       ),
@@ -817,6 +846,13 @@ class ExternalShareHandler {
         () => LLMService.parseFinanceFromImage(
           imagePath,
           onUsage: usageSummaries.add,
+          onStream: (content, reasoning) {
+            financeStream = AiRecognitionChatBridge.formatModelStream(
+              content: content,
+              reasoningContent: reasoning,
+            );
+            publishStream();
+          },
         ),
         errors,
       ),
@@ -1288,7 +1324,10 @@ class ExternalShareHandler {
         final currentPath = pathsToTry[(attempt - 1) % pathsToTry.length];
 
         // 增加超时时间到 180 秒，提高后台识别成功率
-        recognition = await _recognizeImage(currentPath);
+        recognition = await _recognizeImage(
+          currentPath,
+          recognitionHandle: recognitionHandle,
+        );
 
         success = true;
         // debugPrint("后台重试第$attempt次成功!");
@@ -1498,7 +1537,10 @@ class ExternalShareHandler {
     // 不通知首页刷新，让首页通过 _checkPendingTodoConfirm 自动刷新
 
     try {
-      final recognition = await _recognizeImage(retryPath);
+      final recognition = await _recognizeImage(
+        retryPath,
+        recognitionHandle: recognitionHandle,
+      );
       final results = recognition.todoResults;
       final financeDrafts = recognition.financeDrafts;
       final totalCount = results.length + financeDrafts.length;

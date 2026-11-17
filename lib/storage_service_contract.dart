@@ -676,6 +676,10 @@ abstract class _StorageServiceBase {
   List<TodoItem> _clearResolvedRecurrenceMigrationConflicts(
     List<TodoItem> todos,
   );
+  List<TodoItem> clearResolvedCollabCompletionConflictsForTest(
+    List<TodoItem> todos,
+  );
+  List<TodoItem> _clearResolvedCollabCompletionConflicts(List<TodoItem> todos);
   bool _payloadHasConflict(Map<String, dynamic> data);
   bool _payloadHasVersionConflict(Map<String, dynamic> data);
   Map<String, dynamic> _stripClientOnlyConflictForSync(

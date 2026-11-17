@@ -118,7 +118,15 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
       return 'Android';
     }
     if (AppPlatform.isWindows) return 'Windows';
-    if (AppPlatform.isMacOS) return 'macOS';
+    if (AppPlatform.isMacOS) {
+      try {
+        final arch = await UpdateService.getDeviceArchitecture();
+        if (arch.isNotEmpty && arch != 'macos') {
+          return 'macOS · $arch';
+        }
+      } catch (_) {}
+      return 'macOS';
+    }
     if (AppPlatform.isLinux) return 'Linux';
     if (AppPlatform.isIOS) return 'iOS';
     if (AppPlatform.isWeb) return 'Web';
@@ -249,6 +257,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
     return updateInfo.fullPackageUrl.isNotEmpty ||
         updateInfo.pcPackageUrl.isNotEmpty ||
         updateInfo.macPackageUrl.isNotEmpty ||
+        updateInfo.macArchPackages.isNotEmpty ||
         updateInfo.androidArchPackages.isNotEmpty;
   }
 

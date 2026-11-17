@@ -481,6 +481,8 @@ class _Timeline extends StatelessWidget {
         final gridEntries = item.gridEntries;
         if (gridEntries != null) {
           return GridView.builder(
+            padding: EdgeInsets.zero,
+            primary: false,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             findChildIndexCallback: (Key key) {

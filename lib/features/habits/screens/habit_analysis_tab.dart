@@ -38,6 +38,7 @@ typedef _HabitStreakInputs = ({
 /// 习惯中心「分析」标签页：各习惯的连续与完成率统计。
 class HabitAnalysisTab extends StatefulWidget {
   final double topPadding;
+  final double extraBottomPadding;
   final String username;
 
   /// 数据变化后自增，触发重新加载。
@@ -46,6 +47,7 @@ class HabitAnalysisTab extends StatefulWidget {
   const HabitAnalysisTab({
     super.key,
     this.topPadding = 0,
+    this.extraBottomPadding = 0,
     required this.username,
     this.reloadTick = 0,
   });
@@ -427,6 +429,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
       );
     }
     return RefreshIndicator(
+      edgeOffset: widget.topPadding,
       onRefresh: _loadData,
       child: Center(
         child: ConstrainedBox(
@@ -436,7 +439,8 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
               16,
               widget.topPadding + 12,
               16,
-              floatingBottomNavigationContentPaddingFor(context),
+              floatingBottomNavigationContentPaddingFor(context) +
+                  widget.extraBottomPadding,
             ),
             children: [
               LayoutBuilder(

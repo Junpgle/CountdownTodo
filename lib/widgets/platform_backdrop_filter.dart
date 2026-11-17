@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../services/liquid_glass_effect_service.dart';
+import '../services/power_save_mode_service.dart';
 import '../utils/app_platform.dart';
 
 /// Avoids creating an offscreen blurred texture by default on Windows.
@@ -50,35 +51,26 @@ class PlatformBackdropFilter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (AppPlatform.isWindows) {
-      return ValueListenableBuilder<LiquidGlassEffectConfiguration>(
-        valueListenable: LiquidGlassEffectService.configurationListenable,
-        builder: (context, configuration, _) {
-          if (!configuration.enabled || bypassWhenLiquidGlassEnabled) {
-            return _clipIfNeeded(child);
-          }
-          return _clipIfNeeded(
-            BackdropFilter.grouped(filter: filter, child: child),
-            forceClipRect: true,
-          );
-        },
-      );
-    }
-    if (bypassWhenLiquidGlassEnabled) {
-      return ValueListenableBuilder<LiquidGlassEffectConfiguration>(
-        valueListenable: LiquidGlassEffectService.configurationListenable,
-        builder: (context, configuration, _) {
-          if (configuration.enabled) return _clipIfNeeded(child);
-          return _clipIfNeeded(
-            BackdropFilter.grouped(filter: filter, child: child),
-            forceClipRect: true,
-          );
-        },
-      );
-    }
-    return _clipIfNeeded(
-      BackdropFilter.grouped(filter: filter, child: child),
-      forceClipRect: true,
+    return ListenableBuilder(
+      listenable: Listenable.merge(<Listenable>[
+        LiquidGlassEffectService.configurationListenable,
+        PowerSaveModeService.enabledListenable,
+      ]),
+      builder: (context, _) {
+        if (PowerSaveModeService.isEnabled ||
+            Theme.of(context).brightness == Brightness.dark ||
+            bypassWhenLiquidGlassEnabled) {
+          return _clipIfNeeded(child);
+        }
+        final configuration = LiquidGlassEffectService.configuration;
+        if (AppPlatform.isWindows && !configuration.enabled) {
+          return _clipIfNeeded(child);
+        }
+        return _clipIfNeeded(
+          BackdropFilter.grouped(filter: filter, child: child),
+          forceClipRect: true,
+        );
+      },
     );
   }
 }

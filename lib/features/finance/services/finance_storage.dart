@@ -225,18 +225,21 @@ abstract final class FinanceStorage {
           ? nextOffset
           : methodUuids.length;
       final batch = methodUuids.sublist(offset, end);
+      final placeholders = List.filled(batch.length, '?').join(',');
       rows.addAll(
         await db.query(
           'finance_transactions',
           where:
-              'is_deleted = 0 AND payment_method_uuid IN '
-              '(${List.filled(batch.length, '?').join(',')}) AND '
+              'is_deleted = 0 AND '
+              '(payment_method_uuid IN ($placeholders) OR '
+              'target_payment_method_uuid IN ($placeholders)) AND '
               'transaction_date < ? AND '
               '(transaction_date >= ? OR created_at > ?)',
           // Stored ledger dates belong to their recorded timezone. The largest
           // difference between two supported offsets is 28 hours; widen the
           // date bounds and let balanceEventAt apply the exact instant cutoff.
           whereArgs: [
+            ...batch,
             ...batch,
             dateKey(before.add(const Duration(days: 2))),
             dateKey(
@@ -434,6 +437,66 @@ abstract final class FinanceStorage {
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
       await _alignLinkedRefunds(txn, originalUuids: [transaction.uuid]);
+    });
+    _notifyChanged();
+  }
+
+  /// 批量保存多笔账单（例如账单导入），在单个数据库事务中完成写入并仅触发一次刷新。
+  static Future<void> saveTransactionsBatch(
+    List<FinanceTransaction> transactions,
+  ) async {
+    if (transactions.isEmpty) return;
+    for (final transaction in transactions) {
+      if (!transaction.isDeleted &&
+          !isFinanceDateKey(transaction.transactionDate)) {
+        throw ArgumentError.value(
+          transaction.transactionDate,
+          'transactionDate',
+          '账单日期无效',
+        );
+      }
+      if (!transaction.isDeleted && !_hasValidInstallmentFields(transaction)) {
+        throw ArgumentError.value(transaction, 'transaction', '分期期数或总金额无效');
+      }
+      if (!isSafeFinanceAmountMinor(transaction.amountMinor) ||
+          transaction.amountMinor == 0) {
+        throw ArgumentError.value(
+          transaction.amountMinor,
+          'amountMinor',
+          '金额必须大于 0',
+        );
+      }
+      final installmentTotalMinor = transaction.installmentTotalMinor;
+      if (installmentTotalMinor != null &&
+          (!isSafeFinanceAmountMinor(installmentTotalMinor) ||
+              installmentTotalMinor == 0)) {
+        throw ArgumentError.value(
+          installmentTotalMinor,
+          'installmentTotalMinor',
+          '分期总额超出可保存范围',
+        );
+      }
+      transaction.pendingSync = true;
+    }
+
+    await ensureReady();
+    final db = await _database;
+    await db.transaction((txn) async {
+      final uuids = <String>[];
+      for (final transaction in transactions) {
+        if (await _hasInstallmentIndexConflict(txn, transaction)) {
+          throw StateError('该分期组已存在相同期号的账单');
+        }
+        await _validateLoanInterestEdit(txn, transaction);
+        await _validateTransactionRefundState(txn, transaction);
+        await txn.insert(
+          'finance_transactions',
+          _localValues(transaction.toMap()),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+        uuids.add(transaction.uuid);
+      }
+      await _alignLinkedRefunds(txn, originalUuids: uuids);
     });
     _notifyChanged();
   }
@@ -4341,7 +4404,15 @@ abstract final class FinanceStorage {
         if (hasInstallmentIndexConflict(item)) continue;
         final existing = existingTransactionsByUuid[item.uuid];
         if (existing != null) {
+          final isRestoringLegacyTransferProjection =
+              !existing.pendingSync &&
+              existing.isDeleted &&
+              !item.isDeleted &&
+              item.type == FinanceTransactionType.transfer &&
+              item.updatedAt == existing.updatedAt &&
+              item.version == existing.version;
           if (!forceRemoteKeys.contains('transactions:${item.uuid}') &&
+              !isRestoringLegacyTransferProjection &&
               !_isIncomingWinner(
                 item.updatedAt,
                 item.version,
@@ -5277,8 +5348,8 @@ abstract final class FinanceStorage {
 
   static bool _isValidRawTransactionType(Map<String, dynamic> raw) {
     final value = raw['type'];
-    return const {'expense', 'income', 'refund'}.contains(value) ||
-        const {0, 1, 2, '0', '1', '2'}.contains(value);
+    return const {'expense', 'income', 'refund', 'transfer'}.contains(value) ||
+        const {0, 1, 2, 3, '0', '1', '2', '3'}.contains(value);
   }
 
   static Map<String, dynamic> _normalizeRemoteFinanceEntrySource(

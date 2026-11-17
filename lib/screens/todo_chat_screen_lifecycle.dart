@@ -11,7 +11,15 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     super.initState();
     _inputCtrl.addListener(_handleInputChanged);
     AiRecognitionChatBridge.changes.addListener(_handleRecognitionChatChanged);
+    AiMemoryService.revision.addListener(_handleMemoryRevisionChanged);
+    _courses = List<CourseItem>.from(widget.courses);
+    _timeLogs = List<TimeLogItem>.from(widget.timeLogs);
+    _pomodoroRecords = List<PomodoroRecord>.from(widget.pomodoroRecords);
+    _teams = List<Team>.from(widget.teams);
     _fixedSchedules = List<FixedScheduleItem>.from(widget.fixedSchedules);
+    _initialCategorizationActions = List<AiTodoAction>.from(
+      widget.initialCategorizationActions,
+    );
     _pendingVoiceUsageSummary = widget.initialVoiceUsageSummary;
 
     if (widget.initialMessage?.trim().isNotEmpty ?? false) {
@@ -24,6 +32,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
       _loadCategoryDefaults();
       _loadPlanBlocks();
       _loadHabitGoals();
+      _loadDeferredContext();
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -41,6 +50,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
         _loadCategoryDefaults(),
         _loadPlanBlocks(),
         _loadHabitGoals(),
+        _loadDeferredContext(deferCategorization: false),
       ]);
       if (!mounted) return;
       _inputCtrl.text = widget.initialMessage!.trim();
@@ -112,6 +122,82 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     );
   }
 
+  Future<void> _loadDeferredContext({bool deferCategorization = true}) async {
+    final futures = <Future<void>>[];
+
+    final loadCourses = widget.loadCourses;
+    if (loadCourses != null) {
+      futures.add(
+        loadCourses().then((value) {
+          if (mounted) _courses = value;
+        }).catchError((_) {}),
+      );
+    }
+
+    final loadTimeLogs = widget.loadTimeLogs;
+    if (loadTimeLogs != null) {
+      futures.add(
+        loadTimeLogs().then((value) {
+          if (mounted) _timeLogs = value;
+        }).catchError((_) {}),
+      );
+    }
+
+    final loadPomodoroRecords = widget.loadPomodoroRecords;
+    if (loadPomodoroRecords != null) {
+      futures.add(
+        loadPomodoroRecords().then((value) {
+          if (mounted) _pomodoroRecords = value;
+        }).catchError((_) {}),
+      );
+    }
+
+    final loadTeams = widget.loadTeams;
+    if (loadTeams != null) {
+      futures.add(
+        loadTeams().then((value) {
+          if (mounted) _teams = value;
+        }).catchError((_) {}),
+      );
+    }
+
+    final loadFixedSchedules = widget.loadFixedSchedules;
+    if (loadFixedSchedules != null) {
+      futures.add(
+        loadFixedSchedules().then((value) {
+          if (mounted) _fixedSchedules = value;
+        }).catchError((_) {}),
+      );
+    }
+
+    final loadCategorization = widget.loadInitialCategorizationActions;
+    if (loadCategorization != null) {
+      futures.add(() async {
+        if (deferCategorization) {
+          // Wait for route transition animation to finish before running
+          // batch SQLite + tokenization work on the main isolate.
+          await Future.delayed(const Duration(milliseconds: 220));
+          if (!mounted) return;
+        }
+        try {
+          final actions = await loadCategorization();
+          if (!mounted || actions.isEmpty) return;
+          _initialCategorizationActions = actions;
+          if (_historyLoaded && !_isLoading) {
+            setState(_injectInitialCategorizationSuggestion);
+            _scrollToBottom();
+          }
+        } catch (_) {}
+      }());
+    }
+
+    if (futures.isEmpty) return;
+    await Future.wait(futures);
+    if (mounted) {
+      _handleInputChanged();
+    }
+  }
+
   Future<void> _loadCategoryDefaults() async {
     final username = widget.username;
     final defaults = await StorageService.getCategoryReminderMinutes(username);
@@ -147,6 +233,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     AiRecognitionChatBridge.changes.removeListener(
       _handleRecognitionChatChanged,
     );
+    AiMemoryService.revision.removeListener(_handleMemoryRevisionChanged);
     _inputCtrl.dispose();
     _scrollCtrl.dispose();
     _streamingBubbleRevision.dispose();
@@ -158,6 +245,23 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   void _handleRecognitionChatChanged() {
     if (_isLoading || !mounted || _activeSessionId == null) return;
     _loadHistory();
+  }
+
+  void _handleMemoryRevisionChanged() {
+    if (!mounted) return;
+    unawaited(_loadMemorySettings());
+  }
+
+  Future<void> _loadMemorySettings() async {
+    final memoryEnabled = await AiMemoryService.isEnabled(widget.username);
+    final memoryBlock = memoryEnabled
+        ? await AiMemoryService.loadPromptBlock(widget.username)
+        : '';
+    if (!mounted) return;
+    setState(() {
+      _memoryEnabled = memoryEnabled;
+      _memoryPromptBlock = memoryBlock;
+    });
   }
 
   void _handleInputChanged() {
@@ -203,17 +307,17 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
               AiTodoContextBuilder.buildContextInjectionSummary(
                 userMessage: contextQueryText,
                 previousUserMessage: previousUserMessage,
-                courses: widget.courses,
-                timeLogs: widget.timeLogs,
+                courses: _courses,
+                timeLogs: _timeLogs,
                 todoGroups: widget.todoGroups,
-                pomodoroRecords: widget.pomodoroRecords,
+                pomodoroRecords: _pomodoroRecords,
                 planBlocks: _planBlocks,
                 todos: widget.todos,
                 countdowns: widget.countdowns,
                 pomodoroTags: widget.pomodoroTags,
                 fixedSchedules: _fixedSchedules,
                 conflicts: widget.conflicts,
-                teams: widget.teams,
+                teams: _teams,
                 expandFocusContext: _injectMoreContext,
                 now: now,
               ),
@@ -269,7 +373,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
       userText,
       previousUserMessage: _latestUserTextFromHistory(),
       previousAssistantMessage: _latestAssistantMessageForActionRouting(),
-      availableTeams: widget.teams,
+      availableTeams: _teams,
     );
     final categories = <String>[];
     void addIf(bool cond, String label) {
@@ -401,7 +505,23 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   }
 
   Future<void> _initSessions() async {
-    final session = await ChatStorageService.openEmptySession();
+    final requestedId = widget.initialSessionId?.trim();
+    ChatSession? requestedSession;
+    if (requestedId != null && requestedId.isNotEmpty) {
+      final existingSessions = await ChatStorageService.loadSessions();
+      for (final candidate in existingSessions) {
+        if (candidate.id == requestedId) {
+          requestedSession = candidate;
+          break;
+        }
+      }
+      if (requestedSession != null) {
+        await ChatStorageService.setActiveSessionId(requestedSession.id);
+      }
+    }
+
+    final session =
+        requestedSession ?? await ChatStorageService.openEmptySession();
     final sessions = await ChatStorageService.loadSessions();
     if (!mounted) return;
     setState(() {
@@ -426,11 +546,11 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   }
 
   Future<void> _newSession() async {
-    if (_isLoading) return;
-    final newSession = await ChatStorageService.createSession();
+    if (_isLoading || _messages.isEmpty) return;
+    final newSession = ChatSession(title: '新对话');
+    await ChatStorageService.setActiveSessionId(newSession.id);
     if (mounted) {
       setState(() {
-        _sessions.insert(0, newSession);
         _activeSessionId = newSession.id;
         _messages = [];
         _suggestions = [];
@@ -439,38 +559,43 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     }
   }
 
+  void _ensureActiveSessionInList() {
+    final sid = _activeSessionId;
+    if (sid == null || sid.isEmpty) return;
+    if (_sessions.any((s) => s.id == sid)) return;
+    _sessions.insert(0, ChatSession(id: sid, title: '新对话'));
+  }
+
   Future<void> _deleteSession(String sessionId) async {
     if (_isLoading) return;
-    if (_sessions.length <= 1) {
-      await ChatStorageService.deleteSession(sessionId);
-      final newSession = await ChatStorageService.createSession();
-      if (mounted) {
-        setState(() {
-          _sessions = [newSession];
-          _activeSessionId = newSession.id;
-          _messages = [];
-          _suggestions = [];
-          _streamingContent = '';
-        });
-      }
+    await ChatStorageService.deleteSession(sessionId);
+    final sessions = await ChatStorageService.loadSessions();
+    if (!mounted) return;
+    if (sessions.isEmpty) {
+      final newSession = await ChatStorageService.openEmptySession();
+      if (!mounted) return;
+      setState(() {
+        _sessions = [];
+        _activeSessionId = newSession.id;
+        _messages = [];
+        _suggestions = [];
+        _streamingContent = '';
+      });
       return;
     }
 
-    await ChatStorageService.deleteSession(sessionId);
-    final sessions = await ChatStorageService.loadSessions();
-    if (mounted) {
-      setState(() {
-        _sessions = sessions;
-        if (_activeSessionId == sessionId) {
-          _activeSessionId = sessions.first.id;
-          _messages = [];
-          _suggestions = [];
-          _streamingContent = '';
-        }
-      });
-      if (_activeSessionId != sessionId) {
-        _loadHistory();
+    final wasActive = _activeSessionId == sessionId;
+    setState(() {
+      _sessions = sessions;
+      if (wasActive) {
+        _activeSessionId = sessions.first.id;
+        _messages = [];
+        _suggestions = [];
+        _streamingContent = '';
       }
+    });
+    if (wasActive) {
+      _loadHistory();
     }
   }
 
@@ -478,6 +603,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     final history = await ChatStorageService.loadHistory(_activeSessionId);
     if (mounted) {
       setState(() {
+        _historyLoaded = true;
         _messages = history;
         _suggestions = _suggestionsForHistory(history);
       });
@@ -516,12 +642,12 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
 
   void _injectInitialCategorizationSuggestion() {
     if (_classificationSuggestionInjected ||
-        widget.initialCategorizationActions.isEmpty ||
+        _initialCategorizationActions.isEmpty ||
         _pendingActionMessages.isNotEmpty) {
       return;
     }
     _classificationSuggestionInjected = true;
-    final actions = widget.initialCategorizationActions;
+    final actions = _initialCategorizationActions;
     final lines = actions
         .map((action) {
           final groupName =
@@ -560,14 +686,22 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
         await ChatStorageService.shouldShowContextPreview();
     final injectMoreContext =
         await ChatStorageService.shouldInjectMoreContext();
+    final toolBudget = await ChatStorageService.getToolBudget();
+    final memoryEnabled = await AiMemoryService.isEnabled(widget.username);
+    final memoryBlock = memoryEnabled
+        ? await AiMemoryService.loadPromptBlock(widget.username)
+        : '';
     if (mounted) {
       setState(() {
         _customPrompt = prompt;
         _promptEnabled = enabled;
+        _memoryEnabled = memoryEnabled;
+        _memoryPromptBlock = memoryBlock;
         _smartContext = smartContext;
         _contextMode = contextMode;
         _showInjectedContextPreview = showContextPreview;
         _injectMoreContext = injectMoreContext;
+        _toolBudget = toolBudget;
       });
       _handleInputChanged();
     }
@@ -635,6 +769,8 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
               _smartContext &&
               _contextMode == AiContextMode.functionCalling),
       settingsNavigation: settingsNavigation,
+      memoryEnabled: _memoryEnabled,
+      memoryPromptBlock: _memoryPromptBlock,
     );
   }
 
@@ -667,14 +803,28 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     final protocolSourceText = pendingUserText?.trim().isNotEmpty == true
         ? pendingUserText!.trim()
         : _latestUserTextFromHistory();
-    if (queryTools ??
+    final queryToolsEnabled =
+        queryTools ??
         (nativeToolCalls &&
             _smartContext &&
-            _contextMode == AiContextMode.functionCalling)) {
+            _contextMode == AiContextMode.functionCalling);
+    if (queryToolsEnabled) {
       apiMessages.add({
         'role': 'system',
         'content': AiQueryToolService.systemPrompt,
       });
+      if (AiQueryToolService.hasPriorBudgetLimit(
+        _messages,
+        maxCalls: _toolBudget.maxCalls,
+      )) {
+        apiMessages.add({
+          'role': 'system',
+          'content':
+              '注意：历史对话轮次曾触发单轮工具调用次数或数据预算上限。'
+              '当前是全新的用户回合，单轮工具调用次数与数据预算限制已重置解除；'
+              '若用户要求继续查询、补充或核对数据，请正常调用本轮提供的 query_* 工具。',
+        });
+      }
     }
     final currentUserMessageId = pendingUserText?.trim().isNotEmpty == true
         ? null
@@ -718,7 +868,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
           ),
           previousUserMessage: previousUserMessage,
           previousAssistantMessage: previousAssistantMessage,
-          availableTeams: widget.teams,
+          availableTeams: _teams,
         ),
       });
     }
@@ -925,17 +1075,17 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
       previousUserMessage: _latestUserTextFromHistory(
         excludingMessageId: currentUserMessageId,
       ),
-      courses: widget.courses,
-      timeLogs: widget.timeLogs,
+      courses: _courses,
+      timeLogs: _timeLogs,
       todoGroups: widget.todoGroups,
-      pomodoroRecords: widget.pomodoroRecords,
+      pomodoroRecords: _pomodoroRecords,
       planBlocks: _planBlocks,
       todos: widget.todos,
       countdowns: widget.countdowns,
       pomodoroTags: widget.pomodoroTags,
       fixedSchedules: _fixedSchedules,
       conflicts: widget.conflicts,
-      teams: widget.teams,
+      teams: _teams,
       expandFocusContext: _injectMoreContext,
       focusRecordPriorityRange: focusRecordPriorityRange,
       now: now,

@@ -587,6 +587,14 @@ mixin _StorageSync on _StorageServiceBase {
     if (username.isEmpty) {
       return {'success': false, 'hasChanges': false, 'error': '账户未登录，无法同步'};
     }
+    if (await AppSettingsStorage.isOfflineModeEnabled()) {
+      return {
+        'success': false,
+        'hasChanges': false,
+        'offline': true,
+        'error': '离线模式已开启，已跳过服务器同步',
+      };
+    }
     final session = await UserSessionStorage.captureSession(username);
     if (session == null) {
       return {'success': false, 'hasChanges': false, 'error': '账户已切换，已取消旧账户同步'};
@@ -788,6 +796,21 @@ mixin _StorageSync on _StorageServiceBase {
         hasChanges = true;
         debugPrint(
           '🧹 [同步修复] 已自动消解 ${autoResolvedMigrationConflicts.length} 条仅由循环系列迁移产生的版本冲突',
+        );
+      }
+      final autoResolvedCollabConflicts =
+          _clearResolvedCollabCompletionConflicts(allLocalTodos);
+      if (autoResolvedCollabConflicts.isNotEmpty) {
+        await saveTodos(
+          username,
+          autoResolvedCollabConflicts,
+          sync: false,
+          isSyncSource: true,
+          recomputeScheduleConflicts: false,
+        );
+        hasChanges = true;
+        debugPrint(
+          '🧹 [同步修复] 已自动消解 ${autoResolvedCollabConflicts.length} 条仅由各自完成状态差异产生的版本冲突',
         );
       }
       final localSeriesBaselines = {
@@ -1772,6 +1795,18 @@ mixin _StorageSync on _StorageServiceBase {
                 if (!localTodo.isDeleted) {
                   updatedTodoIds.add(todoUuid);
                 }
+              }
+              final serverCompletedAt = JsonValueParser.toInt(
+                ic['completed_at'],
+              );
+              if (isCompleted &&
+                  serverCompletedAt > 0 &&
+                  localTodo.completedAt != serverCompletedAt) {
+                localTodo.completedAt = serverCompletedAt;
+                independentCompletionChanged = true;
+              } else if (!isCompleted && localTodo.completedAt != null) {
+                localTodo.completedAt = null;
+                independentCompletionChanged = true;
               }
             }
           }

@@ -88,6 +88,34 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     StorageService.wallpaperRefreshNotifier.addListener(_onWallpaperRefresh);
     ScreenTimeService.dataRefreshNotifier.addListener(_onScreenTimeDataRefresh);
     AiRecognitionChatBridge.changes.addListener(_onAiRecognitionChatChanged);
+    _lanSyncCompletedSub = LanSyncService.instance.onSyncCompleted.listen((
+      result,
+    ) {
+      if (!mounted || !result.success) return;
+      unawaited(_loadAllData());
+      if (_suppressNextLanToast) {
+        _suppressNextLanToast = false;
+        return;
+      }
+      final toastText = result.message.isNotEmpty
+          ? result.message
+          : '局域网同步成功';
+      if (_syncButtonKey.currentContext != null) {
+        AppStatusToast.show(
+          context: context,
+          anchorKey: _syncButtonKey,
+          message: toastText,
+        );
+      } else {
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(content: Text(toastText), backgroundColor: Colors.green),
+        );
+      }
+    });
+    DailyAiSuggestionService.revision.addListener(
+      _onDailyAiSuggestionRevisionChanged,
+    );
     // 在细粒度通知器和刷新监听都就绪后再启动首轮数据读取。
     unawaited(_loadAllData());
 
@@ -328,6 +356,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     for (final sub in _notifSubs) {
       sub.cancel();
     }
+    unawaited(_lanSyncCompletedSub?.cancel());
     StorageService.scopedDataRefreshNotifier.removeListener(
       _onScopedDataRefresh,
     );
@@ -336,6 +365,9 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
       _onScreenTimeDataRefresh,
     );
     AiRecognitionChatBridge.changes.removeListener(_onAiRecognitionChatChanged);
+    DailyAiSuggestionService.revision.removeListener(
+      _onDailyAiSuggestionRevisionChanged,
+    );
     ThirtyDayChallengeRepository.activityRevision.removeListener(
       _onThirtyDayChallengeActivityChanged,
     );
@@ -344,6 +376,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     _courseDataNotifier.dispose();
     _countdownsNotifier.dispose();
     _mathStatsNotifier.dispose();
+    _dailyAiSuggestionNotifier.dispose();
     _disposeWallpaperListeners();
     _connStateSub?.cancel();
     _remotePomodoroSub?.cancel();
@@ -799,6 +832,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
           _habitsRevision.value++;
         }
         unawaited(_checkClipboardShareAfterResume());
+        unawaited(_syncDailyAiSuggestion());
         NotificationService.cancelSpecialTodoNotification(12351);
         NotificationService.cancelTodoRecognizeNotification();
       }

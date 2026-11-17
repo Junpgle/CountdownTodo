@@ -62,6 +62,16 @@ class AppReportLaunchService {
         final info = (data['update_info'] as Map?) ?? const {};
         final pcUrl = info['PC_package_url']?.toString() ?? '';
         final macUrl = info['mac_package_url']?.toString() ?? '';
+        final macArchPackages =
+            (info['mac_arch_packages'] as Map?) ?? const {};
+        String? firstMacArchUrl;
+        for (final value in macArchPackages.values) {
+          final candidate = _giteePackageUrl(value.toString());
+          if (candidate != null) {
+            firstMacArchUrl = candidate;
+            break;
+          }
+        }
         final apkUrl = info['full_package_url']?.toString() ?? '';
         final archPackages =
             (info['android_arch_packages'] as Map?) ?? const {};
@@ -81,7 +91,7 @@ class AppReportLaunchService {
           return firstArchApk ?? giteeApkUrl ?? _releasePageUrl;
         }
         if (defaultTargetPlatform == TargetPlatform.macOS) {
-          return giteeMacUrl ?? _releasePageUrl;
+          return giteeMacUrl ?? firstMacArchUrl ?? _releasePageUrl;
         }
         if (defaultTargetPlatform == TargetPlatform.windows) {
           return giteePcUrl ?? _releasePageUrl;

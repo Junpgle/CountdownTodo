@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_bg_modern"
-    android:paddingTop="16dp">
+    android:paddingTop="@dimen/widget_bg_inset_top">
 
     <LinearLayout
         android:layout_width="match_parent"

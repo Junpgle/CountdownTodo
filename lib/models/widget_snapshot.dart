@@ -88,6 +88,39 @@ class WidgetSnapshot {
   }
 }
 
+/// 小组件中的单条近期账单摘要。
+class WidgetFinanceTransactionItem {
+  final String title;
+  final int amountMinor;
+  final String type;
+  final String date;
+
+  const WidgetFinanceTransactionItem({
+    this.title = '',
+    this.amountMinor = 0,
+    this.type = '',
+    this.date = '',
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'title': title,
+      'amountMinor': amountMinor,
+      'type': type,
+      'date': date,
+    };
+  }
+
+  factory WidgetFinanceTransactionItem.fromJson(Map<String, dynamic> json) {
+    return WidgetFinanceTransactionItem(
+      title: json['title'] as String? ?? '',
+      amountMinor: (json['amountMinor'] as num?)?.toInt() ?? 0,
+      type: json['type'] as String? ?? '',
+      date: json['date'] as String? ?? '',
+    );
+  }
+}
+
 /// 小组件中的本月记账摘要。
 ///
 /// 金额统一使用人民币分，平台侧只负责展示，录入和数据变更仍由 Flutter
@@ -104,6 +137,7 @@ class WidgetFinanceSummary {
   final int latestAmountMinor;
   final String latestType;
   final String latestDate;
+  final List<WidgetFinanceTransactionItem> recentTransactions;
 
   const WidgetFinanceSummary({
     this.monthLabel = '',
@@ -115,6 +149,7 @@ class WidgetFinanceSummary {
     this.latestAmountMinor = 0,
     this.latestType = '',
     this.latestDate = '',
+    this.recentTransactions = const [],
   });
 
   bool get hasData =>
@@ -134,10 +169,22 @@ class WidgetFinanceSummary {
       'latestAmountMinor': latestAmountMinor,
       'latestType': latestType,
       'latestDate': latestDate,
+      'recentTransactions': recentTransactions.map((e) => e.toJson()).toList(),
     };
   }
 
   factory WidgetFinanceSummary.fromJson(Map<String, dynamic> json) {
+    final rawRecent = json['recentTransactions'];
+    final recent = rawRecent is List
+        ? rawRecent
+              .whereType<Map>()
+              .map(
+                (item) => WidgetFinanceTransactionItem.fromJson(
+                  Map<String, dynamic>.from(item),
+                ),
+              )
+              .toList(growable: false)
+        : const <WidgetFinanceTransactionItem>[];
     return WidgetFinanceSummary(
       monthLabel: json['monthLabel'] as String? ?? '',
       incomeMinor: (json['incomeMinor'] as num?)?.toInt() ?? 0,
@@ -148,14 +195,22 @@ class WidgetFinanceSummary {
       latestAmountMinor: (json['latestAmountMinor'] as num?)?.toInt() ?? 0,
       latestType: json['latestType'] as String? ?? '',
       latestDate: json['latestDate'] as String? ?? '',
+      recentTransactions: recent,
     );
   }
 
   Map<String, dynamic> toAndroidWidgetData() {
-    final latestSign = latestType == 'expense' ? '-' : '+';
-    final latestAmount = latestAmountMinor == 0
-        ? ''
-        : '$latestSign${_formatAmount(latestAmountMinor)}';
+    final recentPayload = recentTransactions
+        .take(4)
+        .map(
+          (item) => {
+            'title': item.title.isEmpty ? '记账记录' : item.title,
+            'amount': _formatTypedAmount(item.amountMinor, item.type),
+            'type': item.type,
+            'date': item.date,
+          },
+        )
+        .toList(growable: false);
     return {
       'finance_month_label': monthLabel,
       'finance_income': _formatAmount(incomeMinor),
@@ -163,9 +218,19 @@ class WidgetFinanceSummary {
       'finance_balance': _formatSignedAmount(balanceMinor),
       'finance_transaction_count': '$transactionCount 笔',
       'finance_latest_title': latestTitle.isEmpty ? '本月还没有账单' : latestTitle,
-      'finance_latest_amount': latestAmount,
+      'finance_latest_amount': _formatTypedAmount(
+        latestAmountMinor,
+        latestType,
+      ),
       'finance_latest_date': latestDate,
+      'finance_recent_json': jsonEncode(recentPayload),
     };
+  }
+
+  String _formatTypedAmount(int amountMinor, String type) {
+    if (amountMinor == 0) return '';
+    final sign = type == 'expense' ? '-' : '+';
+    return '$sign${_formatAmount(amountMinor)}';
   }
 
   String _formatAmount(int amountMinor) {

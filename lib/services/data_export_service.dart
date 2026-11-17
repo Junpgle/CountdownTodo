@@ -19,6 +19,22 @@ import 'storage/storage_key_scope.dart';
 class DataExportService {
   static const int _exportVersion = 2;
 
+  static const List<String> allExportTypeKeys = [
+    'todos',
+    'countdowns',
+    'todo_groups',
+    'time_logs',
+    'todo_plan_blocks',
+    'fixed_schedules',
+    'courses',
+    'pomodoro_tags',
+    'pomodoro_records',
+    'habits',
+    'thirty_day_challenge',
+    'finance',
+    'settings',
+  ];
+
   static Future<List<ExportTypeOption>> getAvailableTypes(
     String username,
   ) async {
@@ -197,9 +213,51 @@ class DataExportService {
     }
 
     try {
-      final deviceId = await StorageService.getDeviceId();
-      final data = <String, dynamic>{};
-      int totalItems = 0;
+      final bundle = await buildExportJson(
+        username: username,
+        selectedTypes: selectedTypes,
+        options: options,
+      );
+
+      if (saveToFile) {
+        final filePath = await BrowserFileService.saveTextFile(
+          bundle.jsonString,
+          _buildExportFileName(),
+          mimeType: 'application/json;charset=utf-8',
+        );
+        return ExportResult(
+          success: true,
+          filePath: filePath,
+          totalItems: bundle.totalItems,
+        );
+      } else {
+        await BrowserFileService.shareTextFile(
+          bundle.jsonString,
+          'cdt_backup.json',
+          subject: 'CountDownTodo 数据备份',
+          mimeType: 'application/json;charset=utf-8',
+        );
+        return ExportResult(success: true, totalItems: bundle.totalItems);
+      }
+    } catch (e) {
+      // debugPrint('❌ DataExportService: exportData error: $e');
+      return ExportResult(
+        success: false,
+        errorMessage: e.toString(),
+        totalItems: 0,
+      );
+    }
+  }
+
+  /// 构建完整导出 JSON 字符串，供手动导出与静默自动备份复用。
+  static Future<({String jsonString, int totalItems})> buildExportJson({
+    required String username,
+    List<String> selectedTypes = allExportTypeKeys,
+    ExportOptions options = const ExportOptions(),
+  }) async {
+    final deviceId = await StorageService.getDeviceId();
+    final data = <String, dynamic>{};
+    int totalItems = 0;
 
       if (selectedTypes.contains('todos')) {
         var items = await StorageService.getTodos(
@@ -455,35 +513,7 @@ class DataExportService {
       };
 
       final jsonString = const JsonEncoder.withIndent('  ').convert(exportJson);
-
-      if (saveToFile) {
-        final filePath = await BrowserFileService.saveTextFile(
-          jsonString,
-          _buildExportFileName(),
-          mimeType: 'application/json;charset=utf-8',
-        );
-        return ExportResult(
-          success: true,
-          filePath: filePath,
-          totalItems: totalItems,
-        );
-      } else {
-        await BrowserFileService.shareTextFile(
-          jsonString,
-          'cdt_backup.json',
-          subject: 'CountDownTodo 数据备份',
-          mimeType: 'application/json;charset=utf-8',
-        );
-        return ExportResult(success: true, totalItems: totalItems);
-      }
-    } catch (e) {
-      // debugPrint('❌ DataExportService: exportData error: $e');
-      return ExportResult(
-        success: false,
-        errorMessage: e.toString(),
-        totalItems: 0,
-      );
-    }
+      return (jsonString: jsonString, totalItems: totalItems);
   }
 
   static String _buildExportFileName() {

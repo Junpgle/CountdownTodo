@@ -114,9 +114,17 @@ class DatabaseHelper {
       );
     }
 
+    final existingDb = _database;
+    if (existingDb != null &&
+        _openingDatabase == null &&
+        _activeUsername == username &&
+        (!hasActiveUsername || activeUsername == username) &&
+        existingDb.path.contains('uni_sync_$username')) {
+      return existingDb;
+    }
+
     final db = await database;
-    final latestActiveUsername = (await SharedPreferences.getInstance())
-        .getString('current_login_user');
+    final latestActiveUsername = prefs.getString('current_login_user');
     final latestHasActiveUsername =
         latestActiveUsername != null && latestActiveUsername.isNotEmpty;
     if (latestHasActiveUsername && latestActiveUsername != username) {
@@ -791,6 +799,7 @@ class DatabaseHelper {
         currency_code TEXT NOT NULL DEFAULT 'CNY',
         category_uuid TEXT,
         payment_method_uuid TEXT,
+        target_payment_method_uuid TEXT,
         transaction_date TEXT NOT NULL,
         occurred_at INTEGER,
         timezone_offset_minutes INTEGER NOT NULL DEFAULT 0,
@@ -1006,6 +1015,7 @@ class DatabaseHelper {
           {'name': 'installment_index', 'type': 'INTEGER'},
           {'name': 'installment_count', 'type': 'INTEGER'},
           {'name': 'installment_total_minor', 'type': 'INTEGER'},
+          {'name': 'target_payment_method_uuid', 'type': 'TEXT'},
         ];
         for (final column in installmentColumns) {
           if (!columns.any((row) => row['name'] == column['name'])) {

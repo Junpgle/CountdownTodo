@@ -92,6 +92,8 @@ class WidgetService {
   static bool _appInForeground = true;
   static bool _periodicRefreshConfigured = false;
   static bool _powerSaveListenerRegistered = false;
+  static final Map<String, dynamic> _lastAndroidWidgetData = {};
+  static String? _lastMacOSWidgetSnapshotJson;
 
   static const MethodChannel _macOSWidgetChannel = MethodChannel(
     'com.countdowntodo/widget',
@@ -104,6 +106,8 @@ class WidgetService {
     _widgetRefreshDebouncer = null;
     _periodicRefreshConfigured = false;
     _initialized = false;
+    _lastAndroidWidgetData.clear();
+    _lastMacOSWidgetSnapshotJson = null;
     if (_powerSaveListenerRegistered) {
       PowerSaveModeService.enabledListenable.removeListener(
         _onPowerSaveModeChanged,
@@ -399,8 +403,7 @@ class WidgetService {
               : DateTime.fromMillisecondsSinceEpoch(item.startTime!).toLocal();
           final loc = item.location?.trim() ?? '';
           final rem = item.remark?.trim() ?? '';
-          final displayLocation =
-              loc.isNotEmpty && rem.isNotEmpty && loc != rem
+          final displayLocation = loc.isNotEmpty && rem.isNotEmpty && loc != rem
               ? '$loc · $rem'
               : (loc.isNotEmpty ? loc : rem);
           return <String, dynamic>{
@@ -571,33 +574,44 @@ class WidgetService {
   }) {
     final entries = transactions.toList(growable: false);
     final asOfAt = now.millisecondsSinceEpoch;
-    FinanceTransaction? latest;
-    var latestEventAt = 0;
-    for (final transaction in entries) {
-      final eventAt = transaction.balanceEventAt();
-      if (eventAt > asOfAt) continue;
-      if (latest == null ||
-          eventAt > latestEventAt ||
-          (eventAt == latestEventAt &&
-              transaction.updatedAt > latest.updatedAt)) {
-        latest = transaction;
-        latestEventAt = eventAt;
-      }
-    }
+    final eligible = entries
+        .where((transaction) => transaction.balanceEventAt() <= asOfAt)
+        .toList(growable: false)
+      ..sort((a, b) {
+        final eventCompare = b.balanceEventAt().compareTo(a.balanceEventAt());
+        if (eventCompare != 0) return eventCompare;
+        return b.updatedAt.compareTo(a.updatedAt);
+      });
+    final latest = eligible.isEmpty ? null : eligible.first;
     final summary = FinanceSummary.fromTransactions(entries, asOfAt: asOfAt);
-    final latestTitle = latest?.merchant?.trim().isNotEmpty == true
-        ? latest!.merchant!.trim()
-        : latest?.type.label ?? '';
+    String titleFor(FinanceTransaction transaction) {
+      final merchant = transaction.merchant?.trim();
+      if (merchant != null && merchant.isNotEmpty) return merchant;
+      return transaction.type.label;
+    }
+
+    final recentItems = eligible
+        .take(4)
+        .map(
+          (transaction) => WidgetFinanceTransactionItem(
+            title: titleFor(transaction),
+            amountMinor: transaction.amountMinor,
+            type: transaction.type.name,
+            date: transaction.transactionDate,
+          ),
+        )
+        .toList(growable: false);
     return WidgetFinanceSummary(
       monthLabel: '${now.year}年${now.month}月',
       incomeMinor: summary.incomeMinor,
       netExpenseMinor: summary.netExpenseMinor,
       balanceMinor: summary.balanceMinor,
       transactionCount: summary.transactionCount,
-      latestTitle: latestTitle,
+      latestTitle: latest == null ? '' : titleFor(latest),
       latestAmountMinor: latest?.amountMinor ?? 0,
       latestType: latest?.type.name ?? '',
       latestDate: latest?.transactionDate ?? '',
+      recentTransactions: recentItems,
     );
   }
 
@@ -916,11 +930,18 @@ class WidgetService {
   ) async {
     try {
       final List<Future<void>> widgetWrites = [];
+      final changedEntries = <String, dynamic>{};
       widgetData.forEach((key, value) {
-        widgetWrites.add(HomeWidget.saveWidgetData(key, value));
+        if (!_lastAndroidWidgetData.containsKey(key) ||
+            _lastAndroidWidgetData[key] != value) {
+          changedEntries[key] = value;
+          widgetWrites.add(HomeWidget.saveWidgetData(key, value));
+        }
       });
 
+      if (widgetWrites.isEmpty) return;
       await Future.wait(widgetWrites);
+      _lastAndroidWidgetData.addAll(changedEntries);
 
       try {
         await Future.wait([
@@ -985,9 +1006,12 @@ class WidgetService {
 
   static Future<void> _updateMacOSWidget(WidgetSnapshot snapshot) async {
     try {
+      final json = snapshot.toJsonString();
+      if (json == _lastMacOSWidgetSnapshotJson) return;
       await _macOSWidgetChannel.invokeMethod('saveWidgetSnapshot', {
-        'json': snapshot.toJsonString(),
+        'json': json,
       });
+      _lastMacOSWidgetSnapshotJson = json;
     } catch (e) {
       //       debugPrint('⚠️ [WidgetService] macOS Widget update failed: $e');
     }
@@ -1400,6 +1424,8 @@ class WidgetService {
   }
 
   static Future<void> updateTodoWidget(List<TodoItem> todos) async {
+    _widgetRefreshDebouncer?.cancel();
+    _widgetRefreshDebouncer = null;
     await _updateCurrentUserWidgets(todos: todos);
   }
 }

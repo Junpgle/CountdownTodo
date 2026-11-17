@@ -3,10 +3,12 @@ import 'dart:ui' as ui show ImageFilter, lerpDouble;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/feature_tip_service.dart';
+import 'app_dialogs.dart';
 import 'app_performance_monitor.dart';
 
 const _pageLayerCurve = Cubic(0.4, 0.65, 0.25, 1.0);
@@ -211,6 +213,7 @@ class PageTransitions {
     ('ConflictInboxScreen', Icons.rule_rounded),
     ('DataExportPage', Icons.ios_share_rounded),
     ('DataImportPage', Icons.download_for_offline_rounded),
+    ('AutoBackupPage', Icons.backup_outlined),
     ('BandSyncScreen', Icons.watch_rounded),
     ('ServerChoicePage', Icons.dns_rounded),
     ('DeviceVersionDetailPage', Icons.smartphone_rounded),
@@ -381,6 +384,110 @@ class PageTransitions {
         sourceKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null || renderBox.size.isEmpty) return null;
     return renderBox.localToGlobal(Offset.zero) & renderBox.size;
+  }
+
+  /// Presents a floating dialog whose container morphs out from [sourceKey]
+  /// and collapses back into it when dismissed.
+  static Future<T?> showDialogFromRect<T extends Object?>({
+    required BuildContext context,
+    required WidgetBuilder builder,
+    required GlobalKey sourceKey,
+    Color? sourceColor,
+    IconData? placeholderIcon,
+    BorderRadius sourceBorderRadius = const BorderRadius.all(
+      Radius.circular(20),
+    ),
+    BorderRadius targetBorderRadius = const BorderRadius.all(
+      Radius.circular(28),
+    ),
+    EdgeInsets insetPadding = const EdgeInsets.symmetric(
+      horizontal: 24,
+      vertical: 24,
+    ),
+    bool barrierDismissible = true,
+    Color barrierColor = const Color(0x80000000),
+    bool useRootNavigator = true,
+    bool useSafeArea = true,
+  }) async {
+    await _AnimSettings.ensureLoaded();
+    if (!context.mounted) return null;
+
+    var renderBox = sourceKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.hasSize || renderBox.size.isEmpty) {
+      await Future.delayed(const Duration(milliseconds: 16));
+      if (!context.mounted) return null;
+      renderBox = sourceKey.currentContext?.findRenderObject() as RenderBox?;
+    }
+
+    if (!_AnimSettings.animationsEnabled ||
+        renderBox == null ||
+        !renderBox.hasSize ||
+        renderBox.size.isEmpty) {
+      return showAppDialog<T>(
+        context: context,
+        barrierDismissible: barrierDismissible,
+        barrierColor: barrierColor,
+        useRootNavigator: useRootNavigator,
+        useSafeArea: useSafeArea,
+        builder: (dialogContext) => Dialog(
+          insetPadding: insetPadding,
+          shape: RoundedRectangleBorder(borderRadius: targetBorderRadius),
+          child: builder(dialogContext),
+        ),
+      );
+    }
+
+    final sourceRect = renderBox.localToGlobal(Offset.zero) & renderBox.size;
+    final theme = Theme.of(context);
+    final rawColor = sourceColor ?? theme.colorScheme.surfaceContainerHigh;
+    final effectiveSourceColor = rawColor.a < 1.0
+        ? Color.alphaBlend(rawColor, theme.colorScheme.surface)
+        : rawColor;
+
+    return showAppGeneralDialog<T>(
+      context: context,
+      barrierDismissible: barrierDismissible,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: barrierColor,
+      transitionDuration: Duration(milliseconds: _AnimSettings.duration),
+      useRootNavigator: useRootNavigator,
+      pageBuilder: (dialogContext, animation, secondaryAnimation) {
+        final dialogTheme = Theme.of(dialogContext);
+        final cardColor =
+            dialogTheme.dialogTheme.backgroundColor ??
+            dialogTheme.colorScheme.surfaceContainerHigh;
+        return Material(
+          color: cardColor,
+          surfaceTintColor: Colors.transparent,
+          elevation: 6,
+          shape: RoundedRectangleBorder(borderRadius: targetBorderRadius),
+          clipBehavior: Clip.antiAlias,
+          child: builder(dialogContext),
+        );
+      },
+      transitionBuilder: (dialogContext, animation, secondaryAnimation, child) {
+        final mediaPadding = useSafeArea
+            ? MediaQuery.paddingOf(dialogContext)
+            : EdgeInsets.zero;
+        final viewInsets = MediaQuery.viewInsetsOf(dialogContext);
+        final availablePadding = EdgeInsets.only(
+          left: mediaPadding.left + insetPadding.left,
+          top: mediaPadding.top + insetPadding.top,
+          right: mediaPadding.right + insetPadding.right,
+          bottom: mediaPadding.bottom + viewInsets.bottom + insetPadding.bottom,
+        );
+        return _DialogContainerTransform(
+          animation: animation,
+          sourceRect: sourceRect,
+          sourceColor: effectiveSourceColor,
+          sourceBorderRadius: sourceBorderRadius,
+          targetBorderRadius: targetBorderRadius,
+          availablePadding: availablePadding,
+          placeholderIcon: placeholderIcon,
+          child: child,
+        );
+      },
+    );
   }
 
   static MaterialPageRoute<T> material<T>({
@@ -1539,6 +1646,289 @@ class _LazyPageRevealState extends State<LazyPageReveal> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _DialogContainerTransform extends StatefulWidget {
+  const _DialogContainerTransform({
+    required this.animation,
+    required this.sourceRect,
+    required this.sourceColor,
+    required this.sourceBorderRadius,
+    required this.targetBorderRadius,
+    required this.availablePadding,
+    this.placeholderIcon,
+    required this.child,
+  });
+
+  final Animation<double> animation;
+  final Rect sourceRect;
+  final Color sourceColor;
+  final BorderRadius sourceBorderRadius;
+  final BorderRadius targetBorderRadius;
+  final EdgeInsets availablePadding;
+  final IconData? placeholderIcon;
+  final Widget child;
+
+  @override
+  State<_DialogContainerTransform> createState() =>
+      _DialogContainerTransformState();
+}
+
+class _DialogContainerTransformState extends State<_DialogContainerTransform> {
+  late final CurvedAnimation _curvedAnimation;
+  late final SnapshotController _contentSnapshot;
+
+  @override
+  void initState() {
+    super.initState();
+    _curvedAnimation = CurvedAnimation(
+      parent: widget.animation,
+      curve: _pageLayerCurve,
+      reverseCurve: _containerTransformReverseCurve,
+    );
+    _contentSnapshot = SnapshotController(allowSnapshotting: true);
+    widget.animation.addStatusListener(_handleAnimationStatus);
+  }
+
+  void _handleAnimationStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed) {
+      _contentSnapshot.allowSnapshotting = false;
+    } else if (status == AnimationStatus.reverse ||
+        status == AnimationStatus.forward) {
+      _contentSnapshot.allowSnapshotting = true;
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.animation.removeStatusListener(_handleAnimationStatus);
+    _contentSnapshot.dispose();
+    _curvedAnimation.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final snapshottedChild = SnapshotWidget(
+      controller: _contentSnapshot,
+      mode: SnapshotMode.permissive,
+      child: RepaintBoundary(child: widget.child),
+    );
+    return AnimatedBuilder(
+      animation: _curvedAnimation,
+      child: snapshottedChild,
+      builder: (context, child) {
+        return _DialogMorphLayout(
+          progress: _curvedAnimation.value,
+          sourceRect: widget.sourceRect,
+          sourceColor: widget.sourceColor,
+          sourceBorderRadius: widget.sourceBorderRadius,
+          targetBorderRadius: widget.targetBorderRadius,
+          availablePadding: widget.availablePadding,
+          child: child,
+        );
+      },
+    );
+  }
+}
+
+class _DialogMorphLayout extends SingleChildRenderObjectWidget {
+  const _DialogMorphLayout({
+    required this.progress,
+    required this.sourceRect,
+    required this.sourceColor,
+    required this.sourceBorderRadius,
+    required this.targetBorderRadius,
+    required this.availablePadding,
+    super.child,
+  });
+
+  final double progress;
+  final Rect sourceRect;
+  final Color sourceColor;
+  final BorderRadius sourceBorderRadius;
+  final BorderRadius targetBorderRadius;
+  final EdgeInsets availablePadding;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) {
+    return _RenderDialogMorphLayout(
+      progress,
+      sourceRect,
+      sourceColor,
+      sourceBorderRadius,
+      targetBorderRadius,
+      availablePadding,
+    );
+  }
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant _RenderDialogMorphLayout renderObject,
+  ) {
+    renderObject
+      ..progress = progress
+      ..sourceRect = sourceRect
+      ..sourceColor = sourceColor
+      ..sourceBorderRadius = sourceBorderRadius
+      ..targetBorderRadius = targetBorderRadius
+      ..availablePadding = availablePadding;
+  }
+}
+
+class _RenderDialogMorphLayout extends RenderShiftedBox {
+  _RenderDialogMorphLayout(
+    this._progress,
+    this._sourceRect,
+    this._sourceColor,
+    this._sourceBorderRadius,
+    this._targetBorderRadius,
+    this._availablePadding,
+  ) : super(null);
+
+  double _progress;
+  double get progress => _progress;
+  set progress(double value) {
+    if (_progress == value) return;
+    _progress = value;
+    markNeedsPaint();
+  }
+
+  Rect _sourceRect;
+  Rect get sourceRect => _sourceRect;
+  set sourceRect(Rect value) {
+    if (_sourceRect == value) return;
+    _sourceRect = value;
+    markNeedsPaint();
+  }
+
+  Color _sourceColor;
+  Color get sourceColor => _sourceColor;
+  set sourceColor(Color value) {
+    if (_sourceColor == value) return;
+    _sourceColor = value;
+    markNeedsPaint();
+  }
+
+  BorderRadius _sourceBorderRadius;
+  BorderRadius get sourceBorderRadius => _sourceBorderRadius;
+  set sourceBorderRadius(BorderRadius value) {
+    if (_sourceBorderRadius == value) return;
+    _sourceBorderRadius = value;
+    markNeedsPaint();
+  }
+
+  BorderRadius _targetBorderRadius;
+  BorderRadius get targetBorderRadius => _targetBorderRadius;
+  set targetBorderRadius(BorderRadius value) {
+    if (_targetBorderRadius == value) return;
+    _targetBorderRadius = value;
+    markNeedsPaint();
+  }
+
+  EdgeInsets _availablePadding;
+  EdgeInsets get availablePadding => _availablePadding;
+  set availablePadding(EdgeInsets value) {
+    if (_availablePadding == value) return;
+    _availablePadding = value;
+    markNeedsLayout();
+  }
+
+  Rect _targetRect = Rect.zero;
+
+  @override
+  void performLayout() {
+    size = constraints.biggest;
+    final child = this.child;
+    if (child == null) {
+      _targetRect = Rect.zero;
+      return;
+    }
+
+    final availableRect = _availablePadding.deflateRect(Offset.zero & size);
+    final childConstraints = BoxConstraints(
+      maxWidth: availableRect.width.clamp(0.0, double.infinity),
+      maxHeight: availableRect.height.clamp(0.0, double.infinity),
+    );
+    child.layout(childConstraints, parentUsesSize: true);
+    _targetRect = Alignment.center.inscribe(child.size, availableRect);
+    (child.parentData as BoxParentData).offset = _targetRect.topLeft;
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
+    if (_progress < 0.9) return false;
+    return super.hitTestChildren(result, position: position);
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final child = this.child;
+    if (child == null || _targetRect.width <= 0 || _targetRect.height <= 0) {
+      return;
+    }
+
+    final t = _progress.clamp(0.0, 1.0);
+    if (t >= 1.0 - _epsilon) {
+      context.paintChild(child, offset + _targetRect.topLeft);
+      return;
+    }
+    if (t <= _epsilon) {
+      return;
+    }
+
+    final currentRect = Rect.lerp(_sourceRect, _targetRect, t)!;
+    final currentRadius = BorderRadius.lerp(
+      _sourceBorderRadius,
+      _targetBorderRadius,
+      t,
+    )!;
+    final shiftedRect = currentRect.shift(offset);
+    final clipRRect = currentRadius.toRRect(shiftedRect);
+    final contentProgress = ((t - 0.12) / 0.34).clamp(0.0, 1.0);
+    final contentAlpha = (contentProgress * 255).round().clamp(0, 255);
+
+    context.pushClipRRect(
+      needsCompositing,
+      offset,
+      currentRect,
+      clipRRect,
+      clipBehavior: Clip.hardEdge,
+      (context, innerOffset) {
+        final paintRect = currentRect.shift(innerOffset);
+        context.canvas.drawRect(
+          paintRect,
+          Paint()..color = _sourceColor,
+        );
+
+        if (contentAlpha <= 0) return;
+
+        final scale = currentRect.width / _targetRect.width;
+        final transform = Matrix4.identity()
+          ..translateByDouble(paintRect.left, paintRect.top, 0.0, 1.0)
+          ..scaleByDouble(scale, scale, 1.0, 1.0);
+
+        context.pushTransform(
+          needsCompositing,
+          Offset.zero,
+          transform,
+          (context, childOffset) {
+            if (contentAlpha >= 255) {
+              context.paintChild(child, childOffset);
+            } else {
+              context.pushOpacity(
+                childOffset,
+                contentAlpha,
+                (context, opacityOffset) =>
+                    context.paintChild(child, opacityOffset),
+              );
+            }
+          },
+        );
+      },
     );
   }
 }

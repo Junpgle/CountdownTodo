@@ -38,6 +38,8 @@ import 'services/android_window_rendering_policy.dart';
 import 'services/windows_render_cache_policy.dart';
 import 'services/pomodoro_service.dart';
 import 'services/focus_do_not_disturb_service.dart';
+import 'services/auto_backup_service.dart';
+import 'services/lan_sync_service.dart';
 import 'widgets/macos_menu_bar.dart';
 import 'services/pomodoro_sync_service.dart';
 import 'services/widget_service.dart';
@@ -336,6 +338,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   bool _deepLinkConsumptionScheduled = false;
   Timer? _defaultSplashFallbackTimer;
   Timer? _systemUiRestoreTimer;
+  Timer? _autoBackupStartupTimer;
+  Timer? _autoBackupPeriodicTimer;
   String? _shareCode;
 
   @override
@@ -352,7 +356,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       _handleWindowsWindowActivityChanged,
     );
     _handleWindowsWindowActivityChanged();
-    if (AppPlatform.isAndroid) {
+    if (AppPlatform.isAndroid || AppPlatform.isMacOS) {
       PowerSaveModeService.enabledListenable.addListener(
         _handlePowerSaveModeChanged,
       );
@@ -415,11 +419,19 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         state == AppLifecycleState.resumed;
 
     if (state == AppLifecycleState.resumed) {
-      if (AppPlatform.isAndroid) {
+      if (AppPlatform.isAndroid || AppPlatform.isMacOS) {
         unawaited(PowerSaveModeService.refresh());
+      }
+      if (AppPlatform.isAndroid) {
         WidgetService.setAppForeground(true);
       }
       _scheduleSystemUiRestore();
+      unawaited(AutoBackupService.runBackupIfDue());
+      unawaited(
+      LanSyncService.instance.initFromPreferences().then(
+        (_) => LanSyncService.instance.triggerBackgroundAutoSync(),
+      ),
+    );
     } else if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.paused ||
@@ -994,6 +1006,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void dispose() {
     _defaultSplashFallbackTimer?.cancel();
     _systemUiRestoreTimer?.cancel();
+    _autoBackupStartupTimer?.cancel();
+    _autoBackupPeriodicTimer?.cancel();
     StorageService.oledBlackModeNotifier.removeListener(
       _handleOledBlackModeChanged,
     );
@@ -1001,7 +1015,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       _handleWindowsWindowActivityChanged,
     );
     WidgetsBinding.instance.removeObserver(this);
-    if (AppPlatform.isAndroid) {
+    if (AppPlatform.isAndroid || AppPlatform.isMacOS) {
       PowerSaveModeService.enabledListenable.removeListener(
         _handlePowerSaveModeChanged,
       );
@@ -1046,6 +1060,28 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         });
         _applySplashTransitionIfReady();
       });
+    }
+
+    unawaited(
+      LanSyncService.instance.initFromPreferences().then(
+        (_) => LanSyncService.instance.triggerBackgroundAutoSync(isStartup: true),
+      ),
+    );
+
+    if (AutoBackupService.isSupported) {
+      _autoBackupStartupTimer?.cancel();
+      _autoBackupStartupTimer = Timer(const Duration(seconds: 5), () {
+        if (!mounted) return;
+        unawaited(AutoBackupService.runBackupIfDue());
+      });
+      _autoBackupPeriodicTimer?.cancel();
+      _autoBackupPeriodicTimer = Timer.periodic(
+        const Duration(hours: 6),
+        (_) {
+          if (!mounted) return;
+          unawaited(AutoBackupService.runBackupIfDue());
+        },
+      );
     }
   }
 

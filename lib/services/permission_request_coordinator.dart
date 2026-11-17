@@ -8,11 +8,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../utils/app_platform.dart';
 import '../utils/app_dialogs.dart';
+import 'ai_device_context_service.dart';
 import 'band_sync_service.dart';
 import 'minor_mode_policy.dart';
 import 'minor_mode_service.dart';
 import 'screen_time_service.dart';
 import '../widgets/floating_glass_control.dart';
+import '../widgets/optional_liquid_glass_surface.dart';
 
 enum AppPermissionKind {
   notification,
@@ -25,6 +27,7 @@ enum AppPermissionKind {
   liveUpdates,
   localNetwork,
   bandDeviceManagement,
+  location,
 }
 
 extension AppPermissionKindDetails on AppPermissionKind {
@@ -39,19 +42,21 @@ extension AppPermissionKindDetails on AppPermissionKind {
     AppPermissionKind.liveUpdates => '实时通知',
     AppPermissionKind.localNetwork => '局域网访问',
     AppPermissionKind.bandDeviceManagement => '小米手环设备管理',
+    AppPermissionKind.location => '位置',
   };
 
   String get rationale => switch (this) {
-    AppPermissionKind.notification => '用于发送待办、课程和专注结束提醒。',
-    AppPermissionKind.storage => '用于导入课表文件和保存版本更新安装包。',
-    AppPermissionKind.usageStats => '用于统计各应用使用时长，生成屏幕时间分析。',
-    AppPermissionKind.requestInstall => '用于在应用内安装已经下载的版本更新。',
-    AppPermissionKind.exactAlarm => '用于在应用退出后仍按设定时间准时发送提醒。',
-    AppPermissionKind.batteryOptimization => '用于减少锁屏后专注计时和实时同步被系统中断。',
-    AppPermissionKind.calendar => '用于将课程、待办和计划写入 Android 系统日历。',
-    AppPermissionKind.liveUpdates => '用于在支持的 Android 设备上展示实时活动和状态更新。',
-    AppPermissionKind.localNetwork => '用于发现同一局域网中的其他设备并进行局域网同步。',
+    AppPermissionKind.notification => '用于发送待办闹钟、课程提醒、专注结束与下载进度通知。',
+    AppPermissionKind.storage => '用于导入课表文件、导出或恢复备份数据以及保存版本更新安装包。',
+    AppPermissionKind.usageStats => '用于统计各应用使用时长，生成时间日志与屏幕时间分析。',
+    AppPermissionKind.requestInstall => '用于在应用内安装已经下载的版本更新安装包。',
+    AppPermissionKind.exactAlarm => '用于在应用退出或锁屏后仍按设定时间准时发送待办与课程提醒。',
+    AppPermissionKind.batteryOptimization => '用于减少锁屏或后台时专注计时、提醒调度和实时同步被系统中断。',
+    AppPermissionKind.calendar => '用于读取本地系统日历日程并展示在 App 中，以及将课程、待办和规划写入系统日历。',
+    AppPermissionKind.liveUpdates => '用于在支持的 Android 设备上展示专注等实时活动和状态更新。',
+    AppPermissionKind.localNetwork => '用于发现同一局域网中的其他设备并进行局域网互传与同步。',
     AppPermissionKind.bandDeviceManagement => '用于向已连接的小米手环同步待办、课程、倒数日和专注状态。',
+    AppPermissionKind.location => '用于让 AI 助手按需查询你当前所在城市与位置，提供更贴合当地的日程、出行与时间建议。',
   };
 
   bool get opensDedicatedSettings => switch (this) {
@@ -75,7 +80,8 @@ extension AppPermissionKindDetails on AppPermissionKind {
     AppPermissionKind.requestInstall ||
     AppPermissionKind.exactAlarm ||
     AppPermissionKind.calendar ||
-    AppPermissionKind.localNetwork => false,
+    AppPermissionKind.localNetwork ||
+    AppPermissionKind.location => false,
   };
 }
 
@@ -155,6 +161,7 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
   Future<PermissionRequestResult> request(
     AppPermissionKind permission, {
     PermissionResultCallback? onResult,
+    bool fallbackToSettingsOnDenied = false,
   }) async {
     final activeRequest = _activeRequest;
     if (activeRequest != null) {
@@ -167,7 +174,10 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
     }
 
     _activePermission = permission;
-    final request = _performRequest(permission);
+    final request = _performRequest(
+      permission,
+      fallbackToSettingsOnDenied: fallbackToSettingsOnDenied,
+    );
     _activeRequest = request;
     try {
       final result = await request;
@@ -181,8 +191,9 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
   }
 
   Future<PermissionRequestResult> _performRequest(
-    AppPermissionKind permission,
-  ) async {
+    AppPermissionKind permission, {
+    bool fallbackToSettingsOnDenied = false,
+  }) async {
     final previousStatus = await status(permission);
 
     final agreedKey = 'permission_agreed_${permission.name}';
@@ -268,7 +279,10 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
         final requestedStatus =
             await (_requesterOverride?.call(permission) ??
                 _requestPermission(permission));
-        if (requestedStatus.isPermanentlyDenied) {
+        if (requestedStatus.isPermanentlyDenied ||
+            (fallbackToSettingsOnDenied &&
+                !requestedStatus.isGranted &&
+                !requestedStatus.isLimited)) {
           openedSettings = await _openSettingsAndWait(permission);
         } else if (permission == AppPermissionKind.storage ||
             permission == AppPermissionKind.requestInstall) {
@@ -385,6 +399,8 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
           return connection['hasPermission'] == true
               ? PermissionStatus.granted
               : PermissionStatus.denied;
+        case AppPermissionKind.location:
+          return await AiDeviceContextService.getLocationPermissionStatus();
       }
     } catch (_) {
       return PermissionStatus.granted;
@@ -413,6 +429,8 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
           return await BandSyncService.requestPermission()
               ? PermissionStatus.granted
               : PermissionStatus.denied;
+        case AppPermissionKind.location:
+          return await AiDeviceContextService.requestLocationPermission();
         case AppPermissionKind.localNetwork:
           if (!AppPlatform.isAndroid) return PermissionStatus.granted;
           try {
@@ -444,26 +462,34 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
         return true;
       case AppPermissionKind.exactAlarm:
         try {
-          await _platformChannel.invokeMethod<void>('openExactAlarmSettings');
-          return true;
+          final opened =
+              await _platformChannel.invokeMethod<bool>(
+                'openExactAlarmSettings',
+              ) ??
+              false;
+          return opened ? true : await openAppSettings();
         } on PlatformException {
           return openAppSettings();
         }
       case AppPermissionKind.batteryOptimization:
         try {
-          await _platformChannel.invokeMethod<void>(
-            'openBatteryOptimizationSettings',
-          );
-          return true;
+          final opened =
+              await _platformChannel.invokeMethod<bool>(
+                'openBatteryOptimizationSettings',
+              ) ??
+              false;
+          return opened ? true : await openAppSettings();
         } on PlatformException {
           return openAppSettings();
         }
       case AppPermissionKind.liveUpdates:
         try {
-          return await _platformChannel.invokeMethod<bool>(
+          final opened =
+              await _platformChannel.invokeMethod<bool>(
                 'openLiveUpdatesSettings',
               ) ??
               false;
+          return opened ? true : await openAppSettings();
         } on PlatformException {
           return openAppSettings();
         }
@@ -568,168 +594,175 @@ class PermissionRationaleBanner extends StatelessWidget {
                         : Opacity(opacity: clampedOpacity, child: child),
                   );
                 },
-                child: FloatingGlassControl(
-                  height: null,
-                  borderRadius: 24,
-                  haloColor: colorScheme.primary,
-                  child: Material(
-                    type: MaterialType.transparency,
-                    color: Colors.transparent,
-                    borderRadius: BorderRadius.circular(24),
-                    clipBehavior: Clip.antiAlias,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            colorScheme.primaryContainer.withValues(
-                              alpha: 0.18,
-                            ),
-                            colorScheme.surface.withValues(alpha: 0.12),
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        border: Border.all(
-                          color: colorScheme.outlineVariant.withValues(
-                            alpha: 0.3,
-                          ),
-                          width: 1,
-                        ),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  width: 48,
-                                  height: 48,
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: [
-                                        colorScheme.primary,
-                                        colorScheme.tertiary,
-                                      ],
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                    ),
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: colorScheme.primary.withValues(
-                                          alpha: 0.3,
-                                        ),
-                                        blurRadius: 8,
-                                        offset: const Offset(0, 4),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Icon(
-                                    Icons.security_rounded,
-                                    color: colorScheme.onPrimary,
-                                    size: 26,
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        proceeding
-                                            ? '正在打开“${permission.label}”权限'
-                                            : '需要“${permission.label}”权限',
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .titleMedium
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.w700,
-                                              letterSpacing: 0.3,
-                                            ),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        proceeding
-                                            ? '请在接下来的系统页面中完成授权。'
-                                            : permission.rationale,
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodyMedium
-                                            ?.copyWith(
-                                              color:
-                                                  colorScheme.onSurfaceVariant,
-                                              height: 1.5,
-                                            ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                            if (proceeding) ...[
-                              const SizedBox(height: 20),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
-                                child: LinearProgressIndicator(
-                                  minHeight: 6,
-                                  backgroundColor: colorScheme.primaryContainer,
-                                  color: colorScheme.primary,
-                                ),
+                child: OptionalLiquidGlassOverlayScope(
+                  child: FloatingGlassControl(
+                    height: null,
+                    borderRadius: 24,
+                    haloColor: colorScheme.primary,
+                    child: Material(
+                      type: MaterialType.transparency,
+                      color: Colors.transparent,
+                      borderRadius: BorderRadius.circular(24),
+                      clipBehavior: Clip.antiAlias,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              colorScheme.primaryContainer.withValues(
+                                alpha: 0.18,
                               ),
+                              colorScheme.surface.withValues(alpha: 0.12),
                             ],
-                            if (!proceeding) ...[
-                              const SizedBox(height: 24),
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          border: Border.all(
+                            color: colorScheme.outlineVariant.withValues(
+                              alpha: 0.3,
+                            ),
+                            width: 1,
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
                               Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  TextButton(
-                                    onPressed: onDeny,
-                                    style: TextButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 16,
-                                        vertical: 12,
+                                  Container(
+                                    width: 48,
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          colorScheme.primary,
+                                          colorScheme.tertiary,
+                                        ],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
                                       ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: colorScheme.primary.withValues(
+                                            alpha: 0.3,
+                                          ),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ],
                                     ),
-                                    child: Text(
-                                      '暂不允许',
-                                      style: TextStyle(
-                                        color: colorScheme.onSurfaceVariant,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                    child: Icon(
+                                      Icons.security_rounded,
+                                      color: colorScheme.onPrimary,
+                                      size: 26,
                                     ),
                                   ),
-                                  const SizedBox(width: 12),
-                                  FilledButton(
-                                    onPressed: onAllow,
-                                    style: FilledButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 20,
-                                        vertical: 12,
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      elevation: 0,
-                                    ),
-                                    child: const Text(
-                                      '允许并继续',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          proceeding
+                                              ? '正在打开“${permission.label}”权限'
+                                              : '需要“${permission.label}”权限',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleMedium
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w700,
+                                                letterSpacing: 0.3,
+                                              ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          proceeding
+                                              ? '请在接下来的系统页面中完成授权。'
+                                              : permission.rationale,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodyMedium
+                                              ?.copyWith(
+                                                color: colorScheme
+                                                    .onSurfaceVariant,
+                                                height: 1.5,
+                                              ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ],
                               ),
+                              if (proceeding) ...[
+                                const SizedBox(height: 20),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: LinearProgressIndicator(
+                                    minHeight: 6,
+                                    backgroundColor:
+                                        colorScheme.primaryContainer,
+                                    color: colorScheme.primary,
+                                  ),
+                                ),
+                              ],
+                              if (!proceeding) ...[
+                                const SizedBox(height: 24),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    TextButton(
+                                      onPressed: onDeny,
+                                      style: TextButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                          vertical: 12,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        '暂不允许',
+                                        style: TextStyle(
+                                          color: colorScheme.onSurfaceVariant,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    FilledButton(
+                                      onPressed: onAllow,
+                                      style: FilledButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 20,
+                                          vertical: 12,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                        elevation: 0,
+                                      ),
+                                      child: const Text(
+                                        '允许并继续',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
                       ),
                     ),

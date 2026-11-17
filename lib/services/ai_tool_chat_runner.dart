@@ -4,6 +4,7 @@ import 'dart:convert';
 import '../features/finance/models/finance_models.dart';
 import 'ai_action_parser.dart';
 import 'ai_chat_service.dart';
+import 'ai_memory_service.dart';
 import 'ai_native_tool_call_parser.dart';
 import 'ai_native_tool_definition_builder.dart';
 import 'ai_query_tool_service.dart';
@@ -77,7 +78,12 @@ abstract final class AiToolChatRunner {
     return visible.toString();
   }
 
-  static ({String content, List<AiChatFunctionCall> calls, bool hadToolMarkup})
+  static ({
+    String content,
+    List<AiChatFunctionCall> calls,
+    bool hadToolMarkup,
+    bool hadDisallowedWriteMarkup,
+  })
   _parseLegacyTextToolCalls(
     String content,
     List<Map<String, dynamic>> tools,
@@ -97,6 +103,7 @@ abstract final class AiToolChatRunner {
 
     final calls = <AiChatFunctionCall>[];
     var callIndex = 0;
+    var hadDisallowedWriteMarkup = false;
     for (final blockMatch in _legacyTextToolBlock.allMatches(content)) {
       final block = blockMatch.group(1) ?? '';
       final functionMatch = RegExp(
@@ -118,7 +125,12 @@ abstract final class AiToolChatRunner {
         }
       }
       final function = allowedTools[canonicalName];
-      if (function == null) continue;
+      if (function == null) {
+        if (_writeProposalToolNames.contains(canonicalName)) {
+          hadDisallowedWriteMarkup = true;
+        }
+        continue;
+      }
 
       final parameters = function['parameters'];
       final properties = parameters is Map ? parameters['properties'] : null;
@@ -204,7 +216,12 @@ abstract final class AiToolChatRunner {
       cleaned = cleaned.substring(0, malformedToolCall.start);
     }
     cleaned = cleaned.replaceAll(_legacyTextToolClose, '');
-    return (content: cleaned, calls: calls, hadToolMarkup: hadToolMarkup);
+    return (
+      content: cleaned,
+      calls: calls,
+      hadToolMarkup: hadToolMarkup,
+      hadDisallowedWriteMarkup: hadDisallowedWriteMarkup,
+    );
   }
 
   static dynamic _decodeLegacyJsonValue(String value) {
@@ -271,9 +288,15 @@ abstract final class AiToolChatRunner {
     Map<String, Set<String>>? knownFinanceCatalogIdsByKind,
     Map<String, Set<String>>? knownReferenceIdsByDomain,
     DateTime? planningNow,
-    int maxQueryRounds = 4,
-    int maxCalls = 8,
+    int? maxQueryRounds = 4,
+    int? maxCalls = 8,
+    int? maxTurnChars = AiToolResultContext.maxTurnChars,
+    Future<Map<String, dynamic>> Function(Map<String, dynamic> arguments)?
+    onManageMemory,
   }) async* {
+    final effectiveMaxTurnChars = maxTurnChars == null
+        ? null
+        : (maxTurnChars < 400 ? 400 : maxTurnChars);
     final history = _initialHistory(
       messages,
       compactForPlanning:
@@ -343,12 +366,17 @@ abstract final class AiToolChatRunner {
       return '已生成部分待确认操作卡，但模型未能补齐：$labels。现有卡片尚未写入，请核对后再补充缺少的操作。';
     }
 
-    for (var round = 0; round <= maxQueryRounds + 1; round++) {
+    for (
+      var round = 0;
+      maxQueryRounds == null || round <= maxQueryRounds + 1;
+      round++
+    ) {
       if (cancelled()) return;
       final finalRound =
-          round >= maxQueryRounds ||
-          callCount >= maxCalls ||
-          resultChars > AiToolResultContext.maxTurnChars - 400;
+          (maxQueryRounds != null && round >= maxQueryRounds) ||
+          (maxCalls != null && callCount >= maxCalls) ||
+          (effectiveMaxTurnChars != null &&
+              resultChars > effectiveMaxTurnChars - 400);
       final unsubmittedWriteProposalNames = requiredWriteProposalNames
           .difference(completedWriteProposalNames);
       final roundTools = tools.where((tool) {
@@ -453,6 +481,10 @@ abstract final class AiToolChatRunner {
         if (hasPlanningTool || hasWriteProposalTool) {
           if (content.trim().isEmpty) {
             content = '上一轮返回了当前未开放的文本工具调用。';
+          }
+        } else if (legacyCalls.hadDisallowedWriteMarkup) {
+          if (content.trim().isEmpty) {
+            content = '上一轮返回了当前未开放的写入建议；如需生成待办或日程确认卡，请明确说明“帮我创建/添加”。';
           }
         } else {
           content = [
@@ -897,7 +929,10 @@ abstract final class AiToolChatRunner {
       final validWriteProposalNames = <String>{};
       for (final call in calls) {
         if (cancelled()) return;
-        callCount++;
+        final isMemoryTool = call.name == AiMemoryService.toolName;
+        if (!isMemoryTool) {
+          callCount++;
+        }
         final requiredProposalNotYetSubmitted =
             requiredWriteProposalNames.contains(call.name) &&
             !completedWriteProposalNames.contains(call.name);
@@ -906,10 +941,14 @@ abstract final class AiToolChatRunner {
           result = {'ok': false, 'error': '本轮未开放此工具'};
         } else if (!usedIds.add(call.id)) {
           result = {'ok': false, 'error': '重复的工具调用ID，未再次执行'};
-        } else if (callCount > maxCalls && !requiredProposalNotYetSubmitted) {
+        } else if (maxCalls != null &&
+            callCount > maxCalls &&
+            !requiredProposalNotYetSubmitted &&
+            !isMemoryTool) {
           result = {'ok': false, 'error': '本轮工具调用次数达到上限'};
         } else if (AiQueryToolService.toolNames.contains(call.name) &&
-            resultChars > AiToolResultContext.maxTurnChars - 400) {
+            effectiveMaxTurnChars != null &&
+            resultChars > effectiveMaxTurnChars - 400) {
           result = {'ok': false, 'error': '本轮数据预算达到上限，请根据已有结果回答'};
         } else if (AiQueryToolService.toolNames.contains(call.name)) {
           final key = AiToolResultContext.queryKey(call.name, call.arguments);
@@ -948,6 +987,23 @@ abstract final class AiToolChatRunner {
               'saved': false,
               'message': '操作草案交给App解析并展示确认卡，尚未执行。请用户核对确认。',
             };
+          }
+        } else if (call.name == AiMemoryService.toolName) {
+          if (onManageMemory == null) {
+            result = {'ok': false, 'message': '当前会话未启用 AI 记忆写入。'};
+          } else {
+            try {
+              final decoded = jsonDecode(call.arguments);
+              if (decoded is Map) {
+                result = await onManageMemory(
+                  Map<String, dynamic>.from(decoded),
+                );
+              } else {
+                result = {'ok': false, 'message': 'AI 记忆工具参数格式无效。'};
+              }
+            } catch (_) {
+              result = {'ok': false, 'message': 'AI 记忆工具参数解析失败。'};
+            }
           }
         } else if (call.name == AiSettingsNavigationService.toolName) {
           proposalsProduced = true;
@@ -1015,10 +1071,15 @@ abstract final class AiToolChatRunner {
                 'message': '相同条件已查询，直接使用该调用的结果；未重复读取或回传明细。',
               }
             : result;
-        final remaining = AiToolResultContext.maxTurnChars - resultChars;
+        final maxResultChars = effectiveMaxTurnChars == null
+            ? AiToolResultContext.maxResultChars
+            : (effectiveMaxTurnChars - resultChars).clamp(
+                400,
+                AiToolResultContext.maxResultChars,
+              );
         final modelResult = AiToolResultContext.forModel(
           modelSource,
-          maxChars: remaining.clamp(400, AiToolResultContext.maxResultChars),
+          maxChars: maxResultChars,
         );
         final encoded = jsonEncode(modelResult);
         resultChars += encoded.length;
@@ -1040,7 +1101,7 @@ abstract final class AiToolChatRunner {
             actionRepairQueriesUsed &&
             !referenceProposalRetryUsed;
         if ((actionProposalRepairAttempted && !canRetryWithReadyReferences) ||
-            round >= maxQueryRounds + 1) {
+            (maxQueryRounds != null && round >= maxQueryRounds + 1)) {
           yield AiChatStreamChunk(
             content: deferredReferenceProposal
                 ? '本轮查询与依赖现有对象的写入提案仍未能分步完成；应用没有生成该确认卡，也没有写入数据。请重试，或先查询并确认具体对象。'

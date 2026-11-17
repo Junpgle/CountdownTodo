@@ -119,6 +119,7 @@ class UpdateInfo {
   final String fullPackageUrl;
   final String pcPackageUrl;
   final String macPackageUrl;
+  final Map<String, String> macArchPackages;
   final Map<String, String> androidArchPackages;
   final Map<String, List<AndroidDeltaPackage>> androidDeltaPackages;
 
@@ -128,6 +129,9 @@ class UpdateInfo {
       fullPackageUrl = json['full_package_url'] ?? '',
       pcPackageUrl = json['PC_package_url'] ?? '',
       macPackageUrl = json['mac_package_url'] ?? '',
+      macArchPackages = json['mac_arch_packages'] != null
+          ? Map<String, String>.from(json['mac_arch_packages'])
+          : {},
       androidArchPackages = json['android_arch_packages'] != null
           ? Map<String, String>.from(json['android_arch_packages'])
           : {},
@@ -636,10 +640,38 @@ class UpdateService {
     return "CountdownTodo_v$versionName.apk";
   }
 
+  static String _normalizeMacArch(String rawArch) {
+    final normalized = rawArch.trim().toLowerCase();
+    if (normalized == 'x86_64' ||
+        normalized == 'x64' ||
+        normalized == 'amd64' ||
+        normalized == 'i386') {
+      return 'x86_64';
+    }
+    if (normalized == 'arm64' || normalized == 'aarch64') {
+      return 'arm64';
+    }
+    return '';
+  }
+
   // 🚀 获取当前设备架构
   static Future<String> getDeviceArchitecture() async {
     if (Platform.isWindows) return 'windows';
-    if (Platform.isMacOS) return 'macos';
+    if (Platform.isMacOS) {
+      try {
+        final macInfo = await DeviceInfoPlugin().macOsInfo;
+        final arch = _normalizeMacArch(macInfo.arch);
+        if (arch.isNotEmpty) return arch;
+      } catch (_) {}
+      try {
+        final result = await Process.run('uname', ['-m']);
+        if (result.exitCode == 0) {
+          final arch = _normalizeMacArch(result.stdout.toString());
+          if (arch.isNotEmpty) return arch;
+        }
+      } catch (_) {}
+      return 'arm64';
+    }
     final deviceInfo = DeviceInfoPlugin();
     final androidInfo = await deviceInfo.androidInfo;
     final supportedAbis = androidInfo.supportedAbis;
@@ -652,13 +684,26 @@ class UpdateService {
   // 🚀 根据设备架构获取对应的下载链接
   static Future<String> getDownloadUrlForArch(AppManifest manifest) async {
     debugPrint(
-      '[UpdateService] getDownloadUrlForArch: macPackageUrl=${manifest.updateInfo.macPackageUrl}, pcPackageUrl=${manifest.updateInfo.pcPackageUrl}',
+      '[UpdateService] getDownloadUrlForArch: macPackageUrl=${manifest.updateInfo.macPackageUrl}, macArchPackages=${manifest.updateInfo.macArchPackages}, pcPackageUrl=${manifest.updateInfo.pcPackageUrl}',
     );
-    if (Platform.isMacOS && manifest.updateInfo.macPackageUrl.isNotEmpty) {
-      debugPrint(
-        '[UpdateService] Using macPackageUrl: ${manifest.updateInfo.macPackageUrl}',
-      );
-      return _giteePackageUrl(manifest.updateInfo.macPackageUrl);
+    if (Platform.isMacOS) {
+      final macArchPackages = manifest.updateInfo.macArchPackages;
+      if (macArchPackages.isNotEmpty) {
+        final architecture = await getDeviceArchitecture();
+        final packageUrl = macArchPackages[architecture];
+        debugPrint(
+          '[UpdateService] macOS architecture: $architecture, package: $packageUrl',
+        );
+        if (packageUrl != null && packageUrl.isNotEmpty) {
+          return _giteePackageUrl(packageUrl);
+        }
+      }
+      if (manifest.updateInfo.macPackageUrl.isNotEmpty) {
+        debugPrint(
+          '[UpdateService] Using macPackageUrl: ${manifest.updateInfo.macPackageUrl}',
+        );
+        return _giteePackageUrl(manifest.updateInfo.macPackageUrl);
+      }
     }
     if (Platform.isWindows && manifest.updateInfo.pcPackageUrl.isNotEmpty) {
       return _giteePackageUrl(manifest.updateInfo.pcPackageUrl);

@@ -801,12 +801,14 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         FinanceTransactionType.expense => '支出',
         FinanceTransactionType.income => '收入',
         FinanceTransactionType.refund => '退款',
+        FinanceTransactionType.transfer => '互转',
       };
       final effect = hasPaymentMethod
           ? switch (transaction.type) {
               FinanceTransactionType.expense => '，不会影响当前付款方式余额',
               FinanceTransactionType.income => '，不会影响当前到账账户余额',
               FinanceTransactionType.refund => '，不会影响当前退款到账账户余额',
+              FinanceTransactionType.transfer => '，不会影响当前账户余额',
             }
           : transaction.type == FinanceTransactionType.refund
           ? '，不再抵扣净支出'
@@ -822,6 +824,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
           '删除后，这笔收入不再计入统计；当前余额以录入的余额快照为准，不会变化。确认继续吗？',
         FinanceTransactionType.refund =>
           '删除后，这笔退款不再抵扣净支出；当前余额以录入的余额快照为准，不会变化。确认继续吗？',
+        FinanceTransactionType.transfer =>
+          '删除后，这笔互转记录将被移除；当前余额以录入的余额快照为准，不会变化。确认继续吗？',
       };
     }
 
@@ -838,6 +842,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         hasPaymentMethod
             ? '删除后，这笔退款不再抵扣净支出，也不再增加退款到账账户的余额。确认继续吗？'
             : '删除后，这笔退款不再抵扣净支出。确认继续吗？',
+      FinanceTransactionType.transfer =>
+        '删除后，转出账户与转入账户的余额将恢复。确认继续吗？',
     };
   }
 
@@ -892,6 +898,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                   '余额按余额快照和剩余流水重新计算，'
                   '未发生期次会从未来计划中移除。'
             : '删除后不会计入统计；未发生期次会从未来计划中移除。',
+      FinanceTransactionType.transfer => '删除后，各期账户互转将从账户流水中移除。',
     };
     final deleteMode = transaction.isInstallment
         ? await showAppDialog<String>(

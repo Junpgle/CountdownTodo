@@ -14,7 +14,9 @@ import '../services/finance_storage.dart';
 import '../widgets/finance_catalog_editor.dart';
 import '../widgets/finance_catalog_manager.dart';
 import 'finance_automation_screen.dart';
+import 'finance_bill_import_screen.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/page_transitions.dart';
 
 enum _FinanceSettingsSection { catalog, preferences }
 
@@ -46,6 +48,7 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
   int _loadGeneration = 0;
   Timer? _financeChangeRefreshTimer;
   _FinanceSettingsSection _section = _FinanceSettingsSection.catalog;
+  final GlobalKey _billImportKey = GlobalKey();
 
   @override
   void initState() {
@@ -279,6 +282,19 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
       context,
     ).push(MaterialPageRoute(builder: (_) => const FinanceAutomationScreen()));
     if (mounted) await _load();
+  }
+
+  Future<void> _openBillImport() async {
+    final colorScheme = Theme.of(context).colorScheme;
+    final imported = await PageTransitions.pushFromRect<bool>(
+      context: context,
+      page: const FinanceBillImportScreen(),
+      sourceKey: _billImportKey,
+      sourceColor: colorScheme.surfaceContainerLow,
+      sourceBorderRadius: BorderRadius.circular(24),
+      placeholderIcon: Icons.file_upload_outlined,
+    );
+    if (imported == true && mounted) await _load();
   }
 
   Future<bool?> _confirmArchive({
@@ -596,6 +612,18 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
                 subtitle: const Text('管理固定支出、周期收入和常用账单模板'),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: _openAutomation,
+              ),
+              const Divider(height: 1, indent: 20, endIndent: 20),
+              KeyedSubtree(
+                key: _billImportKey,
+                child: ListTile(
+                  key: const ValueKey('finance-settings-bill-import'),
+                  leading: const Icon(Icons.file_upload_outlined),
+                  title: const Text('账单导入'),
+                  subtitle: const Text('导入微信（CSV / XLSX）或支付宝（CSV）账单'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: _openBillImport,
+                ),
               ),
             ],
           ),

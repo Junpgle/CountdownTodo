@@ -198,6 +198,20 @@ void main() {
       latestAmountMinor: 2800,
       latestType: 'expense',
       latestDate: '2026-08-29',
+      recentTransactions: [
+        WidgetFinanceTransactionItem(
+          title: '咖啡',
+          amountMinor: 2800,
+          type: 'expense',
+          date: '2026-08-29',
+        ),
+        WidgetFinanceTransactionItem(
+          title: '兼职收入',
+          amountMinor: 50000,
+          type: 'income',
+          date: '2026-08-28',
+        ),
+      ],
     );
     final snapshot = WidgetSnapshot(
       updatedAt: DateTime(2026, 8, 29, 9),
@@ -212,18 +226,14 @@ void main() {
     expect(restored.finance.balanceMinor, 81350);
     expect(restored.finance.transactionCount, 12);
     expect(restored.finance.latestTitle, '咖啡');
-    expect(
-      restored.finance.toAndroidWidgetData(),
-      containsPair('finance_income', '¥1,200.00'),
-    );
-    expect(
-      restored.finance.toAndroidWidgetData(),
-      containsPair('finance_latest_amount', '-¥28.00'),
-    );
-    expect(
-      restored.finance.toAndroidWidgetData(),
-      containsPair('finance_balance', '¥813.50'),
-    );
+    expect(restored.finance.recentTransactions, hasLength(2));
+    expect(restored.finance.recentTransactions.last.title, '兼职收入');
+    final androidData = restored.finance.toAndroidWidgetData();
+    expect(androidData, containsPair('finance_income', '¥1,200.00'));
+    expect(androidData, containsPair('finance_latest_amount', '-¥28.00'));
+    expect(androidData, containsPair('finance_balance', '¥813.50'));
+    expect(androidData['finance_recent_json'], contains('咖啡'));
+    expect(androidData['finance_recent_json'], contains('+¥500.00'));
   });
 
   test('older widget snapshots decode with an empty finance summary', () {

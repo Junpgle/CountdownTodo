@@ -277,4 +277,59 @@ void main() {
       expect(find.text('Liquid Glass 液态玻璃与实时流畅度监控'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'FeatureExplorerScreen displays and searches v7.24 newly updated features',
+    (tester) async {
+      tester.view.physicalSize = const Size(430, 1400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        const MaterialApp(home: FeatureExplorerScreen(username: 'tester')),
+      );
+      await tester.pumpAndSettle();
+
+      // Search for '微信账单'
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('feature-explorer-search-field')),
+        '微信账单',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('微信与支付宝账单一键导入'), findsOneWidget);
+
+      // Search for '账户互转'
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('feature-explorer-search-field')),
+        '账户互转',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('账户互转与账单批量管理'), findsOneWidget);
+
+      // Search for '每日AI'
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('feature-explorer-search-field')),
+        '每日AI',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('每日 AI 智能建议、记忆偏好与对话工具预算'), findsOneWidget);
+
+      // Search for '自动备份'
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('feature-explorer-search-field')),
+        '自动备份',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('定期自动备份与本地快照恢复'), findsOneWidget);
+
+      // Search for 'ECDH'
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('feature-explorer-search-field')),
+        'ECDH',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('局域网面对面互传同步'), findsOneWidget);
+    },
+  );
 }

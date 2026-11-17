@@ -7,6 +7,7 @@ import 'package:web_socket_channel/status.dart' as ws_status;
 
 import 'api_service.dart';
 import 'notification_service.dart';
+import 'storage/app_settings_storage.dart';
 import '../storage_service.dart';
 import '../models.dart';
 import '../update_service.dart';
@@ -306,12 +307,30 @@ class PomodoroSyncService {
     return current.isNotEmpty && source.isNotEmpty && current == source;
   }
 
+  /// 离线模式开启时主动断开 WebSocket 同步通道。
+  Future<void> disconnectForOfflineMode() async {
+    _reconnectTimer?.cancel();
+    _heartbeatTimer?.cancel();
+    await _wsSub?.cancel();
+    _wsSub = null;
+    await _channel?.sink.close(ws_status.normalClosure);
+    _channel = null;
+    _connState = SyncConnectionState.disconnected;
+    if (!_connStateCtrl.isClosed) {
+      _connStateCtrl.add(_connState);
+    }
+  }
+
   Future<void> ensureConnected(
     String userId,
     String deviceId, {
     String? authToken,
     String? appVersion,
   }) async {
+    if (await AppSettingsStorage.isOfflineModeEnabled()) {
+      await disconnectForOfflineMode();
+      return;
+    }
     _isInBackground = false;
     await _transportSuspendFuture;
     if (appVersion != null) _appVersion = appVersion;
@@ -519,43 +538,7 @@ class PomodoroSyncService {
       final signal = CrossDevicePomodoroState.fromJson(data);
 
       if (signal.action == 'UPDATE_AVAILABLE') {
-        final manifest = signal.manifestData;
-        final latestVersion =
-            signal.latestVersion ?? manifest?['version_name']?.toString();
-
-        // debugPrint('[PomodoroSync] 🎁 收到新版本推送: $latestVersion');
-
-        String? downloadUrl = signal.downloadUrl;
-        String? releaseNotes = signal.releaseNotes;
-
-        if (manifest != null && manifest['update_info'] != null) {
-          final info = manifest['update_info'] as Map<String, dynamic>;
-          if (AppPlatform.isMacOS) {
-            downloadUrl ??=
-                info['mac_package_url']?.toString() ??
-                info['PC_package_url']?.toString() ??
-                info['full_package_url']?.toString();
-          } else if (AppPlatform.isWindows) {
-            downloadUrl ??=
-                info['PC_package_url']?.toString() ??
-                info['full_package_url']?.toString();
-          } else {
-            downloadUrl ??=
-                info['full_package_url']?.toString() ??
-                info['PC_package_url']?.toString();
-          }
-          releaseNotes ??= info['description']?.toString();
-        }
-
-        final context = appNavigatorKey.currentContext;
-        if (context != null && latestVersion != null && downloadUrl != null) {
-          UpdateService.triggerWebSocketUpdate(
-            context,
-            latestVersion: latestVersion,
-            releaseNotes: releaseNotes ?? "发现紧急更新，建议立即升级",
-            downloadUrl: downloadUrl,
-          );
-        }
+        unawaited(_handleUpdateAvailableSignal(signal));
       }
 
       // 🚀 Uni-Sync 4.0: 团队系统消息处理
@@ -975,5 +958,56 @@ class PomodoroSyncService {
     _subscribedTeamUuids = <String>{};
     _connecting = false;
     _setConnState(SyncConnectionState.disconnected);
+  }
+
+  Future<void> _handleUpdateAvailableSignal(
+    CrossDevicePomodoroState signal,
+  ) async {
+    final manifest = signal.manifestData;
+    final latestVersion =
+        signal.latestVersion ?? manifest?['version_name']?.toString();
+
+    String? downloadUrl = signal.downloadUrl;
+    String? releaseNotes = signal.releaseNotes;
+
+    if (manifest != null && manifest['update_info'] != null) {
+      final info = manifest['update_info'] as Map<String, dynamic>;
+      if (AppPlatform.isMacOS) {
+        final macArchPackages = info['mac_arch_packages'];
+        if (downloadUrl == null && macArchPackages is Map) {
+          final arch = await UpdateService.getDeviceArchitecture();
+          final archUrl = macArchPackages[arch]?.toString();
+          if (archUrl != null && archUrl.isNotEmpty) {
+            downloadUrl = archUrl;
+          }
+        }
+        downloadUrl ??=
+            info['mac_package_url']?.toString() ??
+            info['PC_package_url']?.toString() ??
+            info['full_package_url']?.toString();
+      } else if (AppPlatform.isWindows) {
+        downloadUrl ??=
+            info['PC_package_url']?.toString() ??
+            info['full_package_url']?.toString();
+      } else {
+        downloadUrl ??=
+            info['full_package_url']?.toString() ??
+            info['PC_package_url']?.toString();
+      }
+      releaseNotes ??= info['description']?.toString();
+    }
+
+    final context = appNavigatorKey.currentContext;
+    if (context != null &&
+        context.mounted &&
+        latestVersion != null &&
+        downloadUrl != null) {
+      UpdateService.triggerWebSocketUpdate(
+        context,
+        latestVersion: latestVersion,
+        releaseNotes: releaseNotes ?? "发现紧急更新，建议立即升级",
+        downloadUrl: downloadUrl,
+      );
+    }
   }
 }
