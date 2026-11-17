@@ -75,12 +75,25 @@ PY
 }
 
 read_manifest_version() {
-  python3 - "$PROJECT_ROOT/update_manifest.json" <<'PY'
+  python3 - "$PROJECT_ROOT/update_manifest.json" "$VERSION" <<'PY'
 import json
 import sys
 
 with open(sys.argv[1], encoding="utf-8") as stream:
-    version = json.load(stream).get("version_name", "")
+    manifest = json.load(stream)
+
+target_version = sys.argv[2].strip()
+version = str(manifest.get("version_name", "")).strip()
+if version and version != target_version:
+    print(version)
+    raise SystemExit(0)
+
+for entry in manifest.get("changelog_history", []):
+    candidate = str(entry.get("version_name", "")).strip()
+    if candidate and candidate != target_version:
+        print(candidate)
+        raise SystemExit(0)
+
 if not version:
     raise SystemExit("无法从 update_manifest.json 读取基线版本")
 print(version)
@@ -131,7 +144,7 @@ done
 
 require_command python3
 VERSION="$(read_pubspec_version)"
-BASE_VERSION="$(read_manifest_version)"
+BASE_VERSION="${BASE_VERSION:-$(read_manifest_version)}"
 if [[ -z "$OUTPUT_DIR" ]]; then
   OUTPUT_DIR="$BUILD_ROOT/release-assets/v$VERSION"
 elif [[ "$OUTPUT_DIR" != /* ]]; then

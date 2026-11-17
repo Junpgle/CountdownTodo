@@ -20,20 +20,6 @@
     "android_delta_packages": {
       "arm64-v8a": [
         {
-          "from_version": "7.22.0",
-          "from_sha256": "ef95370fc3af3eeee5be1566bef3ee23eb8d313f10f3e029a5127ef6b9129469",
-          "to_version": "7.22.8",
-          "to_sha256": "8babaa08571796f680c9f21fbae0fbacd3a0ca0e9b0e3715b531d7e3fce677c8",
-          "patch_size": 27318022,
-          "patch_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-7.22.0_to_7.22.8.patch",
-          "operation_count": 14,
-          "full_apk_size": 49772133,
-          "copied_bytes": 22454329,
-          "embedded_bytes": 27317804,
-          "algorithm": "apk-zip-local-spans",
-          "recommended": false
-        },
-        {
           "from_version": "7.22.8",
           "from_sha256": "8babaa08571796f680c9f21fbae0fbacd3a0ca0e9b0e3715b531d7e3fce677c8",
           "to_version": "7.23.10",
@@ -44,6 +30,20 @@
           "full_apk_size": 51139637,
           "copied_bytes": 15543621,
           "embedded_bytes": 35596016,
+          "algorithm": "apk-zip-local-spans",
+          "recommended": false
+        },
+        {
+          "from_version": "7.23.10",
+          "from_sha256": "21b70d2a5f8e898569a5851ebf979cebe70e55124d878bb3c48a65c75b62c60e",
+          "to_version": "7.24.8",
+          "to_sha256": "7787398242d49dece66c1ed1c75c1077dd131699d7941ae98289144a133d6f3e",
+          "patch_size": 44374633,
+          "patch_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-7.23.10_to_7.24.8.patch",
+          "operation_count": 718,
+          "full_apk_size": 59504128,
+          "copied_bytes": 15138865,
+          "embedded_bytes": 44365263,
           "algorithm": "apk-zip-local-spans",
           "recommended": true
         }

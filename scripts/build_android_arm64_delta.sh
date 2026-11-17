@@ -11,17 +11,32 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-# The manifest's current version is the latest public release and therefore
-# the base for the next APK passed to this script.
-BASE_VERSION="$(python3 -c '
+NEW_APK_PATH="${1:-$PROJECT_ROOT/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk}"
+NEW_VERSION="${2:-$(sed -n 's/^version: *//p' "$PROJECT_ROOT/pubspec.yaml" | head -n 1 | tr -d '[:space:]' | sed 's/+.*//')}"
+OUTPUT_DIR="${3:-$PROJECT_ROOT/build/android-delta}"
+
+# Allow explicit BASE_VERSION override; if manifest already matches NEW_VERSION
+# (e.g. updated before packaging), fall back to the previous changelog entry.
+BASE_VERSION="${BASE_VERSION:-$(python3 -c '
 import json
 import sys
 
 with open(sys.argv[1], encoding="utf-8") as stream:
     manifest = json.load(stream)
 
-print(str(manifest.get("version_name", "")).strip())
-' "$PROJECT_ROOT/update_manifest.json")"
+new_version = sys.argv[2].strip()
+version = str(manifest.get("version_name", "")).strip()
+if version and version != new_version:
+    print(version)
+else:
+    for entry in manifest.get("changelog_history", []):
+        candidate = str(entry.get("version_name", "")).strip()
+        if candidate and candidate != new_version:
+            print(candidate)
+            break
+    else:
+        print(version)
+' "$PROJECT_ROOT/update_manifest.json" "$NEW_VERSION")}"
 
 # Prefer a versioned public release URL. The mutable Gitee "latestrelease" URL
 # can point to the target APK after publishing and must never silently become
@@ -31,10 +46,6 @@ print(str(manifest.get("version_name", "")).strip())
 BASE_APK_URL="${BASE_APK_URL:-https://github.com/Junpgle/CountdownTodo/releases/download/v${BASE_VERSION}/app-arm64-v8a-release.apk}"
 BASE_APK_FALLBACK_URL="${BASE_APK_FALLBACK_URL:-}"
 BASE_APK_SHA256="${BASE_APK_SHA256:-}"
-
-NEW_APK_PATH="${1:-$PROJECT_ROOT/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk}"
-NEW_VERSION="${2:-$(sed -n 's/^version: *//p' "$PROJECT_ROOT/pubspec.yaml" | head -n 1 | tr -d '[:space:]' | sed 's/+.*//')}"
-OUTPUT_DIR="${3:-$PROJECT_ROOT/build/android-delta}"
 
 if [[ ! -f "$NEW_APK_PATH" ]]; then
   echo "❌ 未找到新版 arm64-v8a APK: $NEW_APK_PATH" >&2
