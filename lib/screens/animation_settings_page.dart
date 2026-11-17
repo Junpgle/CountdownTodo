@@ -415,6 +415,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                 ),
                 SizedBox(height: isDesktop ? 20 : 16),
                 if ((AppPlatform.isAndroid ||
+                        AppPlatform.isMacOS ||
                         widget.powerSaveModeOverride != null) &&
                     powerSaveModeEnabled) ...[
                   Card(
@@ -426,8 +427,10 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                         color: colorScheme.onPrimaryContainer,
                       ),
                       title: const Text('应用省电模式'),
-                      subtitle: const Text(
-                        '已跟随 Android 系统自动开启：暂停装饰动画和玻璃特效，并降低传感器与后台探测频率。',
+                      subtitle: Text(
+                        AppPlatform.isMacOS
+                            ? '已跟随 macOS 低电量模式自动开启：暂停装饰动画和玻璃特效，并降低后台探测频率。'
+                            : '已跟随系统省电模式自动开启：暂停装饰动画和玻璃特效，并降低传感器与后台探测频率。',
                       ),
                       trailing: Text(
                         '已开启',

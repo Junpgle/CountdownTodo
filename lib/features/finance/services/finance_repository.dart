@@ -143,6 +143,7 @@ abstract final class FinanceRepository {
                 FinanceTransactionType.income ||
                 FinanceTransactionType.refund => transaction.amountMinor,
                 FinanceTransactionType.expense => -transaction.amountMinor,
+                FinanceTransactionType.transfer => 0,
               };
               return FinanceCumulativeBalanceEvent(
                 transactionDate: transaction.transactionDate,
@@ -378,20 +379,39 @@ abstract final class FinanceRepository {
 
     final balanceChanges = <String, int>{};
     for (final transaction in transactions) {
-      final paymentMethodUuid = transaction.paymentMethodUuid;
-      final snapshot = snapshotsByMethod[paymentMethodUuid];
-      if (snapshot == null ||
-          loanInterestTransactionUuids.contains(transaction.uuid)) {
+      if (loanInterestTransactionUuids.contains(transaction.uuid)) {
         continue;
       }
-      final snapshotAt = snapshot.effectiveBalanceSnapshotAt;
-      final eventAt = transaction.balanceEventAt(snapshotAt: snapshotAt);
-      if (eventAt <= snapshotAt || eventAt > asOfAt) continue;
-      final amount = transaction.type == FinanceTransactionType.expense
-          ? -transaction.amountMinor
-          : transaction.amountMinor;
-      balanceChanges[paymentMethodUuid!] =
-          (balanceChanges[paymentMethodUuid] ?? 0) + amount;
+      final paymentMethodUuid = transaction.paymentMethodUuid;
+      final snapshot = snapshotsByMethod[paymentMethodUuid];
+      if (snapshot != null) {
+        final snapshotAt = snapshot.effectiveBalanceSnapshotAt;
+        final eventAt = transaction.balanceEventAt(snapshotAt: snapshotAt);
+        if (eventAt > snapshotAt && eventAt <= asOfAt) {
+          final amount = switch (transaction.type) {
+            FinanceTransactionType.expense ||
+            FinanceTransactionType.transfer => -transaction.amountMinor,
+            FinanceTransactionType.income ||
+            FinanceTransactionType.refund => transaction.amountMinor,
+          };
+          balanceChanges[paymentMethodUuid!] =
+              (balanceChanges[paymentMethodUuid] ?? 0) + amount;
+        }
+      }
+      if (transaction.type == FinanceTransactionType.transfer) {
+        final targetUuid = transaction.targetPaymentMethodUuid;
+        final targetSnapshot = snapshotsByMethod[targetUuid];
+        if (targetSnapshot != null) {
+          final targetSnapshotAt = targetSnapshot.effectiveBalanceSnapshotAt;
+          final targetEventAt = transaction.balanceEventAt(
+            snapshotAt: targetSnapshotAt,
+          );
+          if (targetEventAt > targetSnapshotAt && targetEventAt <= asOfAt) {
+            balanceChanges[targetUuid!] =
+                (balanceChanges[targetUuid] ?? 0) + transaction.amountMinor;
+          }
+        }
+      }
     }
 
     final repaymentChanges = <String, int>{};
@@ -441,7 +461,7 @@ abstract final class FinanceRepository {
         case FinanceTransactionType.refund:
           spending[methodUuid] =
               (spending[methodUuid] ?? 0) - transaction.amountMinor;
-        case FinanceTransactionType.income:
+        case FinanceTransactionType.income || FinanceTransactionType.transfer:
           break;
       }
     }
@@ -470,6 +490,14 @@ abstract final class FinanceRepository {
     FinanceTransaction? original,
   }) async {
     await FinanceStorage.saveTransaction(transaction, original: original);
+    await _checkBudgetAlertsSafely();
+  }
+
+  static Future<void> saveTransactionsBatch(
+    List<FinanceTransaction> transactions,
+  ) async {
+    if (transactions.isEmpty) return;
+    await FinanceStorage.saveTransactionsBatch(transactions);
     await _checkBudgetAlertsSafely();
   }
 
@@ -759,6 +787,7 @@ abstract final class FinanceRepository {
                 FinanceTransactionType.expense => '已删除或未知付款方式',
                 FinanceTransactionType.income => '已删除或未知到账账户',
                 FinanceTransactionType.refund => '已删除或未知退款到账账户',
+                FinanceTransactionType.transfer => '已删除或未知转出账户',
               }
             : '未指定';
         final amount = transaction.type == FinanceTransactionType.expense

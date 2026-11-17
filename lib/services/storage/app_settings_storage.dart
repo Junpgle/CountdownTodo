@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../github_resource_service.dart';
@@ -27,6 +28,11 @@ class AppSettingsStorage {
   static const String _notifyFinanceRecurringEnabled =
       "notify_finance_recurring_enabled";
   static const String _financeCloudSyncEnabled = "finance_cloud_sync_enabled";
+  static const String _offlineModeEnabled = "app_offline_mode_enabled";
+
+  static final ValueNotifier<bool> offlineModeNotifier = ValueNotifier<bool>(
+    false,
+  );
   static const String _financeCategoryTapOpensLedger =
       "finance_category_tap_opens_ledger";
   static const String _financeOpeningBalance = "finance_opening_balance";
@@ -327,6 +333,22 @@ class AppSettingsStorage {
     if (username.trim().isEmpty) return;
     final prefs = await _prefs;
     await prefs.setBool(_financeCloudSyncKey(username), enabled);
+  }
+
+  /// 离线模式：开启后除登录、更新检查、公告获取外，其余同步请求不走服务器。
+  static Future<bool> isOfflineModeEnabled() async {
+    final prefs = await _prefs;
+    final enabled = prefs.getBool(_offlineModeEnabled) ?? false;
+    if (offlineModeNotifier.value != enabled) {
+      offlineModeNotifier.value = enabled;
+    }
+    return enabled;
+  }
+
+  static Future<void> setOfflineModeEnabled(bool enabled) async {
+    final prefs = await _prefs;
+    await prefs.setBool(_offlineModeEnabled, enabled);
+    offlineModeNotifier.value = enabled;
   }
 
   static Future<int> getCourseReminderMinutes() async {

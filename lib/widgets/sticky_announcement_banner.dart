@@ -4,6 +4,7 @@ import '../models.dart';
 import '../utils/android_energy_policy.dart';
 import '../utils/app_platform.dart';
 import '../utils/app_image_filters.dart';
+import '../services/liquid_glass_effect_service.dart';
 import '../services/power_save_mode_service.dart';
 import '../utils/time_utils.dart';
 
@@ -265,10 +266,24 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner>
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
-        child: AppPlatform.isWindows
+        child: AppPlatform.isWindows || isDark
             ? bannerContent
-            : BackdropFilter.grouped(
-                filter: AppImageFilters.blur10,
+            : ListenableBuilder(
+                listenable: Listenable.merge(<Listenable>[
+                  LiquidGlassEffectService.configurationListenable,
+                  PowerSaveModeService.enabledListenable,
+                ]),
+                builder: (context, child) {
+                  final skipBlur =
+                      PowerSaveModeService.isEnabled ||
+                      !LiquidGlassEffectService.configuration.enabled;
+                  return skipBlur
+                      ? child!
+                      : BackdropFilter.grouped(
+                          filter: AppImageFilters.blur10,
+                          child: child,
+                        );
+                },
                 child: bannerContent,
               ),
       ),

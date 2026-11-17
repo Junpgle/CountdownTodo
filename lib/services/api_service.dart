@@ -486,6 +486,7 @@ class ApiService {
       if (screenTime != null) {
         body['screen_time'] = screenTime;
       }
+      body['client_capabilities'] = {'finance_transfers_v1': 1};
 
       final syncClient = createApiHttpClient();
       _deltaSyncClient?.close();

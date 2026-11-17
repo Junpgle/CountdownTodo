@@ -118,7 +118,7 @@ void main() {
       final resultFuture = coordinator.request(AppPermissionKind.notification);
       await tester.pump();
       expect(find.text('需要“通知”权限'), findsOneWidget);
-      expect(find.text('用于发送待办、课程和专注结束提醒。'), findsOneWidget);
+      expect(find.text('用于发送待办闹钟、课程提醒、专注结束与下载进度通知。'), findsOneWidget);
 
       await tester.tap(find.text('允许并继续'));
       await tester.pump();
@@ -247,4 +247,54 @@ void main() {
     expect(find.text('需要“通知”权限'), findsNothing);
     coordinator.dispose();
   });
+
+  testWidgets(
+    'fallbackToSettingsOnDenied opens settings when requester returns denied',
+    (tester) async {
+      late BuildContext context;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (builderContext) {
+              context = builderContext;
+              return const Scaffold(body: SizedBox.expand());
+            },
+          ),
+        ),
+      );
+
+      var statusReads = 0;
+      var settingsOpened = false;
+      final coordinator = PermissionRequestCoordinator(
+        context: context,
+        statusReader: (_) async => statusReads++ == 0
+            ? PermissionStatus.denied
+            : PermissionStatus.granted,
+        requester: (_) async => PermissionStatus.denied,
+        settingsOpener: (_) async {
+          settingsOpened = true;
+          return true;
+        },
+      );
+
+      final resultFuture = coordinator.request(
+        AppPermissionKind.calendar,
+        fallbackToSettingsOnDenied: true,
+      );
+      await tester.pump();
+      await tester.tap(find.text('允许并继续'));
+      await tester.pump();
+      expect(settingsOpened, isTrue);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+
+      final result = await resultFuture;
+      expect(result.openedSettings, isTrue);
+      expect(result.granted, isTrue);
+      coordinator.dispose();
+    },
+  );
 }

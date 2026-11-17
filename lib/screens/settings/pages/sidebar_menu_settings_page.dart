@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../services/sidebar_menu_service.dart';
 import '../../../widgets/floating_glass_control.dart';
+import '../../../widgets/optional_liquid_glass_surface.dart';
 
 class SidebarMenuSettingsPage extends StatefulWidget {
   final bool isEmbedded;
@@ -110,8 +111,15 @@ class _SidebarMenuSettingsPageState extends State<SidebarMenuSettingsPage> {
         : SidebarMenuTarget.features;
     final visibleCount = order.where((key) => _visibility[key] ?? true).length;
 
-    return Card(
+    return OptionalLiquidGlassCard(
+      key: ValueKey('sidebar-group-$target'),
+      borderRadius: 12,
+      highContrast: true,
       clipBehavior: Clip.antiAlias,
+      fallbackDecoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 8, 8),
         child: Column(
@@ -131,9 +139,14 @@ class _SidebarMenuSettingsPageState extends State<SidebarMenuSettingsPage> {
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const Spacer(),
-                Text(
-                  '$visibleCount 个显示 / ${order.length} 个入口',
-                  style: TextStyle(color: colorScheme.onSurfaceVariant),
+                Flexible(
+                  child: Text(
+                    '$visibleCount 个显示 / ${order.length} 个入口',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                    style: TextStyle(color: colorScheme.onSurfaceVariant),
+                  ),
                 ),
               ],
             ),
@@ -143,68 +156,89 @@ class _SidebarMenuSettingsPageState extends State<SidebarMenuSettingsPage> {
               style: TextStyle(color: colorScheme.onSurfaceVariant),
             ),
             const Divider(height: 20),
-            ReorderableListView.builder(
-              key: ValueKey('sidebar-list-$target'),
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              buildDefaultDragHandles: false,
-              itemCount: order.length,
-              onReorderItem: (oldIndex, newIndex) =>
-                  _reorder(target, oldIndex, newIndex),
-              itemBuilder: (context, index) {
-                final key = order[index];
-                final definition = SidebarMenuService.definition(key);
-                final isVisible = _visibility[key] ?? true;
-                return ListTile(
-                  key: ValueKey('sidebar-$target-$key'),
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(definition.icon, color: colorScheme.primary),
-                  title: Text(
-                    definition.title,
-                    style: isVisible
-                        ? null
-                        : TextStyle(color: colorScheme.onSurfaceVariant),
+            if (order.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                child: Center(
+                  child: Text(
+                    '暂无入口，可从${_targetLabel(otherTarget)}移入',
+                    style: TextStyle(color: colorScheme.onSurfaceVariant),
                   ),
-                  subtitle: Text(
-                    isVisible ? '第 ${index + 1} 位' : '已隐藏 · 第 ${index + 1} 位',
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        tooltip: isVisible ? '隐藏入口' : '显示入口',
-                        onPressed: () => _setVisibility(key, !isVisible),
-                        icon: Icon(
-                          isVisible
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
-                        ),
+                ),
+              )
+            else
+              ReorderableListView.builder(
+                key: ValueKey('sidebar-list-$target'),
+                padding: EdgeInsets.zero,
+                primary: false,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                buildDefaultDragHandles: false,
+                itemCount: order.length,
+                onReorderItem: (oldIndex, newIndex) =>
+                    _reorder(target, oldIndex, newIndex),
+                itemBuilder: (context, index) {
+                  final key = order[index];
+                  final definition = SidebarMenuService.definition(key);
+                  final isVisible = _visibility[key] ?? true;
+                  return Material(
+                    key: ValueKey('sidebar-$target-$key'),
+                    type: MaterialType.transparency,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        definition.icon,
+                        color: colorScheme.primary,
                       ),
-                      Semantics(
-                        button: true,
-                        label: '移到${_targetLabel(otherTarget)}',
-                        child: IconButton(
-                          tooltip: '移到${_targetLabel(otherTarget)}',
-                          onPressed: () => _move(target, key),
-                          icon: Icon(
-                            target == SidebarMenuTarget.features
-                                ? Icons.arrow_forward_rounded
-                                : Icons.arrow_back_rounded,
+                      title: Text(
+                        definition.title,
+                        style: isVisible
+                            ? null
+                            : TextStyle(color: colorScheme.onSurfaceVariant),
+                      ),
+                      subtitle: Text(
+                        isVisible
+                            ? '第 ${index + 1} 位'
+                            : '已隐藏 · 第 ${index + 1} 位',
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: isVisible ? '隐藏入口' : '显示入口',
+                            onPressed: () => _setVisibility(key, !isVisible),
+                            icon: Icon(
+                              isVisible
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                            ),
                           ),
-                        ),
+                          Semantics(
+                            button: true,
+                            label: '移到${_targetLabel(otherTarget)}',
+                            child: IconButton(
+                              tooltip: '移到${_targetLabel(otherTarget)}',
+                              onPressed: () => _move(target, key),
+                              icon: Icon(
+                                target == SidebarMenuTarget.features
+                                    ? Icons.arrow_forward_rounded
+                                    : Icons.arrow_back_rounded,
+                              ),
+                            ),
+                          ),
+                          ReorderableDelayedDragStartListener(
+                            index: index,
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 8),
+                              child: Icon(Icons.drag_handle),
+                            ),
+                          ),
+                        ],
                       ),
-                      ReorderableDelayedDragStartListener(
-                        index: index,
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 8),
-                          child: Icon(Icons.drag_handle),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
+                    ),
+                  );
+                },
+              ),
           ],
         ),
       ),

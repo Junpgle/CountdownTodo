@@ -202,8 +202,13 @@ class CountdownStorage {
         }
         await prefs.setBool(migrationKey, true);
       } else if (alreadyMigrated) {
-        await prefs.remove(_legacyDataKey(username));
-        await prefs.remove(_countdownsKey);
+        final legacyKey = _legacyDataKey(username);
+        if (prefs.containsKey(legacyKey)) {
+          await prefs.remove(legacyKey);
+        }
+        if (prefs.containsKey(_countdownsKey)) {
+          await prefs.remove(_countdownsKey);
+        }
       }
 
       final where = <String>[];
@@ -278,8 +283,13 @@ class CountdownStorage {
 
   static Future<void> _clearCountdownPrefsMirror(String username) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_legacyDataKey(username));
-    await prefs.remove(_countdownsKey);
+    final legacyKey = _legacyDataKey(username);
+    if (prefs.containsKey(legacyKey)) {
+      await prefs.remove(legacyKey);
+    }
+    if (prefs.containsKey(_countdownsKey)) {
+      await prefs.remove(_countdownsKey);
+    }
   }
 
   static CountdownItem _countdownFromDbMap(Map<String, dynamic> m) {

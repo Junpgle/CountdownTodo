@@ -46,6 +46,9 @@ class _AiChatThinkingPanelState extends State<AiChatThinkingPanel> {
     }
     final colors = Theme.of(context).colorScheme;
     final thinking = widget.isStreaming && !widget.hasReply;
+    final statusSummary = widget.calls.isNotEmpty
+        ? AiToolCallTile.summarizeCalls(widget.calls, isStreaming: thinking)
+        : (thinking ? '正在思考…' : '');
     return Padding(
       padding: const EdgeInsets.only(bottom: 5),
       child: Material(
@@ -88,11 +91,11 @@ class _AiChatThinkingPanelState extends State<AiChatThinkingPanel> {
                           color: colors.onSurface,
                         ),
                       ),
-                      if (widget.calls.isNotEmpty) ...[
+                      if (statusSummary.isNotEmpty) ...[
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            '${widget.calls.length} 次工具调用',
+                            statusSummary,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(

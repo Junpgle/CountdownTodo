@@ -1,7 +1,8 @@
 import '../models.dart';
 import '../storage_service.dart';
-import 'course_service.dart';
+import '../utils/calendar_date_math.dart';
 import '../utils/time_utils.dart';
+import 'course_service.dart';
 
 enum OngoingActivityKind { fixedSchedule, course, planBlock, todo }
 
@@ -93,10 +94,16 @@ class OngoingActivityService {
     String username, {
     DateTime? now,
   }) async {
+    final localNow = (now ?? DateTime.now()).toLocal();
+    final today = CalendarDateMath.dateOnly(localNow);
     final results = await Future.wait<dynamic>([
       StorageService.getTodos(username),
-      StorageService.getPlanBlocks(username),
-      CourseService.getAllCourses(username),
+      StorageService.getDashboardPlanBlocks(username, now: localNow),
+      CourseService.getCoursesForDateRange(
+        username,
+        from: today,
+        to: CalendarDateMath.addDays(today, 7),
+      ),
       StorageService.getTodoGroups(username),
       StorageService.getFixedSchedules(username),
     ]);
@@ -106,7 +113,7 @@ class OngoingActivityService {
       courses: results[2] as List<CourseItem>,
       todoGroups: results[3] as List<TodoGroup>,
       fixedSchedules: results[4] as List<FixedScheduleItem>,
-      now: now,
+      now: localNow,
     );
   }
 

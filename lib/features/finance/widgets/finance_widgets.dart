@@ -1407,8 +1407,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
 
     for (final transaction in period.transactions) {
       if (transaction.isExpenseLike) outflowTransactionCount++;
-      if (hourlyNetExpenseMinor != null &&
-          transaction.type != FinanceTransactionType.income) {
+      if (hourlyNetExpenseMinor != null && transaction.isExpenseLike) {
         final hour = _financeTransactionHour(transaction) ?? 24;
         hourlyNetExpenseMinor[hour] +=
             transaction.type == FinanceTransactionType.refund
@@ -1419,7 +1418,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       final topAmount = switch (transaction.type) {
         FinanceTransactionType.expense => transaction.amountMinor,
         FinanceTransactionType.refund => -transaction.amountMinor,
-        FinanceTransactionType.income => 0,
+        FinanceTransactionType.income || FinanceTransactionType.transfer => 0,
       };
       final includeInShares =
           transaction.type == FinanceTransactionType.expense &&
@@ -3475,6 +3474,8 @@ class FinanceLedgerPanel extends StatefulWidget {
   final ValueChanged<FinanceTransaction> onEdit;
   final ValueChanged<FinanceTransaction> onDelete;
   final ValueChanged<FinanceTransaction> onRefund;
+  final Future<void> Function(List<FinanceTransaction> updated)? onBatchSave;
+  final Future<void> Function(List<FinanceTransaction> deleted)? onBatchDelete;
 
   const FinanceLedgerPanel({
     super.key,
@@ -3503,6 +3504,8 @@ class FinanceLedgerPanel extends StatefulWidget {
     required this.onEdit,
     required this.onDelete,
     required this.onRefund,
+    this.onBatchSave,
+    this.onBatchDelete,
   });
 
   @override
@@ -3521,6 +3524,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
   final Set<String> _selectedTransactionUuids = <String>{};
   bool _selectionMode = false;
   bool _hasCommittedSelection = false;
+  bool _isBatchSaving = false;
   bool _summaryExpanded = true;
   List<FinanceTransaction>? _searchSourceTransactions;
   Map<String, FinanceCategory>? _searchSourceCategories;
@@ -3734,6 +3738,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
             FinanceTransactionType.expense => '已删除或未知付款方式',
             FinanceTransactionType.income => '已删除或未知到账账户',
             FinanceTransactionType.refund => '已删除或未知退款到账账户',
+            FinanceTransactionType.transfer => '已删除或未知转出账户',
           }
         : null;
 
@@ -4099,6 +4104,352 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
         _selectedTransactionUuids.addAll(visibleUuids);
       }
     });
+  }
+
+  void _enterSelectionModeWith(FinanceTransaction transaction) {
+    setState(() {
+      _selectionMode = true;
+      _summaryExpanded = true;
+      _selectedTransactionUuids.add(transaction.uuid);
+    });
+  }
+
+  ({
+    FinanceCategoryType? type,
+    String? error,
+    List<FinanceTransaction> eligible,
+  })
+  _resolveBatchCategoryContext(List<FinanceTransaction> selected) {
+    final eligible = selected
+        .where((item) => item.type != FinanceTransactionType.transfer)
+        .toList(growable: false);
+    if (eligible.isEmpty) {
+      return (
+        type: null,
+        error: '转账记录不支持修改分类',
+        eligible: const <FinanceTransaction>[],
+      );
+    }
+    final types = eligible
+        .map((item) => financeCategoryTypeForTransaction(item.type))
+        .toSet();
+    if (types.length > 1) {
+      return (
+        type: null,
+        error: '所选账单同时包含支出和收入，请分开选择后再修改分类',
+        eligible: const <FinanceTransaction>[],
+      );
+    }
+    return (type: types.first, error: null, eligible: eligible);
+  }
+
+  void _applyLedgerDateToTransaction(
+    FinanceTransaction updated,
+    DateTime pickedDate,
+  ) {
+    final targetDate = DateTime(
+      pickedDate.year,
+      pickedDate.month,
+      pickedDate.day,
+    );
+    updated.transactionDate = dateKey(targetDate);
+    final localTime = updated.occurrenceLocalTime;
+    final utcMillis = DateTime.utc(
+      targetDate.year,
+      targetDate.month,
+      targetDate.day,
+      localTime?.hour ?? 12,
+      localTime?.minute ?? 0,
+      localTime?.second ?? 0,
+      localTime?.millisecond ?? 0,
+    ).millisecondsSinceEpoch;
+    updated.occurredAt = utcMillis - updated.timezoneOffsetMinutes * 60000;
+  }
+
+  Future<void> _saveBatchTransactions(
+    List<FinanceTransaction> updated, {
+    required String successMessage,
+  }) async {
+    if (updated.isEmpty || _isBatchSaving) return;
+    setState(() => _isBatchSaving = true);
+    try {
+      final saver =
+          widget.onBatchSave ?? FinanceRepository.saveTransactionsBatch;
+      await saver(updated);
+      if (!mounted) return;
+      setState(() {
+        _selectionMode = false;
+        _hasCommittedSelection = false;
+        _selectedTransactionUuids.clear();
+      });
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(content: Text(successMessage)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      AppSnackBars.showSnackBar(context, SnackBar(content: Text('批量保存失败：$e')));
+    } finally {
+      if (mounted) {
+        setState(() => _isBatchSaving = false);
+      }
+    }
+  }
+
+  Future<void> _batchEditCategory(List<FinanceTransaction> selected) async {
+    if (_isBatchSaving || selected.isEmpty) return;
+    final ctx = _resolveBatchCategoryContext(selected);
+    if (ctx.error != null || ctx.type == null) {
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(content: Text(ctx.error ?? '无法修改分类')),
+      );
+      return;
+    }
+    final choice = await showAppDialog<_FinanceBatchFieldChoice<String?>>(
+      context: context,
+      builder: (context) => _FinanceBatchCategoryPickerDialog(
+        categories: categories,
+        categoryType: ctx.type!,
+        selectedCount: ctx.eligible.length,
+      ),
+    );
+    if (choice == null || !mounted) return;
+    final updated = <FinanceTransaction>[];
+    for (final item in ctx.eligible) {
+      if (item.categoryUuid == choice.value) continue;
+      final copy = FinanceTransaction.fromMap(item.toMap());
+      copy.categoryUuid = choice.value;
+      copy.markAsChanged();
+      updated.add(copy);
+    }
+    if (updated.isEmpty) {
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('所选账单分类未发生变化')),
+      );
+      return;
+    }
+    final skippedTransfers = selected.length - ctx.eligible.length;
+    final categoryLabel = choice.value == null
+        ? '未分类'
+        : _categoryDisplayName(choice.value);
+    final suffix = skippedTransfers > 0 ? '（已跳过 $skippedTransfers 笔转账）' : '';
+    await _saveBatchTransactions(
+      updated,
+      successMessage: '已将 ${updated.length} 笔账单分类改为「$categoryLabel」$suffix',
+    );
+  }
+
+  Future<void> _batchEditPaymentMethod(
+    List<FinanceTransaction> selected,
+  ) async {
+    if (_isBatchSaving || selected.isEmpty) return;
+    final choice = await showAppDialog<_FinanceBatchFieldChoice<String?>>(
+      context: context,
+      builder: (context) => _FinanceBatchPaymentMethodPickerDialog(
+        paymentMethods: paymentMethods,
+        selectedCount: selected.length,
+      ),
+    );
+    if (choice == null || !mounted) return;
+    final updated = <FinanceTransaction>[];
+    var skippedSelfTransfers = 0;
+    for (final item in selected) {
+      if (item.type == FinanceTransactionType.transfer &&
+          choice.value != null &&
+          choice.value == item.targetPaymentMethodUuid) {
+        skippedSelfTransfers++;
+        continue;
+      }
+      if (item.paymentMethodUuid == choice.value) continue;
+      final copy = FinanceTransaction.fromMap(item.toMap());
+      copy.paymentMethodUuid = choice.value;
+      copy.markAsChanged();
+      updated.add(copy);
+    }
+    if (updated.isEmpty) {
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(
+          content: Text(
+            skippedSelfTransfers > 0 ? '转账的转出账户不能与转入账户相同' : '所选账单账户未发生变化',
+          ),
+        ),
+      );
+      return;
+    }
+    final pm = choice.value == null ? null : paymentMethods[choice.value];
+    final pmLabel = pm == null ? '未指定账户' : _paymentMethodDisplayName(pm);
+    final suffix = skippedSelfTransfers > 0
+        ? '（已跳过 $skippedSelfTransfers 笔同账户转账）'
+        : '';
+    await _saveBatchTransactions(
+      updated,
+      successMessage: '已将 ${updated.length} 笔账单账户改为「$pmLabel」$suffix',
+    );
+  }
+
+  Future<void> _batchEditMultipleFields(
+    List<FinanceTransaction> selected,
+  ) async {
+    if (_isBatchSaving || selected.isEmpty) return;
+    final categoryContext = _resolveBatchCategoryContext(selected);
+    final result = await showAppDialog<_FinanceBatchEditResult>(
+      context: context,
+      builder: (context) => _FinanceBatchEditDialog(
+        selectedCount: selected.length,
+        categories: categories,
+        paymentMethods: paymentMethods,
+        categoryType: categoryContext.type,
+        categoryDisabledReason: categoryContext.error,
+        initialDate: widget.clock(),
+      ),
+    );
+    if (result == null || !mounted) return;
+    final updated = <FinanceTransaction>[];
+    for (final item in selected) {
+      final copy = FinanceTransaction.fromMap(item.toMap());
+      var changed = false;
+      if (result.applyCategory &&
+          item.type != FinanceTransactionType.transfer &&
+          copy.categoryUuid != result.categoryUuid) {
+        copy.categoryUuid = result.categoryUuid;
+        changed = true;
+      }
+      if (result.applyPaymentMethod) {
+        final conflictsTransferTarget =
+            item.type == FinanceTransactionType.transfer &&
+            result.paymentMethodUuid != null &&
+            result.paymentMethodUuid == item.targetPaymentMethodUuid;
+        if (!conflictsTransferTarget &&
+            copy.paymentMethodUuid != result.paymentMethodUuid) {
+          copy.paymentMethodUuid = result.paymentMethodUuid;
+          changed = true;
+        }
+      }
+      if (result.applyDate && result.date != null) {
+        final nextKey = dateKey(result.date!);
+        if (copy.transactionDate != nextKey) {
+          _applyLedgerDateToTransaction(copy, result.date!);
+          changed = true;
+        }
+      }
+      if (result.applyMerchant) {
+        final nextMerchant = result.merchant?.trim();
+        final normalized = nextMerchant == null || nextMerchant.isEmpty
+            ? null
+            : nextMerchant;
+        if (copy.merchant != normalized) {
+          copy.merchant = normalized;
+          changed = true;
+        }
+      }
+      if (result.applyNote) {
+        final nextNote = result.note?.trim();
+        final normalized = nextNote == null || nextNote.isEmpty
+            ? null
+            : nextNote;
+        if (copy.note != normalized) {
+          copy.note = normalized;
+          changed = true;
+        }
+      }
+      if (changed) {
+        copy.markAsChanged();
+        updated.add(copy);
+      }
+    }
+    if (updated.isEmpty) {
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('所选账单未发生变化')),
+      );
+      return;
+    }
+    await _saveBatchTransactions(
+      updated,
+      successMessage: '已批量修改 ${updated.length} 笔账单',
+    );
+  }
+
+  Future<void> _batchDeleteSelected(List<FinanceTransaction> selected) async {
+    if (_isBatchSaving || selected.isEmpty) return;
+    final confirmed = await showAppDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('删除所选 ${selected.length} 笔账单？'),
+        content: const Text('删除后将移入回收站，不会计入统计，也可在回收站恢复。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isBatchSaving = true);
+    try {
+      if (widget.onBatchDelete != null) {
+        await widget.onBatchDelete!(selected);
+      } else {
+        final selectedUuids = selected.map((item) => item.uuid).toSet();
+        for (final item in selected) {
+          if (item.type != FinanceTransactionType.expense) continue;
+          final refunds = await FinanceRepository.getRefundsForTransaction(
+            item.uuid,
+          );
+          final hasUnselectedRefund = refunds.any(
+            (refund) => !selectedUuids.contains(refund.uuid),
+          );
+          if (hasUnselectedRefund) {
+            if (!mounted) return;
+            AppSnackBars.showSnackBar(
+              context,
+              const SnackBar(content: Text('部分支出账单已关联退款，请先处理退款或一并选中退款记录')),
+            );
+            return;
+          }
+        }
+        final toDelete = <FinanceTransaction>[];
+        for (final item in selected) {
+          final copy = FinanceTransaction.fromMap(item.toMap());
+          copy.isDeleted = true;
+          copy.markAsChanged();
+          toDelete.add(copy);
+        }
+        final saver =
+            widget.onBatchSave ?? FinanceRepository.saveTransactionsBatch;
+        await saver(toDelete);
+      }
+      if (!mounted) return;
+      setState(() {
+        _selectionMode = false;
+        _hasCommittedSelection = false;
+        _selectedTransactionUuids.clear();
+      });
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(content: Text('已删除 ${selected.length} 笔账单')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      AppSnackBars.showSnackBar(context, SnackBar(content: Text('批量删除失败：$e')));
+    } finally {
+      if (mounted) {
+        setState(() => _isBatchSaving = false);
+      }
+    }
   }
 
   bool _matchesSelectedCategories(FinanceTransaction transaction) {
@@ -4683,9 +5034,87 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
                 ),
               ),
             ],
+            if (showSelectedTotals && selectedCount > 0) ...[
+              const SizedBox(height: 8),
+              Divider(
+                height: 1,
+                color: colorScheme.outlineVariant.withValues(alpha: 0.4),
+              ),
+              const SizedBox(height: 8),
+              _buildBatchActionBar(
+                context,
+                selectedEntries
+                    .map((entry) => entry.transaction)
+                    .toList(growable: false),
+              ),
+            ],
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildBatchActionBar(
+    BuildContext context,
+    List<FinanceTransaction> selectedTransactions,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final buttonStyle = OutlinedButton.styleFrom(
+      visualDensity: VisualDensity.compact,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      minimumSize: const Size(0, 32),
+    );
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        FilledButton.tonalIcon(
+          key: const ValueKey('finance-ledger-batch-category'),
+          style: FilledButton.styleFrom(
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            minimumSize: const Size(0, 32),
+          ),
+          onPressed: _isBatchSaving
+              ? null
+              : () => _batchEditCategory(selectedTransactions),
+          icon: const Icon(Icons.category_outlined, size: 15),
+          label: const Text('改分类'),
+        ),
+        OutlinedButton.icon(
+          key: const ValueKey('finance-ledger-batch-payment-method'),
+          style: buttonStyle,
+          onPressed: _isBatchSaving
+              ? null
+              : () => _batchEditPaymentMethod(selectedTransactions),
+          icon: const Icon(Icons.account_balance_wallet_outlined, size: 15),
+          label: const Text('改账户'),
+        ),
+        OutlinedButton.icon(
+          key: const ValueKey('finance-ledger-batch-edit'),
+          style: buttonStyle,
+          onPressed: _isBatchSaving
+              ? null
+              : () => _batchEditMultipleFields(selectedTransactions),
+          icon: const Icon(Icons.edit_note_rounded, size: 16),
+          label: const Text('批量修改'),
+        ),
+        OutlinedButton.icon(
+          key: const ValueKey('finance-ledger-batch-delete'),
+          style: OutlinedButton.styleFrom(
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            minimumSize: const Size(0, 32),
+            foregroundColor: colorScheme.error,
+            side: BorderSide(color: colorScheme.error.withValues(alpha: 0.45)),
+          ),
+          onPressed: _isBatchSaving
+              ? null
+              : () => _batchDeleteSelected(selectedTransactions),
+          icon: const Icon(Icons.delete_outline_rounded, size: 15),
+          label: const Text('删除'),
+        ),
+      ],
     );
   }
 
@@ -4889,6 +5318,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
           FinanceTransactionType.expense => '已删除或未知付款方式',
           FinanceTransactionType.income => '已删除或未知到账账户',
           FinanceTransactionType.refund => '已删除或未知退款到账账户',
+          FinanceTransactionType.transfer => '已删除或未知转出账户',
         },
       if (transaction.installmentLabel != null)
         '分期 ${transaction.installmentLabel}',
@@ -4920,6 +5350,9 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
           onTap: selectionMode
               ? onToggleSelection
               : () => onOpenDetail(transaction, sourceKey),
+          onLongPress: selectionMode
+              ? null
+              : () => _enterSelectionModeWith(transaction),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 14,
             vertical: 3,
@@ -5373,6 +5806,8 @@ class _FinanceLedgerTotals {
           } else {
             incomeMinor += transaction.amountMinor;
           }
+        case FinanceTransactionType.transfer:
+          break;
       }
     }
     return _FinanceLedgerTotals(
@@ -5873,6 +6308,7 @@ List<_FinanceDayGroup> _groupFinanceTransactionsByDay(
       FinanceTransactionType.expense => metricOffset,
       FinanceTransactionType.refund => metricOffset + 1,
       FinanceTransactionType.income => metricOffset + 2,
+      FinanceTransactionType.transfer => metricOffset + 3,
     };
     totals[metricIndex] += transaction.amountMinor;
   }
@@ -5945,4 +6381,558 @@ bool _matchesFinanceLedgerDate(String value, String query) {
         int.parse(slashMonthDay.group(2)!) == date.day;
   }
   return _formatFinanceDayLabel(value).toLowerCase().contains(query);
+}
+
+class _FinanceBatchFieldChoice<T> {
+  final T value;
+
+  const _FinanceBatchFieldChoice(this.value);
+}
+
+class _FinanceBatchCategoryPickerDialog extends StatefulWidget {
+  final Map<String, FinanceCategory> categories;
+  final FinanceCategoryType categoryType;
+  final int selectedCount;
+
+  const _FinanceBatchCategoryPickerDialog({
+    required this.categories,
+    required this.categoryType,
+    required this.selectedCount,
+  });
+
+  @override
+  State<_FinanceBatchCategoryPickerDialog> createState() =>
+      _FinanceBatchCategoryPickerDialogState();
+}
+
+class _FinanceBatchCategoryPickerDialogState
+    extends State<_FinanceBatchCategoryPickerDialog> {
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final activeCategories =
+        widget.categories.values
+            .where(
+              (category) =>
+                  category.type == widget.categoryType &&
+                  !category.isDeleted &&
+                  !category.isArchived,
+            )
+            .toList()
+          ..sort((left, right) {
+            final parentOrder = (left.parentUuid ?? '').compareTo(
+              right.parentUuid ?? '',
+            );
+            if (parentOrder != 0) return parentOrder;
+            final sortOrder = left.sortOrder.compareTo(right.sortOrder);
+            return sortOrder != 0 ? sortOrder : left.uuid.compareTo(right.uuid);
+          });
+    final byUuid = {for (final c in activeCategories) c.uuid: c};
+    final roots = activeCategories
+        .where((category) {
+          final parentUuid = category.parentUuid?.trim();
+          return parentUuid == null ||
+              parentUuid.isEmpty ||
+              !byUuid.containsKey(parentUuid);
+        })
+        .toList(growable: false);
+    final normalizedQuery = _query.trim().toLowerCase();
+
+    final rows = <({FinanceCategory category, bool isChild})>[];
+    for (final root in roots) {
+      final children = activeCategories
+          .where((category) => category.parentUuid == root.uuid)
+          .toList(growable: false);
+      final rootMatches =
+          normalizedQuery.isEmpty ||
+          root.name.toLowerCase().contains(normalizedQuery);
+      final matchingChildren = children
+          .where(
+            (child) =>
+                normalizedQuery.isEmpty ||
+                child.name.toLowerCase().contains(normalizedQuery),
+          )
+          .toList(growable: false);
+      if (rootMatches || matchingChildren.isNotEmpty) {
+        rows.add((category: root, isChild: false));
+        for (final child in matchingChildren) {
+          rows.add((category: child, isChild: true));
+        }
+      }
+    }
+
+    return AlertDialog(
+      title: Text('批量修改分类（${widget.selectedCount} 笔）'),
+      content: SizedBox(
+        width: 400,
+        height: 440,
+        child: Column(
+          children: [
+            TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: '搜索分类',
+                prefixIcon: const Icon(Icons.search_rounded, size: 18),
+                isDense: true,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                suffixIcon: _query.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 18),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _query = '');
+                        },
+                      ),
+              ),
+              onChanged: (value) => setState(() => _query = value),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: ListView(
+                children: [
+                  if (normalizedQuery.isEmpty ||
+                      '未分类'.contains(normalizedQuery))
+                    ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: colorScheme.surfaceContainerHighest,
+                        child: const Text('🏷️'),
+                      ),
+                      title: const Text('未分类'),
+                      subtitle: Text(
+                        '清除所选账单的分类',
+                        style: TextStyle(
+                          color: colorScheme.onSurfaceVariant,
+                          fontSize: 12,
+                        ),
+                      ),
+                      onTap: () => Navigator.pop(
+                        context,
+                        const _FinanceBatchFieldChoice<String?>(null),
+                      ),
+                    ),
+                  for (final row in rows)
+                    ListTile(
+                      contentPadding: EdgeInsets.only(
+                        left: row.isChild ? 36 : 16,
+                        right: 16,
+                      ),
+                      leading: Text(
+                        row.category.icon,
+                        style: TextStyle(fontSize: row.isChild ? 18 : 22),
+                      ),
+                      title: Text(
+                        financeCategorySiblingDisplayName(
+                          row.category,
+                          activeCategories,
+                        ),
+                      ),
+                      onTap: () => Navigator.pop(
+                        context,
+                        _FinanceBatchFieldChoice<String?>(row.category.uuid),
+                      ),
+                    ),
+                  if (rows.isEmpty && normalizedQuery.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: Text(
+                          '没有匹配的分类',
+                          style: TextStyle(color: colorScheme.onSurfaceVariant),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+      ],
+    );
+  }
+}
+
+class _FinanceBatchPaymentMethodPickerDialog extends StatelessWidget {
+  final Map<String, FinancePaymentMethod> paymentMethods;
+  final int selectedCount;
+
+  const _FinanceBatchPaymentMethodPickerDialog({
+    required this.paymentMethods,
+    required this.selectedCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final activeMethods =
+        paymentMethods.values
+            .where((pm) => !pm.isDeleted && !pm.isArchived)
+            .toList()
+          ..sort((left, right) {
+            final order = left.sortOrder.compareTo(right.sortOrder);
+            return order != 0 ? order : left.uuid.compareTo(right.uuid);
+          });
+    return AlertDialog(
+      title: Text('批量修改账户（$selectedCount 笔）'),
+      content: SizedBox(
+        width: 380,
+        height: 360,
+        child: ListView(
+          children: [
+            ListTile(
+              leading: CircleAvatar(
+                backgroundColor: colorScheme.surfaceContainerHighest,
+                child: const Icon(Icons.money_off_csred_outlined, size: 18),
+              ),
+              title: const Text('未指定账户'),
+              subtitle: Text(
+                '清除所选账单的账户关联',
+                style: TextStyle(
+                  color: colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
+              ),
+              onTap: () => Navigator.pop(
+                context,
+                const _FinanceBatchFieldChoice<String?>(null),
+              ),
+            ),
+            for (final pm in activeMethods)
+              ListTile(
+                leading: Text(pm.icon, style: const TextStyle(fontSize: 22)),
+                title: Text(financePaymentMethodDisplayName(pm, activeMethods)),
+                onTap: () => Navigator.pop(
+                  context,
+                  _FinanceBatchFieldChoice<String?>(pm.uuid),
+                ),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+      ],
+    );
+  }
+}
+
+class _FinanceBatchEditResult {
+  final bool applyCategory;
+  final String? categoryUuid;
+  final bool applyPaymentMethod;
+  final String? paymentMethodUuid;
+  final bool applyDate;
+  final DateTime? date;
+  final bool applyMerchant;
+  final String? merchant;
+  final bool applyNote;
+  final String? note;
+
+  const _FinanceBatchEditResult({
+    required this.applyCategory,
+    required this.categoryUuid,
+    required this.applyPaymentMethod,
+    required this.paymentMethodUuid,
+    required this.applyDate,
+    required this.date,
+    required this.applyMerchant,
+    required this.merchant,
+    required this.applyNote,
+    required this.note,
+  });
+}
+
+class _FinanceBatchEditDialog extends StatefulWidget {
+  final int selectedCount;
+  final Map<String, FinanceCategory> categories;
+  final Map<String, FinancePaymentMethod> paymentMethods;
+  final FinanceCategoryType? categoryType;
+  final String? categoryDisabledReason;
+  final DateTime initialDate;
+
+  const _FinanceBatchEditDialog({
+    required this.selectedCount,
+    required this.categories,
+    required this.paymentMethods,
+    required this.categoryType,
+    required this.categoryDisabledReason,
+    required this.initialDate,
+  });
+
+  @override
+  State<_FinanceBatchEditDialog> createState() =>
+      _FinanceBatchEditDialogState();
+}
+
+class _FinanceBatchEditDialogState extends State<_FinanceBatchEditDialog> {
+  bool _applyCategory = false;
+  String? _categoryUuid;
+  bool _applyPaymentMethod = false;
+  String? _paymentMethodUuid;
+  bool _applyDate = false;
+  late DateTime _date = DateTime(
+    widget.initialDate.year,
+    widget.initialDate.month,
+    widget.initialDate.day,
+  );
+  bool _applyMerchant = false;
+  final TextEditingController _merchantController = TextEditingController();
+  bool _applyNote = false;
+  final TextEditingController _noteController = TextEditingController();
+
+  @override
+  void dispose() {
+    _merchantController.dispose();
+    _noteController.dispose();
+    super.dispose();
+  }
+
+  bool get _hasAnyChange =>
+      _applyCategory ||
+      _applyPaymentMethod ||
+      _applyDate ||
+      _applyMerchant ||
+      _applyNote;
+
+  Future<void> _pickCategory() async {
+    final type = widget.categoryType;
+    if (type == null) return;
+    final choice = await showAppDialog<_FinanceBatchFieldChoice<String?>>(
+      context: context,
+      builder: (context) => _FinanceBatchCategoryPickerDialog(
+        categories: widget.categories,
+        categoryType: type,
+        selectedCount: widget.selectedCount,
+      ),
+    );
+    if (choice == null || !mounted) return;
+    setState(() {
+      _applyCategory = true;
+      _categoryUuid = choice.value;
+    });
+  }
+
+  Future<void> _pickPaymentMethod() async {
+    final choice = await showAppDialog<_FinanceBatchFieldChoice<String?>>(
+      context: context,
+      builder: (context) => _FinanceBatchPaymentMethodPickerDialog(
+        paymentMethods: widget.paymentMethods,
+        selectedCount: widget.selectedCount,
+      ),
+    );
+    if (choice == null || !mounted) return;
+    setState(() {
+      _applyPaymentMethod = true;
+      _paymentMethodUuid = choice.value;
+    });
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _applyDate = true;
+      _date = picked;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final categoryLabel = _categoryUuid == null
+        ? '未分类'
+        : financeCategoryReferenceDisplayName(
+            _categoryUuid,
+            widget.categories.values,
+          );
+    final paymentMethod = _paymentMethodUuid == null
+        ? null
+        : widget.paymentMethods[_paymentMethodUuid];
+    final paymentLabel = paymentMethod == null
+        ? '未指定账户'
+        : '${paymentMethod.icon} ${financePaymentMethodDisplayName(paymentMethod, widget.paymentMethods.values)}';
+
+    return AlertDialog(
+      title: Text('批量修改（${widget.selectedCount} 笔）'),
+      content: SizedBox(
+        width: 420,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CheckboxListTile(
+                value: _applyCategory,
+                onChanged: widget.categoryType == null
+                    ? null
+                    : (checked) {
+                        if (checked == true) {
+                          unawaited(_pickCategory());
+                        } else {
+                          setState(() => _applyCategory = false);
+                        }
+                      },
+                title: const Text('修改分类'),
+                subtitle: Text(
+                  widget.categoryDisabledReason ??
+                      (_applyCategory ? '将改为：$categoryLabel' : '点击选择目标分类'),
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+                secondary: IconButton(
+                  tooltip: '选择分类',
+                  onPressed: widget.categoryType == null ? null : _pickCategory,
+                  icon: const Icon(Icons.chevron_right_rounded),
+                ),
+                contentPadding: EdgeInsets.zero,
+              ),
+              CheckboxListTile(
+                value: _applyPaymentMethod,
+                onChanged: (checked) {
+                  if (checked == true) {
+                    unawaited(_pickPaymentMethod());
+                  } else {
+                    setState(() => _applyPaymentMethod = false);
+                  }
+                },
+                title: const Text('修改账户'),
+                subtitle: Text(
+                  _applyPaymentMethod ? '将改为：$paymentLabel' : '点击选择目标账户',
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+                secondary: IconButton(
+                  tooltip: '选择账户',
+                  onPressed: _pickPaymentMethod,
+                  icon: const Icon(Icons.chevron_right_rounded),
+                ),
+                contentPadding: EdgeInsets.zero,
+              ),
+              CheckboxListTile(
+                value: _applyDate,
+                onChanged: (checked) {
+                  if (checked == true) {
+                    unawaited(_pickDate());
+                  } else {
+                    setState(() => _applyDate = false);
+                  }
+                },
+                title: const Text('修改日期'),
+                subtitle: Text(
+                  _applyDate ? '将改为：${dateKey(_date)}' : '点击选择新日期',
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+                secondary: IconButton(
+                  tooltip: '选择日期',
+                  onPressed: _pickDate,
+                  icon: const Icon(Icons.calendar_today_rounded, size: 18),
+                ),
+                contentPadding: EdgeInsets.zero,
+              ),
+              CheckboxListTile(
+                value: _applyMerchant,
+                onChanged: (checked) =>
+                    setState(() => _applyMerchant = checked ?? false),
+                title: const Text('修改商户 / 标题'),
+                contentPadding: EdgeInsets.zero,
+              ),
+              if (_applyMerchant)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: TextField(
+                    controller: _merchantController,
+                    decoration: InputDecoration(
+                      labelText: '商户 / 标题（留空则清空）',
+                      isDense: true,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              CheckboxListTile(
+                value: _applyNote,
+                onChanged: (checked) =>
+                    setState(() => _applyNote = checked ?? false),
+                title: const Text('修改备注'),
+                contentPadding: EdgeInsets.zero,
+              ),
+              if (_applyNote)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: TextField(
+                    controller: _noteController,
+                    maxLines: 2,
+                    decoration: InputDecoration(
+                      labelText: '备注内容（留空则清空）',
+                      isDense: true,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: _hasAnyChange
+              ? () => Navigator.pop(
+                  context,
+                  _FinanceBatchEditResult(
+                    applyCategory: _applyCategory,
+                    categoryUuid: _categoryUuid,
+                    applyPaymentMethod: _applyPaymentMethod,
+                    paymentMethodUuid: _paymentMethodUuid,
+                    applyDate: _applyDate,
+                    date: _date,
+                    applyMerchant: _applyMerchant,
+                    merchant: _merchantController.text,
+                    applyNote: _applyNote,
+                    note: _noteController.text,
+                  ),
+                )
+              : null,
+          child: const Text('应用修改'),
+        ),
+      ],
+    );
+  }
 }

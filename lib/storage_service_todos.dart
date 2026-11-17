@@ -2,6 +2,11 @@ part of 'storage_service.dart';
 
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
+final Expando<Object> _sharedInflightTodoFutures = Expando<Object>(
+  'shared_inflight_todo_futures',
+);
+const Object _sharedInflightMarker = Object();
+
 int? _parseNullableIntForIsolate(dynamic raw) {
   return JsonValueParser.toNullableInt(raw);
 }
@@ -121,6 +126,22 @@ mixin _StorageTodos on _StorageServiceBase {
     'creator_name',
   ];
 
+  static const _independentCompletionIgnoredFields = <String>{
+    'is_completed',
+    'completed_at',
+    'completedAt',
+    'is_skipped',
+    'is_skipped_sync_pending',
+    'version',
+    'updated_at',
+    'has_conflict',
+    'conflict_data',
+  };
+
+  static final List<String> _collabSharedSnapshotFields = _todoSnapshotFields
+      .where((field) => !_independentCompletionIgnoredFields.contains(field))
+      .toList(growable: false);
+
   Future<void> saveTodos(
     String username,
     List<TodoItem> items, {
@@ -152,7 +173,15 @@ mixin _StorageTodos on _StorageServiceBase {
       throw ArgumentError('当前写入模式不能与关联固定日程创建同时使用');
     }
     final dedupeMap = <String, TodoItem>{};
-    if (sync && !isSyncSource) _recurrenceCheckCache.clear();
+    if (sync &&
+        !isSyncSource &&
+        items.any(
+          (item) =>
+              item.recurrence != RecurrenceType.none ||
+              (item.recurrenceSeriesId?.isNotEmpty ?? false),
+        )) {
+      _recurrenceCheckCache.clear();
+    }
     for (final source in items) {
       if (source.isDone && source.completedAt == null) {
         final isRecurrence =
@@ -490,8 +519,26 @@ mixin _StorageTodos on _StorageServiceBase {
             current == null ||
             _hasSubstantialChange(current.toJson(), data, _todoSnapshotFields);
         if (!hasChanged) continue;
+        final isIndependentCompletionOnly =
+            !isSyncSource &&
+            recurrenceBaselines == null &&
+            current != null &&
+            item.collabType == 1 &&
+            !_hasSubstantialChange(
+              current.toJson(),
+              data,
+              _collabSharedSnapshotFields,
+            );
+        if (isIndependentCompletionOnly) {
+          // 各自完成状态的变更不递增共享任务版本号，避免抬高主表 version 触发版本冲突
+          item.version = current.version;
+          data['version'] = current.version;
+        }
         if (!isSyncSource) {
           final payload = _stripClientOnlyConflictForSync(data);
+          if (isIndependentCompletionOnly) {
+            payload['_independent_completion_only'] = true;
+          }
           if (recurrenceBaselines != null) {
             final uploadBaseline =
                 recurrenceUploadBaselines?.containsKey(item.id) == true
@@ -1660,6 +1707,7 @@ mixin _StorageTodos on _StorageServiceBase {
     final inflight = _inflightTodoRequests[requestKey];
     if (inflight != null) {
       debugPrint("🔁 getTodos 复用进行中请求: $requestKey");
+      _sharedInflightTodoFutures[inflight] = _sharedInflightMarker;
       final shared = await inflight;
       return _cloneTodoItems(shared);
     }
@@ -1674,7 +1722,10 @@ mixin _StorageTodos on _StorageServiceBase {
 
     try {
       final result = await future;
-      return _cloneTodoItems(result);
+      if (_sharedInflightTodoFutures[future] != null) {
+        return _cloneTodoItems(result);
+      }
+      return result;
     } finally {
       if (identical(_inflightTodoRequests[requestKey], future)) {
         _inflightTodoRequests.remove(requestKey);
@@ -1833,7 +1884,10 @@ mixin _StorageTodos on _StorageServiceBase {
     final endMs = to.millisecondsSinceEpoch;
     final requestKey = (username, startMs, endMs);
     final inflight = _inflightTodoSearchDateRequests[requestKey];
-    if (inflight != null) return _cloneTodoItems(await inflight);
+    if (inflight != null) {
+      _sharedInflightTodoFutures[inflight] = _sharedInflightMarker;
+      return _cloneTodoItems(await inflight);
+    }
 
     final future = _getTodosForSearchDateRangeInternal(
       username,
@@ -1842,7 +1896,11 @@ mixin _StorageTodos on _StorageServiceBase {
     );
     _inflightTodoSearchDateRequests[requestKey] = future;
     try {
-      return _cloneTodoItems(await future);
+      final result = await future;
+      if (_sharedInflightTodoFutures[future] != null) {
+        return _cloneTodoItems(result);
+      }
+      return result;
     } finally {
       if (identical(_inflightTodoSearchDateRequests[requestKey], future)) {
         _inflightTodoSearchDateRequests.remove(requestKey);
@@ -1952,7 +2010,10 @@ mixin _StorageTodos on _StorageServiceBase {
     final endMs = to.millisecondsSinceEpoch;
     final requestKey = (username, startMs, endMs);
     final inflight = _inflightTimelineTodoRequests[requestKey];
-    if (inflight != null) return _cloneTodoItems(await inflight);
+    if (inflight != null) {
+      _sharedInflightTodoFutures[inflight] = _sharedInflightMarker;
+      return _cloneTodoItems(await inflight);
+    }
 
     final future = _getTodosForTimelineRangeInternal(
       username,
@@ -1961,7 +2022,11 @@ mixin _StorageTodos on _StorageServiceBase {
     );
     _inflightTimelineTodoRequests[requestKey] = future;
     try {
-      return _cloneTodoItems(await future);
+      final result = await future;
+      if (_sharedInflightTodoFutures[future] != null) {
+        return _cloneTodoItems(result);
+      }
+      return result;
     } finally {
       if (identical(_inflightTimelineTodoRequests[requestKey], future)) {
         _inflightTimelineTodoRequests.remove(requestKey);
@@ -3820,8 +3885,13 @@ mixin _StorageTodos on _StorageServiceBase {
 
   Future<void> _clearTodoGroupPrefsMirror(String username) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_scopedKey(keyTodoGroups, username));
-    await prefs.remove(keyTodoGroups);
+    final scopedKey = _scopedKey(keyTodoGroups, username);
+    if (prefs.containsKey(scopedKey)) {
+      await prefs.remove(scopedKey);
+    }
+    if (prefs.containsKey(keyTodoGroups)) {
+      await prefs.remove(keyTodoGroups);
+    }
   }
 
   Future<List<TodoGroup>> getTodoGroups(
@@ -3832,46 +3902,49 @@ mixin _StorageTodos on _StorageServiceBase {
       final dbHelper = DatabaseHelper.instance;
       final db = await dbHelper.databaseForUser(username);
       await _clearGhostConflictFlags(db, tables: const ['todo_groups']);
-      final prefs = await SharedPreferences.getInstance();
-
-      // 1. 迁移检查
-      final hasSqliteRows = await db.rawQuery(
-        'SELECT 1 FROM todo_groups LIMIT 1',
-      );
-      if (hasSqliteRows.isEmpty) {
-        List<String> legacyJsonList =
-            prefs.getStringList(_scopedKey(keyTodoGroups, username)) ?? [];
-
-        // 🚀 核心修复：增加一次性迁移保护
-        if (legacyJsonList.isEmpty && username.isNotEmpty) {
-          final String markerKey = "${keyTodoGroups}_${username}_migrated";
-          if (!(prefs.getBool(markerKey) ?? false)) {
-            legacyJsonList = prefs.getStringList(keyTodoGroups) ?? [];
-            if (legacyJsonList.isNotEmpty) {
-              await prefs.setBool(markerKey, true);
-            }
-          }
-        }
-
-        if (legacyJsonList.isNotEmpty) {
-          debugPrint("🚀 自动迁移待办组数据至 SQLite...");
-          List<TodoGroup> legacyData = legacyJsonList
-              .map((e) => TodoGroup.fromJson(jsonDecode(e)))
-              .toList();
-          await saveTodoGroups(
-            username,
-            legacyData,
-            sync: false,
-            isSyncSource: true,
-          );
-        }
-      }
-
-      // 2. 从 SQL 读取 (排除逻辑删除)
-      final List<Map<String, dynamic>> maps = await db.query(
+      // 1. 先从 SQL 读取，仅当无数据时才检查旧 Prefs 迁移
+      List<Map<String, dynamic>> maps = await db.query(
         'todo_groups',
         where: includeDeleted ? null : 'is_deleted = 0',
       );
+      if (maps.isEmpty) {
+        final hasSqliteRows = includeDeleted
+            ? const <Map<String, Object?>>[]
+            : await db.rawQuery('SELECT 1 FROM todo_groups LIMIT 1');
+        if (hasSqliteRows.isEmpty) {
+          final prefs = await SharedPreferences.getInstance();
+          List<String> legacyJsonList =
+              prefs.getStringList(_scopedKey(keyTodoGroups, username)) ?? [];
+
+          // 🚀 核心修复：增加一次性迁移保护
+          if (legacyJsonList.isEmpty && username.isNotEmpty) {
+            final String markerKey = "${keyTodoGroups}_${username}_migrated";
+            if (!(prefs.getBool(markerKey) ?? false)) {
+              legacyJsonList = prefs.getStringList(keyTodoGroups) ?? [];
+              if (legacyJsonList.isNotEmpty) {
+                await prefs.setBool(markerKey, true);
+              }
+            }
+          }
+
+          if (legacyJsonList.isNotEmpty) {
+            debugPrint("🚀 自动迁移待办组数据至 SQLite...");
+            List<TodoGroup> legacyData = legacyJsonList
+                .map((e) => TodoGroup.fromJson(jsonDecode(e)))
+                .toList();
+            await saveTodoGroups(
+              username,
+              legacyData,
+              sync: false,
+              isSyncSource: true,
+            );
+            maps = await db.query(
+              'todo_groups',
+              where: includeDeleted ? null : 'is_deleted = 0',
+            );
+          }
+        }
+      }
       if (maps.isNotEmpty) {
         return maps
             .map(

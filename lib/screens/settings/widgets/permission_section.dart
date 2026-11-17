@@ -227,9 +227,11 @@ class PermissionSection extends StatelessWidget {
   Color _permissionColor(ColorScheme colorScheme, String key, bool isCritical) {
     if (isCritical) return colorScheme.error;
     return switch (key) {
-      'storage' => colorScheme.secondary,
-      'usage_stats' => colorScheme.tertiary,
-      'request_install' => colorScheme.cdtInfo,
+      'storage' || 'calendar' => colorScheme.secondary,
+      'usage_stats' || 'battery_optimization' => colorScheme.tertiary,
+      'request_install' ||
+      'live_updates' ||
+      'local_network' => colorScheme.cdtInfo,
       _ => colorScheme.primary,
     };
   }

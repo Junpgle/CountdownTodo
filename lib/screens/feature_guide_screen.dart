@@ -36,6 +36,7 @@ import '../features/finance/screens/finance_home_screen.dart';
 import '../features/habits/screens/habit_center_screen.dart';
 import '../features/thirty_day_challenge/screens/challenge_center_screen.dart';
 import '../widgets/app_settings_widgets.dart';
+import '../widgets/changelog_bullet_item.dart';
 import '../widgets/floating_bottom_bar.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 import 'animation_settings_page.dart';
@@ -834,12 +835,14 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   }
 
   Widget _buildPageContainer({required Widget content}) {
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
     return SafeArea(
+      bottom: false,
       child: Column(
         children: [
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
+              padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + bottomInset),
               child: content,
             ),
           ),
@@ -1170,53 +1173,17 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     double textAlpha = 0.75,
     double fontSize = 13.5,
   }) {
-    Color dotColor = scheme.onSurface.withValues(alpha: 0.4);
-    if (item.startsWith('【新增】')) {
-      dotColor = Colors.green;
-    } else if (item.startsWith('【优化】')) {
-      dotColor = Theme.of(context).colorScheme.primary;
-    } else if (item.startsWith('【修复】')) {
-      dotColor = Colors.orange;
-    } else if (item.startsWith('【重构】')) {
-      dotColor = Colors.purple;
-    } else if (item.startsWith('⚠️')) {
-      dotColor = Colors.red;
-    }
-
     final destination = item.startsWith('【新增】') || item.startsWith('【优化】')
         ? _resolveChangelogItemDestination(item)
         : null;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 7),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 5),
-            child: Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(
-                color: dotColor,
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              item,
-              style: TextStyle(
-                fontSize: fontSize,
-                color: scheme.onSurface.withValues(alpha: textAlpha),
-                height: 1.45,
-              ),
-            ),
-          ),
-          if (destination != null) ...[
-            const SizedBox(width: 8),
-            InkWell(
+    return ChangelogBulletItem(
+      item: item,
+      textAlpha: textAlpha,
+      fontSize: fontSize,
+      trailing: destination == null
+          ? null
+          : InkWell(
               borderRadius: BorderRadius.circular(999),
               onTap: () {
                 Navigator.of(context, rootNavigator: true).push(
@@ -1241,9 +1208,6 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                 ),
               ),
             ),
-          ],
-        ],
-      ),
     );
   }
 

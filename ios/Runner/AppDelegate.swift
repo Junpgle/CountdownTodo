@@ -1,12 +1,22 @@
 import Flutter
 import UIKit
 import EventKit
+import CoreLocation
 
 @main
-@objc class AppDelegate: FlutterAppDelegate {
+@objc class AppDelegate: FlutterAppDelegate, CLLocationManagerDelegate {
   private let strictFocusHapticsChannel = "countdown_todo/strict_focus_haptics"
   private let deviceCalendarReadChannel = "countdown_todo/device_calendar_read"
+  private let deviceContextChannel = "com.math_quiz_app/device_context"
   private let calendarStore = EKEventStore()
+  private lazy var locationManager: CLLocationManager = {
+    let manager = CLLocationManager()
+    manager.delegate = self
+    manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+    return manager
+  }()
+  private var pendingLocationResult: FlutterResult?
+  private var locationTimeoutTimer: Timer?
 
   override func application(
     _ application: UIApplication,
@@ -62,6 +72,23 @@ import EventKit
             return
           }
           result(self.calendarEvents(startMs: startMs.int64Value, endMs: endMs.int64Value))
+        default:
+          result(FlutterMethodNotImplemented)
+        }
+      }
+
+      let contextChannel = FlutterMethodChannel(
+        name: deviceContextChannel,
+        binaryMessenger: controller.binaryMessenger
+      )
+      contextChannel.setMethodCallHandler { [weak self] call, result in
+        guard let self else {
+          result(nil)
+          return
+        }
+        switch call.method {
+        case "getLocation":
+          self.readDeviceLocationForAi(result)
         default:
           result(FlutterMethodNotImplemented)
         }
@@ -132,6 +159,93 @@ import EventKit
         "location": event.location ?? "",
         "color": event.calendar.cgColor?.toArgb() ?? NSNull()
       ]
+    }
+  }
+
+  private func readDeviceLocationForAi(_ result: @escaping FlutterResult) {
+    let status: CLAuthorizationStatus
+    if #available(iOS 14.0, *) {
+      status = locationManager.authorizationStatus
+    } else {
+      status = CLLocationManager.authorizationStatus()
+    }
+    guard status == .authorizedWhenInUse || status == .authorizedAlways else {
+      result(FlutterError(code: "LOCATION_DENIED", message: "位置权限未授权", details: nil))
+      return
+    }
+    if let cached = locationManager.location,
+       Date().timeIntervalSince(cached.timestamp) <= 600 {
+      deliverLocation(cached, result: result)
+      return
+    }
+    if let existing = pendingLocationResult {
+      existing(nil)
+      pendingLocationResult = nil
+    }
+    locationTimeoutTimer?.invalidate()
+    pendingLocationResult = result
+    locationTimeoutTimer = Timer.scheduledTimer(withTimeInterval: 6.0, repeats: false) { [weak self] _ in
+      guard let self, let pending = self.pendingLocationResult else { return }
+      self.pendingLocationResult = nil
+      self.locationManager.stopUpdatingLocation()
+      if let cached = self.locationManager.location {
+        self.deliverLocation(cached, result: pending)
+      } else {
+        pending(nil)
+      }
+    }
+    locationManager.requestLocation()
+  }
+
+  func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+    guard let pending = pendingLocationResult else { return }
+    pendingLocationResult = nil
+    locationTimeoutTimer?.invalidate()
+    locationTimeoutTimer = nil
+    if let loc = locations.last {
+      deliverLocation(loc, result: pending)
+    } else {
+      pending(nil)
+    }
+  }
+
+  func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+    guard let pending = pendingLocationResult else { return }
+    pendingLocationResult = nil
+    locationTimeoutTimer?.invalidate()
+    locationTimeoutTimer = nil
+    if let cached = manager.location {
+      deliverLocation(cached, result: pending)
+    } else {
+      pending(nil)
+    }
+  }
+
+  private func deliverLocation(_ location: CLLocation, result: @escaping FlutterResult) {
+    var payload: [String: Any] = [
+      "latitude": location.coordinate.latitude,
+      "longitude": location.coordinate.longitude,
+      "accuracy_meters": location.horizontalAccuracy,
+      "timestamp": Int64(location.timestamp.timeIntervalSince1970 * 1000)
+    ]
+    CLGeocoder().reverseGeocodeLocation(location) { placemarks, _ in
+      if let place = placemarks?.first {
+        if let country = place.country { payload["country"] = country }
+        if let region = place.administrativeArea { payload["region"] = region }
+        if let city = place.locality ?? place.subAdministrativeArea { payload["city"] = city }
+        if let district = place.subLocality { payload["district"] = district }
+        let parts = [
+          place.administrativeArea,
+          place.locality,
+          place.subLocality,
+          place.thoroughfare,
+          place.subThoroughfare
+        ].compactMap { $0 }
+        if !parts.isEmpty {
+          payload["address"] = parts.joined()
+        }
+      }
+      result(payload)
     }
   }
 }

@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../features/finance/screens/ai_usage_cost_screen.dart';
 import '../../features/finance/screens/finance_automation_screen.dart';
+import '../../features/finance/screens/finance_bill_import_screen.dart';
 import '../../features/finance/screens/finance_future_commitments_screen.dart';
 import '../../features/finance/screens/finance_home_screen.dart';
 import '../../features/habits/screens/habit_center_screen.dart';
@@ -45,11 +46,14 @@ import '../settings/device_calendar_read_page.dart';
 import '../settings/home_text_config_page.dart';
 import '../settings/lan_sync_screen.dart';
 import '../settings/notification_settings_page.dart';
+import '../settings/pages/ai_assistant_settings_page.dart';
+import '../settings/pages/auto_backup_page.dart';
 import '../settings/pages/data_import_page.dart';
 import '../settings/pages/mcp_introduction_page.dart';
 import '../settings/pages/platform_specific_settings_page.dart';
 import '../settings/pages/preference_settings_page.dart';
 import '../settings/pages/recurrence_series_merge_page.dart';
+import '../settings/pages/sidebar_menu_settings_page.dart';
 import '../settings/pages/sync_health_page.dart';
 import '../settings/wallpaper_settings_page.dart';
 import '../team_management_screen.dart';
@@ -850,6 +854,59 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
         pageBuilder: (_, username) => FinanceHomeScreen(username: username),
       ),
       FeatureExplorerItem(
+        id: 'finance_bill_import',
+        title: '微信与支付宝账单一键导入',
+        subtitle: '支持导入微信（CSV/XLSX）与支付宝（CSV）账单流水，自动解析收支方向、金额与商户并批量入账',
+        locationPath: '侧边栏「记账」> 右上角设置 > 账单导入',
+        category: FeatureExplorerCategory.growth,
+        icon: Icons.file_upload_outlined,
+        badgeText: 'v7.24 新增',
+        isNew: true,
+        keywords: const [
+          '账单导入',
+          '微信账单',
+          '支付宝账单',
+          'CSV',
+          'XLSX',
+          '批量导入',
+          '记账',
+          'v7.24',
+        ],
+        steps: const [
+          '从微信或支付宝导出账单文件（微信支持 CSV / XLSX，支付宝支持 CSV）。',
+          '进入「记账 > 设置 > 账单导入」，选择文件后即可自动识别时间、商户、收支类型与金额。',
+          '导入前支持预览与筛选明细，并可一键批量写入记账本，快速补齐历史流水。',
+        ],
+        actionLabel: '打开账单导入',
+        pageBuilder: (_, _) => const FinanceBillImportScreen(),
+      ),
+      FeatureExplorerItem(
+        id: 'finance_transfer_and_batch_manage',
+        title: '账户互转与账单批量管理',
+        subtitle: '支持记录银行卡/微信/支付宝等账户间资金互转不计入收支统计，账单列表支持多选批量改分类与删除',
+        locationPath: '侧边栏「记账」> 记一笔（互转）/ 账单列表批量管理',
+        category: FeatureExplorerCategory.growth,
+        icon: Icons.swap_horiz_rounded,
+        badgeText: 'v7.24 新增',
+        isNew: true,
+        keywords: const [
+          '账户互转',
+          '转账',
+          '批量编辑',
+          '批量删除',
+          '账单管理',
+          '多选',
+          '记账',
+          'v7.24',
+        ],
+        steps: const [
+          '记账时选择「互转」类型，填写转出账户与转入账户，真实反映资金流向且不会虚增收支总额。',
+          '在账单列表进入批量管理模式，支持多选账单后一键批量修改分类、账户或批量删除。',
+        ],
+        actionLabel: '打开记账中心',
+        pageBuilder: (_, username) => FinanceHomeScreen(username: username),
+      ),
+      FeatureExplorerItem(
         id: 'habit_center',
         title: '习惯中心与专属打卡日历',
         subtitle: '支持完成型、专注时长型、数量型、时间点型四种习惯，支持防误触盖章与按单个习惯筛选专属完成日历视图',
@@ -1038,6 +1095,37 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
         pageBuilder: (_, _) => const AiAssistantTutorialScreen(),
       ),
       FeatureExplorerItem(
+        id: 'daily_ai_suggestion_and_memory',
+        title: '每日 AI 智能建议、记忆偏好与对话工具预算',
+        subtitle:
+            '首页每日 AI 建议卡片主动汇总今日重点与待办洞察；AI 助手支持长期记忆偏好、位置/设备上下文查询及自定义单轮工具预算',
+        locationPath: '首页「今日 AI 建议」卡片 / 设置 > AI 助手',
+        category: FeatureExplorerCategory.aiAndSync,
+        icon: Icons.psychology_alt_rounded,
+        badgeText: 'v7.24 新增',
+        isNew: true,
+        keywords: const [
+          'AI建议',
+          '每日AI',
+          'AI记忆',
+          '记忆偏好',
+          '工具预算',
+          '位置查询',
+          '设备上下文',
+          '流式识图',
+          'v7.24',
+        ],
+        steps: const [
+          '在「设置 > AI 助手」中开启「每日 AI 智能建议」，首页将呈现水波纹质感的今日智能建议卡片。',
+          '支持开启 AI 记忆偏好，让助手记住你的作息与常用习惯；对话时可查询当前位置与设备上下文（如电量、网络状态）。',
+          '可在 AI 设置或对话内自定义单轮工具调用预算，并在工具调用与图片识别时实时查看流式思考过程与动作摘要。',
+        ],
+        actionLabel: '打开 AI 助手设置',
+        pageBuilder: (_, _) => const AiAssistantSettingsPage(
+          initialTarget: AiAssistantSettingsPage.dailyAiSuggestionTarget,
+        ),
+      ),
+      FeatureExplorerItem(
         id: 'global_search_command_palette',
         title: '全局搜索与快捷命令面板',
         subtitle: '一键搜索待办、课程、账单、日记、时间日志，还能直接搜设置项与功能入口',
@@ -1100,15 +1188,32 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
         FeatureExplorerItem(
           id: 'lan_direct_sync',
           title: '局域网面对面互传同步',
-          subtitle: '无需经过云端服务器，在同一 Wi-Fi / 热点下手机与电脑点对点极速同步数据',
+          subtitle: '同一 Wi-Fi / 热点下点对点极速同步，支持 ECDH+AES-GCM 端到端加密、面对面扫码配对、隐私域配置与低电量省电策略',
           locationPath: '设置 > 数据与互联 > 局域网同步',
           category: FeatureExplorerCategory.aiAndSync,
           icon: Icons.wifi_tethering_rounded,
-          badgeText: 'v4.2 新增',
-          keywords: const ['局域网', '互传', '离线同步', '内网', '点对点', 'v4.2'],
+          badgeText: 'v7.24 升级',
+          isNew: true,
+          keywords: const [
+            '局域网',
+            '互传',
+            '离线同步',
+            '内网',
+            '点对点',
+            'ECDH',
+            'AES-GCM',
+            '端到端加密',
+            '面对面扫码',
+            '隐私配置',
+            '设备列表',
+            '低电量',
+            'v4.2',
+            'v7.24',
+          ],
           steps: const [
-            '将手机和电脑连接到同一个 Wi-Fi 或手机热点。',
-            '在两端同时进入「设置 > 数据与互联 > 局域网同步」，即可自动发现设备并点对点同步。',
+            '将手机和电脑连接到同一个 Wi-Fi 或手机热点，离线模式下也可在设置中手动开启局域网探测。',
+            '在两端同时进入「设置 > 数据与互联 > 局域网同步」，支持自动发现设备列表或面对面扫码快速配对。',
+            '传输全程采用 ECDH+AES-GCM 端到端加密，并可单独配置隐私数据域同步权限与低电量省电策略。',
           ],
           actionLabel: '打开局域网同步',
           pageBuilder: (_, _) => const LanSyncScreen(),
@@ -1223,33 +1328,57 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
         actionLabel: '前往数据导入',
         pageBuilder: (_, _) => const DataImportPage(),
       ),
+      if (!kIsWeb)
+        FeatureExplorerItem(
+          id: 'auto_backup_snapshots',
+          title: '定期自动备份与本地快照恢复',
+          subtitle: '按设定周期在后台静默保存本地数据快照，支持自定义备份目录、保留份数与一键从快照恢复',
+          locationPath: '设置 > 数据与互联 > 定期自动备份',
+          category: FeatureExplorerCategory.aiAndSync,
+          icon: Icons.backup_outlined,
+          badgeText: 'v7.24 新增',
+          isNew: true,
+          keywords: const ['自动备份', '定期备份', '本地快照', '一键恢复', '数据安全', 'v7.24'],
+          steps: const [
+            '前往「设置 > 数据与互联 > 定期自动备份」。',
+            '开启自动备份开关并设置备份周期、保留快照上限及本地存储目录。',
+            '遇到误删或换机回滚时，可在快照列表中选择任意时间点一键恢复。',
+          ],
+          actionLabel: '配置自动备份',
+          pageBuilder: (_, _) => const AutoBackupPage(),
+        ),
       FeatureExplorerItem(
         id: 'platform_island_and_widgets',
         title: '灵动岛、悬浮窗与桌面小组件',
-        subtitle: '支持 Android 桌面小组件、Windows 灵动岛悬浮窗、macOS 灵动岛拖放文件/文本 AI 识待办与 QuickLook 预览',
+        subtitle:
+            '支持 Android 桌面/平板记账小组件、Windows 灵动岛悬浮窗、macOS 灵动岛拖放 AI 识待办与低电量模式适配',
         locationPath: '设置 > 平台专属设置 / 动画设置',
         category: FeatureExplorerCategory.aiAndSync,
         icon: Icons.widgets_rounded,
-        badgeText: 'v7.23 升级',
+        badgeText: 'v7.24 升级',
         isNew: true,
         keywords: const [
           '小组件',
           '小部件',
+          '平板小组件',
+          '记账小组件',
           '灵动岛',
           '悬浮窗',
           '菜单栏',
           '状态栏',
           '拖放',
           'QuickLook',
+          '低电量模式',
           '液态玻璃',
           'v4.13',
           'v5.4',
           'v7.23',
+          'v7.24',
         ],
         steps: const [
-          'Android：长按手机桌面空白处添加 CountDownTodo 小部件，主屏直接查看待办（含地点）、课表与专注进度。',
+          'Android / 平板：长按桌面空白处添加 CountDownTodo 小部件，主屏直接查看待办（含地点）、课表、专注进度与平板近期账单列表。',
           'Windows：支持最小化到系统托盘、开启桌面灵动岛悬浮窗展示倒计时与专注状态，并支持读取 Tai 屏幕使用时间。',
-          'macOS：菜单栏实时显示专注倒计时，灵动岛支持直接拖放文件或文本触发 AI 识别创建待办，并联动 QuickLook 快速预览文件。',
+          'macOS：菜单栏实时显示专注倒计时，灵动岛支持直接拖放文件或文本触发 AI 识别创建待办、联动 QuickLook，并在低电量模式下自动优化省电策略。',
           '全平台：在「设置 > 动画设置」中可开启 Liquid Glass 液态玻璃质感与调整动画速度。',
         ],
         actionLabel: kIsWeb ? '打开动画与视觉设置' : '打开平台专属设置',
@@ -1429,18 +1558,30 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
       FeatureExplorerItem(
         id: 'tip_customize_home_and_drawer',
         title: '神技 4：自由定制首页模块顺序与侧边栏',
-        subtitle: '首页卡片太多？可以自由隐藏不用的模块、调整上下顺序，打造最顺手的专属工作台',
-        locationPath: '设置 > 偏好设置 > 首页布局 / 侧边栏菜单',
+        subtitle: '首页卡片太多？可自由隐藏或排序首页模块，侧边栏与「功能百宝箱」也支持自定义排序与显隐',
+        locationPath: '设置 > 偏好设置 > 首页布局 / 侧边栏与百宝箱',
         category: FeatureExplorerCategory.hiddenTips,
         icon: Icons.dashboard_customize_rounded,
-        badgeText: 'v5.6 增强',
-        keywords: const ['首页布局', '定制', '隐藏卡片', '排序', '侧边栏设置', 'v4.16', 'v5.6'],
-        steps: const [
-          '前往「设置 > 偏好设置」，点击「首页布局」或「侧边栏菜单」。',
-          '可以拖拽调整每个功能卡片在首页或专注页的显示顺序，或关闭暂时不需要的模块。',
+        badgeText: 'v7.24 升级',
+        isNew: true,
+        keywords: const [
+          '首页布局',
+          '定制',
+          '隐藏卡片',
+          '排序',
+          '侧边栏设置',
+          '功能百宝箱',
+          '显隐',
+          'v4.16',
+          'v5.6',
+          'v7.24',
         ],
-        actionLabel: '前往设置中心',
-        pageBuilder: (_, _) => const SettingsPage(initialTarget: 'preference'),
+        steps: const [
+          '前往「设置 > 偏好设置」，点击「首页布局」或「侧边栏与功能百宝箱」。',
+          '可拖拽调整首页模块或侧边栏常用功能、实用工具（含「功能百宝箱」）的顺序与显示开关，打造专属工作台。',
+        ],
+        actionLabel: '定制侧边栏与百宝箱',
+        pageBuilder: (_, _) => const SidebarMenuSettingsPage(),
       ),
       FeatureExplorerItem(
         id: 'tip_global_theme_color',

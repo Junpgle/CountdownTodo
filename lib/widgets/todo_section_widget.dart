@@ -375,20 +375,6 @@ class TodoSectionWidgetState extends _TodoSectionStateBase
   );
 }
 
-class _AiAssistantContext {
-  const _AiAssistantContext({
-    this.courses = const [],
-    this.timeLogs = const [],
-    this.pomodoroRecords = const [],
-    this.teams = const [],
-  });
-
-  final List<CourseItem> courses;
-  final List<TimeLogItem> timeLogs;
-  final List<PomodoroRecord> pomodoroRecords;
-  final List<Team> teams;
-}
-
 class _TodoSectionViewModel {
   final DateTime today;
   final int activeTodoCount;

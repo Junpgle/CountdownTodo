@@ -611,17 +611,18 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
       builder: (context, constraints) {
         final isWide = constraints.maxWidth > 600;
         final topBarHeight = floatingGlassTopBarHeight(context);
+        // Reserve extra scroll room for the extended "新建习惯" FAB above the
+        // floating bottom navigation bar.
+        final fabBottomClearance = isWide ? 172.0 : 80.0;
 
         final actions = [
           IconButton(
-            tooltip: '打卡仪式感设置',
-            onPressed: () => HabitCelebrationSettingsDialog.show(context),
-            icon: const Icon(Icons.auto_awesome_outlined),
-          ),
-          IconButton(
-            tooltip: '从时间日志迁移早睡早起',
-            onPressed: _openSleepLogMigrationEntry,
-            icon: const Icon(Icons.bedtime_outlined),
+            tooltip: '习惯中心设置',
+            onPressed: () => HabitCelebrationSettingsDialog.show(
+              context,
+              onOpenSleepLogMigration: _openSleepLogMigrationEntry,
+            ),
+            icon: const Icon(Icons.settings_outlined),
           ),
           IconButton(
             key: _archiveActionKey,
@@ -634,7 +635,8 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
 
         final bodyTabs = [
           HabitTodayTab(
-            topPadding: 0,
+            topPadding: topBarHeight,
+            extraBottomPadding: fabBottomClearance,
             username: widget.username,
             coachTargetKey: _todayContentKey,
             reloadTick: _reloadTick,
@@ -642,12 +644,14 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
             onChanged: () => setState(() => _reloadTick++),
           ),
           HabitCalendarTab(
-            topPadding: 0,
+            topPadding: topBarHeight,
+            extraBottomPadding: fabBottomClearance,
             username: widget.username,
             reloadTick: _reloadTick,
           ),
           HabitAnalysisTab(
-            topPadding: 0,
+            topPadding: topBarHeight,
+            extraBottomPadding: fabBottomClearance,
             username: widget.username,
             reloadTick: _reloadTick,
           ),
@@ -703,13 +707,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
           ),
           body: FloatingGlassTopBarContentFade(
             topBarHeight: topBarHeight,
-            tailExtent: 0,
-            child: Padding(
-              // The tab pages share one transparent top bar, so reserve its
-              // space once here rather than once per tab.
-              padding: EdgeInsets.only(top: topBarHeight),
-              child: TabBarView(controller: _tabController, children: bodyTabs),
-            ),
+            child: TabBarView(controller: _tabController, children: bodyTabs),
           ),
         );
       },

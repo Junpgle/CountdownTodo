@@ -95,4 +95,40 @@ void main() {
       );
     });
   });
+
+  test('manifest parses mac_arch_packages for arm64 and x86_64', () {
+    final manifest = AppManifest.fromJson(
+      jsonDecode(
+        jsonEncode({
+          'version_code': 702408,
+          'version_name': '7.24.8',
+          'update_info': {
+            'title': '版本更新 7.24.8',
+            'description': '【新增】macOS x86_64',
+            'mac_package_url':
+                'https://gitee.com/Junpgle/CountdownTodo/releases/download/latest/CountDownTodo-macOS-arm64.zip',
+            'mac_arch_packages': {
+              'arm64':
+                  'https://gitee.com/Junpgle/CountdownTodo/releases/download/latest/CountDownTodo-macOS-arm64.zip',
+              'x86_64':
+                  'https://gitee.com/Junpgle/CountdownTodo/releases/download/latest/CountDownTodo-macOS-x86_64.zip',
+            },
+          },
+          'changelog_history': [],
+          'announcements': [],
+          'wallpaper': {},
+          'changelog_archive': {},
+        }),
+      ) as Map<String, dynamic>,
+    );
+
+    expect(
+      manifest.updateInfo.macArchPackages['arm64'],
+      endsWith('CountDownTodo-macOS-arm64.zip'),
+    );
+    expect(
+      manifest.updateInfo.macArchPackages['x86_64'],
+      endsWith('CountDownTodo-macOS-x86_64.zip'),
+    );
+  });
 }

@@ -365,13 +365,12 @@ class ReminderScheduleService {
     String username, {
     bool force = false,
   }) async {
-    final results = await Future.wait<dynamic>([
-      StorageService.getTodos(username),
-      CourseService.getAllCourses(username),
-    ]);
+    final todos = await StorageService.getTodos(username);
     await scheduleAll(
-      todos: results[0] as List<TodoItem>,
-      courses: results[1] as List<CourseItem>,
+      todos: todos,
+      courses: const <CourseItem>[],
+      loadCourses: (from, to) =>
+          CourseService.getCoursesForDateRange(username, from: from, to: to),
       expectedUsername: username,
       force: force,
     );

@@ -1065,11 +1065,13 @@ class LLMService {
   static Future<List<Map<String, dynamic>>> parseTodoFromImage(
     String imagePath, {
     void Function(ChatUsageSummary usage)? onUsage,
+    void Function(String content, String reasoningContent)? onStream,
   }) {
     return _parseImageWithPrompt(
       imagePath,
       operation: 'vision_todo',
       onUsage: onUsage,
+      onStream: onStream,
       promptBuilder: (config, nowStr) =>
           buildTodoVisionPrompt(config, now: nowStr),
     );
@@ -1090,12 +1092,14 @@ class LLMService {
   static Future<List<Map<String, dynamic>>> parseFinanceFromImage(
     String imagePath, {
     void Function(ChatUsageSummary usage)? onUsage,
+    void Function(String content, String reasoningContent)? onStream,
   }) {
     return _parseImageWithPrompt(
       imagePath,
       operation: 'vision_finance',
       normalizeTodoResults: false,
       onUsage: onUsage,
+      onStream: onStream,
       promptBuilder: (_, nowStr) async {
         final prompt = LLMConfig.defaultFinanceVisionPrompt.replaceAll(
           '{now}',
@@ -1114,6 +1118,7 @@ class LLMService {
     promptBuilder,
     bool normalizeTodoResults = true,
     void Function(ChatUsageSummary usage)? onUsage,
+    void Function(String content, String reasoningContent)? onStream,
   }) async {
     await _ensureAiInteractionAllowed();
     final config = await getConfig();
@@ -1185,8 +1190,11 @@ class LLMService {
       imageCount: 1,
     )) {
       usageSummary = chunk.usageSummary ?? usageSummary;
-      content += chunk.content;
-      reasoningContent += chunk.reasoningContent;
+      if (chunk.content.isNotEmpty || chunk.reasoningContent.isNotEmpty) {
+        content += chunk.content;
+        reasoningContent += chunk.reasoningContent;
+        onStream?.call(content, reasoningContent);
+      }
     }
     if (usageSummary != null) {
       onUsage?.call(usageSummary);

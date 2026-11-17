@@ -118,6 +118,7 @@ class UpdateInfo {
   final String fullPackageUrl;
   final String pcPackageUrl;
   final String macPackageUrl;
+  final Map<String, String> macArchPackages;
   final Map<String, String> androidArchPackages;
 
   UpdateInfo.fromJson(Map<String, dynamic> json)
@@ -126,6 +127,9 @@ class UpdateInfo {
       fullPackageUrl = json['full_package_url']?.toString() ?? '',
       pcPackageUrl = json['PC_package_url']?.toString() ?? '',
       macPackageUrl = json['mac_package_url']?.toString() ?? '',
+      macArchPackages = json['mac_arch_packages'] != null
+          ? Map<String, String>.from(json['mac_arch_packages'] as Map)
+          : {},
       androidArchPackages = json['android_arch_packages'] != null
           ? Map<String, String>.from(json['android_arch_packages'] as Map)
           : {};
@@ -463,6 +467,9 @@ class UpdateService {
     }
     if (manifest.updateInfo.pcPackageUrl.isNotEmpty) {
       return _giteePackageUrl(manifest.updateInfo.pcPackageUrl);
+    }
+    if (manifest.updateInfo.macArchPackages.isNotEmpty) {
+      return _giteePackageUrl(manifest.updateInfo.macArchPackages.values.first);
     }
     if (manifest.updateInfo.macPackageUrl.isNotEmpty) {
       return _giteePackageUrl(manifest.updateInfo.macPackageUrl);

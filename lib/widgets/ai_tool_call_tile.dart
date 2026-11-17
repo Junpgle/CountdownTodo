@@ -10,6 +10,123 @@ class AiToolCallTile extends StatefulWidget {
 
   final ChatNativeToolCall call;
 
+  static Map<String, dynamic> _decodeArgs(String raw) {
+    if (raw.trim().isEmpty) return const <String, dynamic>{};
+    try {
+      final value = jsonDecode(raw);
+      return value is Map ? Map<String, dynamic>.from(value) : const {};
+    } catch (_) {
+      return const <String, dynamic>{};
+    }
+  }
+
+  static String _queryTargetFor(String name, Map<String, dynamic> args) {
+    return switch (name) {
+      'query_finance' => switch (args['view']) {
+        'summary' => switch (args['type']) {
+          'expense' => '支出汇总',
+          'income' => '收入汇总',
+          'refund' => '退款汇总',
+          _ => '收支汇总',
+        },
+        'catalog' => '记账分类和付款方式',
+        'budgets' => '预算',
+        _ => switch (args['type']) {
+          'expense' => '支出账单',
+          'income' => '收入账单',
+          'refund' => '退款账单',
+          _ => '账单',
+        },
+      },
+      'query_habits' => '习惯进度',
+      'query_device_context' =>
+        args['include_location'] == false ? '时间与时区信息' : '位置与时区信息',
+      _ => switch (args['domain']) {
+        'todos' => switch (args['status']) {
+          'pending' => '未完成待办',
+          'completed' => '已完成待办',
+          _ => '待办',
+        },
+        'todo_groups' => '待办分类',
+        'courses' => '课程',
+        'fixed_schedules' => '固定日程',
+        'plan_blocks' => '规划块',
+        'time_logs' => '时间日志',
+        'pomodoro_records' => '专注记录',
+        'pomodoro_tags' => '专注标签',
+        'countdowns' => '倒计时',
+        'teams' => '团队',
+        'conflicts' => '冲突',
+        'screen_time' => '屏幕时间',
+        _ => '业务数据',
+      },
+    };
+  }
+
+  static String _statusLabelFor(
+    ChatNativeToolCall call, {
+    required bool isStreaming,
+  }) {
+    final args = _decodeArgs(call.arguments);
+    final isDone = call.result != null || !isStreaming;
+    if (call.name == 'manage_user_memory') {
+      final isDelete = args['action']?.toString() == 'delete';
+      return isDone
+          ? (isDelete ? '已删除记忆' : '已更新记忆')
+          : (isDelete ? '正在删除记忆' : '正在更新记忆');
+    }
+    if (call.name.startsWith('query_')) {
+      final target = _queryTargetFor(call.name, args);
+      return isDone ? '已查询$target' : '正在查询$target';
+    }
+    return switch (call.name) {
+      'propose_settings_navigation' => isDone ? '已查找设置入口' : '正在查找设置入口',
+      'propose_cdt_actions' => isDone ? '已生成待办/日程草案' : '正在生成待办/日程草案',
+      'propose_finance_drafts' => isDone ? '已生成记账草案' : '正在生成记账草案',
+      'propose_finance_actions' => isDone ? '已生成账单修改草案' : '正在生成账单修改草案',
+      _ => isDone ? '已完成工具调用' : '正在调用工具',
+    };
+  }
+
+  /// Summarizes tool activity in the collapsed thinking header so users can see
+  /// what the model is doing or just completed without expanding the panel.
+  static String summarizeCalls(
+    List<ChatNativeToolCall> calls, {
+    bool isStreaming = false,
+  }) {
+    if (calls.isEmpty) return '';
+    if (isStreaming) {
+      ChatNativeToolCall? activeCall;
+      String? lastCompletedLabel;
+      for (final call in calls) {
+        if (call.result == null) {
+          activeCall = call;
+        } else {
+          lastCompletedLabel = _statusLabelFor(call, isStreaming: true);
+        }
+      }
+      if (activeCall != null) {
+        final activeLabel = _statusLabelFor(activeCall, isStreaming: true);
+        return lastCompletedLabel != null
+            ? '$lastCompletedLabel · $activeLabel…'
+            : '$activeLabel…';
+      }
+    }
+
+    final labels = <String>[];
+    for (final call in calls) {
+      final label = _statusLabelFor(call, isStreaming: false);
+      if (labels.isEmpty || labels.last != label) {
+        labels.add(label);
+      }
+    }
+    if (labels.length <= 2) {
+      final joined = labels.join(' · ');
+      return calls.length > 1 ? '$joined（共 ${calls.length} 次）' : joined;
+    }
+    return '${labels[labels.length - 2]} · ${labels.last}（共 ${calls.length} 次）';
+  }
+
   @override
   State<AiToolCallTile> createState() => _AiToolCallTileState();
 }
@@ -85,6 +202,8 @@ class _AiToolCallTileState extends State<AiToolCallTile> {
   String _titleFor(Map<String, dynamic> args) {
     if (!call.name.startsWith('query_')) {
       return switch (call.name) {
+        'manage_user_memory' =>
+          args['action']?.toString() == 'delete' ? '删除 AI 记忆' : '更新 AI 记忆',
         'propose_settings_navigation' => '查找应用设置入口',
         'propose_cdt_actions' => '生成待办、日程操作草案',
         'propose_finance_drafts' => '生成记账草案',
@@ -92,44 +211,7 @@ class _AiToolCallTileState extends State<AiToolCallTile> {
         _ => '工具调用',
       };
     }
-    var target = switch (call.name) {
-      'query_finance' => switch (args['view']) {
-        'summary' => switch (args['type']) {
-          'expense' => '支出汇总',
-          'income' => '收入汇总',
-          'refund' => '退款汇总',
-          _ => '收支汇总',
-        },
-        'catalog' => '记账分类和付款方式',
-        'budgets' => '预算',
-        _ => switch (args['type']) {
-          'expense' => '支出账单',
-          'income' => '收入账单',
-          'refund' => '退款账单',
-          _ => '账单',
-        },
-      },
-      'query_habits' => '习惯进度',
-      _ => switch (args['domain']) {
-        'todos' => switch (args['status']) {
-          'pending' => '未完成待办',
-          'completed' => '已完成待办',
-          _ => '待办',
-        },
-        'todo_groups' => '待办分类',
-        'courses' => '课程',
-        'fixed_schedules' => '固定日程',
-        'plan_blocks' => '规划块',
-        'time_logs' => '时间日志',
-        'pomodoro_records' => '专注记录',
-        'pomodoro_tags' => '专注标签',
-        'countdowns' => '倒计时',
-        'teams' => '团队',
-        'conflicts' => '冲突',
-        'screen_time' => '屏幕时间',
-        _ => '业务数据',
-      },
-    };
+    var target = AiToolCallTile._queryTargetFor(call.name, args);
     if (call.name == 'query_finance' && args['group_by'] == 'merchant') {
       target = '商户支出排行';
     }

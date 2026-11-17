@@ -8,6 +8,7 @@ mixin _HomeDashboardContract {
   Future<void> _openAiAssistantFromAppBar({
     GlobalKey? sourceKey,
     String? initialMessage,
+    String? initialSessionId,
     bool sendInitialMessage = true,
     ChatUsageSummary? initialVoiceUsageSummary,
   });
@@ -19,6 +20,15 @@ mixin _HomeDashboardContract {
   void _cancelQuickVoiceGesture();
 
   Future<void> _openPendingRecognitionChat();
+
+  Future<void> _syncDailyAiSuggestion({
+    bool forceRefresh = false,
+    bool allowWhenDisabled = false,
+  });
+
+  void _onDailyAiSuggestionRevisionChanged();
+
+  Widget _buildDailyAiSuggestionSection(bool isLight);
 
   Future<void> _handleAiTodoGroupsChanged(List<TodoGroup> groups);
 
@@ -151,6 +161,8 @@ mixin _HomeDashboardContract {
   });
 
   void _openTodoEditor(TodoItem todo);
+
+  Future<TodoCreateSaveResult> _saveManualTodo(TodoItem todo);
 
   String _specialTodoBannerLabel(String specialType);
 

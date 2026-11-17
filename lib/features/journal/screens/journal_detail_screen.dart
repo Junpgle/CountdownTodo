@@ -211,6 +211,8 @@ class _DetailGallery extends StatelessWidget {
       builder: (context, constraints) {
         final height = attachments.length == 1 ? 400.0 : 250.0;
         return GridView.builder(
+          padding: EdgeInsets.zero,
+          primary: false,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           findChildIndexCallback: (Key key) {

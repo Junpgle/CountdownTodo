@@ -183,6 +183,10 @@ class _AnimationPerformanceMetricCardState
     final totalRenderMs = _avgBuildMs + _avgRasterMs;
     final frameBudgetUtilization = (totalRenderMs / frameBudgetMs * 100.0)
         .clamp(0.0, 100.0);
+    final screenSize = MediaQuery.sizeOf(context);
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final physicalPixels =
+        (screenSize.width * dpr).round() * (screenSize.height * dpr).round();
 
     final pressure = evaluateLoadPressure(
       powerSaveModeEnabled: widget.powerSaveModeEnabled,
@@ -196,6 +200,8 @@ class _AnimationPerformanceMetricCardState
       screenRadiusEnabled: widget.screenRadiusEnabled,
       lazyLoadEnabled: widget.lazyLoadEnabled,
       frameBudgetUtilizationPercent: frameBudgetUtilization,
+      logicalWidth: screenSize.width,
+      physicalPixels: physicalPixels,
     );
 
     return Card(
@@ -331,7 +337,7 @@ class _AnimationPerformanceMetricCardState
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: LinearProgressIndicator(
-                value: pressure.scorePercent / 100.0,
+                value: (pressure.scorePercent / 100.0).clamp(0.0, 1.0),
                 minHeight: 7,
                 backgroundColor: colorScheme.surfaceContainerHighest,
                 color: pressure.getLevelColor(colorScheme),

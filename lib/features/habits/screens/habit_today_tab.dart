@@ -19,6 +19,7 @@ import 'habit_edit_screen.dart';
 /// 习惯中心「今日」标签页：今日概览 + 全部习惯卡片。
 class HabitTodayTab extends StatefulWidget {
   final double topPadding;
+  final double extraBottomPadding;
   final String username;
 
   /// 教程要高亮的第一张习惯卡片。
@@ -36,6 +37,7 @@ class HabitTodayTab extends StatefulWidget {
   const HabitTodayTab({
     super.key,
     this.topPadding = 0,
+    this.extraBottomPadding = 0,
     required this.username,
     this.coachTargetKey,
     this.reloadTick = 0,
@@ -165,12 +167,14 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
       } else if (snapshot.isEmpty) {
         content = _buildEmpty();
       } else {
-        final bottomPadding = floatingBottomNavigationContentPaddingFor(
-          context,
-        );
+        final bottomPadding =
+            floatingBottomNavigationContentPaddingFor(context) +
+            widget.extraBottomPadding;
         final groups = _groupedGoals(snapshot);
         final firstGoalUuid = snapshot.goals.first.uuid;
+        final hasScrollableBanner = widget.topBanner != null;
         content = RefreshIndicator(
+          edgeOffset: widget.topPadding,
           onRefresh: _loadData,
           child: Center(
             child: ConstrainedBox(
@@ -187,10 +191,15 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
                       crossAxisCount;
                   return CustomScrollView(
                     slivers: [
+                      if (hasScrollableBanner)
+                        SliverPadding(
+                          padding: EdgeInsets.only(top: widget.topPadding),
+                          sliver: SliverToBoxAdapter(child: widget.topBanner!),
+                        ),
                       SliverPadding(
                         padding: EdgeInsets.fromLTRB(
                           horizontalPadding,
-                          widget.topPadding + 12,
+                          (hasScrollableBanner ? 0.0 : widget.topPadding) + 12,
                           horizontalPadding,
                           0,
                         ),
@@ -299,9 +308,21 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
       }
     }
 
+    final hasPopulatedScrollView =
+        !(_loading && _snapshot == null) &&
+        _snapshot != null &&
+        !_snapshot!.isEmpty;
+    if (hasPopulatedScrollView) {
+      return content;
+    }
+
     return Column(
       children: [
-        if (widget.topBanner != null) widget.topBanner!,
+        if (widget.topBanner != null)
+          Padding(
+            padding: EdgeInsets.only(top: widget.topPadding),
+            child: widget.topBanner!,
+          ),
         Expanded(child: content),
       ],
     );

@@ -25,11 +25,11 @@ usage() {
   ./scripts/release_all.sh [选项]
 
 默认流程:
-  1. 调用 build_macos.sh 构建 macOS ZIP
+  1. 调用 build_macos.sh 分别构建 macOS arm64 与 x86_64 ZIP
   2. 调用 deploy_web_beta.sh 构建并发布 Web
   3. 构建 Android 的 arm64-v8a、armeabi-v7a、x86_64 三个 APK
   4. 生成 arm64-v8a Android 差分包
-  5. 将 macOS ZIP、三个 APK、差分包复制到同一个版本目录
+  5. 将 macOS 双架构 ZIP、三个 APK、差分包复制到同一个版本目录
 
 选项:
   --output-dir <dir>       产物目录，默认 build/release-assets/v<版本>
@@ -75,12 +75,25 @@ PY
 }
 
 read_manifest_version() {
-  python3 - "$PROJECT_ROOT/update_manifest.json" <<'PY'
+  python3 - "$PROJECT_ROOT/update_manifest.json" "$VERSION" <<'PY'
 import json
 import sys
 
 with open(sys.argv[1], encoding="utf-8") as stream:
-    version = json.load(stream).get("version_name", "")
+    manifest = json.load(stream)
+
+target_version = sys.argv[2].strip()
+version = str(manifest.get("version_name", "")).strip()
+if version and version != target_version:
+    print(version)
+    raise SystemExit(0)
+
+for entry in manifest.get("changelog_history", []):
+    candidate = str(entry.get("version_name", "")).strip()
+    if candidate and candidate != target_version:
+        print(candidate)
+        raise SystemExit(0)
+
 if not version:
     raise SystemExit("无法从 update_manifest.json 读取基线版本")
 print(version)
@@ -131,7 +144,7 @@ done
 
 require_command python3
 VERSION="$(read_pubspec_version)"
-BASE_VERSION="$(read_manifest_version)"
+BASE_VERSION="${BASE_VERSION:-$(read_manifest_version)}"
 if [[ -z "$OUTPUT_DIR" ]]; then
   OUTPUT_DIR="$BUILD_ROOT/release-assets/v$VERSION"
 elif [[ "$OUTPUT_DIR" != /* ]]; then
@@ -185,8 +198,10 @@ fi
 ANDROID_ARM64_APK="$(find_apk app-arm64-v8a-release.apk)"
 ANDROID_ARMV7_APK="$(find_apk app-armeabi-v7a-release.apk)"
 ANDROID_X86_64_APK="$(find_apk app-x86_64-release.apk)"
-MACOS_ZIP="$BUILD_ROOT/macos/CountDownTodo-macOS-arm64.zip"
-[[ -f "$MACOS_ZIP" ]] || { echo "❌ 找不到 macOS ZIP: $MACOS_ZIP" >&2; exit 1; }
+MACOS_ARM64_ZIP="$BUILD_ROOT/macos/CountDownTodo-macOS-arm64.zip"
+MACOS_X86_64_ZIP="$BUILD_ROOT/macos/CountDownTodo-macOS-x86_64.zip"
+[[ -f "$MACOS_ARM64_ZIP" ]] || { echo "❌ 找不到 macOS arm64 ZIP: $MACOS_ARM64_ZIP" >&2; exit 1; }
+[[ -f "$MACOS_X86_64_ZIP" ]] || { echo "❌ 找不到 macOS x86_64 ZIP: $MACOS_X86_64_ZIP" >&2; exit 1; }
 
 DELTA_PATH=""
 DELTA_METADATA="$TEMP_DIR/delta_metadata.json"
@@ -206,7 +221,8 @@ else
 fi
 
 mkdir -p "$OUTPUT_DIR"
-cp "$MACOS_ZIP" "$OUTPUT_DIR/CountDownTodo-macOS-arm64.zip"
+cp "$MACOS_ARM64_ZIP" "$OUTPUT_DIR/CountDownTodo-macOS-arm64.zip"
+cp "$MACOS_X86_64_ZIP" "$OUTPUT_DIR/CountDownTodo-macOS-x86_64.zip"
 cp "$ANDROID_ARM64_APK" "$OUTPUT_DIR/app-arm64-v8a-release.apk"
 cp "$ANDROID_ARMV7_APK" "$OUTPUT_DIR/app-armeabi-v7a-release.apk"
 cp "$ANDROID_X86_64_APK" "$OUTPUT_DIR/app-x86_64-release.apk"

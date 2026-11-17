@@ -73,6 +73,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   List<FinanceEntryTemplate> _templates = const [];
   String? _categoryUuid;
   String? _paymentMethodUuid;
+  String? _targetPaymentMethodUuid;
   String? _unmatchedDraftPaymentMethodName;
   bool _paymentMethodSelectionEdited = false;
   bool _archivedCategoryRequiresSelection = false;
@@ -118,6 +119,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
               draft?.type ??
               template?.type ??
               FinanceTransactionType.expense;
+    _targetPaymentMethodUuid = transaction?.targetPaymentMethodUuid;
     if (_isEditingInstallment) {
       _installmentEnabled = true;
       _installmentCount =
@@ -741,6 +743,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         _type = transaction.type;
         _categoryUuid = transaction.categoryUuid;
         _paymentMethodUuid = transaction.paymentMethodUuid;
+        _targetPaymentMethodUuid = transaction.targetPaymentMethodUuid;
         _date = dateFromKey(transaction.transactionDate);
         _occurredAt = transaction.occurrenceLocalTime;
         _occurrenceTimeExplicit = _occurredAt != null;
@@ -1142,8 +1145,13 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       type: _type,
       amountMinor: amount,
       currencyCode: old?.currencyCode ?? FinanceDefaults.defaultCurrencyCode,
-      categoryUuid: _categoryUuid,
+      categoryUuid: _type == FinanceTransactionType.transfer
+          ? null
+          : _categoryUuid,
       paymentMethodUuid: _paymentMethodUuid,
+      targetPaymentMethodUuid: _type == FinanceTransactionType.transfer
+          ? _targetPaymentMethodUuid
+          : null,
       transactionDate: dateKey(_date),
       occurredAt: _occurredAt == null
           ? old?.occurredAt ?? now
@@ -1423,12 +1431,14 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         FinanceTransactionType.expense => '付款方式（可选）',
         FinanceTransactionType.income => '到账账户（可选）',
         FinanceTransactionType.refund => '退款到账账户（可选）',
+        FinanceTransactionType.transfer => '转出账户（可选）',
       },
       placeholder: _paymentMethodUuid != null && selectedPaymentMethod == null
           ? switch (_type) {
               FinanceTransactionType.expense => '已删除或未知付款方式',
               FinanceTransactionType.income => '已删除或未知到账账户',
               FinanceTransactionType.refund => '已删除或未知退款到账账户',
+              FinanceTransactionType.transfer => '已删除或未知转出账户',
             }
           : _unmatchedDraftPaymentMethodName != null
           ? switch (_type) {
@@ -1438,6 +1448,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                 '未匹配到账账户：$_unmatchedDraftPaymentMethodName',
               FinanceTransactionType.refund =>
                 '未匹配退款到账账户：$_unmatchedDraftPaymentMethodName',
+              FinanceTransactionType.transfer =>
+                '未匹配转出账户：$_unmatchedDraftPaymentMethodName',
             }
           : _type == FinanceTransactionType.expense
           ? '未指定'
@@ -1449,6 +1461,42 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       fieldIcon: Icons.account_balance_wallet_outlined,
       onTap: _isSaving || _isLoanInterest ? null : _pickPaymentMethod,
     );
+    if (_type == FinanceTransactionType.transfer) {
+      final targetCandidate = _paymentMethodsByUuid[_targetPaymentMethodUuid];
+      final selectedTargetPaymentMethod = targetCandidate?.isDeleted == true
+          ? null
+          : targetCandidate;
+      final targetPayment = _buildFinancePickerField(
+        key: ValueKey('finance-target-payment-$_targetPaymentMethodUuid'),
+        colorScheme: colorScheme,
+        label: '转入账户（可选）',
+        placeholder:
+            _targetPaymentMethodUuid != null &&
+                selectedTargetPaymentMethod == null
+            ? '已删除或未知转入账户'
+            : '未指定（不更新转入账户余额）',
+        selectedName: selectedTargetPaymentMethod == null
+            ? null
+            : _paymentMethodName(selectedTargetPaymentMethod),
+        selectedIcon: selectedTargetPaymentMethod?.icon,
+        fieldIcon: Icons.savings_outlined,
+        onTap: _isSaving || _isLoanInterest ? null : _pickTargetPaymentMethod,
+      );
+      if (!isWide) {
+        return Column(
+          children: [payment, const SizedBox(height: 14), targetPayment],
+        );
+      }
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: payment),
+          const SizedBox(width: 12),
+          Expanded(child: targetPayment),
+        ],
+      );
+    }
+
     if (!isWide) {
       return Column(children: [category, const SizedBox(height: 14), payment]);
     }
@@ -1679,11 +1727,13 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         FinanceTransactionType.expense => '选择付款方式',
         FinanceTransactionType.income => '选择到账账户',
         FinanceTransactionType.refund => '选择退款到账账户',
+        FinanceTransactionType.transfer => '选择转出账户',
       },
       subtitle: switch (_type) {
         FinanceTransactionType.expense => '记录这笔账单使用的支付渠道',
         FinanceTransactionType.income => '收入会加到所选账户已录入的余额',
         FinanceTransactionType.refund => '退款会加到所选账户已录入的余额',
+        FinanceTransactionType.transfer => '互转金额将从转出账户扣减',
       },
       headerIcon: Icons.account_balance_wallet_outlined,
       options: _visiblePaymentMethods,
@@ -1694,6 +1744,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         FinanceTransactionType.expense => '暂不记录付款方式',
         FinanceTransactionType.income => '暂不记录到账账户',
         FinanceTransactionType.refund => '暂不记录退款到账账户',
+        FinanceTransactionType.transfer => '暂不记录转出账户',
       },
       optionBuilder: (context, item, isSelected, onTap) =>
           _buildFinanceOptionTile(
@@ -1717,6 +1768,40 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       _paymentMethodUuid = selected.value?.uuid;
       _unmatchedDraftPaymentMethodName = null;
       _paymentMethodSelectionEdited = true;
+    });
+  }
+
+  Future<void> _pickTargetPaymentMethod() async {
+    _dismissKeyboard();
+    final selected = await _showFinanceOptionPicker<FinancePaymentMethod>(
+      title: '选择转入账户',
+      subtitle: '互转金额将加到转入账户已录入的余额',
+      headerIcon: Icons.savings_outlined,
+      options: _visiblePaymentMethods,
+      selectedUuid: _targetPaymentMethodUuid,
+      optionUuid: (item) => item.uuid,
+      includeUnset: true,
+      unsetSubtitle: '暂不记录转入账户',
+      optionBuilder: (context, item, isSelected, onTap) =>
+          _buildFinanceOptionTile(
+            context,
+            title: financePaymentMethodDisplayName(
+              item,
+              _visiblePaymentMethods,
+            ),
+            iconText: item.icon,
+            accent: _optionAccent(
+              item.colorValue,
+              Theme.of(context).colorScheme,
+            ),
+            isSelected: isSelected,
+            onTap: onTap,
+          ),
+    );
+    if (!mounted || selected == null) return;
+    _dismissKeyboard();
+    setState(() {
+      _targetPaymentMethodUuid = selected.value?.uuid;
     });
   }
 
@@ -2474,6 +2559,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       FinanceTransactionType.expense,
       FinanceTransactionType.income,
       FinanceTransactionType.refund,
+      FinanceTransactionType.transfer,
     ];
     return Container(
       height: 44,

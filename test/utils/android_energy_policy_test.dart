@@ -103,7 +103,7 @@ void main() {
       );
     });
 
-    test('pauses nonessential Android work in system power saver', () {
+    test('pauses nonessential work in system power saver', () {
       expect(
         AndroidEnergyPolicy.shouldRunDecorativeMotionFor(
           isAndroid: true,
@@ -122,6 +122,13 @@ void main() {
         AndroidEnergyPolicy.shouldRunDecorativeMotionFor(
           isAndroid: false,
           isPowerSaveMode: true,
+        ),
+        isFalse,
+      );
+      expect(
+        AndroidEnergyPolicy.shouldRunDecorativeMotionFor(
+          isAndroid: false,
+          isPowerSaveMode: false,
         ),
         isTrue,
       );

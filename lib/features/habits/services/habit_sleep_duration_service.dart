@@ -35,12 +35,12 @@ abstract final class HabitSleepDurationService {
   }
 
   /// 刷新所有睡眠时长习惯，供今日页和详情页加载时调用。
-  static Future<int> syncAll() async {
+  static Future<int> syncAll({List<HabitGoal>? goals}) async {
     if (_syncing) return 0;
     _syncing = true;
     try {
-      final goals = await HabitRepository.getGoals();
-      final durationGoals = goals
+      final resolvedGoals = goals ?? await HabitRepository.getGoals();
+      final durationGoals = resolvedGoals
           .where(
             (goal) =>
                 !goal.isDeleted &&
@@ -53,8 +53,14 @@ abstract final class HabitSleepDurationService {
       final durationGoalUuids = durationGoals
           .map((goal) => goal.uuid)
           .toList(growable: false);
-      final earlySleep = _firstGoal(goals, HabitAdaptationKind.earlySleep);
-      final earlyWake = _firstGoal(goals, HabitAdaptationKind.earlyWake);
+      final earlySleep = _firstGoal(
+        resolvedGoals,
+        HabitAdaptationKind.earlySleep,
+      );
+      final earlyWake = _firstGoal(
+        resolvedGoals,
+        HabitAdaptationKind.earlyWake,
+      );
       if (earlySleep == null || earlyWake == null) return 0;
 
       final loadedData = await Future.wait<Object>([

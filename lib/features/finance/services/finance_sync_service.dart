@@ -30,6 +30,7 @@ class FinanceSyncRequest {
     this.balanceCapabilityKey = '',
     this.balanceBootstrapKey = '',
     this.supportsBalances = false,
+    this.transferBootstrapKey = '',
   });
 
   final String username;
@@ -46,6 +47,7 @@ class FinanceSyncRequest {
   final String balanceCapabilityKey;
   final String balanceBootstrapKey;
   final bool supportsBalances;
+  final String transferBootstrapKey;
 
   static bool _hasPaymentMethod(Map<String, dynamic> item) =>
       (item['payment_method_uuid'] ?? item['paymentMethodUuid'])
@@ -190,6 +192,8 @@ abstract final class FinanceSyncService {
     final balanceCapabilityKey = _balanceCapabilityKey(username);
     final balanceBootstrapKey = '${balanceCapabilityKey}_initialized';
     final supportsBalances = prefs.getBool(balanceCapabilityKey) == true;
+    final transferBootstrapKey =
+        'finance_transfers_v2_initialized_${scope}_$username';
     final cursor = forceFullSync ? 0 : (prefs.getInt(cursorKey) ?? 0);
     final bundle = await FinanceStorage.getExportBundle();
 
@@ -201,7 +205,8 @@ abstract final class FinanceSyncService {
       fullSync:
           forceFullSync ||
           !initialized ||
-          (supportsBalances && prefs.getBool(balanceBootstrapKey) != true),
+          (supportsBalances && prefs.getBool(balanceBootstrapKey) != true) ||
+          prefs.getBool(transferBootstrapKey) != true,
       bundle: bundle,
       fingerprint: _fingerprint(bundle),
       categoryNamesCapabilityKey: categoryNamesCapabilityKey,
@@ -211,6 +216,7 @@ abstract final class FinanceSyncService {
       balanceCapabilityKey: balanceCapabilityKey,
       balanceBootstrapKey: balanceBootstrapKey,
       supportsBalances: supportsBalances,
+      transferBootstrapKey: transferBootstrapKey,
     );
   }
 
@@ -404,6 +410,9 @@ abstract final class FinanceSyncService {
           request.fullSync &&
           request.balanceBootstrapKey.isNotEmpty) {
         await prefs.setBool(request.balanceBootstrapKey, true);
+      }
+      if (request.fullSync && request.transferBootstrapKey.isNotEmpty) {
+        await prefs.setBool(request.transferBootstrapKey, true);
       }
       cursorAdvanced = true;
     }

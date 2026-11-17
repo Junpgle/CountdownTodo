@@ -1,0 +1,5 @@
+# 统一入库为 LF：Windows 的 core.autocrlf 与 macOS 的无转换会在同一份 NTFS 工作区里互相打架
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.reg text eol=crlf

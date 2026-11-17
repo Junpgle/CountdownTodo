@@ -280,4 +280,130 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('AI 调用费用支持按调用类别和按日期分类并筛选明细', (tester) async {
+    final db = await _setUpDatabase(tester);
+    addTearDown(() async {
+      AiUsageCostService.databaseOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+
+    final now = DateTime.now();
+    final day1 = DateTime(now.year, now.month, 2, 10);
+    final day2 = DateTime(now.year, now.month, 1, 9);
+
+    await tester.runAsync(() async {
+      await AiUsageCostService.savePricing(
+        const AiUsagePricing(
+          provider: 'custom',
+          model: 'test-model',
+          inputMicrosPerMillion: 1000000,
+          outputMicrosPerMillion: 2000000,
+        ),
+      );
+      await AiUsageCostService.recordUsage(
+        provider: 'custom',
+        model: 'test-model',
+        operation: 'vision_todo',
+        promptTokens: 1000,
+        completionTokens: 500,
+        totalTokens: 1500,
+        now: day1,
+      );
+      await AiUsageCostService.recordUsage(
+        provider: 'custom',
+        model: 'test-model',
+        operation: 'vision_finance',
+        promptTokens: 2000,
+        completionTokens: 500,
+        totalTokens: 2500,
+        now: day1.add(const Duration(hours: 1)),
+      );
+      await AiUsageCostService.recordUsage(
+        provider: 'custom',
+        model: 'test-model',
+        operation: 'daily_suggestion',
+        promptTokens: 500,
+        completionTokens: 200,
+        totalTokens: 700,
+        now: day2,
+      );
+      await AiUsageCostService.recordUsage(
+        provider: 'custom',
+        model: 'test-model',
+        operation: 'chat',
+        promptTokens: 800,
+        completionTokens: 400,
+        totalTokens: 1200,
+        now: day2.add(const Duration(hours: 2)),
+      );
+    });
+
+    final summary = await tester.runAsync(
+      () => AiUsageCostService.getSummary(
+        from: DateTime(now.year, now.month),
+        to: DateTime(now.year, now.month + 1),
+      ),
+    );
+    expect(summary, isNotNull);
+    expect(
+      summary!.categoryBreakdowns.map((e) => '${e.label}:${e.calls}'),
+      containsAll(['视觉:2', '聊天:1', '每日建议:1']),
+    );
+    expect(summary.dateBreakdowns.length, 2);
+    expect(summary.dateBreakdowns.first.date, DateTime(now.year, now.month, 2));
+    expect(summary.dateBreakdowns.first.calls, 2);
+    expect(summary.dateBreakdowns.last.date, DateTime(now.year, now.month, 1));
+    expect(summary.dateBreakdowns.last.calls, 2);
+
+    await _pumpLoaded(tester, const AiUsageCostScreen());
+
+    expect(find.text('按服务商与模型'), findsOneWidget);
+
+    await _tapBelowTopBar(tester, find.text('按类别'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('按调用类别'), findsOneWidget);
+    expect(find.text('视觉'), findsOneWidget);
+    expect(find.text('每日建议'), findsOneWidget);
+    expect(find.text('聊天'), findsOneWidget);
+
+    await _tapBelowTopBar(tester, find.text('视觉'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('调用明细 · 视觉'), findsOneWidget);
+    expect(find.text('清除筛选'), findsOneWidget);
+    final financeVision = find.text('视觉 · 记账 · 2,500 Token');
+    await tester.scrollUntilVisible(
+      financeVision,
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(financeVision, findsOneWidget);
+    expect(find.text('每日建议 · 700 Token'), findsNothing);
+
+    await _tapBelowTopBar(tester, find.text('按日期'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('按日期'), findsAtLeastNWidgets(1));
+    final day1Label = '${now.month}月2日';
+    final day2Label = '${now.month}月1日';
+    expect(find.text(day1Label), findsOneWidget);
+    expect(find.text(day2Label), findsOneWidget);
+
+    await _tapBelowTopBar(tester, find.text(day2Label));
+    await tester.pumpAndSettle();
+
+    expect(find.text('调用明细 · $day2Label'), findsOneWidget);
+    final suggestionRecord = find.text('每日建议 · 700 Token');
+    await tester.scrollUntilVisible(
+      suggestionRecord,
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(suggestionRecord, findsOneWidget);
+    expect(find.text('视觉 · 记账 · 2,500 Token'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 }

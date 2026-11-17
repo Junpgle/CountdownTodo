@@ -221,22 +221,81 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
     final day = AppTimeFormats.dayStart(_selectedDate);
 
     try {
-      // 1. Get Timeline Summary for Range
-      final summary = await TimelineService.instance.getSummaryForRange(
-        widget.username,
-        start,
-        end,
-      );
-
-      // 2. Get detailed events for Daily only (too many for others)
-      if (_dimension == TimelineDimension.daily) {
-        _events = await TimelineService.instance.getEventsForDay(
-          widget.username,
-          day,
-        );
-      } else {
-        _events = []; // Or maybe fetch "Major" events
+      final screenTimeDateFormat = _timelineDateFormat('yyyy-MM-dd');
+      Future<
+        ({
+          List<FinanceTransaction> transactions,
+          List<FinanceCategory> categories,
+        })?
+      >
+      loadFinance() async {
+        try {
+          final financeData = await Future.wait<dynamic>([
+            FinanceRepository.getTransactions(from: start, to: end),
+            FinanceRepository.getCategories(includeArchived: true),
+          ]);
+          return (
+            transactions: financeData[0] as List<FinanceTransaction>,
+            categories: financeData[1] as List<FinanceCategory>,
+          );
+        } catch (error) {
+          debugPrint('❌ get timeline finance data error: $error');
+          return null;
+        }
       }
+
+      // 并行加载所有独立的范围统计数据源，避免 10+ 次串行 SQLite/Prefs 等待
+      final loaded = await Future.wait<dynamic>([
+        TimelineService.instance.getSummaryForRange(
+          widget.username,
+          start,
+          end,
+        ),
+        _dimension == TimelineDimension.daily
+            ? TimelineService.instance.getEventsForDay(widget.username, day)
+            : Future<List<TimelineEvent>>.value(const <TimelineEvent>[]),
+        loadFinance(),
+        PomodoroService.getRecordsInRange(start, end),
+        StorageService.getTimeLogs(widget.username, from: start, to: end),
+        StorageService.getPlanBlocks(widget.username, from: start, to: end),
+        PomodoroService.getAllTagsIncludingDeleted(),
+        StorageService.getScreenTimeHistory(
+          username: widget.username,
+          fromDate: screenTimeDateFormat.format(start),
+          toDate: screenTimeDateFormat.format(end),
+        ),
+        StorageService.getAppMappings(),
+        StorageService.getTodosForTimelineRange(
+          widget.username,
+          from: start,
+          to: end,
+        ),
+        HabitRepository.getHabitOnlyRecurringTodoSeriesIds(),
+        CourseService.getCoursesForDateRange(
+          widget.username,
+          from: start,
+          to: end,
+        ),
+      ]);
+      if (!mounted || loadGeneration != _loadGeneration) return;
+
+      final summary = loaded[0] as TimelineSummary;
+      _events = loaded[1] as List<TimelineEvent>;
+      final financeLoaded =
+          loaded[2]
+              as ({
+                List<FinanceTransaction> transactions,
+                List<FinanceCategory> categories,
+              })?;
+      final records = loaded[3] as List<PomodoroRecord>;
+      final timeLogs = loaded[4] as List<TimeLogItem>;
+      final planBlocks = loaded[5] as List<TodoPlanBlock>;
+      final tags = loaded[6] as List<PomodoroTag>;
+      final screenStats = loaded[7] as Map<String, List<dynamic>>;
+      final appMappings = loaded[8] as Map<String, String>;
+      final todos = loaded[9] as List<TodoItem>;
+      final habitOnlyRecurringSeriesIds = loaded[10] as Set<String>;
+      final courses = loaded[11] as List<CourseItem>;
 
       FinanceSummary financeSummary = const FinanceSummary();
       List<FinanceTransaction> financeTransactions = const [];
@@ -253,13 +312,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
         refundCount: 0,
       );
       DateTime? financeAsOf;
-      try {
-        final financeData = await Future.wait<dynamic>([
-          FinanceRepository.getTransactions(from: start, to: end),
-          FinanceRepository.getCategories(includeArchived: true),
-        ]);
-        allFinanceTransactions = financeData[0] as List<FinanceTransaction>;
-        financeCategories = financeData[1] as List<FinanceCategory>;
+      if (financeLoaded != null) {
+        allFinanceTransactions = financeLoaded.transactions;
+        financeCategories = financeLoaded.categories;
         financeAsOf = DateTime.now();
         financeTransactions = TimelineService.financeTransactionsThroughNow(
           transactions: allFinanceTransactions,
@@ -272,32 +327,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
           transactions: financeTransactions,
           categories: financeCategories,
         );
-      } catch (error) {
-        debugPrint('❌ get timeline finance data error: $error');
       }
 
-      // 3. Get Focus Time
-      final records = await PomodoroService.getRecordsInRange(start, end);
-      final timeLogs = await StorageService.getTimeLogs(
-        widget.username,
-        from: start,
-        to: end,
-      );
-      final planBlocks = await StorageService.getPlanBlocks(
-        widget.username,
-        from: start,
-        to: end,
-      );
-      final tags = await PomodoroService.getAllTagsIncludingDeleted();
-
-      // 4. Get Top Category (Simplified)
-      final screenTimeDateFormat = _timelineDateFormat('yyyy-MM-dd');
-      final screenStats = await StorageService.getScreenTimeHistory(
-        username: widget.username,
-        fromDate: screenTimeDateFormat.format(start),
-        toDate: screenTimeDateFormat.format(end),
-      );
-      final appMappings = await StorageService.getAppMappings();
       Map<String, int> catUsage = {};
       Map<String, int> appUsage = {};
       final categoryCache = <(String, String, String?), String>{};
@@ -336,13 +367,6 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
         cursor = AppTimeFormats.localDayStartOffset(cursor, 1);
       }
 
-      final todos = await StorageService.getTodosForTimelineRange(
-        widget.username,
-        from: start,
-        to: end,
-      );
-      final habitOnlyRecurringSeriesIds =
-          await HabitRepository.getHabitOnlyRecurringTodoSeriesIds();
       final startMs = start.millisecondsSinceEpoch;
       final endMs = end.millisecondsSinceEpoch;
       var regularCompletedCount = 0;
@@ -401,11 +425,6 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
       final medalTotalCount =
           regularTotalCount + rangeStatistics.recurringScheduledCount;
 
-      final courses = await CourseService.getCoursesForDateRange(
-        widget.username,
-        from: start,
-        to: end,
-      );
       final Map<String, int> coursesByDay = {};
       var courseCount = 0;
       var maxDailyCourseCount = 0;
@@ -650,24 +669,31 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
       final start = DateTime(2020);
       final end = AppTimeFormats.localDayStartOffset(DateTime.now(), 1);
 
-      // 1. Get Global Timeline Summary
-      final summary = await TimelineService.instance.getSummaryForRange(
-        widget.username,
-        start,
-        end,
-      );
-
-      // 2. Get Global Focus Time (Pomodoro + manually recorded time logs)
-      final totalSecs = summary.totalFocusMinutes * 60;
-
-      // 3. Screen Time
       final allTimeScreenTimeDateFormat = _timelineDateFormat('yyyy-MM-dd');
-      final screenStats = await StorageService.getScreenTimeHistory(
-        username: widget.username,
-        fromDate: allTimeScreenTimeDateFormat.format(start),
-        toDate: allTimeScreenTimeDateFormat.format(end),
-      );
-      final appMappings = await StorageService.getAppMappings();
+      final loaded = await Future.wait<dynamic>([
+        TimelineService.instance.getSummaryForRange(
+          widget.username,
+          start,
+          end,
+        ),
+        StorageService.getScreenTimeHistory(
+          username: widget.username,
+          fromDate: allTimeScreenTimeDateFormat.format(start),
+          toDate: allTimeScreenTimeDateFormat.format(end),
+        ),
+        StorageService.getAppMappings(),
+        StorageService.getTodos(widget.username),
+        CourseService.getAllCourses(widget.username),
+      ]);
+      if (!mounted) return;
+
+      final summary = loaded[0] as TimelineSummary;
+      final totalSecs = summary.totalFocusMinutes * 60;
+      final screenStats = loaded[1] as Map<String, List<dynamic>>;
+      final appMappings = loaded[2] as Map<String, String>;
+      final todos = loaded[3] as List<TodoItem>;
+      final courses = loaded[4] as List<CourseItem>;
+
       final categoryCache = <(String, String, String?), String>{};
       int screenTotal = 0;
       int productiveScreen = 0;
@@ -694,8 +720,6 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
         }
       }
 
-      // 4. Todos
-      final todos = await StorageService.getTodos(widget.username);
       var completedTodoCount = 0;
       var plannedTodoCount = 0;
       var sprintCount = 0;
@@ -714,8 +738,6 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
         if (diff.inHours >= 24) earlyCount++;
       }
 
-      // 5. Courses
-      final courses = await CourseService.getAllCourses(widget.username);
       final Map<String, int> coursesByDay = {};
       var maxDailyCourseCount = 0;
       for (final course in courses) {
@@ -2811,6 +2833,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
             )
           else
             GridView.builder(
+              padding: EdgeInsets.zero,
+              primary: false,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               findChildIndexCallback: (Key key) {
@@ -3829,6 +3853,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> {
           incomeCount++;
         case FinanceTransactionType.refund:
           refundCount++;
+        case FinanceTransactionType.transfer:
+          break;
       }
     }
 

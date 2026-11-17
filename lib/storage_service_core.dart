@@ -162,8 +162,13 @@ mixin _StorageCore on _StorageServiceBase {
 
   Future<void> _clearTodoPrefsMirror(String username) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(StorageKeyScope.scoped(keyTodos, username));
-    await prefs.remove(keyTodos);
+    final scopedKey = StorageKeyScope.scoped(keyTodos, username);
+    if (prefs.containsKey(scopedKey)) {
+      await prefs.remove(scopedKey);
+    }
+    if (prefs.containsKey(keyTodos)) {
+      await prefs.remove(keyTodos);
+    }
   }
 
   String _scopedKey(String baseKey, String? username) {

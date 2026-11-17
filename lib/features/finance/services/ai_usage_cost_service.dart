@@ -259,9 +259,8 @@ class AiUsageRecord {
   }
 }
 
-class AiUsageBreakdown {
-  final String provider;
-  final String model;
+/// Shared mutable counters for aggregated AI usage breakdowns.
+abstract class AiUsageMetrics {
   int calls;
   int totalTokens;
   int cachedPromptTokens;
@@ -272,9 +271,7 @@ class AiUsageBreakdown {
   int costMicros;
   int unpricedCalls;
 
-  AiUsageBreakdown({
-    required this.provider,
-    required this.model,
+  AiUsageMetrics({
     this.calls = 0,
     this.totalTokens = 0,
     this.cachedPromptTokens = 0,
@@ -285,6 +282,76 @@ class AiUsageBreakdown {
     this.costMicros = 0,
     this.unpricedCalls = 0,
   });
+
+  /// Accumulates one [AiUsageRecord] into these counters.
+  void addRecord(AiUsageRecord record) {
+    calls++;
+    totalTokens += record.totalTokens;
+    cachedPromptTokens += record.cachedPromptTokens;
+    imageTokens += record.imageTokens;
+    audioTokens += record.audioTokens;
+    videoTokens += record.videoTokens;
+    audioSeconds += record.audioSeconds;
+    costMicros += record.costMicros ?? 0;
+    if (!record.isPriced) unpricedCalls++;
+  }
+}
+
+class AiUsageBreakdown extends AiUsageMetrics {
+  final String provider;
+  final String model;
+
+  AiUsageBreakdown({
+    required this.provider,
+    required this.model,
+    super.calls,
+    super.totalTokens,
+    super.cachedPromptTokens,
+    super.imageTokens,
+    super.audioTokens,
+    super.videoTokens,
+    super.audioSeconds,
+    super.costMicros,
+    super.unpricedCalls,
+  });
+}
+
+/// Aggregated AI usage grouped by normalized call category (e.g. vision, chat).
+class AiUsageCategoryBreakdown extends AiUsageMetrics {
+  final String category;
+  final String label;
+
+  AiUsageCategoryBreakdown({
+    required this.category,
+    required this.label,
+    super.calls,
+    super.totalTokens,
+    super.cachedPromptTokens,
+    super.imageTokens,
+    super.audioTokens,
+    super.videoTokens,
+    super.audioSeconds,
+    super.costMicros,
+    super.unpricedCalls,
+  });
+}
+
+/// Aggregated AI usage grouped by local calendar date.
+class AiUsageDateBreakdown extends AiUsageMetrics {
+  final DateTime date;
+
+  AiUsageDateBreakdown({
+    required this.date,
+    super.calls,
+    super.totalTokens,
+    super.cachedPromptTokens,
+    super.imageTokens,
+    super.audioTokens,
+    super.videoTokens,
+    super.audioSeconds,
+    super.costMicros,
+    super.unpricedCalls,
+  });
 }
 
 class AiUsageSummary {
@@ -293,6 +360,8 @@ class AiUsageSummary {
   final int costMicros;
   final int unpricedCalls;
   final List<AiUsageBreakdown> breakdowns;
+  final List<AiUsageCategoryBreakdown> categoryBreakdowns;
+  final List<AiUsageDateBreakdown> dateBreakdowns;
 
   const AiUsageSummary({
     this.calls = 0,
@@ -300,6 +369,8 @@ class AiUsageSummary {
     this.costMicros = 0,
     this.unpricedCalls = 0,
     this.breakdowns = const [],
+    this.categoryBreakdowns = const [],
+    this.dateBreakdowns = const [],
   });
 }
 
@@ -1265,12 +1336,69 @@ abstract final class AiUsageCostService {
     return rows.map(AiUsageRecord.fromMap).toList();
   }
 
+  /// Maps a raw [operation] string to a normalized grouping key.
+  static String operationCategoryKey(String operation) {
+    final trimmed = operation.trim();
+    if (trimmed.isEmpty) return 'uncategorized';
+    final normalized = trimmed.toLowerCase();
+    if (normalized == 'vision' || normalized.startsWith('vision_')) {
+      return 'vision';
+    }
+    if (normalized == 'asr' || normalized == 'voice_asr') {
+      return 'voice_asr';
+    }
+    return switch (normalized) {
+      'daily_suggestion' ||
+      'chat' ||
+      'title' ||
+      'todo_text' ||
+      'connection_test' => normalized,
+      _ => trimmed,
+    };
+  }
+
+  /// Returns a user-facing label for a normalized call category or raw [operation].
+  static String operationCategoryLabel(String categoryOrOperation) {
+    final key = operationCategoryKey(categoryOrOperation);
+    return switch (key) {
+      'vision' => '视觉',
+      'daily_suggestion' => '每日建议',
+      'chat' => '聊天',
+      'title' => '对话标题',
+      'todo_text' => '待办解析',
+      'voice_asr' => '语音识别',
+      'connection_test' => '连接测试',
+      'uncategorized' => '未分类',
+      _ => key,
+    };
+  }
+
+  /// Returns a user-facing label for a single call's [operation].
+  static String operationDisplayLabel(String operation) {
+    final trimmed = operation.trim();
+    if (trimmed.isEmpty) return '未分类';
+    return switch (trimmed.toLowerCase()) {
+      'vision_todo' => '视觉 · 待办',
+      'vision_finance' => '视觉 · 记账',
+      'vision' => '视觉',
+      'daily_suggestion' => '每日建议',
+      'chat' => '聊天',
+      'title' => '对话标题',
+      'todo_text' => '待办解析',
+      'voice_asr' || 'asr' => '语音识别',
+      'connection_test' => '连接测试',
+      _ => trimmed,
+    };
+  }
+
   static Future<AiUsageSummary> getSummary({
     required DateTime from,
     required DateTime to,
   }) async {
     final records = await getRecords(from: from, to: to);
     final breakdowns = <String, AiUsageBreakdown>{};
+    final categoryBreakdowns = <String, AiUsageCategoryBreakdown>{};
+    final dateBreakdowns = <DateTime, AiUsageDateBreakdown>{};
     var totalTokens = 0;
     var totalCostMicros = 0;
     var unpricedCalls = 0;
@@ -1278,29 +1406,61 @@ abstract final class AiUsageCostService {
       totalTokens += record.totalTokens;
       totalCostMicros += record.costMicros ?? 0;
       if (!record.isPriced) unpricedCalls++;
-      final key = '${record.provider}::${record.model}';
-      final item = breakdowns.putIfAbsent(
-        key,
-        () => AiUsageBreakdown(provider: record.provider, model: record.model),
+
+      final modelKey = '${record.provider}::${record.model}';
+      breakdowns
+          .putIfAbsent(
+            modelKey,
+            () => AiUsageBreakdown(
+              provider: record.provider,
+              model: record.model,
+            ),
+          )
+          .addRecord(record);
+
+      final categoryKey = operationCategoryKey(record.operation);
+      categoryBreakdowns
+          .putIfAbsent(
+            categoryKey,
+            () => AiUsageCategoryBreakdown(
+              category: categoryKey,
+              label: operationCategoryLabel(categoryKey),
+            ),
+          )
+          .addRecord(record);
+
+      final localCreated = record.createdAt.toLocal();
+      final dateKey = DateTime(
+        localCreated.year,
+        localCreated.month,
+        localCreated.day,
       );
-      item.calls++;
-      item.totalTokens += record.totalTokens;
-      item.cachedPromptTokens += record.cachedPromptTokens;
-      item.imageTokens += record.imageTokens;
-      item.audioTokens += record.audioTokens;
-      item.videoTokens += record.videoTokens;
-      item.audioSeconds += record.audioSeconds;
-      item.costMicros += record.costMicros ?? 0;
-      if (!record.isPriced) item.unpricedCalls++;
+      dateBreakdowns
+          .putIfAbsent(dateKey, () => AiUsageDateBreakdown(date: dateKey))
+          .addRecord(record);
     }
-    final values = breakdowns.values.toList()
-      ..sort((a, b) => b.costMicros.compareTo(a.costMicros));
+
+    int compareByCostThenCalls(AiUsageMetrics a, AiUsageMetrics b) {
+      final costDiff = b.costMicros.compareTo(a.costMicros);
+      if (costDiff != 0) return costDiff;
+      return b.calls.compareTo(a.calls);
+    }
+
+    final modelValues = breakdowns.values.toList()
+      ..sort(compareByCostThenCalls);
+    final categoryValues = categoryBreakdowns.values.toList()
+      ..sort(compareByCostThenCalls);
+    final dateValues = dateBreakdowns.values.toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+
     return AiUsageSummary(
       calls: records.length,
       totalTokens: totalTokens,
       costMicros: totalCostMicros,
       unpricedCalls: unpricedCalls,
-      breakdowns: values,
+      breakdowns: modelValues,
+      categoryBreakdowns: categoryValues,
+      dateBreakdowns: dateValues,
     );
   }
 

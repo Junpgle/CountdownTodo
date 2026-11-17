@@ -17,6 +17,7 @@ mixin _TodoSectionContract {
   Future<void> openAiAssistant({
     GlobalKey? sourceKey,
     String? initialMessage,
+    String? initialSessionId,
     bool sendInitialMessage = true,
     ChatUsageSummary? initialVoiceUsageSummary,
   });
@@ -156,7 +157,6 @@ mixin _TodoSectionContract {
     required bool useDarkUI,
   });
 
-  Future<_AiAssistantContext> _loadAiAssistantContext();
 
   void _showIndependentTodoStatus(TodoItem todo);
 }

@@ -37,6 +37,7 @@ class NotificationService {
   static final Map<String, DateTime> _recentGenericNotifications = {};
   static final Set<String> _sentPomodoroEndAlertKeys = {};
   static final Set<String> _shownUpdateNotificationKeys = {};
+  static String? _lastTodoSummaryNotificationKey;
   static StreamSubscription<MacIslandReminderAction>?
   _macReminderActionSubscription;
 
@@ -447,11 +448,21 @@ class NotificationService {
     }
 
     if (totalCount == 0 || totalCount == completedCount) {
-      await cancelSpecialTodoNotification(12345);
+      if (_lastTodoSummaryNotificationKey != 'cancelled') {
+        await cancelSpecialTodoNotification(12345);
+        _lastTodoSummaryNotificationKey = 'cancelled';
+      }
       return;
     }
 
     final int pendingCount = totalCount - completedCount;
+    final pendingTitles = pendingItems.map((t) => t.title).toList();
+    final pendingRemarks = pendingItems
+        .map((t) => t.remark?.trim() ?? '')
+        .toList();
+    final summaryKey =
+        '$totalCount|$completedCount|${pendingTitles.join('\u0000')}|${pendingRemarks.join('\u0000')}';
+    if (_lastTodoSummaryNotificationKey == summaryKey) return;
 
     try {
       await _channel.invokeMethod('showOngoingNotification', {
@@ -459,11 +470,10 @@ class NotificationService {
         'totalCount': totalCount,
         'completedCount': completedCount,
         'pendingCount': pendingCount,
-        'pendingTitles': pendingItems.map((t) => t.title).toList(),
-        'pendingRemarks': pendingItems
-            .map((t) => t.remark?.trim() ?? '')
-            .toList(),
+        'pendingTitles': pendingTitles,
+        'pendingRemarks': pendingRemarks,
       });
+      _lastTodoSummaryNotificationKey = summaryKey;
     } catch (e) {
       //       debugPrint("更新今日待办通知失败: $e");
     }
@@ -710,6 +720,9 @@ class NotificationService {
   /// 取消特定 ID 的特殊待办通知
   /// [notifId] 是通知的 ID
   static Future<void> cancelSpecialTodoNotification(int notifId) async {
+    if (notifId == 12345) {
+      _lastTodoSummaryNotificationKey = 'cancelled';
+    }
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
     if (_isDesktopSupported) {
       await ensureInitialized();

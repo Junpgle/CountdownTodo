@@ -13,6 +13,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../screens/home_settings_screen.dart';
 import '../utils/page_transitions.dart';
 import '../utils/navigator_utils.dart';
+import 'lan_sync_service.dart';
 
 class WindowService extends WindowListener {
   static const _keyX = 'main_window_x';
@@ -41,6 +42,7 @@ class WindowService extends WindowListener {
   static TrayIcon? _trayIcon;
   static Menu? _trayMenu;
   static MenuItem? _trayAutoLaunchMenuItem;
+  static MenuItem? _trayLanSyncMenuItem;
   static final List<MenuItem> _trayMenuItems = [];
 
   WindowService._internal();
@@ -83,6 +85,12 @@ class WindowService extends WindowListener {
       }
       if (Platform.isWindows || Platform.isMacOS) {
         await _initLaunchAtStartup();
+      }
+      if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+        LanSyncService.instance.daemonRunningNotifier.addListener(() {
+          unawaited(_updateTrayMenu());
+        });
+        unawaited(LanSyncService.instance.initFromPreferences());
       }
       debugPrint('[WindowService] Initialization complete!');
     } catch (e) {
@@ -268,6 +276,10 @@ class WindowService extends WindowListener {
       '开机自启动: 已关闭',
       MenuItemType.normal,
     );
+    final lanSyncItem = MenuItem.createWithLabelAndType(
+      '局域网同步服务: 已关闭',
+      MenuItemType.normal,
+    );
     final showWindowItem = MenuItem.createWithLabelAndType(
       '显示程序',
       MenuItemType.normal,
@@ -279,6 +291,7 @@ class WindowService extends WindowListener {
     if (menu == null ||
         openSettingsItem == null ||
         autoLaunchItem == null ||
+        lanSyncItem == null ||
         showWindowItem == null ||
         exitItem == null) {
       throw StateError('Failed to create the Windows system tray menu');
@@ -294,6 +307,11 @@ class WindowService extends WindowListener {
         unawaited(_toggleLaunchAtStartupFromTray());
       }
     });
+    lanSyncItem.addListener((event) {
+      if (event is MenuItemClickedEvent) {
+        unawaited(_toggleLanSyncDaemonFromTray());
+      }
+    });
     showWindowItem.addListener((event) {
       if (event is MenuItemClickedEvent) {
         unawaited(_showWindowFromTray());
@@ -305,15 +323,23 @@ class WindowService extends WindowListener {
 
     menu.addItem(openSettingsItem);
     menu.addItem(autoLaunchItem);
+    menu.addItem(lanSyncItem);
     menu.addSeparator();
     menu.addItem(showWindowItem);
     menu.addItem(exitItem);
 
     _trayMenu = menu;
     _trayAutoLaunchMenuItem = autoLaunchItem;
+    _trayLanSyncMenuItem = lanSyncItem;
     _trayMenuItems
       ..clear()
-      ..addAll([openSettingsItem, autoLaunchItem, showWindowItem, exitItem]);
+      ..addAll([
+        openSettingsItem,
+        autoLaunchItem,
+        lanSyncItem,
+        showWindowItem,
+        exitItem,
+      ]);
   }
 
   static Future<void> _updateTrayMenu() async {
@@ -321,9 +347,11 @@ class WindowService extends WindowListener {
       final menu = _trayMenu;
       final trayIcon = _trayIcon;
       final autoLaunchItem = _trayAutoLaunchMenuItem;
+      final lanSyncItem = _trayLanSyncMenuItem;
       if (menu == null ||
           trayIcon == null ||
           autoLaunchItem == null ||
+          lanSyncItem == null ||
           _trayMenuItems.isEmpty) {
         return;
       }
@@ -335,10 +363,20 @@ class WindowService extends WindowListener {
         isLaunchAtStartup = false;
       }
       autoLaunchItem.label = isLaunchAtStartup ? '开机自启动: 已开启' : '开机自启动: 已关闭';
+      final lanDaemonRunning =
+          LanSyncService.instance.daemonRunningNotifier.value;
+      lanSyncItem.label =
+          lanDaemonRunning ? '局域网同步服务: 运行中' : '局域网同步服务: 已关闭';
       trayIcon.setContextMenu(menu);
     } catch (e) {
       debugPrint('[WindowService] updateTrayMenu error: $e');
     }
+  }
+
+  static Future<void> _toggleLanSyncDaemonFromTray() async {
+    final next = !LanSyncService.instance.isDaemonMode;
+    await LanSyncService.instance.setDesktopDaemonEnabled(next);
+    await _updateTrayMenu();
   }
 
   static Future<void> _showWindowFromTray() async {

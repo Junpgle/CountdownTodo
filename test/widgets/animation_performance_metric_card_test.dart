@@ -65,12 +65,12 @@ void main() {
         lazyLoadEnabled: true,
       );
 
-      expect(evaluation.scorePercent, inInclusiveRange(35, 55));
-      expect(evaluation.isHighPressure, isFalse);
+      expect(evaluation.scorePercent, inInclusiveRange(70, 95));
+      expect(evaluation.isHighPressure, isTrue);
       expect(evaluation.factors, anyElement(contains('Liquid Glass 标准模式')));
     });
 
-    test('enabling many heavy effects produces high load pressure', () {
+    test('enabling many heavy effects can exceed 100% overload threshold', () {
       final evaluation = evaluateLoadPressure(
         powerSaveModeEnabled: false,
         animationsEnabled: true,
@@ -84,10 +84,50 @@ void main() {
         lazyLoadEnabled: false,
       );
 
-      expect(evaluation.scorePercent, greaterThanOrEqualTo(85));
+      expect(evaluation.scorePercent, greaterThan(100));
+      expect(evaluation.levelLabel, '过载');
       expect(evaluation.isHighPressure, isTrue);
       expect(evaluation.cautionTitle, '开启较多特效可能会导致卡顿');
-      expect(evaluation.cautionDescription, contains('卡顿'));
+      expect(evaluation.cautionDescription, contains('不堪重负'));
+    });
+
+    test('high-resolution wide-screen devices report higher load pressure', () {
+      final phoneEval = evaluateLoadPressure(
+        powerSaveModeEnabled: false,
+        animationsEnabled: true,
+        motionBlurEnabled: false,
+        layerBlurEnabled: false,
+        liquidGlassEnabled: true,
+        liquidGlassMode: LiquidGlassEffectMode.standard,
+        liquidGlassBlur: 8,
+        liquidGlassTransparency: 35,
+        screenRadiusEnabled: true,
+        lazyLoadEnabled: true,
+        logicalWidth: 390,
+        physicalPixels: 1170 * 2532,
+      );
+
+      final tabletEval = evaluateLoadPressure(
+        powerSaveModeEnabled: false,
+        animationsEnabled: true,
+        motionBlurEnabled: false,
+        layerBlurEnabled: false,
+        liquidGlassEnabled: true,
+        liquidGlassMode: LiquidGlassEffectMode.standard,
+        liquidGlassBlur: 8,
+        liquidGlassTransparency: 35,
+        screenRadiusEnabled: true,
+        lazyLoadEnabled: true,
+        logicalWidth: 1024,
+        physicalPixels: 2880 * 1800,
+      );
+
+      expect(tabletEval.scorePercent, greaterThan(phoneEval.scorePercent));
+      expect(tabletEval.scorePercent, greaterThan(100));
+      expect(tabletEval.factors, anyElement(contains('高分屏')));
+      expect(tabletEval.factors, anyElement(contains('宽屏双栏')));
+      expect(tabletEval.cautionDescription, contains('高分屏'));
+      expect(tabletEval.cautionDescription, contains('宽屏双栏'));
     });
 
     test('color getters derive strictly from Theme colorScheme', () {

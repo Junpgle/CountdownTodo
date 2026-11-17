@@ -784,44 +784,51 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
       barrierLabel: '关闭',
       transitionDuration: const Duration(milliseconds: 250),
       pageBuilder: (ctx, anim1, anim2) {
-        final sidebarContent = _buildHistorySidebarContent(
-          ctx,
-          isWideMode: false,
-        );
-        return Align(
-          alignment: Alignment.topLeft,
-          child: Material(
-            color: Colors.transparent,
-            child: OptionalLiquidGlassPanel(
-              width: panelWidth,
-              height: panelHeight,
-              margin: EdgeInsets.only(top: historyPanelTopMargin),
-              borderRadius: 16,
-              highContrast: true,
-              tint: surfaceColor,
-              fallback: Container(
-                width: panelWidth,
-                height: panelHeight,
-                margin: EdgeInsets.only(top: historyPanelTopMargin),
-                decoration: BoxDecoration(
-                  color: surfaceColor,
-                  borderRadius: const BorderRadius.only(
-                    topRight: Radius.circular(16),
-                    bottomRight: Radius.circular(16),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.15),
-                      blurRadius: 16,
-                      offset: const Offset(4, 0),
+        return StatefulBuilder(
+          builder: (dialogCtx, setDialogState) {
+            final sidebarContent = _buildHistorySidebarContent(
+              dialogCtx,
+              isWideMode: false,
+              onRefresh: () {
+                if (dialogCtx.mounted) setDialogState(() {});
+              },
+            );
+            return Align(
+              alignment: Alignment.topLeft,
+              child: Material(
+                color: Colors.transparent,
+                child: OptionalLiquidGlassPanel(
+                  width: panelWidth,
+                  height: panelHeight,
+                  margin: EdgeInsets.only(top: historyPanelTopMargin),
+                  borderRadius: 16,
+                  highContrast: true,
+                  tint: surfaceColor,
+                  fallback: Container(
+                    width: panelWidth,
+                    height: panelHeight,
+                    margin: EdgeInsets.only(top: historyPanelTopMargin),
+                    decoration: BoxDecoration(
+                      color: surfaceColor,
+                      borderRadius: const BorderRadius.only(
+                        topRight: Radius.circular(16),
+                        bottomRight: Radius.circular(16),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.15),
+                          blurRadius: 16,
+                          offset: const Offset(4, 0),
+                        ),
+                      ],
                     ),
-                  ],
+                    child: sidebarContent,
+                  ),
+                  child: sidebarContent,
                 ),
-                child: sidebarContent,
               ),
-              child: sidebarContent,
-            ),
-          ),
+            );
+          },
         );
       },
       transitionBuilder: (ctx, anim1, anim2, child) {
@@ -854,6 +861,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
   Widget _buildHistorySidebarContent(
     BuildContext context, {
     required bool isWideMode,
+    VoidCallback? onRefresh,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final headerTopPadding = isWideMode && AppPlatform.isMacOS
@@ -861,6 +869,18 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
         : isWideMode
         ? 18.0
         : 16.0;
+    final activeIndex = _activeSessionId == null
+        ? -1
+        : _sessions.indexWhere((s) => s.id == _activeSessionId);
+    var visibleCount = _visibleSessionCount;
+    if (activeIndex >= visibleCount) {
+      visibleCount = activeIndex + 1;
+    }
+    if (visibleCount > _sessions.length) {
+      visibleCount = _sessions.length;
+    }
+    final hasMore = visibleCount < _sessions.length;
+    final remainingCount = _sessions.length - visibleCount;
     return Column(
       children: [
         Padding(
@@ -876,6 +896,17 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                 ),
               ),
               const Spacer(),
+              IconButton(
+                icon: Icon(
+                  Icons.cleaning_services_outlined,
+                  size: 20,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                onPressed: _isLoading
+                    ? null
+                    : () => _pruneEmptySessions(context, onRefresh: onRefresh),
+                tooltip: '清理空对话',
+              ),
               IconButton(
                 icon: Icon(
                   Icons.delete_sweep_outlined,
@@ -910,16 +941,38 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                     if (key is ValueKey<String>) {
                       final id = key.value;
                       final index = _sessions.indexWhere((s) => s.id == id);
-                      return index != -1 ? index : null;
+                      return index != -1 && index < visibleCount ? index : null;
                     }
                     return null;
                   },
-                  itemCount: _sessions.length,
+                  itemCount: visibleCount + (hasMore ? 1 : 0),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
                     vertical: 10,
                   ),
                   itemBuilder: (context, index) {
+                    if (index == visibleCount) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 6,
+                          horizontal: 4,
+                        ),
+                        child: TextButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _visibleSessionCount =
+                                  (visibleCount +
+                                          _TodoChatScreenStateBase
+                                              ._sessionPageSize)
+                                      .clamp(0, _sessions.length);
+                            });
+                            onRefresh?.call();
+                          },
+                          icon: const Icon(Icons.expand_more_rounded, size: 18),
+                          label: Text('加载更多（还有 $remainingCount 条）'),
+                        ),
+                      );
+                    }
                     final session = _sessions[index];
                     final isActive = session.id == _activeSessionId;
                     return RepaintBoundary(
@@ -1005,6 +1058,23 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
     );
   }
 
+  Future<void> _pruneEmptySessions(
+    BuildContext sidebarCtx, {
+    VoidCallback? onRefresh,
+  }) async {
+    final removedCount = await ChatStorageService.deleteEmptySessions(
+      excludeSessionId: _messages.isNotEmpty ? _activeSessionId : null,
+    );
+    final sessions = await ChatStorageService.loadSessions();
+    if (!mounted || !sidebarCtx.mounted) return;
+    setState(() {
+      _sessions = sessions;
+    });
+    onRefresh?.call();
+    final message = removedCount > 0 ? '已清理 $removedCount 条空对话' : '暂无空对话需要清理';
+    AppSnackBars.showSnackBar(context, SnackBar(content: Text(message)));
+  }
+
   Future<void> _deleteAllSessions(BuildContext sidebarCtx) async {
     final confirmed = await showAppDialog<bool>(
       context: sidebarCtx,
@@ -1029,11 +1099,12 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
 
     if (confirmed == true) {
       await ChatStorageService.clearAllSessions();
+      final newSession = await ChatStorageService.openEmptySession();
       if (!mounted || !sidebarCtx.mounted) return;
       setState(() {
         _sessions = [];
         _messages = [];
-        _activeSessionId = '';
+        _activeSessionId = newSession.id;
         _suggestions = [];
       });
       // 关闭侧边栏

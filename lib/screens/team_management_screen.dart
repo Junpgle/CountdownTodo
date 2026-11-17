@@ -24,9 +24,7 @@ import '../services/ai_todo_chat_launcher.dart';
 import '../services/ai_todo_action_executor.dart';
 import '../services/pomodoro_service.dart';
 import '../services/conflict_visibility_service.dart';
-import '../services/storage/habit_storage.dart';
-import '../features/habits/models/habit_goal.dart';
-import '../features/habits/models/habit_goal_rule.dart';
+import '../services/database_helper.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
@@ -78,6 +76,8 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   bool _isCheckingClipboard = false;
   int _teamLoadGeneration = 0;
   String? _activeCacheOwnerKey;
+  Animation<double>? _routeAnimation;
+  void Function(AnimationStatus)? _routeAnimationListener;
   final GlobalKey _panoramaActionKey = GlobalKey();
   final GlobalKey _conflictActionKey = GlobalKey();
   final GlobalKey _messageCenterActionKey = GlobalKey();
@@ -89,8 +89,41 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
     StorageService.scopedDataRefreshNotifier.addListener(_onDataRefreshed);
     _activeCacheOwnerKey = _cacheOwnerKey;
     _restoreCachedSnapshot();
-    _loadTeams(isSilent: _hasCachedSnapshot);
     _setupWsListener();
+    _schedulePostTransitionInit();
+  }
+
+  void _schedulePostTransitionInit() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final animation = ModalRoute.of(context)?.animation;
+      if (animation == null || animation.isCompleted) {
+        _runPostTransitionInit();
+        return;
+      }
+      _routeAnimation = animation;
+      _routeAnimationListener = (status) {
+        if (status == AnimationStatus.completed) {
+          _clearRouteAnimationListener();
+          if (mounted) {
+            _runPostTransitionInit();
+          }
+        }
+      };
+      animation.addStatusListener(_routeAnimationListener!);
+    });
+  }
+
+  void _clearRouteAnimationListener() {
+    if (_routeAnimation != null && _routeAnimationListener != null) {
+      _routeAnimation!.removeStatusListener(_routeAnimationListener!);
+    }
+    _routeAnimation = null;
+    _routeAnimationListener = null;
+  }
+
+  void _runPostTransitionInit() {
+    _loadTeams(isSilent: _hasCachedSnapshot);
     _checkClipboardForInvite();
   }
 
@@ -185,6 +218,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
 
   @override
   void dispose() {
+    _clearRouteAnimationListener();
     WidgetsBinding.instance.removeObserver(this);
     StorageService.scopedDataRefreshNotifier.removeListener(_onDataRefreshed);
     _wsSub?.cancel();
@@ -480,37 +514,70 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
     String? ownerKey,
   ) async {
     try {
+      final db = await DatabaseHelper.instance.databaseForUser(widget.username);
+      const activeConflictWhere =
+          'has_conflict = 1 AND COALESCE(is_deleted, 0) = 0';
+
+      final todoRowsFuture = DatabaseHelper.instance.getTodoMaps(
+        where: 't.has_conflict = 1 AND COALESCE(t.is_deleted, 0) = 0',
+        includeConflictData: true,
+        databaseOverride: db,
+      );
+      final groupRowsFuture = db.query(
+        'todo_groups',
+        columns: const ['team_uuid'],
+        where: activeConflictWhere,
+      );
+      final countdownRowsFuture = db.query(
+        'countdowns',
+        columns: const ['team_uuid'],
+        where: activeConflictWhere,
+      );
+      final habitGoalCountFuture = db.rawQuery(
+        'SELECT COUNT(*) AS cnt FROM habit_goals WHERE $activeConflictWhere',
+      );
+      final habitRuleCountFuture = db.rawQuery(
+        'SELECT COUNT(*) AS cnt FROM habit_goal_rule_revisions WHERE $activeConflictWhere',
+      );
+
       final results = await Future.wait([
-        StorageService.getTodos(widget.username, includeDeleted: true),
-        StorageService.getTodoGroups(widget.username, includeDeleted: true),
-        StorageService.getCountdowns(widget.username, includeDeleted: true),
-        HabitStorage.getHabitGoals(includeDeleted: true),
-        HabitStorage.getRuleRevisions(includeDeleted: true),
+        todoRowsFuture,
+        groupRowsFuture,
+        countdownRowsFuture,
+        habitGoalCountFuture,
+        habitRuleCountFuture,
       ]);
 
-      final allItems = results.take(3).expand((x) => x).toList();
-      final habitGoals = results[3] as List<HabitGoal>;
-      final habitRules = results[4] as List<HabitGoalRuleRevision>;
+      final todoRows = results[0];
+      final groupRows = results[1];
+      final countdownRows = results[2];
+      final habitGoalRows = results[3];
+      final habitRuleRows = results[4];
+
       final conflictCounts = <String, int>{};
       int total = 0;
 
-      for (final item in allItems) {
-        if (!ConflictVisibilityService.isVisibleConflict(item)) continue;
-
+      for (final row in todoRows) {
+        final todo = TodoItem.fromSql(row);
+        if (!ConflictVisibilityService.isVisibleTodoConflict(todo)) continue;
         total++;
-        final teamUuid = ConflictVisibilityService.teamUuidOf(item);
+        final teamUuid = todo.teamUuid;
+        if (ConflictVisibilityService.hasTeamUuid(teamUuid)) {
+          conflictCounts[teamUuid!] = (conflictCounts[teamUuid] ?? 0) + 1;
+        }
+      }
+
+      for (final row in [...groupRows, ...countdownRows]) {
+        total++;
+        final teamUuid = row['team_uuid']?.toString();
         if (ConflictVisibilityService.hasTeamUuid(teamUuid)) {
           conflictCounts[teamUuid!] = (conflictCounts[teamUuid] ?? 0) + 1;
         }
       }
 
       // 冲突中心内部还会展示习惯目标和规则，入口角标必须使用同一口径。
-      total += habitGoals
-          .where(ConflictVisibilityService.isVisibleHabitGoalConflict)
-          .length;
-      total += habitRules
-          .where(ConflictVisibilityService.isVisibleHabitRuleConflict)
-          .length;
+      total += (habitGoalRows.firstOrNull?['cnt'] as num?)?.toInt() ?? 0;
+      total += (habitRuleRows.firstOrNull?['cnt'] as num?)?.toInt() ?? 0;
 
       if (!mounted ||
           loadGeneration != _teamLoadGeneration ||
@@ -2351,6 +2418,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
         initialChildSize: 0.7,
         maxChildSize: 0.95,
         minChildSize: 0.5,
+        expand: false,
         builder: (context, scrollController) => OptionalLiquidGlassSheet(
           topRadius: 32,
           fallbackDecoration: BoxDecoration(
@@ -3346,23 +3414,56 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
     );
   }
 
+  String _formatMemberVersion(dynamic rawVersion) {
+    final version = rawVersion?.toString().trim();
+    if (version == null || version.isEmpty || version == 'unknown') {
+      return '版本未知';
+    }
+    return version.startsWith('v') ? version : 'v$version';
+  }
+
+  String _formatLastOnline(bool isOnline, dynamic rawTimestamp) {
+    if (isOnline) return '当前在线';
+    final ms = rawTimestamp is int
+        ? rawTimestamp
+        : int.tryParse(rawTimestamp?.toString() ?? '');
+    if (ms == null || ms <= 0) return '暂无上线记录';
+
+    final dt = DateTime.fromMillisecondsSinceEpoch(ms);
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 1) return '刚刚在线';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}分钟前上线';
+    if (diff.inHours < 24) return '${diff.inHours}小时前上线';
+    if (diff.inDays < 7) return '${diff.inDays}天前上线';
+    final mm = dt.month.toString().padLeft(2, '0');
+    final dd = dt.day.toString().padLeft(2, '0');
+    final hh = dt.hour.toString().padLeft(2, '0');
+    final min = dt.minute.toString().padLeft(2, '0');
+    if (dt.year != now.year) {
+      return '${dt.year}-$mm-$dd $hh:$min';
+    }
+    return '$mm-$dd $hh:$min';
+  }
+
   Widget _buildMemberItem(dynamic m) {
     final bool isAdmin = m['role'] == 0;
     final bool isMe = m['is_me'] == true || m['id'] == ApiService.currentUserId;
+    final bool viewerIsAdmin = widget.team.userRole == TeamRole.admin;
+    final bool isOnline = m['is_online'] == true;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Material(
       type: MaterialType.transparency,
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: isAdmin
-              ? Theme.of(context).colorScheme.secondary.withValues(alpha: 0.1)
+              ? colorScheme.secondary.withValues(alpha: 0.1)
               : Colors.grey.withValues(alpha: 0.1),
           child: Text(
             m['username']?[0]?.toUpperCase() ?? '?',
             style: TextStyle(
-              color: isAdmin
-                  ? Theme.of(context).colorScheme.secondary
-                  : Colors.grey,
+              color: isAdmin ? colorScheme.secondary : Colors.grey,
             ),
           ),
         ),
@@ -3372,16 +3473,51 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
             fontWeight: isMe ? FontWeight.bold : FontWeight.normal,
           ),
         ),
-        subtitle: Text(
-          isAdmin ? '管理员' : '成员',
-          style: TextStyle(
-            fontSize: 12,
-            color: isAdmin
-                ? Theme.of(context).colorScheme.secondary
-                : Colors.grey,
-          ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              isAdmin ? '管理员' : '成员',
+              style: TextStyle(
+                fontSize: 12,
+                color: isAdmin ? colorScheme.secondary : Colors.grey,
+              ),
+            ),
+            if (viewerIsAdmin) ...[
+              const SizedBox(height: 2),
+              Row(
+                children: [
+                  if (isOnline) ...[
+                    Container(
+                      width: 6,
+                      height: 6,
+                      margin: const EdgeInsets.only(right: 5),
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ],
+                  Flexible(
+                    child: Text(
+                      '${_formatLastOnline(isOnline, m['last_online_at'])} · ${_formatMemberVersion(m['app_version'])}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: isOnline
+                            ? colorScheme.primary
+                            : colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
         ),
-        trailing: (widget.team.userRole == TeamRole.admin && !isAdmin)
+        trailing: (viewerIsAdmin && !isAdmin)
             ? IconButton(
                 icon: const Icon(
                   Icons.person_remove_rounded,

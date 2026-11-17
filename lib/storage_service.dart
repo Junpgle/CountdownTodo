@@ -1013,6 +1013,10 @@ class StorageService {
     List<TodoItem> todos,
   ) => _storage.clearResolvedRecurrenceMigrationConflictsForTest(todos);
 
+  static List<TodoItem> clearResolvedCollabCompletionConflictsForTest(
+    List<TodoItem> todos,
+  ) => _storage.clearResolvedCollabCompletionConflictsForTest(todos);
+
   static Set<String> repairMissingRemoteRecurrenceSeriesIdsForTest(
     List<TodoItem> incoming,
     List<TodoItem> local,

@@ -483,7 +483,20 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
     try {
       List<Map<String, dynamic>> results;
       if (isImage) {
-        final rawResults = await LLMService.parseTodoFromImage(pathOrText);
+        final rawResults = await LLMService.parseTodoFromImage(
+          pathOrText,
+          onStream: handle == null
+              ? null
+              : (content, reasoning) {
+                  AiRecognitionChatBridge.updateStream(
+                    handle!,
+                    AiRecognitionChatBridge.formatModelStream(
+                      content: content,
+                      reasoningContent: reasoning,
+                    ),
+                  );
+                },
+        );
         results = RecognizedTodoAdapter.normalizeImageResults(rawResults);
       } else {
         final rawResults = await LLMService.parseTodoWithLLM(pathOrText);

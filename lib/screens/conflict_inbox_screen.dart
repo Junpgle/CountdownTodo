@@ -3895,16 +3895,25 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
   ) {
     if (server == null || server.isEmpty) return const [];
 
+    final collabType =
+        local['collab_type'] ??
+        local['collabType'] ??
+        server['collab_type'] ??
+        server['collabType'] ??
+        0;
+    final isIndependentCollab = collabType == 1 || collabType == '1';
+
     final fields = <_ConflictFieldSpec>[
       _ConflictFieldSpec(
         label: '标题',
         keys: const ['content', 'title', 'name', 'courseName', 'course_name'],
       ),
       _ConflictFieldSpec(label: '备注', keys: const ['remark']),
-      _ConflictFieldSpec(
-        label: '完成状态',
-        keys: const ['is_completed', 'isCompleted'],
-      ),
+      if (!isIndependentCollab)
+        _ConflictFieldSpec(
+          label: '完成状态',
+          keys: const ['is_completed', 'isCompleted'],
+        ),
       _ConflictFieldSpec(
         label: '删除状态',
         keys: const ['is_deleted', 'isDeleted'],

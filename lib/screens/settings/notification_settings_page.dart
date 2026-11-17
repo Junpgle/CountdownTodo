@@ -963,8 +963,10 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     return AnimatedCrossFade(
       firstChild: const SizedBox(width: double.infinity, height: 0),
       secondChild: Padding(
-        padding: const EdgeInsets.only(top: 8.0, bottom: 16.0),
+        padding: const EdgeInsets.only(top: 4.0, bottom: 4.0),
         child: GridView.count(
+          padding: EdgeInsets.zero,
+          primary: false,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           crossAxisCount: isDesktop ? 3 : 2,
@@ -1307,6 +1309,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
           ),
         ),
         GridView.extent(
+          padding: EdgeInsets.zero,
+          primary: false,
           maxCrossAxisExtent: 220,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
