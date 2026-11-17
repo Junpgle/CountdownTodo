@@ -59,6 +59,8 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
   bool _promptDirty = false;
   bool _dailyAiSuggestionEnabled = false;
   bool _dailyAiManualSectionKept = false;
+  DailyAiSuggestionContextConfig _dailyAiContextConfig =
+      const DailyAiSuggestionContextConfig();
   bool _aiMemoryEnabled = true;
   PermissionStatus _locationPermissionStatus = PermissionStatus.denied;
   List<AiMemoryItem> _aiMemories = const [];
@@ -129,6 +131,7 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
       ChatStorageService.getToolBudget(),
       DailyAiSuggestionService.isEnabled(username),
       DailyAiSuggestionService.isManualSectionKept(username),
+      DailyAiSuggestionService.loadContextConfig(username),
       AiMemoryService.isEnabled(username),
       AiMemoryService.loadMemories(username),
       AiDeviceContextService.getLocationPermissionStatus(),
@@ -146,9 +149,10 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
       _toolBudget = values[7] as AiToolBudget;
       _dailyAiSuggestionEnabled = values[8] as bool;
       _dailyAiManualSectionKept = values[9] as bool;
-      _aiMemoryEnabled = values[10] as bool;
-      _aiMemories = values[11] as List<AiMemoryItem>;
-      _locationPermissionStatus = values[12] as PermissionStatus;
+      _dailyAiContextConfig = values[10] as DailyAiSuggestionContextConfig;
+      _aiMemoryEnabled = values[11] as bool;
+      _aiMemories = values[12] as List<AiMemoryItem>;
+      _locationPermissionStatus = values[13] as PermissionStatus;
       _isLoading = false;
     });
     if (widget.initialTarget != null) {
@@ -809,6 +813,43 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
                                 _showSnackBar('已触发重新生成，返回首页即可查看最新今日建议');
                               }
                             : null,
+                      ),
+                      const AppSettingsDivider(indent: 16),
+                      ExpansionTile(
+                        tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+                        leading: Icon(
+                          Icons.tune_rounded,
+                          color: colorScheme.primary,
+                        ),
+                        title: const Text('纳入建议的上下文'),
+                        subtitle: Text(
+                          '默认全部开启（已启用 ${_dailyAiContextConfig.enabledCount}/${DailyAiContextOption.values.length} 项），可按需关闭',
+                        ),
+                        shape: const Border(),
+                        collapsedShape: const Border(),
+                        children: [
+                          for (final option in DailyAiContextOption.values) ...[
+                            const AppSettingsDivider(indent: 16),
+                            _buildSwitch(
+                              title: option.title,
+                              subtitle: option.subtitle,
+                              value: _dailyAiContextConfig.isEnabled(option),
+                              onChanged: (value) => _setSetting(
+                                value: value,
+                                update: (next) {
+                                  _dailyAiContextConfig = _dailyAiContextConfig
+                                      .copyWithOption(option, next);
+                                },
+                                persist: (next) =>
+                                    DailyAiSuggestionService.setContextOption(
+                                      _currentUsername,
+                                      option,
+                                      next,
+                                    ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
                   ),

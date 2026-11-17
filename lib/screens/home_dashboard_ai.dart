@@ -312,6 +312,14 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
               ?.whereType<CourseItem>()
               .toList() ??
           const [],
+      loadTodayPomodoroRecords: PomodoroService.getTodayRecords,
+      loadYesterdayPomodoroRecords: PomodoroService.getYesterdayRecords,
+      loadTodayTimeLogs: () async {
+        final list = await StorageService.getTimeLogs(widget.username);
+        return list.where((log) => !log.isDeleted).toList();
+      },
+      loadHabitSummary: DailyAiSuggestionService.loadHabitSummaryBlock,
+      loadChallengeSummary: DailyAiSuggestionService.loadChallengeSummaryBlock,
       forceRefresh: forceRefresh,
       allowWhenDisabled: allowWhenDisabled,
     );
