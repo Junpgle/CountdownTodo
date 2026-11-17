@@ -1678,6 +1678,7 @@ class _DialogContainerTransform extends StatefulWidget {
 
 class _DialogContainerTransformState extends State<_DialogContainerTransform> {
   late final CurvedAnimation _curvedAnimation;
+  late final SnapshotController _contentSnapshot;
 
   @override
   void initState() {
@@ -1687,19 +1688,37 @@ class _DialogContainerTransformState extends State<_DialogContainerTransform> {
       curve: _pageLayerCurve,
       reverseCurve: _containerTransformReverseCurve,
     );
+    _contentSnapshot = SnapshotController(allowSnapshotting: true);
+    widget.animation.addStatusListener(_handleAnimationStatus);
+  }
+
+  void _handleAnimationStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed) {
+      _contentSnapshot.allowSnapshotting = false;
+    } else if (status == AnimationStatus.reverse ||
+        status == AnimationStatus.forward) {
+      _contentSnapshot.allowSnapshotting = true;
+    }
   }
 
   @override
   void dispose() {
+    widget.animation.removeStatusListener(_handleAnimationStatus);
+    _contentSnapshot.dispose();
     _curvedAnimation.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final snapshottedChild = SnapshotWidget(
+      controller: _contentSnapshot,
+      mode: SnapshotMode.permissive,
+      child: RepaintBoundary(child: widget.child),
+    );
     return AnimatedBuilder(
       animation: _curvedAnimation,
-      child: widget.child,
+      child: snapshottedChild,
       builder: (context, child) {
         return _DialogMorphLayout(
           progress: _curvedAnimation.value,
@@ -1877,6 +1896,7 @@ class _RenderDialogMorphLayout extends RenderShiftedBox {
       offset,
       currentRect,
       clipRRect,
+      clipBehavior: Clip.hardEdge,
       (context, innerOffset) {
         final paintRect = currentRect.shift(innerOffset);
         context.canvas.drawRect(
@@ -1886,11 +1906,10 @@ class _RenderDialogMorphLayout extends RenderShiftedBox {
 
         if (contentAlpha <= 0) return;
 
-        final scaleX = currentRect.width / _targetRect.width;
-        final scaleY = currentRect.height / _targetRect.height;
+        final scale = currentRect.width / _targetRect.width;
         final transform = Matrix4.identity()
           ..translateByDouble(paintRect.left, paintRect.top, 0.0, 1.0)
-          ..scaleByDouble(scaleX, scaleY, 1.0, 1.0);
+          ..scaleByDouble(scale, scale, 1.0, 1.0);
 
         context.pushTransform(
           needsCompositing,

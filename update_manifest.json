@@ -1,13 +1,17 @@
 {
-  "version_code": 702310,
-  "version_name": "7.23.10",
+  "version_code": 702408,
+  "version_name": "7.24.8",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 7.23.10",
-    "description": "【新增】记账概览引入预算看板、快捷模板、消费节奏洞察与账户支出分布；支出分类支持交互式环形图与小类占比查看，并放开跨月导航限制。\n【新增】习惯中心日历支持按习惯筛选查看专属打卡完成日历视图。\n【新增】待办与固定日程支持独立地点解析与录入，并联动桌面小部件展示。\n【新增】番茄专注统计支持日、周、月视图快速选择跳转与下钻；关于界面新增内存占用监控与管理选项。\n【优化】全面优化全应用流体滑动、容器转场与重绘隔离，合批毛玻璃模糊通道、缓存着色器与画笔并卸载静止离屏合成层，大幅降低显存与渲染开销。\n【优化】重构周视图卡片分层聚合、视角预设与文本折行排版，支持重叠日程折叠与 +N 角标弹窗，增强“今天”视觉辨识度。\n【优化】首页采用双层壁纸保障滚动顶栏渐隐过渡，统一今日概览卡片全宽布局；待办文件夹选择改用可搜索自适应弹层及宽屏网格弹窗。\n【优化】macOS 灵动岛支持拖放文件与文本 AI 识别待办及 QuickLook 预览联动；增强小米 HyperOS 焦点通知探测与课程实时常驻通知。\n【修复】修复番茄钟后台恢复与 WebSocket 重连同步本地专注状态，以及手动撤销免扣卡后阻止今日界面自动重复免扣。\n【修复】修复待办完成时间戳云同步误计入时间线、新增待办/日程重复弹出输入法、周视图切周空白与 GlobalKey 冲突。\n【修复】修复全局列表过阻尼回弹、首页卡片高斯模糊、记账切换白屏闪烁及关闭液态毛玻璃后宽屏部分组件模糊问题。",
+    "title": "版本更新 7.24.8",
+    "description": "【新增】记账支持微信（CSV/XLSX）与支付宝（CSV）账单一键导入，并新增账户互转类型与账单列表多选批量编辑、删除管理。\n【新增】首页新增每日 AI 智能建议卡片；AI 助手支持长期记忆偏好、位置与设备上下文查询、自定义单轮工具调用预算及图片识图流式预览。\n【新增】局域网同步引入 ECDH+AES-GCM 端到端加密、面对面扫码配对、隐私域配置、设备列表与 macOS 低电量省电策略联动。\n【新增】新增定期自动备份功能，支持本地数据快照定时保存与一键恢复。\n【新增】支持矩形源容器变形弹窗转场，并重新支持 macOS Intel (x86_64) 架构独立打包与对应架构在线更新下载。\n【优化】侧边栏「功能百宝箱」支持自定义排序与显隐；更新功能探索百宝箱新特性指南，完善分平台权限清单与拒绝后跳转系统设置兜底。\n【优化】大幅精简存储层与数据库高频读写开销，时间轴与日程提醒改为按需范围查询并发加载，优化桌面小组件、常驻通知增量去重与非液态玻璃模式首页性能。\n【优化】丰富每日 AI 建议上下文并优化记忆工具调用展示与思考过程摘要；适配平板记账小组件展示近期账单，改进习惯中心设置弹窗与局域网同步交互。\n【修复】修复各自独立协同待办跳过完成状态冲突、状态提示弹窗黑屏、断线横幅误抑制以及状态提示 Toast 窄屏溢出问题。",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-release.apk",
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe",
     "mac_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodo-macOS-arm64.zip",
+    "mac_arch_packages": {
+      "arm64": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodo-macOS-arm64.zip",
+      "x86_64": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodo-macOS-x86_64.zip"
+    },
     "android_arch_packages": {
       "arm64-v8a": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-release.apk",
       "armeabi-v7a": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-armeabi-v7a-release.apk",
@@ -77,6 +81,21 @@
     "image_url": "https://gitee.com/Junpgle/CountdownTodo/raw/master/wallpapergitee/15.jpg"
   },
   "changelog_history": [
+    {
+      "version_name": "7.24.8",
+      "date": "2026-11-17",
+      "items": [
+        "【新增】记账支持微信（CSV/XLSX）与支付宝（CSV）账单一键导入，并新增账户互转类型与账单列表多选批量编辑、删除管理。",
+        "【新增】首页新增每日 AI 智能建议卡片；AI 助手支持长期记忆偏好、位置与设备上下文查询、自定义单轮工具调用预算及图片识图流式预览。",
+        "【新增】局域网同步引入 ECDH+AES-GCM 端到端加密、面对面扫码配对、隐私域配置、设备列表与 macOS 低电量省电策略联动。",
+        "【新增】新增定期自动备份功能，支持本地数据快照定时保存与一键恢复。",
+        "【新增】支持矩形源容器变形弹窗转场，并重新支持 macOS Intel (x86_64) 架构独立打包与对应架构在线更新下载。",
+        "【优化】侧边栏「功能百宝箱」支持自定义排序与显隐；更新功能探索百宝箱新特性指南，完善分平台权限清单与拒绝后跳转系统设置兜底。",
+        "【优化】大幅精简存储层与数据库高频读写开销，时间轴与日程提醒改为按需范围查询并发加载，优化桌面小组件、常驻通知增量去重与非液态玻璃模式首页性能。",
+        "【优化】丰富每日 AI 建议上下文并优化记忆工具调用展示与思考过程摘要；适配平板记账小组件展示近期账单，改进习惯中心设置弹窗与局域网同步交互。",
+        "【修复】修复各自独立协同待办跳过完成状态冲突、状态提示弹窗黑屏、断线横幅误抑制以及状态提示 Toast 窄屏溢出问题。"
+      ]
+    },
     {
       "version_name": "7.23.10",
       "date": "2026-11-14",
