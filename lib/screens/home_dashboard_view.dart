@@ -363,14 +363,14 @@ mixin _HomeDashboardViewMixin
                               : LayoutBuilder(
                                   builder: (context, constraints) {
                                     Widget wrapSectionBoundary(Widget child) =>
-                                        showWallpaper || AppPlatform.isWindows
+                                        AppPlatform.isWindows
                                         ? child
                                         : RepaintBoundary(child: child);
-                                    // Keep `addRepaintBoundaries: !showWallpaper`
-                                    // so BackdropFilter / LiquidGlass cards can
-                                    // sample the wallpaper behind them.
-                                    final addListRepaintBoundaries =
-                                        !showWallpaper;
+                                    // RepaintBoundary isolates each section's
+                                    // display-list cache without blocking
+                                    // nested BackdropFilter / LiquidGlass
+                                    // layers from sampling the wallpaper.
+                                    const addListRepaintBoundaries = true;
                                     Widget buildCountdown() =>
                                         wrapSectionBoundary(
                                           ValueListenableBuilder<
@@ -819,10 +819,11 @@ mixin _HomeDashboardViewMixin
                                             child: AppSystemUiRegion(
                                               backgroundBrightness:
                                                   cardBackgroundBrightness,
-                                              child:
-                                                  _buildDailyAiSuggestionSection(
-                                                    isLight,
-                                                  ),
+                                              child: wrapSectionBoundary(
+                                                _buildDailyAiSuggestionSection(
+                                                  isLight,
+                                                ),
+                                              ),
                                             ),
                                           );
                                         }
@@ -966,13 +967,15 @@ mixin _HomeDashboardViewMixin
                                                   child: AppSystemUiRegion(
                                                     backgroundBrightness:
                                                         cardBackgroundBrightness,
-                                                    child: AnimatedBuilder(
-                                                      animation:
-                                                          _bannerSectionListenable,
-                                                      builder: (_, _) =>
-                                                          _buildOnboardingChecklistSection(
-                                                            isLight,
-                                                          ),
+                                                    child: wrapSectionBoundary(
+                                                      AnimatedBuilder(
+                                                        animation:
+                                                            _bannerSectionListenable,
+                                                        builder: (_, _) =>
+                                                            _buildOnboardingChecklistSection(
+                                                              isLight,
+                                                            ),
+                                                      ),
                                                     ),
                                                   ),
                                                 );
@@ -1004,15 +1007,10 @@ mixin _HomeDashboardViewMixin
                                               ? 'home-focus-tab-content'
                                               : 'home-main-tab-content',
                                         );
-                                        return showWallpaper
-                                            ? KeyedSubtree(
-                                                key: tabContentKey,
-                                                child: listContent,
-                                              )
-                                            : RepaintBoundary(
-                                                key: tabContentKey,
-                                                child: listContent,
-                                              );
+                                        return RepaintBoundary(
+                                          key: tabContentKey,
+                                          child: listContent,
+                                        );
                                       }
 
                                       if (AppPlatform.isAndroid) {
@@ -1242,14 +1240,6 @@ mixin _HomeDashboardViewMixin
                                           .map((key) {
                                             final section =
                                                 sectionBuilders[key]!();
-                                            final isolateTabletSection =
-                                                isTablet &&
-                                                const <String>{
-                                                  'agenda',
-                                                  'countdowns',
-                                                  'todos',
-                                                  'timeline',
-                                                }.contains(key);
                                             final columnSection =
                                                 AppSystemUiRegion(
                                                   backgroundBrightness:
@@ -1260,13 +1250,7 @@ mixin _HomeDashboardViewMixin
                                                           ? 0.0
                                                           : 24.0,
                                                     ),
-                                                    child:
-                                                        isolateTabletSection &&
-                                                            !showWallpaper
-                                                        ? RepaintBoundary(
-                                                            child: section,
-                                                          )
-                                                        : section,
+                                                    child: section,
                                                   ),
                                                 );
                                             return columnSection;
@@ -1293,8 +1277,10 @@ mixin _HomeDashboardViewMixin
                                       AppSystemUiRegion(
                                         backgroundBrightness:
                                             cardBackgroundBrightness,
-                                        child: _buildDailyAiSuggestionSection(
-                                          isLight,
+                                        child: wrapSectionBoundary(
+                                          _buildDailyAiSuggestionSection(
+                                            isLight,
+                                          ),
                                         ),
                                       ),
                                     );
@@ -1371,13 +1357,15 @@ mixin _HomeDashboardViewMixin
                                                 AppSystemUiRegion(
                                                   backgroundBrightness:
                                                       cardBackgroundBrightness,
-                                                  child: AnimatedBuilder(
-                                                    animation:
-                                                        _bannerSectionListenable,
-                                                    builder: (_, _) =>
-                                                        _buildOnboardingChecklistSection(
-                                                          isLight,
-                                                        ),
+                                                  child: wrapSectionBoundary(
+                                                    AnimatedBuilder(
+                                                      animation:
+                                                          _bannerSectionListenable,
+                                                      builder: (_, _) =>
+                                                          _buildOnboardingChecklistSection(
+                                                            isLight,
+                                                          ),
+                                                    ),
                                                   ),
                                                 ),
                                                 if (_wallpaperCopyright !=

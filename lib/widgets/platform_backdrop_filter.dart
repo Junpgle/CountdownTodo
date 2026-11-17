@@ -57,20 +57,13 @@ class PlatformBackdropFilter extends StatelessWidget {
         PowerSaveModeService.enabledListenable,
       ]),
       builder: (context, _) {
-        if (PowerSaveModeService.isEnabled) {
+        if (PowerSaveModeService.isEnabled ||
+            Theme.of(context).brightness == Brightness.dark ||
+            bypassWhenLiquidGlassEnabled) {
           return _clipIfNeeded(child);
         }
         final configuration = LiquidGlassEffectService.configuration;
-        if (AppPlatform.isWindows) {
-          if (!configuration.enabled || bypassWhenLiquidGlassEnabled) {
-            return _clipIfNeeded(child);
-          }
-          return _clipIfNeeded(
-            BackdropFilter.grouped(filter: filter, child: child),
-            forceClipRect: true,
-          );
-        }
-        if (bypassWhenLiquidGlassEnabled && configuration.enabled) {
+        if (AppPlatform.isWindows && !configuration.enabled) {
           return _clipIfNeeded(child);
         }
         return _clipIfNeeded(

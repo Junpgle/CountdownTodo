@@ -4,6 +4,8 @@ import 'dart:math' as math;
 
 import 'package:intl/intl.dart' hide TextDirection;
 
+import '../services/liquid_glass_effect_service.dart';
+import '../services/power_save_mode_service.dart';
 import '../utils/android_energy_policy.dart';
 import '../utils/app_image_filters.dart';
 import '../utils/time_utils.dart';
@@ -894,12 +896,27 @@ class EmptyState extends StatelessWidget {
       ),
     );
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
-      child: AppPlatform.isWindows
+      child: AppPlatform.isWindows || isDark
           ? content
-          : BackdropFilter.grouped(
-              filter: AppImageFilters.blur10,
+          : ListenableBuilder(
+              listenable: Listenable.merge(<Listenable>[
+                LiquidGlassEffectService.configurationListenable,
+                PowerSaveModeService.enabledListenable,
+              ]),
+              builder: (context, child) {
+                final skipBlur =
+                    PowerSaveModeService.isEnabled ||
+                    !LiquidGlassEffectService.configuration.enabled;
+                return skipBlur
+                    ? child!
+                    : BackdropFilter.grouped(
+                        filter: AppImageFilters.blur10,
+                        child: child,
+                      );
+              },
               child: content,
             ),
     );
