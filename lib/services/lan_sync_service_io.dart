@@ -739,6 +739,35 @@ class LanSyncService {
     return (sessionId: sessionId, key: key);
   }
 
+  String _localizePeerError(String? rawError, {String fallback = '同步失败'}) {
+    final err = rawError?.trim() ?? '';
+    if (err.isEmpty) return fallback;
+    switch (err) {
+      case 'auto sync disabled':
+        return '对方设备未开启自动同步，请在对方“局域网同步”设置中开启“自动同步”';
+      case 'account mismatch':
+        return '对方设备账号不匹配，请确认双方登录同一账号或开启“所有设备”';
+      case 'no pending request':
+        return '对方没有待处理的同步请求，请重新发起';
+      case 'v2 encryption required':
+      case 'v2 encrypted session required':
+        return '对方要求使用 v2 加密会话，请升级应用版本';
+      case 'invalid or expired crypto session':
+        return '加密会话无效或已过期，请重试';
+      case 'missing clientPublicKey':
+        return '握手请求缺少客户端公钥';
+      case 'not found':
+        return '请求路径不存在';
+      case 'unknown':
+        return '未知错误';
+    }
+    const unsupportedPrefix = 'unsupported protocol version:';
+    if (err.startsWith(unsupportedPrefix)) {
+      return '不支持的加密协议版本:${err.substring(unsupportedPrefix.length)}';
+    }
+    return err;
+  }
+
   Future<Map<String, dynamic>> _postEncryptedSync(
     HttpClient client,
     String ip,
@@ -767,10 +796,11 @@ class LanSyncService {
 
     if (encryptedResponseData['encrypted'] != true ||
         encryptedResponseData['v'] != LanSyncCrypto.protocolVersion) {
+      final rawErr = encryptedResponseData['error']?.toString();
       return {
         'success': false,
         'error':
-            '响应未加密或版本不匹配 (${encryptedResponseData['error'] ?? 'unknown'})',
+            '响应未加密或版本不匹配 (${_localizePeerError(rawErr, fallback: '未知错误')})',
       };
     }
 
@@ -836,7 +866,7 @@ class LanSyncService {
         await _handleDiscoverRequest(req);
       } else {
         req.response.statusCode = HttpStatus.notFound;
-        req.response.write(jsonEncode({'error': 'not found'}));
+        req.response.write(jsonEncode({'error': '请求路径不存在'}));
         await req.response.close();
       }
     } catch (e) {
@@ -857,7 +887,7 @@ class LanSyncService {
       req.response.statusCode = HttpStatus.badRequest;
       req.response.headers.contentType = ContentType.json;
       req.response.write(
-        jsonEncode({'error': 'unsupported protocol version: ${data['v']}'}),
+        jsonEncode({'error': '不支持的加密协议版本: ${data['v']}'}),
       );
       await req.response.close();
       return;
@@ -867,7 +897,7 @@ class LanSyncService {
     if (clientPub.isEmpty) {
       req.response.statusCode = HttpStatus.badRequest;
       req.response.headers.contentType = ContentType.json;
-      req.response.write(jsonEncode({'error': 'missing clientPublicKey'}));
+      req.response.write(jsonEncode({'error': '握手请求缺少客户端公钥'}));
       await req.response.close();
       return;
     }
@@ -907,7 +937,7 @@ class LanSyncService {
         encryptedData['v'] != LanSyncCrypto.protocolVersion) {
       req.response.statusCode = HttpStatus.badRequest;
       req.response.headers.contentType = ContentType.json;
-      req.response.write(jsonEncode({'error': 'v2 encryption required'}));
+      req.response.write(jsonEncode({'error': '需要 v2 加密会话，请升级应用版本'}));
       await req.response.close();
       return;
     }
@@ -918,7 +948,7 @@ class LanSyncService {
       req.response.statusCode = HttpStatus.unauthorized;
       req.response.headers.contentType = ContentType.json;
       req.response.write(
-        jsonEncode({'error': 'invalid or expired crypto session'}),
+        jsonEncode({'error': '加密会话无效或已过期，请重试'}),
       );
       await req.response.close();
       return;
@@ -942,7 +972,7 @@ class LanSyncService {
       await _writeEncryptedError(
         req,
         sessionKey,
-        'account mismatch',
+        '对方设备账号不匹配，请确认双方登录同一账号或开启“所有设备”',
         statusCode: HttpStatus.forbidden,
       );
       return;
@@ -985,7 +1015,11 @@ class LanSyncService {
         if (pendingDevice == null ||
             pendingToken == null ||
             receivedToken != pendingToken) {
-          await _writeEncryptedError(req, sessionKey, 'no pending request');
+          await _writeEncryptedError(
+            req,
+            sessionKey,
+            '对方没有待处理的同步请求，请重新发起',
+          );
           return;
         }
         _pendingRequests.remove(remoteDeviceId);
@@ -1012,7 +1046,7 @@ class LanSyncService {
           await _writeEncryptedError(
             req,
             sessionKey,
-            'auto sync disabled',
+            '对方设备未开启自动同步，请在对方“局域网同步”设置中开启“自动同步”',
             statusCode: HttpStatus.forbidden,
           );
           return;
@@ -2203,7 +2237,7 @@ class LanSyncService {
       if (responseData['success'] != true) {
         return LanSyncResult(
           success: false,
-          message: responseData['error']?.toString() ?? '同步失败',
+          message: _localizePeerError(responseData['error']?.toString()),
         );
       }
 
@@ -2304,7 +2338,10 @@ class LanSyncService {
         }
       }
       if (data['error'] != null) {
-        errorMsg = data['error'].toString();
+        errorMsg = _localizePeerError(
+          data['error'].toString(),
+          fallback: errorMsg,
+        );
       }
 
       return LanSyncResult(success: false, message: errorMsg);
@@ -2381,7 +2418,8 @@ class LanSyncService {
       if (responseData['success'] != true) {
         return LanSyncResult(
           success: false,
-          message: '同步失败: ${responseData['error']}',
+          message:
+              '同步失败: ${_localizePeerError(responseData['error']?.toString())}',
         );
       }
 
@@ -2492,7 +2530,7 @@ class LanSyncService {
       if (version != 'v2' || sessionKey == null) {
         req.response.statusCode = HttpStatus.unauthorized;
         req.response.headers.contentType = ContentType.json;
-        req.response.write(jsonEncode({'error': 'v2 encrypted session required'}));
+        req.response.write(jsonEncode({'error': '需要 v2 加密会话，请升级应用版本'}));
         await req.response.close();
         return;
       }

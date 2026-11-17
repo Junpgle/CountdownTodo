@@ -7,11 +7,13 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../services/file_open_service.dart';
+import '../../services/lan_sync_pairing.dart';
 import '../../services/lan_sync_service.dart';
 import 'lan_qr_scanner_screen.dart';
 import '../../services/permission_request_coordinator.dart';
 import '../../utils/app_platform.dart';
 import '../../widgets/floating_glass_control.dart';
+import '../../widgets/optional_liquid_glass_surface.dart';
 import '../../utils/app_dialogs.dart';
 
 class LanSyncScreen extends StatefulWidget {
@@ -273,7 +275,7 @@ class _LanSyncScreenState extends State<LanSyncScreen>
                 if (isAccept) {
                   _confirmSync(device, config);
                 } else {
-                  if (device.userId != _service.currentUserId) {
+                  if (!_isSameAccountDevice(device)) {
                     _showCrossAccountWarning(device, config);
                   } else {
                     _requestSync(device, config);
@@ -336,6 +338,9 @@ class _LanSyncScreenState extends State<LanSyncScreen>
       });
     }
   }
+
+  bool _isSameAccountDevice(LanDevice device) =>
+      LanDiscoveryIdentity.isSameUser(device.userId, _service.currentUserId);
 
   void _showCrossAccountWarning(LanDevice device, LanSyncConfig config) {
     showAppDialog(
@@ -620,7 +625,9 @@ class _LanSyncScreenState extends State<LanSyncScreen>
                     icon: const Icon(Icons.paste),
                     tooltip: '从剪贴板粘贴',
                     onPressed: () async {
-                      final clip = await Clipboard.getData(Clipboard.kTextPlain);
+                      final clip = await Clipboard.getData(
+                        Clipboard.kTextPlain,
+                      );
                       if (clip?.text != null) {
                         codeController.text = clip!.text!.trim();
                       }
@@ -731,9 +738,10 @@ class _LanSyncScreenState extends State<LanSyncScreen>
     final isDesktop =
         AppPlatform.isWindows || AppPlatform.isMacOS || AppPlatform.isLinux;
     final colorScheme = Theme.of(context).colorScheme;
-    return Container(
+    return OptionalLiquidGlassCard(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-      decoration: BoxDecoration(
+      borderRadius: 12,
+      fallbackDecoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: colorScheme.outlineVariant),
@@ -742,7 +750,7 @@ class _LanSyncScreenState extends State<LanSyncScreen>
         mainAxisSize: MainAxisSize.min,
         children: [
           if (isDesktop)
-            SwitchListTile.adaptive(
+            LiquidGlassSwitchListTile(
               dense: true,
               secondary: const Icon(Icons.dns_outlined, size: 20),
               title: const Text('桌面端常驻局域网服务'),
@@ -758,7 +766,7 @@ class _LanSyncScreenState extends State<LanSyncScreen>
                 }
               },
             ),
-          SwitchListTile.adaptive(
+          LiquidGlassSwitchListTile(
             dense: true,
             secondary: const Icon(Icons.autorenew, size: 20),
             title: const Text('同账号自动无感同步'),
@@ -769,7 +777,7 @@ class _LanSyncScreenState extends State<LanSyncScreen>
               await _service.setAutoSyncEnabled(value);
             },
           ),
-          SwitchListTile.adaptive(
+          LiquidGlassSwitchListTile(
             dense: true,
             secondary: const Icon(Icons.key_outlined, size: 20),
             title: const Text('同步 API Key 与大模型配置'),
@@ -780,7 +788,7 @@ class _LanSyncScreenState extends State<LanSyncScreen>
               await _service.setSyncSecretsEnabled(value);
             },
           ),
-          SwitchListTile.adaptive(
+          LiquidGlassSwitchListTile(
             dense: true,
             secondary: const Icon(Icons.tune_outlined, size: 20),
             title: const Text('同步应用偏好设置'),
@@ -866,60 +874,96 @@ class _LanSyncScreenState extends State<LanSyncScreen>
           ),
           child: Column(
             children: [
-              _buildStatusCard(),
-              _buildQuickPairBar(),
-              _buildDesktopAndAutoSyncCard(),
-              _buildFilterBar(),
-              const Divider(height: 1),
               Expanded(
-                child: _devices.isEmpty
-                    ? Center(
+                child: MediaQuery.removePadding(
+                  context: context,
+                  removeTop: true,
+                  child: CustomScrollView(
+                    slivers: [
+                      SliverToBoxAdapter(
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
-                              Icons.devices_other,
-                              size: 64,
-                              color: Colors.grey[400],
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              _service.isRunning
-                                  ? (_discoverAll ? '未发现任何设备' : '未发现同账号设备')
-                                  : '请先启动服务',
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 16,
-                              ),
-                            ),
-                            if (_service.isRunning) ...[
-                              const SizedBox(height: 16),
-                              ElevatedButton.icon(
-                                icon: const Icon(Icons.add),
-                                label: const Text('手动添加设备'),
-                                onPressed: _showManualAddDialog,
-                              ),
-                            ],
+                            _buildStatusCard(),
+                            _buildQuickPairBar(),
+                            _buildDesktopAndAutoSyncCard(),
+                            _buildFilterBar(),
+                            const Divider(height: 1),
                           ],
                         ),
-                      )
-                    : ListView.builder(
-                        findChildIndexCallback: (Key key) {
-                          if (key is ValueKey<String>) {
-                            final id = key.value;
-                            final index = _devices.indexWhere(
-                              (d) => d.deviceId == id,
-                            );
-                            return index != -1 ? index : null;
-                          }
-                          return null;
-                        },
-                        itemCount: _devices.length,
-                        itemBuilder: (context, index) {
-                          final device = _devices[index];
-                          return _buildDeviceTile(device);
-                        },
                       ),
+                      if (_devices.isEmpty)
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: EdgeInsets.fromLTRB(
+                              24,
+                              32,
+                              24,
+                              MediaQuery.paddingOf(context).bottom + 24,
+                            ),
+                            child: Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.devices_other,
+                                    size: 64,
+                                    color: Colors.grey[400],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    _service.isRunning
+                                        ? (_discoverAll
+                                              ? '未发现任何设备'
+                                              : '未发现同账号设备')
+                                        : '请先启动服务',
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  if (_service.isRunning) ...[
+                                    const SizedBox(height: 16),
+                                    ElevatedButton.icon(
+                                      icon: const Icon(Icons.add),
+                                      label: const Text('手动添加设备'),
+                                      onPressed: _showManualAddDialog,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                        )
+                      else
+                        SliverPadding(
+                          padding: EdgeInsets.fromLTRB(
+                            0,
+                            8,
+                            0,
+                            MediaQuery.paddingOf(context).bottom + 8,
+                          ),
+                          sliver: SliverList.builder(
+                            findChildIndexCallback: (Key key) {
+                              if (key is ValueKey<String>) {
+                                final id = key.value;
+                                final index = _devices.indexWhere(
+                                  (d) => d.deviceId == id,
+                                );
+                                return index != -1 ? index : null;
+                              }
+                              return null;
+                            },
+                            itemCount: _devices.length,
+                            itemBuilder: (context, index) {
+                              final device = _devices[index];
+                              return _buildDeviceTile(device);
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ),
               if (_progress.isNotEmpty) _buildProgressBanner(),
             ],
@@ -1054,7 +1098,7 @@ class _LanSyncScreenState extends State<LanSyncScreen>
               title: Row(
                 children: [
                   Text(device.deviceName),
-                  if (device.userId != _service.currentUserId) ...[
+                  if (!_isSameAccountDevice(device)) ...[
                     const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(
@@ -1115,7 +1159,7 @@ class _LanSyncScreenState extends State<LanSyncScreen>
                       label: const Text('同步数据'),
                       onPressed: !isOnline
                           ? null
-                          : (device.userId != _service.currentUserId
+                          : (!_isSameAccountDevice(device)
                                 ? () => _showCrossAccountWarning(
                                     device,
                                     LanSyncConfig(),
