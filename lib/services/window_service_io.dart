@@ -14,6 +14,7 @@ import '../screens/home_settings_screen.dart';
 import '../utils/page_transitions.dart';
 import '../utils/navigator_utils.dart';
 import 'lan_sync_service.dart';
+import 'pomodoro_sync_service.dart';
 
 class WindowService extends WindowListener {
   static const _keyX = 'main_window_x';
@@ -118,6 +119,7 @@ class WindowService extends WindowListener {
         prefs.getBool('macos_island_reminders_enabled') ?? true;
     final clipboardLinksEnabled =
         prefs.getBool('macos_island_clipboard_links_enabled') ?? true;
+    PomodoroSyncService.instance.setKeepConnectedInBackground(enabled);
     await _macAppStatusBarChannel.invokeMethod('configureIsland', {
       'enabled': enabled,
       'showOnNotchlessDisplay': showOnNotchlessDisplay,

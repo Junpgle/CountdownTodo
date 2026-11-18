@@ -814,17 +814,23 @@ class _SettingsPageState extends State<SettingsPage> {
           children: [
             _buildAnnouncementPanel(),
             const SizedBox(height: 16),
-            AccountSection(
-              username: _username,
-              userId: _userId,
-              userTier: _userTier,
-              syncProgress: _syncProgress,
-              isLoadingStatus: _isLoadingStatus,
-              onRefreshStatus: _fetchAccountStatus,
-              onForceFullSync: _forceFullSync,
-              onLogout: () => _handleLogout(force: false),
-              onChangePassword: _showChangePasswordDialog,
-              onManageDevices: _openAccountDevicesPage,
+            Builder(
+              builder: (innerContext) => AccountSection(
+                username: _username,
+                userId: _userId,
+                userTier: _userTier,
+                syncProgress: _syncProgress,
+                isLoadingStatus: _isLoadingStatus,
+                onRefreshStatus: _fetchAccountStatus,
+                onForceFullSync: _forceFullSync,
+                onLogout: () => _handleLogout(force: false),
+                onChangePassword: _showChangePasswordDialog,
+                manageDevicesKey: _navigationKey('account_devices_embedded'),
+                onManageDevices: () => _openAccountDevicesPage(
+                  navigationContext: innerContext,
+                  isEmbedded: true,
+                ),
+              ),
             ),
             UpdateSettingsSection(key: _embeddedUpdateSettingsSectionKey),
             SyncSettingsSection(
@@ -1012,7 +1018,10 @@ class _SettingsPageState extends State<SettingsPage> {
     unawaited(_openChangePasswordDialog());
   }
 
-  void _openAccountDevicesPage() {
+  void _openAccountDevicesPage({
+    BuildContext? navigationContext,
+    bool isEmbedded = false,
+  }) {
     if (_userId == null) {
       AppSnackBars.showSnackBar(
         context,
@@ -1020,9 +1029,29 @@ class _SettingsPageState extends State<SettingsPage> {
       );
       return;
     }
-    Navigator.of(context).push(
-      PageTransitions.material(builder: (_) => const AccountDevicesPage()),
-    );
+    final targetContext =
+        navigationContext ??
+        (isEmbedded
+            ? (_nestedNavigatorKey.currentContext ?? context)
+            : context);
+    if (isEmbedded) {
+      SettingsNavigation.push<void>(
+        context: targetContext,
+        page: const AccountDevicesPage(isEmbedded: true),
+        sourceKey: _navigationKey('account_devices_embedded'),
+        isEmbedded: true,
+        settings: const RouteSettings(name: '登录设备管理'),
+        placeholderIcon: Icons.devices_rounded,
+      );
+    } else {
+      SettingsNavigation.push<void>(
+        context: targetContext,
+        page: const AccountDevicesPage(),
+        sourceKey: _navigationKey('account_devices'),
+        settings: const RouteSettings(name: '登录设备管理'),
+        placeholderIcon: Icons.devices_rounded,
+      );
+    }
   }
 
   Future<void> _openChangePasswordDialog() async {
@@ -1189,6 +1218,11 @@ class _SettingsPageState extends State<SettingsPage> {
         forceMaterialTransparency: true,
         systemOverlayStyle: floatingGlassTopBarSystemOverlayStyle(context),
         flexibleSpace: const FloatingGlassTopBarBackground(),
+        leading: isWide && _nestedRouteNames.isNotEmpty
+            ? BackButton(
+                onPressed: () => _nestedNavigatorKey.currentState?.maybePop(),
+              )
+            : null,
         title: titleWidget,
         centerTitle: true,
       ),
@@ -1649,7 +1683,8 @@ class _SettingsPageState extends State<SettingsPage> {
             onForceFullSync: _forceFullSync,
             onLogout: () => _handleLogout(force: false),
             onChangePassword: _showChangePasswordDialog,
-            onManageDevices: _openAccountDevicesPage,
+            manageDevicesKey: _navigationKey('account_devices'),
+            onManageDevices: () => _openAccountDevicesPage(isEmbedded: false),
           ),
           UpdateSettingsSection(key: _updateSettingsSectionKey),
           SyncSettingsSection(

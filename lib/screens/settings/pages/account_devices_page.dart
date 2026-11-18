@@ -260,6 +260,12 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
                 ],
               ),
             ),
+            if (widget.isEmbedded)
+              IconButton(
+                tooltip: '刷新',
+                onPressed: _loading ? null : _loadDevices,
+                icon: const Icon(Icons.refresh_rounded),
+              ),
           ],
         ),
       ),

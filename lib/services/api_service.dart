@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'database_helper.dart';
 import 'http_client_factory.dart';
 import '../storage_service.dart';
+import '../utils/sync_error_formatter.dart';
 
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
@@ -633,7 +634,24 @@ class ApiService {
         syncClient.close();
       }
 
-      final data = jsonDecode(response.body);
+      dynamic data;
+      try {
+        data = jsonDecode(response.body);
+      } catch (_) {
+        return {
+          'success': false,
+          'statusCode': response.statusCode,
+          'message': '服务端响应格式异常 (HTTP ${response.statusCode})',
+        };
+      }
+
+      if (data is! Map<String, dynamic>) {
+        return {
+          'success': false,
+          'statusCode': response.statusCode,
+          'message': '服务端响应结构异常 (HTTP ${response.statusCode})',
+        };
+      }
 
       if (response.statusCode == 200 && data['success'] == true) {
         // 解析冲突信息
@@ -688,17 +706,32 @@ class ApiService {
               data['independent_completions'], // 🚀 独立完成状态
           'status': data['status'],
         };
+      } else if (response.statusCode == 401) {
+        return {
+          'success': false,
+          'statusCode': 401,
+          'code': data['code'],
+          'message': data['error'] ?? '登录凭证已失效 (401)',
+        };
       } else if (response.statusCode == 429) {
         return {
           'success': false,
+          'statusCode': 429,
           'message': data['error'] ?? '今日同步次数已达上限',
           'isLimitExceeded': true,
         };
       } else {
-        return {'success': false, 'message': data['error'] ?? '同步失败'};
+        return {
+          'success': false,
+          'statusCode': response.statusCode,
+          'message': data['error'] ?? '服务端异常 (HTTP ${response.statusCode})',
+        };
       }
     } catch (e) {
-      return {'success': false, 'message': "网络异常: $e"};
+      return {
+        'success': false,
+        'message': SyncErrorFormatter.formatTransportError(e),
+      };
     }
   }
 

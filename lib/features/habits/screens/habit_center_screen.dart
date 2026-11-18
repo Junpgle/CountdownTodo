@@ -43,6 +43,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
 
   /// 习惯数据变化后自增，通知各标签页重新加载。
   int _reloadTick = 0;
+  final GlobalKey _settingsActionKey = GlobalKey();
   final GlobalKey _archiveActionKey = GlobalKey();
   final GlobalKey _createActionKey = GlobalKey();
   final GlobalKey _navigationKey = GlobalKey();
@@ -617,9 +618,11 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
 
         final actions = [
           IconButton(
+            key: _settingsActionKey,
             tooltip: '习惯中心设置',
             onPressed: () => HabitCelebrationSettingsDialog.show(
               context,
+              sourceKey: _settingsActionKey,
               onOpenSleepLogMigration: _openSleepLogMigrationEntry,
             ),
             icon: const Icon(Icons.settings_outlined),
