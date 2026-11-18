@@ -2,7 +2,7 @@ import { Monitor, Cpu } from 'lucide-react';
 import { MonitorFrame } from '../../components/Frames';
 
 export const WindowsShowcase = () => (
-  <section id="desktop" className="py-24 sm:py-40 bg-slate-900 text-white relative overflow-hidden">
+  <section id="desktop" className="cv-auto py-24 sm:py-40 bg-slate-900 text-white relative overflow-hidden">
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
       <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-blue-500/20 text-blue-400 rounded-lg text-sm font-bold uppercase tracking-widest mb-8">
         <Monitor className="w-5 h-5" /> Native Desktop
@@ -20,7 +20,7 @@ export const WindowsShowcase = () => (
                  <div className="w-2 md:w-3 h-2 md:h-3 rounded-full bg-red-500"></div>
                  <span className="text-[8px] md:text-xs font-mono text-slate-400 font-bold tracking-tight">TodoWidget.exe</span>
               </div>
-               <img src="./1.webp" alt="桌面悬浮小部件" className="w-full rounded-lg md:rounded-2xl shadow-inner" />
+               <img src="./1.webp" alt="桌面悬浮小部件" loading="lazy" className="w-full rounded-lg md:rounded-2xl shadow-inner" />
               <div className="p-2 md:p-4 bg-slate-800/50 text-left">
                  <p className="text-[10px] md:text-sm font-black text-blue-400 mb-0.5 md:mb-1">悬浮微件预览</p>
                  <p className="text-[8px] md:text-xs text-slate-400 font-medium leading-tight">支持像素级 Alpha 透明渲染与桌面无缝贴合</p>

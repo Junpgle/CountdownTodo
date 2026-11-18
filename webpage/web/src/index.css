@@ -32,6 +32,10 @@
   .-rotate-y-10 {
     transform: rotateY(-10deg);
   }
+  .cv-auto {
+    content-visibility: auto;
+    contain-intrinsic-size: auto none auto 800px;
+  }
 }
 
 @keyframes bounce-subtle { 

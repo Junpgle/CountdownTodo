@@ -1,7 +1,7 @@
 import { Database } from 'lucide-react';
 
 export const AnalyticsPreview = () => (
-  <section id="analytics" className="py-24 bg-white text-center">
+  <section id="analytics" className="cv-auto py-24 bg-white text-center">
     <div className="max-w-6xl mx-auto px-4">
       <h2 className="text-4xl font-black mb-10 text-slate-900 tracking-tight">数据聚合，一眼万年</h2>
       <div className="bg-slate-900 p-10 sm:p-20 rounded-[4rem] text-left relative overflow-hidden group shadow-2xl">
