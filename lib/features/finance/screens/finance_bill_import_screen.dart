@@ -86,7 +86,16 @@ class _FinanceBillImportScreenState extends State<FinanceBillImportScreen> {
   Future<({String name, Uint8List bytes})?> _defaultPickFile() async {
     final picked = await FilePicker.pickFile(
       type: FileType.custom,
-      allowedExtensions: ['csv', 'xlsx'],
+      allowedExtensions: const [
+        'csv',
+        'xlsx',
+        'tsv',
+        'txt',
+        'json',
+        'qif',
+        'ofx',
+        'qfx',
+      ],
     );
     if (picked == null) return null;
 
@@ -486,14 +495,14 @@ class _FinanceBillImportScreenState extends State<FinanceBillImportScreen> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  '导入微信或支付宝账单',
+                  '导入多平台账单',
                   style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '支持微信账单（.xlsx / .csv）和支付宝账单（.csv）。解析后会进入预览确认页，自动匹配分类与付款方式，并标记疑似重复或不计收支记录。',
+                  '支持微信（.xlsx / .csv）、支付宝（.csv）、银行流水（.csv / .xlsx / .ofx / .qfx / .qif）、云闪付、主流记账软件导出及通用表格 / JSON（.csv / .tsv / .xlsx / .json）。解析后会进入预览确认页，自动匹配分类与付款方式，并标记疑似重复或不计收支记录。',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: colors.onSurfaceVariant,
                   ),
@@ -505,7 +514,7 @@ class _FinanceBillImportScreenState extends State<FinanceBillImportScreen> {
                     key: const ValueKey('finance-bill-import-pick-file'),
                     onPressed: _pickAndParseFile,
                     icon: const Icon(Icons.upload_file_rounded),
-                    label: const Text('选择账单文件（CSV / XLSX）'),
+                    label: const Text('选择账单文件（CSV / XLSX / JSON / OFX / QIF）'),
                   ),
                 ),
               ],
@@ -529,7 +538,7 @@ class _FinanceBillImportScreenState extends State<FinanceBillImportScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '如何导出官方账单？',
+                  '支持哪些账单格式与导出方式？',
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
@@ -545,6 +554,22 @@ class _FinanceBillImportScreenState extends State<FinanceBillImportScreen> {
                 const SizedBox(height: 6),
                 Text(
                   '• 支付宝：我的 → 账单 → 右上角「…」→ 开具交易流水证明 → 用于个人对账（导出后获得 .csv）',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '• 银行流水 / 云闪付：支持网银或手机银行导出的 CSV / XLSX / OFX / QFX / QIF 流水（自动识别单列正负金额或收入/支出双列）',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '• 记账软件 / 通用表格：支持钱迹、随手记等导出的 CSV / XLSX，或包含「时间、金额」列的自定义表格 / TSV / JSON 文件',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: colors.onSurfaceVariant,
                     height: 1.5,

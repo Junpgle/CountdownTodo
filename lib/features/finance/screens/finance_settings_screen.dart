@@ -620,7 +620,7 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
                   key: const ValueKey('finance-settings-bill-import'),
                   leading: const Icon(Icons.file_upload_outlined),
                   title: const Text('账单导入'),
-                  subtitle: const Text('导入微信（CSV / XLSX）或支付宝（CSV）账单'),
+                  subtitle: const Text('导入微信、支付宝、银行流水、记账软件或通用表格账单'),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: _openBillImport,
                 ),
