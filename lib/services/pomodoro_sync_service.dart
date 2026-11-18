@@ -7,6 +7,7 @@ import 'package:web_socket_channel/status.dart' as ws_status;
 
 import 'api_service.dart';
 import 'notification_service.dart';
+import 'session_revocation_service.dart';
 import 'storage/app_settings_storage.dart';
 import '../storage_service.dart';
 import '../models.dart';
@@ -256,6 +257,23 @@ class PomodoroSyncService {
   Stream<SyncConnectionState> get onConnectionChanged => _connStateCtrl.stream;
 
   Function(CrossDevicePomodoroState state)? onStaleSyncFocus;
+
+  void disconnect() {
+    _stopDeliveryGraceTimer?.cancel();
+    _reconnectTimer?.cancel();
+    _heartbeatTimer?.cancel();
+    _wsSub?.cancel();
+    _wsSub = null;
+    try {
+      _channel?.sink.close(ws_status.normalClosure);
+    } catch (_) {}
+    _channel = null;
+    _authToken = null;
+    _userId = null;
+    _deviceId = null;
+    _connecting = false;
+    _setConnState(SyncConnectionState.disconnected);
+  }
 
   void dispose() {
     _stopDeliveryGraceTimer?.cancel();
@@ -518,6 +536,10 @@ class PomodoroSyncService {
 
       // debugPrint('📥 [WS接收] 原始数据: $raw'); // 调试时开启
       final data = jsonDecode(raw.toString()) as Map<String, dynamic>;
+      if (data['action'] == 'FORCE_LOGOUT') {
+        unawaited(SessionRevocationService.handleSessionRevoked());
+        return;
+      }
       if (data['action'] == 'FOCUS_SYNC_CAPABILITIES') {
         _supportsFocusEndAck = data['end_ack'] == true;
         _flushPendingStops();

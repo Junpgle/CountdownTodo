@@ -38,6 +38,7 @@ import 'settings/pages/platform_specific_settings_page.dart';
 import 'settings/pages/permission_settings_page.dart';
 import 'settings/pages/minor_mode_settings_page.dart';
 import 'settings/pages/ai_assistant_settings_page.dart';
+import 'settings/pages/account_devices_page.dart';
 import 'settings/llm_config_page.dart';
 import '../utils/app_dialogs.dart';
 
@@ -823,6 +824,7 @@ class _SettingsPageState extends State<SettingsPage> {
               onForceFullSync: _forceFullSync,
               onLogout: () => _handleLogout(force: false),
               onChangePassword: _showChangePasswordDialog,
+              onManageDevices: _openAccountDevicesPage,
             ),
             UpdateSettingsSection(key: _embeddedUpdateSettingsSectionKey),
             SyncSettingsSection(
@@ -978,6 +980,7 @@ class _SettingsPageState extends State<SettingsPage> {
         return;
       }
       await ReminderScheduleService.clearScheduledReminders();
+      unawaited(ApiService.logoutCurrentDevice());
       await StorageService.clearLoginSession();
       if (mounted) {
         Navigator.pushAndRemoveUntil(
@@ -1007,6 +1010,19 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _showChangePasswordDialog() {
     unawaited(_openChangePasswordDialog());
+  }
+
+  void _openAccountDevicesPage() {
+    if (_userId == null) {
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('当前为离线模式，请先登录账号')),
+      );
+      return;
+    }
+    Navigator.of(context).push(
+      PageTransitions.material(builder: (_) => const AccountDevicesPage()),
+    );
   }
 
   Future<void> _openChangePasswordDialog() async {
@@ -1633,6 +1649,7 @@ class _SettingsPageState extends State<SettingsPage> {
             onForceFullSync: _forceFullSync,
             onLogout: () => _handleLogout(force: false),
             onChangePassword: _showChangePasswordDialog,
+            onManageDevices: _openAccountDevicesPage,
           ),
           UpdateSettingsSection(key: _updateSettingsSectionKey),
           SyncSettingsSection(

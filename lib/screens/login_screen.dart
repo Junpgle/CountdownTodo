@@ -888,6 +888,7 @@ class _LoginScreenState extends State<LoginScreen>
         user['username'] as String,
         token: token,
       );
+      unawaited(UserSessionStorage.syncCurrentDeviceRegistration());
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('current_user_id', user['id'] as int);
       await BackgroundNotificationService.configureNotificationPoll(
@@ -979,6 +980,7 @@ class _LoginScreenState extends State<LoginScreen>
       final token = (loginResult['token'] ?? '') as String;
       _snack('注册成功，正在同步数据…');
       await UserSessionStorage.saveLoginSession(username, token: token);
+      unawaited(UserSessionStorage.syncCurrentDeviceRegistration());
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('current_user_id', userInfo['id'] as int);
       await BackgroundNotificationService.configureNotificationPoll(

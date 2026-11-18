@@ -28,6 +28,7 @@ import '../screens/settings/llm_config_page.dart';
 import '../screens/settings/notification_settings_page.dart';
 import '../screens/settings/server_choice_page.dart';
 import '../screens/settings/pages/ai_assistant_settings_page.dart';
+import '../screens/settings/pages/account_devices_page.dart';
 import '../screens/settings/pages/course_settings_page.dart';
 import '../screens/settings/pages/data_export_page.dart';
 import '../screens/settings/pages/data_import_page.dart';
@@ -57,6 +58,7 @@ abstract final class AiSettingsNavigation {
         initialTarget: id == 'change_password' ? id : 'account',
         openInitialTargetAsRoot: true,
       ),
+      SettingsPageId.accountDevices => const AccountDevicesPage(),
       SettingsPageId.server => Builder(
         builder: (context) => FutureBuilder<String>(
           future: StorageService.getServerChoice(),
