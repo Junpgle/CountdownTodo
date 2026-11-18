@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a small arm64-v8a APK delta for CountDownTodo.
+"""Generate a small APK delta for CountDownTodo.
 
 The generated CDTDELTA1 file is intentionally simple and streamable:
 unchanged APK ZIP local-file spans are copied from the installed APK, while
