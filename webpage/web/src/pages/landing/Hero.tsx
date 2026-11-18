@@ -35,13 +35,13 @@ export const Hero = ({ version, date }: { version?: string; date?: string }) => 
   }, [messages.length]);
 
   return (
-    <section className="relative min-h-[95vh] flex items-center pt-24 pb-20 overflow-hidden bg-white selection:bg-indigo-100">
+    <section className="relative min-h-[95vh] flex items-center pt-28 pb-20 overflow-hidden liquid-ambient-bg selection:bg-indigo-100">
       {/* Dynamic Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/2 left-1/2 w-[140%] h-[140%] bg-[radial-gradient(circle_at_center,_var(--tw-gradient-from)_0%,_transparent_60%)] from-indigo-50/40 animate-spotlight -z-10"></div>
-        <div className="absolute top-[-10%] left-[-10%] w-[45%] h-[45%] bg-gradient-to-br from-indigo-200/40 to-blue-200/40 rounded-full blur-[120px] animate-blob"></div>
-        <div className="absolute top-[20%] right-[-10%] w-[40%] h-[40%] bg-gradient-to-br from-purple-200/40 to-pink-200/40 rounded-full blur-[120px] animate-blob animation-delay-2000"></div>
-        <div className="absolute bottom-[-10%] left-[20%] w-[35%] h-[35%] bg-gradient-to-br from-rose-200/40 to-orange-200/40 rounded-full blur-[120px] animate-blob animation-delay-4000"></div>
+        <div className="absolute top-1/2 left-1/2 w-[140%] h-[140%] bg-[radial-gradient(circle_at_center,_var(--tw-gradient-from)_0%,_transparent_60%)] from-indigo-100/50 animate-spotlight -z-10"></div>
+        <div className="absolute top-[-10%] left-[-10%] w-[45%] h-[45%] bg-gradient-to-br from-indigo-300/35 to-sky-200/35 rounded-full blur-[120px] animate-blob"></div>
+        <div className="absolute top-[20%] right-[-10%] w-[40%] h-[40%] bg-gradient-to-br from-purple-300/35 to-pink-200/35 rounded-full blur-[120px] animate-blob animation-delay-2000"></div>
+        <div className="absolute bottom-[-10%] left-[20%] w-[35%] h-[35%] bg-gradient-to-br from-emerald-200/35 to-teal-200/35 rounded-full blur-[120px] animate-blob animation-delay-4000"></div>
         {particleStyles.map((style, i) => (
           <div
             key={i}
@@ -49,18 +49,18 @@ export const Hero = ({ version, date }: { version?: string; date?: string }) => 
             style={style}
           />
         ))}
-        <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: 'radial-gradient(#000 1.2px, transparent 1.2px)', backgroundSize: '48px 48px' }}></div>
+        <div className="absolute inset-0 opacity-[0.035]" style={{ backgroundImage: 'radial-gradient(#000 1.2px, transparent 1.2px)', backgroundSize: '48px 48px' }}></div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full">
-        <div className="flex flex-col lg:flex-row items-center gap-16 lg:gap-24">
+        <div className="flex flex-col lg:flex-row items-center gap-16 lg:gap-20">
           {/* Content Column */}
-          <div className="flex-[1.15] text-center lg:text-left">
-            <div className="inline-flex items-center gap-3 px-5 py-2.5 rounded-full bg-slate-900 shadow-2xl shadow-slate-200 text-white text-xs sm:text-sm font-bold mb-10 animate-fade-in-up">
-              <Sparkles className="w-4 h-4 text-amber-400" />
+          <div className="flex-[1.1] text-center lg:text-left">
+            <div className="inline-flex items-center gap-3 px-5 py-2.5 rounded-full liquid-glass-dark liquid-glass-iridescent text-white text-xs sm:text-sm font-bold mb-10 animate-fade-in-up">
+              <Sparkles className="w-4 h-4 text-amber-300" />
               <span>CountDownTodo 7.24 全新进化</span>
               <div className="w-px h-4 bg-white/20 mx-1"></div>
-              <div className="relative h-5 overflow-hidden min-w-[140px] text-white/70">
+              <div className="relative h-5 overflow-hidden min-w-[140px] text-white/75">
                 {messages.map((msg, i) => (
                   <div
                     key={i}
@@ -81,19 +81,19 @@ export const Hero = ({ version, date }: { version?: string; date?: string }) => 
               </span>
             </h1>
 
-            <p className="text-lg sm:text-2xl text-slate-500 max-w-xl mx-auto lg:mx-0 mb-12 leading-relaxed font-medium">
+            <p className="text-lg sm:text-2xl text-slate-600/90 max-w-xl mx-auto lg:mx-0 mb-12 leading-relaxed font-medium">
               横跨手机、平板、桌面与小米手环。集课表规划、AI 助手、个人记账与习惯养成于一体，让每一天清晰有序。
             </p>
 
             <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center lg:justify-start gap-4 sm:gap-5 mb-14">
               <a href="#download" className="group relative flex items-center justify-center gap-3 bg-indigo-600 text-white px-9 py-5 rounded-[2rem] text-lg font-bold hover:bg-indigo-700 transition-all shadow-[0_20px_50px_rgba(79,70,229,0.3)] hover:-translate-y-1.5 w-full sm:w-auto overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/25 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
                 <Download className="w-6 h-6" /> 立即下载
               </a>
-              <a href="https://cdt.junpgle.me/" target="_blank" rel="noreferrer" className="group flex items-center justify-center gap-3 bg-white/60 backdrop-blur-xl text-slate-900 border border-slate-200 px-8 py-5 rounded-[2rem] text-lg font-bold hover:bg-white transition-all hover:-translate-y-1.5 shadow-xl shadow-slate-100/50 w-full sm:w-auto">
+              <a href="https://cdt.junpgle.me/" target="_blank" rel="noreferrer" className="group flex items-center justify-center gap-3 liquid-glass text-slate-900 px-8 py-5 rounded-[2rem] text-lg font-bold hover:bg-white/90 transition-all hover:-translate-y-1.5 w-full sm:w-auto">
                 <Globe className="w-6 h-6 text-indigo-600 group-hover:rotate-12 transition-transform" /> 网页版 Beta
               </a>
-              <a href="https://github.com/Junpgle/CountdownTodo" target="_blank" rel="noreferrer" className="group flex items-center justify-center gap-2.5 bg-slate-900 text-white px-7 py-5 rounded-[2rem] text-lg font-bold hover:bg-slate-800 transition-all hover:-translate-y-1.5 shadow-xl shadow-slate-200/60 w-full sm:w-auto">
+              <a href="https://github.com/Junpgle/CountdownTodo" target="_blank" rel="noreferrer" className="group flex items-center justify-center gap-2.5 liquid-glass-dark text-white px-7 py-5 rounded-[2rem] text-lg font-bold hover:bg-slate-900 transition-all hover:-translate-y-1.5 w-full sm:w-auto">
                 <Github className="w-5 h-5 group-hover:scale-110 transition-transform" /> GitHub
               </a>
             </div>
@@ -137,7 +137,7 @@ export const Hero = ({ version, date }: { version?: string; date?: string }) => 
           <div className="flex-1 relative w-full">
             <div className="relative z-10 group">
               {/* Desktop / Tablet Main Screen */}
-              <div className="rounded-[2rem] sm:rounded-[2.5rem] bg-white p-2 sm:p-3 shadow-[0_40px_90px_-20px_rgba(0,0,0,0.2)] border border-slate-200/80 overflow-hidden transform hover:scale-[1.01] transition-transform duration-700">
+              <div className="rounded-[2rem] sm:rounded-[2.5rem] liquid-glass liquid-glass-iridescent p-2.5 sm:p-3.5 overflow-hidden transform hover:scale-[1.01] transition-transform duration-700">
                 <img
                   src="./tablet_home_v2.jpg"
                   alt="CountDownTodo 桌面与平板双栏主界面"
@@ -147,7 +147,7 @@ export const Hero = ({ version, date }: { version?: string; date?: string }) => 
               </div>
 
               {/* Overlapping Mobile Screenshot */}
-              <div className="hidden sm:block absolute -bottom-10 -left-8 w-[34%] max-w-[195px] rounded-[2rem] bg-slate-900 p-1.5 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.35)] border border-white/20 transform -rotate-3 hover:rotate-0 hover:scale-105 transition-all duration-500 z-20">
+              <div className="hidden sm:block absolute -bottom-8 -left-6 w-[32%] max-w-[185px] rounded-[2rem] liquid-glass-dark liquid-glass-iridescent p-1.5 transform -rotate-3 hover:rotate-0 hover:scale-105 transition-all duration-500 z-20">
                 <img
                   src="./mobile_home_v2.jpg"
                   alt="CountDownTodo 手机端主界面"
@@ -157,7 +157,7 @@ export const Hero = ({ version, date }: { version?: string; date?: string }) => 
               </div>
 
               {/* Floating macOS Dynamic Island Badge */}
-              <div className="hidden sm:flex absolute -top-6 -right-4 bg-slate-900/95 backdrop-blur-xl text-white px-5 py-3.5 rounded-2xl shadow-2xl border border-white/15 items-center gap-3 z-20 animate-bounce-subtle">
+              <div className="hidden sm:flex absolute -top-6 -right-4 liquid-glass-dark text-white px-5 py-3.5 rounded-2xl items-center gap-3 z-20 animate-bounce-subtle">
                 <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 to-sky-400 flex items-center justify-center shrink-0">
                   <Sparkles className="w-4 h-4 text-white" />
                 </div>

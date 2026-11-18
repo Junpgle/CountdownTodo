@@ -157,7 +157,7 @@ export const DownloadSection = ({
   const macX64Url = macArchUrls?.x86_64 || '#';
 
   return (
-    <section id="download" className="cv-auto py-24 sm:py-40 bg-slate-50 text-center relative overflow-hidden">
+    <section id="download" className="cv-auto py-24 sm:py-40 liquid-ambient-bg text-center relative overflow-hidden">
       <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"></div>
       <div className="max-w-[90rem] mx-auto px-4 sm:px-6 lg:px-8">
         <h2 className="text-4xl sm:text-7xl font-black mb-8 text-slate-900 tracking-tighter">准备好开启高效生活了吗？</h2>
@@ -186,7 +186,7 @@ export const DownloadSection = ({
             Flutter 全功能 Pro
           </div>
           <div className="max-w-5xl mx-auto">
-            <div className="p-8 sm:p-10 bg-white rounded-[3rem] border border-slate-200 shadow-sm hover:shadow-2xl hover:border-purple-500 transition-all group relative overflow-hidden">
+            <div className="p-8 sm:p-10 liquid-glass liquid-glass-iridescent rounded-[3rem] transition-all group relative overflow-hidden">
               <div className="absolute top-0 right-0 w-40 h-40 bg-purple-500/5 rounded-full blur-3xl group-hover:bg-purple-500/10 transition pointer-events-none"></div>
               <div className="flex flex-col md:flex-row gap-8 items-start relative z-10">
                 {/* 左侧：更新日志 */}
@@ -291,7 +291,7 @@ export const DownloadSection = ({
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left items-stretch max-w-5xl mx-auto">
             {/* Windows Lite */}
-            <div className="p-8 sm:p-10 bg-white rounded-[3rem] border border-slate-200 shadow-sm hover:shadow-2xl hover:border-blue-500 transition-all group flex flex-col relative overflow-hidden">
+            <div className="p-8 sm:p-10 liquid-glass rounded-[3rem] hover:-translate-y-1 transition-all group flex flex-col relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-3xl group-hover:bg-blue-500/10 transition pointer-events-none"></div>
               <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 group-hover:rotate-3 transition duration-500 shadow-sm"><Monitor className="w-7 h-7" /></div>
               <h3 className="text-2xl font-black mb-3 text-slate-900 tracking-tight">Windows Lite</h3>
@@ -310,7 +310,7 @@ export const DownloadSection = ({
             </div>
 
             {/* Xiaomi Band (Vela) */}
-            <div className="p-8 sm:p-10 bg-white rounded-[3rem] border border-slate-200 shadow-sm hover:shadow-2xl hover:border-teal-500 transition-all group flex flex-col relative overflow-hidden">
+            <div className="p-8 sm:p-10 liquid-glass rounded-[3rem] hover:-translate-y-1 transition-all group flex flex-col relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-teal-500/5 rounded-full blur-3xl group-hover:bg-teal-500/10 transition pointer-events-none"></div>
               <div className="w-14 h-14 bg-teal-50 text-teal-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 group-hover:rotate-3 transition duration-500 shadow-sm"><Watch className="w-7 h-7" /></div>
               <h3 className="text-2xl font-black mb-3 text-slate-900 tracking-tight">小米手环 (Vela)</h3>

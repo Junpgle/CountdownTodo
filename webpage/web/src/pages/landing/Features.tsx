@@ -148,7 +148,7 @@ export const Features = ({
   ];
 
   return (
-    <section id="features" className="cv-auto py-16 sm:py-24 bg-white">
+    <section id="features" className="cv-auto py-16 sm:py-24 liquid-ambient-bg">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-14">
           <h2 className="text-3xl sm:text-5xl font-black text-slate-900 mb-4 tracking-tight">核心特性全景</h2>
@@ -162,7 +162,7 @@ export const Features = ({
               key={i}
               type="button"
               onClick={() => onSelectTab?.(f.tab, f.anchorId)}
-              className="text-left p-8 rounded-[2.25rem] bg-slate-50 hover:bg-white hover:shadow-xl transition-all duration-500 group border border-slate-100 hover:border-indigo-200 flex flex-col justify-between cursor-pointer"
+              className="text-left p-8 rounded-[2.25rem] liquid-glass hover:-translate-y-1 transition-all duration-300 group flex flex-col justify-between cursor-pointer"
             >
               <div>
                 <div className={`w-13 h-13 ${f.color} rounded-2xl flex items-center justify-center mb-5 group-hover:scale-110 transition`}>

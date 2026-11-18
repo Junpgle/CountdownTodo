@@ -2,8 +2,10 @@
 
 @layer base {
   body {
-    @apply bg-white;
+    @apply bg-slate-50/40 text-slate-900;
     position: relative;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
   }
   body::before {
     content: "";
@@ -13,7 +15,7 @@
     width: 100%;
     height: 100%;
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
-    opacity: 0.04;
+    opacity: 0.03;
     pointer-events: none;
     z-index: 9999;
   }
@@ -36,24 +38,112 @@
     content-visibility: auto;
     contain-intrinsic-size: auto none auto 800px;
   }
+
+  /* ── Liquid Glass Design System ─────────────────────────────── */
+  .liquid-glass {
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.78) 0%,
+      rgba(255, 255, 255, 0.46) 100%
+    );
+    -webkit-backdrop-filter: blur(24px) saturate(185%);
+    backdrop-filter: blur(24px) saturate(185%);
+    border: 1px solid rgba(255, 255, 255, 0.78);
+    box-shadow:
+      inset 0 1.5px 1px rgba(255, 255, 255, 0.92),
+      inset 0 -1px 1px rgba(15, 23, 42, 0.04),
+      0 18px 42px -18px rgba(15, 23, 42, 0.14),
+      0 4px 12px -4px rgba(15, 23, 42, 0.05);
+  }
+
+  .liquid-glass-pill {
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.82) 0%,
+      rgba(248, 250, 252, 0.58) 100%
+    );
+    -webkit-backdrop-filter: blur(28px) saturate(200%);
+    backdrop-filter: blur(28px) saturate(200%);
+    border: 1px solid rgba(255, 255, 255, 0.85);
+    box-shadow:
+      inset 0 1.5px 1px rgba(255, 255, 255, 0.95),
+      inset 0 -1px 2px rgba(99, 102, 241, 0.06),
+      0 14px 38px -12px rgba(15, 23, 42, 0.14);
+  }
+
+  .liquid-glass-dark {
+    background: linear-gradient(
+      145deg,
+      rgba(30, 41, 59, 0.62) 0%,
+      rgba(15, 23, 42, 0.44) 100%
+    );
+    -webkit-backdrop-filter: blur(24px) saturate(175%);
+    backdrop-filter: blur(24px) saturate(175%);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    box-shadow:
+      inset 0 1px 1px rgba(255, 255, 255, 0.22),
+      inset 0 -1px 1px rgba(0, 0, 0, 0.35),
+      0 24px 50px -18px rgba(0, 0, 0, 0.5);
+  }
+
+  :where(.liquid-glass-iridescent) {
+    position: relative;
+  }
+  .liquid-glass-iridescent::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1.5px;
+    background: linear-gradient(
+      125deg,
+      rgba(99, 102, 241, 0.55),
+      rgba(56, 189, 248, 0.5),
+      rgba(52, 211, 153, 0.5),
+      rgba(244, 114, 182, 0.52),
+      rgba(167, 139, 250, 0.55)
+    );
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: 15;
+  }
+
+  .liquid-ambient-bg {
+    background:
+      radial-gradient(circle at 12% 18%, rgba(99, 102, 241, 0.08), transparent 42%),
+      radial-gradient(circle at 88% 24%, rgba(56, 189, 248, 0.08), transparent 40%),
+      radial-gradient(circle at 52% 85%, rgba(236, 72, 153, 0.06), transparent 45%),
+      #f8fafc;
+  }
 }
 
-@keyframes bounce-subtle { 
-  0%, 100% { transform: translateY(0); } 
-  50% { transform: translateY(-15px); } 
+@keyframes bounce-subtle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
 }
 
-.animate-bounce-subtle { 
-  animation: bounce-subtle 4s ease-in-out infinite; 
+.animate-bounce-subtle {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: bounce-subtle 4s ease-in-out infinite;
+  }
 }
 
 @keyframes float {
   0%, 100% { transform: translateY(0) rotate(0); }
-  50% { transform: translateY(-20px) rotate(2deg); }
+  50% { transform: translateY(-18px) rotate(1.5deg); }
 }
 
 .animate-float {
-  animation: float 6s ease-in-out infinite;
+  @media (prefers-reduced-motion: no-preference) {
+    animation: float 6s ease-in-out infinite;
+  }
 }
 
 @keyframes blob {
@@ -64,7 +154,9 @@
 }
 
 .animate-blob {
-  animation: blob 7s infinite;
+  @media (prefers-reduced-motion: no-preference) {
+    animation: blob 8s infinite;
+  }
 }
 
 .animation-delay-2000 {
@@ -81,7 +173,9 @@
 }
 
 .animate-fade-in {
-  animation: fade-in 1s ease-out forwards;
+  @media (prefers-reduced-motion: no-preference) {
+    animation: fade-in 0.8s ease-out forwards;
+  }
 }
 
 @keyframes fade-in-up {
@@ -96,7 +190,9 @@
 }
 
 .animate-fade-in-up {
-  animation: fade-in-up 1s ease-out forwards;
+  @media (prefers-reduced-motion: no-preference) {
+    animation: fade-in-up 0.8s ease-out forwards;
+  }
 }
 
 @keyframes text-gradient {
@@ -107,7 +203,9 @@
 
 .animate-text-gradient {
   background-size: 200% auto;
-  animation: text-gradient 5s ease infinite;
+  @media (prefers-reduced-motion: no-preference) {
+    animation: text-gradient 5s ease infinite;
+  }
 }
 
 @keyframes spotlight {
@@ -117,17 +215,15 @@
 }
 
 .animate-spotlight {
-  animation: spotlight 10s ease-in-out infinite;
+  @media (prefers-reduced-motion: no-preference) {
+    animation: spotlight 10s ease-in-out infinite;
+  }
 }
 
-html { 
-  scroll-behavior: smooth; 
+html {
+  scroll-behavior: smooth;
 }
 
-body { 
-  text-rendering: optimizeLegibility; 
-  -webkit-font-smoothing: antialiased; 
-}
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
 }

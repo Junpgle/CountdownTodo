@@ -14,7 +14,7 @@ import { MonitorFrame } from '../../components/Frames';
 
 export const LANSyncShowcase = () => {
   return (
-    <section id="lan-sync" className="cv-auto py-24 sm:py-36 bg-slate-50 relative overflow-hidden">
+    <section id="lan-sync" className="cv-auto py-24 sm:py-36 liquid-ambient-bg relative overflow-hidden">
       <div className="absolute top-0 left-0 w-full h-full opacity-[0.02] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#6366f1 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-indigo-100 text-indigo-700 rounded-full text-sm font-bold mb-6">

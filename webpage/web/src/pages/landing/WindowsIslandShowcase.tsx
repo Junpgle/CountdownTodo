@@ -33,7 +33,7 @@ export const WindowsIslandShowcase = ({ imageSrc }: { imageSrc?: string }) => (
           </div>
 
           <div className="grid sm:grid-cols-2 gap-5 items-stretch">
-            <div className="relative group rounded-2xl md:rounded-3xl bg-slate-950/90 border border-white/10 p-3 shadow-2xl flex flex-col">
+            <div className="relative group rounded-2xl md:rounded-3xl liquid-glass-dark liquid-glass-iridescent p-3 flex flex-col">
               <div className="flex items-center justify-between px-2 pb-2 text-xs font-bold text-slate-300">
                 <span className="inline-flex items-center gap-1.5">
                   <Command className="w-3.5 h-3.5 text-sky-400" /> macOS 灵动岛拖放 &amp; 专注
@@ -48,7 +48,7 @@ export const WindowsIslandShowcase = ({ imageSrc }: { imageSrc?: string }) => (
               />
             </div>
 
-            <div className="relative group rounded-2xl md:rounded-3xl bg-slate-950/90 border border-white/10 p-3 shadow-2xl flex flex-col">
+            <div className="relative group rounded-2xl md:rounded-3xl liquid-glass-dark liquid-glass-iridescent p-3 flex flex-col">
               <div className="flex items-center justify-between px-2 pb-2 text-xs font-bold text-slate-300">
                 <span className="inline-flex items-center gap-1.5">
                   <LayoutGrid className="w-3.5 h-3.5 text-emerald-400" /> 桌面小组件群
