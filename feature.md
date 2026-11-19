@@ -1,6 +1,6 @@
 # Feature status
 
-Reconciled against the working tree: 2026-11-14 (v7.23.9). This is a capability map,
+Reconciled against the working tree: 2026-11-17 (v7.24.8). This is a capability map,
 not a release promise; historical review dates are preserved in respective docs.
 
 ## Implemented
@@ -20,7 +20,8 @@ not a release promise; historical review dates are preserved in respective docs.
   concurrent edit protection, and a trash bin supporting restoration and permanent deletion of physical media.
 - Thirty-day challenge (`lib/features/thirty_day_challenge/`): built-in 30-item list, cloud template catalog,
   independent check-in, focus session linkage, and share-code parsing.
-- Personal finance (`lib/features/finance/`): offline-first transactions (expense, income, refund),
+- Personal finance (`lib/features/finance/`): offline-first transactions (expense, income, refund, account transfer),
+  WeChat (CSV/XLSX) and Alipay (CSV) bill import, multi-select batch edit/delete,
   calendar card view, precise category ledger filtering, monthly cumulative balance trends with drill-down,
   future scheduled commitments & manual future cash flow, monthly & category budgets, recurring rules,
   installment groups, loans, quick entry templates, and CSV/JSON export/restore.
@@ -30,19 +31,22 @@ not a release promise; historical review dates are preserved in respective docs.
 - Global search & Settings search: FTS5/FTS4/LIKE fallback across core SQLite records, finance,
   journal, schedules, plan blocks, check-ins, challenges, AI chat and team data; direct feature navigation;
   in-app settings search (`app_settings_catalog.dart`) with fuzzy match and deep-link routing.
-- Data backup & restore: JSON v2 export and domain-selective restore (todos/schedules, courses, focus,
-  habits, challenge, finance, preferences) with pre-restore review and domain receipts.
+- Data backup & LAN sync: JSON v2 export, domain-selective restore (todos/schedules, courses, focus,
+  habits, challenge, finance, preferences) with pre-restore review and domain receipts, scheduled
+  auto-backup local snapshots, and peer-to-peer LAN sync with ECDH+AES-GCM encryption, face-to-face QR pairing,
+  privacy domain settings, and macOS low-power mode adaptation.
 - Animation & Rendering Performance: real-time FPS & delivery rate metrics dashboard in animation settings,
   GPU/CPU dynamic rendering pressure evaluation, `AnimationPerformanceFloatingWindow` performance overlay,
   Liquid Glass shader caching, and downsampled image memory controls.
 - Wallpapers & Themes: preset wallpaper direct rendering to avoid startup flash, Bing daily wallpaper
   local caching with failure retry, Liquid Glass visual effects with standard/enhanced modes, and dynamic Material 3 color extraction.
 - AI chat/actions covering todos, fixed schedules, plan blocks, time logs, Pomodoro, countdowns, groups,
-  tags, settings navigation, and finance drafts / read / update / delete operations.
+  tags, settings navigation, finance drafts / read / update / delete operations, daily AI suggestion card,
+  long-term memory preferences, location/device context queries, per-turn tool budgets, and streaming image recognition.
 - Rule-based medal recommendations plus an ML/bandit recommendation path; the catalog currently contains 100 medals.
-- Home sidebar configuration (hide/reorder entries), minor mode with an age-permission matrix.
-- Android widgets/background notifications/HyperOS integration, Windows island, macOS menu bar/widgets/island
-  (including Apple Music media info), Flutter web, React web companion, and Xiaomi band companion.
+- Home sidebar configuration (hide/reorder entries, including Feature Explorer), minor mode with an age-permission matrix.
+- Android widgets/background notifications/HyperOS integration, Windows island, macOS dual-arch (`arm64` / `x86_64`) builds & updates,
+  macOS menu bar/widgets/island (including Apple Music media info), Flutter web, React web companion, and Xiaomi band companion.
 
 ## Partial or platform-dependent
 

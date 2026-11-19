@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'database_helper.dart';
 import 'http_client_factory.dart';
 import '../storage_service.dart';
+import '../utils/sync_error_formatter.dart';
 
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
@@ -51,9 +52,15 @@ class ApiService {
 
   // 🛡️ 内存中持有最新 Token
   static String? _authToken;
+  static String? _deviceId;
+  static Future<void> Function(String reason)? onSessionRevoked;
 
   static void setToken(String token) {
     _authToken = token;
+  }
+
+  static void setDeviceId(String? deviceId) {
+    _deviceId = deviceId?.trim();
   }
 
   static int currentUserId = 0;
@@ -137,6 +144,8 @@ class ApiService {
       'Content-Type': 'application/json',
       if (includeAuth && _authToken != null && _authToken!.isNotEmpty)
         'Authorization': 'Bearer $_authToken',
+      if (includeAuth && _deviceId != null && _deviceId!.isNotEmpty)
+        'X-Device-Id': _deviceId!,
     };
   }
 
@@ -189,7 +198,25 @@ class ApiService {
         throw ArgumentError.value(method, 'method', 'Unsupported HTTP method');
     }
 
-    return timeout == null ? responseFuture : responseFuture.timeout(timeout);
+    final response = timeout == null
+        ? await responseFuture
+        : await responseFuture.timeout(timeout);
+
+    if (includeAuth &&
+        response.statusCode == 401 &&
+        response.body.contains('SESSION_REVOKED')) {
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map && decoded['code'] == 'SESSION_REVOKED') {
+          final callback = onSessionRevoked;
+          if (callback != null) {
+            Future.microtask(() => callback('SESSION_REVOKED'));
+          }
+        }
+      } catch (_) {}
+    }
+
+    return response;
   }
 
   /// Best-effort cancellation for the combined delta-sync request. Closing the
@@ -365,6 +392,107 @@ class ApiService {
     }
   }
 
+  static Future<void> registerCurrentDevice({
+    required String deviceId,
+    required String deviceName,
+    required String platform,
+    required String appVersion,
+  }) async {
+    if (_authToken == null || _authToken!.isEmpty) return;
+    try {
+      await _request(
+        'POST',
+        '/api/auth/devices/register',
+        body: {
+          'device_id': deviceId,
+          'device_name': deviceName,
+          'platform': platform,
+          'app_version': appVersion,
+        },
+        timeout: const Duration(seconds: 8),
+      );
+    } catch (_) {}
+  }
+
+  static Future<Map<String, dynamic>> fetchLoginDevices() async {
+    try {
+      final response = await _request(
+        'GET',
+        '/api/auth/devices',
+        timeout: const Duration(seconds: 10),
+      );
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200 && data['success'] == true) {
+        return {
+          'success': true,
+          'masked_email': data['masked_email'] ?? '',
+          'devices': List<Map<String, dynamic>>.from(
+            (data['devices'] as List? ?? const []).map(
+              (e) => Map<String, dynamic>.from(e as Map),
+            ),
+          ),
+        };
+      }
+      return {'success': false, 'message': data['error'] ?? '获取登录设备失败'};
+    } catch (e) {
+      return {'success': false, 'message': '网络错误: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> sendKickDeviceCode(
+    String deviceId,
+  ) async {
+    try {
+      final response = await _request(
+        'POST',
+        '/api/auth/devices/send_kick_code',
+        body: {'device_id': deviceId},
+        timeout: const Duration(seconds: 12),
+      );
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      return {
+        'success': response.statusCode == 200 && data['success'] == true,
+        'message': data['message'] ?? data['error'] ?? '发送验证码失败',
+        'masked_email': data['masked_email'],
+      };
+    } catch (e) {
+      return {'success': false, 'message': '网络错误: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> kickDevice(
+    String deviceId,
+    String code,
+  ) async {
+    try {
+      final response = await _request(
+        'POST',
+        '/api/auth/devices/kick',
+        body: {'device_id': deviceId, 'code': code},
+        timeout: const Duration(seconds: 12),
+      );
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      return {
+        'success': response.statusCode == 200 && data['success'] == true,
+        'message': data['message'] ?? data['error'] ?? '踢出设备失败',
+      };
+    } catch (e) {
+      return {'success': false, 'message': '网络错误: $e'};
+    }
+  }
+
+  static Future<void> logoutCurrentDevice() async {
+    if (_authToken == null || _authToken!.isEmpty) return;
+    try {
+      await _request(
+        'POST',
+        '/api/auth/logout',
+        body: {if (_deviceId != null) 'device_id': _deviceId},
+        timeout: const Duration(seconds: 4),
+      );
+    } catch (_) {}
+  }
+
   // ==========================================
   // 2. 排行榜 (Leaderboard)
   // ==========================================
@@ -506,7 +634,24 @@ class ApiService {
         syncClient.close();
       }
 
-      final data = jsonDecode(response.body);
+      dynamic data;
+      try {
+        data = jsonDecode(response.body);
+      } catch (_) {
+        return {
+          'success': false,
+          'statusCode': response.statusCode,
+          'message': '服务端响应格式异常 (HTTP ${response.statusCode})',
+        };
+      }
+
+      if (data is! Map<String, dynamic>) {
+        return {
+          'success': false,
+          'statusCode': response.statusCode,
+          'message': '服务端响应结构异常 (HTTP ${response.statusCode})',
+        };
+      }
 
       if (response.statusCode == 200 && data['success'] == true) {
         // 解析冲突信息
@@ -561,17 +706,32 @@ class ApiService {
               data['independent_completions'], // 🚀 独立完成状态
           'status': data['status'],
         };
+      } else if (response.statusCode == 401) {
+        return {
+          'success': false,
+          'statusCode': 401,
+          'code': data['code'],
+          'message': data['error'] ?? '登录凭证已失效 (401)',
+        };
       } else if (response.statusCode == 429) {
         return {
           'success': false,
+          'statusCode': 429,
           'message': data['error'] ?? '今日同步次数已达上限',
           'isLimitExceeded': true,
         };
       } else {
-        return {'success': false, 'message': data['error'] ?? '同步失败'};
+        return {
+          'success': false,
+          'statusCode': response.statusCode,
+          'message': data['error'] ?? '服务端异常 (HTTP ${response.statusCode})',
+        };
       }
     } catch (e) {
-      return {'success': false, 'message': "网络异常: $e"};
+      return {
+        'success': false,
+        'message': SyncErrorFormatter.formatTransportError(e),
+      };
     }
   }
 
@@ -1133,6 +1293,40 @@ class ApiService {
       }
       return null;
     } catch (e) {
+      return null;
+    }
+  }
+
+  /// 获取今日全站番茄钟专注人均统计（若后端不支持或无数据则返回 null）
+  static Future<Map<String, dynamic>?> fetchPomodoroCommunityStats({
+    required int fromMs,
+    required int toMs,
+  }) async {
+    try {
+      final uri = Uri.parse('$_effectiveBaseUrl/api/pomodoro/community_stats')
+          .replace(
+            queryParameters: {
+              'from': fromMs.toString(),
+              'to': toMs.toString(),
+            },
+          );
+      final response = await _request(
+        'GET',
+        uri.toString(),
+        timeout: const Duration(seconds: 5),
+        includeAuth: false,
+      );
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic> && decoded['success'] == true) {
+          final data = decoded['data'];
+          if (data is Map<String, dynamic>) {
+            return data;
+          }
+        }
+      }
+      return null;
+    } catch (_) {
       return null;
     }
   }

@@ -105,13 +105,10 @@ void main() {
           'update_info': {
             'title': '版本更新 7.24.8',
             'description': '【新增】macOS x86_64',
-            'mac_package_url':
-                'https://gitee.com/Junpgle/CountdownTodo/releases/download/latest/CountDownTodo-macOS-arm64.zip',
+            'mac_package_url': 'https://gitee.com/Junpgle/CountdownTodo/releases/download/latest/CountDownTodo-macOS-arm64.zip',
             'mac_arch_packages': {
-              'arm64':
-                  'https://gitee.com/Junpgle/CountdownTodo/releases/download/latest/CountDownTodo-macOS-arm64.zip',
-              'x86_64':
-                  'https://gitee.com/Junpgle/CountdownTodo/releases/download/latest/CountDownTodo-macOS-x86_64.zip',
+              'arm64': 'https://gitee.com/Junpgle/CountdownTodo/releases/download/latest/CountDownTodo-macOS-arm64.zip',
+              'x86_64': 'https://gitee.com/Junpgle/CountdownTodo/releases/download/latest/CountDownTodo-macOS-x86_64.zip',
             },
           },
           'changelog_history': [],
@@ -129,6 +126,106 @@ void main() {
     expect(
       manifest.updateInfo.macArchPackages['x86_64'],
       endsWith('CountDownTodo-macOS-x86_64.zip'),
+    );
+  });
+
+  test('selectAndroidArchitecture respects preferred ABI order', () {
+    expect(
+      UpdateService.selectAndroidArchitecture(['arm64-v8a', 'armeabi-v7a']),
+      'arm64-v8a',
+    );
+    expect(
+      UpdateService.selectAndroidArchitecture(['armeabi-v7a', 'armeabi']),
+      'armeabi-v7a',
+    );
+    expect(
+      UpdateService.selectAndroidArchitecture([
+        'x86_64',
+        'x86',
+        'arm64-v8a',
+        'armeabi-v7a',
+      ]),
+      'x86_64',
+    );
+    expect(
+      UpdateService.selectAndroidArchitecture(['x86', 'armeabi-v7a']),
+      'armeabi-v7a',
+    );
+    expect(UpdateService.selectAndroidArchitecture(const []), 'arm64-v8a');
+  });
+
+  test('manifest parses android_arch_packages and android_delta_packages for all ABIs', () {
+    final manifest = AppManifest.fromJson(
+      jsonDecode(
+        jsonEncode({
+          'version_code': 702409,
+          'version_name': '7.24.9',
+          'update_info': {
+            'title': '版本更新 7.24.9',
+            'description': '【新增】全架构自更新',
+            'android_arch_packages': {
+              'arm64-v8a':
+                  'https://gitee.com/example/app-arm64-v8a-release.apk',
+              'armeabi-v7a':
+                  'https://gitee.com/example/app-armeabi-v7a-release.apk',
+              'x86_64': 'https://gitee.com/example/app-x86_64-release.apk',
+            },
+            'android_delta_packages': {
+              'arm64-v8a': [
+                {
+                  'from_version': '7.24.8',
+                  'from_sha256': 'a' * 64,
+                  'to_version': '7.24.9',
+                  'to_sha256': 'b' * 64,
+                  'patch_url': 'https://gitee.com/example/arm64.patch',
+                  'patch_size': 100,
+                },
+              ],
+              'armeabi-v7a': [
+                {
+                  'from_version': '7.24.8',
+                  'from_sha256': 'c' * 64,
+                  'to_version': '7.24.9',
+                  'to_sha256': 'd' * 64,
+                  'patch_url': 'https://gitee.com/example/armv7.patch',
+                  'patch_size': 200,
+                },
+              ],
+              'x86_64': [
+                {
+                  'from_version': '7.24.8',
+                  'from_sha256': 'e' * 64,
+                  'to_version': '7.24.9',
+                  'to_sha256': 'f' * 64,
+                  'patch_url': 'https://gitee.com/example/x86_64.patch',
+                  'patch_size': 300,
+                },
+              ],
+            },
+          },
+          'changelog_history': [],
+          'announcements': [],
+          'wallpaper': {},
+          'changelog_archive': {},
+        }),
+      ) as Map<String, dynamic>,
+    );
+
+    expect(
+      manifest.updateInfo.androidArchPackages.keys,
+      containsAll(['arm64-v8a', 'armeabi-v7a', 'x86_64']),
+    );
+    expect(
+      manifest.updateInfo.androidDeltaPackages['arm64-v8a']!.single.patchUrl,
+      endsWith('arm64.patch'),
+    );
+    expect(
+      manifest.updateInfo.androidDeltaPackages['armeabi-v7a']!.single.patchUrl,
+      endsWith('armv7.patch'),
+    );
+    expect(
+      manifest.updateInfo.androidDeltaPackages['x86_64']!.single.patchUrl,
+      endsWith('x86_64.patch'),
     );
   });
 }

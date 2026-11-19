@@ -5,6 +5,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
@@ -86,9 +87,12 @@ class UserSessionStorage {
     if (token != null && token.isNotEmpty) {
       await prefs.setString(_authToken, token);
       ApiService.setToken(token);
+      final deviceId = await getDeviceIdForUser(username);
+      ApiService.setDeviceId(deviceId);
     } else {
       await prefs.remove(_authToken);
       ApiService.setToken('');
+      ApiService.setDeviceId(null);
     }
     await DatabaseHelper.instance.closeDatabase();
   }
@@ -114,6 +118,15 @@ class UserSessionStorage {
             storedUserId > 0
         ? storedUserId
         : 0;
+    if (token != null &&
+        token.isNotEmpty &&
+        username != null &&
+        username.isNotEmpty) {
+      final deviceId = await getDeviceIdForUser(username);
+      ApiService.setDeviceId(deviceId);
+    } else {
+      ApiService.setDeviceId(null);
+    }
     return token;
   }
 
@@ -130,6 +143,7 @@ class UserSessionStorage {
     await prefs.remove(_scopedKey(_localScreenTime, username));
     await prefs.remove(_authToken);
     ApiService.setToken('');
+    ApiService.setDeviceId(null);
     ApiService.currentUserId = 0;
     unawaited(
       BackgroundNotificationService.stopNotificationPoll().catchError((_) {}),
@@ -190,6 +204,25 @@ class UserSessionStorage {
       _getUniqueDeviceId(username);
 
   static Future<String> getDeviceFriendlyName() => _getDetailedDeviceName();
+
+  static Future<void> syncCurrentDeviceRegistration() async {
+    try {
+      final username = await getCurrentUsername();
+      if (username == null || username.trim().isEmpty) return;
+      final token = ApiService.getToken();
+      if (token == null || token.isEmpty) return;
+      final deviceId = await getDeviceIdForUser(username);
+      ApiService.setDeviceId(deviceId);
+      final deviceName = await getDeviceFriendlyName();
+      final packageInfo = await PackageInfo.fromPlatform();
+      await ApiService.registerCurrentDevice(
+        deviceId: deviceId,
+        deviceName: deviceName,
+        platform: AppPlatform.operatingSystem,
+        appVersion: packageInfo.version,
+      );
+    } catch (_) {}
+  }
 
   static Future<String> _getUniqueDeviceId(String username) =>
       _resolveUniqueDeviceId(username);

@@ -38,6 +38,7 @@ import 'settings/pages/platform_specific_settings_page.dart';
 import 'settings/pages/permission_settings_page.dart';
 import 'settings/pages/minor_mode_settings_page.dart';
 import 'settings/pages/ai_assistant_settings_page.dart';
+import 'settings/pages/account_devices_page.dart';
 import 'settings/llm_config_page.dart';
 import '../utils/app_dialogs.dart';
 
@@ -77,7 +78,10 @@ class _SettingsPageState extends State<SettingsPage> {
 
   GlobalKey<NavigatorState> _nestedNavigatorKey = GlobalKey<NavigatorState>();
   final GlobalKey _updateSettingsSectionKey = GlobalKey();
-  final GlobalKey _embeddedUpdateSettingsSectionKey = GlobalKey();
+  GlobalKey _embeddedUpdateSettingsSectionKey = GlobalKey();
+  GlobalKey _embeddedManageDevicesKey = GlobalKey(
+    debugLabel: 'settings-account_devices_embedded',
+  );
   List<String> _nestedRouteNames = [];
   late _BreadcrumbObserver _breadcrumbObserver;
   Animation<double>? _updateCheckAnimation;
@@ -813,16 +817,23 @@ class _SettingsPageState extends State<SettingsPage> {
           children: [
             _buildAnnouncementPanel(),
             const SizedBox(height: 16),
-            AccountSection(
-              username: _username,
-              userId: _userId,
-              userTier: _userTier,
-              syncProgress: _syncProgress,
-              isLoadingStatus: _isLoadingStatus,
-              onRefreshStatus: _fetchAccountStatus,
-              onForceFullSync: _forceFullSync,
-              onLogout: () => _handleLogout(force: false),
-              onChangePassword: _showChangePasswordDialog,
+            Builder(
+              builder: (innerContext) => AccountSection(
+                username: _username,
+                userId: _userId,
+                userTier: _userTier,
+                syncProgress: _syncProgress,
+                isLoadingStatus: _isLoadingStatus,
+                onRefreshStatus: _fetchAccountStatus,
+                onForceFullSync: _forceFullSync,
+                onLogout: () => _handleLogout(force: false),
+                onChangePassword: _showChangePasswordDialog,
+                manageDevicesKey: _embeddedManageDevicesKey,
+                onManageDevices: () => _openAccountDevicesPage(
+                  navigationContext: innerContext,
+                  isEmbedded: true,
+                ),
+              ),
             ),
             UpdateSettingsSection(key: _embeddedUpdateSettingsSectionKey),
             SyncSettingsSection(
@@ -978,6 +989,7 @@ class _SettingsPageState extends State<SettingsPage> {
         return;
       }
       await ReminderScheduleService.clearScheduledReminders();
+      unawaited(ApiService.logoutCurrentDevice());
       await StorageService.clearLoginSession();
       if (mounted) {
         Navigator.pushAndRemoveUntil(
@@ -1007,6 +1019,42 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _showChangePasswordDialog() {
     unawaited(_openChangePasswordDialog());
+  }
+
+  void _openAccountDevicesPage({
+    BuildContext? navigationContext,
+    bool isEmbedded = false,
+  }) {
+    if (_userId == null) {
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('当前为离线模式，请先登录账号')),
+      );
+      return;
+    }
+    final targetContext =
+        navigationContext ??
+        (isEmbedded
+            ? (_nestedNavigatorKey.currentContext ?? context)
+            : context);
+    if (isEmbedded) {
+      SettingsNavigation.push<void>(
+        context: targetContext,
+        page: const AccountDevicesPage(isEmbedded: true),
+        sourceKey: _embeddedManageDevicesKey,
+        isEmbedded: true,
+        settings: const RouteSettings(name: '登录设备管理'),
+        placeholderIcon: Icons.devices_rounded,
+      );
+    } else {
+      SettingsNavigation.push<void>(
+        context: targetContext,
+        page: const AccountDevicesPage(),
+        sourceKey: _navigationKey('account_devices'),
+        settings: const RouteSettings(name: '登录设备管理'),
+        placeholderIcon: Icons.devices_rounded,
+      );
+    }
   }
 
   Future<void> _openChangePasswordDialog() async {
@@ -1173,6 +1221,11 @@ class _SettingsPageState extends State<SettingsPage> {
         forceMaterialTransparency: true,
         systemOverlayStyle: floatingGlassTopBarSystemOverlayStyle(context),
         flexibleSpace: const FloatingGlassTopBarBackground(),
+        leading: isWide && _nestedRouteNames.isNotEmpty
+            ? BackButton(
+                onPressed: () => _nestedNavigatorKey.currentState?.maybePop(),
+              )
+            : null,
         title: titleWidget,
         centerTitle: true,
       ),
@@ -1339,6 +1392,10 @@ class _SettingsPageState extends State<SettingsPage> {
                               _buildAccountAndAnnouncementsPane;
                           _nestedRouteNames.clear();
                           _nestedNavigatorKey = GlobalKey<NavigatorState>();
+                          _embeddedUpdateSettingsSectionKey = GlobalKey();
+                          _embeddedManageDevicesKey = GlobalKey(
+                            debugLabel: 'settings-account_devices_embedded',
+                          );
                           _breadcrumbObserver = _createObserver();
                         });
                       }
@@ -1500,18 +1557,11 @@ class _SettingsPageState extends State<SettingsPage> {
                     },
                   );
                 },
-                child: Navigator(
-                  key: _nestedNavigatorKey,
-                  observers: [_breadcrumbObserver],
-                  onGenerateRoute: (settings) {
-                    return PageTransitions.material(
-                      settings: const RouteSettings(name: '/'),
-                      builder: (context) {
-                        return _selectedRightPaneBuilder?.call() ??
-                            const Center(child: Text('请在左侧选择设置项'));
-                      },
-                    );
-                  },
+                child: _NestedSettingsPaneNavigator(
+                  key: ValueKey(_nestedNavigatorKey),
+                  navigatorKey: _nestedNavigatorKey,
+                  observer: _breadcrumbObserver,
+                  paneBuilder: _selectedRightPaneBuilder,
                 ),
               ),
             ),
@@ -1633,6 +1683,8 @@ class _SettingsPageState extends State<SettingsPage> {
             onForceFullSync: _forceFullSync,
             onLogout: () => _handleLogout(force: false),
             onChangePassword: _showChangePasswordDialog,
+            manageDevicesKey: _navigationKey('account_devices'),
+            onManageDevices: () => _openAccountDevicesPage(isEmbedded: false),
           ),
           UpdateSettingsSection(key: _updateSettingsSectionKey),
           SyncSettingsSection(
@@ -1881,5 +1933,35 @@ class _BreadcrumbObserver extends NavigatorObserver {
       }
       onRoutesChanged(List.from(_routeNames));
     }
+  }
+}
+
+class _NestedSettingsPaneNavigator extends StatelessWidget {
+  final GlobalKey<NavigatorState> navigatorKey;
+  final NavigatorObserver observer;
+  final Widget Function()? paneBuilder;
+
+  const _NestedSettingsPaneNavigator({
+    super.key,
+    required this.navigatorKey,
+    required this.observer,
+    required this.paneBuilder,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final builder = paneBuilder;
+    return Navigator(
+      key: navigatorKey,
+      observers: [observer],
+      onGenerateRoute: (settings) {
+        return PageTransitions.material(
+          settings: const RouteSettings(name: '/'),
+          builder: (context) {
+            return builder?.call() ?? const Center(child: Text('请在左侧选择设置项'));
+          },
+        );
+      },
+    );
   }
 }

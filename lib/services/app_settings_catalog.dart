@@ -4,6 +4,7 @@ import '../utils/app_platform.dart';
 
 enum SettingsPageId {
   account,
+  accountDevices,
   server,
   updates,
   syncHealth,
@@ -101,6 +102,15 @@ abstract final class AppSettingsCatalog {
       description: '账号资料 UID 等级 同步额度',
       page: SettingsPageId.account,
       labels: ['账户管理'],
+      platforms: {},
+    ),
+    AiSettingsDestination(
+      id: 'account_devices',
+      title: '登录设备管理',
+      path: '设置 > 账户与同步 > 账户管理 > 登录设备管理',
+      description: '查看登录设备 踢出设备 邮箱验证 下线',
+      page: SettingsPageId.accountDevices,
+      labels: ['登录设备管理'],
       platforms: {},
     ),
     AiSettingsDestination(

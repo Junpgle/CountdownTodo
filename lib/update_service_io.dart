@@ -654,6 +654,25 @@ class UpdateService {
     return '';
   }
 
+  static const List<String> supportedAndroidPackageAbis = [
+    'arm64-v8a',
+    'armeabi-v7a',
+    'x86_64',
+  ];
+
+  static String selectAndroidArchitecture(Iterable<String> supportedAbis) {
+    final normalized = supportedAbis
+        .map((abi) => abi.trim())
+        .where((abi) => abi.isNotEmpty)
+        .toList();
+    for (final abi in normalized) {
+      if (supportedAndroidPackageAbis.contains(abi)) {
+        return abi;
+      }
+    }
+    return normalized.isNotEmpty ? normalized.first : 'arm64-v8a';
+  }
+
   // 🚀 获取当前设备架构
   static Future<String> getDeviceArchitecture() async {
     if (Platform.isWindows) return 'windows';
@@ -674,11 +693,7 @@ class UpdateService {
     }
     final deviceInfo = DeviceInfoPlugin();
     final androidInfo = await deviceInfo.androidInfo;
-    final supportedAbis = androidInfo.supportedAbis;
-    if (supportedAbis.contains('arm64-v8a')) return 'arm64-v8a';
-    if (supportedAbis.contains('armeabi-v7a')) return 'armeabi-v7a';
-    if (supportedAbis.contains('x86_64')) return 'x86_64';
-    return supportedAbis.isNotEmpty ? supportedAbis.first : 'arm64-v8a';
+    return selectAndroidArchitecture(androidInfo.supportedAbis);
   }
 
   // 🚀 根据设备架构获取对应的下载链接

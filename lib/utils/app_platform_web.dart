@@ -11,4 +11,5 @@ class AppPlatform {
   static bool get isMobile => false;
   static String get operatingSystem => 'web';
   static String? get resolvedExecutable => null;
+  static bool get isFlutterTest => const bool.fromEnvironment('FLUTTER_TEST');
 }

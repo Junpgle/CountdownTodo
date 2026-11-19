@@ -1,7 +1,7 @@
 import { Watch, BarChart3, CalendarDays, ListTodo, RefreshCw, ShieldCheck } from 'lucide-react';
 
 export const BandShowcase = () => (
-  <section id="band" className="py-24 sm:py-40 bg-gradient-to-b from-white via-slate-50 to-white relative overflow-hidden">
+  <section id="band" className="cv-auto py-24 sm:py-40 bg-gradient-to-b from-white via-slate-50 to-white relative overflow-hidden">
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
       {/* 顶部标题区 */}
@@ -47,6 +47,7 @@ export const BandShowcase = () => (
               <img
                 src={f.imagePlaceholder}
                 alt={f.title}
+                loading="lazy"
                 className="max-h-[320px] w-auto object-contain group-hover:scale-105 transition-transform duration-700"
                 onError={(e) => {
                   (e.target as HTMLImageElement).style.display = 'none';
@@ -97,6 +98,7 @@ export const BandShowcase = () => (
           <img
             src="./band_home.webp"
             alt="手表首页"
+            loading="lazy"
             className="max-h-[400px] w-auto object-contain"
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = 'none';

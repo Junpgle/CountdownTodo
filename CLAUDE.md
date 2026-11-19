@@ -1,14 +1,14 @@
 # Countdown Todo development context
 
 This file is a compact implementation map for coding assistants. It was last
-checked against the working tree on 2026-11-14; `AGENTS.md` contains the
+checked against the working tree on 2026-11-17; `AGENTS.md` contains the
 authoritative repository rules.
 
 ## Current baseline
 
-- Flutter package version: `7.23.9` (`pubspec.yaml`).
+- Flutter package version: `7.24.8` (`pubspec.yaml`).
 - Dart constraint: `>=3.13.0 <4.0.0`; Flutter constraint: `>=3.47.0`.
-- Local SQLite schema: version 60 (`DatabaseSchemaHistory.currentVersion`).
+- Local SQLite schema: version 61 (`DatabaseSchemaHistory.currentVersion`).
 - Main targets: Android, Windows, macOS, and Flutter web. iOS host files exist,
   but feature parity is not documented as complete.
 - `lib/models.dart` contains the shared sync models; `StorageService` remains

@@ -136,6 +136,21 @@ class MacPomodoroStatusBarService {
 
     // 监听本地专注状态
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final islandEnabled =
+          prefs.getBool('macos_island_enabled') ??
+          prefs.getBool('macos_status_bar_enabled') ??
+          true;
+      if (_isActivitySyncCurrent(initGeneration)) {
+        PomodoroSyncService.instance.setKeepConnectedInBackground(
+          islandEnabled,
+        );
+      }
+    } catch (e) {
+      debugPrint('[MacPomodoroStatusBar] keep-alive config error: $e');
+    }
+
+    try {
       final runState = await PomodoroService.loadRunState();
       debugPrint('[MacPomodoroStatusBar] loadRunState: ${runState?.phase}');
       if (_isActiveLocalState(runState)) {
@@ -218,6 +233,13 @@ class MacPomodoroStatusBarService {
         }
       case 'requestIslandOverview':
         unawaited(syncIslandOverview());
+      case 'syncFocusAfterWake':
+        unawaited(PomodoroSyncService.instance.reconnectAfterWake());
+        unawaited(syncCurrentStatus());
+      case 'syncFocusPeriodically':
+        unawaited(
+          PomodoroSyncService.instance.ensureConnectedAfterPeriodicWake(),
+        );
     }
   }
 
@@ -1032,6 +1054,7 @@ class MacPomodoroStatusBarService {
 
   static void dispose() {
     _initialized = false;
+    PomodoroSyncService.instance.setKeepConnectedInBackground(false);
     _activitySyncGeneration++;
     _pomodoroStatusGeneration++;
     _statusLifecycleGeneration++;

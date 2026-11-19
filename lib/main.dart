@@ -49,6 +49,7 @@ import 'services/environment_service.dart';
 import 'services/app_deep_link_service.dart';
 import 'services/platform_bootstrap.dart';
 import 'services/minor_mode_service.dart';
+import 'services/session_revocation_service.dart';
 import 'services/liquid_glass_effect_service.dart';
 import 'services/power_save_mode_service.dart';
 import 'theme/app_liquid_glass_theme.dart';
@@ -260,6 +261,7 @@ void _configureRuntimeCaches({bool powerSaveMode = false}) {
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  SessionRevocationService.initialize();
   AppPerformanceMonitor.install();
   unawaited(AppPerformanceMonitor.loadSettings());
   unawaited(AppMemoryMonitor.init());
@@ -428,10 +430,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       _scheduleSystemUiRestore();
       unawaited(AutoBackupService.runBackupIfDue());
       unawaited(
-      LanSyncService.instance.initFromPreferences().then(
-        (_) => LanSyncService.instance.triggerBackgroundAutoSync(),
-      ),
-    );
+        LanSyncService.instance.initFromPreferences().then(
+          (_) => LanSyncService.instance.triggerBackgroundAutoSync(),
+        ),
+      );
     } else if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.paused ||
@@ -1064,7 +1066,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
     unawaited(
       LanSyncService.instance.initFromPreferences().then(
-        (_) => LanSyncService.instance.triggerBackgroundAutoSync(isStartup: true),
+        (_) =>
+            LanSyncService.instance.triggerBackgroundAutoSync(isStartup: true),
       ),
     );
 
@@ -1075,13 +1078,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         unawaited(AutoBackupService.runBackupIfDue());
       });
       _autoBackupPeriodicTimer?.cancel();
-      _autoBackupPeriodicTimer = Timer.periodic(
-        const Duration(hours: 6),
-        (_) {
-          if (!mounted) return;
-          unawaited(AutoBackupService.runBackupIfDue());
-        },
-      );
+      _autoBackupPeriodicTimer = Timer.periodic(const Duration(hours: 6), (_) {
+        if (!mounted) return;
+        unawaited(AutoBackupService.runBackupIfDue());
+      });
     }
   }
 

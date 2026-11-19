@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:countdown_todo/services/pomodoro_sync_service.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 class _Channel implements WebSocketChannel {
@@ -66,6 +67,7 @@ void main() {
   }
 
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
     channels = [];
     service = createService();
   });
@@ -261,4 +263,66 @@ void main() {
       hasLength(1),
     );
   });
+
+  test(
+    'keepConnectedInBackground keeps WebSocket alive across background suspend',
+    () async {
+      service.setKeepConnectedInBackground(true);
+      await connect();
+      await service.suspendForBackground();
+      expect(service.connectionState, SyncConnectionState.connected);
+
+      channels.last.receive({
+        'action': 'START',
+        'session_uuid': 'remote-session',
+        'source_device': 'flutter_phone',
+      });
+      await flushMessages();
+      expect(service.focusSourceDevice, 'flutter_phone');
+
+      service.setKeepConnectedInBackground(false);
+      await flushMessages();
+      expect(service.connectionState, SyncConnectionState.disconnected);
+    },
+  );
+
+  test(
+    'reconnectAfterWake reconnects while backgrounded when keepConnectedInBackground is enabled',
+    () async {
+      service.setKeepConnectedInBackground(true);
+      await connect();
+      await service.suspendForBackground();
+      expect(channels, hasLength(1));
+
+      await service.reconnectAfterWake();
+      expect(channels, hasLength(2));
+      expect(service.connectionState, SyncConnectionState.connected);
+    },
+  );
+
+  test(
+    'ensureConnectedAfterPeriodicWake reuses healthy socket and reconnects when disconnected',
+    () async {
+      service.setKeepConnectedInBackground(true);
+      await connect();
+      await service.suspendForBackground();
+      expect(channels, hasLength(1));
+
+      await service.ensureConnectedAfterPeriodicWake();
+      expect(channels, hasLength(1));
+      expect(
+        channels.last.sent.where((m) => m['action'] == 'HEARTBEAT'),
+        hasLength(1),
+      );
+
+      service.setKeepConnectedInBackground(false);
+      await flushMessages();
+      expect(service.connectionState, SyncConnectionState.disconnected);
+
+      service.setKeepConnectedInBackground(true);
+      await flushMessages();
+      expect(channels, hasLength(2));
+      expect(service.connectionState, SyncConnectionState.connected);
+    },
+  );
 }

@@ -463,27 +463,18 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
       // ... 前面代码保持不变
     } catch (e) {
       // debugPrint("Sync Error: $e");
-      String msg = e.toString();
-
       // 🚀 核心修复 1：Token 检查必须移出 !silent 判断
       // 无论是否是“静默同步”，只要登录失效，就必须强制弹窗
-      if (msg.contains("无效的token") ||
-          msg.contains("无效的Token") || // 适配你日志中的大写 T
-          msg.contains("INVALID_TOKEN") ||
-          msg.contains("401")) {
+      if (SyncErrorFormatter.isAuthExpiredError(e)) {
         if (mounted) {
           _showTokenExpiredDialog();
         }
         return; // 拦截后续所有提示
       }
 
-      // 只有非静默同步（手动点击）时，才显示普通的错误 SnackBar
+      // 只有非静默同步（手动点击）时，才显示具体的错误提示
       if (mounted && !silent) {
-        if (msg.contains("LIMIT_EXCEEDED:")) {
-          msg = msg.split("LIMIT_EXCEEDED:").last;
-        } else {
-          msg = "同步失败: 获取数据异常";
-        }
+        final msg = SyncErrorFormatter.formatSyncFailure(e);
         AppSnackBars.showSnackBar(
           context,
           SnackBar(content: Text(msg), backgroundColor: Colors.redAccent),
@@ -521,10 +512,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
           return AlertDialog(
             title: Row(
               children: [
-                Icon(
-                  Icons.analytics_outlined,
-                  color: colorScheme.secondary,
-                ),
+                Icon(Icons.analytics_outlined, color: colorScheme.secondary),
                 const SizedBox(width: 10),
                 const Text(
                   "链路诊断报告",

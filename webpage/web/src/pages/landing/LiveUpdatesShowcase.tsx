@@ -10,7 +10,7 @@ export const LiveUpdatesShowcase = () => {
   }, []);
 
   return (
-    <section id="liveupdates" className="py-24 sm:py-40 bg-slate-900 text-white relative overflow-hidden">
+    <section id="liveupdates" className="cv-auto py-24 sm:py-40 bg-slate-900 text-white relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-b from-indigo-900/20 to-slate-900 pointer-events-none"></div>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-20 text-left">
@@ -37,7 +37,7 @@ export const LiveUpdatesShowcase = () => {
               灵动通知栏<br/>待办状态实时流转
             </h2>
             <p className="text-slate-400 text-lg sm:text-xl mb-10 leading-relaxed font-medium">
-              全面适配 Android 最新规范。借助 Live Updates 实时活动，无需打开应用，在锁屏和通知栏即可直观把控最重要的待办倒计时。
+              全面适配 Android 最新 Live Updates 规范与小米 HyperOS 焦点通知探测。课程进度、番茄倒计时与快递/取餐码常驻上岛，锁屏与通知栏增量去重实时流转。
             </p>
             <ul className="space-y-6">
                {[

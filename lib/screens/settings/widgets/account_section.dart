@@ -14,6 +14,8 @@ class AccountSection extends StatelessWidget {
   final VoidCallback onForceFullSync;
   final VoidCallback onLogout;
   final VoidCallback onChangePassword;
+  final VoidCallback? onManageDevices;
+  final Key? manageDevicesKey;
 
   const AccountSection({
     super.key,
@@ -26,6 +28,8 @@ class AccountSection extends StatelessWidget {
     required this.onForceFullSync,
     required this.onLogout,
     required this.onChangePassword,
+    this.onManageDevices,
+    this.manageDevicesKey,
   });
 
   Color getTierColor(String tier, ColorScheme colorScheme) {
@@ -159,6 +163,19 @@ class AccountSection extends StatelessWidget {
           ),
         ),
         const AppSettingsDivider(),
+        if (onManageDevices != null) ...[
+          KeyedSubtree(
+            key: manageDevicesKey,
+            child: ListTile(
+              leading: Icon(Icons.devices_rounded, color: colorScheme.primary),
+              title: const Text('登录设备管理'),
+              subtitle: const Text('查看已登录设备，支持邮箱验证后踢出下线'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: onManageDevices,
+            ),
+          ),
+          const AppSettingsDivider(),
+        ],
         ListTile(
           leading: Icon(Icons.cloud_sync, color: colorScheme.primary),
           title: const Text('强制全量同步'),

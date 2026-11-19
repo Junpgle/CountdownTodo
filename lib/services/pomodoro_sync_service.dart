@@ -7,6 +7,7 @@ import 'package:web_socket_channel/status.dart' as ws_status;
 
 import 'api_service.dart';
 import 'notification_service.dart';
+import 'session_revocation_service.dart';
 import 'storage/app_settings_storage.dart';
 import '../storage_service.dart';
 import '../models.dart';
@@ -246,6 +247,7 @@ class PomodoroSyncService {
   DateTime _lastMessageTime = DateTime.now(); // 记录最后一次收到消息的时间
   bool _isLocalFocusing = false; // 本地是否处于专注/休息计时中
   bool _isInBackground = false;
+  bool _keepConnectedInBackground = false;
   int _retryCount = 0; // 🚀 新增：当前重试次数
 
   // ── 公开广播流 ─────────────────────────────────────────────
@@ -256,6 +258,23 @@ class PomodoroSyncService {
   Stream<SyncConnectionState> get onConnectionChanged => _connStateCtrl.stream;
 
   Function(CrossDevicePomodoroState state)? onStaleSyncFocus;
+
+  void disconnect() {
+    _stopDeliveryGraceTimer?.cancel();
+    _reconnectTimer?.cancel();
+    _heartbeatTimer?.cancel();
+    _wsSub?.cancel();
+    _wsSub = null;
+    try {
+      _channel?.sink.close(ws_status.normalClosure);
+    } catch (_) {}
+    _channel = null;
+    _authToken = null;
+    _userId = null;
+    _deviceId = null;
+    _connecting = false;
+    _setConnState(SyncConnectionState.disconnected);
+  }
 
   void dispose() {
     _stopDeliveryGraceTimer?.cancel();
@@ -282,14 +301,16 @@ class PomodoroSyncService {
       shouldSuspendTransport(
         isInBackground: _isInBackground,
         isLocalFocusing: _isLocalFocusing,
+        keepConnectedInBackground: _keepConnectedInBackground,
       );
 
   @visibleForTesting
   static bool shouldSuspendTransport({
     required bool isInBackground,
     required bool isLocalFocusing,
+    bool keepConnectedInBackground = false,
   }) {
-    return isInBackground && !isLocalFocusing;
+    return isInBackground && !isLocalFocusing && !keepConnectedInBackground;
   }
 
   @visibleForTesting
@@ -402,6 +423,64 @@ class PomodoroSyncService {
   Future<void> suspendForBackground() async {
     _isInBackground = true;
     await _suspendTransportIfIdle();
+  }
+
+  /// Allows persistent desktop surfaces (such as the macOS Dynamic Island)
+  /// to keep receiving live focus updates while the main window is hidden.
+  void setKeepConnectedInBackground(bool keepConnected) {
+    if (_keepConnectedInBackground == keepConnected) return;
+    _keepConnectedInBackground = keepConnected;
+    if (keepConnected) {
+      if (_isInBackground &&
+          _userId != null &&
+          _deviceId != null &&
+          _connState == SyncConnectionState.disconnected &&
+          !_connecting) {
+        unawaited(_doConnect());
+      }
+    } else if (_isInBackground) {
+      unawaited(_suspendTransportIfIdle());
+    }
+  }
+
+  /// Reconnects after system wake without altering foreground/background state.
+  Future<void> reconnectAfterWake() async {
+    if (await AppSettingsStorage.isOfflineModeEnabled()) {
+      await disconnectForOfflineMode();
+      return;
+    }
+    await _transportSuspendFuture;
+    if (_userId == null || _deviceId == null || _shouldSuspendTransport) {
+      return;
+    }
+    _reconnectTimer?.cancel();
+    _retryCount = 0;
+    _connecting = false;
+    await _doConnect();
+  }
+
+  /// Checks connection health during periodic background wakes without
+  /// tearing down an already healthy WebSocket connection.
+  Future<void> ensureConnectedAfterPeriodicWake() async {
+    if (await AppSettingsStorage.isOfflineModeEnabled()) {
+      await disconnectForOfflineMode();
+      return;
+    }
+    await _transportSuspendFuture;
+    if (_userId == null || _deviceId == null || _shouldSuspendTransport) {
+      return;
+    }
+    if (_connState == SyncConnectionState.connected && !_connecting) {
+      final silentDuration = DateTime.now().difference(_lastMessageTime);
+      if (silentDuration <= (_heartbeatInterval * 2.5)) {
+        _send({'action': 'HEARTBEAT'});
+        return;
+      }
+    }
+    _reconnectTimer?.cancel();
+    _retryCount = 0;
+    _connecting = false;
+    await _doConnect();
   }
 
   /// 🚀 新增：手动强制重连（忽略 _connecting 锁）
@@ -518,6 +597,10 @@ class PomodoroSyncService {
 
       // debugPrint('📥 [WS接收] 原始数据: $raw'); // 调试时开启
       final data = jsonDecode(raw.toString()) as Map<String, dynamic>;
+      if (data['action'] == 'FORCE_LOGOUT') {
+        unawaited(SessionRevocationService.handleSessionRevoked());
+        return;
+      }
       if (data['action'] == 'FOCUS_SYNC_CAPABILITIES') {
         _supportsFocusEndAck = data['end_ack'] == true;
         _flushPendingStops();

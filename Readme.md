@@ -15,14 +15,14 @@ CountDownTodo 是一个基于 Flutter 的跨平台效率工具，覆盖待办规
 
 Countdown Todo is a Flutter productivity app combining todos, recurring todo series, habit tracking, countdowns, courses, focus sessions, plan blocks, collaboration, statistics, calendar integration and AI-assisted actions.
 
-当前应用版本：`7.23.9`
-文档更新时间：`2026-11-14`
+当前应用版本：`7.24.8`
+文档更新时间：`2026-11-17`
 
 ## 支持平台
 
 - **Android**：通知、桌面小组件（含“循环待办”）、HyperOS/HyperIsland 集成、屏幕使用时间统计、小米手环通信。
 - **Windows**：桌面客户端，以及独立的灵动岛/悬浮窗 host（`lib/windows_island/`，Windows-only）。
-- **macOS**：菜单栏（可关闭）、WidgetKit 小组件（含“循环待办”）、开机自启、深度链接、原生灵动岛/状态显示。
+- **macOS**：支持 Apple Silicon (`arm64`) 与 Intel (`x86_64`) 双架构独立打包与对应架构在线更新，提供菜单栏（可关闭）、WidgetKit 小组件（含“循环待办”）、开机自启、深度链接、原生灵动岛/状态显示及低电量模式适配。
 - **Web**：Flutter Web 客户端（Beta），通过 Cloudflare Zero Trust 访问 API；另有 React 网页介绍站 `webpage/web/`。
 - 配套项目：React 介绍页 `webpage/web/`、小米手环伴侣应用 `CountDownTodo-band/`。
 
@@ -35,7 +35,7 @@ Countdown Todo is a Flutter productivity app combining todos, recurring todo ser
 - **规划块**：把已有待办安排到具体时间段，支持日视图创建、拖动改期、边缘调整、番茄钟绑定和统计，可写入系统日历与小时级动态分轨展示。
 - **番茄钟**：标签、暂停详情、运行状态持久化、规划块绑定、记录统计、WebSocket 跨端感知、云同步、专注备注、年度记录分析与专注习惯联动。
 - **习惯中心**：独立打卡模型（`lib/features/habits/`），连续天数与完成率统计、睡眠作息渐进训练、快捷打卡与小组件打卡、长按防误触与延迟盖章保护、专注习惯联动与容量规划接入。
-- **个人记账**：离线优先的支出、收入、退款记录，账单日历视图、分类账本精准筛选、月度累计结余趋势穿透分析、未来固定及手工收支一览、月度总预算与分类预算、预算提醒、周期账单、快捷模板、CSV/JSON 备份和回收站恢复（`lib/features/finance/`）。
+- **个人记账**：离线优先的支出、收入、退款与账户互转记录，支持微信（CSV/XLSX）与支付宝（CSV）账单导入、多选批量编辑/删除、账单日历视图、分类账本精准筛选、月度累计结余趋势穿透分析、未来固定及手工收支一览、月度总预算与分类预算、预算提醒、周期账单、快捷模板、CSV/JSON 备份和回收站恢复（`lib/features/finance/`）。
 - **时间日志和时间线**：合并补录记录与番茄钟记录做效率分析；个人时间轴支持天/周/月/年维度，支持课程与固定日程只读占位映射。
 - **课程表**：导入与解析（`lib/course_import/`）、共存模式、多学期切换、周/月视图、调休。
 - **本地私密日记**：仅存本地的图文日记，支持回收站软删除、原时间恢复与物理附件彻底清理（`lib/features/journal/`）。
@@ -43,16 +43,16 @@ Countdown Todo is a Flutter productivity app combining todos, recurring todo ser
 - **功能百宝箱与探索中心**：分类功能知识库、新特性引导（v7.22）、功能直达与使用探索进度打卡（`lib/screens/help/`）。
 - **动画与流畅度量化监控**：实时帧率与渲染达标率监测、GPU/CPU 渲染压力等级动态评估、特效负荷细项分析与性能监控悬浮窗。
 - **全局搜索与设置搜索**：全局搜索覆盖待办、日程、记账、日记、规划块、习惯打卡、挑战、AI 对话和团队资料，并支持功能直达；设置首页支持全配置项模糊搜索。
-- **数据备份与恢复**：JSON 备份支持按数据域选择导出与恢复（待办/日程、课程、专注、习惯、挑战、记账等独立选择），支持恢复前复核与分域导入结果回执。
+- **数据备份与局域网同步**：JSON 备份支持按数据域选择导出与恢复（待办/日程、课程、专注、习惯、挑战、记账等独立选择），支持定期自动本地快照备份与一键恢复；支持同一局域网下基于 ECDH+AES-GCM 端到端加密与面对面扫码的点对点同步。
 - **团队协同**：团队管理、公告、消息中心、冲突收件箱、甘特图/热力图看板、共享链接查看。
-- **AI 助手**：LLM 配置（含 NVIDIA NIM）、智能上下文注入、待办建议与操作、待确认记账草案及账单查询/修改/删除、图片识别待办和勋章 ML 推荐。
+- **AI 助手**：LLM 配置（含 NVIDIA NIM）、首页每日 AI 智能建议卡片、长期记忆偏好、位置与设备上下文查询、自定义单轮工具调用预算、智能上下文注入、待办建议与操作、待确认记账草案及账单查询/修改/删除、流式图片识别待办和勋章 ML 推荐。
 - **视觉与体验**：首页预设壁纸直出与 Bing 每日壁纸本地缓存与重试、液态玻璃（Liquid Glass）视觉效果（可选开关、模式与滤镜缓存）、全局动态取色、屏幕使用时间统计、首页侧栏自定义与板块间距自适应。
 - **本地 MCP 待办服务**：`mcp-server/` 提供 Node.js stdio MCP Server，供 Claude、VS Code、Cursor 等 Host 查询和操作本地待办，写入 `op_logs` 由 Uni-Sync 机制同步。
 
 ## 当前架构
 
 - 主 Flutter 应用位于 `lib/`，平台壳位于 `android/`、`windows/`、`macos/`、`ios/`、`linux/`、`web/`。
-- 高容量业务数据以 SQLite 为主存储（当前 schema v60）；`SharedPreferences` 保留设置、登录态、同步水位线、小缓存和兼容迁移。
+- 高容量业务数据以 SQLite 为主存储（当前 schema v61）；`SharedPreferences` 保留设置、登录态、同步水位线、小缓存和兼容迁移。
 - 主同步入口为 `StorageService.syncData()`，负责待办、分组、倒数日、时间日志、规划块、屏幕时间 payload 和能力门控的个人记账切片；番茄钟同步由 `PomodoroService` 单独处理（标签、记录、oplog 保护、漏传恢复水位线）。
 - 后端同时保留 Alibaba Cloud 和 Cloudflare Worker。新后端能力优先修改 `CDT-server/debug/`（外部 checkout 的研发树）；`math-quiz-backend/` 保留兼容行为。
 - Web 通过 Cloudflare Zero Trust 访问 `https://api-cdt.junpgle.me/`；Windows/Android 可直接访问 Alibaba Cloud HTTP 服务。
@@ -109,7 +109,7 @@ dart format lib test
 ./scripts/release_all.sh
 ```
 
-产物会放在 `build/release-assets/v<版本>/`，其中包含 macOS ZIP、三个 Android APK 和 arm64-v8a 差分包，可直接全选上传。Web 会通过 `deploy_web_beta.sh` 构建并发布。
+产物会放在 `build/release-assets/v<版本>/`，其中包含 macOS 双架构 ZIP（`arm64` 与 `x86_64`）、三个 Android APK 和 arm64-v8a 差分包，可直接全选上传。Web 会通过 `deploy_web_beta.sh` 构建并发布。
 
 Cloudflare Worker 后端：
 

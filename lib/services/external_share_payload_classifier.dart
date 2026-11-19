@@ -1,6 +1,6 @@
-import 'dart:io';
-
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
+
+import '../utils/text_file_reader.dart';
 
 /// Explicit destinations exposed in the Android share sheet.
 ///
@@ -47,7 +47,7 @@ abstract final class ExternalSharePayloadClassifier {
 
     final path = media.path.trim();
     if (path.isNotEmpty &&
-        (await File(path).exists() || _looksLikeFilePath(path))) {
+        (await localFileExists(path) || _looksLikeFilePath(path))) {
       return false;
     }
 

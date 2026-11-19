@@ -74,6 +74,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
   bool _loading = true;
   bool _syncing = false;
   List<PomodoroSession> _chartSessions = [];
+  PomodoroCommunityStats? _communityStats;
   int _loadGeneration = 0;
 
   @override
@@ -81,10 +82,22 @@ class PomodoroStatsState extends State<PomodoroStats> {
     super.initState();
     _dimension = widget.initialDimension; // 🚀 使用初始维度
     _loadLocal().then((_) => _syncIfDue());
+    _loadCommunityStats();
   }
 
   void reload() {
     _loadLocal().then((_) => _syncAndRefresh());
+    _loadCommunityStats(forceRefresh: true);
+  }
+
+  Future<void> _loadCommunityStats({bool forceRefresh = false}) async {
+    final stats = await PomodoroService.getTodayCommunityStats(
+      forceRefresh: forceRefresh,
+    );
+    if (!mounted) return;
+    if (stats?.avgSeconds != _communityStats?.avgSeconds) {
+      setState(() => _communityStats = stats);
+    }
   }
 
   Future<void> _syncIfDue() async {
@@ -862,6 +875,40 @@ class PomodoroStatsState extends State<PomodoroStats> {
                     ],
                   ),
                 ),
+                if (_dimension == 0 &&
+                    DateUtils.isSameDay(_selected, DateTime.now()) &&
+                    _communityStats != null) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surface.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.groups_rounded,
+                          size: 14,
+                          color: colorScheme.primary,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '今日全站人均 ${formatDurationChinese(_communityStats!.avgSeconds)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

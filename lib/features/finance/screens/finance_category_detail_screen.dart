@@ -1,11 +1,10 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../utils/app_platform.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
@@ -609,7 +608,7 @@ class _FinanceCategoryDetailScreenState
     }
 
     final isDark = colorScheme.brightness == Brightness.dark;
-    final isTest = !kIsWeb && Platform.environment.containsKey('FLUTTER_TEST');
+    final isTest = AppPlatform.isFlutterTest;
     final donutSize = isTest ? 136.0 : 180.0;
     final sliceColors = <Color>[
       for (var index = 0; index < items.length; index++)

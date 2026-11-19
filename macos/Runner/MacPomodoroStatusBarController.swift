@@ -5100,6 +5100,8 @@ class MacPomodoroStatusBarController: NSObject {
     private var appChannel: FlutterMethodChannel?
     private var flutterChannel: FlutterMethodChannel?
     private var observers: [NSObjectProtocol] = []
+    private var backgroundSyncActivity: NSObjectProtocol?
+    private var backgroundSyncScheduler: NSBackgroundActivityScheduler?
 
     private var islandEnabled = true
     private var isShortcutHidden = false
@@ -5195,6 +5197,15 @@ class MacPomodoroStatusBarController: NSObject {
         ) { [weak self] _ in
             self?.refreshDisplay()
         })
+        observers.append(NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refreshDisplay()
+            self?.scheduleNextUpdate()
+            self?.flutterChannel?.invokeMethod("syncFocusAfterWake", arguments: nil)
+        })
         for name in [
             NSWindow.didEnterFullScreenNotification,
             NSWindow.didExitFullScreenNotification,
@@ -5223,6 +5234,50 @@ class MacPomodoroStatusBarController: NSObject {
             self.islandModel?.shelfCanUndo = MacShelfManager.shared.canUndo
             self.refreshDisplay()
         }
+        updateBackgroundSyncActivity()
+    }
+
+    private func updateBackgroundSyncActivity() {
+        let shouldPreventAppNap = islandEnabled && isPomodoroActive
+        if shouldPreventAppNap {
+            if backgroundSyncActivity == nil {
+                backgroundSyncActivity = ProcessInfo.processInfo.beginActivity(
+                    options: .userInitiatedAllowingIdleSystemSleep,
+                    reason: "Keep macOS Dynamic Island focus status synchronized"
+                )
+            }
+        } else if let activity = backgroundSyncActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+            backgroundSyncActivity = nil
+        }
+
+        let shouldSchedulePeriodicWake = islandEnabled && !isPomodoroActive
+        if shouldSchedulePeriodicWake {
+            if backgroundSyncScheduler == nil {
+                let scheduler = NSBackgroundActivityScheduler(
+                    identifier: "com.junpgle.countdowntodo.island.focusSync"
+                )
+                scheduler.repeats = true
+                scheduler.interval = 60
+                scheduler.tolerance = 30
+                scheduler.qualityOfService = .utility
+                scheduler.schedule { [weak self] completion in
+                    DispatchQueue.main.async { [weak self] in
+                        if let self = self, self.islandEnabled, !self.isPomodoroActive {
+                            self.flutterChannel?.invokeMethod(
+                                "syncFocusPeriodically",
+                                arguments: nil
+                            )
+                        }
+                        completion(.finished)
+                    }
+                }
+                backgroundSyncScheduler = scheduler
+            }
+        } else if let scheduler = backgroundSyncScheduler {
+            scheduler.invalidate()
+            backgroundSyncScheduler = nil
+        }
     }
 
     func setAppFlutterChannel(_ channel: FlutterMethodChannel) {
@@ -5249,6 +5304,7 @@ class MacPomodoroStatusBarController: NSObject {
             self.showOnNotchlessDisplay = showOnNotchlessDisplay
             self.remindersEnabled = remindersEnabled
             self.clipboardLinksEnabled = clipboardLinksEnabled
+            self.updateBackgroundSyncActivity()
             if !remindersEnabled {
                 self.clearIslandReminders()
             }
@@ -5430,6 +5486,7 @@ class MacPomodoroStatusBarController: NSObject {
         isRemote = args["isRemote"] as? Bool ?? false
 
         DispatchQueue.main.async { [weak self] in
+            self?.updateBackgroundSyncActivity()
             self?.refreshDisplay()
             self?.scheduleNextUpdate()
         }
@@ -5447,6 +5504,7 @@ class MacPomodoroStatusBarController: NSObject {
         focusPlanBlockId = ""
         sourceDeviceName = ""
         DispatchQueue.main.async { [weak self] in
+            self?.updateBackgroundSyncActivity()
             self?.cancelTimer()
             self?.refreshDisplay()
             self?.scheduleNextUpdate()

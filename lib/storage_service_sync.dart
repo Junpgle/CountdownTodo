@@ -90,75 +90,104 @@ mixin _StorageSync on _StorageServiceBase {
     return map['apps'] as List<dynamic>? ?? [];
   }
 
+  Future<void> _migrateLegacyScreenTimeHistoryIfNeeded(
+    SharedPreferences prefs,
+    String? effectiveUsername,
+  ) async {
+    final migrationKey =
+        'migrated_screentime_${effectiveUsername ?? 'anonymous'}';
+    if (prefs.getBool(migrationKey) ?? false) return;
+
+    final historyKey = _scopedKey(keyScreenTimeHistory, effectiveUsername);
+    String? jsonStr = prefs.getString(historyKey);
+    final isAnonymous = effectiveUsername == null || effectiveUsername.isEmpty;
+    if (jsonStr == null && isAnonymous) {
+      jsonStr = prefs.getString(keyScreenTimeHistory);
+    }
+    if (jsonStr != null && jsonStr.isNotEmpty) {
+      debugPrint("🚀 发现 ScreenTime 历史记录，正在执行 SQL 迁移...");
+      dynamic decoded;
+      try {
+        decoded = jsonDecode(jsonStr);
+      } catch (e) {
+        // 损坏的旧 JSON 无法恢复，直接清理并标记已完成，避免每次启动重复解析失败。
+        debugPrint("⚠️ ScreenTime 迁移解析失败，已清理损坏的旧缓存: $e");
+        await prefs.remove(historyKey);
+        if (isAnonymous) {
+          await prefs.remove(keyScreenTimeHistory);
+        }
+        await prefs.setBool(migrationKey, true);
+        return;
+      }
+
+      if (decoded is Map<String, dynamic>) {
+        final historiesToMigrate = <String, List<dynamic>>{};
+        for (final entry in decoded.entries) {
+          if (entry.value is List) {
+            historiesToMigrate[entry.key] = entry.value as List<dynamic>;
+          }
+        }
+        if (historiesToMigrate.isNotEmpty) {
+          try {
+            await _saveScreenTimeHistoryBatchToSql(
+              historiesToMigrate,
+              username: effectiveUsername,
+            );
+          } catch (e) {
+            // Keep the old per-date recovery path if one batch cannot commit.
+            debugPrint("⚠️ ScreenTime 批量迁移失败，改为逐日期保存: $e");
+            for (final entry in historiesToMigrate.entries) {
+              await saveScreenTimeHistoryToSql(
+                entry.key,
+                entry.value,
+                username: effectiveUsername,
+              );
+            }
+          }
+        }
+      }
+      await prefs.remove(historyKey);
+      if (isAnonymous) {
+        await prefs.remove(keyScreenTimeHistory);
+      }
+      debugPrint("✅ ScreenTime 迁移完成并已清理 Prefs");
+    }
+    await prefs.setBool(migrationKey, true);
+  }
+
   Future<void> saveScreenTimeCache(
     List<dynamic> stats, {
     String? username,
   }) async {
     if (stats.isEmpty) return;
 
-    final prefs = await StorageService.prefs;
+    final prefs = await SharedPreferences.getInstance();
     final requestedUsername = username?.trim();
+    final currentUsername = prefs.getString(keyCurrentUser)?.trim();
     final effectiveUsername = requestedUsername?.isNotEmpty == true
         ? requestedUsername
-        : prefs.getString(keyCurrentUser);
+        : (currentUsername?.isNotEmpty == true ? currentUsername : null);
     if (requestedUsername != null) {
       await UserSessionStorage.ensureCurrentUsername(requestedUsername);
     }
-    final historyKey = _scopedKey(keyScreenTimeHistory, effectiveUsername);
     final cacheKey = _scopedKey(keyScreenTimeCache, effectiveUsername);
     final syncKey = _scopedKey(keyLastScreenTimeSync, effectiveUsername);
     final now = DateTime.now();
     final String today = time_utils.AppTimeFormats.date(now);
 
-    // 1. 获取已有的历史记录
-    String? histStr = prefs.getString(historyKey);
-    if (histStr == null &&
-        (effectiveUsername == null || effectiveUsername.isEmpty)) {
-      histStr = prefs.getString(keyScreenTimeHistory);
-    }
-    Map<String, dynamic> history = {};
-    if (histStr != null) {
-      try {
-        history = jsonDecode(histStr);
-      } catch (e) {
-        debugPrint("解析历史记录失败: $e");
-      }
-    }
-
-    // 2. 更新历史记录
-    // 即使 stats 里混入了旧数据，我们也只将其视为“今日最新快照”存储在 today 键下
-    // 如果你想更严格，可以在此处对 stats 进行过滤，确保 e['date'] == today
-    history[today] = stats;
-
-    // 3. 维护 14 天滑动窗口 (删除最旧的记录)
-    if (history.length > 14) {
-      var sortedKeys = history.keys.toList()..sort();
-      while (history.length > 14) {
-        history.remove(sortedKeys.removeAt(0));
-      }
-    }
-
-    // 4. 原子化写入本地存储
-    // 🚀 核心优化：逐步弃用 Prefs 存储历史记录，迁移至 SQL
+    // 1. 直接将历史记录写入 SQLite（一次性迁移旧版 SharedPreferences 历史后彻底单源化）
     try {
+      await _migrateLegacyScreenTimeHistoryIfNeeded(prefs, effectiveUsername);
       await saveScreenTimeHistoryToSql(
         today,
         stats,
         username: effectiveUsername,
       );
-      // 如果写入 SQL 成功，可以尝试清理一下 Prefs 里的旧数据（如果它太大了）
-      if (histStr != null && histStr.length > 1024 * 500) {
-        // > 500KB
-        await prefs.remove(historyKey);
-        debugPrint("🗑️ 已清理过大的 ScreenTime Prefs 历史记录");
-      }
     } catch (e) {
-      await prefs.setString(historyKey, jsonEncode(history));
+      debugPrint("⚠️ ScreenTime 历史写入 SQL 失败: $e");
     }
 
-    // 5. 更新“当前视图快照” (keyScreenTimeCache)
-    // 🚀 核心修复：只有当最新更新日期确实是今天时，才更新首页显示的 Cache
-    // 这样如果凌晨同步了旧数据，首页不会被错误覆盖
+    // 2. 更新“当前视图快照” (keyScreenTimeCache)
     await prefs.setString(cacheKey, jsonEncode(stats));
 
     // 更新最后同步成功的时间戳（记录到毫秒）
@@ -179,12 +208,15 @@ mixin _StorageSync on _StorageServiceBase {
     if (history.isEmpty) return;
 
     final dbHelper = DatabaseHelper.instance;
-    if (username != null) {
-      await UserSessionStorage.ensureCurrentUsername(username);
+    final normalizedUsername = username?.trim();
+    final hasUsername =
+        normalizedUsername != null && normalizedUsername.isNotEmpty;
+    if (hasUsername) {
+      await UserSessionStorage.ensureCurrentUsername(normalizedUsername);
     }
-    final db = username == null
+    final db = !hasUsername
         ? await dbHelper.database
-        : await dbHelper.databaseForUser(username);
+        : await dbHelper.databaseForUser(normalizedUsername);
 
     // History migration and cloud repair may cover many dates. Commit a
     // bounded group together so each date does not open its own transaction.
@@ -271,63 +303,18 @@ mixin _StorageSync on _StorageServiceBase {
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final requestedUsername = username?.trim();
+    final currentUsername = prefs.getString(keyCurrentUser)?.trim();
     final effectiveUsername = requestedUsername?.isNotEmpty == true
         ? requestedUsername
-        : prefs.getString(keyCurrentUser);
+        : (currentUsername?.isNotEmpty == true ? currentUsername : null);
     if (requestedUsername != null) {
       await UserSessionStorage.ensureCurrentUsername(requestedUsername);
     }
-    final String historyKey = _scopedKey(
-      keyScreenTimeHistory,
-      effectiveUsername,
-    );
     final dbHelper = DatabaseHelper.instance;
 
     try {
-      // 1. 迁移检查 (一次性从 Prefs 搬运到 SQL)
-      final migrationKey =
-          'migrated_screentime_${effectiveUsername ?? 'anonymous'}';
-      if (!(prefs.getBool(migrationKey) ?? false)) {
-        String? jsonStr = prefs.getString(historyKey);
-        if (jsonStr == null &&
-            (effectiveUsername == null || effectiveUsername.isEmpty)) {
-          jsonStr = prefs.getString(keyScreenTimeHistory);
-        }
-        if (jsonStr != null && jsonStr.isNotEmpty) {
-          debugPrint("🚀 发现 ScreenTime 历史记录，正在执行 SQL 迁移...");
-          try {
-            Map<String, dynamic> history = jsonDecode(jsonStr);
-            final historiesToMigrate = <String, List<dynamic>>{};
-            for (var entry in history.entries) {
-              if (entry.value is List) {
-                historiesToMigrate[entry.key] = entry.value as List<dynamic>;
-              }
-            }
-            try {
-              await _saveScreenTimeHistoryBatchToSql(
-                historiesToMigrate,
-                username: effectiveUsername,
-              );
-            } catch (e) {
-              // Keep the old per-date recovery path if one batch cannot commit.
-              debugPrint("⚠️ ScreenTime 批量迁移失败，改为逐日期保存: $e");
-              for (final entry in historiesToMigrate.entries) {
-                await saveScreenTimeHistoryToSql(
-                  entry.key,
-                  entry.value,
-                  username: effectiveUsername,
-                );
-              }
-            }
-            await prefs.remove(historyKey);
-            await prefs.remove(keyScreenTimeHistory);
-            debugPrint("✅ ScreenTime 迁移完成并已清理 Prefs");
-          } catch (e) {
-            debugPrint("⚠️ ScreenTime 迁移解析失败: $e");
-          }
-        }
-        await prefs.setBool(migrationKey, true);
-      }
+      // 1. 一次性从旧版 Prefs 迁移到 SQLite 并清理 Prefs
+      await _migrateLegacyScreenTimeHistoryIfNeeded(prefs, effectiveUsername);
 
       final db = effectiveUsername == null || effectiveUsername.isEmpty
           ? await dbHelper.database
@@ -427,29 +414,6 @@ mixin _StorageSync on _StorageServiceBase {
       return result;
     } catch (e) {
       debugPrint("⚠️ ScreenTime History SQL 异常: $e");
-      String? jsonStr = prefs.getString(historyKey);
-      if (jsonStr == null &&
-          (effectiveUsername == null || effectiveUsername.isEmpty)) {
-        jsonStr = prefs.getString(keyScreenTimeHistory);
-      }
-      if (jsonStr != null && jsonStr.isNotEmpty) {
-        try {
-          Map<String, dynamic> raw = jsonDecode(jsonStr);
-          return Map<String, List<dynamic>>.fromEntries(
-            raw.entries
-                .where(
-                  (entry) =>
-                      (fromDate == null ||
-                          entry.key.compareTo(fromDate) >= 0) &&
-                      (toDate == null || entry.key.compareTo(toDate) < 0),
-                )
-                .map(
-                  (entry) =>
-                      MapEntry(entry.key, List<dynamic>.from(entry.value)),
-                ),
-          );
-        } catch (_) {}
-      }
     }
     return {};
   }
@@ -457,9 +421,10 @@ mixin _StorageSync on _StorageServiceBase {
   Future<void> updateLastScreenTimeSync({String? username}) async {
     final prefs = await SharedPreferences.getInstance();
     final requestedUsername = username?.trim();
+    final currentUsername = prefs.getString(keyCurrentUser)?.trim();
     final effectiveUsername = requestedUsername?.isNotEmpty == true
         ? requestedUsername
-        : prefs.getString(keyCurrentUser);
+        : (currentUsername?.isNotEmpty == true ? currentUsername : null);
     if (requestedUsername != null) {
       await UserSessionStorage.ensureCurrentUsername(requestedUsername);
     }

@@ -12,11 +12,19 @@ import 'finance_repository.dart';
 /// 支持导入的第三方账单平台。
 enum FinanceBillPlatform {
   wechat,
-  alipay;
+  alipay,
+  bank,
+  unionpay,
+  thirdPartyApp,
+  generic;
 
   String get label => switch (this) {
     FinanceBillPlatform.wechat => '微信账单',
     FinanceBillPlatform.alipay => '支付宝账单',
+    FinanceBillPlatform.bank => '银行账单',
+    FinanceBillPlatform.unionpay => '云闪付账单',
+    FinanceBillPlatform.thirdPartyApp => '记账软件账单',
+    FinanceBillPlatform.generic => '通用账单',
   };
 }
 
@@ -131,7 +139,7 @@ class FinanceBillParseResult {
   });
 }
 
-/// 微信（CSV / XLSX）与支付宝（CSV）账单解析器。
+/// 多平台、多格式账单解析器（支持微信/支付宝/银行流水/云闪付/记账软件/通用表格，格式涵盖 CSV/TSV/XLSX/JSON/OFX/QFX/QIF）。
 class FinanceBillImportParser {
   static const Set<String> _closedStatuses = {
     '交易关闭',
@@ -141,6 +149,12 @@ class FinanceBillImportParser {
     '支付失败',
     '已撤销',
     '待付款',
+    '已取消',
+    '失败',
+    'cancelled',
+    'canceled',
+    'failed',
+    'closed',
   };
 
   /// 从文件字节解析账单并完成分类、付款方式自动匹配与重复检测。
@@ -155,17 +169,46 @@ class FinanceBillImportParser {
       throw const FormatException('账单文件内容为空');
     }
     final lowerName = fileName.trim().toLowerCase();
+    FinanceBillPlatform? hintedPlatform;
     final List<List<String>> rows;
-    if (lowerName.endsWith('.xlsx')) {
-      rows = _parseXlsxRows(bytes);
-    } else if (lowerName.endsWith('.csv') || lowerName.endsWith('.txt')) {
-      final text = _decodeTextBytes(bytes);
-      rows = parseCsv(text);
-    } else if (_looksLikeZip(bytes)) {
-      rows = _parseXlsxRows(bytes);
+
+    if (lowerName.endsWith('.xlsx') || _looksLikeZip(bytes)) {
+      final sheets = _parseXlsxSheets(bytes);
+      for (final sheetRows in sheets) {
+        if (_findHeaderRowIndex(sheetRows) >= 0) {
+          return parseRows(
+            sheetRows,
+            categories: categories,
+            paymentMethods: paymentMethods,
+            existingTransactions: existingTransactions,
+          );
+        }
+      }
+      rows = sheets.isNotEmpty ? sheets.first : const [];
     } else {
       final text = _decodeTextBytes(bytes);
-      rows = parseCsv(text);
+      final trimmed = text.trimLeft();
+      if (lowerName.endsWith('.json') ||
+          trimmed.startsWith('{') ||
+          trimmed.startsWith('[')) {
+        final jsonParsed = _parseJsonRows(text);
+        rows = jsonParsed.rows;
+        hintedPlatform = jsonParsed.platform;
+      } else if (lowerName.endsWith('.qif') ||
+          trimmed.toUpperCase().startsWith('!TYPE:') ||
+          trimmed.toUpperCase().startsWith('!ACCOUNT')) {
+        rows = _parseQifRows(text);
+        hintedPlatform = FinanceBillPlatform.bank;
+      } else if (lowerName.endsWith('.ofx') ||
+          lowerName.endsWith('.qfx') ||
+          _looksLikeOfx(trimmed)) {
+        rows = _parseOfxRows(text);
+        hintedPlatform = FinanceBillPlatform.bank;
+      } else if (lowerName.endsWith('.tsv')) {
+        rows = parseCsv(text, delimiter: '\t');
+      } else {
+        rows = parseDelimitedText(text);
+      }
     }
 
     return parseRows(
@@ -173,6 +216,7 @@ class FinanceBillImportParser {
       categories: categories,
       paymentMethods: paymentMethods,
       existingTransactions: existingTransactions,
+      hintedPlatform: hintedPlatform,
     );
   }
 
@@ -182,19 +226,16 @@ class FinanceBillImportParser {
     required List<FinanceCategory> categories,
     required List<FinancePaymentMethod> paymentMethods,
     List<FinanceTransaction> existingTransactions = const [],
+    FinanceBillPlatform? hintedPlatform,
   }) {
-    FinanceBillPlatform? hintedPlatform;
+    var detectedPlatform = hintedPlatform;
     var headerIndex = -1;
     Map<String, int> columns = const {};
 
     for (var i = 0; i < rows.length; i++) {
       final row = rows[i].map((cell) => cell.trim()).toList();
       final joined = row.join(' ');
-      if (joined.contains('微信支付')) {
-        hintedPlatform = FinanceBillPlatform.wechat;
-      } else if (joined.contains('支付宝')) {
-        hintedPlatform = FinanceBillPlatform.alipay;
-      }
+      detectedPlatform ??= _detectPlatformFromBanner(joined);
       final candidateColumns = _matchHeaderColumns(row);
       if (candidateColumns != null) {
         headerIndex = i;
@@ -205,11 +246,11 @@ class FinanceBillImportParser {
 
     if (headerIndex < 0) {
       throw const FormatException(
-        '未识别到微信或支付宝账单表头，请确认上传的是官方导出的 CSV 或 XLSX 账单文件',
+        '未识别到有效的账单表头，请确认文件包含「交易时间/日期」和「金额」列，或上传微信、支付宝、银行、记账软件导出的 CSV / XLSX / JSON / OFX / QIF 文件',
       );
     }
 
-    final platform = hintedPlatform ?? _inferPlatformFromColumns(columns);
+    final platform = detectedPlatform ?? _inferPlatformFromColumns(columns);
     final activeCategories = categories.where((c) => !c.isArchived).toList();
     final activeMethods = paymentMethods.where((m) => !m.isArchived).toList();
     final effectiveCategories = activeCategories.isNotEmpty
@@ -230,15 +271,37 @@ class FinanceBillImportParser {
     var duplicateCount = 0;
     final tzOffset = DateTime.now().timeZoneOffset.inMinutes;
 
+    // 预扫描单列金额是否包含明确负号，以便在缺少“收/支”列时判断正数是否代表收入
+    final hasAnyNegativeSingleAmount = _hasAnyNegativeAmount(
+      rows,
+      startIndex: headerIndex + 1,
+      amountCol: columns['amount'],
+    );
+
     for (var i = headerIndex + 1; i < rows.length; i++) {
       final row = rows[i];
       if (row.every((c) => c.trim().isEmpty)) continue;
 
       final timeRaw = _cell(row, columns['time']);
-      final amountRaw = _cell(row, columns['amount']);
-      if (timeRaw.isEmpty && amountRaw.isEmpty) continue;
+      final timeOfDayRaw = _cell(row, columns['timeOfDay']);
+      final combinedTimeRaw =
+          (timeRaw.isNotEmpty &&
+              timeOfDayRaw.isNotEmpty &&
+              !timeRaw.contains(':'))
+          ? '$timeRaw $timeOfDayRaw'
+          : timeRaw;
 
-      final parsedTime = _parseDateTime(timeRaw);
+      final amountRaw = _cell(row, columns['amount']);
+      final incomeAmountRaw = _cell(row, columns['incomeAmount']);
+      final expenseAmountRaw = _cell(row, columns['expenseAmount']);
+      if (combinedTimeRaw.isEmpty &&
+          amountRaw.isEmpty &&
+          incomeAmountRaw.isEmpty &&
+          expenseAmountRaw.isEmpty) {
+        continue;
+      }
+
+      final parsedTime = _parseDateTime(combinedTimeRaw);
       if (parsedTime == null) {
         // 跳过文件末尾的统计或提示行
         continue;
@@ -250,8 +313,13 @@ class FinanceBillImportParser {
         continue;
       }
 
-      final amountMinor = _parseAmountMinor(amountRaw);
-      if (amountMinor == null || amountMinor <= 0) {
+      final resolvedAmount = _resolveAmountAndHintedDirection(
+        amountRaw: amountRaw,
+        incomeAmountRaw: incomeAmountRaw,
+        expenseAmountRaw: expenseAmountRaw,
+        hasAnyNegativeSingleAmount: hasAnyNegativeSingleAmount,
+      );
+      if (resolvedAmount == null || resolvedAmount.amountMinor <= 0) {
         skippedStatusCount++;
         continue;
       }
@@ -263,11 +331,15 @@ class FinanceBillImportParser {
       final rawPaymentMethod = _cleanPlaceholder(
         _cell(row, columns['payment']),
       );
+      final rawTargetPaymentMethod = _cleanPlaceholder(
+        _cell(row, columns['targetPayment']),
+      );
       final orderId = _cleanPlaceholder(_cell(row, columns['orderId']));
       final note = _cleanPlaceholder(_cell(row, columns['note']));
 
       final typeResolution = _resolveType(
         direction: direction,
+        amountHintDirection: resolvedAmount.hintDirection,
         status: status,
         rawCategory: rawCategory,
         merchant: merchant,
@@ -292,7 +364,11 @@ class FinanceBillImportParser {
       );
       final targetPaymentMethodUuid =
           typeResolution.type == FinanceTransactionType.transfer
-          ? _matchTargetCampusMethodUuid(effectiveMethods)
+          ? (_matchTargetPaymentMethodUuid(
+                  rawTargetPaymentMethod: rawTargetPaymentMethod,
+                  paymentMethods: effectiveMethods,
+                ) ??
+                _matchTargetCampusMethodUuid(effectiveMethods))
           : null;
 
       String? duplicateReason;
@@ -301,7 +377,7 @@ class FinanceBillImportParser {
       } else {
         duplicateReason = _findDuplicateReason(
           type: typeResolution.type,
-          amountMinor: amountMinor,
+          amountMinor: resolvedAmount.amountMinor,
           transactionDate: txDate,
           occurredAt: occurredAt,
           merchant: merchant ?? '',
@@ -318,7 +394,7 @@ class FinanceBillImportParser {
         FinanceBillImportItem(
           platform: platform,
           type: typeResolution.type,
-          amountMinor: amountMinor,
+          amountMinor: resolvedAmount.amountMinor,
           transactionDate: txDate,
           occurredAt: occurredAt,
           timezoneOffsetMinutes: tzOffset,
@@ -384,8 +460,54 @@ class FinanceBillImportParser {
     }
   }
 
-  /// RFC 4180 兼容的 CSV 解析器，支持引号转义与字段内换行。
-  static List<List<String>> parseCsv(String input) {
+  /// 自动识别分隔符（逗号 / 制表符 / 分号）的表格文本解析器。
+  static List<List<String>> parseDelimitedText(String input) {
+    final delimiter = _detectDelimiter(input);
+    return parseCsv(input, delimiter: delimiter);
+  }
+
+  static String _detectDelimiter(String input) {
+    final lines = const LineSplitter()
+        .convert(input)
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .take(25)
+        .toList();
+    if (lines.isEmpty) return ',';
+
+    var commaScore = 0;
+    var tabScore = 0;
+    var semiScore = 0;
+    for (final line in lines) {
+      commaScore += _countUnquoted(line, ',');
+      tabScore += _countUnquoted(line, '\t');
+      semiScore += _countUnquoted(line, ';');
+    }
+    if (tabScore > commaScore && tabScore >= lines.length ~/ 2 + 1) {
+      return '\t';
+    }
+    if (semiScore > commaScore && commaScore == 0 && semiScore >= 2) {
+      return ';';
+    }
+    return ',';
+  }
+
+  static int _countUnquoted(String line, String ch) {
+    var count = 0;
+    var inQuotes = false;
+    for (var i = 0; i < line.length; i++) {
+      final c = line[i];
+      if (c == '"') {
+        inQuotes = !inQuotes;
+      } else if (!inQuotes && c == ch) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /// RFC 4180 兼容的分隔符文本解析器，支持引号转义与字段内换行。
+  static List<List<String>> parseCsv(String input, {String delimiter = ','}) {
     final rows = <List<String>>[];
     var currentRow = <String>[];
     final buffer = StringBuffer();
@@ -407,7 +529,7 @@ class FinanceBillImportParser {
       } else {
         if (ch == '"') {
           inQuotes = true;
-        } else if (ch == ',') {
+        } else if (ch == delimiter) {
           currentRow.add(buffer.toString().trim());
           buffer.clear();
         } else if (ch == '\r') {
@@ -436,7 +558,7 @@ class FinanceBillImportParser {
     return rows;
   }
 
-  static List<List<String>> _parseXlsxRows(Uint8List bytes) {
+  static List<List<List<String>>> _parseXlsxSheets(Uint8List bytes) {
     final Archive archive;
     try {
       archive = ZipDecoder().decodeBytes(bytes);
@@ -445,28 +567,49 @@ class FinanceBillImportParser {
     }
 
     ArchiveFile? sharedStringsFile;
-    ArchiveFile? sheetFile;
+    final sheetFiles = <ArchiveFile>[];
     for (final file in archive.files) {
       if (!file.isFile) continue;
       final lower = file.name.toLowerCase();
       if (lower == 'xl/sharedstrings.xml') {
         sharedStringsFile = file;
-      } else if (lower == 'xl/worksheets/sheet1.xml') {
-        sheetFile = file;
-      } else if (sheetFile == null &&
-          lower.startsWith('xl/worksheets/sheet') &&
+      } else if (lower.startsWith('xl/worksheets/sheet') &&
           lower.endsWith('.xml')) {
-        sheetFile = file;
+        sheetFiles.add(file);
       }
     }
 
-    if (sheetFile == null) {
+    if (sheetFiles.isEmpty) {
       throw const FormatException('XLSX 文件中未找到工作表数据');
     }
+
+    sheetFiles.sort((a, b) {
+      final numA = _sheetOrderNumber(a.name);
+      final numB = _sheetOrderNumber(b.name);
+      return numA.compareTo(numB);
+    });
 
     final sharedStrings = sharedStringsFile != null
         ? _parseSharedStrings(sharedStringsFile.content)
         : const <String>[];
+
+    return sheetFiles
+        .map((f) => _parseSingleXlsxSheet(f, sharedStrings))
+        .toList();
+  }
+
+  static int _sheetOrderNumber(String name) {
+    final m = RegExp(
+      r'sheet(\d+)\.xml$',
+      caseSensitive: false,
+    ).firstMatch(name);
+    return m != null ? (int.tryParse(m.group(1)!) ?? 999) : 999;
+  }
+
+  static List<List<String>> _parseSingleXlsxSheet(
+    ArchiveFile sheetFile,
+    List<String> sharedStrings,
+  ) {
     final sheetXml = utf8.decode(sheetFile.content, allowMalformed: true);
     final document = XmlDocument.parse(sheetXml);
 
@@ -514,6 +657,254 @@ class FinanceBillImportParser {
     return rows;
   }
 
+  static ({List<List<String>> rows, FinanceBillPlatform? platform})
+  _parseJsonRows(String text) {
+    final dynamic decoded;
+    try {
+      decoded = jsonDecode(text);
+    } catch (e) {
+      throw FormatException('JSON 账单格式无效：$e');
+    }
+
+    FinanceBillPlatform? platform;
+    List<dynamic>? rawList;
+    if (decoded is List) {
+      rawList = decoded;
+    } else if (decoded is Map) {
+      final metaStr = [
+        decoded['platform']?.toString() ?? '',
+        decoded['source']?.toString() ?? '',
+        decoded['app']?.toString() ?? '',
+      ].join(' ');
+      platform = _detectPlatformFromBanner(metaStr);
+
+      const candidateKeys = [
+        'transactions',
+        'records',
+        'items',
+        'bills',
+        'data',
+        'list',
+        'rows',
+        'entries',
+      ];
+      for (final key in candidateKeys) {
+        final v = decoded[key];
+        if (v is List) {
+          rawList = v;
+          break;
+        }
+      }
+      if (rawList == null) {
+        for (final entry in decoded.entries) {
+          if (entry.value is List) {
+            rawList = entry.value as List;
+            break;
+          }
+        }
+      }
+      rawList ??= [decoded];
+    }
+
+    if (rawList == null || rawList.isEmpty) {
+      return (rows: const [], platform: platform);
+    }
+
+    final maps = rawList.whereType<Map>().toList();
+    if (maps.isEmpty) {
+      // 支持二维数组形式的 JSON，例如 [["时间","金额"], ["2026-11-10","12.5"]]
+      final matrix = rawList
+          .whereType<List>()
+          .map((r) => r.map((c) => c?.toString() ?? '').toList())
+          .toList();
+      return (rows: matrix, platform: platform);
+    }
+
+    final headers = <String>[];
+    final headerSet = <String>{};
+    for (final m in maps) {
+      for (final k in m.keys) {
+        final keyStr = k.toString();
+        if (headerSet.add(keyStr)) {
+          headers.add(keyStr);
+        }
+      }
+    }
+
+    final rows = <List<String>>[headers];
+    for (final m in maps) {
+      rows.add(
+        headers.map((h) {
+          final v = m[h];
+          return v == null ? '' : v.toString();
+        }).toList(),
+      );
+    }
+    return (rows: rows, platform: platform ?? FinanceBillPlatform.generic);
+  }
+
+  static List<List<String>> _parseQifRows(String text) {
+    final lines = const LineSplitter().convert(text);
+    final rows = <List<String>>[
+      ['交易时间', '金额', '交易对方', '商品说明', '交易分类', '交易单号', '支付方式', '收/支'],
+    ];
+
+    String date = '';
+    String amount = '';
+    String payee = '';
+    String memo = '';
+    String category = '';
+    String refNum = '';
+    String currentAccount = '';
+
+    void flushRecord() {
+      if (date.isEmpty && amount.isEmpty) return;
+      var direction = '';
+      var cleanCategory = category;
+      var account = currentAccount;
+      if (category.startsWith('[') && category.endsWith(']')) {
+        direction = '转账';
+        cleanCategory = '转账';
+      }
+      rows.add([
+        date,
+        amount,
+        payee,
+        memo,
+        cleanCategory,
+        refNum,
+        account,
+        direction,
+      ]);
+      date = '';
+      amount = '';
+      payee = '';
+      memo = '';
+      category = '';
+      refNum = '';
+    }
+
+    for (final rawLine in lines) {
+      final line = rawLine.trim();
+      if (line.isEmpty) continue;
+      if (line.startsWith('!')) {
+        final upper = line.toUpperCase();
+        if (upper.contains('CCARD')) {
+          currentAccount = '信用卡';
+        } else if (upper.contains('CASH')) {
+          currentAccount = '现金';
+        } else if (upper.contains('BANK')) {
+          currentAccount = '银行卡';
+        }
+        continue;
+      }
+      if (line == '^') {
+        flushRecord();
+        continue;
+      }
+      final code = line[0];
+      final val = line.substring(1).trim();
+      switch (code) {
+        case 'D':
+          date = val;
+        case 'T':
+        case 'U':
+          if (amount.isEmpty) amount = val;
+        case 'P':
+          payee = val;
+        case 'M':
+          memo = val;
+        case 'L':
+          category = val;
+        case 'N':
+          refNum = val;
+      }
+    }
+    flushRecord();
+    return rows;
+  }
+
+  static bool _looksLikeOfx(String trimmed) {
+    final upper = trimmed.toUpperCase();
+    return upper.contains('<OFX>') || upper.contains('OFXHEADER:');
+  }
+
+  static List<List<String>> _parseOfxRows(String text) {
+    final rows = <List<String>>[
+      ['交易时间', '金额', '交易对方', '商品说明', '交易类型', '交易单号', '支付方式', '收/支'],
+    ];
+
+    final acctTypeMatch = RegExp(
+      r'<ACCTTYPE>\s*([^\r\n<]+)',
+      caseSensitive: false,
+    ).firstMatch(text);
+    final acctIdMatch = RegExp(
+      r'<ACCTID>\s*([^\r\n<]+)',
+      caseSensitive: false,
+    ).firstMatch(text);
+    var defaultAccount = '银行卡';
+    final acctType = acctTypeMatch?.group(1)?.trim().toUpperCase() ?? '';
+    if (acctType == 'CREDITCARD' ||
+        RegExp(r'<CCSTMTRS>', caseSensitive: false).hasMatch(text)) {
+      defaultAccount = '信用卡';
+    } else if (acctIdMatch != null) {
+      final id = acctIdMatch.group(1)!.trim();
+      final tail = id.length > 4 ? id.substring(id.length - 4) : id;
+      defaultAccount = '银行卡($tail)';
+    }
+
+    final trnBlocks = RegExp(
+      r'<STMTTRN>(.*?)</STMTTRN>',
+      caseSensitive: false,
+      dotAll: true,
+    ).allMatches(text);
+
+    for (final match in trnBlocks) {
+      final block = match.group(1) ?? '';
+      String extractTag(String tag) {
+        final m = RegExp(
+          '<$tag>\\s*([^\\r\\n<]+)',
+          caseSensitive: false,
+        ).firstMatch(block);
+        return m?.group(1)?.trim() ?? '';
+      }
+
+      final dtPosted = extractTag('DTPOSTED');
+      final trnAmt = extractTag('TRNAMT');
+      if (dtPosted.isEmpty || trnAmt.isEmpty) continue;
+
+      final trnType = extractTag('TRNTYPE').toUpperCase();
+      final name = extractTag('NAME');
+      final memo = extractTag('MEMO');
+      final fitid = extractTag('FITID');
+
+      var direction = '';
+      if (trnType == 'XFER') {
+        direction = '转账';
+      } else if (trnType == 'DEBIT' ||
+          trnType == 'POS' ||
+          trnType == 'ATM' ||
+          trnType == 'FEE' ||
+          trnType == 'PAYMENT') {
+        direction = '支出';
+      } else if (trnType == 'CREDIT' || trnType == 'DEP' || trnType == 'INT') {
+        direction = '收入';
+      }
+
+      rows.add([
+        dtPosted,
+        trnAmt,
+        name.isNotEmpty ? name : memo,
+        memo,
+        trnType,
+        fitid,
+        defaultAccount,
+        direction,
+      ]);
+    }
+    return rows;
+  }
+
   static List<String> _parseSharedStrings(List<int> content) {
     final xmlText = utf8.decode(content, allowMalformed: true);
     final doc = XmlDocument.parse(xmlText);
@@ -538,36 +929,256 @@ class FinanceBillImportParser {
     return col > 0 ? col - 1 : 0;
   }
 
+  static int _findHeaderRowIndex(List<List<String>> rows) {
+    for (var i = 0; i < rows.length; i++) {
+      final row = rows[i].map((cell) => cell.trim()).toList();
+      if (_matchHeaderColumns(row) != null) return i;
+    }
+    return -1;
+  }
+
+  static FinanceBillPlatform? _detectPlatformFromBanner(String joined) {
+    final lower = joined.toLowerCase();
+    if (joined.contains('微信支付') || lower.contains('wechat')) {
+      return FinanceBillPlatform.wechat;
+    }
+    if (joined.contains('支付宝') || lower.contains('alipay')) {
+      return FinanceBillPlatform.alipay;
+    }
+    if (joined.contains('云闪付') ||
+        joined.contains('中国银联') ||
+        lower.contains('unionpay')) {
+      return FinanceBillPlatform.unionpay;
+    }
+    const appKeywords = [
+      '钱迹',
+      '随手记',
+      '鲨鱼记账',
+      '挖财',
+      '网易有钱',
+      '一木记账',
+      'icost',
+      'timi',
+      'bluecoins',
+      'qianji',
+    ];
+    for (final k in appKeywords) {
+      if (lower.contains(k)) return FinanceBillPlatform.thirdPartyApp;
+    }
+    const bankKeywords = [
+      '招商银行',
+      '工商银行',
+      '建设银行',
+      '农业银行',
+      '中国银行',
+      '交通银行',
+      '浦发银行',
+      '中信银行',
+      '平安银行',
+      '兴业银行',
+      '广发银行',
+      '民生银行',
+      '光大银行',
+      '邮储银行',
+      '银行对账单',
+      '银行交易流水',
+      '交易流水明细',
+      '活期明细',
+    ];
+    for (final k in bankKeywords) {
+      if (joined.contains(k)) return FinanceBillPlatform.bank;
+    }
+    return null;
+  }
+
   static Map<String, int>? _matchHeaderColumns(List<String> row) {
     final map = <String, int>{};
     for (var i = 0; i < row.length; i++) {
-      final h = row[i].replaceAll(RegExp(r'\s+'), '');
-      if (h.isEmpty) continue;
-      if (h == '交易时间' || h == '付款时间' || h == '交易创建时间') {
-        map.putIfAbsent('time', () => i);
-      } else if (h == '收/支') {
+      final raw = row[i].replaceAll(RegExp(r'\s+'), '');
+      if (raw.isEmpty) continue;
+      final lower = raw.toLowerCase();
+
+      // 日期/时间列
+      if (raw == '交易时间' ||
+          raw == '付款时间' ||
+          raw == '交易创建时间' ||
+          raw == '记账时间' ||
+          raw == '消费时间' ||
+          lower == 'datetime' ||
+          lower == 'timestamp' ||
+          lower == 'createdat') {
+        if (map.containsKey('time') && !map.containsKey('timeOfDay')) {
+          map['timeOfDay'] = i;
+        } else {
+          map.putIfAbsent('time', () => i);
+        }
+      } else if (raw == '日期' ||
+          raw == '交易日期' ||
+          raw == '记账日期' ||
+          raw == '发生日期' ||
+          raw == '账单日期' ||
+          raw == '时间' ||
+          lower == 'date' ||
+          lower == 'time' ||
+          lower == 'transactiondate' ||
+          lower == 'postingdate' ||
+          lower == 'transdate') {
+        if (!map.containsKey('time')) {
+          map['time'] = i;
+        } else if ((raw == '时间' || lower == 'time') &&
+            !map.containsKey('timeOfDay')) {
+          map['timeOfDay'] = i;
+        } else if ((raw == '日期' ||
+                raw == '交易日期' ||
+                raw == '记账日期' ||
+                raw == '发生日期' ||
+                lower == 'date' ||
+                lower == 'transactiondate' ||
+                lower == 'postingdate' ||
+                lower == 'transdate') &&
+            !map.containsKey('timeOfDay')) {
+          map['timeOfDay'] = map['time']!;
+          map['time'] = i;
+        }
+      } else if (raw == '收/支' ||
+          raw == '收支' ||
+          raw == '收支类型' ||
+          raw == '收支方向' ||
+          raw == '记账类型' ||
+          raw == '借/贷' ||
+          raw == '借贷标志' ||
+          lower == 'direction' ||
+          lower == 'drcr' ||
+          lower == 'type') {
         map['direction'] = i;
-      } else if (h == '金额(元)' || h == '金额（元）' || h == '金额') {
-        map['amount'] = i;
-      } else if (h == '交易分类' || h == '交易类型') {
+      } else if (raw == '收入金额' ||
+          raw == '存入金额' ||
+          raw == '贷方发生额' ||
+          raw == '贷方金额' ||
+          raw == '收入' ||
+          raw == '收入(元)' ||
+          raw == '收入（元）' ||
+          lower == 'credit' ||
+          lower == 'deposit' ||
+          lower == 'inflow') {
+        map['incomeAmount'] = i;
+      } else if (raw == '支出金额' ||
+          raw == '支取金额' ||
+          raw == '借方发生额' ||
+          raw == '借方金额' ||
+          raw == '支出' ||
+          raw == '支出(元)' ||
+          raw == '支出（元）' ||
+          lower == 'debit' ||
+          lower == 'withdrawal' ||
+          lower == 'outflow') {
+        map['expenseAmount'] = i;
+      } else if (raw == '金额(元)' ||
+          raw == '金额（元）' ||
+          raw == '金额' ||
+          raw == '交易金额' ||
+          raw == '交易金额(元)' ||
+          raw == '交易金额（元）' ||
+          raw == '发生额' ||
+          raw == '记账金额' ||
+          raw == '实付金额' ||
+          lower == 'amount' ||
+          lower == 'total' ||
+          lower == 'value' ||
+          lower == 'money') {
+        map.putIfAbsent('amount', () => i);
+      } else if (raw == '交易分类' ||
+          raw == '分类' ||
+          raw == '类别' ||
+          raw == '账目分类' ||
+          raw == '一级分类' ||
+          lower == 'category') {
         map.putIfAbsent('category', () => i);
-      } else if (h == '交易对方') {
-        map['merchant'] = i;
-      } else if (h == '商品' || h == '商品说明' || h == '商品名称') {
-        map['item'] = i;
-      } else if (h == '支付方式' || h == '收/付款方式' || h == '付款方式') {
-        map['payment'] = i;
-      } else if (h == '当前状态' || h == '交易状态') {
-        map['status'] = i;
-      } else if (h == '交易单号' || h == '交易订单号' || h == '交易号') {
-        map['orderId'] = i;
-      } else if (h == '备注') {
-        map['note'] = i;
+      } else if (raw == '交易类型' || raw == '类型' || raw == '业务类型') {
+        map.putIfAbsent('category', () => i);
+        map.putIfAbsent('direction', () => i);
+      } else if (raw == '交易对方' ||
+          raw == '商户' ||
+          raw == '商户名称' ||
+          raw == '商家' ||
+          raw == '交易对象' ||
+          raw == '对方户名' ||
+          raw == '对方账号名称' ||
+          lower == 'merchant' ||
+          lower == 'payee' ||
+          lower == 'counterparty') {
+        map.putIfAbsent('merchant', () => i);
+      } else if (raw == '商品' ||
+          raw == '商品说明' ||
+          raw == '商品名称' ||
+          raw == '交易摘要' ||
+          raw == '摘要' ||
+          raw == '内容' ||
+          raw == '项目' ||
+          lower == 'description' ||
+          lower == 'item' ||
+          lower == 'title' ||
+          lower == 'summary' ||
+          lower == 'name') {
+        map.putIfAbsent('item', () => i);
+      } else if (raw == '支付方式' ||
+          raw == '收/付款方式' ||
+          raw == '付款方式' ||
+          raw == '账户' ||
+          raw == '账户1' ||
+          raw == '转出账户' ||
+          raw == '交易账户' ||
+          raw == '卡号' ||
+          raw == '交易卡号' ||
+          lower == 'account' ||
+          lower == 'payment' ||
+          lower == 'paymentmethod' ||
+          lower == 'card') {
+        map.putIfAbsent('payment', () => i);
+      } else if (raw == '账户2' ||
+          raw == '转入账户' ||
+          raw == '目标账户' ||
+          raw == '对方账户' ||
+          lower == 'targetaccount' ||
+          lower == 'toaccount') {
+        map.putIfAbsent('targetPayment', () => i);
+      } else if (raw == '当前状态' ||
+          raw == '交易状态' ||
+          raw == '状态' ||
+          lower == 'status' ||
+          lower == 'state') {
+        map.putIfAbsent('status', () => i);
+      } else if (raw == '交易单号' ||
+          raw == '交易订单号' ||
+          raw == '交易号' ||
+          raw == '订单号' ||
+          raw == '流水号' ||
+          raw == '交易流水号' ||
+          lower == 'orderid' ||
+          lower == 'transactionid' ||
+          lower == 'fitid' ||
+          lower == 'id') {
+        map.putIfAbsent('orderId', () => i);
+      } else if (raw == '备注' ||
+          raw == '附言' ||
+          raw == '交易附言' ||
+          raw == '说明' ||
+          raw == '标签' ||
+          lower == 'note' ||
+          lower == 'notes' ||
+          lower == 'memo' ||
+          lower == 'remark' ||
+          lower == 'comment' ||
+          lower == 'tag') {
+        map.putIfAbsent('note', () => i);
       }
     }
-    if (map.containsKey('time') &&
-        map.containsKey('amount') &&
-        map.containsKey('direction')) {
+
+    final hasAmount =
+        map.containsKey('amount') ||
+        map.containsKey('incomeAmount') ||
+        map.containsKey('expenseAmount');
+    if (map.containsKey('time') && hasAmount) {
       return map;
     }
     return null;
@@ -576,10 +1187,19 @@ class FinanceBillImportParser {
   static FinanceBillPlatform _inferPlatformFromColumns(
     Map<String, int> columns,
   ) {
-    // 仅作为兜底；实际微信与支付宝表头字段几乎一致，这里按常见顺序兜底为微信。
-    return columns.containsKey('category')
-        ? FinanceBillPlatform.wechat
-        : FinanceBillPlatform.alipay;
+    if (columns.containsKey('incomeAmount') ||
+        columns.containsKey('expenseAmount')) {
+      return FinanceBillPlatform.bank;
+    }
+    if (columns.containsKey('targetPayment')) {
+      return FinanceBillPlatform.thirdPartyApp;
+    }
+    if (columns.containsKey('status') && columns.containsKey('orderId')) {
+      return columns.containsKey('category')
+          ? FinanceBillPlatform.wechat
+          : FinanceBillPlatform.alipay;
+    }
+    return FinanceBillPlatform.generic;
   }
 
   static String _cell(List<String> row, int? index) {
@@ -595,8 +1215,9 @@ class FinanceBillImportParser {
 
   static bool _isClosedStatus(String status) {
     if (status.isEmpty) return false;
+    final lower = status.toLowerCase();
     for (final closed in _closedStatuses) {
-      if (status.contains(closed)) return true;
+      if (lower.contains(closed.toLowerCase())) return true;
     }
     return false;
   }
@@ -605,24 +1226,91 @@ class FinanceBillImportParser {
     final value = raw.trim();
     if (value.isEmpty) return null;
 
-    // 处理 Excel 序列号日期
+    // 1. 处理 Excel 序列号日期
     final serial = double.tryParse(value);
-    if (serial != null && serial > 20000 && serial < 100000) {
-      final days = serial.floor();
-      final msOfDay = ((serial - days) * 86400000).round();
-      return DateTime(
-        1899,
-        12,
-        30,
-      ).add(Duration(days: days, milliseconds: msOfDay));
+    if (serial != null) {
+      if (serial > 20000 && serial < 100000) {
+        final days = serial.floor();
+        final msOfDay = ((serial - days) * 86400000).round();
+        return DateTime(
+          1899,
+          12,
+          30,
+        ).add(Duration(days: days, milliseconds: msOfDay));
+      }
+      // Unix 时间戳（秒或毫秒）
+      if (serial >= 1000000000000 && serial <= 9999999999999) {
+        return DateTime.fromMillisecondsSinceEpoch(serial.round());
+      }
+      if (serial >= 1000000000 &&
+          serial <= 9999999999 &&
+          !value.contains('.')) {
+        return DateTime.fromMillisecondsSinceEpoch(serial.round() * 1000);
+      }
     }
 
-    final normalized = value.replaceAll('/', '-');
+    // 2. 紧凑数字格式（银行流水 / OFX 常见：20261110 或 20261110123000）
+    final ofxOrCompact = RegExp(
+      r'^(\d{4})(\d{2})(\d{2})(?:(\d{2})(\d{2})(\d{2})?)?',
+    ).firstMatch(value);
+    if (ofxOrCompact != null &&
+        !value.contains('-') &&
+        !value.contains('/') &&
+        !value.contains('.')) {
+      final year = int.parse(ofxOrCompact.group(1)!);
+      final month = int.parse(ofxOrCompact.group(2)!);
+      final day = int.parse(ofxOrCompact.group(3)!);
+      final hour = int.tryParse(ofxOrCompact.group(4) ?? '0') ?? 0;
+      final minute = int.tryParse(ofxOrCompact.group(5) ?? '0') ?? 0;
+      final second = int.tryParse(ofxOrCompact.group(6) ?? '0') ?? 0;
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        return DateTime(year, month, day, hour, minute, second);
+      }
+    }
+
+    // 3. 中文日期格式：2026年11月10日 12:30:00
+    final cnMatch = RegExp(
+      r'^(\d{4})年(\d{1,2})月(\d{1,2})日(?:\s*(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?',
+    ).firstMatch(value);
+    if (cnMatch != null) {
+      return DateTime(
+        int.parse(cnMatch.group(1)!),
+        int.parse(cnMatch.group(2)!),
+        int.parse(cnMatch.group(3)!),
+        int.tryParse(cnMatch.group(4) ?? '0') ?? 0,
+        int.tryParse(cnMatch.group(5) ?? '0') ?? 0,
+        int.tryParse(cnMatch.group(6) ?? '0') ?? 0,
+      );
+    }
+
+    // 4. QIF / 美式日期：MM/DD/YYYY 或 MM/DD'YY
+    final usMatch = RegExp(
+      r"^(\d{1,2})/(\d{1,2})[/'](\d{2,4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$",
+    ).firstMatch(value);
+    if (usMatch != null) {
+      var year = int.parse(usMatch.group(3)!);
+      if (year < 100) year += 2000;
+      final month = int.parse(usMatch.group(1)!);
+      final day = int.parse(usMatch.group(2)!);
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        return DateTime(
+          year,
+          month,
+          day,
+          int.tryParse(usMatch.group(4) ?? '0') ?? 0,
+          int.tryParse(usMatch.group(5) ?? '0') ?? 0,
+          int.tryParse(usMatch.group(6) ?? '0') ?? 0,
+        );
+      }
+    }
+
+    // 5. 标准 YYYY-MM-DD / YYYY/MM/DD / YYYY.MM.DD
+    final normalized = value.replaceAll('/', '-').replaceAll('.', '-');
     final direct = DateTime.tryParse(normalized);
-    if (direct != null) return direct;
+    if (direct != null) return direct.toLocal();
 
     final match = RegExp(
-      r'^(\d{4})-(\d{1,2})-(\d{1,2})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?',
+      r'^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?',
     ).firstMatch(normalized);
     if (match == null) return null;
     final year = int.parse(match.group(1)!);
@@ -634,23 +1322,92 @@ class FinanceBillImportParser {
     return DateTime(year, month, day, hour, minute, second);
   }
 
-  static int? _parseAmountMinor(String raw) {
+  static bool _hasAnyNegativeAmount(
+    List<List<String>> rows, {
+    required int startIndex,
+    required int? amountCol,
+  }) {
+    if (amountCol == null) return false;
+    for (var i = startIndex; i < rows.length; i++) {
+      final raw = _cell(rows[i], amountCol);
+      final parsed = _parseSignedAmountMinor(raw);
+      if (parsed != null && parsed.isNegative) return true;
+    }
+    return false;
+  }
+
+  static ({int amountMinor, String hintDirection})?
+  _resolveAmountAndHintedDirection({
+    required String amountRaw,
+    required String incomeAmountRaw,
+    required String expenseAmountRaw,
+    required bool hasAnyNegativeSingleAmount,
+  }) {
+    final incomeParsed = _parseSignedAmountMinor(incomeAmountRaw);
+    final expenseParsed = _parseSignedAmountMinor(expenseAmountRaw);
+    if (incomeParsed != null && incomeParsed.amountMinor > 0) {
+      return (amountMinor: incomeParsed.amountMinor, hintDirection: '收入');
+    }
+    if (expenseParsed != null && expenseParsed.amountMinor > 0) {
+      return (amountMinor: expenseParsed.amountMinor, hintDirection: '支出');
+    }
+
+    final singleParsed = _parseSignedAmountMinor(amountRaw);
+    if (singleParsed == null || singleParsed.amountMinor <= 0) return null;
+    if (singleParsed.isNegative) {
+      return (amountMinor: singleParsed.amountMinor, hintDirection: '支出');
+    }
+    if (singleParsed.hasExplicitPlus || hasAnyNegativeSingleAmount) {
+      return (amountMinor: singleParsed.amountMinor, hintDirection: '收入');
+    }
+    return (amountMinor: singleParsed.amountMinor, hintDirection: '');
+  }
+
+  static ({int amountMinor, bool isNegative, bool hasExplicitPlus})?
+  _parseSignedAmountMinor(String raw) {
     var cleaned = raw.trim();
-    if (cleaned.isEmpty) return null;
+    if (cleaned.isEmpty || cleaned == '-' || cleaned == '--') return null;
+
+    var isNegative = false;
+    var hasExplicitPlus = false;
+    if (cleaned.startsWith('(') && cleaned.endsWith(')')) {
+      isNegative = true;
+      cleaned = cleaned.substring(1, cleaned.length - 1).trim();
+    }
+    if (cleaned.contains('-')) {
+      isNegative = true;
+    } else if (cleaned.contains('+')) {
+      hasExplicitPlus = true;
+    }
+
     cleaned = cleaned
+        .replaceAll(
+          RegExp(r'\b(CNY|RMB|USD|HKD|EUR|GBP|JPY)\b', caseSensitive: false),
+          '',
+        )
         .replaceAll('¥', '')
         .replaceAll('￥', '')
+        .replaceAll('\$', '')
+        .replaceAll('€', '')
+        .replaceAll('£', '')
         .replaceAll(',', '')
         .replaceAll('元', '')
         .replaceAll('+', '')
         .replaceAll('-', '')
         .trim();
-    return parseFinanceAmount(cleaned);
+    final minor = parseFinanceAmount(cleaned);
+    if (minor == null) return null;
+    return (
+      amountMinor: minor,
+      isNegative: isNegative,
+      hasExplicitPlus: hasExplicitPlus,
+    );
   }
 
   static ({FinanceTransactionType type, bool isNeutral, String? neutralReason})
   _resolveType({
     required String direction,
+    required String amountHintDirection,
     required String status,
     required String rawCategory,
     required String? merchant,
@@ -668,7 +1425,64 @@ class FinanceBillImportParser {
       note: note,
     );
 
-    if (direction == '支出') {
+    final dirLower = direction.trim().toLowerCase();
+    final isTransferDir =
+        dirLower == '转账' ||
+        dirLower == '转出' ||
+        dirLower == '转入' ||
+        dirLower == '账户互转' ||
+        dirLower == 'transfer' ||
+        dirLower == 'xfer';
+    final isExpenseDir =
+        dirLower == '支出' ||
+        dirLower == '支' ||
+        dirLower == '借' ||
+        dirLower == '借方' ||
+        dirLower == '借记' ||
+        dirLower == '付款' ||
+        dirLower == '消费' ||
+        dirLower == 'expense' ||
+        dirLower == 'debit' ||
+        dirLower == 'out' ||
+        dirLower == 'outflow' ||
+        dirLower == 'dr' ||
+        dirLower == 'payment';
+    final isIncomeDir =
+        dirLower == '收入' ||
+        dirLower == '收' ||
+        dirLower == '贷' ||
+        dirLower == '贷方' ||
+        dirLower == '贷记' ||
+        dirLower == '收款' ||
+        dirLower == '入账' ||
+        dirLower == 'income' ||
+        dirLower == 'credit' ||
+        dirLower == 'in' ||
+        dirLower == 'inflow' ||
+        dirLower == 'cr' ||
+        dirLower == 'deposit';
+    final isRefundDir = dirLower == '退款' || dirLower == 'refund';
+    final isNeutralDir =
+        dirLower == '不计收支' ||
+        dirLower == '中性交易' ||
+        dirLower == 'neutral' ||
+        dirLower == 'ignore';
+
+    if (isTransferDir) {
+      return (
+        type: FinanceTransactionType.transfer,
+        isNeutral: true,
+        neutralReason: '账户互转 · 不计收支',
+      );
+    }
+    if (isRefundDir || (isRefundSignal && status.contains('退款成功'))) {
+      return (
+        type: FinanceTransactionType.refund,
+        isNeutral: false,
+        neutralReason: null,
+      );
+    }
+    if (isExpenseDir) {
       if (isCampusTransfer) {
         return (
           type: FinanceTransactionType.transfer,
@@ -682,7 +1496,7 @@ class FinanceBillImportParser {
         neutralReason: null,
       );
     }
-    if (direction == '收入') {
+    if (isIncomeDir) {
       if (isRefundSignal) {
         return (
           type: FinanceTransactionType.refund,
@@ -696,19 +1510,93 @@ class FinanceBillImportParser {
         neutralReason: null,
       );
     }
-    if (isRefundSignal && status.contains('退款成功')) {
+    if (isNeutralDir) {
+      return (
+        type: isCampusTransfer
+            ? FinanceTransactionType.transfer
+            : FinanceTransactionType.expense,
+        isNeutral: true,
+        neutralReason: isCampusTransfer ? '账户互转 · 不计收支' : '不计收支',
+      );
+    }
+
+    // 未提供收/支列或为其他文本时，结合金额符号与上下文兜底
+    if (amountHintDirection == '收入') {
+      return (
+        type: isRefundSignal
+            ? FinanceTransactionType.refund
+            : FinanceTransactionType.income,
+        isNeutral: false,
+        neutralReason: null,
+      );
+    }
+    if (amountHintDirection == '支出') {
+      if (isCampusTransfer) {
+        return (
+          type: FinanceTransactionType.transfer,
+          isNeutral: true,
+          neutralReason: '账户互转 · 不计收支',
+        );
+      }
+      return (
+        type: FinanceTransactionType.expense,
+        isNeutral: false,
+        neutralReason: null,
+      );
+    }
+
+    if (isCampusTransfer) {
+      return (
+        type: FinanceTransactionType.transfer,
+        isNeutral: true,
+        neutralReason: '账户互转 · 不计收支',
+      );
+    }
+
+    // 无符号通用表格（如纯正数列表）：根据分类/摘要判断收入或默认支出
+    final combinedHint = '$rawCategory ${itemDescription ?? ''} ${note ?? ''}'
+        .toLowerCase();
+    if (combinedHint.contains('工资') ||
+        combinedHint.contains('奖金') ||
+        combinedHint.contains('薪资') ||
+        combinedHint.contains('报销') ||
+        combinedHint.contains('分红') ||
+        combinedHint.contains('利息') ||
+        combinedHint.contains('salary') ||
+        combinedHint.contains('payroll')) {
+      return (
+        type: FinanceTransactionType.income,
+        isNeutral: false,
+        neutralReason: null,
+      );
+    }
+    if (isRefundSignal) {
       return (
         type: FinanceTransactionType.refund,
         isNeutral: false,
         neutralReason: null,
       );
     }
+
     return (
-      type: isCampusTransfer
-          ? FinanceTransactionType.transfer
-          : FinanceTransactionType.expense,
-      isNeutral: true,
-      neutralReason: isCampusTransfer ? '账户互转 · 不计收支' : '不计收支',
+      type: FinanceTransactionType.expense,
+      isNeutral: false,
+      neutralReason: null,
+    );
+  }
+
+  static String? _matchTargetPaymentMethodUuid({
+    required String? rawTargetPaymentMethod,
+    required List<FinancePaymentMethod> paymentMethods,
+  }) {
+    if (rawTargetPaymentMethod == null ||
+        rawTargetPaymentMethod.trim().isEmpty ||
+        paymentMethods.isEmpty) {
+      return null;
+    }
+    return _matchPaymentMethodByText(
+      rawTargetPaymentMethod.trim(),
+      paymentMethods,
     );
   }
 
@@ -777,62 +1665,103 @@ class FinanceBillImportParser {
     if (paymentMethods.isEmpty) return null;
 
     if (rawPaymentMethod != null && rawPaymentMethod.isNotEmpty) {
-      final lower = rawPaymentMethod.toLowerCase();
-      // 1. 精确或包含用户自定义/系统付款方式名称
-      for (final method in paymentMethods) {
-        final name = method.name.trim().toLowerCase();
-        if (name.isNotEmpty && (lower == name || lower.contains(name))) {
-          return method.uuid;
-        }
-      }
-      // 2. 常见渠道关键词映射
-      if (lower.contains('零钱') || lower.contains('微信')) {
-        final wechat = _findMethodBySystemOrName(
-          paymentMethods,
-          'finance-system-payment-wechat',
-          '微信',
-        );
-        if (wechat != null) return wechat;
-      }
-      if (lower.contains('花呗') ||
-          lower.contains('余额宝') ||
-          lower.contains('支付宝')) {
-        final alipay = _findMethodBySystemOrName(
-          paymentMethods,
-          'finance-system-payment-alipay',
-          '支付宝',
-        );
-        if (alipay != null) return alipay;
-      }
-      if (lower.contains('信用卡') || lower.contains('贷记卡')) {
-        final credit = _findMethodBySystemOrName(
-          paymentMethods,
-          'finance-system-payment-credit',
-          '信用卡',
-        );
-        if (credit != null) return credit;
-      }
-      if (lower.contains('银行') || lower.contains('储蓄卡')) {
-        final bank = _findMethodBySystemOrName(
-          paymentMethods,
-          'finance-system-payment-bank',
-          '银行卡',
-        );
-        if (bank != null) return bank;
-      }
+      final matched = _matchPaymentMethodByText(
+        rawPaymentMethod,
+        paymentMethods,
+      );
+      if (matched != null) return matched;
     }
 
     // 3. 平台兜底
-    final fallbackSystemUuid = platform == FinanceBillPlatform.wechat
-        ? 'finance-system-payment-wechat'
-        : 'finance-system-payment-alipay';
-    final fallbackName = platform == FinanceBillPlatform.wechat ? '微信' : '支付宝';
-    return _findMethodBySystemOrName(
-          paymentMethods,
-          fallbackSystemUuid,
-          fallbackName,
-        ) ??
-        paymentMethods.first.uuid;
+    final (fallbackSystemUuid, fallbackName) = switch (platform) {
+      FinanceBillPlatform.wechat => ('finance-system-payment-wechat', '微信'),
+      FinanceBillPlatform.alipay => ('finance-system-payment-alipay', '支付宝'),
+      FinanceBillPlatform.bank ||
+      FinanceBillPlatform.unionpay => ('finance-system-payment-bank', '银行卡'),
+      FinanceBillPlatform.thirdPartyApp ||
+      FinanceBillPlatform.generic => ('', ''),
+    };
+    if (fallbackSystemUuid.isNotEmpty) {
+      final found = _findMethodBySystemOrName(
+        paymentMethods,
+        fallbackSystemUuid,
+        fallbackName,
+      );
+      if (found != null) return found;
+    }
+    return paymentMethods.first.uuid;
+  }
+
+  static String? _matchPaymentMethodByText(
+    String rawPaymentMethod,
+    List<FinancePaymentMethod> paymentMethods,
+  ) {
+    final lower = rawPaymentMethod.toLowerCase();
+    // 1. 精确或包含用户自定义/系统付款方式名称
+    for (final method in paymentMethods) {
+      final name = method.name.trim().toLowerCase();
+      if (name.isNotEmpty && (lower == name || lower.contains(name))) {
+        return method.uuid;
+      }
+    }
+    // 2. 常见渠道关键词映射
+    if (lower.contains('零钱') ||
+        lower.contains('微信') ||
+        lower.contains('wechat')) {
+      final wechat = _findMethodBySystemOrName(
+        paymentMethods,
+        'finance-system-payment-wechat',
+        '微信',
+      );
+      if (wechat != null) return wechat;
+    }
+    if (lower.contains('花呗') ||
+        lower.contains('余额宝') ||
+        lower.contains('支付宝') ||
+        lower.contains('alipay')) {
+      final alipay = _findMethodBySystemOrName(
+        paymentMethods,
+        'finance-system-payment-alipay',
+        '支付宝',
+      );
+      if (alipay != null) return alipay;
+    }
+    if (lower.contains('现金') || lower.contains('cash')) {
+      final cash = _findMethodBySystemOrName(
+        paymentMethods,
+        'finance-system-payment-cash',
+        '现金',
+      );
+      if (cash != null) return cash;
+    }
+    if (lower.contains('信用卡') ||
+        lower.contains('贷记卡') ||
+        lower.contains('credit') ||
+        lower.contains('visa') ||
+        lower.contains('mastercard')) {
+      final credit = _findMethodBySystemOrName(
+        paymentMethods,
+        'finance-system-payment-credit',
+        '信用卡',
+      );
+      if (credit != null) return credit;
+    }
+    if (lower.contains('银行') ||
+        lower.contains('储蓄卡') ||
+        lower.contains('借记卡') ||
+        lower.contains('银联') ||
+        lower.contains('云闪付') ||
+        lower.contains('debit') ||
+        lower.contains('checking') ||
+        lower.contains('savings')) {
+      final bank = _findMethodBySystemOrName(
+        paymentMethods,
+        'finance-system-payment-bank',
+        '银行卡',
+      );
+      if (bank != null) return bank;
+    }
+    return null;
   }
 
   static String? _findMethodBySystemOrName(

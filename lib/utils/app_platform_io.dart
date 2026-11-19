@@ -13,4 +13,6 @@ class AppPlatform {
   static bool get isMobile => isAndroid || isIOS;
   static String get operatingSystem => Platform.operatingSystem;
   static String? get resolvedExecutable => Platform.resolvedExecutable;
+  static bool get isFlutterTest =>
+      Platform.environment.containsKey('FLUTTER_TEST');
 }
