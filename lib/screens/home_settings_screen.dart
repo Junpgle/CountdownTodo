@@ -78,7 +78,10 @@ class _SettingsPageState extends State<SettingsPage> {
 
   GlobalKey<NavigatorState> _nestedNavigatorKey = GlobalKey<NavigatorState>();
   final GlobalKey _updateSettingsSectionKey = GlobalKey();
-  final GlobalKey _embeddedUpdateSettingsSectionKey = GlobalKey();
+  GlobalKey _embeddedUpdateSettingsSectionKey = GlobalKey();
+  GlobalKey _embeddedManageDevicesKey = GlobalKey(
+    debugLabel: 'settings-account_devices_embedded',
+  );
   List<String> _nestedRouteNames = [];
   late _BreadcrumbObserver _breadcrumbObserver;
   Animation<double>? _updateCheckAnimation;
@@ -825,7 +828,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 onForceFullSync: _forceFullSync,
                 onLogout: () => _handleLogout(force: false),
                 onChangePassword: _showChangePasswordDialog,
-                manageDevicesKey: _navigationKey('account_devices_embedded'),
+                manageDevicesKey: _embeddedManageDevicesKey,
                 onManageDevices: () => _openAccountDevicesPage(
                   navigationContext: innerContext,
                   isEmbedded: true,
@@ -1038,7 +1041,7 @@ class _SettingsPageState extends State<SettingsPage> {
       SettingsNavigation.push<void>(
         context: targetContext,
         page: const AccountDevicesPage(isEmbedded: true),
-        sourceKey: _navigationKey('account_devices_embedded'),
+        sourceKey: _embeddedManageDevicesKey,
         isEmbedded: true,
         settings: const RouteSettings(name: '登录设备管理'),
         placeholderIcon: Icons.devices_rounded,
@@ -1389,6 +1392,10 @@ class _SettingsPageState extends State<SettingsPage> {
                               _buildAccountAndAnnouncementsPane;
                           _nestedRouteNames.clear();
                           _nestedNavigatorKey = GlobalKey<NavigatorState>();
+                          _embeddedUpdateSettingsSectionKey = GlobalKey();
+                          _embeddedManageDevicesKey = GlobalKey(
+                            debugLabel: 'settings-account_devices_embedded',
+                          );
                           _breadcrumbObserver = _createObserver();
                         });
                       }
@@ -1550,18 +1557,11 @@ class _SettingsPageState extends State<SettingsPage> {
                     },
                   );
                 },
-                child: Navigator(
-                  key: _nestedNavigatorKey,
-                  observers: [_breadcrumbObserver],
-                  onGenerateRoute: (settings) {
-                    return PageTransitions.material(
-                      settings: const RouteSettings(name: '/'),
-                      builder: (context) {
-                        return _selectedRightPaneBuilder?.call() ??
-                            const Center(child: Text('请在左侧选择设置项'));
-                      },
-                    );
-                  },
+                child: _NestedSettingsPaneNavigator(
+                  key: ValueKey(_nestedNavigatorKey),
+                  navigatorKey: _nestedNavigatorKey,
+                  observer: _breadcrumbObserver,
+                  paneBuilder: _selectedRightPaneBuilder,
                 ),
               ),
             ),
@@ -1933,5 +1933,35 @@ class _BreadcrumbObserver extends NavigatorObserver {
       }
       onRoutesChanged(List.from(_routeNames));
     }
+  }
+}
+
+class _NestedSettingsPaneNavigator extends StatelessWidget {
+  final GlobalKey<NavigatorState> navigatorKey;
+  final NavigatorObserver observer;
+  final Widget Function()? paneBuilder;
+
+  const _NestedSettingsPaneNavigator({
+    super.key,
+    required this.navigatorKey,
+    required this.observer,
+    required this.paneBuilder,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final builder = paneBuilder;
+    return Navigator(
+      key: navigatorKey,
+      observers: [observer],
+      onGenerateRoute: (settings) {
+        return PageTransitions.material(
+          settings: const RouteSettings(name: '/'),
+          builder: (context) {
+            return builder?.call() ?? const Center(child: Text('请在左侧选择设置项'));
+          },
+        );
+      },
+    );
   }
 }
