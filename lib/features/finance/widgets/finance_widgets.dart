@@ -1,12 +1,11 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
+import '../../../utils/app_platform.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../utils/page_transitions.dart';
 import '../models/finance_models.dart';
@@ -2940,7 +2939,7 @@ class _FinanceUnifiedCategoryCardState
       for (final entry in totalsForSlices) entry.categoryUuid: entry,
     };
 
-    final isTest = !kIsWeb && Platform.environment.containsKey('FLUTTER_TEST');
+    final isTest = AppPlatform.isFlutterTest;
     final donutSize = switch (widget.view) {
       _FinanceOverviewView.month => isTest ? 100.0 : 190.0,
       _FinanceOverviewView.week => isTest ? 90.0 : 166.0,

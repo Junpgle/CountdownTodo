@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -7,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/text_file_reader.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_bill_import_parser.dart';
@@ -109,7 +109,7 @@ class _FinanceBillImportScreenState extends State<FinanceBillImportScreen> {
         !kIsWeb &&
         picked.path != null &&
         picked.path!.isNotEmpty) {
-      bytes = await File(picked.path!).readAsBytes();
+      bytes = await readFileBytes(picked.path!);
     }
     if (bytes == null || bytes.isEmpty) {
       throw const FormatException('无法读取所选文件内容');
