@@ -1297,6 +1297,40 @@ class ApiService {
     }
   }
 
+  /// 获取今日全站番茄钟专注人均统计（若后端不支持或无数据则返回 null）
+  static Future<Map<String, dynamic>?> fetchPomodoroCommunityStats({
+    required int fromMs,
+    required int toMs,
+  }) async {
+    try {
+      final uri = Uri.parse('$_effectiveBaseUrl/api/pomodoro/community_stats')
+          .replace(
+            queryParameters: {
+              'from': fromMs.toString(),
+              'to': toMs.toString(),
+            },
+          );
+      final response = await _request(
+        'GET',
+        uri.toString(),
+        timeout: const Duration(seconds: 5),
+        includeAuth: false,
+      );
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic> && decoded['success'] == true) {
+          final data = decoded['data'];
+          if (data is Map<String, dynamic>) {
+            return data;
+          }
+        }
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // 向后兼容旧方法名
   static Future<bool> uploadPomodoroSessions(
     List<Map<String, dynamic>> sessions,

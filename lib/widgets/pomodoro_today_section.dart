@@ -61,6 +61,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
   List<int> _hourlySeconds = List<int>.filled(24, 0);
   int _maxHourlySeconds = 0;
   int? _selectedHour;
+  PomodoroCommunityStats? _communityStats;
   late AnimationController _chartAnimationController;
   final Map<(String?, String), DateFormat> _dateFormatters = {};
 
@@ -83,6 +84,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
       duration: const Duration(milliseconds: 750),
     );
     _loadData();
+    _loadCommunityStats();
   }
 
   @override
@@ -90,6 +92,15 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.refreshTrigger != widget.refreshTrigger) {
       _loadData();
+      _loadCommunityStats();
+    }
+  }
+
+  Future<void> _loadCommunityStats() async {
+    final stats = await PomodoroService.getTodayCommunityStats();
+    if (!mounted) return;
+    if (stats?.avgSeconds != _communityStats?.avgSeconds) {
+      setState(() => _communityStats = stats);
     }
   }
 
@@ -634,6 +645,14 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                     _buildMetricChip(
                       icon: Icons.timer_outlined,
                       label: '最长 ${formatDurationChinese(_maxDuration)}',
+                      colorScheme: colorScheme,
+                      isDark: isDark,
+                    ),
+                  if (_isToday && _communityStats != null)
+                    _buildMetricChip(
+                      icon: Icons.groups_rounded,
+                      label:
+                          '今日人均 ${formatDurationChinese(_communityStats!.avgSeconds)}',
                       colorScheme: colorScheme,
                       isDark: isDark,
                     ),
@@ -1532,6 +1551,16 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                 fontWeight: FontWeight.normal,
               ),
             ),
+            if (_communityStats != null) ...[
+              const SizedBox(height: 10),
+              _buildMetricChip(
+                icon: Icons.groups_rounded,
+                label:
+                    '今日全站人均 ${formatDurationChinese(_communityStats!.avgSeconds)}',
+                colorScheme: colorScheme,
+                isDark: isDark,
+              ),
+            ],
             const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: _openPomodoroWorkbench,

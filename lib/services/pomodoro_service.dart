@@ -2568,4 +2568,84 @@ class PomodoroService {
         return 'switched';
     }
   }
+
+  static ({DateTime fetchedAt, String dayKey, PomodoroCommunityStats? stats})?
+  _communityStatsCache;
+
+  /// 获取今日全站人均专注统计（带 60 秒内存缓存；无数据或离线时返回 null）
+  static Future<PomodoroCommunityStats?> getTodayCommunityStats({
+    bool forceRefresh = false,
+    DateTime? now,
+    Future<Map<String, dynamic>?> Function(int fromMs, int toMs)? fetcher,
+  }) async {
+    final current = now ?? DateTime.now();
+    final range = CalendarDateMath.dayRange(current);
+    final dayKey =
+        '${range.start.year}-${range.start.month}-${range.start.day}';
+
+    if (!forceRefresh && _communityStatsCache != null) {
+      final cached = _communityStatsCache!;
+      if (cached.dayKey == dayKey &&
+          current.difference(cached.fetchedAt) < const Duration(seconds: 60)) {
+        return cached.stats;
+      }
+    }
+
+    final loadFn =
+        fetcher ??
+        ((fromMs, toMs) => ApiService.fetchPomodoroCommunityStats(
+          fromMs: fromMs,
+          toMs: toMs,
+        ));
+    final raw = await loadFn(
+      range.start.millisecondsSinceEpoch,
+      range.endExclusive.millisecondsSinceEpoch,
+    );
+    final parsed = raw == null ? null : PomodoroCommunityStats.tryParse(raw);
+    _communityStatsCache = (
+      fetchedAt: current,
+      dayKey: dayKey,
+      stats: parsed,
+    );
+    return parsed;
+  }
+
+  static void clearCommunityStatsCacheForTest() {
+    _communityStatsCache = null;
+  }
+}
+
+/// 今日全站专注人均统计
+class PomodoroCommunityStats {
+  final int avgSeconds;
+  final int totalSeconds;
+  final int activeUsers;
+
+  const PomodoroCommunityStats({
+    required this.avgSeconds,
+    required this.totalSeconds,
+    required this.activeUsers,
+  });
+
+  static PomodoroCommunityStats? tryParse(Map<String, dynamic> json) {
+    final hasData = json['has_data'] == true;
+    final avgSeconds = _toInt(json['avg_seconds']);
+    final totalSeconds = _toInt(json['total_seconds']);
+    final activeUsers = _toInt(json['active_users']);
+    if (!hasData || avgSeconds <= 0 || activeUsers <= 0) {
+      return null;
+    }
+    return PomodoroCommunityStats(
+      avgSeconds: avgSeconds,
+      totalSeconds: totalSeconds,
+      activeUsers: activeUsers,
+    );
+  }
+
+  static int _toInt(Object? value) {
+    if (value is int) return value;
+    if (value is num) return value.round();
+    if (value is String) return int.tryParse(value) ?? 0;
+    return 0;
+  }
 }

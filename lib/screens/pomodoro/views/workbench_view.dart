@@ -184,6 +184,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   bool _hasShownUpdate = false;
   bool _initializing = true;
   bool? _systemDoNotDisturbAccess;
+  PomodoroCommunityStats? _communityStats;
 
   static const _keyBoundTodoUuid = 'pomodoro_idle_bound_todo_uuid';
   static const _keyBoundTodoTitle = 'pomodoro_idle_bound_todo_title';
@@ -199,6 +200,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     WidgetsBinding.instance.addObserver(this);
     MacPomodoroStatusBarService.init();
     _init();
+    unawaited(_loadCommunityStats());
     _listenToRunState();
     _listenToStrictSensor();
     _listenToIslandActions();
@@ -3598,6 +3600,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
               if (isIdle) ...[
                 const SizedBox(height: 18),
                 _buildModeToggle(modeSwitchKey: _landscapeModeSwitchKey),
+                if (_communityStats != null) ...[
+                  const SizedBox(height: 10),
+                  _buildCommunityStatsBadge(),
+                ],
                 const SizedBox(height: 8),
               ],
             ],
@@ -3928,6 +3934,49 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     );
   }
 
+  Future<void> _loadCommunityStats() async {
+    final stats = await PomodoroService.getTodayCommunityStats();
+    if (!mounted) return;
+    if (stats?.avgSeconds != _communityStats?.avgSeconds) {
+      setState(() => _communityStats = stats);
+    }
+  }
+
+  Widget _buildCommunityStatsBadge() {
+    final stats = _communityStats;
+    if (stats == null) return const SizedBox.shrink();
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.4),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.groups_rounded,
+            size: 14,
+            color: colorScheme.primary,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '今日全站人均专注 ${formatDurationChinese(stats.avgSeconds)}',
+            style: TextStyle(
+              fontSize: 12,
+              color: colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildIdleLayout(Color contentColor) {
     return Column(
       key: const ValueKey('idle_workbench'),
@@ -3937,6 +3986,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         // Place mode toggle under the timer in idle state (portrait)
         const SizedBox(height: 12),
         _buildModeToggle(modeSwitchKey: _portraitModeSwitchKey),
+        if (_communityStats != null) ...[
+          const SizedBox(height: 10),
+          _buildCommunityStatsBadge(),
+        ],
         const SizedBox(height: 8),
         Expanded(
           flex: 12,
