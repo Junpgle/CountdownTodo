@@ -56,25 +56,42 @@ class DatabaseHelper {
 
   DatabaseHelper._init();
 
-  Future<Database> get database async {
-    final prefs = await SharedPreferences.getInstance();
-    final username = prefs.getString('current_login_user') ?? 'default';
+  static String _databaseFileNameFor(String username) {
+    final envPrefix = EnvironmentService.isTest ? 'test_v5_' : 'v4_';
+    return '${envPrefix}uni_sync_$username.db';
+  }
 
-    if (_database != null) {
+  /// Checks whether [dbPath] points to the exact database file for [username].
+  ///
+  /// Matching the exact basename instead of `path.contains('uni_sync_$username')`
+  /// prevents prefix collisions such as `alice` matching `alice_work`.
+  @visibleForTesting
+  static bool matchesDatabaseFileForUser(String dbPath, String username) {
+    final expectedFileName = _databaseFileNameFor(username);
+    final normalizedPath = dbPath.replaceAll('\\', '/');
+    final separatorIndex = normalizedPath.lastIndexOf('/');
+    final baseName = separatorIndex == -1
+        ? normalizedPath
+        : normalizedPath.substring(separatorIndex + 1);
+    return baseName == expectedFileName;
+  }
+
+  Future<Database> _openOrReuseDatabaseFor(String username) async {
+    final existingDb = _database;
+    if (existingDb != null) {
       // 🚀 核心校验：如果当前打开的数据库与当前登录用户不符，则强制关闭并重新打开
       if (_activeUsername != username ||
-          !_database!.path.contains('uni_sync_$username')) {
-        //         debugPrint("🔄 Database: 检测到用户切换 ($username)，正在强制重定向数据库文件...");
+          !matchesDatabaseFileForUser(existingDb.path, username)) {
         await closeDatabase();
       } else {
-        return _database!;
+        return existingDb;
       }
     }
 
     if (_openingDatabase != null) {
       final opening = await _openingDatabase!;
       if (_activeUsername == username &&
-          opening.path.contains('uni_sync_$username')) {
+          matchesDatabaseFileForUser(opening.path, username)) {
         _database = opening;
         return opening;
       }
@@ -92,6 +109,15 @@ class DatabaseHelper {
       }
     }
     return _database!;
+  }
+
+  Future<Database> get database async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawUsername = prefs.getString('current_login_user');
+    final username = (rawUsername != null && rawUsername.isNotEmpty)
+        ? rawUsername
+        : 'default';
+    return _openOrReuseDatabaseFor(username);
   }
 
   /// Returns the database for the active account and rejects stale callers.
@@ -118,12 +144,12 @@ class DatabaseHelper {
     if (existingDb != null &&
         _openingDatabase == null &&
         _activeUsername == username &&
-        (!hasActiveUsername || activeUsername == username) &&
-        existingDb.path.contains('uni_sync_$username')) {
+        matchesDatabaseFileForUser(existingDb.path, username)) {
       return existingDb;
     }
 
-    final db = await database;
+    final targetUsername = hasActiveUsername ? activeUsername : 'default';
+    final db = await _openOrReuseDatabaseFor(targetUsername);
     final latestActiveUsername = prefs.getString('current_login_user');
     final latestHasActiveUsername =
         latestActiveUsername != null && latestActiveUsername.isNotEmpty;
