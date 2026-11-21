@@ -528,6 +528,10 @@ mixin _StorageSettings on _StorageServiceBase {
       AppSettingsStorage.isTodoLiveNotificationEnabled();
   Future<void> setTodoLiveNotificationEnabled(bool enabled) =>
       AppSettingsStorage.setTodoLiveNotificationEnabled(enabled);
+  Future<bool> isCountdownNotificationEnabled() =>
+      AppSettingsStorage.isCountdownNotificationEnabled();
+  Future<void> setCountdownNotificationEnabled(bool enabled) =>
+      AppSettingsStorage.setCountdownNotificationEnabled(enabled);
   Future<bool> isPomodoroEndNotificationEnabled() =>
       AppSettingsStorage.isPomodoroEndNotificationEnabled();
   Future<void> setPomodoroEndNotificationEnabled(bool enabled) =>

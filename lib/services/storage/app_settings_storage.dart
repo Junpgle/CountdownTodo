@@ -22,6 +22,7 @@ class AppSettingsStorage {
       "notify_todo_recognize_enabled";
   static const String _notifyPomodoroEndEnabled = "notify_pomodoro_end_enabled";
   static const String _notifyTodoLiveEnabled = "notify_todo_live_enabled";
+  static const String _notifyCountdownEnabled = "notify_countdown_enabled";
   static const String _notifyReminderEnabled = "notify_reminder_enabled";
   static const String _notifyFinanceBudgetEnabled =
       "notify_finance_budget_enabled";
@@ -158,6 +159,16 @@ class AppSettingsStorage {
   static Future<void> setTodoLiveNotificationEnabled(bool enabled) async {
     final prefs = await _prefs;
     await prefs.setBool(_notifyTodoLiveEnabled, enabled);
+  }
+
+  static Future<bool> isCountdownNotificationEnabled() async {
+    final prefs = await _prefs;
+    return prefs.getBool(_notifyCountdownEnabled) ?? true;
+  }
+
+  static Future<void> setCountdownNotificationEnabled(bool enabled) async {
+    final prefs = await _prefs;
+    await prefs.setBool(_notifyCountdownEnabled, enabled);
   }
 
   static Future<bool> isPomodoroEndNotificationEnabled() async {

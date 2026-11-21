@@ -144,6 +144,9 @@ const String _storageService_keyNotifyPomodoroEndEnabled =
 const String keyNotifyTodoLiveEnabled = "notify_todo_live_enabled";
 const String _storageService_keyNotifyTodoLiveEnabled =
     "notify_todo_live_enabled";
+const String keyNotifyCountdownEnabled = "notify_countdown_enabled";
+const String _storageService_keyNotifyCountdownEnabled =
+    "notify_countdown_enabled";
 const String keyNotifyReminderEnabled = "notify_reminder_enabled";
 const String _storageService_keyNotifyReminderEnabled =
     "notify_reminder_enabled";
@@ -792,6 +795,8 @@ abstract class _StorageServiceBase {
   Future<void> setTodoRecognizeNotificationEnabled(bool enabled);
   Future<bool> isTodoLiveNotificationEnabled();
   Future<void> setTodoLiveNotificationEnabled(bool enabled);
+  Future<bool> isCountdownNotificationEnabled();
+  Future<void> setCountdownNotificationEnabled(bool enabled);
   Future<bool> isPomodoroEndNotificationEnabled();
   Future<void> setPomodoroEndNotificationEnabled(bool enabled);
   Future<bool> isReminderNotificationEnabled();

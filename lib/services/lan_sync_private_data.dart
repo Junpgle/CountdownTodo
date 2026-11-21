@@ -33,6 +33,7 @@ class LanSyncPrivateData {
     'notify_todo_recognize_enabled',
     'notify_pomodoro_end_enabled',
     'notify_todo_live_enabled',
+    'notify_countdown_enabled',
     'notify_reminder_enabled',
     'notify_finance_budget_enabled',
     'notify_finance_recurring_enabled',

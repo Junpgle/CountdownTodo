@@ -238,6 +238,9 @@ class StorageService {
   static const String keyNotifyTodoLiveEnabled =
       _storageService_keyNotifyTodoLiveEnabled;
 
+  static const String keyNotifyCountdownEnabled =
+      _storageService_keyNotifyCountdownEnabled;
+
   static const String keyNotifyReminderEnabled =
       _storageService_keyNotifyReminderEnabled;
 
@@ -1225,6 +1228,12 @@ class StorageService {
 
   static Future<void> setTodoLiveNotificationEnabled(bool enabled) =>
       _storage.setTodoLiveNotificationEnabled(enabled);
+
+  static Future<bool> isCountdownNotificationEnabled() =>
+      _storage.isCountdownNotificationEnabled();
+
+  static Future<void> setCountdownNotificationEnabled(bool enabled) =>
+      _storage.setCountdownNotificationEnabled(enabled);
 
   static Future<bool> isPomodoroEndNotificationEnabled() =>
       _storage.isPomodoroEndNotificationEnabled();

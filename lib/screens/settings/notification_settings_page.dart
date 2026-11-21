@@ -38,6 +38,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   bool _pomodoroEnabled = true;
   bool _todoRecognizeEnabled = true;
   bool _todoLiveEnabled = true;
+  bool _countdownEnabled = true;
 
   bool _pomodoroEndEnabled = true;
   bool _reminderEnabled = true;
@@ -76,6 +77,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
         await AppSettingsStorage.isTodoRecognizeNotificationEnabled();
     final todoLiveEnabled =
         await AppSettingsStorage.isTodoLiveNotificationEnabled();
+    final countdownEnabled =
+        await AppSettingsStorage.isCountdownNotificationEnabled();
     final pomodoroEndEnabled =
         await AppSettingsStorage.isPomodoroEndNotificationEnabled();
     final reminderEnabled =
@@ -97,6 +100,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       _pomodoroEnabled = pomodoroEnabled;
       _todoRecognizeEnabled = todoRecognizeEnabled;
       _todoLiveEnabled = todoLiveEnabled;
+      _countdownEnabled = countdownEnabled;
       _pomodoroEndEnabled = pomodoroEndEnabled;
       _reminderEnabled = reminderEnabled;
       _financeBudgetEnabled = financeBudgetEnabled;
@@ -428,6 +432,19 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                         v,
                         (val) => _todoLiveEnabled = val,
                         AppSettingsStorage.setTodoLiveNotificationEnabled,
+                      ),
+                    ),
+                    _buildSwitchTile(
+                      title: '倒计时到达通知',
+                      subtitle: '倒数日当天 08:00 触发，按内容识别专属图标',
+                      icon: Icons.hourglass_bottom,
+                      value: _countdownEnabled,
+                      isDesktop: isDesktop,
+                      onChanged: (v) => _toggleSubNotification(
+                        'countdown',
+                        v,
+                        (val) => _countdownEnabled = val,
+                        AppSettingsStorage.setCountdownNotificationEnabled,
                       ),
                     ),
                   ],
