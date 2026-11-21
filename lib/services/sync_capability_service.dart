@@ -10,6 +10,9 @@ class SyncCapabilityService {
   static const String sleepCoaching = 'sleep_coaching';
   static const int sleepCoachingVersion = 1;
 
+  static const String habitDrinkOptions = 'habit_drink_options';
+  static const int habitDrinkOptionsVersion = 1;
+
   static const String habitSyncCursor = 'habit_sync_cursor';
   static const int habitSyncCursorVersion = 1;
 
@@ -50,6 +53,10 @@ class SyncCapabilityService {
 
   static bool supportsSleepCoaching(dynamic rawCapabilities) =>
       capabilityVersion(rawCapabilities, sleepCoaching) >= sleepCoachingVersion;
+
+  static bool supportsHabitDrinkOptions(dynamic rawCapabilities) =>
+      capabilityVersion(rawCapabilities, habitDrinkOptions) >=
+      habitDrinkOptionsVersion;
 
   static bool supportsHabitSyncCursor(dynamic rawCapabilities) =>
       capabilityVersion(rawCapabilities, habitSyncCursor) >=

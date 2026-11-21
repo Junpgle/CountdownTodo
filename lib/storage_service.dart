@@ -39,6 +39,7 @@ import 'utils/time_utils.dart' as time_utils;
 import 'features/habits/models/habit_checkin.dart';
 import 'features/habits/models/habit_goal.dart';
 import 'features/habits/models/habit_goal_rule.dart';
+import 'features/habits/models/habit_drink_option.dart';
 import 'features/habits/models/habit_sleep_coaching_plan.dart';
 import 'features/habits/services/habit_sync_conflict_service.dart';
 import 'features/finance/services/finance_sync_service.dart';

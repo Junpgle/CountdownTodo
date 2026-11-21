@@ -556,6 +556,20 @@ class DatabaseHelper {
           updated_at INTEGER NOT NULL
         )
       ''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS habit_drink_options (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          uuid TEXT NOT NULL UNIQUE,
+          icon TEXT NOT NULL DEFAULT '🥤',
+          label TEXT NOT NULL,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          is_deleted INTEGER NOT NULL DEFAULT 0,
+          version INTEGER NOT NULL DEFAULT 1,
+          device_id TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+      ''');
       await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_habit_goals_active '
         'ON habit_goals(is_deleted, is_archived, sort_order)',
@@ -575,6 +589,10 @@ class DatabaseHelper {
       await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_habit_sleep_coaching_plans_updated '
         'ON habit_sleep_coaching_plans(updated_at)',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_habit_drink_options_updated '
+        'ON habit_drink_options(updated_at)',
       );
 
       // V42：旧版本允许同一导入日志产生多个相同 dedupe_key。先保留

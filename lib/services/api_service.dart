@@ -555,6 +555,7 @@ class ApiService {
     List<Map<String, dynamic>> habitRuleChanges = const [],
     List<Map<String, dynamic>> habitCheckInChanges = const [],
     List<Map<String, dynamic>> habitSleepCoachingPlanChanges = const [],
+    List<Map<String, dynamic>> habitDrinkOptionChanges = const [],
     bool habitFullSync = false,
     int? habitLastSyncTime,
     bool syncHabits = true,
@@ -588,6 +589,7 @@ class ApiService {
         'habit_goal_rules_changes': habitRuleChanges,
         'habit_checkins_changes': habitCheckInChanges,
         'habit_sleep_coaching_plans_changes': habitSleepCoachingPlanChanges,
+        'habit_drink_options_changes': habitDrinkOptionChanges,
         'habit_full_sync': habitFullSync,
         'sync_habits': syncHabits,
         'finance_categories_changes': financeCategoryChanges,
@@ -676,6 +678,8 @@ class ApiService {
           'server_habit_checkins': data['server_habit_checkins'] ?? [],
           'server_habit_sleep_coaching_plans':
               data['server_habit_sleep_coaching_plans'] ?? [],
+          'server_habit_drink_options':
+              data['server_habit_drink_options'] ?? [],
           'new_habit_sync_time': data['new_habit_sync_time'],
           'server_finance_categories': data['server_finance_categories'] ?? [],
           'server_finance_payment_methods':
@@ -1305,10 +1309,7 @@ class ApiService {
     try {
       final uri = Uri.parse('$_effectiveBaseUrl/api/pomodoro/community_stats')
           .replace(
-            queryParameters: {
-              'from': fromMs.toString(),
-              'to': toMs.toString(),
-            },
+            queryParameters: {'from': fromMs.toString(), 'to': toMs.toString()},
           );
       final response = await _request(
         'GET',

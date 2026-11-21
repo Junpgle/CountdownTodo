@@ -58,6 +58,7 @@ class SyncOplogPolicy {
     required bool acknowledgeFixedScheduleOps,
     required bool acknowledgeHabitOps,
     bool acknowledgeSleepCoachingOps = false,
+    bool acknowledgeHabitDrinkOptionOps = false,
   }) {
     final acknowledgedIds = <int>{};
     final blockedIds = <int>{};
@@ -71,7 +72,9 @@ class SyncOplogPolicy {
                   entry.table == 'habit_goal_rule_revisions' ||
                   entry.table == 'habit_checkins')) ||
           (!acknowledgeSleepCoachingOps &&
-              entry.table == 'habit_sleep_coaching_plans')) {
+              entry.table == 'habit_sleep_coaching_plans') ||
+          (!acknowledgeHabitDrinkOptionOps &&
+              entry.table == 'habit_drink_options')) {
         continue;
       }
       if (blockingConflictUuids.contains(entry.uuid)) {

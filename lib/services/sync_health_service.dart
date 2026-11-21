@@ -252,6 +252,7 @@ class SyncHealthService {
     'habit_goal_rule_revisions': SyncHealthModule.habits,
     'habit_checkins': SyncHealthModule.habits,
     'habit_sleep_coaching_plans': SyncHealthModule.habits,
+    'habit_drink_options': SyncHealthModule.habits,
     'courses': SyncHealthModule.courses,
   };
 

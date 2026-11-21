@@ -11,10 +11,18 @@ class DatabaseSchemaChange {
 }
 
 abstract final class DatabaseSchemaHistory {
-  static const int currentVersion = 61;
+  static const int currentVersion = 62;
 
   /// SQLite 架构版本记录，按新到旧排列。
   static const List<DatabaseSchemaChange> changes = [
+    DatabaseSchemaChange(
+      version: 62,
+      title: '习惯常用饮品图标自定义与云同步',
+      changes: [
+        '新增 habit_drink_options 表保存戒饮/控糖习惯的自定义常用饮品图标与名称。',
+        '支持多端增量云同步，旧服务端未声明能力时保留本地待同步记录。',
+      ],
+    ),
     DatabaseSchemaChange(
       version: 61,
       title: '待办完成时间戳',
