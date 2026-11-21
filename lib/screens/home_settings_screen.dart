@@ -340,6 +340,7 @@ class _SettingsPageState extends State<SettingsPage> {
         {
           'permissions',
           'windows_renderer',
+          'macos_renderer',
           'float_window_style',
           'force_refresh',
           'island_priority',
@@ -416,6 +417,7 @@ class _SettingsPageState extends State<SettingsPage> {
       'live_updates',
       'island_support',
       'test_notification',
+      'macos_renderer',
       'mac_island_shortcut',
       'mac_status_bar',
       'mac_island_reminders',

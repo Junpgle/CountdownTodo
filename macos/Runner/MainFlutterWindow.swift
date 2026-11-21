@@ -9,12 +9,40 @@ class MainFlutterWindow: NSWindow {
   private var deviceContextLocationProvider: MacDeviceContextLocationProvider?
 
   override func awakeFromNib() {
-    let flutterViewController = FlutterViewController()
+    let selectedRenderer = MacOSRendererConfig.loadRenderer()
+    let dartProject = ConfigurableFlutterDartProject(
+      impellerEnabled: selectedRenderer == .impeller
+    )
+    let flutterViewController = FlutterViewController(project: dartProject)
     let windowFrame = self.frame
     self.contentViewController = flutterViewController
     self.setFrame(windowFrame, display: true)
 
     RegisterGeneratedPlugins(registry: flutterViewController)
+
+    let macosRendererChannel = FlutterMethodChannel(
+      name: "com.math_quiz_app/macos_renderer",
+      binaryMessenger: flutterViewController.engine.binaryMessenger
+    )
+    macosRendererChannel.setMethodCallHandler { (call, result) in
+      switch call.method {
+      case "getRenderer":
+        result(MacOSRendererConfig.loadRenderer().rawValue)
+      case "setRenderer":
+        guard let rawValue = call.arguments as? String,
+              let renderer = MacOSRendererConfig.Renderer(rawValue: rawValue) else {
+          result(FlutterError(
+            code: "INVALID_ARGS",
+            message: "Expected 'skia' or 'impeller'",
+            details: nil
+          ))
+          return
+        }
+        result(MacOSRendererConfig.saveRenderer(renderer))
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
 
     let nativeChannel = FlutterMethodChannel(
       name: "com.math_quiz_app/window_native",
@@ -278,6 +306,46 @@ class MainFlutterWindow: NSWindow {
     }
 
     super.awakeFromNib()
+  }
+}
+
+private enum MacOSRendererConfig {
+  enum Renderer: String {
+    case skia
+    case impeller
+  }
+
+  private static let userDefaultsKey = "macos_flutter_renderer"
+
+  static func loadRenderer() -> Renderer {
+    let raw = UserDefaults.standard.string(forKey: userDefaultsKey)
+    if raw == Renderer.skia.rawValue {
+      return .skia
+    }
+    if raw == Renderer.impeller.rawValue {
+      return .impeller
+    }
+    return .impeller
+  }
+
+  static func saveRenderer(_ renderer: Renderer) -> Bool {
+    let defaults = UserDefaults.standard
+    defaults.set(renderer.rawValue, forKey: userDefaultsKey)
+    return defaults.synchronize()
+  }
+}
+
+private final class ConfigurableFlutterDartProject: FlutterDartProject {
+  private let impellerEnabled: Bool
+
+  init(impellerEnabled: Bool) {
+    self.impellerEnabled = impellerEnabled
+    super.init(precompiledDartBundle: nil)
+  }
+
+  @objc(enableImpeller)
+  func enableImpeller() -> Bool {
+    return impellerEnabled
   }
 }
 

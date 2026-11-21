@@ -2076,6 +2076,15 @@ abstract final class AppSettingsCatalog {
       platforms: {'android', 'native'},
     ),
     AiSettingsDestination(
+      id: 'macos_renderer',
+      title: 'macOS 渲染引擎',
+      path: '设置 > macOS 专属设置 > 图形渲染',
+      description: 'Skia Impeller 图形后端 性能 显存 GPU Metal 应用渲染器 卡死 重启生效',
+      page: SettingsPageId.platform,
+      labels: ['macOS 渲染引擎', '图形渲染'],
+      platforms: {'macos', 'native'},
+    ),
+    AiSettingsDestination(
       id: 'mac_status_bar',
       title: '启用刘海灵动岛',
       path: '设置 > 平台专属 > 启用刘海灵动岛',
