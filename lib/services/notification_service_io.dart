@@ -22,6 +22,12 @@ import '../utils/time_utils.dart';
 class NotificationService {
   static const int financeBudgetAlertNotificationBaseId = 61000;
   static const int financeBudgetAlertNotificationRange = 9000;
+  static const int countdownLiveNotificationBaseId = 71001;
+  static const int countdownLiveNotificationRange = 999;
+
+  static int countdownLiveNotifId(String countdownId) =>
+      countdownLiveNotificationBaseId +
+      (countdownId.hashCode.abs() % countdownLiveNotificationRange);
 
   static const MethodChannel _channel = MethodChannel(
     'com.math_quiz.junpgle.com.math_quiz_app/notifications',
@@ -37,6 +43,7 @@ class NotificationService {
   static final Map<String, DateTime> _recentGenericNotifications = {};
   static final Set<String> _sentPomodoroEndAlertKeys = {};
   static final Set<String> _shownUpdateNotificationKeys = {};
+  static final Set<String> _windowsCountdownNotificationKeys = {};
   static String? _lastTodoSummaryNotificationKey;
   static StreamSubscription<MacIslandReminderAction>?
   _macReminderActionSubscription;
@@ -618,6 +625,84 @@ class NotificationService {
     }
   }
 
+  /// 倒数日当天 08:00 起触发实时活动通知（Android 静态图标 / macOS 灵动岛动画图标 / Windows 桌面通知）。
+  static Future<bool> showCountdownLiveActivity(CountdownItem countdown) async {
+    if (FocusDoNotDisturbService.isActive) return false;
+    if (countdown.isDeleted || countdown.isCompleted) return false;
+    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) {
+      return false;
+    }
+    if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) {
+      return false;
+    }
+    if (!await AppSettingsStorage.isCountdownNotificationEnabled()) {
+      return false;
+    }
+
+    final now = DateTime.now();
+    final targetLocal = countdown.targetDate.toLocal();
+    if (!AppTimeFormats.isSameDay(targetLocal, now)) {
+      return false;
+    }
+    final eightAm = DateTime(now.year, now.month, now.day, 8, 0);
+    if (now.isBefore(eightAm)) {
+      return false;
+    }
+
+    final category = ItemSemanticsService.countdownCategoryForTitle(
+      countdown.title,
+    );
+    final emoji = ItemSemanticsService.countdownCategoryEmoji(category);
+    final label = ItemSemanticsService.countdownCategoryLabel(category);
+    final dateStr =
+        '${targetLocal.year}-${targetLocal.month.toString().padLeft(2, '0')}-${targetLocal.day.toString().padLeft(2, '0')}';
+    final notifId = countdownLiveNotifId(countdown.id);
+
+    if (_isDesktopSupported) {
+      final todayKey = '${countdown.id}@$dateStr';
+      final isFirstToday = _windowsCountdownNotificationKeys.add(todayKey);
+      if (isFirstToday) {
+        await _plugin.show(
+          id: notifId,
+          title: '$emoji $label · ${countdown.title}',
+          body: '就在今天 · $dateStr',
+          notificationDetails: _desktopNotificationDetails,
+        );
+      }
+      if (Platform.isMacOS) {
+        final endOfDay = DateTime(now.year, now.month, now.day, 23, 59);
+        await MacPomodoroStatusBarService.showIslandReminder({
+          'notifId': notifId,
+          'triggerAtMs': now.millisecondsSinceEpoch,
+          'startAtMs': endOfDay.toUtc().millisecondsSinceEpoch,
+          'title': '$emoji ${countdown.title}',
+          'text': '$label就在今天 · $dateStr',
+          'type': 'countdown',
+          'countdownCategory': category,
+          'countdownId': countdown.id,
+          'countdownTitle': countdown.title,
+          'timeStr': '就在今天',
+        });
+      }
+      return true;
+    }
+
+    try {
+      await _channel.invokeMethod('showOngoingNotification', {
+        'type': 'countdown',
+        'countdownTitle': countdown.title,
+        'countdownCategory': category,
+        'countdownDateStr': dateStr,
+        'countdownId': countdown.id,
+        'timeStr': '就在今天',
+        'notificationId': notifId,
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<void> updatePomodoroNotification({
     required int remainingSeconds,
     required String phase,
@@ -891,6 +976,11 @@ class NotificationService {
           if (r['fixedScheduleId'] != null)
             'fixedScheduleId': r['fixedScheduleId'],
           if (r['todoId'] != null) 'todoId': r['todoId'],
+          if (r['countdownCategory'] != null)
+            'countdownCategory': r['countdownCategory'],
+          if (r['countdownId'] != null) 'countdownId': r['countdownId'],
+          if (r['countdownTitle'] != null)
+            'countdownTitle': r['countdownTitle'],
           if (r['habitGoalId'] != null) 'habitGoalId': r['habitGoalId'],
           if (r['financeRuleUuid'] != null)
             'financeRuleUuid': r['financeRuleUuid'],
@@ -932,6 +1022,8 @@ class NotificationService {
         await AppSettingsStorage.isTodoLiveNotificationEnabled();
     final specialTodoEnabled =
         await AppSettingsStorage.isSpecialTodoNotificationEnabled();
+    final countdownEnabled =
+        await AppSettingsStorage.isCountdownNotificationEnabled();
     final financeEnabled =
         await AppSettingsStorage.isFinanceRecurringReminderEnabled();
     final pomodoroEndEnabled =
@@ -959,6 +1051,8 @@ class NotificationService {
                 return liveActivityEnabled && todoLiveEnabled;
               case 'special_todo':
                 return liveActivityEnabled && specialTodoEnabled;
+              case 'countdown':
+                return liveActivityEnabled && countdownEnabled;
               case 'finance_recurring':
                 return financeEnabled;
               default:

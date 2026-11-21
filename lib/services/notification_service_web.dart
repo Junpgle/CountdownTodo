@@ -201,6 +201,29 @@ class NotificationService {
     );
   }
 
+  static int countdownLiveNotifId(String countdownId) =>
+      71001 + (countdownId.hashCode.abs() % 999);
+
+  static Future<bool> showCountdownLiveActivity(CountdownItem countdown) async {
+    if (countdown.isDeleted || countdown.isCompleted) return false;
+    if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) {
+      return false;
+    }
+    if (!await AppSettingsStorage.isCountdownNotificationEnabled()) {
+      return false;
+    }
+    final category = ItemSemanticsService.countdownCategoryForTitle(
+      countdown.title,
+    );
+    final emoji = ItemSemanticsService.countdownCategoryEmoji(category);
+    final label = ItemSemanticsService.countdownCategoryLabel(category);
+    return _showLiveActivityNotification(
+      '$emoji ${countdown.title}',
+      '$label就在今天',
+      tag: 'countdown-${countdown.id}',
+    );
+  }
+
   static Future<void> updatePomodoroNotification({
     required int remainingSeconds,
     required String phase,
@@ -455,6 +478,8 @@ class NotificationService {
         await AppSettingsStorage.isTodoLiveNotificationEnabled();
     final specialTodoEnabled =
         await AppSettingsStorage.isSpecialTodoNotificationEnabled();
+    final countdownEnabled =
+        await AppSettingsStorage.isCountdownNotificationEnabled();
     final financeEnabled =
         await AppSettingsStorage.isFinanceRecurringReminderEnabled();
     final pomodoroEndEnabled =
@@ -484,6 +509,8 @@ class NotificationService {
                 return liveActivityEnabled && todoLiveEnabled;
               case 'special_todo':
                 return liveActivityEnabled && specialTodoEnabled;
+              case 'countdown':
+                return liveActivityEnabled && countdownEnabled;
               case 'finance_recurring':
                 return financeEnabled;
               default:

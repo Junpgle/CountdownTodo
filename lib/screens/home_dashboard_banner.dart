@@ -1440,6 +1440,30 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
     // 3. 全天待办汇总
     NotificationService.updateTodoNotification(allDayTodos);
 
+    // 3.5 倒数日当天 08:00 起实时活动通知
+    final countdownTriggerStart = DateTime(now.year, now.month, now.day, 8, 0);
+    if (!now.isBefore(countdownTriggerStart)) {
+      for (final countdown in _countdowns) {
+        if (countdown.isDeleted || countdown.isCompleted) continue;
+        final targetLocal = countdown.targetDate.toLocal();
+        if (!AppTimeFormats.isSameDay(targetLocal, now)) continue;
+        final notifId = NotificationService.countdownLiveNotifId(countdown.id);
+        final desktopEventKey =
+            'countdown:${countdown.id}:${now.year}-${now.month}-${now.day}';
+        var notificationIsActive =
+            previousTodoIds.contains(notifId) ||
+            desktopShownKeys.contains(desktopEventKey);
+        if (!notificationIsActive) {
+          notificationIsActive =
+              await NotificationService.showCountdownLiveActivity(countdown);
+          if (notificationIsActive) {
+            await markDesktopNotificationShown(desktopEventKey);
+          }
+        }
+        if (notificationIsActive) newTodoNotifIds.add(notifId);
+      }
+    }
+
     // 🚀 4. 差集物理取消不再需要的通知
     final idsToCancel = previousTodoIds.difference(newTodoNotifIds);
     for (final id in idsToCancel) {

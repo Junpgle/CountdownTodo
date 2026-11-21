@@ -457,6 +457,28 @@ class IslandSlotProvider {
           });
         }
       }
+
+      final eightAm = DateTime(now.year, now.month, now.day, 8, 0);
+      if (!now.isBefore(eightAm)) {
+        final countdowns = await StorageService.getCountdowns(username);
+        for (final c in countdowns) {
+          if (c.isDeleted || c.isCompleted) continue;
+          final targetLocal = c.targetDate.toLocal();
+          if (targetLocal.year == now.year &&
+              targetLocal.month == now.month &&
+              targetLocal.day == now.day) {
+            final category = ItemSemanticsService.countdownCategoryForTitle(
+              c.title,
+            );
+            queue.add({
+              'text': c.title,
+              'type': 'countdown',
+              'countdownCategory': category,
+              'timeLabel': '今天 08:00',
+            });
+          }
+        }
+      }
     } catch (_) {}
     return queue;
   }

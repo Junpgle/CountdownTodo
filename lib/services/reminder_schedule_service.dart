@@ -22,6 +22,7 @@ import 'storage/user_session_storage.dart';
 ///       34001 ~ 41999  →  固定日程提醒（每个日程最多 8 个）
 ///       52001 ~ 59999  →  周期账单提醒
 ///       61000 ~ 69999  →  预算阈值提醒
+///       70001 ~ 70999  →  倒计时当天 08:00 提醒
 ///   - 每次调用 scheduleAll 只替换 reminder_schedule 自己的列表（幂等），
 ///     不影响番茄钟和习惯提醒
 ///   - 只注册未来 7 天内的提醒，超出部分在下次 App 启动时补注册
@@ -32,6 +33,7 @@ class ReminderScheduleService {
   static const int _planBlockBaseId = 33001;
   static const int _fixedScheduleBaseId = 34001;
   static const int _fixedScheduleReminderStride = 8;
+  static const int _countdownBaseId = 70001;
 
   // 提前多少分钟提醒
   static const int _todoAdvanceMinutes = 5;
@@ -61,6 +63,7 @@ class ReminderScheduleService {
   static Future<void> scheduleAll({
     required List<TodoItem> todos,
     required List<CourseItem> courses,
+    List<CountdownItem>? countdowns,
     Future<List<CourseItem>> Function(DateTime from, DateTime to)? loadCourses,
     String? expectedUsername,
     bool force = false,
@@ -342,6 +345,17 @@ class ReminderScheduleService {
       await StorageService.savePlanBlocks(effectiveUsername, remindedBlocks);
     }
 
+    // ── 倒计时当天 08:00 提醒 ──────────────────────────────────────────
+    final effectiveCountdowns =
+        countdowns ?? await StorageService.getCountdowns(effectiveUsername);
+    reminders.addAll(
+      buildCountdownReminders(
+        countdowns: effectiveCountdowns,
+        now: now,
+        limit: limit,
+      ),
+    );
+
     if (session != null) {
       await UserSessionStorage.ensureCurrentSession(session);
     }
@@ -366,14 +380,68 @@ class ReminderScheduleService {
     bool force = false,
   }) async {
     final todos = await StorageService.getTodos(username);
+    final countdowns = await StorageService.getCountdowns(username);
     await scheduleAll(
       todos: todos,
       courses: const <CourseItem>[],
+      countdowns: countdowns,
       loadCourses: (from, to) =>
           CourseService.getCoursesForDateRange(username, from: from, to: to),
       expectedUsername: username,
       force: force,
     );
+  }
+
+  /// 为未来 7 天内到期的倒数日构建当天 08:00 触发的实时提醒。
+  static List<Map<String, dynamic>> buildCountdownReminders({
+    required List<CountdownItem> countdowns,
+    required DateTime now,
+    required DateTime limit,
+  }) {
+    final reminders = <Map<String, dynamic>>[];
+    for (var i = 0; i < countdowns.length && i < 999; i++) {
+      final countdown = countdowns[i];
+      if (countdown.isDeleted || countdown.isCompleted) continue;
+
+      final targetLocal = countdown.targetDate.toLocal();
+      final triggerAt = DateTime(
+        targetLocal.year,
+        targetLocal.month,
+        targetLocal.day,
+        8,
+        0,
+      );
+      if (!triggerAt.isAfter(now) || triggerAt.isAfter(limit)) continue;
+
+      final endOfDay = DateTime(
+        targetLocal.year,
+        targetLocal.month,
+        targetLocal.day,
+        23,
+        59,
+      );
+      final category = ItemSemanticsService.countdownCategoryForTitle(
+        countdown.title,
+      );
+      final emoji = ItemSemanticsService.countdownCategoryEmoji(category);
+      final label = ItemSemanticsService.countdownCategoryLabel(category);
+      final dateStr =
+          '${targetLocal.year}-${targetLocal.month.toString().padLeft(2, '0')}-${targetLocal.day.toString().padLeft(2, '0')}';
+
+      reminders.add({
+        'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
+        'startAtMs': endOfDay.toUtc().millisecondsSinceEpoch,
+        'title': '$emoji ${countdown.title}',
+        'text': '$label就在今天 · $dateStr',
+        'notifId': _countdownBaseId + i,
+        'type': 'countdown',
+        'countdownCategory': category,
+        'countdownId': countdown.id,
+        'countdownTitle': countdown.title,
+        'timeStr': '今天 08:00',
+      });
+    }
+    return reminders;
   }
 
   /// 供修改周期账单或模板后的页面立即刷新系统提醒。
