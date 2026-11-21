@@ -1686,6 +1686,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                             "course" -> updateCourseNotification(args)
                             "upcoming_todo" -> updateUpcomingTodoNotification(args)
                             "special_todo" -> updateSpecialTodoNotification(args)
+                            "countdown" -> updateCountdownNotification(args)
                             "pomodoro" -> updatePomodoroNotification(args)
                             "pomodoro_end" -> sendPomodoroEndAlert(args)
                             "todo_recognize_progress" -> updateTodoRecognizeProgressNotification(args)
@@ -2606,6 +2607,49 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             iconResId = R.drawable.calendar_clock,
             imagePath = imagePath,
             originalText = args["originalText"] as? String
+        )
+    }
+
+    private fun updateCountdownNotification(args: Map<String, Any>) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val countdownTitle = args["countdownTitle"] as? String ?: "倒数日"
+        val category = args["countdownCategory"] as? String ?: "default"
+        val dateStr = args["countdownDateStr"] as? String ?: ""
+        val customNotifId = (args["notificationId"] as? Number)?.toInt()
+        val notifId = customNotifId ?: NOTIFICATION_ID
+
+        val (iconResId, color, label) = when (category) {
+            "birthday" -> Triple(R.drawable.ic_countdown_birthday, 0xFFFF9800.toInt(), "🎂 生日")
+            "anniversary" -> Triple(R.drawable.ic_countdown_anniversary, 0xFFE91E63.toInt(), "💖 纪念日")
+            "exam" -> Triple(R.drawable.ic_countdown_exam, 0xFF3F51B5.toInt(), "📝 考试")
+            "holiday" -> Triple(R.drawable.ic_countdown_holiday, 0xFF00ACC1.toInt(), "🌴 假期")
+            "travel" -> Triple(R.drawable.ic_countdown_travel, 0xFF2196F3.toInt(), "✈️ 出行")
+            "deadline" -> Triple(R.drawable.ic_countdown_deadline, 0xFFF44336.toInt(), "🚩 重要节点")
+            else -> Triple(R.drawable.hourglass, 0xFFFF7043.toInt(), "⏳ 倒数日")
+        }
+
+        val text = if (dateStr.isNotEmpty()) "就在今天 · $dateStr" else "就在今天"
+        buildAndNotify(
+            title = countdownTitle,
+            text = text,
+            subText = label,
+            progress = 0,
+            isOngoing = true,
+            color = color,
+            currentStep = 0,
+            totalSteps = 0,
+            isTodo = true,
+            shortText = "就在今天",
+            iconResId = iconResId,
+            largeIconResId = iconResId,
+            notificationId = notifId
+        )
+        sendAlertIfNew(
+            alertKey = "countdown_${notifId}_${dateStr}",
+            title = "$label · $countdownTitle",
+            text = text,
+            alertNotificationId = ALERT_TODO_ID,
+            iconResId = iconResId
         )
     }
 
