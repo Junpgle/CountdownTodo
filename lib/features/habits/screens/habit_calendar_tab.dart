@@ -8,14 +8,19 @@ import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
 import '../repositories/habit_repository.dart';
+import '../services/habit_calendar_light_up_service.dart';
+import '../services/habit_drink_log_service.dart';
 import '../services/habit_freeze_service.dart';
 import '../services/habit_sleep_duration_service.dart';
 import '../services/habit_progress_calculator.dart';
 import '../services/habit_rule_resolver.dart';
 import '../services/habit_source_resolver.dart';
 import '../services/habit_sleep_goal_resolver.dart';
+import '../widgets/habit_calendar_light_up_sheet.dart';
+import '../widgets/habit_drink_picker_sheet.dart';
 import '../widgets/habit_format.dart';
 import 'habit_detail_screen.dart';
+import 'habit_edit_screen.dart';
 
 /// 习惯中心「日历」标签页：
 ///
@@ -33,6 +38,9 @@ class HabitCalendarTab extends StatefulWidget {
   /// 初始选中的习惯 UUID（为空表示默认查看全部习惯）。
   final String? initialHabitUuid;
 
+  /// 日历内快速点亮/修改打卡后通知父级刷新其他标签页。
+  final VoidCallback? onChanged;
+
   const HabitCalendarTab({
     super.key,
     this.topPadding = 0,
@@ -40,6 +48,7 @@ class HabitCalendarTab extends StatefulWidget {
     required this.username,
     this.reloadTick = 0,
     this.initialHabitUuid,
+    this.onChanged,
   });
 
   @override
@@ -52,6 +61,8 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
   List<HabitGoal> _goals = [];
   Map<String, List<HabitGoalRuleRevision>> _rulesByHabit = {};
   Map<String, Map<String, HabitDayProgress>> _dayByHabitAndLogicalDate = {};
+  Map<String, Map<String, List<HabitCheckIn>>> _checkInsByHabitAndLogicalDate =
+      {};
   final Map<String, ({_DayAggregate status, double ratio})> _aggregateCache =
       {};
   String? _aggregateCacheTodayKey;
@@ -134,8 +145,14 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
               toDate: HabitRuleResolver.dayKey(monthEnd),
             );
       final checkInsByHabit = <String, List<HabitCheckIn>>{};
+      final checkInsByHabitAndLogicalDate =
+          <String, Map<String, List<HabitCheckIn>>>{};
       for (final checkIn in checkIns) {
         (checkInsByHabit[checkIn.habitUuid] ??= <HabitCheckIn>[]).add(checkIn);
+        ((checkInsByHabitAndLogicalDate[checkIn.habitUuid] ??=
+                    <String, List<HabitCheckIn>>{})[checkIn.logicalDate] ??=
+                <HabitCheckIn>[])
+            .add(checkIn);
       }
       final recordsByHabit = await HabitSourceResolver.recordsForRange(
         calculationGoals
@@ -191,6 +208,7 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
           _goals = goals;
           _rulesByHabit = rulesByHabit;
           _dayByHabitAndLogicalDate = dayByHabitAndLogicalDate;
+          _checkInsByHabitAndLogicalDate = checkInsByHabitAndLogicalDate;
           if (_selectedHabitUuid != null &&
               !goals.any((g) => g.uuid == _selectedHabitUuid)) {
             _selectedHabitUuid = null;
@@ -229,6 +247,272 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
       _selectedDay = now;
     });
     _loadData();
+  }
+
+  bool _isFutureDate(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return DateTime(date.year, date.month, date.day).isAfter(today);
+  }
+
+  bool _isHabitLitOnDay(HabitGoal goal, DateTime date) {
+    if (_isFutureDate(date)) return false;
+    final key = HabitRuleResolver.dayKey(date);
+    final dayProgress = _dayByHabitAndLogicalDate[goal.uuid]?[key];
+    final dayCheckIns =
+        _checkInsByHabitAndLogicalDate[goal.uuid]?[key] ??
+        const <HabitCheckIn>[];
+    if (goal.isArchived &&
+        (dayProgress == null || !_hasHistoricalRecord(dayProgress)) &&
+        dayCheckIns.isEmpty) {
+      return false;
+    }
+    return HabitCalendarLightUpService.isHabitLitOnDay(
+      goal: goal,
+      dayProgress: dayProgress,
+      dayCheckIns: dayCheckIns,
+    );
+  }
+
+  List<String> _litIconsForHabitOnDay(HabitGoal goal, DateTime date) {
+    if (!_isHabitLitOnDay(goal, date)) return const <String>[];
+    final key = HabitRuleResolver.dayKey(date);
+    final dayCheckIns =
+        _checkInsByHabitAndLogicalDate[goal.uuid]?[key] ??
+        const <HabitCheckIn>[];
+    return HabitDrinkLogService.displayIconsForHabitOnDay(
+      goal: goal,
+      dayCheckIns: dayCheckIns,
+    );
+  }
+
+  List<String> _litIconsForDay(DateTime date) {
+    if (_isFutureDate(date)) return const <String>[];
+    final icons = <String>[];
+    for (final goal in _goals) {
+      icons.addAll(_litIconsForHabitOnDay(goal, date));
+    }
+    return icons;
+  }
+
+  Future<void> _handleDayTap(DateTime date, {HabitGoal? focusedGoal}) async {
+    setState(() => _selectedDay = date);
+    if (_isFutureDate(date)) return;
+    if (focusedGoal != null &&
+        HabitDrinkLogService.isDrinkChoiceHabit(focusedGoal)) {
+      await _openDrinkPickerForDate(focusedGoal, date);
+      return;
+    }
+    await _openLightUpSheet(date, focusedGoal: focusedGoal);
+  }
+
+  Future<List<String>?> _openDrinkPickerForDate(
+    HabitGoal goal,
+    DateTime date,
+  ) async {
+    final key = HabitRuleResolver.dayKey(date);
+    final dayCheckIns =
+        _checkInsByHabitAndLogicalDate[goal.uuid]?[key] ??
+        const <HabitCheckIn>[];
+    var changed = false;
+    final picked = await HabitDrinkPickerSheet.show(
+      context: context,
+      goal: goal,
+      rules: _rulesByHabit[goal.uuid] ?? const [],
+      logicalDate: date,
+      username: widget.username,
+      initialSelectedIcons: HabitDrinkLogService.extractDrinkIcons(dayCheckIns),
+      onChanged: () {
+        changed = true;
+        _loadData();
+      },
+    );
+    if (changed && mounted) {
+      await _loadData();
+      widget.onChanged?.call();
+    }
+    return picked;
+  }
+
+  Future<void> _openLightUpSheet(
+    DateTime date, {
+    HabitGoal? focusedGoal,
+  }) async {
+    final key = HabitRuleResolver.dayKey(date);
+    final sheetGoals = <HabitGoal>[];
+    final addedUuids = <String>{};
+
+    void addIfEligible(HabitGoal goal) {
+      if (addedUuids.contains(goal.uuid)) return;
+      final isLit = _isHabitLitOnDay(goal, date);
+      if (goal.isArchived && !isLit) return;
+      addedUuids.add(goal.uuid);
+      sheetGoals.add(goal);
+    }
+
+    if (focusedGoal != null) {
+      addIfEligible(focusedGoal);
+    }
+    for (final goal in _goals) {
+      addIfEligible(goal);
+    }
+
+    final initialLitStates = <String, bool>{
+      for (final goal in sheetGoals) goal.uuid: _isHabitLitOnDay(goal, date),
+    };
+    final initialDisplayIconsByHabit = <String, List<String>>{
+      for (final goal in sheetGoals)
+        if (_isHabitLitOnDay(goal, date))
+          goal.uuid: _litIconsForHabitOnDay(goal, date),
+    };
+    final subtitleByHabit = <String, String>{};
+    for (final goal in sheetGoals) {
+      final dayProgress = _dayByHabitAndLogicalDate[goal.uuid]?[key];
+      if (dayProgress != null &&
+          dayProgress.status == HabitDayStatus.inProgress) {
+        final compact = _dayValueText(goal, dayProgress);
+        if (compact.isNotEmpty) {
+          subtitleByHabit[goal.uuid] = compact;
+        }
+      }
+    }
+
+    var changedAny = false;
+    final screenSize = MediaQuery.sizeOf(context);
+    await showAppModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      constraints: BoxConstraints(
+        maxWidth: 520,
+        maxHeight: screenSize.height * 0.82,
+      ),
+      builder: (_) => HabitCalendarLightUpSheet(
+        date: date,
+        goals: sheetGoals,
+        initialLitStates: initialLitStates,
+        initialDisplayIconsByHabit: initialDisplayIconsByHabit,
+        subtitleByHabit: subtitleByHabit,
+        focusedHabitUuid: focusedGoal?.uuid,
+        onToggleHabit: (goal, currentlyLit) async {
+          final result = await HabitCalendarLightUpService.toggleHabitLitForDay(
+            goal: goal,
+            rules: _rulesByHabit[goal.uuid] ?? const [],
+            logicalDate: date,
+            currentlyLit: currentlyLit,
+            dayProgress: _dayByHabitAndLogicalDate[goal.uuid]?[key],
+            username: widget.username,
+          );
+          if (result.changed) {
+            changedAny = true;
+            await _loadData();
+          }
+          return result;
+        },
+        onPickDrinks: (goal) async {
+          final picked = await _openDrinkPickerForDate(goal, date);
+          if (picked != null) {
+            changedAny = true;
+          }
+          return picked;
+        },
+        onCreateHabit: () async {
+          final created = await Navigator.of(context).push<bool>(
+            PageTransitions.material(builder: (_) => const HabitEditScreen()),
+          );
+          if (created == true && mounted) {
+            await _loadData();
+            widget.onChanged?.call();
+          }
+        },
+      ),
+    );
+
+    if (changedAny && mounted) {
+      widget.onChanged?.call();
+    }
+  }
+
+  /// 在日历格子中渲染当天点亮的习惯图标：
+  /// - 1 个图标：大号居中清晰展示（如 🧋 或 🥤）；
+  /// - 2 个图标：并排展示（如 🧋🥤）；
+  /// - 3~4 个（宽格子最多 6 个）图标：多行紧凑排列完整展示，不提前折叠为 +1；
+  /// - 超出容量时再在末尾展示 `+N` 徽标，防止窄屏溢出。
+  Widget _buildDayLitIcons(List<String> icons, ColorScheme colorScheme) {
+    if (icons.isEmpty) return const SizedBox.shrink();
+
+    if (icons.length == 1) {
+      return FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          icons.first,
+          style: const TextStyle(fontSize: 18, height: 1.05),
+        ),
+      );
+    }
+
+    if (icons.length == 2) {
+      return FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(icons[0], style: const TextStyle(fontSize: 14, height: 1.05)),
+            const SizedBox(width: 2),
+            Text(icons[1], style: const TextStyle(fontSize: 14, height: 1.05)),
+          ],
+        ),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isRoomyCell = constraints.maxWidth >= 54;
+        final maxVisible = isRoomyCell ? 6 : 4;
+        final hasOverflow = icons.length > maxVisible;
+        final shownCount = hasOverflow ? maxVisible - 1 : icons.length;
+        final visibleIcons = icons.take(shownCount).toList(growable: false);
+        final extraCount = icons.length - shownCount;
+        final iconSize = icons.length <= 3
+            ? (isRoomyCell ? 13.0 : 11.5)
+            : (isRoomyCell ? 11.5 : 10.0);
+
+        return FittedBox(
+          fit: BoxFit.scaleDown,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: constraints.maxWidth.isFinite
+                  ? constraints.maxWidth
+                  : 56,
+            ),
+            child: Wrap(
+              alignment: WrapAlignment.center,
+              runAlignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 1.5,
+              runSpacing: 1,
+              children: [
+                for (final icon in visibleIcons)
+                  Text(
+                    icon,
+                    style: TextStyle(fontSize: iconSize, height: 1.05),
+                  ),
+                if (hasOverflow)
+                  Text(
+                    '+$extraCount',
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                      color: colorScheme.primary,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   // ── 每日聚合状态（全部习惯） ─────────────────────────
@@ -762,6 +1046,14 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
 
       final key = HabitRuleResolver.dayKey(date);
       final dayProgress = _dayByHabitAndLogicalDate[goal.uuid]?[key];
+      final dayCheckIns =
+          _checkInsByHabitAndLogicalDate[goal.uuid]?[key] ??
+          const <HabitCheckIn>[];
+      final isLit = _isHabitLitOnDay(goal, date);
+      final hasDrinkFailure =
+          !isFuture &&
+          HabitDrinkLogService.isDrinkChoiceHabit(goal) &&
+          HabitDrinkLogService.extractDrinkIcons(dayCheckIns).isNotEmpty;
 
       HabitDayStatus? status;
       if (!isFuture && dayProgress != null) {
@@ -777,15 +1069,26 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
 
       if (isFuture) {
         textColor = colorScheme.onSurfaceVariant.withValues(alpha: 0.35);
+      } else if (hasDrinkFailure) {
+        cellBg = colorScheme.errorContainer.withValues(alpha: 0.45);
+        textColor = colorScheme.onErrorContainer;
+        dotColor = colorScheme.error;
+      } else if (isLit) {
+        cellBg = colorScheme.tertiaryContainer.withValues(alpha: 0.82);
+        textColor = colorScheme.onTertiaryContainer;
+        dotColor = colorScheme.tertiary;
+        if (dayProgress != null) {
+          final compact = _compactDayValue(goal, dayProgress);
+          if (compact.isNotEmpty && compact != '✓') {
+            subText = compact;
+          }
+        }
       } else {
         switch (status) {
           case HabitDayStatus.met:
             cellBg = colorScheme.tertiaryContainer;
             textColor = colorScheme.onTertiaryContainer;
             dotColor = colorScheme.tertiary;
-            if (dayProgress != null) {
-              subText = _compactDayValue(goal, dayProgress);
-            }
           case HabitDayStatus.frozen:
             cellBg = colorScheme.secondaryContainer.withValues(alpha: 0.55);
             textColor = colorScheme.onSecondaryContainer;
@@ -808,9 +1111,18 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
         }
       }
 
+      final litIcons = _litIconsForHabitOnDay(goal, date);
+      final hasDrinkSelection =
+          isLit &&
+          HabitDrinkLogService.extractDrinkIcons(
+            _checkInsByHabitAndLogicalDate[goal.uuid]?[key] ??
+                const <HabitCheckIn>[],
+          ).isNotEmpty;
+
       cells.add(
         GestureDetector(
-          onTap: () => setState(() => _selectedDay = date),
+          key: ValueKey('habit_calendar_single_day_$key'),
+          onTap: () => _handleDayTap(date, focusedGoal: goal),
           child: Container(
             margin: const EdgeInsets.all(2),
             decoration: BoxDecoration(
@@ -820,6 +1132,8 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
                     ? colorScheme.primary
                     : isToday
                     ? colorScheme.primary.withValues(alpha: 0.45)
+                    : isLit
+                    ? colorScheme.tertiary.withValues(alpha: 0.25)
                     : Colors.transparent,
                 width: isSelected ? 2 : 1,
               ),
@@ -830,50 +1144,64 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
                 children: [
                   Container(color: cellBg),
                   Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          '$day',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: isToday || isSelected
-                                ? FontWeight.w800
-                                : FontWeight.w500,
-                            color: isSelected ? colorScheme.primary : textColor,
-                          ),
-                        ),
-                        if (subText.isNotEmpty) ...[
-                          const SizedBox(height: 1),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 2,
+                        vertical: 2,
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
                           Text(
-                            subText,
-                            maxLines: 1,
-                            overflow: TextOverflow.clip,
+                            '$day',
                             style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w700,
-                              color: colorScheme.tertiary,
+                              fontSize: isLit ? 11.5 : 13,
+                              fontWeight: isToday || isSelected
+                                  ? FontWeight.w800
+                                  : FontWeight.w500,
+                              color: isSelected
+                                  ? colorScheme.primary
+                                  : textColor,
                             ),
                           ),
-                        ] else if (status == HabitDayStatus.frozen) ...[
-                          const SizedBox(height: 2),
-                          Icon(
-                            Icons.shield_rounded,
-                            size: 8.5,
-                            color: colorScheme.secondary,
-                          ),
-                        ] else ...[
-                          const SizedBox(height: 2),
-                          Container(
-                            width: 5.5,
-                            height: 5.5,
-                            decoration: BoxDecoration(
-                              color: dotColor,
-                              shape: BoxShape.circle,
+                          if (isLit) ...[
+                            const SizedBox(height: 1),
+                            Flexible(
+                              child: _buildDayLitIcons(litIcons, colorScheme),
                             ),
-                          ),
+                            if (!hasDrinkSelection && subText.isNotEmpty)
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  subText,
+                                  maxLines: 1,
+                                  style: TextStyle(
+                                    fontSize: 8.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: colorScheme.tertiary,
+                                  ),
+                                ),
+                              ),
+                          ] else if (status == HabitDayStatus.frozen) ...[
+                            const SizedBox(height: 2),
+                            Icon(
+                              Icons.shield_rounded,
+                              size: 8.5,
+                              color: colorScheme.secondary,
+                            ),
+                          ] else ...[
+                            const SizedBox(height: 2),
+                            Container(
+                              width: 5.5,
+                              height: 5.5,
+                              decoration: BoxDecoration(
+                                color: dotColor,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
                 ],
@@ -890,7 +1218,7 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
       crossAxisCount: 7,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      childAspectRatio: 0.95,
+      childAspectRatio: 0.84,
       children: cells,
     );
   }
@@ -1118,32 +1446,50 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
           date.year == _selectedDay.year &&
           date.month == _selectedDay.month &&
           date.day == _selectedDay.day;
+      final isFuture = _isFutureDate(date);
       final aggData = _aggregate(date);
       final aggregate = aggData.status;
       final ratio = aggData.ratio;
+      final litIcons = _litIconsForDay(date);
+      final hasLit = litIcons.isNotEmpty;
+      final key = HabitRuleResolver.dayKey(date);
 
       Color bg = Colors.transparent;
       Color dot = colorScheme.outlineVariant;
-      switch (aggregate) {
-        case _DayAggregate.allMet:
-          bg = colorScheme.tertiaryContainer;
+      if (hasLit) {
+        if (aggregate == _DayAggregate.allMet) {
+          bg = colorScheme.tertiaryContainer.withValues(alpha: 0.8);
           dot = colorScheme.tertiary;
-        case _DayAggregate.partial:
-          bg = Colors.transparent;
-          dot = colorScheme.tertiary;
-        case _DayAggregate.noneMet:
-        case _DayAggregate.none:
-        case _DayAggregate.future:
-          bg = Colors.transparent;
-          dot = colorScheme.outlineVariant;
-        case _DayAggregate.skipped:
-          bg = colorScheme.surfaceContainerHighest.withValues(alpha: 0.45);
-          dot = colorScheme.outline;
+        } else if (aggregate == _DayAggregate.noneMet) {
+          bg = colorScheme.errorContainer.withValues(alpha: 0.42);
+          dot = colorScheme.error;
+        } else {
+          bg = colorScheme.primaryContainer.withValues(alpha: 0.55);
+          dot = colorScheme.primary;
+        }
+      } else {
+        switch (aggregate) {
+          case _DayAggregate.allMet:
+            bg = colorScheme.tertiaryContainer;
+            dot = colorScheme.tertiary;
+          case _DayAggregate.partial:
+            bg = Colors.transparent;
+            dot = colorScheme.tertiary;
+          case _DayAggregate.noneMet:
+          case _DayAggregate.none:
+          case _DayAggregate.future:
+            bg = Colors.transparent;
+            dot = colorScheme.outlineVariant;
+          case _DayAggregate.skipped:
+            bg = colorScheme.surfaceContainerHighest.withValues(alpha: 0.45);
+            dot = colorScheme.outline;
+        }
       }
 
       cells.add(
         GestureDetector(
-          onTap: () => setState(() => _selectedDay = date),
+          key: ValueKey('habit_calendar_day_$key'),
+          onTap: () => _handleDayTap(date),
           child: Container(
             margin: const EdgeInsets.all(2),
             decoration: BoxDecoration(
@@ -1152,7 +1498,9 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
                 color: isSelected
                     ? colorScheme.primary
                     : isToday
-                    ? colorScheme.primary.withValues(alpha: 0.4)
+                    ? colorScheme.primary.withValues(alpha: 0.45)
+                    : hasLit
+                    ? colorScheme.primary.withValues(alpha: 0.22)
                     : Colors.transparent,
                 width: isSelected ? 2 : 1,
               ),
@@ -1162,7 +1510,9 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
               child: Stack(
                 children: [
                   Container(color: bg),
-                  if (ratio > 0.0 && aggregate == _DayAggregate.partial)
+                  if (!hasLit &&
+                      ratio > 0.0 &&
+                      aggregate == _DayAggregate.partial)
                     Align(
                       alignment: Alignment.bottomCenter,
                       child: FractionallySizedBox(
@@ -1176,33 +1526,52 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
                       ),
                     ),
                   Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          '$day',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: isToday
-                                ? FontWeight.w800
-                                : FontWeight.w500,
-                            color: isSelected
-                                ? colorScheme.primary
-                                : colorScheme.onSurface,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 2,
+                        vertical: 2,
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            '$day',
+                            style: TextStyle(
+                              fontSize: hasLit ? 11.5 : 13,
+                              fontWeight: isToday || isSelected
+                                  ? FontWeight.w800
+                                  : FontWeight.w500,
+                              color: isFuture
+                                  ? colorScheme.onSurfaceVariant.withValues(
+                                      alpha: 0.38,
+                                    )
+                                  : isSelected
+                                  ? colorScheme.primary
+                                  : colorScheme.onSurface,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 2),
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            color: aggregate == _DayAggregate.none
-                                ? Colors.transparent
-                                : dot,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ],
+                          if (hasLit) ...[
+                            const SizedBox(height: 1),
+                            Flexible(
+                              child: _buildDayLitIcons(litIcons, colorScheme),
+                            ),
+                          ] else ...[
+                            const SizedBox(height: 2),
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color:
+                                    aggregate == _DayAggregate.none ||
+                                        aggregate == _DayAggregate.future
+                                    ? Colors.transparent
+                                    : dot,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -1219,7 +1588,7 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
       crossAxisCount: 7,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      childAspectRatio: 0.95,
+      childAspectRatio: 0.84,
       children: cells,
     );
   }
@@ -1247,10 +1616,19 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     return Wrap(
       spacing: 16,
       runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         item(colorScheme.tertiary, '全部完成'),
         item(colorScheme.tertiary.withValues(alpha: 0.5), '部分完成'),
         item(colorScheme.outline, '已跳过'),
+        Text(
+          '点击日期可点亮习惯图标',
+          style: TextStyle(
+            fontSize: 11,
+            color: colorScheme.primary,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ],
     );
   }
@@ -1274,13 +1652,32 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          dayLabel,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-            color: colorScheme.onSurface,
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                dayLabel,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+            ),
+            if (!_isFutureDate(_selectedDay))
+              FilledButton.tonalIcon(
+                onPressed: () => _openLightUpSheet(_selectedDay),
+                icon: const Icon(Icons.auto_awesome_rounded, size: 15),
+                label: const Text('点亮图标', style: TextStyle(fontSize: 12.5)),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  minimumSize: const Size(0, 32),
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: 16),
         if (rows.isEmpty)
@@ -1326,7 +1723,21 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
       HabitDayStatus.frozen => (colorScheme.primary, '免扣保护'),
     };
 
-    final detail = _dayValueText(goal, day);
+    final dayKey = HabitRuleResolver.dayKey(day.logicalDate);
+    final dayCheckIns =
+        _checkInsByHabitAndLogicalDate[goal.uuid]?[dayKey] ??
+        const <HabitCheckIn>[];
+    final drinkSummary = HabitDrinkLogService.formatDrinkSummary(dayCheckIns);
+    final isDrinkChoice = HabitDrinkLogService.isDrinkChoiceHabit(goal);
+    final rawDetail = _dayValueText(goal, day);
+    final detail = drinkSummary.isNotEmpty
+        ? (isDrinkChoice ? '破戒：$drinkSummary' : drinkSummary)
+        : (isDrinkChoice && status == HabitDayStatus.met
+              ? '没喝饮料 · 打卡成功'
+              : rawDetail);
+    final rowIcon = drinkSummary.isNotEmpty
+        ? HabitDrinkLogService.extractDrinkIcons(dayCheckIns).first
+        : (goal.icon.isNotEmpty ? goal.icon : '🎯');
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -1342,10 +1753,7 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
               setState(() => _selectedHabitUuid = goal.uuid);
             },
             borderRadius: BorderRadius.circular(8),
-            child: Text(
-              goal.icon.isNotEmpty ? goal.icon : '🎯',
-              style: const TextStyle(fontSize: 22),
-            ),
+            child: Text(rowIcon, style: const TextStyle(fontSize: 22)),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1408,14 +1816,33 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
             ),
           ),
           const SizedBox(width: 8),
-          _buildFreezeButton(goal, day, colorScheme),
-          const SizedBox(width: 8),
-          if (goal.sourceType == HabitSourceType.recurringTodo) ...[
-            _buildMakeUpButton(goal, day),
+          if (!isDrinkChoice) ...[
+            _buildFreezeButton(goal, day, colorScheme),
             const SizedBox(width: 8),
+            if (goal.sourceType == HabitSourceType.recurringTodo) ...[
+              _buildMakeUpButton(goal, day),
+              const SizedBox(width: 8),
+              _buildSkipButton(goal, day, colorScheme, label),
+            ] else
+              _buildSkipButton(goal, day, colorScheme, label),
+          ] else if (!_isFutureDate(day.logicalDate)) ...[
+            OutlinedButton(
+              onPressed: () => _openDrinkPickerForDate(goal, day.logicalDate),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                minimumSize: const Size(0, 32),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text('记录饮品'),
+            ),
+            const SizedBox(width: 6),
             _buildSkipButton(goal, day, colorScheme, label),
-          ] else
-            _buildSkipButton(goal, day, colorScheme, label),
+          ],
         ],
       ),
     );

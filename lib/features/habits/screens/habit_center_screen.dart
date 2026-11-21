@@ -651,6 +651,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
             extraBottomPadding: fabBottomClearance,
             username: widget.username,
             reloadTick: _reloadTick,
+            onChanged: () => setState(() => _reloadTick++),
           ),
           HabitAnalysisTab(
             topPadding: topBarHeight,
