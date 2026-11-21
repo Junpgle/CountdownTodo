@@ -7,6 +7,7 @@ import '../models/habit_goal_rule.dart';
 import '../repositories/habit_repository.dart';
 import '../services/habit_drink_log_service.dart';
 import '../services/habit_rule_resolver.dart';
+import 'habit_emoji_text.dart';
 
 /// 戒掉饮料类习惯的「今天喝了什么」快捷选择面板。
 ///
@@ -311,7 +312,7 @@ class _HabitDrinkPickerSheetState extends State<HabitDrinkPickerSheet> {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      Text(
+                      HabitEmojiText(
                         _manageMode
                             ? '点击任意饮品可编辑或删除，修改自动云同步'
                             : _noDrinkSuccess

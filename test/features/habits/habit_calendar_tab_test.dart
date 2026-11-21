@@ -10,6 +10,7 @@ import 'package:countdown_todo/features/habits/screens/habit_today_tab.dart';
 import 'package:countdown_todo/features/habits/services/habit_rule_resolver.dart';
 import 'package:countdown_todo/features/habits/widgets/habit_calendar_light_up_sheet.dart';
 import 'package:countdown_todo/features/habits/widgets/habit_drink_picker_sheet.dart';
+import 'package:countdown_todo/features/habits/widgets/habit_emoji_text.dart';
 import 'package:countdown_todo/services/database_helper.dart';
 import 'package:countdown_todo/services/feature_tip_service.dart';
 import 'package:countdown_todo/services/sync_capability_service.dart';
@@ -572,8 +573,14 @@ void main() {
       );
       await tester.drag(calendarList, const Offset(0, -400));
       await tester.pumpAndSettle();
-      // 选到饮料记为破戒（打卡失败 -> 未完成）
-      expect(find.text('破戒：🧋 奶茶 · 🥤 饮料'), findsOneWidget);
+      // 选到饮料记为破戒（打卡失败 -> 未完成），且通过 HabitEmojiText 隔离混排 Emoji
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is HabitEmojiText && w.text == '破戒：🧋 奶茶 · 🥤 饮料',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('破戒：'), findsOneWidget);
       expect(find.text('未完成'), findsWidgets);
 
       // 4. 改选「今日没喝（打卡成功）」，验证清除破戒记录并转为已完成

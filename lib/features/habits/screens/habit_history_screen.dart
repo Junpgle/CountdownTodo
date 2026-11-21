@@ -13,6 +13,7 @@ import '../services/habit_source_resolver.dart';
 import '../services/habit_sleep_duration_service.dart';
 import '../services/habit_freeze_service.dart';
 import '../widgets/habit_checkin_editor.dart';
+import '../widgets/habit_emoji_text.dart';
 import '../widgets/habit_format.dart';
 import '../../../utils/app_dialogs.dart';
 
@@ -523,7 +524,7 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                HabitEmojiText(
                   valueText,
                   style: TextStyle(
                     fontSize: 14,
@@ -532,7 +533,7 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
                   ),
                 ),
                 if (checkIn.note != null && checkIn.note!.isNotEmpty)
-                  Text(
+                  HabitEmojiText(
                     checkIn.note!,
                     style: TextStyle(
                       fontSize: 12,

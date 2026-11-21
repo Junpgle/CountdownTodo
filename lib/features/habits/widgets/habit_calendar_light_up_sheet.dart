@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../models/habit_goal.dart';
 import '../services/habit_calendar_light_up_service.dart';
 import '../services/habit_drink_log_service.dart';
+import 'habit_emoji_text.dart';
 
 /// 点击习惯日历某一天时弹出的「快捷点亮图标」面板。
 ///
@@ -175,7 +176,7 @@ class _HabitCalendarLightUpSheetState extends State<HabitCalendarLightUpSheet> {
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text(
+                      HabitEmojiText(
                         litIcons.isEmpty
                             ? '轻点图标即可点亮这一天，支持同时点亮多个'
                             : '已点亮：${litIcons.join(' ')}',

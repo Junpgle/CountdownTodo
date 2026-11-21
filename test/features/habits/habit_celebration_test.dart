@@ -90,7 +90,8 @@ void main() {
       expect(find.text('今日习惯达成！'), findsOneWidget);
       expect(find.text('「晨起慢跑」'), findsOneWidget);
       expect(find.text('🏃'), findsOneWidget);
-      expect(find.text('🔥 已连续坚持 7 天'), findsOneWidget);
+      expect(find.text('🔥'), findsOneWidget);
+      expect(find.textContaining('已连续坚持 7 天'), findsOneWidget);
 
       final btn = find.text('收到 ✨');
       expect(btn, findsOneWidget);

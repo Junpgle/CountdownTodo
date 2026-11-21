@@ -16,6 +16,7 @@ import '../services/habit_source_resolver.dart';
 import '../services/habit_streak_service.dart';
 import '../widgets/habit_card.dart';
 import '../widgets/habit_checkin_editor.dart';
+import '../widgets/habit_emoji_text.dart';
 import '../widgets/habit_format.dart';
 import '../widgets/habit_adaptation_panel.dart';
 import '../widgets/habit_time_point_chart.dart';
@@ -1412,7 +1413,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    Text(
+                    HabitEmojiText(
                       isFull
                           ? '🌟 免扣卡已达存放上限（2 张），继续保持连胜状态吧！'
                           : '🌱 当前连续 $curStreak 天，还需连续达标 $needed 天可获得下 1 张免扣卡',
@@ -1770,7 +1771,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      HabitEmojiText(
                         _recordMainText(checkIn),
                         style: TextStyle(
                           fontSize: 13.5,
@@ -1779,7 +1780,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                         ),
                       ),
                       if (checkIn.note?.isNotEmpty == true)
-                        Text(
+                        HabitEmojiText(
                           checkIn.note!,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,

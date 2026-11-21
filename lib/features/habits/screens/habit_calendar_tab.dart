@@ -18,6 +18,7 @@ import '../services/habit_source_resolver.dart';
 import '../services/habit_sleep_goal_resolver.dart';
 import '../widgets/habit_calendar_light_up_sheet.dart';
 import '../widgets/habit_drink_picker_sheet.dart';
+import '../widgets/habit_emoji_text.dart';
 import '../widgets/habit_format.dart';
 import 'habit_detail_screen.dart';
 import 'habit_edit_screen.dart';
@@ -1801,7 +1802,7 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
                   ),
                   if (detail.isNotEmpty) ...[
                     const SizedBox(height: 2),
-                    Text(
+                    HabitEmojiText(
                       detail,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
