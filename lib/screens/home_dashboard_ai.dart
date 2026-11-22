@@ -419,7 +419,7 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
                 await DailyAiSuggestionService.dismissFirstOpenPrompt(
                   widget.username,
                 );
-                if (!mounted) return;
+                if (!mounted || !context.mounted) return;
                 _dailyAiSuggestionNotifier.value =
                     const DailyAiSuggestionSnapshot(enabled: false);
                 AppSnackBars.showSnackBar(
