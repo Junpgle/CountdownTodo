@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-Last reviewed against the working tree: 2026-10-31.
+Last reviewed against the working tree: 2026-11-22.
 
 ## Project layout
 
@@ -11,15 +11,15 @@ Last reviewed against the working tree: 2026-10-31.
 - React web companion: `webpage/web/`.
 - Xiaomi band companion: `CountDownTodo-band/`.
 - Legacy-compatible Cloudflare Worker: `math-quiz-backend/`.
-- Alibaba Cloud server: separate checkout `CDT-server`; development code is in
-  `debug/`, while `math_quiz_backend/` is production code.
+- Alibaba Cloud server: separate checkout `CDT-server`; `math_quiz_backend/`
+  is production code and `debug/` is the test/debug environment.
 - Assets: `assets/`, `splash/`, and `wallpaper/`.
 
 ## Backend and network rules
 
-- New server features target the Alibaba Cloud server.
-- Only change `CDT-server/debug/` during normal development. Do not change the
-  production `CDT-server/math_quiz_backend/` tree unless explicitly requested.
+- New server features target the Alibaba Cloud production server
+  (`CDT-server/math_quiz_backend/`) directly unless testing specifically in
+  `CDT-server/debug/`. Keep shared changes in sync when needed.
 - Preserve the Cloudflare Worker compatibility path unless a task explicitly
   removes or migrates it.
 - Native Windows and Android clients use the Alibaba Cloud HTTP/WebSocket
@@ -72,6 +72,14 @@ cd CountDownTodo-band
 npm run start
 npm run build
 npm run lint
+npm test
+```
+
+MCP server & Alibaba Cloud backend unit tests:
+
+```bash
+cd mcp-server && npm test
+cd ../CDT-server/math_quiz_backend && npm test
 ```
 
 ## Code and UI conventions
