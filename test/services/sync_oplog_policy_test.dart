@@ -127,5 +127,60 @@ void main() {
       );
       expect(newServer.acknowledgedIds, {40});
     });
+
+    test('partial-domain sync leaves disabled domains and unhandled tables pending', () {
+      const requestSnapshot = [
+        SyncOplogEntry(id: 50, table: 'todos', uuid: 'todo-1'),
+        SyncOplogEntry(id: 51, table: 'todo_groups', uuid: 'group-1'),
+        SyncOplogEntry(id: 52, table: 'countdowns', uuid: 'cd-1'),
+        SyncOplogEntry(id: 53, table: 'time_logs', uuid: 'log-1'),
+        SyncOplogEntry(id: 54, table: 'todo_plan_blocks', uuid: 'block-1'),
+        SyncOplogEntry(id: 55, table: 'courses', uuid: 'course-1'),
+        SyncOplogEntry(id: 56, table: 'pomodoro_tags', uuid: 'tag-1'),
+      ];
+
+      final timeLogOnly = SyncOplogPolicy.resolveRequestSnapshot(
+        requestSnapshot: requestSnapshot,
+        blockingConflictUuids: const {},
+        acknowledgeTodoOps: false,
+        acknowledgeCountdownOps: false,
+        acknowledgeTimeLogOps: true,
+        acknowledgePlanBlockOps: false,
+        acknowledgeFixedScheduleOps: false,
+        acknowledgeHabitOps: false,
+      );
+
+      expect(timeLogOnly.acknowledgedIds, {53});
+      expect(timeLogOnly.blockedIds, isEmpty);
+    });
+
+    test('uuidsCreatedAfterSnapshotForTables detects post-snapshot mutations per table', () {
+      const requestSnapshot = [
+        SyncOplogEntry(id: 60, table: 'countdowns', uuid: 'cd-1'),
+        SyncOplogEntry(id: 61, table: 'fixed_schedules', uuid: 'fs-1'),
+      ];
+      const currentPending = [
+        SyncOplogEntry(id: 60, table: 'countdowns', uuid: 'cd-1'),
+        SyncOplogEntry(id: 62, table: 'countdowns', uuid: 'cd-2'),
+        SyncOplogEntry(id: 63, table: 'habit_goals', uuid: 'hg-1'),
+      ];
+
+      expect(
+        SyncOplogPolicy.uuidsCreatedAfterSnapshotForTables(
+          requestSnapshot: requestSnapshot,
+          currentPending: currentPending,
+          tables: const {'countdowns'},
+        ),
+        {'cd-2'},
+      );
+      expect(
+        SyncOplogPolicy.uuidsCreatedAfterSnapshotForTables(
+          requestSnapshot: requestSnapshot,
+          currentPending: currentPending,
+          tables: const {'habit_goals'},
+        ),
+        {'hg-1'},
+      );
+    });
   });
 }
