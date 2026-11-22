@@ -231,3 +231,70 @@ test('due date filters do not include unscheduled todos', () => {
   repository.close();
   rmSync(fixture.directory, { recursive: true, force: true });
 });
+
+test('setTodoCompletion clears is_skipped and maintains completed_at when schema columns exist', () => {
+  const fixture = createTestDatabase();
+  const setupDb = new DatabaseSync(fixture.databasePath);
+  setupDb.exec(`
+    ALTER TABLE todos ADD COLUMN completed_at INTEGER;
+    ALTER TABLE todos ADD COLUMN is_skipped INTEGER NOT NULL DEFAULT 0;
+  `);
+  setupDb
+    .prepare(
+      `INSERT INTO todos (
+        uuid, content, is_completed, is_skipped, completed_at, is_deleted, version,
+        due_date, created_date, created_at, updated_at, collab_type,
+        recurrence, custom_interval_days, reminder_minutes, is_all_day
+      ) VALUES (?, ?, 0, 1, NULL, 0, 1, 0, ?, ?, ?, 0, 1, 0, -1, 0)`,
+    )
+    .run(
+      '44444444-4444-4444-8444-444444444444',
+      '可跳过重复待办',
+      1_700_000_000_000,
+      1_700_000_000_000,
+      1_700_000_000_000,
+    );
+  setupDb.close();
+
+  const repository = new CountdownTodoDatabase(fixture.databasePath, {
+    now: () => 1_800_000_005_000,
+  });
+  try {
+    repository.setTodoCompletion('44444444-4444-4444-8444-444444444444', true);
+  } finally {
+    repository.close();
+  }
+
+  const verifyDb = new DatabaseSync(fixture.databasePath, { readOnly: true });
+  const rowAfterComplete = verifyDb
+    .prepare('SELECT is_completed, is_skipped, completed_at FROM todos WHERE uuid = ?')
+    .get('44444444-4444-4444-8444-444444444444');
+  assert.equal(rowAfterComplete.is_completed, 1);
+  assert.equal(rowAfterComplete.is_skipped, 0);
+  assert.equal(rowAfterComplete.completed_at, 1_800_000_005_000);
+  const opAfterComplete = JSON.parse(
+    verifyDb.prepare('SELECT data_json FROM op_logs ORDER BY id DESC LIMIT 1').get().data_json,
+  );
+  assert.equal(opAfterComplete.is_completed, 1);
+  assert.equal(opAfterComplete.is_skipped, 0);
+  assert.equal(opAfterComplete.completed_at, 1_800_000_005_000);
+  verifyDb.close();
+
+  const repo2 = new CountdownTodoDatabase(fixture.databasePath, {
+    now: () => 1_800_000_006_000,
+  });
+  try {
+    repo2.setTodoCompletion('44444444-4444-4444-8444-444444444444', false);
+  } finally {
+    repo2.close();
+  }
+
+  const verifyDb2 = new DatabaseSync(fixture.databasePath, { readOnly: true });
+  const rowAfterUncomplete = verifyDb2
+    .prepare('SELECT is_completed, completed_at FROM todos WHERE uuid = ?')
+    .get('44444444-4444-4444-8444-444444444444');
+  assert.equal(rowAfterUncomplete.is_completed, 0);
+  assert.equal(rowAfterUncomplete.completed_at, null);
+  verifyDb2.close();
+  rmSync(fixture.directory, { recursive: true, force: true });
+});

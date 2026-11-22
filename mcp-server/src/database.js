@@ -87,6 +87,7 @@ export class CountdownTodoDatabase {
     this.database = new DatabaseSync(databasePath, { readOnly });
     this.database.exec('PRAGMA busy_timeout = 5000');
     this.database.exec('PRAGMA foreign_keys = ON');
+    this.todoColumns = new Set();
     this.validateSchema();
   }
 
@@ -107,6 +108,9 @@ export class CountdownTodoDatabase {
           .all()
           .map((row) => row.name),
       );
+      if (table === 'todos') {
+        this.todoColumns = existingColumns;
+      }
       const missing = columns.filter((column) => !existingColumns.has(column));
       if (missing.length > 0) {
         throw new Error(
@@ -348,7 +352,24 @@ export class CountdownTodoDatabase {
     return this.#transaction(() => {
       const current = this.#requirePersonalTodo(todoId);
       if (Number(current.is_completed) === target) return toTodo(current);
-      return this.#writeState(todoId, 'is_completed', target, current);
+      const updatedAt = Math.max(this.now(), Number(current.updated_at) + 1);
+      const assignments = ['is_completed = ?', 'version = version + 1', 'updated_at = ?'];
+      const values = [target, updatedAt];
+      if (this.todoColumns.has('completed_at')) {
+        assignments.push('completed_at = ?');
+        values.push(completed ? updatedAt : null);
+      }
+      if (completed && this.todoColumns.has('is_skipped')) {
+        assignments.push('is_skipped = 0');
+      }
+      values.push(todoId);
+      this.database
+        .prepare(`UPDATE todos SET ${assignments.join(', ')} WHERE uuid = ?`)
+        .run(...values);
+      const row = this.#getTodoRow(todoId, { includeDeleted: true });
+      this.#insertAuditLog('UPDATE', current, row);
+      this.#insertOpLog(row);
+      return toTodo(row);
     });
   }
 
@@ -598,6 +619,12 @@ function toTodoPayload(row) {
     uuid: row.uuid,
     content: row.content,
     is_completed: Number(row.is_completed),
+    ...(Object.hasOwn(row, 'completed_at')
+      ? { completed_at: nullableMilliseconds(row.completed_at) }
+      : {}),
+    ...(Object.hasOwn(row, 'is_skipped')
+      ? { is_skipped: Number(row.is_skipped ?? 0) }
+      : {}),
     is_deleted: Number(row.is_deleted),
     version: Number(row.version),
     updated_at: Number(row.updated_at),

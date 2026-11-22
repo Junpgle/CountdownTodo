@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -237,6 +238,8 @@ class PomodoroSyncService {
   Timer? _heartbeatTimer;
   Future<void>? _transportSuspendFuture;
   bool _connecting = false;
+  int _connectGeneration = 0;
+  bool _authRevoked = false;
   final Map<String, Map<String, dynamic>> _pendingStops = {};
   final Set<String> _endedSessions = {};
   Timer? _stopDeliveryGraceTimer;
@@ -260,6 +263,7 @@ class PomodoroSyncService {
   Function(CrossDevicePomodoroState state)? onStaleSyncFocus;
 
   void disconnect() {
+    _connectGeneration++;
     _stopDeliveryGraceTimer?.cancel();
     _reconnectTimer?.cancel();
     _heartbeatTimer?.cancel();
@@ -273,15 +277,19 @@ class PomodoroSyncService {
     _userId = null;
     _deviceId = null;
     _connecting = false;
+    _authRevoked = false;
     _setConnState(SyncConnectionState.disconnected);
   }
 
   void dispose() {
+    _connectGeneration++;
     _stopDeliveryGraceTimer?.cancel();
     _reconnectTimer?.cancel();
     _heartbeatTimer?.cancel();
     _wsSub?.cancel();
-    _channel?.sink.close(ws_status.normalClosure);
+    try {
+      _channel?.sink.close(ws_status.normalClosure);
+    } catch (_) {}
     if (!_stateCtrl.isClosed) _stateCtrl.close();
     if (!_connStateCtrl.isClosed) _connStateCtrl.close();
   }
@@ -330,11 +338,15 @@ class PomodoroSyncService {
 
   /// 离线模式开启时主动断开 WebSocket 同步通道。
   Future<void> disconnectForOfflineMode() async {
+    _connectGeneration++;
+    _connecting = false;
     _reconnectTimer?.cancel();
     _heartbeatTimer?.cancel();
     await _wsSub?.cancel();
     _wsSub = null;
-    await _channel?.sink.close(ws_status.normalClosure);
+    try {
+      await _channel?.sink.close(ws_status.normalClosure);
+    } catch (_) {}
     _channel = null;
     _connState = SyncConnectionState.disconnected;
     if (!_connStateCtrl.isClosed) {
@@ -353,6 +365,7 @@ class PomodoroSyncService {
       return;
     }
     _isInBackground = false;
+    _authRevoked = false;
     await _transportSuspendFuture;
     if (appVersion != null) _appVersion = appVersion;
     if (authToken != null) _authToken = authToken;
@@ -380,7 +393,12 @@ class PomodoroSyncService {
     String? authToken,
     String? appVersion,
   }) async {
+    if (await AppSettingsStorage.isOfflineModeEnabled()) {
+      await disconnectForOfflineMode();
+      return;
+    }
     _isInBackground = false;
+    _authRevoked = false;
     await _transportSuspendFuture;
     if (appVersion != null) _appVersion = appVersion;
     if (authToken != null) _authToken = authToken;
@@ -392,7 +410,7 @@ class PomodoroSyncService {
     _userId = userId;
     _deviceId = deviceId;
     _focusSourceDevice = null;
-    await _doConnect();
+    await _doConnect(force: true);
   }
 
   Future<void> reconnectIfNeeded() async {
@@ -485,7 +503,12 @@ class PomodoroSyncService {
 
   /// 🚀 新增：手动强制重连（忽略 _connecting 锁）
   Future<void> manualReconnect() async {
+    if (await AppSettingsStorage.isOfflineModeEnabled()) {
+      await disconnectForOfflineMode();
+      return;
+    }
     _isInBackground = false;
+    _authRevoked = false;
     await _transportSuspendFuture;
     _reconnectTimer?.cancel(); // 取消正在排队的自动重连
     _retryCount = 0; // 重置指数退避计数
@@ -496,35 +519,53 @@ class PomodoroSyncService {
       return;
     }
     // debugPrint('[PomodoroSync] ⚡ 收到手动强制重连请求，正在解锁并重试...');
-    _connecting = false; // 强制解锁
-    await _doConnect();
+    await _doConnect(force: true);
   }
 
-  Future<void> _doConnect() async {
-    if (_connecting || _shouldSuspendTransport) return;
+  Future<void> _doConnect({bool force = false}) async {
+    if (_shouldSuspendTransport || (!force && _connecting)) return;
     _connecting = true;
+    final gen = ++_connectGeneration;
     _supportsFocusEndAck = false;
 
-    _reconnectTimer?.cancel();
-    _heartbeatTimer?.cancel();
-    await _wsSub?.cancel();
-    _wsSub = null;
     try {
-      // 🚀 增加超时，防止在网络异常时 close 操作卡死
-      await _channel?.sink
-          .close(ws_status.normalClosure)
-          .timeout(const Duration(seconds: 2));
-    } catch (_) {}
-    _channel = null;
+      if (await AppSettingsStorage.isOfflineModeEnabled()) {
+        await disconnectForOfflineMode();
+        return;
+      }
+      if (gen != _connectGeneration ||
+          _shouldSuspendTransport ||
+          _authRevoked) {
+        return;
+      }
+      if (_userId == null || _deviceId == null) return;
 
-    _setConnState(SyncConnectionState.connecting);
+      _reconnectTimer?.cancel();
+      _heartbeatTimer?.cancel();
+      await _wsSub?.cancel();
+      _wsSub = null;
+      try {
+        // 🚀 增加超时，防止在网络异常时 close 操作卡死
+        await _channel?.sink
+            .close(ws_status.normalClosure)
+            .timeout(const Duration(seconds: 2));
+      } catch (_) {}
+      _channel = null;
 
-    // 🚀 动态补全凭证：如果当前 Token 为空，尝试从全局 ApiService 同步
-    if (_authToken == null || _authToken!.isEmpty) {
-      _authToken = ApiService.getToken();
-    }
+      if (gen != _connectGeneration ||
+          _shouldSuspendTransport ||
+          _authRevoked) {
+        return;
+      }
 
-    try {
+      _setConnState(SyncConnectionState.connecting);
+
+      // 🚀 动态补全/刷新凭证：优先跟随 ApiService 最新有效 Token
+      final latestToken = ApiService.getToken();
+      if (latestToken != null && latestToken.isNotEmpty) {
+        _authToken = latestToken;
+      }
+
       final platform = AppPlatform.operatingSystem;
       final versionParam = _appVersion ?? 'unknown';
 
@@ -541,15 +582,26 @@ class PomodoroSyncService {
         '&version=${Uri.encodeComponent(versionParam)}',
       );
 
-      _channel = _connectChannel(uri);
+      final channel = _connectChannel(uri);
+      _channel = channel;
 
-      await _channel!.ready.timeout(
+      await channel.ready.timeout(
         const Duration(seconds: 10),
         onTimeout: () => throw TimeoutException('WebSocket 握手超时'),
       );
 
-      if (_shouldSuspendTransport) {
-        await _suspendTransportIfIdle();
+      if (gen != _connectGeneration ||
+          _shouldSuspendTransport ||
+          _authRevoked) {
+        if (identical(_channel, channel)) {
+          _channel = null;
+        }
+        try {
+          await channel.sink.close(ws_status.normalClosure);
+        } catch (_) {}
+        if (_shouldSuspendTransport) {
+          await _suspendTransportIfIdle();
+        }
         return;
       }
 
@@ -557,12 +609,25 @@ class PomodoroSyncService {
       _retryCount = 0; // 重连成功，重置重试计数
       _lastMessageTime = DateTime.now(); // 重置心跳计时
 
-      _wsSub = _channel!.stream.listen(
+      _wsSub = channel.stream.listen(
         _onMessage,
         onDone: () {
+          if (gen != _connectGeneration || !identical(_channel, channel)) {
+            return;
+          }
+          int? closeCode;
+          try {
+            closeCode = channel.closeCode;
+          } catch (_) {}
+          if (closeCode == 4001 || closeCode == 4003) {
+            _authRevoked = true;
+          }
           _onDisconnected();
         },
         onError: (e) {
+          if (gen != _connectGeneration || !identical(_channel, channel)) {
+            return;
+          }
           _onDisconnected();
         },
         cancelOnError: true,
@@ -579,10 +644,16 @@ class PomodoroSyncService {
       }
     } catch (e) {
       // debugPrint('[PomodoroSync] ❌ 连接失败: $e');
-      _setConnState(SyncConnectionState.error);
-      _scheduleReconnect();
+      if (gen == _connectGeneration &&
+          !_shouldSuspendTransport &&
+          !_authRevoked) {
+        _setConnState(SyncConnectionState.error);
+        _scheduleReconnect();
+      }
     } finally {
-      _connecting = false;
+      if (gen == _connectGeneration) {
+        _connecting = false;
+      }
     }
   }
 
@@ -692,18 +763,19 @@ class PomodoroSyncService {
   void _scheduleReconnect() {
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
-    if (_shouldSuspendTransport) return;
+    if (_shouldSuspendTransport || _authRevoked) return;
 
-    // 🚀 指数退避：重试延迟随次数增加 2s, 5s, 10s, 30s, 60s(max)
+    // 🚀 指数退避 + 抖动：重试延迟随次数增加 5s..60s (+0..2s 抖动)
     _retryCount++;
     int delaySecs = (_retryCount * 5).clamp(5, 60);
     if (_retryCount > 3) delaySecs = 30;
     if (_retryCount > 6) delaySecs = 60;
+    delaySecs += Random().nextInt(3);
 
     // debugPrint('[PomodoroSync] 🔄 将在 $delaySecs 秒后进行第 $_retryCount 次重连尝试...');
 
     _reconnectTimer = Timer(Duration(seconds: delaySecs), () {
-      if (_userId != null && !_shouldSuspendTransport) {
+      if (_userId != null && !_shouldSuspendTransport && !_authRevoked) {
         _doConnect();
       }
     });
@@ -713,11 +785,22 @@ class PomodoroSyncService {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = Timer.periodic(_heartbeatInterval, (_) {
       if (_connState == SyncConnectionState.connected) {
-        // 🚀 核心逻辑：如果超过 2 个心跳周期（60s）没收到任何消息，判定为“僵尸活跃”，强制重连
+        // 🚀 核心逻辑：如果超过 2 个心跳周期（60s）没收到任何消息，判定为“僵尸活跃”，关闭旧通道并强制重连
         final silentDuration = DateTime.now().difference(_lastMessageTime);
         if (silentDuration > (_heartbeatInterval * 2.5)) {
           // debugPrint(
           //     '[PomodoroSync] ⚠️ 心跳超时 (已静默 ${silentDuration.inSeconds}s)，强制重新连接...');
+          final staleChannel = _channel;
+          _channel = null;
+          unawaited(_wsSub?.cancel());
+          _wsSub = null;
+          if (staleChannel != null) {
+            unawaited(
+              staleChannel.sink
+                  .close(ws_status.normalClosure)
+                  .catchError((_) {}),
+            );
+          }
           _onDisconnected();
           return;
         }
@@ -1024,6 +1107,9 @@ class PomodoroSyncService {
   }
 
   Future<void> forceDisconnect() async {
+    _connectGeneration++;
+    _connecting = false;
+    _authRevoked = false;
     _stopDeliveryGraceTimer?.cancel();
     _pendingStops.clear();
     _endedSessions.clear();
