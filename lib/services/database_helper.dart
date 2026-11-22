@@ -21,6 +21,8 @@ class DatabaseHelper {
   static Database? _database;
   static Future<Database>? _openingDatabase;
   static String? _activeUsername;
+  static int _openGeneration = 0;
+  final Set<String> _verifiedSchemaPaths = <String>{};
   bool? _todoFtsAvailable;
   Database? _todoFtsDatabase;
   Future<bool>? _todoFtsAvailabilityFuture;
@@ -89,20 +91,30 @@ class DatabaseHelper {
     }
 
     if (_openingDatabase != null) {
-      final opening = await _openingDatabase!;
+      final opening = _openingDatabase!;
+      final opened = await opening;
       if (_activeUsername == username &&
-          matchesDatabaseFileForUser(opening.path, username)) {
-        _database = opening;
-        return opening;
+          matchesDatabaseFileForUser(opened.path, username)) {
+        _database = opened;
+        return opened;
       }
       await closeDatabase();
     }
 
     _activeUsername = username;
+    final myGen = _openGeneration;
     final opening = _initDB('uni_sync_$username.db');
     _openingDatabase = opening;
     try {
-      _database = await opening;
+      final openedDb = await opening;
+      if (_openGeneration != myGen || _activeUsername != username) {
+        _verifiedSchemaPaths.remove(openedDb.path);
+        try {
+          await openedDb.close();
+        } catch (_) {}
+        throw StateError('数据库在打开期间被关闭或切换账户: $username');
+      }
+      _database = openedDb;
     } finally {
       if (identical(_openingDatabase, opening)) {
         _openingDatabase = null;
@@ -169,16 +181,22 @@ class DatabaseHelper {
 
   /// 🚀 Uni-Sync: 强制关闭并重置数据库连接（用于登出或切换用户）
   Future<void> closeDatabase() async {
+    _openGeneration++;
+    _verifiedSchemaPaths.clear();
     final opening = _openingDatabase;
     _openingDatabase = null;
     if (opening != null) {
       try {
-        await opening;
+        final openedDb = await opening;
+        if (!identical(openedDb, _database)) {
+          await openedDb.close();
+        }
       } catch (_) {}
     }
-    if (_database != null) {
-      await _database!.close();
-      _database = null;
+    final currentDb = _database;
+    _database = null;
+    if (currentDb != null) {
+      await currentDb.close();
     }
     _activeUsername = null;
     _todoFtsAvailable = null;
@@ -1235,19 +1253,26 @@ class DatabaseHelper {
           onConfigure: (db) async {
             // 🚀 Skip busy_timeout on Android - not supported in onConfigure callback
             // Only configure WAL for desktop platforms
-            if (!kIsWeb && (AppPlatform.isWindows || AppPlatform.isLinux)) {
+            if (!kIsWeb &&
+                (AppPlatform.isWindows ||
+                    AppPlatform.isLinux ||
+                    AppPlatform.isMacOS)) {
               try {
                 await db.execute('PRAGMA journal_mode = WAL');
               } catch (e) {
                 //                 debugPrint("⚠️ Database: PRAGMA journal_mode failed: $e");
               }
             }
+            if (!kIsWeb) {
+              try {
+                await db.execute('PRAGMA foreign_keys = ON');
+              } catch (e) {
+                //                 debugPrint("⚠️ Database: PRAGMA foreign_keys failed: $e");
+              }
+            }
           },
           onCreate: _createDB,
           onUpgrade: (db, oldVersion, newVersion) async {
-            if (oldVersion < 61) {
-              await ensureTodoCompletionTimestampSchema(db);
-            }
             if (oldVersion < 59) {
               await ensureTodoSkipStateSchema(db);
             }
@@ -1256,9 +1281,6 @@ class DatabaseHelper {
             }
             if (oldVersion < 52) {
               await ensureAiUsageSchema(db);
-            }
-            if (oldVersion < 53) {
-              await ensureFinanceSchema(db);
             }
             if (oldVersion < 54) {
               await ensureFinanceSchema(db);
@@ -1838,6 +1860,7 @@ class DatabaseHelper {
             }
           },
           onOpen: (db) async {
+            if (_verifiedSchemaPaths.contains(db.path)) return;
             await ensureTodoCompletionTimestampSchema(db);
             await ensurePlanEditorDraftSchema(db);
             await ensureCourseTableSchema(db);
@@ -1853,6 +1876,7 @@ class DatabaseHelper {
             await ensureFinanceSchema(db);
             await ensureAiUsageSchema(db);
             await ensureMissingIndexes(db);
+            _verifiedSchemaPaths.add(db.path);
           },
         );
       } catch (e) {
