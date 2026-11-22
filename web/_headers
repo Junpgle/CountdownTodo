@@ -34,16 +34,16 @@
   Cache-Control: no-cache
 
 /flutter.js
-  Cache-Control: public, max-age=31536000, immutable
+  Cache-Control: public, max-age=3600, must-revalidate
 
 /canvaskit/*
   Cache-Control: public, max-age=31536000, immutable
 
 /assets/*
-  Cache-Control: public, max-age=31536000, immutable
+  Cache-Control: public, max-age=3600, must-revalidate
 
 /icons/*
   Cache-Control: public, max-age=31536000, immutable
 
 /sqlite3.wasm
-  Cache-Control: public, max-age=31536000, immutable
+  Cache-Control: public, max-age=3600, must-revalidate
