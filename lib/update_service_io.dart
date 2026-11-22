@@ -119,8 +119,13 @@ class UpdateInfo {
   final String fullPackageUrl;
   final String pcPackageUrl;
   final String macPackageUrl;
+  final String fullPackageSha256;
+  final String pcPackageSha256;
+  final String macPackageSha256;
   final Map<String, String> macArchPackages;
+  final Map<String, String> macArchSha256;
   final Map<String, String> androidArchPackages;
+  final Map<String, String> androidArchSha256;
   final Map<String, List<AndroidDeltaPackage>> androidDeltaPackages;
 
   UpdateInfo.fromJson(Map<String, dynamic> json)
@@ -129,11 +134,24 @@ class UpdateInfo {
       fullPackageUrl = json['full_package_url'] ?? '',
       pcPackageUrl = json['PC_package_url'] ?? '',
       macPackageUrl = json['mac_package_url'] ?? '',
+      fullPackageSha256 = json['full_package_sha256']?.toString().trim() ?? '',
+      pcPackageSha256 =
+          (json['PC_package_sha256'] ?? json['pc_package_sha256'])
+              ?.toString()
+              .trim() ??
+          '',
+      macPackageSha256 = json['mac_package_sha256']?.toString().trim() ?? '',
       macArchPackages = json['mac_arch_packages'] != null
           ? Map<String, String>.from(json['mac_arch_packages'])
           : {},
+      macArchSha256 = json['mac_arch_sha256'] != null
+          ? Map<String, String>.from(json['mac_arch_sha256'])
+          : {},
       androidArchPackages = json['android_arch_packages'] != null
           ? Map<String, String>.from(json['android_arch_packages'])
+          : {},
+      androidArchSha256 = json['android_arch_sha256'] != null
+          ? Map<String, String>.from(json['android_arch_sha256'])
           : {},
       androidDeltaPackages = _parseAndroidDeltaPackages(
         json['android_delta_packages'],
@@ -198,12 +216,14 @@ class _UpdateArtifact {
   final String fileName;
   final AndroidDeltaPackage? delta;
   final String? baseApkPath;
+  final String? expectedSha256;
 
   const _UpdateArtifact({
     required this.url,
     required this.fileName,
     this.delta,
     this.baseApkPath,
+    this.expectedSha256,
   });
 
   bool get isDelta => delta != null;
@@ -740,6 +760,62 @@ class UpdateService {
     return _giteePackageUrl(manifest.updateInfo.fullPackageUrl);
   }
 
+  static String? _resolveExpectedSha256SyncFallback(AppManifest manifest) {
+    final fullSha = manifest.updateInfo.fullPackageSha256;
+    return fullSha.isEmpty ? null : fullSha;
+  }
+
+  static Future<String?> _getExpectedSha256ForArch(AppManifest manifest) async {
+    if (Platform.isMacOS) {
+      if (manifest.updateInfo.macArchSha256.isNotEmpty) {
+        final arch = await getDeviceArchitecture();
+        final archSha = manifest.updateInfo.macArchSha256[arch]?.trim();
+        if (archSha != null && archSha.isNotEmpty) return archSha;
+      }
+      if (manifest.updateInfo.macPackageSha256.isNotEmpty) {
+        return manifest.updateInfo.macPackageSha256;
+      }
+    }
+    if (Platform.isWindows && manifest.updateInfo.pcPackageSha256.isNotEmpty) {
+      return manifest.updateInfo.pcPackageSha256;
+    }
+    if (Platform.isAndroid &&
+        manifest.updateInfo.androidArchSha256.isNotEmpty) {
+      final arch = await getDeviceArchitecture();
+      final archSha = manifest.updateInfo.androidArchSha256[arch]?.trim();
+      if (archSha != null && archSha.isNotEmpty) return archSha;
+    }
+    return _resolveExpectedSha256SyncFallback(manifest);
+  }
+
+  /// Validates that an update package URL uses HTTPS with a non-empty host.
+  @visibleForTesting
+  static Uri validateDownloadUrl(String url) {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null ||
+        uri.scheme.toLowerCase() != 'https' ||
+        uri.host.isEmpty) {
+      throw FormatException('仅允许通过 HTTPS 下载更新包: $url');
+    }
+    return uri;
+  }
+
+  /// Verifies [file] against [expectedSha256] when a digest is provided.
+  @visibleForTesting
+  static Future<void> verifyArtifactSha256(
+    File file,
+    String? expectedSha256,
+  ) async {
+    final normalizedExpected = expectedSha256?.trim().toLowerCase() ?? '';
+    if (normalizedExpected.isEmpty) return;
+    final actual = (await AndroidDeltaService.sha256Of(file)).toLowerCase();
+    if (actual != normalizedExpected) {
+      throw FormatException(
+        '更新包 SHA-256 校验失败: expected=$normalizedExpected, actual=$actual',
+      );
+    }
+  }
+
   /// Selects a delta only when the exact installed APK for the current
   /// architecture is its base. Every other case deliberately falls back to
   /// the complete APK.
@@ -748,9 +824,11 @@ class UpdateService {
     bool preferDelta = true,
   }) async {
     final fullUrl = await getDownloadUrlForArch(manifest);
+    final expectedFullSha256 = await _getExpectedSha256ForArch(manifest);
     final fullArtifact = _UpdateArtifact(
       url: fullUrl,
       fileName: getUpdateFileName(manifest.versionName),
+      expectedSha256: expectedFullSha256,
     );
 
     if (!preferDelta || !Platform.isAndroid) return fullArtifact;
@@ -1458,8 +1536,9 @@ class UpdateService {
     File? downloadedFile;
 
     try {
+      final downloadUri = validateDownloadUrl(artifact.url);
       if (await tempFile.exists()) await tempFile.delete();
-      final response = await _resourceService.sendGet(Uri.parse(artifact.url));
+      final response = await _resourceService.sendGet(downloadUri);
       if (response.statusCode != 200) {
         throw HttpException('服务器响应异常: HTTP ${response.statusCode}');
       }
@@ -1498,7 +1577,10 @@ class UpdateService {
       downloadedFile = await tempFile.rename(savePath);
       onProgress(1.0);
 
-      if (!artifact.isDelta) return downloadedFile;
+      if (!artifact.isDelta) {
+        await verifyArtifactSha256(downloadedFile, artifact.expectedSha256);
+        return downloadedFile;
+      }
 
       final delta = artifact.delta!;
       final basePath = artifact.baseApkPath;

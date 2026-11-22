@@ -1719,13 +1719,18 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> deleteTeamAnnouncement(
-    String announcementUuid,
-  ) async {
+    String announcementUuid, {
+    String? teamUuid,
+  }) async {
     try {
       final response = await _request(
         'POST',
         '/api/teams/announcements/delete',
-        body: {'announcement_uuid': announcementUuid},
+        body: {
+          'uuid': announcementUuid,
+          'announcement_uuid': announcementUuid,
+          if (teamUuid != null && teamUuid.isNotEmpty) 'team_uuid': teamUuid,
+        },
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -1756,7 +1761,7 @@ class ApiService {
       final response = await _request(
         'POST',
         '/api/teams/announcements/read',
-        body: {'announcement_uuid': announcementUuid},
+        body: {'uuid': announcementUuid, 'announcement_uuid': announcementUuid},
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -1912,14 +1917,17 @@ class ApiService {
     required String shareCode,
     required String email,
     String? message,
+    String? accessToken,
   }) async {
     try {
       final response = await _request(
         'POST',
-        '/api/shares/$shareCode/request_join',
+        '/api/shares/${Uri.encodeComponent(shareCode)}/request_join',
         body: {
           'email': email,
           if (message != null && message.isNotEmpty) 'message': message,
+          if (accessToken != null && accessToken.isNotEmpty)
+            'token': accessToken,
         },
         includeAuth: false,
       );
