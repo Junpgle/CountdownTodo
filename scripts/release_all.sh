@@ -174,7 +174,7 @@ if [[ "$SKIP_BUILD" -eq 0 ]]; then
   "$FLUTTER_BIN" pub get
 
   echo "=== 构建 Android 三 ABI APK ==="
-  "$FLUTTER_BIN" build apk --release
+  "$FLUTTER_BIN" build apk --release --dart-define=countdown.disable_windows_island=true
 
   echo "=== 构建 macOS ==="
   MACOS_VERSION_BACKUP_DIR="$TEMP_DIR/macos-backup" \

@@ -5,25 +5,15 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../utils/app_platform.dart';
-import '../windows_island/island_entry.dart' as island_entry;
-import '../windows_island/island_ipc_paths.dart';
 import 'float_window_service.dart';
 import 'window_service.dart';
+import 'windows_island_bootstrap.dart';
 
 class PlatformBootstrap {
   PlatformBootstrap._();
 
-  static Future<bool> routeSecondaryWindow(List<String> args) async {
-    if (!AppPlatform.isWindows) return false;
-    if (args.isNotEmpty && args[0] == 'multi_window') {
-      await appendIslandIpcLog(
-        'main routed multi_window args=${args.join('|')}',
-      );
-      await island_entry.islandMain(args);
-      return true;
-    }
-    return false;
-  }
+  static Future<bool> routeSecondaryWindow(List<String> args) =>
+      WindowsIslandBootstrap.routeSecondaryWindow(args);
 
   static Future<void> initDatabaseFactory() async {
     if (AppPlatform.isDesktop) {

@@ -87,7 +87,7 @@ for arch in "${ARCH_LIST[@]}"; do
     fi
     set_xcconfig_arch "$arch"
     cd "$PROJECT_ROOT"
-    "$FLUTTER_BIN" build macos "${FLUTTER_ARGS[@]}"
+    "$FLUTTER_BIN" build macos --dart-define=countdown.disable_windows_island=true "${FLUTTER_ARGS[@]}"
 
     echo ""
     echo "=== 打包 macOS ($arch) 应用为 ZIP ==="

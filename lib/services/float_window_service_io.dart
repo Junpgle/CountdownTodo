@@ -19,6 +19,7 @@ import '../windows_island/island_ipc_paths.dart';
 import 'clipboard_service.dart';
 import 'snooze_dialog.dart';
 import 'island_data_provider.dart';
+import 'windows_island_build_config.dart';
 
 /// Configuration constants for FloatWindowService
 class FloatWindowConfig {
@@ -69,18 +70,18 @@ class FloatWindowService {
   static final _dataProvider = IslandDataProvider();
 
   static bool get _isRealIslandEnabled {
-    if (!Platform.isWindows) return false;
+    if (kDisableWindowsIsland || !Platform.isWindows) return false;
     return !const bool.fromEnvironment('DISABLE_REAL_WINDOWS_ISLAND');
   }
 
   static bool get _isDebugOverlayEnabled {
-    if (!Platform.isWindows) return false;
+    if (kDisableWindowsIsland || !Platform.isWindows) return false;
     return kDebugMode;
   }
 
   /// Initialize the service
   static Future<void> init() async {
-    if (!Platform.isWindows) return;
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     if (_initialized) return;
     _initialized = true;
     if (!_isRealIslandEnabled) {
@@ -191,6 +192,11 @@ class FloatWindowService {
   }
 
   static Future<void> dispose() async {
+    if (kDisableWindowsIsland) {
+      debugPayload.value = null;
+      isWorkbenchMounted = false;
+      return;
+    }
     _pendingDeliveryTimer?.cancel();
     _pendingDeliveryTimer = null;
     _pendingStructuredPayload = null;
@@ -456,6 +462,10 @@ class FloatWindowService {
   // ── Focus State Management ─────────────────────────────────────────────
 
   static void clearFocus() {
+    if (kDisableWindowsIsland) {
+      debugPayload.value = null;
+      return;
+    }
     _lastEndMs = 0;
     _lastTitle = '';
     _lastTags = const [];
@@ -487,7 +497,7 @@ class FloatWindowService {
     int? pauseStartMs,
     String? note,
   }) async {
-    if (!Platform.isWindows) return;
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
 
     final prevEndMsSnapshot = _lastEndMs;
 
@@ -686,7 +696,7 @@ class FloatWindowService {
         } catch (_) {}
       }
 
-      if (Platform.isWindows) {
+      if (!kDisableWindowsIsland && Platform.isWindows) {
         final islandId = 'island-1';
         final winId = IslandManager().getCachedWindowId(islandId);
         if (winId != null) {
@@ -726,7 +736,10 @@ class FloatWindowService {
 
   /// Trigger immediate reminder check on island
   static Future<void> triggerReminderCheck() async {
-    if (!_isRealIslandEnabled && !_isDebugOverlayEnabled) return;
+    if (kDisableWindowsIsland ||
+        (!_isRealIslandEnabled && !_isDebugOverlayEnabled)) {
+      return;
+    }
     // debugPrint('[FloatWindow] triggerReminderCheck called');
     if (_isDebugOverlayEnabled && !_isRealIslandEnabled) {
       await update(forceReset: true);
@@ -755,16 +768,25 @@ class FloatWindowService {
 
   /// Invalidate data cache (call when significant data changes)
   static void invalidateCache() {
+    if (kDisableWindowsIsland) return;
     _dataProvider.invalidateCache();
   }
 
   /// Invalidate only slot cache
   static void invalidateSlotCache() {
+    if (kDisableWindowsIsland) return;
     _dataProvider.invalidateSlotCache();
   }
 
   /// Get debug info
   static Map<String, dynamic> getDebugInfo() {
+    if (kDisableWindowsIsland) {
+      return const {
+        'platform': 'non-windows',
+        'enabled': false,
+        'reason': 'Windows island is disabled in this build',
+      };
+    }
     return _dataProvider.getDebugInfo();
   }
 }

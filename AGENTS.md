@@ -30,8 +30,10 @@ Last reviewed against the working tree: 2026-11-22.
 
 ## Platform boundaries
 
-- Windows island/floating-window code is Windows-only. Android must not import,
-  initialize, or execute it; use explicit platform guards.
+- Windows island/floating-window code is Windows-only. Android, macOS, iOS,
+  Linux, and Web must not import, initialize, or execute it; keep `lib/windows_island/`
+  and `package:win32` isolated behind the 7 `*_io.dart` conditional export targets
+  and pass `--dart-define=countdown.disable_windows_island=true` on non-Windows builds.
 - macOS has its own menu bar, WidgetKit, launch-at-login, and native island
   integrations. Keep Swift/Kotlin/C++ and platform resources isolated.
 

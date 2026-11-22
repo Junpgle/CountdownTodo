@@ -6,6 +6,8 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'package:win32/win32.dart';
 
+import 'windows_island_build_config.dart';
+
 // ══════════════════════════════════════════════════════════════════════════
 // WinRT 类型
 // ══════════════════════════════════════════════════════════════════════════
@@ -131,13 +133,13 @@ class SystemControlService {
   static int _lastSentVolSteps = -1;
 
   static void _sendKey(int vk) {
-    if (!Platform.isWindows) return;
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     _keybdEvent(vk, 0, _keyEventfSilent, 0);
     _keybdEvent(vk, 0, _keyEventfSilent | _keyEventfKeyup, 0);
   }
 
   static double _readSystemVolume() {
-    if (!Platform.isWindows) return 0.5;
+    if (kDisableWindowsIsland || !Platform.isWindows) return 0.5;
     final ptr = calloc<Uint32>();
     try {
       _waveOutGetVolume(0, ptr);
@@ -155,7 +157,7 @@ class SystemControlService {
   static double getVolumeSync() => _cachedVolume;
 
   static void initVolume() {
-    if (!Platform.isWindows) return;
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     debugPrint('[SCS] initVolume start');
     _cachedVolume = _readSystemVolume();
     _lastSentVolSteps = (_cachedVolume * 50).round();
@@ -165,7 +167,7 @@ class SystemControlService {
   }
 
   static void setVolume(double target) {
-    if (!Platform.isWindows) return;
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     final t = target.clamp(0.0, 1.0);
     debugPrint('[SCS] setVolume($t)');
     _cachedVolume = t;
@@ -188,7 +190,7 @@ class SystemControlService {
   }
 
   static void commitVolume(double target) {
-    if (!Platform.isWindows) return;
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     final t = target.clamp(0.0, 1.0);
     debugPrint('[SCS] commitVolume($t)');
     _cachedVolume = t;
@@ -211,7 +213,7 @@ class SystemControlService {
   static bool isMuted() => _cachedVolume <= 0.01;
 
   static void toggleMute() {
-    if (!Platform.isWindows) return;
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     debugPrint('[SCS] toggleMute, current vol=$_cachedVolume');
     if (_cachedVolume > 0) {
       _savedVolume = _cachedVolume;
@@ -232,7 +234,7 @@ class SystemControlService {
   static bool _briSupported = false;
 
   static void initBrightness() {
-    if (!Platform.isWindows) return;
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     debugPrint('[SCS] initBrightness start');
     disposeBrightness();
     Pointer<Uint32>? cnt;
@@ -299,7 +301,7 @@ class SystemControlService {
   static double getBrightness() => _cachedBrightness;
 
   static void setBrightness(double value) {
-    if (!Platform.isWindows) return;
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     _cachedBrightness = value.clamp(0.0, 1.0);
     debugPrint(
       '[SCS] setBrightness($_cachedBrightness) supported=$_briSupported',
@@ -318,7 +320,7 @@ class SystemControlService {
   }
 
   static void disposeBrightness() {
-    if (!Platform.isWindows) return;
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     final physHandle = _physHandle;
     _physHandle = null;
     _briSupported = false;
@@ -358,7 +360,7 @@ class SystemControlService {
   static int _hstrSMTCClass = 0;
 
   static void _initWinRT() {
-    if (!Platform.isWindows) return;
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     if (_winrtInit && _hstrSMTCClass != 0) return;
     if (kDebugMode) debugPrint('[SCS] _initWinRT start');
     Pointer<Utf16>? className;
@@ -442,7 +444,7 @@ class SystemControlService {
   }
 
   static void startMediaPolling({int intervalMs = 2000}) {
-    if (!Platform.isWindows) return;
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     debugPrint('[SCS] startMediaPolling interval=$intervalMs');
     final generation = ++_mediaPollGeneration;
     _mediaTimer?.cancel();
@@ -462,7 +464,7 @@ class SystemControlService {
   }
 
   static Future<void> _pollSMTC(int generation) async {
-    if (!Platform.isWindows) return;
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     if (generation != _mediaPollGeneration) return;
     if (_mediaPollInFlight) {
       _mediaPollRequested = true;
@@ -917,7 +919,7 @@ class SystemControlService {
   }
 
   static void _fallbackMediaInfo() {
-    if (!Platform.isWindows) return;
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     if (kDebugMode) debugPrint('[SCS] _fallbackMediaInfo');
     try {
       final hwnd = GetForegroundWindow();
@@ -969,7 +971,7 @@ class SystemControlService {
   // ───────────── 全局清理 ──────────────────────────────────────────
 
   static void dispose() {
-    if (!Platform.isWindows) return;
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     debugPrint('[SCS] dispose');
     stopMediaPolling();
     disposeBrightness();
