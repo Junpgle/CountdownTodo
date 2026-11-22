@@ -152,9 +152,16 @@ class NotificationPollWorker(
         connection.setRequestProperty("Accept", "application/json")
 
         val code = connection.responseCode
-        val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-        val text = stream.bufferedReader().use { it.readText() }
-        connection.disconnect()
+        val text = try {
+            val stream = if (code in 200..299) {
+                connection.inputStream
+            } else {
+                connection.errorStream
+            }
+            stream?.bufferedReader()?.use { it.readText() } ?: ""
+        } finally {
+            connection.disconnect()
+        }
 
         if (code !in 200..299) {
             throw RuntimeException("Poll failed: HTTP $code")
