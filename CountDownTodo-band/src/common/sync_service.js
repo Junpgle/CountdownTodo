@@ -247,14 +247,15 @@ function handleReceivedData(data) {
 
     // 🚀 特殊处理：版本更新提醒
     if (type === 'version_update') {
+      var versionData = parsedData.data || {}
       storage.set({
         key: 'sync_latest_version',
-        value: JSON.stringify(parsedData.data)
+        value: JSON.stringify(versionData)
       })
       if (onAlertReceived) {
         onAlertReceived({
           title: '发现新版本',
-          content: '版本 ' + (parsedData.data.version_name || '未知') + ' 可用',
+          content: '版本 ' + (versionData.version_name || '未知') + ' 可用',
           todoType: 'update'
         })
       }

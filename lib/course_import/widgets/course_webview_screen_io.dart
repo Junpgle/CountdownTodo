@@ -76,22 +76,26 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
     final WebViewController controller =
         WebViewController.fromPlatformCreationParams(params);
 
+    final initialUri = Uri.tryParse(widget.initialUrl.trim());
     controller
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0x00000000))
       ..setNavigationDelegate(
         NavigationDelegate(
           onProgress: (int progress) {
+            if (!mounted) return;
             setState(() {
               _progress = progress / 100;
             });
           },
           onPageStarted: (String url) {
+            if (!mounted) return;
             setState(() {
               _isLoading = true;
             });
           },
           onPageFinished: (String url) {
+            if (!mounted) return;
             setState(() {
               _isLoading = false;
               _urlController.text = url; // 🚀 同步更新地址栏
@@ -104,8 +108,11 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
             return NavigationDecision.navigate;
           },
         ),
-      )
-      ..loadRequest(Uri.parse(widget.initialUrl));
+      );
+    if (initialUri != null &&
+        (initialUri.scheme == 'http' || initialUri.scheme == 'https')) {
+      controller.loadRequest(initialUri);
+    }
 
     if (controller.platform is wv_android.AndroidWebViewController) {
       // WebView debugging is useful during development but exposes inspection
