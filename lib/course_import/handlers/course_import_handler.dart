@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 
@@ -835,13 +836,13 @@ class CourseImportHandler {
         } else if (htmlContent.contains('login') ||
             htmlContent.contains('用户登录')) {
           detail = "识别到登录页面，请登录后进入[我的课表]再试。";
-        } else {
+        } else if (kDebugMode) {
           detail = "识别失败。已将网页源码保存至本地分析。";
 
           try {
             final savedPath = await BrowserFileService.saveTextFile(
               htmlContent,
-              'hfut_course_debug.html',
+              'course_parse_debug.html',
               mimeType: 'text/html;charset=utf-8',
             );
             detail += "\n\n已保存调试文件:\n$savedPath";

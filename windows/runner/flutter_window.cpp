@@ -177,8 +177,10 @@ return TRUE;
 break;
 }
 case WM_FONTCHANGE:
-flutter_controller_->engine()->ReloadSystemFonts();
-break;
+  if (flutter_controller_ && flutter_controller_->engine()) {
+    flutter_controller_->engine()->ReloadSystemFonts();
+  }
+  break;
 }
 
 return Win32Window::MessageHandler(hwnd, message, wparam, lparam);

@@ -18,10 +18,17 @@ class AppAutoLauncherImplWindows extends AppAutoLauncher {
     required String appPath,
     List<String> args = const [],
   }) : super(appPath: appPath, args: args) {
-    _registryValue = args.isEmpty ? appPath : '$appPath ${args.join(' ')}';
+    final trimmedPath = appPath.trim();
+    final quotedPath =
+        trimmedPath.startsWith('"') ? trimmedPath : '"$trimmedPath"';
+    _registryValue =
+        args.isEmpty ? quotedPath : '$quotedPath ${args.join(' ')}';
+    _legacyRegistryValue =
+        args.isEmpty ? trimmedPath : '$trimmedPath ${args.join(' ')}';
   }
 
   late String _registryValue;
+  late String _legacyRegistryValue;
 
   static const _runKeyPath = r'Software\Microsoft\Windows\CurrentVersion\Run';
   static const _startupApprovedKeyPath =
@@ -51,7 +58,8 @@ class AppAutoLauncherImplWindows extends AppAutoLauncher {
       (key) => key.getString(appName),
     );
 
-    return value == _registryValue && await _isStartupApproved();
+    return (value == _registryValue || value == _legacyRegistryValue) &&
+        await _isStartupApproved();
   }
 
   @override
