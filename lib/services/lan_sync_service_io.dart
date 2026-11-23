@@ -796,7 +796,7 @@ class LanSyncService {
         'v': LanSyncCrypto.protocolVersion,
         'encrypted': true,
         'sessionId': session.sessionId,
-        'payload': LanSyncCrypto.encryptString(
+        'payload': await LanSyncCrypto.encryptStringAsync(
           session.key,
           jsonEncode(payload),
         ),
@@ -817,7 +817,7 @@ class LanSyncService {
       };
     }
 
-    final decryptedBody = LanSyncCrypto.decryptString(
+    final decryptedBody = await LanSyncCrypto.decryptStringAsync(
       session.key,
       encryptedResponseData['payload'].toString(),
     );
@@ -996,7 +996,7 @@ class LanSyncService {
       return;
     }
 
-    final decryptedBody = LanSyncCrypto.decryptString(
+    final decryptedBody = await LanSyncCrypto.decryptStringAsync(
       sessionKey,
       encryptedData['payload'].toString(),
     );
@@ -1222,7 +1222,10 @@ class LanSyncService {
       jsonEncode({
         'v': LanSyncCrypto.protocolVersion,
         'encrypted': true,
-        'payload': LanSyncCrypto.encryptString(sessionKey, jsonEncode(body)),
+        'payload': await LanSyncCrypto.encryptStringAsync(
+          sessionKey,
+          jsonEncode(body),
+        ),
       }),
     );
     await req.response.close();
@@ -2743,7 +2746,7 @@ class LanSyncService {
             offset + 4,
             offset + 4 + frameLen,
           );
-          final plainChunk = LanSyncCrypto.decodeFileFramePayload(
+          final plainChunk = await LanSyncCrypto.decodeFileFramePayloadAsync(
             sessionKey,
             chunkIndex++,
             sealedPayload,
@@ -2827,7 +2830,7 @@ class LanSyncService {
       while (true) {
         final plainChunk = await raf.read(LanSyncCrypto.maxFileChunkSize);
         if (plainChunk.isEmpty) break;
-        final frame = LanSyncCrypto.encodeFileFrame(
+        final frame = await LanSyncCrypto.encodeFileFrameAsync(
           session.key,
           chunkIndex++,
           plainChunk,
@@ -2849,7 +2852,7 @@ class LanSyncService {
         if (respData['encrypted'] == true &&
             respData['v'] == LanSyncCrypto.protocolVersion) {
           final decrypted = jsonDecode(
-            LanSyncCrypto.decryptString(
+            await LanSyncCrypto.decryptStringAsync(
               session.key,
               respData['payload'].toString(),
             ),
