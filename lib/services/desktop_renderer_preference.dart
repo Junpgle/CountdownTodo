@@ -21,9 +21,8 @@ class DesktopRendererPreference {
 
   static bool get isSupported => AppPlatform.isWindows || AppPlatform.isMacOS;
 
-  static DesktopFlutterRenderer get defaultRenderer => AppPlatform.isMacOS
-      ? DesktopFlutterRenderer.impeller
-      : DesktopFlutterRenderer.skia;
+  static DesktopFlutterRenderer get defaultRenderer =>
+      DesktopFlutterRenderer.skia;
 
   static MethodChannel? get _activeChannel {
     if (AppPlatform.isWindows) return _windowsChannel;
@@ -44,11 +43,6 @@ class DesktopRendererPreference {
     DesktopFlutterRenderer renderer, {
     required bool isMacOS,
   }) {
-    if (isMacOS) {
-      return renderer == DesktopFlutterRenderer.impeller
-          ? 'Impeller（默认）'
-          : 'Skia（兼容）';
-    }
     return renderer == DesktopFlutterRenderer.skia
         ? 'Skia（默认）'
         : 'Impeller（实验）';

@@ -325,7 +325,7 @@ private enum MacOSRendererConfig {
     if raw == Renderer.impeller.rawValue {
       return .impeller
     }
-    return .impeller
+    return .skia
   }
 
   static func saveRenderer(_ renderer: Renderer) -> Bool {

@@ -81,6 +81,12 @@ const List<String> _webFontFamilyFallback = [
   'Arial Unicode MS',
   'sans-serif',
 ];
+const String _macosFontFamily = 'PingFang SC';
+const List<String> _macosFontFamilyFallback = [
+  'Hiragino Sans GB',
+  'Heiti SC',
+  'Apple Color Emoji',
+];
 
 void registerCloseDialogCallback(CloseDialogCallback callback) {
   _onShowCloseDialog = callback;
@@ -1179,16 +1185,24 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                               valueListenable: LiquidGlassEffectService
                                   .configurationListenable,
                               builder: (context, liquidGlassConfiguration, _) {
+                                final resolvedFontFamily = AppPlatform.isWeb
+                                    ? _webFontFamily
+                                    : (AppPlatform.isMacOS
+                                          ? _macosFontFamily
+                                          : null);
+                                final resolvedFontFamilyFallback =
+                                    AppPlatform.isWeb
+                                    ? _webFontFamilyFallback
+                                    : (AppPlatform.isMacOS
+                                          ? _macosFontFamilyFallback
+                                          : null);
                                 final lightTheme = applyAppLiquidGlassTheme(
                                   ThemeData(
                                     colorScheme: lightScheme,
                                     useMaterial3: true,
-                                    fontFamily: AppPlatform.isWeb
-                                        ? _webFontFamily
-                                        : null,
-                                    fontFamilyFallback: AppPlatform.isWeb
-                                        ? _webFontFamilyFallback
-                                        : null,
+                                    fontFamily: resolvedFontFamily,
+                                    fontFamilyFallback:
+                                        resolvedFontFamilyFallback,
                                     pageTransitionsTheme: PageTransitions.theme,
                                   ),
                                   enabled: liquidGlassConfiguration.enabled,
@@ -1203,12 +1217,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                   ThemeData(
                                     colorScheme: darkScheme,
                                     useMaterial3: true,
-                                    fontFamily: AppPlatform.isWeb
-                                        ? _webFontFamily
-                                        : null,
-                                    fontFamilyFallback: AppPlatform.isWeb
-                                        ? _webFontFamilyFallback
-                                        : null,
+                                    fontFamily: resolvedFontFamily,
+                                    fontFamilyFallback:
+                                        resolvedFontFamilyFallback,
                                     pageTransitionsTheme: PageTransitions.theme,
                                   ),
                                   enabled: liquidGlassConfiguration.enabled,
