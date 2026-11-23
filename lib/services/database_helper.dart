@@ -58,6 +58,10 @@ class DatabaseHelper {
 
   DatabaseHelper._init();
 
+  @visibleForTesting
+  static String databaseFileNameFor(String username) =>
+      _databaseFileNameFor(username);
+
   static String _databaseFileNameFor(String username) {
     final envPrefix = EnvironmentService.isTest ? 'test_v5_' : 'v4_';
     return '${envPrefix}uni_sync_$username.db';
@@ -1273,163 +1277,6 @@ class DatabaseHelper {
           },
           onCreate: _createDB,
           onUpgrade: (db, oldVersion, newVersion) async {
-            if (oldVersion < 59) {
-              await ensureTodoSkipStateSchema(db);
-            }
-            if (oldVersion < 58) {
-              await ensurePlanEditorDraftSchema(db);
-            }
-            if (oldVersion < 52) {
-              await ensureAiUsageSchema(db);
-            }
-            if (oldVersion < 54) {
-              await ensureFinanceSchema(db);
-            }
-            if (oldVersion < 44) {
-              await ensureJournalSchema(db);
-            }
-            if (oldVersion < 38) {
-              // 重建 FTS 会清除历史软删除条目，并安装仅监听搜索字段的触发器。
-              await _setupFts(db);
-            }
-            if (oldVersion < 43) {
-              await ensureHabitSchema(db);
-            }
-            if (oldVersion < 37) {
-              await ensureHabitSchema(db);
-            }
-            if (oldVersion < 36) {
-              await ensureHabitSchema(db);
-            }
-            if (oldVersion < 35) {
-              await ensureFixedScheduleSchema(db);
-            }
-            if (oldVersion < 32) {
-              try {
-                final info = await db.rawQuery(
-                  "PRAGMA table_info(pomodoro_records)",
-                );
-                if (!info.any((row) => row['name'] == 'total_pause_seconds')) {
-                  await db.execute(
-                    "ALTER TABLE pomodoro_records ADD COLUMN total_pause_seconds INTEGER;",
-                  );
-                }
-                if (!info.any((row) => row['name'] == 'pause_intervals')) {
-                  await db.execute(
-                    "ALTER TABLE pomodoro_records ADD COLUMN pause_intervals TEXT;",
-                  );
-                }
-                //                 debugPrint('✅ Database: pomodoro_records 新增暂停区间字段 (V32)');
-              } catch (e) {
-                //                 debugPrint('⚠️ Database: 新增暂停区间字段失败: $e');
-              }
-            }
-            if (oldVersion < 31) {
-              try {
-                final info = await db.rawQuery(
-                  "PRAGMA table_info(pomodoro_tags)",
-                );
-                if (!info.any((row) => row['name'] == 'is_archived')) {
-                  await db.execute(
-                    "ALTER TABLE pomodoro_tags ADD COLUMN is_archived INTEGER DEFAULT 0;",
-                  );
-                  //                   debugPrint(
-                  //                       '✅ Database: pomodoro_tags 新增 is_archived 字段 (V31)');
-                }
-              } catch (e) {
-                //                 debugPrint('⚠️ Database: 新增 is_archived 字段失败: $e');
-              }
-            }
-            if (oldVersion < 30) {
-              await ensureScreenTimeSchema(db);
-            }
-            if (oldVersion < 29) {
-              try {
-                final info = await db.rawQuery(
-                  "PRAGMA table_info(pomodoro_records)",
-                );
-                if (!info.any((row) => row['name'] == 'note')) {
-                  await db.execute(
-                    "ALTER TABLE pomodoro_records ADD COLUMN note TEXT;",
-                  );
-                  //                   debugPrint('✅ Database: pomodoro_records 新增 note 字段 (V29)');
-                }
-              } catch (e) {
-                //                 debugPrint('⚠️ Database: 新增 note 字段失败: $e');
-              }
-            }
-            if (oldVersion < 28) {
-              await ensureSuggestionFeedbackSchema(db);
-              //               debugPrint('✅ Database: 创建 suggestion_feedback 表 (V28)');
-            }
-            if (oldVersion < 27) {
-              try {
-                await db.execute('''
-                  CREATE TABLE IF NOT EXISTS medal_recommendations (
-                    medal_id TEXT PRIMARY KEY,
-                    alpha REAL DEFAULT 1.0,
-                    beta_ REAL DEFAULT 1.0,
-                    impression_count INTEGER DEFAULT 0,
-                    success_count INTEGER DEFAULT 0,
-                    last_shown_at INTEGER DEFAULT 0,
-                    last_outcome_at INTEGER DEFAULT 0,
-                    feature_score_cache REAL DEFAULT 0.0,
-                    updated_at INTEGER DEFAULT 0
-                  )
-                ''');
-                //                 debugPrint('✅ Database: 创建 medal_recommendations 表 (V27)');
-              } catch (e) {
-                //                 debugPrint('⚠️ Database: 创建 medal_recommendations 表失败: $e');
-              }
-            }
-            if (oldVersion < 26) {
-              try {
-                for (var table in ['pomodoro_tags', 'pomodoro_records']) {
-                  final info = await db.rawQuery("PRAGMA table_info($table)");
-                  if (!info.any((row) => row['name'] == 'has_conflict')) {
-                    await db.execute(
-                      "ALTER TABLE $table ADD COLUMN has_conflict INTEGER DEFAULT 0;",
-                    );
-                    await db.execute(
-                      "ALTER TABLE $table ADD COLUMN conflict_data TEXT;",
-                    );
-                    //                     debugPrint("✅ Database: 修复字段 $table.has_conflict");
-                  }
-                }
-              } catch (e) {
-                //                 debugPrint("⚠️ Database: 修复 pomodoro 冲突字段失败: $e");
-              }
-            }
-
-            if (oldVersion < 24) {
-              await ensureCourseTableSchema(db);
-              await ensureTodoClientLocalSchema(db);
-            }
-
-            if (oldVersion < 23) {
-              try {
-                await ensureCourseTableSchema(db);
-                await ensureTodoClientLocalSchema(db);
-              } catch (e) {
-                //                 debugPrint("⚠️ Database: 修复 courses 表字段失败 (V23): $e");
-              }
-            }
-
-            if (oldVersion < 22) {
-              try {
-                await db.execute('''
-                CREATE TABLE IF NOT EXISTS ignored_remote_items (
-                  uuid TEXT PRIMARY KEY,
-                  team_uuid TEXT,
-                  table_name TEXT,
-                  ignored_at INTEGER
-                )
-              ''');
-                //                 debugPrint('✅ Database: 创建 ignored_remote_items 表 (V22)');
-              } catch (e) {
-                //                 debugPrint('⚠️ Database: 创建 ignored_remote_items 表失败: $e');
-              }
-            }
             if (oldVersion < 3) {
               // 🚀 Uni-Sync 安全升级：为核心业务表补全协作元数据
               final tables = ['todos', 'countdowns', 'todo_groups'];
@@ -1449,11 +1296,8 @@ class DatabaseHelper {
               }
             }
 
-            // 🚀 Version 5: 核心加固 - 补全基础字段与 FTS 模块动态嗅探
+            // 🚀 Version 5: 核心加固 - 补全基础业务字段
             if (oldVersion < 5) {
-              //               debugPrint("🔄 Database: 执行 Version 5 核心修复程序...");
-
-              // 1. 深度补全缺失的核心业务列
               final repairTasks = [
                 {'table': 'todos', 'col': 'group_id', 'type': 'TEXT'},
                 {'table': 'todos', 'col': 'created_date', 'type': 'INTEGER'},
@@ -1465,7 +1309,7 @@ class DatabaseHelper {
                 {'table': 'todo_groups', 'col': 'team_name', 'type': 'TEXT'},
               ];
 
-              for (var task in repairTasks) {
+              for (final task in repairTasks) {
                 try {
                   final info = await db.rawQuery(
                     "PRAGMA table_info(${task['table']})",
@@ -1474,20 +1318,10 @@ class DatabaseHelper {
                     await db.execute(
                       "ALTER TABLE ${task['table']} ADD COLUMN ${task['col']} ${task['type']};",
                     );
-                    //                     debugPrint(
-                    //                         "✅ Database: 修复字段 ${task['table']}.${task['col']}");
                   }
-                } catch (e) {
-                  //                   debugPrint(
-                  //                       "⚠️ Database: 修复字段 ${task['table']}.${task['col']} 失败: $e");
-                }
+                } catch (_) {}
               }
-
-              // 2. 强制重建 FTS 架构（采用动态嗅探）
-              await _setupFts(db);
             }
-
-            await ensureCourseTableSchema(db);
 
             if (oldVersion < 6) {
               try {
@@ -1496,11 +1330,8 @@ class DatabaseHelper {
                   await db.execute(
                     "ALTER TABLE todos ADD COLUMN collab_type INTEGER DEFAULT 0;",
                   );
-                  //                   debugPrint("✅ Database: 修复字段 todos.collab_type");
                 }
-              } catch (e) {
-                //                 debugPrint("⚠️ Database: 修复字段 todos.collab_type 失败: $e");
-              }
+              } catch (_) {}
             }
 
             if (oldVersion < 7) {
@@ -1514,10 +1345,7 @@ class DatabaseHelper {
                   PRIMARY KEY(todo_uuid, user_id)
                 )
               ''');
-                //                 debugPrint("✅ Database: 创建 todo_completions 表");
-              } catch (e) {
-                //                 debugPrint("⚠️ Database: 创建 todo_completions 表失败: $e");
-              }
+              } catch (_) {}
             }
 
             if (oldVersion < 8) {
@@ -1528,23 +1356,21 @@ class DatabaseHelper {
                   {'name': 'recurrence_end_date', 'type': 'INTEGER'},
                   {'name': 'reminder_minutes', 'type': 'INTEGER'},
                 ];
-                for (var col in columns) {
-                  final info = await db.rawQuery("PRAGMA table_info(todos)");
+                final info = await db.rawQuery("PRAGMA table_info(todos)");
+                for (final col in columns) {
                   if (!info.any((row) => row['name'] == col['name'])) {
                     await db.execute(
                       "ALTER TABLE todos ADD COLUMN ${col['name']} ${col['type']};",
                     );
-                    //                     debugPrint("✅ Database: 修复字段 todos.${col['name']}");
                   }
                 }
-              } catch (e) {
-                //                 debugPrint("⚠️ Database: 修复字段 todos 循环任务字段失败: $e");
-              }
+              } catch (_) {}
             }
+
             if (oldVersion < 9) {
               try {
                 final tables = ['todos', 'countdowns', 'todo_groups'];
-                for (var table in tables) {
+                for (final table in tables) {
                   final info = await db.rawQuery("PRAGMA table_info($table)");
                   if (!info.any((row) => row['name'] == 'has_conflict')) {
                     await db.execute(
@@ -1553,20 +1379,17 @@ class DatabaseHelper {
                     await db.execute(
                       "ALTER TABLE $table ADD COLUMN conflict_data TEXT;",
                     );
-                    //                     debugPrint("✅ Database: 修复字段 $table.has_conflict");
                   }
                 }
-                // 特别补全 todos 的 is_all_day
                 final todoInfo = await db.rawQuery("PRAGMA table_info(todos)");
                 if (!todoInfo.any((row) => row['name'] == 'is_all_day')) {
                   await db.execute(
                     "ALTER TABLE todos ADD COLUMN is_all_day INTEGER DEFAULT 0;",
                   );
                 }
-              } catch (e) {
-                //                 debugPrint("⚠️ Database: 修复冲突检测字段失败: $e");
-              }
+              } catch (_) {}
             }
+
             if (oldVersion < 10) {
               try {
                 await db.execute('''
@@ -1583,14 +1406,11 @@ class DatabaseHelper {
                   operator_name TEXT
                 )
               ''');
-                //                 debugPrint("✅ Database: 创建 local_audit_logs 表");
-              } catch (e) {
-                //                 debugPrint("⚠️ Database: 创建 local_audit_logs 失败: $e");
-              }
+              } catch (_) {}
             }
+
             if (oldVersion < 11) {
               try {
-                // 1. 创建番茄钟记录表
                 await db.execute('''
                 CREATE TABLE IF NOT EXISTS pomodoro_records (
                   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1610,7 +1430,6 @@ class DatabaseHelper {
                   updated_at INTEGER
                 )
               ''');
-                // 2. 创建课表表
                 await db.execute('''
                 CREATE TABLE IF NOT EXISTS courses (
                   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1627,10 +1446,7 @@ class DatabaseHelper {
                   team_uuid TEXT
                 )
               ''');
-                //                 debugPrint("✅ Database: 创建 pomodoro_records 与 courses 表");
-              } catch (e) {
-                //                 debugPrint("⚠️ Database: 创建新业务表失败: $e");
-              }
+              } catch (_) {}
             }
 
             if (oldVersion < 12) {
@@ -1650,10 +1466,7 @@ class DatabaseHelper {
                   updated_at INTEGER
                 )
               ''');
-                //                 debugPrint("✅ Database: 创建 time_logs 表");
-              } catch (e) {
-                //                 debugPrint("⚠️ Database: 创建 time_logs 失败: $e");
-              }
+              } catch (_) {}
             }
 
             if (oldVersion < 13) {
@@ -1670,15 +1483,11 @@ class DatabaseHelper {
                   updated_at INTEGER
                 )
               ''');
-                //                 debugPrint("✅ Database: 创建 pomodoro_tags 表");
-              } catch (e) {
-                //                 debugPrint("⚠️ Database: 创建 pomodoro_tags 失败: $e");
-              }
+              } catch (_) {}
             }
 
             if (oldVersion < 14) {
               try {
-                // 修正时间日志表字段
                 await db.execute("DROP TABLE IF EXISTS time_logs");
                 await db.execute('''
                 CREATE TABLE IF NOT EXISTS time_logs (
@@ -1697,11 +1506,9 @@ class DatabaseHelper {
                   team_uuid TEXT
                 )
               ''');
-                //                 debugPrint("✅ Database: 重新创建 time_logs 表 (V14)");
-              } catch (e) {
-                //                 debugPrint("⚠️ Database: 升级 V14 失败: $e");
-              }
+              } catch (_) {}
             }
+
             if (oldVersion < 15) {
               try {
                 final info = await db.rawQuery("PRAGMA table_info(op_logs)");
@@ -1709,12 +1516,10 @@ class DatabaseHelper {
                   await db.execute(
                     "ALTER TABLE op_logs ADD COLUMN sync_error TEXT;",
                   );
-                  //                   debugPrint("✅ Database: 为 op_logs 添加 sync_error 字段 (V15)");
                 }
-              } catch (e) {
-                //                 debugPrint("⚠️ Database: 升级 V15 失败: $e");
-              }
+              } catch (_) {}
             }
+
             if (oldVersion < 17) {
               try {
                 await db.execute('''
@@ -1726,31 +1531,29 @@ class DatabaseHelper {
                   UNIQUE(query)
                 )
               ''');
-                //                 debugPrint("✅ Database: 创建 search_history 表 (V17)");
-              } catch (e) {
-                //                 debugPrint("⚠️ Database: 升级 V17 失败: $e");
-              }
+              } catch (_) {}
             }
+
             if (oldVersion < 18) {
               try {
-                // 为历史记录增加分时统计列
-                await db.execute(
-                  "ALTER TABLE search_history ADD COLUMN morning_count INTEGER DEFAULT 0;",
+                final info = await db.rawQuery(
+                  "PRAGMA table_info(search_history)",
                 );
-                await db.execute(
-                  "ALTER TABLE search_history ADD COLUMN afternoon_count INTEGER DEFAULT 0;",
-                );
-                await db.execute(
-                  "ALTER TABLE search_history ADD COLUMN evening_count INTEGER DEFAULT 0;",
-                );
-                await db.execute(
-                  "ALTER TABLE search_history ADD COLUMN night_count INTEGER DEFAULT 0;",
-                );
-                //                 debugPrint("✅ Database: 升级 search_history 分时统计字段 (V18)");
-              } catch (e) {
-                //                 debugPrint("⚠️ Database: 升级 V18 失败: $e");
-              }
+                for (final col in const [
+                  'morning_count',
+                  'afternoon_count',
+                  'evening_count',
+                  'night_count',
+                ]) {
+                  if (!info.any((row) => row['name'] == col)) {
+                    await db.execute(
+                      "ALTER TABLE search_history ADD COLUMN $col INTEGER DEFAULT 0;",
+                    );
+                  }
+                }
+              } catch (_) {}
             }
+
             if (oldVersion < 19) {
               try {
                 final info = await db.rawQuery("PRAGMA table_info(countdowns)");
@@ -1758,13 +1561,10 @@ class DatabaseHelper {
                   await db.execute(
                     "ALTER TABLE countdowns ADD COLUMN is_completed INTEGER DEFAULT 0;",
                   );
-                  //                   debugPrint(
-                  //                       "✅ Database: 为 countdowns 添加 is_completed 字段 (V19)");
                 }
-              } catch (e) {
-                //                 debugPrint("⚠️ Database: 升级 V19 失败: $e");
-              }
+              } catch (_) {}
             }
+
             if (oldVersion < 20) {
               try {
                 final info = await db.rawQuery("PRAGMA table_info(op_logs)");
@@ -1772,12 +1572,10 @@ class DatabaseHelper {
                   await db.execute(
                     "ALTER TABLE op_logs ADD COLUMN sync_error TEXT;",
                   );
-                  //                   debugPrint("✅ Database: 为 op_logs 添加 sync_error 字段 (V20)");
                 }
-              } catch (e) {
-                //                 debugPrint("⚠️ Database: 升级 V20 失败: $e");
-              }
+              } catch (_) {}
             }
+
             if (oldVersion < 21) {
               try {
                 await db.execute('''
@@ -1795,7 +1593,6 @@ class DatabaseHelper {
                 await db.execute(
                   'CREATE INDEX IF NOT EXISTS idx_screen_time_date ON screen_time (record_date)',
                 );
-                // 🚀 Version 22: 新增 ignored_remote_items 表
                 await db.execute('''
       CREATE TABLE IF NOT EXISTS ignored_remote_items (
         uuid TEXT PRIMARY KEY,
@@ -1804,15 +1601,29 @@ class DatabaseHelper {
         ignored_at INTEGER
       )
     ''');
-                //                 debugPrint('✅ Database: onCreate 创建 ignored_remote_items 表');
-                //                 debugPrint('✅ Database: 创建 screen_time 表 (V21)');
-              } catch (e) {
-                //                 debugPrint('⚠️ Database: 创建 screen_time 表失败: $e');
-              }
+              } catch (_) {}
             }
+
+            if (oldVersion < 22) {
+              try {
+                await db.execute('''
+                CREATE TABLE IF NOT EXISTS ignored_remote_items (
+                  uuid TEXT PRIMARY KEY,
+                  team_uuid TEXT,
+                  table_name TEXT,
+                  ignored_at INTEGER
+                )
+              ''');
+              } catch (_) {}
+            }
+
+            if (oldVersion < 24) {
+              await ensureCourseTableSchema(db);
+              await ensureTodoClientLocalSchema(db);
+            }
+
             if (oldVersion < 25) {
               try {
-                // 1. 创建规划块表
                 await db.execute('''
                 CREATE TABLE IF NOT EXISTS todo_plan_blocks (
                   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1838,7 +1649,6 @@ class DatabaseHelper {
                   device_id TEXT
                 )
               ''');
-                // 2. 为 pomodoro_records 补全 plan_block_id
                 final info = await db.rawQuery(
                   "PRAGMA table_info(pomodoro_records)",
                 );
@@ -1847,16 +1657,134 @@ class DatabaseHelper {
                     "ALTER TABLE pomodoro_records ADD COLUMN plan_block_id TEXT;",
                   );
                 }
-                //                 debugPrint("✅ Database: 升级 V25 (新增规划块与关联字段)");
-              } catch (e) {
-                //                 debugPrint("⚠️ Database: 升级 V25 失败: $e");
-              }
+              } catch (_) {}
             }
-            if (oldVersion < 61) {
-              await ensureTodoCompletionTimestampSchema(db);
+
+            if (oldVersion < 26) {
+              try {
+                for (final table in ['pomodoro_tags', 'pomodoro_records']) {
+                  final info = await db.rawQuery("PRAGMA table_info($table)");
+                  if (!info.any((row) => row['name'] == 'has_conflict')) {
+                    await db.execute(
+                      "ALTER TABLE $table ADD COLUMN has_conflict INTEGER DEFAULT 0;",
+                    );
+                    await db.execute(
+                      "ALTER TABLE $table ADD COLUMN conflict_data TEXT;",
+                    );
+                  }
+                }
+              } catch (_) {}
             }
+
+            if (oldVersion < 27) {
+              try {
+                await db.execute('''
+                  CREATE TABLE IF NOT EXISTS medal_recommendations (
+                    medal_id TEXT PRIMARY KEY,
+                    alpha REAL DEFAULT 1.0,
+                    beta_ REAL DEFAULT 1.0,
+                    impression_count INTEGER DEFAULT 0,
+                    success_count INTEGER DEFAULT 0,
+                    last_shown_at INTEGER DEFAULT 0,
+                    last_outcome_at INTEGER DEFAULT 0,
+                    feature_score_cache REAL DEFAULT 0.0,
+                    updated_at INTEGER DEFAULT 0
+                  )
+                ''');
+              } catch (_) {}
+            }
+
+            if (oldVersion < 28) {
+              await ensureSuggestionFeedbackSchema(db);
+            }
+
+            if (oldVersion < 29) {
+              try {
+                final info = await db.rawQuery(
+                  "PRAGMA table_info(pomodoro_records)",
+                );
+                if (!info.any((row) => row['name'] == 'note')) {
+                  await db.execute(
+                    "ALTER TABLE pomodoro_records ADD COLUMN note TEXT;",
+                  );
+                }
+              } catch (_) {}
+            }
+
+            if (oldVersion < 30) {
+              await ensureScreenTimeSchema(db);
+            }
+
+            if (oldVersion < 31) {
+              try {
+                final info = await db.rawQuery(
+                  "PRAGMA table_info(pomodoro_tags)",
+                );
+                if (!info.any((row) => row['name'] == 'is_archived')) {
+                  await db.execute(
+                    "ALTER TABLE pomodoro_tags ADD COLUMN is_archived INTEGER DEFAULT 0;",
+                  );
+                }
+              } catch (_) {}
+            }
+
+            if (oldVersion < 32) {
+              try {
+                final info = await db.rawQuery(
+                  "PRAGMA table_info(pomodoro_records)",
+                );
+                if (!info.any((row) => row['name'] == 'total_pause_seconds')) {
+                  await db.execute(
+                    "ALTER TABLE pomodoro_records ADD COLUMN total_pause_seconds INTEGER;",
+                  );
+                }
+                if (!info.any((row) => row['name'] == 'pause_intervals')) {
+                  await db.execute(
+                    "ALTER TABLE pomodoro_records ADD COLUMN pause_intervals TEXT;",
+                  );
+                }
+              } catch (_) {}
+            }
+
+            if (oldVersion < 35) {
+              await ensureFixedScheduleSchema(db);
+            }
+
+            if (oldVersion < 38) {
+              // 重建 FTS 会清除历史软删除条目，并安装仅监听搜索字段的触发器。
+              await _setupFts(db);
+            }
+
+            if (oldVersion < 43) {
+              await ensureHabitSchema(db);
+            }
+
+            if (oldVersion < 44) {
+              await ensureJournalSchema(db);
+            }
+
+            if (oldVersion < 52) {
+              await ensureAiUsageSchema(db);
+            }
+
+            if (oldVersion < 54) {
+              await ensureFinanceSchema(db);
+            }
+
+            if (oldVersion < 58) {
+              await ensurePlanEditorDraftSchema(db);
+            }
+
+            if (oldVersion < 59) {
+              await ensureTodoSkipStateSchema(db);
+            }
+
             if (oldVersion < 60) {
               await _ensureTodoCreatedDateNullable(db);
+            }
+
+            if (oldVersion < 61) {
+              await ensureTodoCompletionTimestampSchema(db);
             }
           },
           onOpen: (db) async {
