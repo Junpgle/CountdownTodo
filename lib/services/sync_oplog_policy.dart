@@ -57,21 +57,31 @@ class SyncOplogPolicy {
     required Set<String> blockingConflictUuids,
     required bool acknowledgeFixedScheduleOps,
     required bool acknowledgeHabitOps,
+    bool acknowledgeTodoOps = true,
+    bool acknowledgeCountdownOps = true,
+    bool acknowledgeTimeLogOps = true,
+    bool acknowledgePlanBlockOps = true,
     bool acknowledgeSleepCoachingOps = false,
+    bool acknowledgeHabitDrinkOptionOps = false,
   }) {
     final acknowledgedIds = <int>{};
     final blockedIds = <int>{};
 
     for (final entry in requestSnapshot) {
-      if (entry.table == 'pomodoro_records' ||
-          entry.table == 'pomodoro_tags' ||
-          (!acknowledgeFixedScheduleOps && entry.table == 'fixed_schedules') ||
-          (!acknowledgeHabitOps &&
-              (entry.table == 'habit_goals' ||
-                  entry.table == 'habit_goal_rule_revisions' ||
-                  entry.table == 'habit_checkins')) ||
-          (!acknowledgeSleepCoachingOps &&
-              entry.table == 'habit_sleep_coaching_plans')) {
+      final isDomainAcknowledged = switch (entry.table) {
+        'todos' || 'todo_groups' => acknowledgeTodoOps,
+        'countdowns' => acknowledgeCountdownOps,
+        'time_logs' => acknowledgeTimeLogOps,
+        'todo_plan_blocks' => acknowledgePlanBlockOps,
+        'fixed_schedules' => acknowledgeFixedScheduleOps,
+        'habit_goals' ||
+        'habit_goal_rule_revisions' ||
+        'habit_checkins' => acknowledgeHabitOps,
+        'habit_sleep_coaching_plans' => acknowledgeSleepCoachingOps,
+        'habit_drink_options' => acknowledgeHabitDrinkOptionOps,
+        _ => false,
+      };
+      if (!isDomainAcknowledged) {
         continue;
       }
       if (blockingConflictUuids.contains(entry.uuid)) {
@@ -92,18 +102,29 @@ class SyncOplogPolicy {
       .map((entry) => entry.uuid)
       .toSet();
 
-  static Set<String> todoUuidsCreatedAfterSnapshot({
+  static Set<String> uuidsCreatedAfterSnapshotForTables({
     required Iterable<SyncOplogEntry> requestSnapshot,
     required Iterable<SyncOplogEntry> currentPending,
+    required Set<String> tables,
   }) {
     final requestIds = requestSnapshot.map((entry) => entry.id).toSet();
     return currentPending
         .where(
-          (entry) => entry.table == 'todos' && !requestIds.contains(entry.id),
+          (entry) =>
+              tables.contains(entry.table) && !requestIds.contains(entry.id),
         )
         .map((entry) => entry.uuid)
         .toSet();
   }
+
+  static Set<String> todoUuidsCreatedAfterSnapshot({
+    required Iterable<SyncOplogEntry> requestSnapshot,
+    required Iterable<SyncOplogEntry> currentPending,
+  }) => uuidsCreatedAfterSnapshotForTables(
+    requestSnapshot: requestSnapshot,
+    currentPending: currentPending,
+    tables: const {'todos'},
+  );
 
   static bool shouldProtectTodoMerge(
     String uuid, {

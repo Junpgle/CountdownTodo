@@ -37,22 +37,35 @@ void main() {
     const secureStorage = MethodChannel(
       'plugins.it_nomads.com/flutter_secure_storage',
     );
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(
-          secureStorage,
-          (call) async => switch (call.method) {
-            'readAll' => <String, String>{},
-            'containsKey' => false,
-            _ => null,
-          },
-        );
+    const deviceContext = MethodChannel('com.math_quiz_app/device_context');
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(
+      secureStorage,
+      (call) async => switch (call.method) {
+        'readAll' => <String, String>{},
+        'containsKey' => false,
+        _ => null,
+      },
+    );
+    messenger.setMockMethodCallHandler(deviceContext, (call) async {
+      if (call.method == 'getLocationPermissionStatus') {
+        return 'denied';
+      }
+      return null;
+    });
   });
   tearDown(() {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(
-          const MethodChannel('plugins.it_nomads.com/flutter_secure_storage'),
-          null,
-        );
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(
+      const MethodChannel('plugins.it_nomads.com/flutter_secure_storage'),
+      null,
+    );
+    messenger.setMockMethodCallHandler(
+      const MethodChannel('com.math_quiz_app/device_context'),
+      null,
+    );
   });
 
   testWidgets(

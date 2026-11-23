@@ -68,12 +68,21 @@ class CountdownStorage {
 
     Map<String, Map<String, dynamic>> existingItemsMap = {};
     if (!isSyncSource && dedupeList.isNotEmpty) {
-      final uuids = dedupeList.map((e) => "'${e.id}'").join(',');
-      final List<Map<String, dynamic>> existing = await db.rawQuery(
-        'SELECT * FROM countdowns WHERE uuid IN ($uuids)',
-      );
-      for (var row in existing) {
-        existingItemsMap[row['uuid']] = row;
+      const int chunkSize = 500;
+      for (int i = 0; i < dedupeList.length; i += chunkSize) {
+        final chunk = dedupeList.sublist(
+          i,
+          i + chunkSize > dedupeList.length ? dedupeList.length : i + chunkSize,
+        );
+        final placeholders = List.filled(chunk.length, '?').join(',');
+        final args = chunk.map((e) => e.id).toList();
+        final List<Map<String, dynamic>> existing = await db.rawQuery(
+          'SELECT * FROM countdowns WHERE uuid IN ($placeholders)',
+          args,
+        );
+        for (var row in existing) {
+          existingItemsMap[row['uuid'].toString()] = row;
+        }
       }
     }
 

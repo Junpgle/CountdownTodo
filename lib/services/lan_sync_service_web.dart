@@ -196,6 +196,8 @@ class LanSyncService {
     LanSyncConfig? config,
   }) async => LanSyncResult(message: '浏览器不支持局域网同步');
 
+  void rejectIncomingRequest(LanDevice device) {}
+
   Future<LanSyncResult> sendFilePath(LanDevice device, String path) async =>
       LanSyncResult(message: '浏览器不支持局域网文件发送');
 

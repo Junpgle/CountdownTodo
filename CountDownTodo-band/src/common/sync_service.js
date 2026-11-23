@@ -1,10 +1,9 @@
-var appVersion = '1.0.5'
-var appVersionCode = 6
+var appVersion = '1.0.6'
+var appVersionCode = 7
 var isVersionFetched = false
 var storage = require('@system.storage')
 var interconnect = require('@system.interconnect')
 var app = require('@system.app')
-var router = require('@system.router')
 var BandUtils = require('./band_utils.js')
 var SYNC_KEY_PREFIX = 'sync_'
 var connect = null
@@ -247,14 +246,15 @@ function handleReceivedData(data) {
 
     // 🚀 特殊处理：版本更新提醒
     if (type === 'version_update') {
+      var versionData = parsedData.data || {}
       storage.set({
         key: 'sync_latest_version',
-        value: JSON.stringify(parsedData.data)
+        value: JSON.stringify(versionData)
       })
       if (onAlertReceived) {
         onAlertReceived({
           title: '发现新版本',
-          content: '版本 ' + (parsedData.data.version_name || '未知') + ' 可用',
+          content: '版本 ' + (versionData.version_name || '未知') + ' 可用',
           todoType: 'update'
         })
       }
@@ -414,6 +414,7 @@ function init(opts) {
           appVersion = info.versionName || appVersion
           appVersionCode = info.versionCode || appVersionCode
         }
+        isVersionFetched = true
         if (onVersionReady) onVersionReady(appVersion)
         
         // 🚀 核心新增：拿到真实版本后，如果互联已经连上了，立刻补发一次更新手机端！
@@ -422,12 +423,15 @@ function init(opts) {
         }
       },
       fail: function() {
+        isVersionFetched = true
         if (onVersionReady) onVersionReady(appVersion)
         // 即使获取失败也发一次，防止状态机卡死
         if (isConnected) sendVersionInfo()
       }
     })
-  } catch (e) {}
+  } catch (e) {
+    isVersionFetched = true
+  }
 
   try {
     var instance = interconnect.instance()

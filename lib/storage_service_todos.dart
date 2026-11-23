@@ -2205,6 +2205,7 @@ mixin _StorageTodos on _StorageServiceBase {
         limit: limit,
         offset: offset,
         includeConflictData: true,
+        databaseOverride: db,
       );
       if (maps.isNotEmpty) {
         final recurrenceSeriesIds = maps
@@ -2236,6 +2237,7 @@ mixin _StorageTodos on _StorageServiceBase {
               deletedOnly: !loadCompleteSeries,
               recurrenceSeriesIds: recurrenceSeriesIds,
               includeConflictData: true,
+              databaseOverride: db,
             );
             final mapsById = <String, Map<String, dynamic>>{
               for (final map in maps) map['uuid'].toString(): map,

@@ -15,6 +15,7 @@ import '../services/habit_rule_resolver.dart';
 import '../services/habit_sleep_goal_resolver.dart';
 import '../services/habit_source_resolver.dart';
 import '../services/habit_streak_service.dart';
+import '../widgets/habit_emoji_text.dart';
 import '../widgets/habit_format.dart';
 import 'habit_detail_screen.dart';
 
@@ -1018,7 +1019,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
           Icon(Icons.auto_awesome, size: 14, color: colorScheme.primary),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
+            child: HabitEmojiText(
               insight,
               style: TextStyle(
                 fontSize: 11.5,

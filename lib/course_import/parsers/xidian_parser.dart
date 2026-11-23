@@ -12,17 +12,35 @@ class XidianScheduleParser {
   ) {
     List<CourseItem> courses = [];
 
-    // ICS 文件按行分割，处理一下可能的 \r\n
-    List<String> lines = icsString.replaceAll('\r', '').split('\n');
+    // ICS 文件先按 RFC 5545 展开折行（CRLF/CR 统一后移除换行+空白前缀），再逐行解析
+    final normalizedIcs = icsString
+        .replaceAll('\r\n', '\n')
+        .replaceAll('\r', '\n')
+        .replaceAll(RegExp(r'\n[ \t]'), '');
+    List<String> lines = normalizedIcs.split('\n');
 
     String? summary;
     String? location;
     DateTime? dtStart;
     DateTime? dtEnd;
 
+    String? extractPropValue(String line, String propName) {
+      if (!line.startsWith('$propName:') && !line.startsWith('$propName;')) {
+        return null;
+      }
+      final colonIdx = line.indexOf(':');
+      if (colonIdx == -1 || colonIdx + 1 > line.length) return null;
+      return line.substring(colonIdx + 1);
+    }
+
     for (var line in lines) {
       line = line.trim();
       if (line.isEmpty) continue;
+
+      final summaryVal = extractPropValue(line, 'SUMMARY');
+      final locationVal = extractPropValue(line, 'LOCATION');
+      final dtStartVal = extractPropValue(line, 'DTSTART');
+      final dtEndVal = extractPropValue(line, 'DTEND');
 
       if (line == 'BEGIN:VEVENT') {
         // 新的日程开始，重置属性
@@ -30,14 +48,14 @@ class XidianScheduleParser {
         location = null;
         dtStart = null;
         dtEnd = null;
-      } else if (line.startsWith('SUMMARY:')) {
-        summary = line.substring(8);
-      } else if (line.startsWith('LOCATION:')) {
-        location = line.substring(9);
-      } else if (line.startsWith('DTSTART:')) {
-        dtStart = _parseIcsDateTime(line.substring(8));
-      } else if (line.startsWith('DTEND:')) {
-        dtEnd = _parseIcsDateTime(line.substring(6));
+      } else if (summaryVal != null) {
+        summary = summaryVal;
+      } else if (locationVal != null) {
+        location = locationVal;
+      } else if (dtStartVal != null) {
+        dtStart = _parseIcsDateTime(dtStartVal);
+      } else if (dtEndVal != null) {
+        dtEnd = _parseIcsDateTime(dtEndVal);
       } else if (line == 'END:VEVENT') {
         // 日程块结束，组装 CourseItem
         if (summary != null && dtStart != null && dtEnd != null) {

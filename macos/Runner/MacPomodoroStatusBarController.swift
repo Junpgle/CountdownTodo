@@ -870,6 +870,74 @@ private final class MacNowPlayingMonitor {
         }
     }
 
+    private struct ProcessRunResult {
+        let timedOut: Bool
+        let terminationStatus: Int32
+        let stdout: Data
+        let stderr: Data
+    }
+
+    private func runProcess(
+        executablePath: String,
+        arguments: [String],
+        timeout: TimeInterval = 1.5
+    ) throws -> ProcessRunResult {
+        let process = Process()
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        let exitSemaphore = DispatchSemaphore(value: 0)
+        let drainGroup = DispatchGroup()
+        let dataLock = NSLock()
+        var stdoutData = Data()
+        var stderrData = Data()
+
+        process.executableURL = URL(fileURLWithPath: executablePath)
+        process.arguments = arguments
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
+        process.terminationHandler = { _ in exitSemaphore.signal() }
+
+        try process.run()
+
+        // Drain stdout/stderr concurrently before waiting for termination to avoid
+        // a 64 KiB pipe buffer deadlock if osascript emits large output or errors.
+        drainGroup.enter()
+        DispatchQueue.global(qos: .utility).async {
+            let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+            dataLock.lock()
+            stdoutData = data
+            dataLock.unlock()
+            drainGroup.leave()
+        }
+
+        drainGroup.enter()
+        DispatchQueue.global(qos: .utility).async {
+            let data = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            dataLock.lock()
+            stderrData = data
+            dataLock.unlock()
+            drainGroup.leave()
+        }
+
+        let timedOut = exitSemaphore.wait(timeout: .now() + timeout) != .success
+        if timedOut {
+            process.terminate()
+        }
+        _ = drainGroup.wait(timeout: .now() + 0.25)
+
+        dataLock.lock()
+        let finalStdout = stdoutData
+        let finalStderr = stderrData
+        dataLock.unlock()
+
+        return ProcessRunResult(
+            timedOut: timedOut,
+            terminationStatus: timedOut ? -1 : process.terminationStatus,
+            stdout: finalStdout,
+            stderr: finalStderr
+        )
+    }
+
     /// macOS 15.4 起 mediaremoted 会拒绝未持有 Apple 私有 entitlement 的
     /// 第三方进程直接读取 Now Playing。由系统签名的 osascript 读取同一份
     /// 本机媒体状态，可以得到播放器拖动后的 calculatedPlaybackPosition。
@@ -912,37 +980,28 @@ private final class MacNowPlayingMonitor {
         })();
         """#
 
-        let process = Process()
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        let exitSemaphore = DispatchSemaphore(value: 0)
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-l", "JavaScript", "-e", script]
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
-        process.terminationHandler = { _ in exitSemaphore.signal() }
-
+        let result: ProcessRunResult
         do {
-            try process.run()
+            result = try runProcess(
+                executablePath: "/usr/bin/osascript",
+                arguments: ["-l", "JavaScript", "-e", script]
+            )
         } catch {
             logSystemPlaybackFailureOnce(error.localizedDescription)
             return nil
         }
-        guard exitSemaphore.wait(timeout: .now() + 1.5) == .success else {
-            process.terminate()
+        guard !result.timedOut else {
             logSystemPlaybackFailureOnce("读取超时")
             return nil
         }
-        guard process.terminationStatus == 0 else {
-            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-            let errorText = String(decoding: errorData, as: UTF8.self)
+        guard result.terminationStatus == 0 else {
+            let errorText = String(decoding: result.stderr, as: UTF8.self)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            logSystemPlaybackFailureOnce(errorText.isEmpty ? "退出码 \(process.terminationStatus)" : errorText)
+            logSystemPlaybackFailureOnce(errorText.isEmpty ? "退出码 \(result.terminationStatus)" : errorText)
             return nil
         }
 
-        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        guard let state = try? JSONDecoder().decode(SystemPlaybackState.self, from: data),
+        guard let state = try? JSONDecoder().decode(SystemPlaybackState.self, from: result.stdout),
               !state.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             logSystemPlaybackFailureOnce("系统未返回有效媒体状态")
             return nil
@@ -984,29 +1043,16 @@ private final class MacNowPlayingMonitor {
         end tell
         """#
 
-        let process = Process()
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        let exitSemaphore = DispatchSemaphore(value: 0)
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-e", script]
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
-        process.terminationHandler = { _ in exitSemaphore.signal() }
-
-        do {
-            try process.run()
-        } catch {
+        guard let result = try? runProcess(
+            executablePath: "/usr/bin/osascript",
+            arguments: ["-e", script]
+        ),
+        !result.timedOut,
+        result.terminationStatus == 0 else {
             return nil
         }
-        guard exitSemaphore.wait(timeout: .now() + 1.5) == .success else {
-            process.terminate()
-            return nil
-        }
-        guard process.terminationStatus == 0 else { return nil }
 
-        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        let output = String(decoding: data, as: UTF8.self)
+        let output = String(decoding: result.stdout, as: UTF8.self)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let fields = output
             .split(separator: "\u{001F}", omittingEmptySubsequences: false)
@@ -1508,21 +1554,10 @@ private final class MacNowPlayingMonitor {
           \(command)
         end tell
         """
-        let process = Process()
-        let errorPipe = Pipe()
-        let exitSemaphore = DispatchSemaphore(value: 0)
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-e", script]
-        process.standardError = errorPipe
-        process.terminationHandler = { _ in exitSemaphore.signal() }
-        do {
-            try process.run()
-            if exitSemaphore.wait(timeout: .now() + 1.5) == .timedOut {
-                process.terminate()
-            }
-        } catch {
-            return
-        }
+        _ = try? runProcess(
+            executablePath: "/usr/bin/osascript",
+            arguments: ["-e", script]
+        )
     }
 
     private func scheduleCommandRefreshes() {
@@ -2289,6 +2324,8 @@ class IslandStateModel: ObservableObject {
     @Published var reminderTitle = ""
     @Published var reminderBody = ""
     @Published var reminderType = ""
+    @Published var reminderCountdownCategory = ""
+    @Published var reminderCountdownTitle = ""
     @Published var reminderQueueCount = 0
     @Published var activityActive = false
     @Published var activityKind = ""
@@ -2675,9 +2712,16 @@ struct MacIslandSwiftUIView: View {
 
         return HStack(spacing: 0) {
             HStack(spacing: 7) {
-                Image(systemName: leadingIconName)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(leadingIconColor)
+                if !showingMedia && model.reminderActive && model.reminderType == "countdown" {
+                    MacAnimatedCountdownSymbolView(
+                        category: model.reminderCountdownCategory,
+                        size: 12
+                    )
+                } else {
+                    Image(systemName: leadingIconName)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(leadingIconColor)
+                }
 
                 VStack(alignment: .leading, spacing: 1) {
                     if model.isFocusActive {
@@ -2818,6 +2862,9 @@ struct MacIslandSwiftUIView: View {
     }
 
     private var compactRightTopText: String {
+        if model.reminderActive && model.reminderType == "countdown" {
+            return "就在今天"
+        }
         if hasCompactPriorityActivity {
             return model.activityActive ? "进行中" : "下一项"
         }
@@ -2834,6 +2881,9 @@ struct MacIslandSwiftUIView: View {
         if model.isFocusActive {
             return compactStatusText
         }
+        if model.reminderActive && model.reminderType == "countdown" {
+            return "倒数日"
+        }
         if hasCompactPriorityActivity {
             return compactPriorityActivityKind == "todo"
                 ? (model.activityActive ? "待办" : "待处理")
@@ -2849,6 +2899,11 @@ struct MacIslandSwiftUIView: View {
         if model.isFocusActive {
             return model.todoTitle.isEmpty ? "自由专注" : model.todoTitle
         }
+        if model.reminderActive && model.reminderType == "countdown" {
+            return model.reminderCountdownTitle.isEmpty
+                ? model.reminderTitle
+                : model.reminderCountdownTitle
+        }
         if hasCompactPriorityActivity {
             return compactPriorityActivityTitle
         }
@@ -2861,11 +2916,38 @@ struct MacIslandSwiftUIView: View {
         return "CountDownTodo"
     }
 
+    private func countdownCategoryColor(_ category: String) -> Color {
+        switch category {
+        case "birthday": return .orange
+        case "anniversary": return .pink
+        case "exam": return .indigo
+        case "holiday": return .cyan
+        case "travel": return .blue
+        case "deadline": return .red
+        default: return .orange
+        }
+    }
+
+    private func countdownCategoryLabel(_ category: String) -> String {
+        switch category {
+        case "birthday": return "生日"
+        case "anniversary": return "纪念日"
+        case "exam": return "考试"
+        case "holiday": return "假期"
+        case "travel": return "出行"
+        case "deadline": return "重要节点"
+        default: return "倒数日"
+        }
+    }
+
     private var compactContextDetail: String {
         if model.isFocusActive {
             return focusTagSummary.isEmpty
                 ? (model.phase == "breaking" ? "休息阶段" : "未设置标签")
                 : focusTagSummary
+        }
+        if model.reminderActive && model.reminderType == "countdown" {
+            return "\(countdownCategoryLabel(model.reminderCountdownCategory)) · 今天"
         }
         if hasCompactPriorityActivity {
             return compactPriorityActivityDetail
@@ -4308,53 +4390,145 @@ struct MacIslandSwiftUIView: View {
     }
     
     var expandedReminderView: some View {
-        VStack(spacing: 12) {
-            HStack {
-                Image(systemName: "bell.fill")
-                    .foregroundColor(.orange)
-                Text(model.reminderTitle)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
-                Spacer()
-                Button(action: { model.onAcknowledgeReminder?() }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.72))
-                        .frame(width: 28, height: 28)
-                        .contentShape(Rectangle())
+        Group {
+            if model.reminderType == "countdown" {
+                expandedCountdownReminderView
+            } else {
+                VStack(spacing: 12) {
+                    HStack {
+                        Image(systemName: "bell.fill")
+                            .foregroundColor(.orange)
+                        Text(model.reminderTitle)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white)
+                        Spacer()
+                        Button(action: { model.onAcknowledgeReminder?() }) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.72))
+                                .frame(width: 28, height: 28)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("关闭提醒")
+                        .accessibilityLabel("关闭提醒")
+                    }
+
+                    Text(model.reminderBody)
+                        .font(.system(size: 13))
+                        .foregroundColor(.white.opacity(0.7))
+                        .multilineTextAlignment(.center)
+
+                    HStack(spacing: 12) {
+                        Button(action: { model.onSnoozeReminder?() }) {
+                            Text("稍后")
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .background(Color.white.opacity(0.15))
+                                .cornerRadius(12)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+
+                        Button(action: { model.onAcknowledgeReminder?() }) {
+                            Text("好的")
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .background(Color.orange)
+                                .cornerRadius(12)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.top, 8)
                 }
-                .buttonStyle(.plain)
-                .help("关闭提醒")
-                .accessibilityLabel("关闭提醒")
             }
-            
-            Text(model.reminderBody)
-                .font(.system(size: 13))
-                .foregroundColor(.white.opacity(0.7))
-                .multilineTextAlignment(.center)
-            
+        }
+    }
+
+    private var expandedCountdownReminderView: some View {
+        let category = model.reminderCountdownCategory
+        let accent = countdownCategoryColor(category)
+        let displayTitle = model.reminderCountdownTitle.isEmpty
+            ? model.reminderTitle
+            : model.reminderCountdownTitle
+        return VStack(spacing: 12) {
+            HStack(alignment: .center, spacing: 14) {
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 6) {
+                        Text("\(countdownCategoryLabel(category)) · 就在今天")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(accent)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(accent.opacity(0.16))
+                            .cornerRadius(999)
+                    }
+
+                    Text(displayTitle)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+
+                    Text(model.reminderBody.isEmpty ? "倒数日已到达" : model.reminderBody)
+                        .font(.system(size: 12))
+                        .foregroundColor(.white.opacity(0.65))
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                ZStack(alignment: .topTrailing) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(accent.opacity(0.16))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .stroke(accent.opacity(0.32), lineWidth: 1)
+                            )
+                        MacAnimatedCountdownSymbolView(
+                            category: category,
+                            size: 28
+                        )
+                    }
+                    .frame(width: 58, height: 58)
+
+                    Button(action: { model.onAcknowledgeReminder?() }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.white.opacity(0.72))
+                            .frame(width: 18, height: 18)
+                            .background(Color.black.opacity(0.65))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .offset(x: 6, y: -6)
+                    .help("关闭提醒")
+                    .accessibilityLabel("关闭提醒")
+                }
+            }
+
             HStack(spacing: 12) {
                 Button(action: { model.onSnoozeReminder?() }) {
                     Text("稍后")
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(Color.white.opacity(0.15))
-                        .cornerRadius(12)
+                        .padding(.vertical, 7)
+                        .background(Color.white.opacity(0.14))
+                        .cornerRadius(11)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                
+
                 Button(action: { model.onAcknowledgeReminder?() }) {
                     Text("好的")
+                        .fontWeight(.semibold)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(Color.orange)
-                        .cornerRadius(12)
+                        .padding(.vertical, 7)
+                        .background(accent)
+                        .cornerRadius(11)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.top, 8)
         }
     }
 
@@ -4408,7 +4582,14 @@ struct MacIslandSwiftUIView: View {
     var reminderCard: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Image(systemName: "bell.fill").foregroundColor(.orange)
+                if model.reminderType == "countdown" {
+                    MacAnimatedCountdownSymbolView(
+                        category: model.reminderCountdownCategory,
+                        size: 13
+                    )
+                } else {
+                    Image(systemName: "bell.fill").foregroundColor(.orange)
+                }
                 Text(model.reminderTitle).font(.system(size: 12, weight: .semibold))
                 Spacer(minLength: 8)
                 Button(action: { model.onAcknowledgeReminder?() }) {
@@ -5712,6 +5893,10 @@ class MacPomodoroStatusBarController: NSObject {
         view.reminderTitle = currentReminder?["title"] as? String ?? ""
         view.reminderBody = currentReminder?["text"] as? String ?? ""
         view.reminderType = currentReminder?["type"] as? String ?? ""
+        view.reminderCountdownCategory =
+            currentReminder?["countdownCategory"] as? String ?? ""
+        view.reminderCountdownTitle =
+            currentReminder?["countdownTitle"] as? String ?? ""
         view.reminderQueueCount = reminderQueue.count
         view.reminderTimeText = reminderTimeText(currentReminder)
         view.reminderDetailText = reminderDetailText(currentReminder)
@@ -6313,6 +6498,9 @@ class MacPomodoroStatusBarController: NSObject {
         }
         if type == "fixed_schedule" {
             return ("fixed_schedule", reminder["fixedScheduleId"] as? String ?? "")
+        }
+        if type == "countdown" {
+            return ("countdown", reminder["countdownId"] as? String ?? "")
         }
         return ("todo", reminder["todoId"] as? String ?? "")
     }
@@ -7252,10 +7440,13 @@ class MacPomodoroStatusBarController: NSObject {
             }
 
             // 3. AppleScript 保底：能直接解冻并置顶最小化至 Dock 的窗口
-            DispatchQueue.global(qos: .userInitiated).async {
-                let script = NSAppleScript(source: "tell application id \"\(bundleId)\" to activate")
-                var error: NSDictionary?
-                script?.executeAndReturnError(&error)
+            if Self.isSafeBundleIdentifier(bundleId) {
+                let escapedBundleId = Self.escapeAppleScriptString(bundleId)
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let script = NSAppleScript(source: "tell application id \"\(escapedBundleId)\" to activate")
+                    var error: NSDictionary?
+                    script?.executeAndReturnError(&error)
+                }
             }
             return
         }
@@ -7281,6 +7472,22 @@ class MacPomodoroStatusBarController: NSObject {
             script?.executeAndReturnError(&error)
         }
     }
+
+    private static func isSafeBundleIdentifier(_ bundleId: String) -> Bool {
+        guard !bundleId.isEmpty else { return false }
+        return bundleId.unicodeScalars.allSatisfy { scalar in
+            (scalar.value >= 0x30 && scalar.value <= 0x39) || // 0-9
+            (scalar.value >= 0x41 && scalar.value <= 0x5A) || // A-Z
+            (scalar.value >= 0x61 && scalar.value <= 0x7A) || // a-z
+            scalar == "." || scalar == "-" || scalar == "_"
+        }
+    }
+
+    private static func escapeAppleScriptString(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+    }
 }
 
 extension MacPomodoroStatusBarController: QLPreviewPanelDataSource, QLPreviewPanelDelegate {
@@ -7291,5 +7498,135 @@ extension MacPomodoroStatusBarController: QLPreviewPanelDataSource, QLPreviewPan
     func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
         guard let url = currentQuickLookURL else { return nil }
         return url as NSURL
+    }
+}
+
+private struct MacAnimatedCountdownSymbolView: View {
+    let category: String
+    let size: CGFloat
+
+    @State private var animate = false
+
+    private var symbolName: String {
+        switch category {
+        case "birthday":
+            if #available(macOS 13.0, *) {
+                return "birthday.cake.fill"
+            }
+            return "gift.fill"
+        case "anniversary":
+            return "heart.fill"
+        case "exam":
+            return "graduationcap.fill"
+        case "holiday":
+            return "sun.max.fill"
+        case "travel":
+            return "airplane"
+        case "deadline":
+            return "flag.fill"
+        default:
+            return "hourglass"
+        }
+    }
+
+    private var symbolColor: Color {
+        switch category {
+        case "birthday":
+            return .orange
+        case "anniversary":
+            return .pink
+        case "exam":
+            return .indigo
+        case "holiday":
+            return .cyan
+        case "travel":
+            return .blue
+        case "deadline":
+            return .red
+        default:
+            return .orange
+        }
+    }
+
+    private var rotationAngle: Double {
+        switch category {
+        case "holiday":
+            return animate ? 22 : -22
+        case "exam":
+            return animate ? -7 : 7
+        case "deadline":
+            return animate ? 8 : -5
+        case "default", "":
+            return animate ? 12 : -12
+        default:
+            return 0
+        }
+    }
+
+    private var scaleFactor: CGFloat {
+        switch category {
+        case "anniversary":
+            return animate ? 1.18 : 0.92
+        case "birthday":
+            return animate ? 1.12 : 0.96
+        default:
+            return animate ? 1.08 : 0.96
+        }
+    }
+
+    private var offsetX: CGFloat {
+        category == "travel" ? (animate ? 2.0 : -2.0) : 0
+    }
+
+    private var offsetY: CGFloat {
+        switch category {
+        case "birthday":
+            return animate ? -1.8 : 1.0
+        case "travel":
+            return animate ? -1.5 : 1.5
+        default:
+            return 0
+        }
+    }
+
+    private var animationDuration: Double {
+        switch category {
+        case "anniversary":
+            return 0.65
+        case "holiday":
+            return 1.6
+        case "travel":
+            return 1.2
+        default:
+            return 0.95
+        }
+    }
+
+    var body: some View {
+        Image(systemName: symbolName)
+            .font(.system(size: size, weight: .semibold))
+            .foregroundColor(symbolColor)
+            .scaleEffect(scaleFactor)
+            .rotationEffect(.degrees(rotationAngle))
+            .offset(x: offsetX, y: offsetY)
+            .opacity(category == "anniversary" ? (animate ? 1.0 : 0.8) : 1.0)
+            .onAppear {
+                animate = false
+                withAnimation(
+                    .easeInOut(duration: animationDuration)
+                        .repeatForever(autoreverses: true)
+                ) {
+                    animate = true
+                }
+            }
+            .onChange(of: category) { _ in
+                animate = false
+                withAnimation(
+                    .easeInOut(duration: animationDuration)
+                        .repeatForever(autoreverses: true)
+                ) {
+                    animate = true
+                }
+            }
     }
 }

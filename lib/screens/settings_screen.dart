@@ -28,6 +28,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadSettings();
   }
 
+  @override
+  void dispose() {
+    _minN1Ctrl.dispose();
+    _maxN1Ctrl.dispose();
+    _minN2Ctrl.dispose();
+    _maxN2Ctrl.dispose();
+    _maxResCtrl.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadSettings() async {
     final settings = await StorageService.getSettings();
     if (!mounted) return;

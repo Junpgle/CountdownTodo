@@ -51,10 +51,10 @@ class FloatWindowService {
   static void invalidateSlotCache() {}
 
   static Map<String, dynamic> getDebugInfo() {
-    return const {
-      'platform': 'web',
+    return {
+      'platform': kIsWeb ? 'web' : 'non-windows',
       'enabled': false,
-      'reason': 'Windows island is not available on Flutter Web',
+      'reason': 'Windows island is disabled on this build target',
     };
   }
 }

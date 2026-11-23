@@ -128,13 +128,15 @@ class LanSyncLww {
         currentVersion: current.version,
       );
 
-  static bool isCountdownWinner(CountdownItem incoming, CountdownItem current) =>
-      TodoLwwService.isIncomingWinner(
-        incomingUpdatedAt: incoming.updatedAt,
-        incomingVersion: incoming.version,
-        currentUpdatedAt: current.updatedAt,
-        currentVersion: current.version,
-      );
+  static bool isCountdownWinner(
+    CountdownItem incoming,
+    CountdownItem current,
+  ) => TodoLwwService.isIncomingWinner(
+    incomingUpdatedAt: incoming.updatedAt,
+    incomingVersion: incoming.version,
+    currentUpdatedAt: current.updatedAt,
+    currentVersion: current.version,
+  );
 
   static bool isTimeLogWinner(TimeLogItem incoming, TimeLogItem current) =>
       TodoLwwService.isIncomingWinner(
@@ -167,5 +169,18 @@ class LanDiscoveryIdentity {
       return c.toLowerCase() == current.toLowerCase();
     }
     return false;
+  }
+
+  /// Strictly compares raw user IDs without trusting public discovery hashes
+  /// or unauthenticated `'local'` placeholders.
+  static bool isDirectSameAccount(String? candidate, String? currentRawUserId) {
+    final c = (candidate ?? '').trim();
+    final current = (currentRawUserId ?? '').trim();
+    if (c.isEmpty || current.isEmpty) return false;
+    if (c.toLowerCase() == 'local' || current.toLowerCase() == 'local') {
+      return false;
+    }
+    if (c.startsWith(_hashPrefix)) return false;
+    return c.toLowerCase() == current.toLowerCase();
   }
 }

@@ -268,6 +268,7 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                         shareCode: widget.shareCode,
                         email: email,
                         message: msgCtrl.text.trim(),
+                        accessToken: _accessToken,
                       );
                       if (!ctx.mounted) return;
                       Navigator.pop(ctx);

@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -15,6 +16,9 @@ import 'minor_mode_service.dart';
 import 'pomodoro_service.dart';
 import 'storage/habit_storage.dart';
 import 'storage/storage_key_scope.dart';
+
+String _encodeExportJsonPretty(Map<String, dynamic> exportJson) =>
+    const JsonEncoder.withIndent('  ').convert(exportJson);
 
 class DataExportService {
   static const int _exportVersion = 2;
@@ -259,261 +263,257 @@ class DataExportService {
     final data = <String, dynamic>{};
     int totalItems = 0;
 
-      if (selectedTypes.contains('todos')) {
-        var items = await StorageService.getTodos(
-          username,
-          includeDeleted: true,
-        );
-        if (options.removeTeamBinding) {
-          items = items.map((t) {
-            t.teamUuid = null;
-            t.teamName = null;
-            t.creatorId = null;
-            t.creatorName = null;
-            return t;
-          }).toList();
-        }
-        if (options.removeImagePath) {
-          for (var t in items) {
-            t.imagePath = null;
-          }
-        }
-        if (options.removeConflictData) {
-          for (var t in items) {
-            t.hasConflict = false;
-            t.serverVersionData = null;
-          }
-        }
-        data['todos'] = items.map((e) => e.toJson()).toList();
-        totalItems += items.length;
+    if (selectedTypes.contains('todos')) {
+      var items = await StorageService.getTodos(username, includeDeleted: true);
+      if (options.removeTeamBinding) {
+        items = items.map((t) {
+          t.teamUuid = null;
+          t.teamName = null;
+          t.creatorId = null;
+          t.creatorName = null;
+          return t;
+        }).toList();
       }
-
-      if (selectedTypes.contains('countdowns')) {
-        var items = await StorageService.getCountdowns(
-          username,
-          includeDeleted: true,
-        );
-        if (options.removeTeamBinding) {
-          items = items.map((c) {
-            c.teamUuid = null;
-            c.teamName = null;
-            c.creatorId = null;
-            c.creatorName = null;
-            return c;
-          }).toList();
+      if (options.removeImagePath) {
+        for (var t in items) {
+          t.imagePath = null;
         }
-        if (options.removeConflictData) {
-          for (var c in items) {
-            c.hasConflict = false;
-            c.conflictData = null;
-          }
-        }
-        data['countdowns'] = items.map((e) => e.toJson()).toList();
-        totalItems += items.length;
       }
-
-      if (selectedTypes.contains('todo_groups')) {
-        var items = await StorageService.getTodoGroups(
-          username,
-          includeDeleted: true,
-        );
-        if (options.removeTeamBinding) {
-          items = items.map((g) {
-            g.teamUuid = null;
-            g.teamName = null;
-            g.creatorId = null;
-            g.creatorName = null;
-            return g;
-          }).toList();
+      if (options.removeConflictData) {
+        for (var t in items) {
+          t.hasConflict = false;
+          t.serverVersionData = null;
         }
-        data['todo_groups'] = items.map((e) => e.toJson()).toList();
-        totalItems += items.length;
       }
+      data['todos'] = items.map((e) => e.toJson()).toList();
+      totalItems += items.length;
+    }
 
-      if (selectedTypes.contains('time_logs')) {
-        var items = await StorageService.getTimeLogs(username);
-        if (options.removeTeamBinding) {
-          for (var l in items) {
-            l.teamUuid = null;
-          }
-        }
-        if (options.removeDeviceId) {
-          for (var l in items) {
-            l.deviceId = null;
-          }
-        }
-        data['time_logs'] = items.map((e) => e.toJson()).toList();
-        totalItems += items.length;
+    if (selectedTypes.contains('countdowns')) {
+      var items = await StorageService.getCountdowns(
+        username,
+        includeDeleted: true,
+      );
+      if (options.removeTeamBinding) {
+        items = items.map((c) {
+          c.teamUuid = null;
+          c.teamName = null;
+          c.creatorId = null;
+          c.creatorName = null;
+          return c;
+        }).toList();
       }
-
-      if (selectedTypes.contains('todo_plan_blocks')) {
-        var items = await StorageService.getPlanBlocks(
-          username,
-          includeDeleted: true,
-        );
-        if (options.removeDeviceId) {
-          for (var b in items) {
-            b.deviceId = null;
-          }
+      if (options.removeConflictData) {
+        for (var c in items) {
+          c.hasConflict = false;
+          c.conflictData = null;
         }
-        data['todo_plan_blocks'] = items.map((e) => e.toJson()).toList();
-        totalItems += items.length;
       }
+      data['countdowns'] = items.map((e) => e.toJson()).toList();
+      totalItems += items.length;
+    }
 
-      if (selectedTypes.contains('fixed_schedules')) {
-        final items = await StorageService.getFixedSchedules(
-          username,
-          includeDeleted: true,
-        );
-        if (options.removeTeamBinding) {
-          for (final item in items) {
-            item.teamUuid = null;
-          }
-        }
-        if (options.removeDeviceId) {
-          for (final item in items) {
-            item.deviceId = null;
-          }
-        }
-        data['fixed_schedules'] = items.map((item) => item.toJson()).toList();
-        totalItems += items.length;
+    if (selectedTypes.contains('todo_groups')) {
+      var items = await StorageService.getTodoGroups(
+        username,
+        includeDeleted: true,
+      );
+      if (options.removeTeamBinding) {
+        items = items.map((g) {
+          g.teamUuid = null;
+          g.teamName = null;
+          g.creatorId = null;
+          g.creatorName = null;
+          return g;
+        }).toList();
       }
+      data['todo_groups'] = items.map((e) => e.toJson()).toList();
+      totalItems += items.length;
+    }
 
-      if (selectedTypes.contains('courses')) {
-        var items = await CourseService.getAllCourses(
-          username,
-          applyCalendarAdjustments: false,
-        );
-        if (options.removeTeamBinding) {
-          for (var c in items) {
-            c.teamUuid = null;
-          }
+    if (selectedTypes.contains('time_logs')) {
+      var items = await StorageService.getTimeLogs(username);
+      if (options.removeTeamBinding) {
+        for (var l in items) {
+          l.teamUuid = null;
         }
-        data['courses'] = items.map((e) => e.toJson()).toList();
-        totalItems += items.length;
       }
-
-      if (selectedTypes.contains('pomodoro_tags')) {
-        final items = await PomodoroService.getTags();
-        if (options.removeConflictData) {
-          for (var t in items) {
-            t.hasConflict = false;
-            t.conflictData = null;
-          }
+      if (options.removeDeviceId) {
+        for (var l in items) {
+          l.deviceId = null;
         }
-        data['pomodoro_tags'] = items.map((e) => e.toJson()).toList();
-        totalItems += items.length;
       }
+      data['time_logs'] = items.map((e) => e.toJson()).toList();
+      totalItems += items.length;
+    }
 
-      if (selectedTypes.contains('pomodoro_records')) {
-        final items = await PomodoroService.getRecords();
-        if (options.removeDeviceId) {
-          for (var r in items) {
-            r.deviceId = null;
-          }
+    if (selectedTypes.contains('todo_plan_blocks')) {
+      var items = await StorageService.getPlanBlocks(
+        username,
+        includeDeleted: true,
+      );
+      if (options.removeDeviceId) {
+        for (var b in items) {
+          b.deviceId = null;
         }
-        if (options.removeConflictData) {
-          for (var r in items) {
-            r.hasConflict = false;
-            r.conflictData = null;
-          }
-        }
-        data['pomodoro_records'] = items.map((e) => e.toJson()).toList();
-        totalItems += items.length;
       }
+      data['todo_plan_blocks'] = items.map((e) => e.toJson()).toList();
+      totalItems += items.length;
+    }
 
-      if (selectedTypes.contains('habits')) {
-        final goals = await HabitStorage.getHabitGoals(includeDeleted: true);
-        final rules = await HabitStorage.getRuleRevisions(includeDeleted: true);
-        final checkIns = await HabitStorage.getCheckIns(includeDeleted: true);
-        final sleepPlans = await HabitStorage.getSleepCoachingPlans(
-          includeDeleted: true,
-        );
-
-        if (options.removeDeviceId) {
-          for (final goal in goals) {
-            goal.deviceId = null;
-          }
-          for (final rule in rules) {
-            rule.deviceId = null;
-          }
-          for (final checkIn in checkIns) {
-            checkIn.deviceId = null;
-          }
-          for (final plan in sleepPlans) {
-            plan.deviceId = null;
-          }
+    if (selectedTypes.contains('fixed_schedules')) {
+      final items = await StorageService.getFixedSchedules(
+        username,
+        includeDeleted: true,
+      );
+      if (options.removeTeamBinding) {
+        for (final item in items) {
+          item.teamUuid = null;
         }
-        if (options.removeConflictData) {
-          for (final goal in goals) {
-            goal.hasConflict = false;
-            goal.conflictData = null;
-          }
-          for (final rule in rules) {
-            rule.hasConflict = false;
-            rule.conflictData = null;
-          }
-        }
-
-        data['habits'] = {
-          'goals': goals.map((goal) => goal.toJson()).toList(),
-          'rules': rules.map((rule) => rule.toJson()).toList(),
-          'check_ins': checkIns.map((checkIn) => checkIn.toJson()).toList(),
-          'sleep_coaching_plans': sleepPlans
-              .map((plan) => plan.toJson())
-              .toList(),
-        };
-        totalItems +=
-            goals.length + rules.length + checkIns.length + sleepPlans.length;
       }
+      if (options.removeDeviceId) {
+        for (final item in items) {
+          item.deviceId = null;
+        }
+      }
+      data['fixed_schedules'] = items.map((item) => item.toJson()).toList();
+      totalItems += items.length;
+    }
 
-      if (selectedTypes.contains('thirty_day_challenge')) {
-        final bundle = await ThirtyDayChallengeRepository.exportBackup(
-          username: username,
-        );
-        if (bundle != null) {
-          data['thirty_day_challenge'] = bundle;
-          final state = bundle['state'];
-          final tasks = state is Map ? state['tasks'] : null;
-          if (tasks is List) totalItems += tasks.length;
+    if (selectedTypes.contains('courses')) {
+      var items = await CourseService.getAllCourses(
+        username,
+        applyCalendarAdjustments: false,
+      );
+      if (options.removeTeamBinding) {
+        for (var c in items) {
+          c.teamUuid = null;
+        }
+      }
+      data['courses'] = items.map((e) => e.toJson()).toList();
+      totalItems += items.length;
+    }
+
+    if (selectedTypes.contains('pomodoro_tags')) {
+      final items = await PomodoroService.getTags();
+      if (options.removeConflictData) {
+        for (var t in items) {
+          t.hasConflict = false;
+          t.conflictData = null;
+        }
+      }
+      data['pomodoro_tags'] = items.map((e) => e.toJson()).toList();
+      totalItems += items.length;
+    }
+
+    if (selectedTypes.contains('pomodoro_records')) {
+      final items = await PomodoroService.getRecords();
+      if (options.removeDeviceId) {
+        for (var r in items) {
+          r.deviceId = null;
+        }
+      }
+      if (options.removeConflictData) {
+        for (var r in items) {
+          r.hasConflict = false;
+          r.conflictData = null;
+        }
+      }
+      data['pomodoro_records'] = items.map((e) => e.toJson()).toList();
+      totalItems += items.length;
+    }
+
+    if (selectedTypes.contains('habits')) {
+      final goals = await HabitStorage.getHabitGoals(includeDeleted: true);
+      final rules = await HabitStorage.getRuleRevisions(includeDeleted: true);
+      final checkIns = await HabitStorage.getCheckIns(includeDeleted: true);
+      final sleepPlans = await HabitStorage.getSleepCoachingPlans(
+        includeDeleted: true,
+      );
+
+      if (options.removeDeviceId) {
+        for (final goal in goals) {
+          goal.deviceId = null;
+        }
+        for (final rule in rules) {
+          rule.deviceId = null;
+        }
+        for (final checkIn in checkIns) {
+          checkIn.deviceId = null;
+        }
+        for (final plan in sleepPlans) {
+          plan.deviceId = null;
+        }
+      }
+      if (options.removeConflictData) {
+        for (final goal in goals) {
+          goal.hasConflict = false;
+          goal.conflictData = null;
+        }
+        for (final rule in rules) {
+          rule.hasConflict = false;
+          rule.conflictData = null;
         }
       }
 
-      if (selectedTypes.contains('finance')) {
-        final bundle = await FinanceStorage.getExportBundle();
-        if (options.removeDeviceId) {
-          FinanceStorage.removeDeviceIdsFromExportBundle(bundle);
-        }
-        data['finance'] = bundle;
-        totalItems +=
-            (bundle['transactions'] as List<dynamic>? ?? const []).length;
-        totalItems += (bundle['budgets'] as List<dynamic>? ?? const []).length;
-        totalItems +=
-            (bundle['recurring_rules'] as List<dynamic>? ?? const []).length;
-        totalItems +=
-            (bundle['templates'] as List<dynamic>? ?? const []).length;
-        totalItems += (bundle['loans'] as List<dynamic>? ?? const []).length;
-        totalItems +=
-            (bundle['loan_installments'] as List<dynamic>? ?? const []).length;
-      }
-
-      if (selectedTypes.contains('settings')) {
-        data['settings'] = await _exportSettings(username);
-        totalItems += 1;
-      }
-
-      final exportJson = {
-        'version': _exportVersion,
-        'exportedAt': DateTime.now().millisecondsSinceEpoch,
-        'deviceId': options.removeDeviceId ? null : deviceId,
-        'userId': ApiService.currentUserId,
-        'username': username,
-        'selectedTypes': selectedTypes,
-        'data': data,
+      data['habits'] = {
+        'goals': goals.map((goal) => goal.toJson()).toList(),
+        'rules': rules.map((rule) => rule.toJson()).toList(),
+        'check_ins': checkIns.map((checkIn) => checkIn.toJson()).toList(),
+        'sleep_coaching_plans': sleepPlans
+            .map((plan) => plan.toJson())
+            .toList(),
       };
+      totalItems +=
+          goals.length + rules.length + checkIns.length + sleepPlans.length;
+    }
 
-      final jsonString = const JsonEncoder.withIndent('  ').convert(exportJson);
-      return (jsonString: jsonString, totalItems: totalItems);
+    if (selectedTypes.contains('thirty_day_challenge')) {
+      final bundle = await ThirtyDayChallengeRepository.exportBackup(
+        username: username,
+      );
+      if (bundle != null) {
+        data['thirty_day_challenge'] = bundle;
+        final state = bundle['state'];
+        final tasks = state is Map ? state['tasks'] : null;
+        if (tasks is List) totalItems += tasks.length;
+      }
+    }
+
+    if (selectedTypes.contains('finance')) {
+      final bundle = await FinanceStorage.getExportBundle();
+      if (options.removeDeviceId) {
+        FinanceStorage.removeDeviceIdsFromExportBundle(bundle);
+      }
+      data['finance'] = bundle;
+      totalItems +=
+          (bundle['transactions'] as List<dynamic>? ?? const []).length;
+      totalItems += (bundle['budgets'] as List<dynamic>? ?? const []).length;
+      totalItems +=
+          (bundle['recurring_rules'] as List<dynamic>? ?? const []).length;
+      totalItems += (bundle['templates'] as List<dynamic>? ?? const []).length;
+      totalItems += (bundle['loans'] as List<dynamic>? ?? const []).length;
+      totalItems +=
+          (bundle['loan_installments'] as List<dynamic>? ?? const []).length;
+    }
+
+    if (selectedTypes.contains('settings')) {
+      data['settings'] = await _exportSettings(username);
+      totalItems += 1;
+    }
+
+    final exportJson = {
+      'version': _exportVersion,
+      'exportedAt': DateTime.now().millisecondsSinceEpoch,
+      'deviceId': options.removeDeviceId ? null : deviceId,
+      'userId': ApiService.currentUserId,
+      'username': username,
+      'selectedTypes': selectedTypes,
+      'data': data,
+    };
+
+    final jsonString = await compute(_encodeExportJsonPretty, exportJson);
+    return (jsonString: jsonString, totalItems: totalItems);
   }
 
   static String _buildExportFileName() {

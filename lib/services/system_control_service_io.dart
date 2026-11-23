@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'dart:ffi';
+import 'dart:io';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'package:win32/win32.dart';
+
+import 'windows_island_build_config.dart';
 
 // ══════════════════════════════════════════════════════════════════════════
 // WinRT 类型
@@ -130,27 +133,31 @@ class SystemControlService {
   static int _lastSentVolSteps = -1;
 
   static void _sendKey(int vk) {
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     _keybdEvent(vk, 0, _keyEventfSilent, 0);
     _keybdEvent(vk, 0, _keyEventfSilent | _keyEventfKeyup, 0);
   }
 
   static double _readSystemVolume() {
+    if (kDisableWindowsIsland || !Platform.isWindows) return 0.5;
+    final ptr = calloc<Uint32>();
     try {
-      final ptr = calloc<Uint32>();
       _waveOutGetVolume(0, ptr);
       final val = ptr.value;
-      calloc.free(ptr);
       final left = val & 0xFFFF;
       final right = (val >> 16) & 0xFFFF;
       return ((left + right) / 2) / 0xFFFF;
     } catch (_) {
       return 0.5;
+    } finally {
+      calloc.free(ptr);
     }
   }
 
   static double getVolumeSync() => _cachedVolume;
 
   static void initVolume() {
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     debugPrint('[SCS] initVolume start');
     _cachedVolume = _readSystemVolume();
     _lastSentVolSteps = (_cachedVolume * 50).round();
@@ -160,6 +167,7 @@ class SystemControlService {
   }
 
   static void setVolume(double target) {
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     final t = target.clamp(0.0, 1.0);
     debugPrint('[SCS] setVolume($t)');
     _cachedVolume = t;
@@ -182,6 +190,7 @@ class SystemControlService {
   }
 
   static void commitVolume(double target) {
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     final t = target.clamp(0.0, 1.0);
     debugPrint('[SCS] commitVolume($t)');
     _cachedVolume = t;
@@ -204,6 +213,7 @@ class SystemControlService {
   static bool isMuted() => _cachedVolume <= 0.01;
 
   static void toggleMute() {
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     debugPrint('[SCS] toggleMute, current vol=$_cachedVolume');
     if (_cachedVolume > 0) {
       _savedVolume = _cachedVolume;
@@ -224,7 +234,14 @@ class SystemControlService {
   static bool _briSupported = false;
 
   static void initBrightness() {
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     debugPrint('[SCS] initBrightness start');
+    disposeBrightness();
+    Pointer<Uint32>? cnt;
+    Pointer<PHYSICAL_MONITOR>? arr;
+    Pointer<Uint32>? mn;
+    Pointer<Uint32>? cr;
+    Pointer<Uint32>? mx;
     try {
       final hMon = MonitorFromWindow(
         GetDesktopWindow(),
@@ -232,30 +249,31 @@ class SystemControlService {
       );
       debugPrint('[SCS] hMonitor: $hMon');
 
-      final cnt = calloc<Uint32>();
+      cnt = calloc<Uint32>();
       if (!GetNumberOfPhysicalMonitorsFromHMONITOR(hMon, cnt).value) {
         debugPrint('[SCS] GetNumberOfPhysicalMonitors failed');
-        calloc.free(cnt);
         return;
       }
       final n = cnt.value;
-      calloc.free(cnt);
       debugPrint('[SCS] physical monitor count: $n');
       if (n == 0) return;
 
-      final arr = calloc<PHYSICAL_MONITOR>(n);
+      arr = calloc<PHYSICAL_MONITOR>(n);
       if (!GetPhysicalMonitorsFromHMONITOR(hMon, n, arr).value) {
         debugPrint('[SCS] GetPhysicalMonitors failed');
-        calloc.free(arr);
         return;
       }
-      _physHandle = arr.ref.hPhysicalMonitor;
+      for (var i = 1; i < n; i++) {
+        DestroyPhysicalMonitor(arr[i].hPhysicalMonitor);
+      }
+      final primaryHandle = arr.ref.hPhysicalMonitor;
+      _physHandle = primaryHandle;
       debugPrint('[SCS] physHandle: $_physHandle');
 
-      final mn = calloc<Uint32>();
-      final cr = calloc<Uint32>();
-      final mx = calloc<Uint32>();
-      if (GetMonitorBrightness(_physHandle!, mn, cr, mx).value != 0) {
+      mn = calloc<Uint32>();
+      cr = calloc<Uint32>();
+      mx = calloc<Uint32>();
+      if (GetMonitorBrightness(primaryHandle, mn, cr, mx).value != 0) {
         _minBri = mn.value;
         _maxBri = mx.value;
         _briSupported = true;
@@ -266,19 +284,24 @@ class SystemControlService {
         );
       } else {
         debugPrint('[SCS] Monitor does not support DDC/CI brightness');
+        DestroyPhysicalMonitor(primaryHandle);
+        _physHandle = null;
       }
-      calloc.free(mn);
-      calloc.free(cr);
-      calloc.free(mx);
-      calloc.free(arr);
     } catch (e, st) {
       debugPrint('[SCS] initBrightness error: $e\n$st');
+    } finally {
+      if (cnt != null) calloc.free(cnt);
+      if (mn != null) calloc.free(mn);
+      if (cr != null) calloc.free(cr);
+      if (mx != null) calloc.free(mx);
+      if (arr != null) calloc.free(arr);
     }
   }
 
   static double getBrightness() => _cachedBrightness;
 
   static void setBrightness(double value) {
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     _cachedBrightness = value.clamp(0.0, 1.0);
     debugPrint(
       '[SCS] setBrightness($_cachedBrightness) supported=$_briSupported',
@@ -297,8 +320,15 @@ class SystemControlService {
   }
 
   static void disposeBrightness() {
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
+    final physHandle = _physHandle;
     _physHandle = null;
     _briSupported = false;
+    if (physHandle != null && !physHandle.isNull) {
+      try {
+        DestroyPhysicalMonitor(physHandle);
+      } catch (_) {}
+    }
   }
 
   static void disposeGamma() => disposeBrightness();
@@ -315,6 +345,7 @@ class SystemControlService {
   static bool _mediaPollRequested = false;
   static int _mediaPollGeneration = 0;
   static bool _winrtInit = false;
+  static bool _winrtFuncsLoaded = false;
 
   static late final _RoInitialize _roInit;
   static late final _RoGetActivationFactory _roGetFactory;
@@ -322,57 +353,72 @@ class SystemControlService {
   static late final _WindowsDeleteString _winDeleteStr;
   static late final _WindowsGetStringRawBuffer _winGetStrBuf;
 
+  static const _smtcClassName =
+      'Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager';
   static final _iidSMTCManagerStatics = calloc<GUID>()
     ..ref.setGUID('{3E4A4642-560D-5270-ADF8-2C8C8E1E9E8E}');
   static int _hstrSMTCClass = 0;
 
   static void _initWinRT() {
-    if (_winrtInit) return;
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
+    if (_winrtInit && _hstrSMTCClass != 0) return;
     if (kDebugMode) debugPrint('[SCS] _initWinRT start');
+    Pointer<Utf16>? className;
+    Pointer<IntPtr>? hstrPtr;
     try {
-      final combase = DynamicLibrary.open('combase.dll');
-      _roInit = combase.lookupFunction<_RoInitializeNative, _RoInitialize>(
-        'RoInitialize',
-      );
-      _roGetFactory = combase
-          .lookupFunction<
-            _RoGetActivationFactoryNative,
-            _RoGetActivationFactory
-          >('RoGetActivationFactory');
-      _winCreateStr = combase
-          .lookupFunction<_WindowsCreateStringNative, _WindowsCreateString>(
-            'WindowsCreateString',
-          );
-      _winDeleteStr = combase
-          .lookupFunction<_WindowsDeleteStringNative, _WindowsDeleteString>(
-            'WindowsDeleteString',
-          );
-      _winGetStrBuf = combase
-          .lookupFunction<
-            _WindowsGetStringRawBufferNative,
-            _WindowsGetStringRawBuffer
-          >('WindowsGetStringRawBuffer');
+      if (!_winrtFuncsLoaded) {
+        final combase = DynamicLibrary.open('combase.dll');
+        _roInit = combase.lookupFunction<_RoInitializeNative, _RoInitialize>(
+          'RoInitialize',
+        );
+        _roGetFactory = combase
+            .lookupFunction<
+              _RoGetActivationFactoryNative,
+              _RoGetActivationFactory
+            >('RoGetActivationFactory');
+        _winCreateStr = combase
+            .lookupFunction<_WindowsCreateStringNative, _WindowsCreateString>(
+              'WindowsCreateString',
+            );
+        _winDeleteStr = combase
+            .lookupFunction<_WindowsDeleteStringNative, _WindowsDeleteString>(
+              'WindowsDeleteString',
+            );
+        _winGetStrBuf = combase
+            .lookupFunction<
+              _WindowsGetStringRawBufferNative,
+              _WindowsGetStringRawBuffer
+            >('WindowsGetStringRawBuffer');
+        _winrtFuncsLoaded = true;
+      }
 
       final hr = _roInit(0);
       if (kDebugMode) {
         debugPrint('[SCS] RoInitialize: 0x${hr.toRadixString(16)}');
       }
 
-      final className = 'Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager'
-          .toNativeUtf16();
-      final hstrPtr = calloc<IntPtr>();
-      final hr2 = _winCreateStr(className, 138, hstrPtr);
+      className = _smtcClassName.toNativeUtf16();
+      hstrPtr = calloc<IntPtr>();
+      final hr2 = _winCreateStr(className, _smtcClassName.length, hstrPtr);
       if (kDebugMode) {
         debugPrint('[SCS] WindowsCreateString: 0x${hr2.toRadixString(16)}');
       }
-      _hstrSMTCClass = hstrPtr.value;
-      calloc.free(hstrPtr);
-      calloc.free(className);
-
-      _winrtInit = true;
-      if (kDebugMode) debugPrint('[SCS] _initWinRT done, hstr=$_hstrSMTCClass');
+      if (hr2 == S_OK && hstrPtr.value != 0) {
+        _hstrSMTCClass = hstrPtr.value;
+        _winrtInit = true;
+        if (kDebugMode) {
+          debugPrint('[SCS] _initWinRT done, hstr=$_hstrSMTCClass');
+        }
+      } else {
+        _hstrSMTCClass = 0;
+        _winrtInit = false;
+      }
     } catch (e, st) {
+      _winrtInit = false;
       if (kDebugMode) debugPrint('[SCS] _initWinRT error: $e\n$st');
+    } finally {
+      if (hstrPtr != null) calloc.free(hstrPtr);
+      if (className != null) calloc.free(className);
     }
   }
 
@@ -398,6 +444,7 @@ class SystemControlService {
   }
 
   static void startMediaPolling({int intervalMs = 2000}) {
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     debugPrint('[SCS] startMediaPolling interval=$intervalMs');
     final generation = ++_mediaPollGeneration;
     _mediaTimer?.cancel();
@@ -417,6 +464,7 @@ class SystemControlService {
   }
 
   static Future<void> _pollSMTC(int generation) async {
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     if (generation != _mediaPollGeneration) return;
     if (_mediaPollInFlight) {
       _mediaPollRequested = true;
@@ -424,6 +472,12 @@ class SystemControlService {
     }
     _mediaPollInFlight = true;
     if (kDebugMode) debugPrint('[SCS] === _pollSMTC >>> ===');
+    Pointer<VTablePointer>? factoryPtr;
+    Pointer<VTablePointer>? asyncOpPtr;
+    Pointer<VTablePointer>? sessionPtr;
+    Pointer<VTablePointer>? playbackInfoPtr;
+    Pointer<Int32>? statusPtr;
+    Pointer<VTablePointer>? mediaPropsAsyncPtr;
     try {
       _initWinRT();
 
@@ -435,28 +489,28 @@ class SystemControlService {
 
       // ── Step 1: RoGetActivationFactory ──
       if (kDebugMode) debugPrint('[SCS] [1] RoGetActivationFactory...');
-      final factoryPtr = calloc<VTablePointer>();
+      factoryPtr = calloc<VTablePointer>();
       final hr = _roGetFactory(
         _hstrSMTCClass,
         _iidSMTCManagerStatics,
         factoryPtr,
       );
       if (kDebugMode) debugPrint('[SCS] [1] result: 0x${hr.toRadixString(16)}');
-      if (hr != S_OK) {
-        calloc.free(factoryPtr);
+      if (hr != S_OK || factoryPtr.value.address == 0) {
         if (kDebugMode) debugPrint('[SCS] factory failed, fallback');
         _fallbackMediaInfo();
         return;
       }
       final factory = factoryPtr.value;
       calloc.free(factoryPtr);
+      factoryPtr = null;
       if (kDebugMode) debugPrint('[SCS] [1] factory OK: $factory');
 
       // ── Step 2: RequestAsync ──
       // IGlobalSystemMediaTransportControlsSessionManagerStatics vtable:
       // IUnknown(0-2), IInspectable(3-5), RequestAsync(6)
       if (kDebugMode) debugPrint('[SCS] [2] RequestAsync...');
-      final asyncOpPtr = calloc<VTablePointer>();
+      asyncOpPtr = calloc<VTablePointer>();
       final requestAddr = factory.value[6];
       if (kDebugMode) debugPrint('[SCS] [2] vtable[6] addr: $requestAddr');
 
@@ -479,8 +533,7 @@ class SystemControlService {
       }
       IUnknown(factory).release();
 
-      if (hr2 != S_OK) {
-        calloc.free(asyncOpPtr);
+      if (hr2 != S_OK || asyncOpPtr.value.address == 0) {
         if (kDebugMode) debugPrint('[SCS] RequestAsync failed, fallback');
         _fallbackMediaInfo();
         return;
@@ -488,17 +541,21 @@ class SystemControlService {
 
       // ── Step 3: 等待异步完成 ──
       if (kDebugMode) debugPrint('[SCS] [3] waiting async op...');
+      final asyncOp = asyncOpPtr.value;
+      calloc.free(asyncOpPtr);
+      asyncOpPtr = null;
       final sessionManager = await _waitForAsync(
-        asyncOpPtr.value,
+        asyncOp,
         generation: generation,
       );
-      calloc.free(asyncOpPtr);
       if (generation != _mediaPollGeneration) {
-        if (sessionManager != null) IUnknown(sessionManager).release();
+        if (sessionManager != null && sessionManager.address != 0) {
+          IUnknown(sessionManager).release();
+        }
         return;
       }
       if (kDebugMode) debugPrint('[SCS] [3] sessionManager: $sessionManager');
-      if (sessionManager == null) {
+      if (sessionManager == null || sessionManager.address == 0) {
         if (kDebugMode) debugPrint('[SCS] sessionManager null, fallback');
         _fallbackMediaInfo();
         return;
@@ -508,7 +565,7 @@ class SystemControlService {
       // IGlobalSystemMediaTransportControlsSessionManager vtable:
       // IUnknown(0-2), IInspectable(3-5), GetCurrentSession(6)
       if (kDebugMode) debugPrint('[SCS] [4] GetCurrentSession...');
-      final sessionPtr = calloc<VTablePointer>();
+      sessionPtr = calloc<VTablePointer>();
       final getSessionAddr = sessionManager.value[6];
       if (kDebugMode) debugPrint('[SCS] [4] vtable[6] addr: $getSessionAddr');
       final getSessionFn =
@@ -530,8 +587,7 @@ class SystemControlService {
       }
       IUnknown(sessionManager).release();
 
-      if (hr3 != S_OK) {
-        calloc.free(sessionPtr);
+      if (hr3 != S_OK || sessionPtr.value.address == 0) {
         if (kDebugMode) debugPrint('[SCS] no current session');
         _setMediaInfo(const MediaInfo(status: PlaybackStatus.unknown));
         return;
@@ -539,6 +595,7 @@ class SystemControlService {
 
       final session = sessionPtr.value;
       calloc.free(sessionPtr);
+      sessionPtr = null;
       if (kDebugMode) debugPrint('[SCS] [4] session OK: $session');
 
       // ── Step 5: GetPlaybackInfo ──
@@ -552,7 +609,7 @@ class SystemControlService {
       // ...
       if (kDebugMode) debugPrint('[SCS] [5] GetPlaybackInfo...');
       PlaybackStatus status = PlaybackStatus.unknown;
-      final playbackInfoPtr = calloc<VTablePointer>();
+      playbackInfoPtr = calloc<VTablePointer>();
       final getPlaybackAddr = session.value[8];
       if (kDebugMode) debugPrint('[SCS] [5] vtable[8] addr: $getPlaybackAddr');
       final getPlaybackFn =
@@ -572,7 +629,7 @@ class SystemControlService {
       if (kDebugMode) {
         debugPrint('[SCS] [5] GetPlaybackInfo: 0x${hr4.toRadixString(16)}');
       }
-      if (hr4 == S_OK) {
+      if (hr4 == S_OK && playbackInfoPtr.value.address != 0) {
         final playbackInfo = playbackInfoPtr.value;
         // IGlobalSystemMediaTransportControlsSessionPlaybackInfo vtable:
         // IUnknown(0-2), IInspectable(3-5), get_Controls(6), get_PlaybackStatus(7),
@@ -593,7 +650,7 @@ class SystemControlService {
                   int Function(VTablePointer self, Pointer<Int32> result)
                 >();
 
-        final statusPtr = calloc<Int32>();
+        statusPtr = calloc<Int32>();
         final hrS = getStatusFn(playbackInfo, statusPtr);
         if (kDebugMode) {
           debugPrint(
@@ -616,13 +673,15 @@ class SystemControlService {
           }
         }
         calloc.free(statusPtr);
+        statusPtr = null;
         IUnknown(playbackInfo).release();
       }
       calloc.free(playbackInfoPtr);
+      playbackInfoPtr = null;
 
       // ── Step 6: TryGetMediaPropertiesAsync ──
       if (kDebugMode) debugPrint('[SCS] [6] TryGetMediaPropertiesAsync...');
-      final mediaPropsAsyncPtr = calloc<VTablePointer>();
+      mediaPropsAsyncPtr = calloc<VTablePointer>();
       // vtable index for TryGetMediaPropertiesAsync depends on the interface version
       // Try common indices: 10, 11
       int tryGetMediaIndex = 10;
@@ -658,20 +717,24 @@ class SystemControlService {
       String album = '';
       String albumArtist = '';
 
-      if (hr5 == S_OK) {
+      if (hr5 == S_OK && mediaPropsAsyncPtr.value.address != 0) {
         if (kDebugMode) debugPrint('[SCS] [6] waiting media props async...');
+        final mediaPropsAsync = mediaPropsAsyncPtr.value;
+        calloc.free(mediaPropsAsyncPtr);
+        mediaPropsAsyncPtr = null;
         final mediaProps = await _waitForAsync(
-          mediaPropsAsyncPtr.value,
+          mediaPropsAsync,
           generation: generation,
         );
-        calloc.free(mediaPropsAsyncPtr);
         if (generation != _mediaPollGeneration) {
-          if (mediaProps != null) IUnknown(mediaProps).release();
+          if (mediaProps != null && mediaProps.address != 0) {
+            IUnknown(mediaProps).release();
+          }
           return;
         }
         if (kDebugMode) debugPrint('[SCS] [6] mediaProps: $mediaProps');
 
-        if (mediaProps != null) {
+        if (mediaProps != null && mediaProps.address != 0) {
           // IGlobalSystemMediaTransportControlsSessionMediaProperties vtable:
           // IUnknown(0-2), IInspectable(3-5), get_Title(6), get_AlbumArtist(7),
           // get_Artist(8), get_AlbumTitle(9), ...
@@ -689,6 +752,7 @@ class SystemControlService {
         }
       } else {
         calloc.free(mediaPropsAsyncPtr);
+        mediaPropsAsyncPtr = null;
       }
 
       _setMediaInfo(
@@ -705,6 +769,12 @@ class SystemControlService {
       if (kDebugMode) debugPrint('[SCS] _pollSMTC error: $e\n$st');
       _fallbackMediaInfo();
     } finally {
+      if (factoryPtr != null) calloc.free(factoryPtr);
+      if (asyncOpPtr != null) calloc.free(asyncOpPtr);
+      if (sessionPtr != null) calloc.free(sessionPtr);
+      if (playbackInfoPtr != null) calloc.free(playbackInfoPtr);
+      if (statusPtr != null) calloc.free(statusPtr);
+      if (mediaPropsAsyncPtr != null) calloc.free(mediaPropsAsyncPtr);
       _mediaPollInFlight = false;
       final shouldRunPendingPoll =
           _mediaPollRequested && _mediaTimer?.isActive == true;
@@ -849,6 +919,7 @@ class SystemControlService {
   }
 
   static void _fallbackMediaInfo() {
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     if (kDebugMode) debugPrint('[SCS] _fallbackMediaInfo');
     try {
       final hwnd = GetForegroundWindow();
@@ -900,9 +971,11 @@ class SystemControlService {
   // ───────────── 全局清理 ──────────────────────────────────────────
 
   static void dispose() {
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     debugPrint('[SCS] dispose');
     stopMediaPolling();
     disposeBrightness();
+    _winrtInit = false;
     if (_hstrSMTCClass != 0) {
       try {
         _winDeleteStr(_hstrSMTCClass);

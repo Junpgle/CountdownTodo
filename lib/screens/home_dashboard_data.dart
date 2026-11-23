@@ -926,6 +926,7 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
     await ReminderScheduleService.scheduleAll(
       todos: _todos,
       courses: const <CourseItem>[],
+      countdowns: _countdowns,
       loadCourses: (from, to) => CourseService.getCoursesForDateRange(
         widget.username,
         from: from,

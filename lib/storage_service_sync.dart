@@ -570,14 +570,6 @@ mixin _StorageSync on _StorageServiceBase {
         !await AppSettingsStorage.isFinanceCloudSyncEnabled(username)) {
       syncFinance = false;
     }
-    final syncsCoreData =
-        syncTodos ||
-        syncCountdowns ||
-        syncTimeLogs ||
-        syncPomodoro ||
-        syncPlanBlocks ||
-        syncFixedSchedules ||
-        syncHabits;
     final bool shouldUploadAllLocal = uploadAllLocal || forceFullSync;
     // 1. 状态锁：防止重复进入
     if (!syncTodos &&
@@ -683,6 +675,7 @@ mixin _StorageSync on _StorageServiceBase {
       List<Map<String, dynamic>> dirtyHabitRules = [];
       List<Map<String, dynamic>> dirtyHabitCheckIns = [];
       List<Map<String, dynamic>> dirtyHabitSleepCoachingPlans = [];
+      List<Map<String, dynamic>> dirtyHabitDrinkOptions = [];
       // Read independent local stores concurrently and skip disabled domains.
       // SQLite may serialize the native queries, but model decoding/isolate
       // work and SharedPreferences-backed stores no longer form one long chain.
@@ -717,6 +710,9 @@ mixin _StorageSync on _StorageServiceBase {
         syncHabits
             ? HabitStorage.getSleepCoachingPlans(includeDeleted: true)
             : Future<List<HabitSleepCoachingPlan>>.value(const []),
+        syncHabits
+            ? HabitStorage.getDrinkOptions(includeDeleted: true)
+            : Future<List<HabitDrinkOption>>.value(const []),
       ]);
       final List<TodoItem> allLocalTodos = localSnapshots[0];
       final List<TodoGroup> allLocalGroups = localSnapshots[1];
@@ -729,6 +725,8 @@ mixin _StorageSync on _StorageServiceBase {
       final List<HabitCheckIn> allLocalHabitCheckIns = localSnapshots[8];
       final List<HabitSleepCoachingPlan> allLocalHabitSleepCoachingPlans =
           localSnapshots[9];
+      final List<HabitDrinkOption> allLocalHabitDrinkOptions =
+          localSnapshots[10];
       final conflictedHabitGoalIds = syncHabits ? <String>{} : const <String>{};
       // 有些历史冲突只保存在本地 conflict_data，服务端后续同步不一定
       // 再把它放进 conflicts 或 server_habit_goals，因此这里也要登记快照。
@@ -819,9 +817,12 @@ mixin _StorageSync on _StorageServiceBase {
         for (final item in allLocalCountdowns) item.id: item,
       };
       if (!forceFullSync &&
-          ((syncCountdowns && allLocalCountdowns.isEmpty) ||
-              (syncTimeLogs && allLocalTimeLogs.isEmpty))) {
-        debugPrint('🔄 本地倒数日/时间日志为空，自动降级为全量拉取以修复空库');
+          allLocalTodos.isEmpty &&
+          allLocalGroups.isEmpty &&
+          allLocalCountdowns.isEmpty &&
+          allLocalTimeLogs.isEmpty &&
+          (syncTodos || syncCountdowns || syncTimeLogs)) {
+        debugPrint('🔄 本地核心同步表为空，自动降级为全量拉取以修复空库');
         lastSyncTime = 0;
       }
 
@@ -858,6 +859,7 @@ mixin _StorageSync on _StorageServiceBase {
       final Map<String, Map<String, dynamic>> dedupHabitRules = {};
       final Map<String, Map<String, dynamic>> dedupHabitCheckIns = {};
       final Map<String, Map<String, dynamic>> dedupHabitSleepCoachingPlans = {};
+      final Map<String, Map<String, dynamic>> dedupHabitDrinkOptions = {};
       final List<int> consumedConflictOpIds = [];
 
       for (var op in pendingOps) {
@@ -953,20 +955,20 @@ mixin _StorageSync on _StorageServiceBase {
             continue;
           }
           dedupHabitSleepCoachingPlans[uuid] = data;
+        } else if (table == 'habit_drink_options' && syncHabits) {
+          if (op['sync_error'] == 'server_conflict') {
+            if (opId != null) consumedConflictOpIds.add(opId);
+            continue;
+          }
+          dedupHabitDrinkOptions[uuid] = data;
         }
       }
 
       if (consumedConflictOpIds.isNotEmpty) {
-        final placeholders = List.filled(
-          consumedConflictOpIds.length,
-          '?',
-        ).join(',');
-        await db.update(
-          'op_logs',
-          {'is_synced': 1, 'sync_error': ''},
-          where: 'id IN ($placeholders)',
-          whereArgs: consumedConflictOpIds,
-        );
+        await _updateOplogRowsByIds(db, consumedConflictOpIds.toSet(), {
+          'is_synced': 1,
+          'sync_error': '',
+        });
         /*debugPrint(
             '🧪 [SyncDiag][PendingOps] consumed conflict ops=${consumedConflictOpIds.length}');*/
       }
@@ -981,6 +983,7 @@ mixin _StorageSync on _StorageServiceBase {
       dirtyHabitCheckIns = dedupHabitCheckIns.values.toList();
       dirtyHabitSleepCoachingPlans = dedupHabitSleepCoachingPlans.values
           .toList();
+      dirtyHabitDrinkOptions = dedupHabitDrinkOptions.values.toList();
 
       // 兜底：除 op_logs 外，再按 updatedAt 增量补采，避免日志遗漏导致改删/新增不同步
       if (syncTodos) {
@@ -1073,11 +1076,17 @@ mixin _StorageSync on _StorageServiceBase {
             dedupHabitSleepCoachingPlans[item.uuid] = item.toJson();
           }
         }
+        for (final item in allLocalHabitDrinkOptions) {
+          if (!habitSyncInitialized || item.updatedAt > habitLastSyncTime) {
+            dedupHabitDrinkOptions[item.uuid] = item.toJson();
+          }
+        }
         dirtyHabitGoals = dedupHabitGoals.values.toList();
         dirtyHabitRules = dedupHabitRules.values.toList();
         dirtyHabitCheckIns = dedupHabitCheckIns.values.toList();
         dirtyHabitSleepCoachingPlans = dedupHabitSleepCoachingPlans.values
             .toList();
+        dirtyHabitDrinkOptions = dedupHabitDrinkOptions.values.toList();
       }
 
       if (shouldUploadAllLocal) {
@@ -1135,6 +1144,9 @@ mixin _StorageSync on _StorageServiceBase {
           for (final item in allLocalHabitSleepCoachingPlans) {
             dedupHabitSleepCoachingPlans.putIfAbsent(item.uuid, item.toJson);
           }
+          for (final item in allLocalHabitDrinkOptions) {
+            dedupHabitDrinkOptions.putIfAbsent(item.uuid, item.toJson);
+          }
         }
         dirtyTodos = dedupTodos.values.toList();
         dirtyGroups = dedupGroups.values.toList();
@@ -1146,6 +1158,7 @@ mixin _StorageSync on _StorageServiceBase {
         dirtyHabitCheckIns = dedupHabitCheckIns.values.toList();
         dirtyHabitSleepCoachingPlans = dedupHabitSleepCoachingPlans.values
             .toList();
+        dirtyHabitDrinkOptions = dedupHabitDrinkOptions.values.toList();
       }
 
       // Re-send skip state until an explicitly capable server confirms it.
@@ -1249,6 +1262,7 @@ mixin _StorageSync on _StorageServiceBase {
           habitRuleChanges: dirtyHabitRules,
           habitCheckInChanges: dirtyHabitCheckIns,
           habitSleepCoachingPlanChanges: dirtyHabitSleepCoachingPlans,
+          habitDrinkOptionChanges: dirtyHabitDrinkOptions,
           habitFullSync: syncHabits && (!habitSyncInitialized || forceFullSync),
           habitLastSyncTime: syncHabits ? habitLastSyncTime : null,
           syncHabits: syncHabits,
@@ -1299,6 +1313,7 @@ mixin _StorageSync on _StorageServiceBase {
           dirtyHabitRules.isNotEmpty ||
           dirtyHabitCheckIns.isNotEmpty ||
           dirtyHabitSleepCoachingPlans.isNotEmpty ||
+          dirtyHabitDrinkOptions.isNotEmpty ||
           screenPayload != null;
       bool hasPendingFinanceUpload() =>
           syncFinance && (financeRequest?.hasPendingChanges ?? false);
@@ -1332,6 +1347,8 @@ mixin _StorageSync on _StorageServiceBase {
             (syncResponse['server_habit_checkins'] as List?)?.isEmpty == true &&
             (syncResponse['server_habit_sleep_coaching_plans'] as List?)
                     ?.isEmpty ==
+                true &&
+            (syncResponse['server_habit_drink_options'] as List?)?.isEmpty ==
                 true &&
             (!financeProtocolAvailable ||
                 ((syncResponse['server_finance_categories'] as List?)
@@ -1433,6 +1450,10 @@ mixin _StorageSync on _StorageServiceBase {
           SyncCapabilityService.supportsSleepCoaching(
             response['sync_capabilities'],
           );
+      final habitDrinkOptionsSupported =
+          SyncCapabilityService.supportsHabitDrinkOptions(
+            response['sync_capabilities'],
+          );
       final habitSyncCursorSupported =
           SyncCapabilityService.supportsHabitSyncCursor(
             response['sync_capabilities'],
@@ -1517,6 +1538,16 @@ mixin _StorageSync on _StorageServiceBase {
       }
 
       var inFlightTodoMutationUuids = <String>{};
+      var inFlightGroupMutationUuids = <String>{};
+      var inFlightCountdownMutationUuids = <String>{};
+      var inFlightTimeLogMutationUuids = <String>{};
+      var inFlightPlanBlockMutationUuids = <String>{};
+      var inFlightFixedScheduleMutationUuids = <String>{};
+      var inFlightHabitGoalMutationUuids = <String>{};
+      var inFlightHabitRuleMutationUuids = <String>{};
+      var inFlightHabitCheckInMutationUuids = <String>{};
+      var inFlightHabitSleepCoachingMutationUuids = <String>{};
+      var inFlightHabitDrinkOptionMutationUuids = <String>{};
       if (response['success'] == true) {
         // 仅标记“未冲突”的本地操作为已同步。阻塞冲突对应的 oplog 必须保留，
         // 否则本地完成/取消完成会被服务端旧状态覆盖后失去再次上传机会。
@@ -1541,9 +1572,15 @@ mixin _StorageSync on _StorageServiceBase {
         final oplogResolution = SyncOplogPolicy.resolveRequestSnapshot(
           requestSnapshot: requestOplogSnapshot,
           blockingConflictUuids: blockingConflictUuids,
+          acknowledgeTodoOps: syncTodos,
+          acknowledgeCountdownOps: syncCountdowns,
+          acknowledgeTimeLogOps: syncTimeLogs,
+          acknowledgePlanBlockOps: syncPlanBlocks,
           acknowledgeFixedScheduleOps: acknowledgeFixedScheduleOps,
           acknowledgeHabitOps: acknowledgeHabitOps,
           acknowledgeSleepCoachingOps: syncHabits && sleepCoachingSupported,
+          acknowledgeHabitDrinkOptionOps:
+              syncHabits && habitDrinkOptionsSupported,
         );
         await _updateOplogRowsByIds(db, oplogResolution.acknowledgedIds, {
           'is_synced': 1,
@@ -1572,6 +1609,66 @@ mixin _StorageSync on _StorageServiceBase {
             SyncOplogPolicy.todoUuidsCreatedAfterSnapshot(
               requestSnapshot: requestOplogSnapshot,
               currentPending: currentPendingEntries,
+            );
+        inFlightGroupMutationUuids =
+            SyncOplogPolicy.uuidsCreatedAfterSnapshotForTables(
+              requestSnapshot: requestOplogSnapshot,
+              currentPending: currentPendingEntries,
+              tables: const {'todo_groups'},
+            );
+        inFlightCountdownMutationUuids =
+            SyncOplogPolicy.uuidsCreatedAfterSnapshotForTables(
+              requestSnapshot: requestOplogSnapshot,
+              currentPending: currentPendingEntries,
+              tables: const {'countdowns'},
+            );
+        inFlightTimeLogMutationUuids =
+            SyncOplogPolicy.uuidsCreatedAfterSnapshotForTables(
+              requestSnapshot: requestOplogSnapshot,
+              currentPending: currentPendingEntries,
+              tables: const {'time_logs'},
+            );
+        inFlightPlanBlockMutationUuids =
+            SyncOplogPolicy.uuidsCreatedAfterSnapshotForTables(
+              requestSnapshot: requestOplogSnapshot,
+              currentPending: currentPendingEntries,
+              tables: const {'todo_plan_blocks'},
+            );
+        inFlightFixedScheduleMutationUuids =
+            SyncOplogPolicy.uuidsCreatedAfterSnapshotForTables(
+              requestSnapshot: requestOplogSnapshot,
+              currentPending: currentPendingEntries,
+              tables: const {'fixed_schedules'},
+            );
+        inFlightHabitGoalMutationUuids =
+            SyncOplogPolicy.uuidsCreatedAfterSnapshotForTables(
+              requestSnapshot: requestOplogSnapshot,
+              currentPending: currentPendingEntries,
+              tables: const {HabitStorage.tableGoals},
+            );
+        inFlightHabitRuleMutationUuids =
+            SyncOplogPolicy.uuidsCreatedAfterSnapshotForTables(
+              requestSnapshot: requestOplogSnapshot,
+              currentPending: currentPendingEntries,
+              tables: const {HabitStorage.tableRules},
+            );
+        inFlightHabitCheckInMutationUuids =
+            SyncOplogPolicy.uuidsCreatedAfterSnapshotForTables(
+              requestSnapshot: requestOplogSnapshot,
+              currentPending: currentPendingEntries,
+              tables: const {HabitStorage.tableCheckIns},
+            );
+        inFlightHabitSleepCoachingMutationUuids =
+            SyncOplogPolicy.uuidsCreatedAfterSnapshotForTables(
+              requestSnapshot: requestOplogSnapshot,
+              currentPending: currentPendingEntries,
+              tables: const {HabitStorage.tableSleepCoachingPlans},
+            );
+        inFlightHabitDrinkOptionMutationUuids =
+            SyncOplogPolicy.uuidsCreatedAfterSnapshotForTables(
+              requestSnapshot: requestOplogSnapshot,
+              currentPending: currentPendingEntries,
+              tables: const {HabitStorage.tableDrinkOptions},
             );
         if (inFlightTodoMutationUuids.isNotEmpty) {
           // allLocalTodos 是请求发出前的快照。用当前 SQLite 值回基
@@ -2556,6 +2653,38 @@ mixin _StorageSync on _StorageServiceBase {
             hasChanges = true;
           }
         }
+
+        final serverHabitDrinkOptions =
+            (response['server_habit_drink_options'] as List?) ?? const [];
+        final drinkOptionIndexMap = <String, int>{
+          for (var i = 0; i < allLocalHabitDrinkOptions.length; i++)
+            allLocalHabitDrinkOptions[i].uuid: i,
+        };
+        for (final raw in serverHabitDrinkOptions) {
+          if (raw is! Map) continue;
+          final serverItem = HabitDrinkOption.fromJson(
+            Map<String, dynamic>.from(raw),
+          );
+          if (ignoredUuids.contains(serverItem.uuid)) continue;
+          final localIndex = drinkOptionIndexMap[serverItem.uuid];
+          if (localIndex == null) {
+            drinkOptionIndexMap[serverItem.uuid] =
+                allLocalHabitDrinkOptions.length;
+            allLocalHabitDrinkOptions.add(serverItem);
+            hasChanges = true;
+            continue;
+          }
+          final localItem = allLocalHabitDrinkOptions[localIndex];
+          if (TodoLwwService.isIncomingWinner(
+            incomingUpdatedAt: serverItem.updatedAt,
+            incomingVersion: serverItem.version,
+            currentUpdatedAt: localItem.updatedAt,
+            currentVersion: localItem.version,
+          )) {
+            allLocalHabitDrinkOptions[localIndex] = serverItem;
+            hasChanges = true;
+          }
+        }
       }
 
       // 即使服务端暂未声明 habits 能力，也要处理本地遗留的假冲突：这些快照
@@ -2756,6 +2885,18 @@ mixin _StorageSync on _StorageServiceBase {
             isSyncSource: true,
             authoritativeTodoIds: rejectedMaintenanceIds,
           );
+          if (inFlightGroupMutationUuids.isNotEmpty) {
+            final latestGroups = await getTodoGroups(
+              username,
+              includeDeleted: true,
+            );
+            _overlayInFlightLocalMutations(
+              allLocalGroups,
+              latestGroups,
+              inFlightGroupMutationUuids,
+              (item) => item.id,
+            );
+          }
           await saveTodoGroups(
             username,
             allLocalGroups,
@@ -2764,6 +2905,18 @@ mixin _StorageSync on _StorageServiceBase {
           );
         }
         if (syncCountdowns) {
+          if (inFlightCountdownMutationUuids.isNotEmpty) {
+            final latestCountdowns = await getCountdowns(
+              username,
+              includeDeleted: true,
+            );
+            _overlayInFlightLocalMutations(
+              allLocalCountdowns,
+              latestCountdowns,
+              inFlightCountdownMutationUuids,
+              (item) => item.id,
+            );
+          }
           await saveCountdowns(
             username,
             allLocalCountdowns,
@@ -2772,9 +2925,30 @@ mixin _StorageSync on _StorageServiceBase {
           );
         }
         if (syncTimeLogs) {
+          if (inFlightTimeLogMutationUuids.isNotEmpty) {
+            final latestTimeLogs = await getTimeLogs(username);
+            _overlayInFlightLocalMutations(
+              allLocalTimeLogs,
+              latestTimeLogs,
+              inFlightTimeLogMutationUuids,
+              (item) => item.id,
+            );
+          }
           await saveTimeLogs(username, allLocalTimeLogs, sync: false);
         }
         if (syncPlanBlocks) {
+          if (inFlightPlanBlockMutationUuids.isNotEmpty) {
+            final latestPlanBlocks = await getPlanBlocks(
+              username,
+              includeDeleted: true,
+            );
+            _overlayInFlightLocalMutations(
+              allLocalPlanBlocks,
+              latestPlanBlocks,
+              inFlightPlanBlockMutationUuids,
+              (item) => item.id,
+            );
+          }
           await savePlanBlocks(
             username,
             allLocalPlanBlocks,
@@ -2783,6 +2957,18 @@ mixin _StorageSync on _StorageServiceBase {
           );
         }
         if (syncFixedSchedules && fixedSchedulesSupported) {
+          if (inFlightFixedScheduleMutationUuids.isNotEmpty) {
+            final latestFixedSchedules = await getFixedSchedules(
+              username,
+              includeDeleted: true,
+            );
+            _overlayInFlightLocalMutations(
+              allLocalFixedSchedules,
+              latestFixedSchedules,
+              inFlightFixedScheduleMutationUuids,
+              (item) => item.id,
+            );
+          }
           await saveFixedSchedules(
             username,
             allLocalFixedSchedules,
@@ -2791,6 +2977,59 @@ mixin _StorageSync on _StorageServiceBase {
           );
         }
         if (syncHabits && habitsSupported) {
+          if (inFlightHabitGoalMutationUuids.isNotEmpty) {
+            final latestGoals = await HabitStorage.getHabitGoals(
+              includeDeleted: true,
+            );
+            _overlayInFlightLocalMutations(
+              allLocalHabitGoals,
+              latestGoals,
+              inFlightHabitGoalMutationUuids,
+              (item) => item.uuid,
+            );
+          }
+          if (inFlightHabitRuleMutationUuids.isNotEmpty) {
+            final latestRules = await HabitStorage.getRuleRevisions();
+            _overlayInFlightLocalMutations(
+              allLocalHabitRules,
+              latestRules,
+              inFlightHabitRuleMutationUuids,
+              (item) => item.uuid,
+            );
+          }
+          if (inFlightHabitCheckInMutationUuids.isNotEmpty) {
+            final latestCheckIns = await HabitStorage.getCheckIns(
+              includeDeleted: true,
+            );
+            _overlayInFlightLocalMutations(
+              allLocalHabitCheckIns,
+              latestCheckIns,
+              inFlightHabitCheckInMutationUuids,
+              (item) => item.uuid,
+            );
+          }
+          if (inFlightHabitSleepCoachingMutationUuids.isNotEmpty) {
+            final latestCoaching = await HabitStorage.getSleepCoachingPlans(
+              includeDeleted: true,
+            );
+            _overlayInFlightLocalMutations(
+              allLocalHabitSleepCoachingPlans,
+              latestCoaching,
+              inFlightHabitSleepCoachingMutationUuids,
+              (item) => item.uuid,
+            );
+          }
+          if (inFlightHabitDrinkOptionMutationUuids.isNotEmpty) {
+            final latestDrinks = await HabitStorage.getDrinkOptions(
+              includeDeleted: true,
+            );
+            _overlayInFlightLocalMutations(
+              allLocalHabitDrinkOptions,
+              latestDrinks,
+              inFlightHabitDrinkOptionMutationUuids,
+              (item) => item.uuid,
+            );
+          }
           await HabitStorage.saveHabitGoals(
             allLocalHabitGoals,
             isSyncSource: true,
@@ -2805,6 +3044,10 @@ mixin _StorageSync on _StorageServiceBase {
           );
           await HabitStorage.saveSleepCoachingPlans(
             allLocalHabitSleepCoachingPlans,
+            isSyncSource: true,
+          );
+          await HabitStorage.saveDrinkOptions(
+            allLocalHabitDrinkOptions,
             isSyncSource: true,
           );
         }
@@ -2925,7 +3168,13 @@ mixin _StorageSync on _StorageServiceBase {
       // 8. 更新同步水位线
       int newSyncTime =
           response['new_sync_time'] ?? DateTime.now().millisecondsSinceEpoch;
-      if (syncsCoreData) {
+      final updatesSharedCoreCursor =
+          syncTodos &&
+          syncCountdowns &&
+          syncTimeLogs &&
+          syncPlanBlocks &&
+          syncFixedSchedules;
+      if (updatesSharedCoreCursor) {
         await prefs.setInt(
           'last_sync_time_${serverKey}_$username',
           newSyncTime,
@@ -3293,5 +3542,33 @@ final class _SyncListIndex<T> {
       indexes.putIfAbsent(_idOf(_items[index]), () => index);
     }
     return indexes;
+  }
+}
+
+void _overlayInFlightLocalMutations<T>(
+  List<T> target,
+  List<T> latest,
+  Set<String> inFlightUuids,
+  String Function(T) idOf,
+) {
+  if (inFlightUuids.isEmpty || latest.isEmpty) return;
+  final latestById = <String, T>{
+    for (final item in latest)
+      if (inFlightUuids.contains(idOf(item))) idOf(item): item,
+  };
+  if (latestById.isEmpty) return;
+  final seen = <String>{};
+  for (var i = 0; i < target.length; i++) {
+    final id = idOf(target[i]);
+    final replacement = latestById[id];
+    if (replacement != null) {
+      target[i] = replacement;
+      seen.add(id);
+    }
+  }
+  for (final entry in latestById.entries) {
+    if (!seen.contains(entry.key)) {
+      target.add(entry.value);
+    }
   }
 }

@@ -962,6 +962,9 @@ abstract final class HabitRepository {
   /// 为习惯名称生成模板默认图标。
   static String defaultIconForName(String name) {
     const iconMap = {
+      '奶茶': '🧋',
+      '饮料': '🥤',
+      '咖啡': '☕',
       '喝水': '💧',
       '早起': '🌅',
       '早睡': '🌙',

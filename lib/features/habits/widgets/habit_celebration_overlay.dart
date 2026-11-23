@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../widgets/celebration/liquid_glass_celebration_dialog.dart';
 import '../models/habit_goal.dart';
 import '../services/habit_celebration_service.dart';
+import 'habit_emoji_text.dart';
 
 const _inspirationalQuotes = <String>[
   '滴水穿石，每一天微小的坚持都在发生质变 ✨',
@@ -98,7 +99,7 @@ class _HabitGoalMetOverlayState extends State<HabitGoalMetOverlay> {
                 color: const Color(0xFFFF9100).withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Text(
+              child: HabitEmojiText(
                 '🔥 已连续坚持 ${widget.streakDays} 天',
                 style: const TextStyle(
                   fontSize: 12.5,

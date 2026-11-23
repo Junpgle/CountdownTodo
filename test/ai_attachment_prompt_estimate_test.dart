@@ -155,7 +155,11 @@ void main() {
       expect(find.text('注入更多: 开'), findsOneWidget);
 
       expect(currentEstimate(), greaterThanOrEqualTo(before));
-      expect(currentContextPreview(), contextBefore);
+      final expectedRange = contextBefore.split('、').first;
+      expect(
+        currentContextPreview(),
+        '$expectedRange、明细$previousMonthDays/$previousMonthDays条',
+      );
     },
   );
 

@@ -730,10 +730,19 @@
     state.joinError = '';
     render();
 
+    var joinBody = { email: email, message: message };
+    if (state.token) {
+      joinBody.token = state.token;
+    }
+    var joinHeaders = { 'Content-Type': 'application/json' };
+    if (state.token) {
+      joinHeaders['X-Share-Token'] = state.token;
+    }
+
     fetch(API_BASE + '/api/shares/' + encodeURIComponent(state.code) + '/request_join', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email, message: message })
+      headers: joinHeaders,
+      body: JSON.stringify(joinBody)
     })
       .then(function (res) { return res.json(); })
       .then(function (json) {

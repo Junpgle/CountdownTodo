@@ -30,8 +30,7 @@ abstract class ShareTargetActivity : Activity() {
     private fun forwardToMainActivity(source: Intent) {
         val forwarded = Intent(this, MainActivity::class.java).apply {
             action = source.action
-            data = source.data
-            type = targetMimeType
+            setDataAndType(source.data, targetMimeType)
             clipData = source.clipData
             putExtras(source)
             if (source.action == Intent.ACTION_SEND_MULTIPLE) {

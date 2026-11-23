@@ -97,16 +97,18 @@ class JournalStorage {
     final where = <String>['is_deleted = ${isDeleted ? 1 : 0}'];
     final whereArgs = <Object?>[];
     if (hasQuery) {
-      where.add('(title LIKE ? OR content LIKE ?)');
-      whereArgs.addAll(['%$query%', '%$query%']);
+      final escapedQuery = _escapeLikePattern(query);
+      where.add(r"(title LIKE ? ESCAPE '\' OR content LIKE ? ESCAPE '\')");
+      whereArgs.addAll(['%$escapedQuery%', '%$escapedQuery%']);
     }
     for (final rawTerm in searchTerms) {
       final term = rawTerm.trim();
       // Keep the first keyword's legacy LIKE filter. Push only case-invariant
       // additional terms down; Dart handles the rest without Unicode misses.
       if (term.isEmpty || !_isSqlLikeCaseInvariant(term)) continue;
-      where.add('(title LIKE ? OR content LIKE ?)');
-      whereArgs.addAll(['%$term%', '%$term%']);
+      final escapedTerm = _escapeLikePattern(term);
+      where.add(r"(title LIKE ? ESCAPE '\' OR content LIKE ? ESCAPE '\')");
+      whereArgs.addAll(['%$escapedTerm%', '%$escapedTerm%']);
     }
     if (occurredOn != null) {
       final start = DateTime(occurredOn.year, occurredOn.month, occurredOn.day);
@@ -337,6 +339,11 @@ class JournalStorage {
   Future<Database> _databaseFor(String? accountId) => accountId == null
       ? DatabaseHelper.instance.database
       : databaseLoader(accountId);
+
+  static String _escapeLikePattern(String input) => input
+      .replaceAll(r'\', r'\\')
+      .replaceAll('%', r'\%')
+      .replaceAll('_', r'\_');
 }
 
 final class JournalEntryUnavailableException implements Exception {

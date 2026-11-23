@@ -41,7 +41,15 @@ function createHarness(options) {
     require: function(name) {
       if (name === '@system.storage') return storage
       if (name === '@system.interconnect') return { instance: function() { return connection } }
-      if (name === '@system.app') return { getInfo: function() {} }
+      if (name === '@system.app') {
+        return {
+          getInfo: function(request) {
+            if (options.appInfo) {
+              options.appInfo(request)
+            }
+          }
+        }
+      }
       if (name === '@system.router') return {}
       if (name === './band_utils.js') {
         return {
@@ -211,4 +219,33 @@ test('receiving the first batch extends the initial request timeout', function()
   assert.strictEqual(result, null)
   harness.sync.handleReceivedData(batch([{ id: 'new-2' }], 2, 2, 'transfer-e'))
   assert.strictEqual(result.success, true)
+})
+
+test('version readiness is cached across subsequent init calls and defaults to 1.0.6', function() {
+  var defaultHarness = createHarness()
+  assert.strictEqual(defaultHarness.sync.getVersion(), '1.0.6')
+
+  var harness = createHarness({
+    appInfo: function(request) {
+      if (request && request.success) {
+        request.success({ versionName: '1.0.6', versionCode: 7 })
+      }
+    }
+  })
+
+  var firstReadyVersion = null
+  harness.sync.init({
+    onVersionReady: function(version) {
+      firstReadyVersion = version
+    }
+  })
+  assert.strictEqual(firstReadyVersion, '1.0.6')
+
+  var replayVersion = null
+  harness.sync.init({
+    onVersionReady: function(version) {
+      replayVersion = version
+    }
+  })
+  assert.strictEqual(replayVersion, '1.0.6')
 })

@@ -185,8 +185,10 @@ class XmuScheduleParser {
       11: 2145,
     };
 
-    int st = startTimes[startJc] ?? 800;
-    int et = endTimes[endJc] ?? 940;
+    final clampedStart = startJc.clamp(1, 11);
+    final clampedEnd = endJc < clampedStart ? clampedStart : endJc.clamp(1, 11);
+    int st = startTimes[clampedStart] ?? 800;
+    int et = endTimes[clampedEnd] ?? 940;
     return [st, et];
   }
 }

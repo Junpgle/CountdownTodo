@@ -10,6 +10,7 @@ class _RecordPlatformFake extends Fake implements RecordPlatform {
   var cancelCalls = 0;
   var startStreamCalls = 0;
   var shouldFailStop = true;
+  var _recording = false;
 
   @override
   Future<void> create(String recorderId) async {}
@@ -29,11 +30,19 @@ class _RecordPlatformFake extends Fake implements RecordPlatform {
       const Stream<RecordState>.empty();
 
   @override
+  Stream<RecordStop> onStopped(String recorderId) =>
+      const Stream<RecordStop>.empty();
+
+  @override
+  Future<bool> isRecording(String recorderId) async => _recording;
+
+  @override
   Future<Stream<Uint8List>> startStream(
     String recorderId,
     RecordConfig config,
   ) async {
     startStreamCalls++;
+    _recording = true;
     final controller = StreamController<Uint8List>();
     streams.add(controller);
     return controller.stream;
@@ -45,12 +54,14 @@ class _RecordPlatformFake extends Fake implements RecordPlatform {
       shouldFailStop = false;
       throw StateError('platform stop failed');
     }
+    _recording = false;
     return null;
   }
 
   @override
   Future<void> cancel(String recorderId) async {
     cancelCalls++;
+    _recording = false;
     final stream = streams.isEmpty ? null : streams.last;
     if (stream != null && !stream.isClosed) await stream.close();
   }

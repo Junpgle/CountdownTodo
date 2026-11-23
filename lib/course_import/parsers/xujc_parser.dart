@@ -42,8 +42,12 @@ class XujcScheduleParser {
 
     List<Element> rows = table.querySelectorAll('tbody tr');
 
-    // 建立一个 13(节次) x 7(星期) 的占用矩阵，用于处理 rowspan
-    List<List<int>> rowspanMatrix = List.generate(14, (_) => List.filled(8, 0));
+    // 建立按实际行数扩展（至少 13 节）x 7 星期的占用矩阵，用于处理 rowspan
+    final int matrixRows = rows.length + 1 > 14 ? rows.length + 1 : 14;
+    List<List<int>> rowspanMatrix = List.generate(
+      matrixRows,
+      (_) => List.filled(8, 0),
+    );
 
     for (int rowIndex = 0; rowIndex < rows.length; rowIndex++) {
       Element row = rows[rowIndex];
@@ -51,6 +55,7 @@ class XujcScheduleParser {
       if (cells.isEmpty) continue;
 
       int currentPeriod = rowIndex + 1; // 对应第几节/行
+      if (currentPeriod >= rowspanMatrix.length) break;
       int cellOffset = 1; // 跳过第一列（节次列）
 
       for (int weekday = 1; weekday <= 7; weekday++) {
@@ -68,7 +73,7 @@ class XujcScheduleParser {
         int rowSpan = int.tryParse(cell.attributes['rowspan'] ?? '1') ?? 1;
         // 标记占用
         for (int i = 0; i < rowSpan; i++) {
-          if (currentPeriod + i < 14) {
+          if (currentPeriod + i < rowspanMatrix.length) {
             rowspanMatrix[currentPeriod + i][weekday] = 1;
           }
         }

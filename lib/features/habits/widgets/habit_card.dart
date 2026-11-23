@@ -11,12 +11,14 @@ import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
 import '../repositories/habit_repository.dart';
 import '../services/habit_adaptation_service.dart';
+import '../services/habit_drink_log_service.dart';
 import '../services/habit_stamp_animation_queue.dart';
 import '../services/habit_sleep_coaching_service.dart';
 import '../../../utils/theme_color_tokens.dart';
 import '../../../utils/app_platform.dart';
 import '../../../services/liquid_glass_effect_service.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
+import 'habit_drink_picker_sheet.dart';
 import 'habit_format.dart';
 import 'habit_quick_checkin_sheet.dart';
 import '../services/habit_streak_service.dart';
@@ -800,6 +802,10 @@ class _HabitCardState extends State<HabitCard> {
                   ),
                 ),
         ),
+        if (HabitDrinkLogService.isDrinkChoiceHabit(widget.goal)) ...[
+          const SizedBox(width: 8),
+          _buildDrinkPickerButton(),
+        ],
         if (!done && _canQuickFocus) ...[
           const SizedBox(width: 8),
           _buildQuickFocusButton(),
@@ -1048,6 +1054,8 @@ class _HabitCardState extends State<HabitCard> {
                 label: adaptation?.quickLabel(v, unit: unit),
               ),
             ),
+        if (HabitDrinkLogService.isDrinkChoiceHabit(widget.goal))
+          _buildDrinkPickerButton(),
         TextButton(
           onPressed: _busy ? null : () => _openQuantityCustomDialog(),
           style: TextButton.styleFrom(
@@ -1126,6 +1134,35 @@ class _HabitCardState extends State<HabitCard> {
       context: context,
       goal: widget.goal,
       rule: widget.rule,
+      username: widget.username,
+      onChanged: widget.onChanged,
+    );
+  }
+
+  Widget _buildDrinkPickerButton() {
+    return OutlinedButton.icon(
+      onPressed: _busy ? null : _openDrinkPicker,
+      icon: const Text('🧋', style: TextStyle(fontSize: 14)),
+      label: const Text('选饮品'),
+      style: OutlinedButton.styleFrom(
+        padding: EdgeInsets.symmetric(
+          horizontal: widget.compact ? 10 : 12,
+          vertical: widget.compact ? 6 : 10,
+        ),
+        minimumSize: Size(0, widget.compact ? 32 : 38),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(widget.compact ? 10 : 12),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openDrinkPicker() async {
+    await HabitDrinkPickerSheet.show(
+      context: context,
+      goal: widget.goal,
+      rules: [widget.rule],
+      logicalDate: widget.dayProgress.logicalDate,
       username: widget.username,
       onChanged: widget.onChanged,
     );

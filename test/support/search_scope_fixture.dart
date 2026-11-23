@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:countdown_todo/features/finance/models/finance_models.dart';
 import 'package:countdown_todo/features/finance/services/finance_storage.dart';
 import 'package:countdown_todo/features/thirty_day_challenge/repositories/thirty_day_challenge_repository.dart';
+import 'package:countdown_todo/models/chat_message.dart';
 import 'package:countdown_todo/services/chat_storage_service.dart';
 import 'package:countdown_todo/services/database_helper.dart';
 import 'package:flutter/foundation.dart';
@@ -150,6 +151,9 @@ class SearchScopeFixture {
     await ChatStorageService.saveSessions([
       ChatSession(id: 'chat', title: '午餐对话', createdAt: day, updatedAt: day),
     ]);
+    await ChatStorageService.saveHistory([
+      ChatMessage(role: ChatRole.user, content: '午餐讨论纪要', timestamp: day),
+    ], 'chat');
     await ThirtyDayChallengeRepository.startNewChallenge(
       title: '午餐挑战',
       taskTitles: ['午餐后散步', '整理房间'],

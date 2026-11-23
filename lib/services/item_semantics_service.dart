@@ -209,6 +209,158 @@ class ItemSemanticsService {
     };
   }
 
+  static const Map<String, List<String>> _countdownCategoryKeywords = {
+    'birthday': [
+      '生日',
+      '生辰',
+      '寿辰',
+      '破壳',
+      '周岁',
+      '满月',
+      'birthday',
+      'bday',
+    ],
+    'anniversary': [
+      '纪念日',
+      '纪念',
+      '周年',
+      '恋爱',
+      '相恋',
+      '在一起',
+      '结婚',
+      '婚礼',
+      '领证',
+      '求婚',
+      '告白',
+      '情人节',
+      '七夕',
+      '入职',
+      '毕业',
+      'anniversary',
+    ],
+    'exam': [
+      '考试',
+      '期末',
+      '期中',
+      '模拟考',
+      '月考',
+      '联考',
+      '高考',
+      '中考',
+      '考研',
+      '考公',
+      '四级',
+      '六级',
+      'cet',
+      '雅思',
+      '托福',
+      '驾考',
+      '科目一',
+      '科目二',
+      '科目三',
+      '科目四',
+      '答辩',
+      '面试',
+      '测验',
+      '考核',
+      '竞赛',
+      '比赛',
+      'exam',
+    ],
+    'holiday': [
+      '放假',
+      '假期',
+      '休假',
+      '春节',
+      '过年',
+      '除夕',
+      '国庆',
+      '五一',
+      '劳动节',
+      '端午',
+      '中秋',
+      '清明',
+      '元旦',
+      '寒假',
+      '暑假',
+      '春假',
+      '秋假',
+      '旅游',
+      '旅行',
+      '出游',
+      '度假',
+      'holiday',
+      'vacation',
+    ],
+    'travel': [
+      '航班',
+      '飞机',
+      '高铁',
+      '火车',
+      '动车',
+      '回家',
+      '返校',
+      '出发',
+      '登机',
+      '车票',
+      '机票',
+      'flight',
+    ],
+    'deadline': [
+      '截止',
+      'ddl',
+      'deadline',
+      '提交',
+      '汇报',
+      '上线',
+      '发布',
+      '发薪',
+      '发工资',
+      '抢票',
+      '抢购',
+      '开售',
+      '付款',
+      '还款',
+      '交租',
+    ],
+  };
+
+  /// 根据倒数日标题识别视觉分类（用于通知/灵动岛图标与主题）。
+  static String countdownCategoryForTitle(String title) {
+    final normalized = title.trim().toLowerCase();
+    if (normalized.isEmpty) return 'default';
+    for (final entry in _countdownCategoryKeywords.entries) {
+      if (_containsAny(normalized, entry.value)) {
+        return entry.key;
+      }
+    }
+    return 'default';
+  }
+
+  static String countdownCategoryLabel(String category) {
+    return switch (category) {
+      'birthday' => '生日',
+      'anniversary' => '纪念日',
+      'exam' => '考试',
+      'holiday' => '假期',
+      'travel' => '出行',
+      'deadline' => '重要节点',
+      _ => '倒数日',
+    };
+  }
+
+  static String countdownCategoryEmoji(String category) {
+    return switch (category) {
+      'birthday' => '🎂',
+      'anniversary' => '💖',
+      'exam' => '📝',
+      'holiday' => '🌴',
+      'travel' => '✈️',
+      'deadline' => '🚩',
+      _ => '⏳',
+    };
+  }
+
   static bool _containsAny(String text, Iterable<String> keywords) {
     return keywords.any(text.contains);
   }

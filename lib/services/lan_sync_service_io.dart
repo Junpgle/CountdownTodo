@@ -159,8 +159,12 @@ class LanSyncService {
   static const String _prefSyncSecretsEnabled = 'lan_sync_sync_secrets_enabled';
   static const String _prefSyncSettingsEnabled =
       'lan_sync_sync_settings_enabled';
+  static const String _prefTrustedPeerDeviceIds =
+      'lan_sync_trusted_peer_device_ids';
   static const int _quickPairTtlMs = 5 * 60 * 1000;
+  static const int _pendingRequestTtlMs = 5 * 60 * 1000;
   static const int _autoSyncCooldownMs = 5 * 60 * 1000;
+  static const int _maxReceiveFileBytes = 100 * 1024 * 1024;
   // Discovery sends once immediately. A 30-second keepalive avoids frequent
   // multicast radio wakeups while keeping nearby peers fresh; the refresh
   // action still broadcasts on demand.
@@ -204,8 +208,13 @@ class LanSyncService {
 
   final ValueNotifier<bool> daemonRunningNotifier = ValueNotifier<bool>(false);
 
-  final Map<String, LanDevice> _pendingRequests = {};
-  final Map<String, String> _pendingTokens = {};
+  final Map<String, LanDevice> _incomingPendingRequests = {};
+  final Map<String, ({String token, int expiresAt})> _incomingPendingTokens =
+      {};
+  final Map<String, LanDevice> _outgoingPendingRequests = {};
+  final Map<String, ({String token, int expiresAt})> _outgoingPendingTokens =
+      {};
+  final Set<String> _trustedPeerDeviceIds = {};
   final Map<String, int> _lastAutoSyncAt = {};
   String? _activeQuickPairToken;
   int _activeQuickPairExpiresAt = 0;
@@ -320,8 +329,10 @@ class LanSyncService {
       type: InternetAddressType.IPv4,
       includeLoopback: false,
     );
-    final preferred = <({NetworkInterface interface, InternetAddress address})>[];
-    final secondary = <({NetworkInterface interface, InternetAddress address})>[];
+    final preferred =
+        <({NetworkInterface interface, InternetAddress address})>[];
+    final secondary =
+        <({NetworkInterface interface, InternetAddress address})>[];
     final virtualFallback =
         <({NetworkInterface interface, InternetAddress address})>[];
     for (final interface in interfaces) {
@@ -519,6 +530,9 @@ class LanSyncService {
     _autoSyncEnabled = prefs.getBool(_prefAutoSyncEnabled) ?? isOffline;
     _syncSecretsEnabled = prefs.getBool(_prefSyncSecretsEnabled) ?? true;
     _syncSettingsEnabled = prefs.getBool(_prefSyncSettingsEnabled) ?? false;
+    _trustedPeerDeviceIds
+      ..clear()
+      ..addAll(prefs.getStringList(_prefTrustedPeerDeviceIds) ?? const []);
     final isDesktop =
         Platform.isWindows || Platform.isMacOS || Platform.isLinux;
     if (isDesktop && _isDaemonMode) {
@@ -642,8 +656,7 @@ class LanSyncService {
     if (ip == null || ip.isEmpty) return null;
 
     final token = LanPairingPayload.generateOneTimeToken();
-    final expiresAt =
-        DateTime.now().millisecondsSinceEpoch + _quickPairTtlMs;
+    final expiresAt = DateTime.now().millisecondsSinceEpoch + _quickPairTtlMs;
     _activeQuickPairToken = token;
     _activeQuickPairExpiresAt = expiresAt;
 
@@ -783,7 +796,7 @@ class LanSyncService {
         'v': LanSyncCrypto.protocolVersion,
         'encrypted': true,
         'sessionId': session.sessionId,
-        'payload': LanSyncCrypto.encryptString(
+        'payload': await LanSyncCrypto.encryptStringAsync(
           session.key,
           jsonEncode(payload),
         ),
@@ -804,7 +817,7 @@ class LanSyncService {
       };
     }
 
-    final decryptedBody = LanSyncCrypto.decryptString(
+    final decryptedBody = await LanSyncCrypto.decryptStringAsync(
       session.key,
       encryptedResponseData['payload'].toString(),
     );
@@ -829,11 +842,44 @@ class LanSyncService {
     await _server?.close(force: true);
     _server = null;
     _devices.clear();
-    _pendingRequests.clear();
-    _pendingTokens.clear();
+    _incomingPendingRequests.clear();
+    _incomingPendingTokens.clear();
+    _outgoingPendingRequests.clear();
+    _outgoingPendingTokens.clear();
     cancelQuickPairSession();
     _emitDevices();
     _emitStatus('已停止');
+  }
+
+  Future<void> _trustPeerDevice(String? deviceId) async {
+    final normalized = deviceId?.trim() ?? '';
+    if (normalized.isEmpty) return;
+    if (!_trustedPeerDeviceIds.add(normalized)) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(
+        _prefTrustedPeerDeviceIds,
+        _trustedPeerDeviceIds.toList(growable: false),
+      );
+    } catch (_) {}
+  }
+
+  void rejectIncomingRequest(LanDevice device) {
+    final id = device.deviceId.trim();
+    if (id.isEmpty) return;
+    _incomingPendingRequests.remove(id);
+    _incomingPendingTokens.remove(id);
+  }
+
+  bool _constantTimeTokenEquals(String a, String b) {
+    final aBytes = utf8.encode(a);
+    final bBytes = utf8.encode(b);
+    if (aBytes.length != bBytes.length) return false;
+    var diff = 0;
+    for (var i = 0; i < aBytes.length; i++) {
+      diff |= aBytes[i] ^ bBytes[i];
+    }
+    return diff == 0;
   }
 
   Future<void> _startHttpServer() async {
@@ -886,9 +932,7 @@ class LanSyncService {
     if (data['v'] != LanSyncCrypto.protocolVersion) {
       req.response.statusCode = HttpStatus.badRequest;
       req.response.headers.contentType = ContentType.json;
-      req.response.write(
-        jsonEncode({'error': '不支持的加密协议版本: ${data['v']}'}),
-      );
+      req.response.write(jsonEncode({'error': '不支持的加密协议版本: ${data['v']}'}));
       await req.response.close();
       return;
     }
@@ -947,14 +991,12 @@ class LanSyncService {
     if (sessionKey == null) {
       req.response.statusCode = HttpStatus.unauthorized;
       req.response.headers.contentType = ContentType.json;
-      req.response.write(
-        jsonEncode({'error': '加密会话无效或已过期，请重试'}),
-      );
+      req.response.write(jsonEncode({'error': '加密会话无效或已过期，请重试'}));
       await req.response.close();
       return;
     }
 
-    final decryptedBody = LanSyncCrypto.decryptString(
+    final decryptedBody = await LanSyncCrypto.decryptStringAsync(
       sessionKey,
       encryptedData['payload'].toString(),
     );
@@ -982,18 +1024,22 @@ class LanSyncService {
       final ip = req.connectionInfo?.remoteAddress.address ?? '';
       final port = data['port'] ?? 54322;
 
-      final token = DateTime.now().millisecondsSinceEpoch.toString();
+      final token = LanPairingPayload.generateOneTimeToken();
+      final now = DateTime.now().millisecondsSinceEpoch;
       final device = LanDevice(
         deviceId: remoteDeviceId,
         userId: remoteUserId,
         deviceName: remoteDeviceName,
         ip: ip,
         port: port,
-        lastSeen: DateTime.now().millisecondsSinceEpoch,
+        lastSeen: now,
       );
 
-      _pendingRequests[remoteDeviceId] = device;
-      _pendingTokens[remoteDeviceId] = token;
+      _incomingPendingRequests[remoteDeviceId] = device;
+      _incomingPendingTokens[remoteDeviceId] = (
+        token: token,
+        expiresAt: now + _pendingRequestTtlMs,
+      );
 
       _incomingRequestCtrl.add(device);
 
@@ -1008,28 +1054,32 @@ class LanSyncService {
         action == 'quick_pair' ||
         action == 'auto_sync') {
       if (action == 'confirm') {
-        final pendingDevice = _pendingRequests[remoteDeviceId];
-        final pendingToken = _pendingTokens[remoteDeviceId];
-        final receivedToken = data['token']?.toString();
+        final pendingDevice = _outgoingPendingRequests[remoteDeviceId];
+        final pendingEntry = _outgoingPendingTokens[remoteDeviceId];
+        final receivedToken = data['token']?.toString() ?? '';
+        final now = DateTime.now().millisecondsSinceEpoch;
 
         if (pendingDevice == null ||
-            pendingToken == null ||
-            receivedToken != pendingToken) {
+            pendingEntry == null ||
+            now > pendingEntry.expiresAt ||
+            receivedToken.isEmpty ||
+            !_constantTimeTokenEquals(receivedToken, pendingEntry.token)) {
           await _writeEncryptedError(
             req,
             sessionKey,
             '对方没有待处理的同步请求，请重新发起',
+            statusCode: HttpStatus.forbidden,
           );
           return;
         }
-        _pendingRequests.remove(remoteDeviceId);
-        _pendingTokens.remove(remoteDeviceId);
+        _outgoingPendingRequests.remove(remoteDeviceId);
+        _outgoingPendingTokens.remove(remoteDeviceId);
       } else if (action == 'quick_pair') {
         final receivedToken = data['token']?.toString() ?? '';
         final now = DateTime.now().millisecondsSinceEpoch;
         if (_activeQuickPairToken == null ||
             receivedToken.isEmpty ||
-            receivedToken != _activeQuickPairToken ||
+            !_constantTimeTokenEquals(receivedToken, _activeQuickPairToken!) ||
             now > _activeQuickPairExpiresAt) {
           await _writeEncryptedError(
             req,
@@ -1042,7 +1092,14 @@ class LanSyncService {
         // 一次性令牌用完即销毁，防止重放。
         cancelQuickPairSession();
       } else if (action == 'auto_sync') {
-        if (!_autoSyncEnabled || !_isSameUser(remoteUserId, _currentUserId)) {
+        final isDirectAccount = LanDiscoveryIdentity.isDirectSameAccount(
+          remoteUserId,
+          _currentUserId,
+        );
+        final isTrustedPeer =
+            remoteDeviceId.isNotEmpty &&
+            _trustedPeerDeviceIds.contains(remoteDeviceId);
+        if (!_autoSyncEnabled || (!isDirectAccount && !isTrustedPeer)) {
           await _writeEncryptedError(
             req,
             sessionKey,
@@ -1053,13 +1110,49 @@ class LanSyncService {
         }
       }
 
+      if (action == 'confirm' || action == 'quick_pair') {
+        await _trustPeerDevice(remoteDeviceId);
+      }
+
       final isSilent = action == 'auto_sync';
       if (!isSilent) {
         _emitProgress('正在接收数据...');
         _emitProgressValue(0.1);
       }
 
-      final syncConfig = _parseSyncConfig(data['config']);
+      final requestedConfig = _parseSyncConfig(data['config']);
+      final syncConfig = action == 'confirm'
+          ? LanSyncConfig(
+              syncTodos: requestedConfig.syncTodos && _currentConfig.syncTodos,
+              syncCountdowns:
+                  requestedConfig.syncCountdowns &&
+                  _currentConfig.syncCountdowns,
+              syncTimeLogs:
+                  requestedConfig.syncTimeLogs && _currentConfig.syncTimeLogs,
+              syncPomodoroTags:
+                  requestedConfig.syncPomodoroTags &&
+                  _currentConfig.syncPomodoroTags,
+              syncPomodoroRecords:
+                  requestedConfig.syncPomodoroRecords &&
+                  _currentConfig.syncPomodoroRecords,
+              syncCourses:
+                  requestedConfig.syncCourses && _currentConfig.syncCourses,
+              syncSecrets:
+                  requestedConfig.syncSecrets && _currentConfig.syncSecrets,
+              syncSettings:
+                  requestedConfig.syncSettings && _currentConfig.syncSettings,
+            )
+          : LanSyncConfig(
+              syncTodos: requestedConfig.syncTodos,
+              syncCountdowns: requestedConfig.syncCountdowns,
+              syncTimeLogs: requestedConfig.syncTimeLogs,
+              syncPomodoroTags: requestedConfig.syncPomodoroTags,
+              syncPomodoroRecords: requestedConfig.syncPomodoroRecords,
+              syncCourses: requestedConfig.syncCourses,
+              syncSecrets: requestedConfig.syncSecrets && _syncSecretsEnabled,
+              syncSettings:
+                  requestedConfig.syncSettings && _syncSettingsEnabled,
+            );
       final username = _currentUserId ?? 'local';
       final mergeCounts = await _mergeSyncBundle(
         username: username,
@@ -1129,7 +1222,10 @@ class LanSyncService {
       jsonEncode({
         'v': LanSyncCrypto.protocolVersion,
         'encrypted': true,
-        'payload': LanSyncCrypto.encryptString(sessionKey, jsonEncode(body)),
+        'payload': await LanSyncCrypto.encryptStringAsync(
+          sessionKey,
+          jsonEncode(body),
+        ),
       }),
     );
     await req.response.close();
@@ -1141,12 +1237,9 @@ class LanSyncService {
     String message, {
     int statusCode = HttpStatus.ok,
   }) async {
-    await _writeEncryptedJson(
-      req,
-      sessionKey,
-      {'error': message},
-      statusCode: statusCode,
-    );
+    await _writeEncryptedJson(req, sessionKey, {
+      'error': message,
+    }, statusCode: statusCode);
   }
 
   LanSyncConfig _parseSyncConfig(dynamic raw) {
@@ -1358,7 +1451,7 @@ class LanSyncService {
     Function(int) onChanged,
   ) async {
     if (remote.isEmpty) return;
-    final local = await StorageService.getTodos(username);
+    final local = await StorageService.getTodos(username, includeDeleted: true);
     final Map<String, TodoItem> merged = {for (var t in local) t.id: t};
     bool changed = false;
     for (var r in remote) {
@@ -1392,7 +1485,10 @@ class LanSyncService {
     Function(int) onChanged,
   ) async {
     if (remote.isEmpty) return;
-    final local = await StorageService.getCountdowns(username);
+    final local = await StorageService.getCountdowns(
+      username,
+      includeDeleted: true,
+    );
     final Map<String, CountdownItem> merged = {for (var c in local) c.id: c};
     bool changed = false;
     for (var r in remote) {
@@ -1459,11 +1555,7 @@ class LanSyncService {
     Function(int) onChanged,
   ) async {
     if (remote.isEmpty) return;
-    final prefs = await SharedPreferences.getInstance();
-    final s = prefs.getString('pomodoro_tags_v2');
-    final List<PomodoroTag> localAll = s == null
-        ? []
-        : (jsonDecode(s) as List).map((e) => PomodoroTag.fromJson(e)).toList();
+    final localAll = await PomodoroService.getAllTagsIncludingDeleted();
     final Map<String, PomodoroTag> merged = {for (var t in localAll) t.uuid: t};
     bool changed = false;
     for (var r in remote) {
@@ -1556,16 +1648,16 @@ class LanSyncService {
   ]) async {
     config ??= LanSyncConfig();
     final todos = config.syncTodos
-        ? await StorageService.getTodos(username)
+        ? await StorageService.getTodos(username, includeDeleted: true)
         : [];
     final countdowns = config.syncCountdowns
-        ? await StorageService.getCountdowns(username)
+        ? await StorageService.getCountdowns(username, includeDeleted: true)
         : [];
     final timeLogs = config.syncTimeLogs
         ? await StorageService.getTimeLogs(username)
         : [];
     final pomodoroTags = config.syncPomodoroTags
-        ? await PomodoroService.getTags()
+        ? await PomodoroService.getAllTagsIncludingDeleted()
         : [];
     final pomodoroRecords = config.syncPomodoroRecords
         ? await PomodoroService.getRecords()
@@ -1630,11 +1722,7 @@ class LanSyncService {
             'deviceName': _currentDeviceName,
             'port': _serverPort,
           });
-          _udpSocket!.send(
-            utf8.encode(reply),
-            datagram.address,
-            datagram.port,
-          );
+          _udpSocket!.send(utf8.encode(reply), datagram.address, datagram.port);
         }
         return;
       }
@@ -2079,9 +2167,9 @@ class LanSyncService {
             Datagram? datagram;
             while ((datagram = tempUdpSocket?.receive()) != null) {
               try {
-                final data =
-                    jsonDecode(utf8.decode(datagram!.data))
-                        as Map<String, dynamic>;
+                final data = jsonDecode(
+                  utf8.decode(datagram!.data),
+                ) as Map<String, dynamic>;
                 if (data['type'] == 'discovery' &&
                     data['deviceId'] != _currentDeviceId &&
                     _isSameUser(data['userId']?.toString(), _currentUserId)) {
@@ -2159,6 +2247,7 @@ class LanSyncService {
       ip: pairing.ip,
       port: pairing.port,
       deviceName: pairing.deviceName,
+      peerDeviceId: pairing.deviceId,
       action: 'quick_pair',
       token: pairing.token,
       config:
@@ -2177,6 +2266,7 @@ class LanSyncService {
       ip: device.ip,
       port: device.port,
       deviceName: device.deviceName,
+      peerDeviceId: device.deviceId,
       action: 'auto_sync',
       config: LanSyncConfig(
         syncSecrets: _syncSecretsEnabled,
@@ -2190,6 +2280,7 @@ class LanSyncService {
     required String ip,
     required int port,
     required String deviceName,
+    String? peerDeviceId,
     required String action,
     String? token,
     required LanSyncConfig config,
@@ -2253,6 +2344,10 @@ class LanSyncService {
         emitProgress: !silent,
       );
 
+      if (action == 'quick_pair') {
+        await _trustPeerDevice(peerDeviceId);
+      }
+
       if (!silent) {
         _emitProgressValue(1.0);
         _emitProgress('同步完成');
@@ -2295,8 +2390,8 @@ class LanSyncService {
     _isSyncing = true;
     _currentConfig = config ?? LanSyncConfig();
     // A retry must never inherit the previous request's confirmation token.
-    _pendingRequests.remove(device.deviceId);
-    _pendingTokens.remove(device.deviceId);
+    _outgoingPendingRequests.remove(device.deviceId);
+    _outgoingPendingTokens.remove(device.deviceId);
     _emitProgressValue(0);
     HttpClient? client;
 
@@ -2329,10 +2424,14 @@ class LanSyncService {
           // The receiver stores the incoming request under our device ID.
           // Mirror that pending state here so the receiver's later
           // `confirm` request can be accepted by this device's server.
-          _pendingRequests[device.deviceId] = device.copyWith(
+          _outgoingPendingRequests[device.deviceId] = device.copyWith(
             pendingApproval: true,
           );
-          _pendingTokens[device.deviceId] = token;
+          _outgoingPendingTokens[device.deviceId] = (
+            token: token,
+            expiresAt:
+                DateTime.now().millisecondsSinceEpoch + _pendingRequestTtlMs,
+          );
           _emitProgress('等待对方确认...');
           return LanSyncResult(success: false, message: '等待对方确认');
         }
@@ -2361,12 +2460,16 @@ class LanSyncService {
     LanSyncConfig? config,
   }) async {
     if (_isSyncing) return LanSyncResult(success: false, message: '同步进行中');
-    if (_pendingTokens[device.deviceId] == null) {
+    final pendingEntry = _incomingPendingTokens[device.deviceId];
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (pendingEntry == null || now > pendingEntry.expiresAt) {
+      _incomingPendingRequests.remove(device.deviceId);
+      _incomingPendingTokens.remove(device.deviceId);
       return LanSyncResult(success: false, message: '确认令牌已失效，请重新发起同步');
     }
     _isSyncing = true;
     _currentConfig = config ?? LanSyncConfig();
-    _currentPendingToken = _pendingTokens[device.deviceId];
+    _currentPendingToken = pendingEntry.token;
     _emitProgressValue(0);
     HttpClient? client;
 
@@ -2499,8 +2602,9 @@ class LanSyncService {
         );
       }
       _emitProgressValue(1.0);
-      _pendingRequests.remove(device.deviceId);
-      _pendingTokens.remove(device.deviceId);
+      _incomingPendingRequests.remove(device.deviceId);
+      _incomingPendingTokens.remove(device.deviceId);
+      await _trustPeerDevice(device.deviceId);
 
       return LanSyncResult(
         success: true,
@@ -2523,6 +2627,7 @@ class LanSyncService {
 
   Future<void> _handleFileRequest(HttpRequest req) async {
     IOSink? sink;
+    File? partialFile;
     try {
       final version = req.headers.value('x-lan-encrypted');
       final sessionId = req.headers.value('x-lan-session');
@@ -2535,9 +2640,47 @@ class LanSyncService {
         return;
       }
 
-      String fileName = req.uri.queryParameters['name'] ?? 'unknown_file';
-      // 移除可能导致路径遍历或非法的文件名字符
-      fileName = fileName.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+      final senderDeviceId = req.headers.value('x-lan-device-id')?.trim() ?? '';
+      final senderUserId = req.headers.value('x-lan-user-id')?.trim() ?? '';
+      final isDirectAccount = LanDiscoveryIdentity.isDirectSameAccount(
+        senderUserId,
+        _currentUserId,
+      );
+      final isTrustedPeer =
+          senderDeviceId.isNotEmpty &&
+          _trustedPeerDeviceIds.contains(senderDeviceId);
+      final isAllowedDiscoveryPeer =
+          _discoverAllDevices &&
+          senderDeviceId.isNotEmpty &&
+          _devices.containsKey(senderDeviceId);
+      if (!isDirectAccount && !isTrustedPeer && !isAllowedDiscoveryPeer) {
+        await _writeEncryptedError(
+          req,
+          sessionKey,
+          '未授权的文件传输请求',
+          statusCode: HttpStatus.forbidden,
+        );
+        return;
+      }
+
+      if (req.contentLength > _maxReceiveFileBytes) {
+        await _writeEncryptedError(
+          req,
+          sessionKey,
+          '接收文件超过大小限制',
+          statusCode: HttpStatus.requestEntityTooLarge,
+        );
+        return;
+      }
+
+      final rawName = req.uri.queryParameters['name'] ?? 'unknown_file';
+      var fileName = p
+          .basename(rawName)
+          .replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1F]'), '_')
+          .replaceFirst(RegExp(r'^\.+'), '');
+      if (fileName.isEmpty || fileName == '.' || fileName == '..') {
+        fileName = 'received_file';
+      }
 
       final deviceName = req.uri.queryParameters['device'] ?? '未知设备';
 
@@ -2549,6 +2692,16 @@ class LanSyncService {
         await tempDir.create(recursive: true);
       }
       final file = File(p.join(tempDir.path, fileName));
+      if (!p.isWithin(tempDir.path, file.path)) {
+        await _writeEncryptedError(
+          req,
+          sessionKey,
+          '非法文件名',
+          statusCode: HttpStatus.badRequest,
+        );
+        return;
+      }
+      partialFile = file;
       sink = file.openWrite();
 
       int received = 0;
@@ -2562,6 +2715,9 @@ class LanSyncService {
 
       await for (final chunk in req) {
         received += chunk.length;
+        if (received > _maxReceiveFileBytes) {
+          throw const FormatException('File exceeds maximum allowed size');
+        }
         if (total > 0) {
           _emitProgressValue(0.1 + (received / total) * 0.9);
         }
@@ -2590,7 +2746,7 @@ class LanSyncService {
             offset + 4,
             offset + 4 + frameLen,
           );
-          final plainChunk = LanSyncCrypto.decodeFileFramePayload(
+          final plainChunk = await LanSyncCrypto.decodeFileFramePayloadAsync(
             sessionKey,
             chunkIndex++,
             sealedPayload,
@@ -2606,6 +2762,7 @@ class LanSyncService {
 
       await sink.close();
       sink = null;
+      partialFile = null;
 
       _emitProgress('加密文件接收完成: $fileName');
       _emitProgressValue(1.0);
@@ -2619,6 +2776,11 @@ class LanSyncService {
       await _writeEncryptedJson(req, sessionKey, {'success': true});
     } catch (e) {
       await sink?.close();
+      try {
+        if (partialFile != null && await partialFile.exists()) {
+          await partialFile.delete();
+        }
+      } catch (_) {}
       // debugPrint('[LanSync] File receive error: $e');
       req.response.statusCode = HttpStatus.internalServerError;
       req.response.headers.contentType = ContentType.json;
@@ -2657,6 +2819,8 @@ class LanSyncService {
       final request = await client.postUrl(uri);
       request.headers.set('X-Lan-Session', session.sessionId);
       request.headers.set('X-Lan-Encrypted', 'v2');
+      request.headers.set('X-Lan-Device-Id', _currentDeviceId ?? '');
+      request.headers.set('X-Lan-User-Id', _currentUserId ?? '');
 
       final total = await file.length();
       raf = await file.open();
@@ -2666,7 +2830,7 @@ class LanSyncService {
       while (true) {
         final plainChunk = await raf.read(LanSyncCrypto.maxFileChunkSize);
         if (plainChunk.isEmpty) break;
-        final frame = LanSyncCrypto.encodeFileFrame(
+        final frame = await LanSyncCrypto.encodeFileFrameAsync(
           session.key,
           chunkIndex++,
           plainChunk,
@@ -2688,7 +2852,7 @@ class LanSyncService {
         if (respData['encrypted'] == true &&
             respData['v'] == LanSyncCrypto.protocolVersion) {
           final decrypted = jsonDecode(
-            LanSyncCrypto.decryptString(
+            await LanSyncCrypto.decryptStringAsync(
               session.key,
               respData['payload'].toString(),
             ),

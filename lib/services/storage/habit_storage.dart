@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../../features/habits/models/habit_checkin.dart';
+import '../../features/habits/models/habit_drink_option.dart';
 import '../../features/habits/models/habit_goal.dart';
 import '../../features/habits/models/habit_goal_rule.dart';
 import '../../features/habits/models/habit_sleep_coaching_plan.dart';
@@ -21,6 +22,7 @@ abstract final class HabitStorage {
   static const String tableRules = 'habit_goal_rule_revisions';
   static const String tableCheckIns = 'habit_checkins';
   static const String tableSleepCoachingPlans = 'habit_sleep_coaching_plans';
+  static const String tableDrinkOptions = 'habit_drink_options';
 
   static const List<String> goalChangeColumns = [
     'name',
@@ -95,6 +97,17 @@ abstract final class HabitStorage {
     'paused_progress_days',
     'paused_logical_date',
     'timezone_offset_minutes',
+    'is_deleted',
+    'version',
+    'device_id',
+    'created_at',
+    'updated_at',
+  ];
+
+  static const List<String> drinkOptionChangeColumns = [
+    'icon',
+    'label',
+    'sort_order',
     'is_deleted',
     'version',
     'device_id',
@@ -509,6 +522,59 @@ abstract final class HabitStorage {
       }
       batch.insert(
         tableSleepCoachingPlans,
+        data,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    if (wroteAny) await batch.commit(noResult: true);
+  }
+
+  static Future<List<HabitDrinkOption>> getDrinkOptions({
+    bool includeDeleted = false,
+  }) async {
+    final db = await DatabaseHelper.instance.database;
+    final rows = await db.query(
+      tableDrinkOptions,
+      where: includeDeleted ? null : 'is_deleted = 0',
+      orderBy: 'sort_order ASC, created_at ASC',
+    );
+    return rows.map(HabitDrinkOption.fromJson).toList();
+  }
+
+  static Future<void> saveDrinkOptions(
+    List<HabitDrinkOption> items, {
+    bool isSyncSource = false,
+  }) async {
+    if (items.isEmpty) return;
+    final db = await DatabaseHelper.instance.database;
+    final existing = await _rowsById(
+      db,
+      tableDrinkOptions,
+      items.map((e) => e.uuid),
+    );
+    final batch = db.batch();
+    var wroteAny = false;
+    for (final item in items) {
+      final data = item.toJson();
+      final old = existing[item.uuid];
+      if (old != null &&
+          !_hasSubstantialChange(old, data, drinkOptionChangeColumns)) {
+        continue;
+      }
+      wroteAny = true;
+      if (writeOplog && !isSyncSource) {
+        batch.insert('op_logs', {
+          'op_type': 'UPSERT',
+          'target_table': tableDrinkOptions,
+          'target_uuid': item.uuid,
+          'data_json': jsonEncode(data),
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'is_synced': 0,
+          'sync_error': '',
+        });
+      }
+      batch.insert(
+        tableDrinkOptions,
         data,
         conflictAlgorithm: ConflictAlgorithm.replace,
       );

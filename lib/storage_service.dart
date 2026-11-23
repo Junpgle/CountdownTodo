@@ -39,6 +39,7 @@ import 'utils/time_utils.dart' as time_utils;
 import 'features/habits/models/habit_checkin.dart';
 import 'features/habits/models/habit_goal.dart';
 import 'features/habits/models/habit_goal_rule.dart';
+import 'features/habits/models/habit_drink_option.dart';
 import 'features/habits/models/habit_sleep_coaching_plan.dart';
 import 'features/habits/services/habit_sync_conflict_service.dart';
 import 'features/finance/services/finance_sync_service.dart';
@@ -237,6 +238,9 @@ class StorageService {
 
   static const String keyNotifyTodoLiveEnabled =
       _storageService_keyNotifyTodoLiveEnabled;
+
+  static const String keyNotifyCountdownEnabled =
+      _storageService_keyNotifyCountdownEnabled;
 
   static const String keyNotifyReminderEnabled =
       _storageService_keyNotifyReminderEnabled;
@@ -1225,6 +1229,12 @@ class StorageService {
 
   static Future<void> setTodoLiveNotificationEnabled(bool enabled) =>
       _storage.setTodoLiveNotificationEnabled(enabled);
+
+  static Future<bool> isCountdownNotificationEnabled() =>
+      _storage.isCountdownNotificationEnabled();
+
+  static Future<void> setCountdownNotificationEnabled(bool enabled) =>
+      _storage.setCountdownNotificationEnabled(enabled);
 
   static Future<bool> isPomodoroEndNotificationEnabled() =>
       _storage.isPomodoroEndNotificationEnabled();

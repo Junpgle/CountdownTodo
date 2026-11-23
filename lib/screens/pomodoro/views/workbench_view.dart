@@ -130,6 +130,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   // ── 跨端感知 ──
   final _syncService = PomodoroSyncService();
+  void Function(CrossDevicePomodoroState)? _staleSyncFocusHandler;
   StreamSubscription? _crossDeviceSub;
   StreamSubscription? _connSub; // 🚀 兼容性修复：改为通配订阅类型
   CrossDevicePomodoroState? _remoteState;
@@ -385,6 +386,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _pauseTicker?.cancel();
     _remoteTicker?.cancel();
     _timerTickNotifier.dispose();
+    if (_staleSyncFocusHandler != null) {
+      _syncService.unregisterStaleSyncFocusHandler(_staleSyncFocusHandler!);
+      _staleSyncFocusHandler = null;
+    }
     _crossDeviceSub?.cancel();
     _connSub?.cancel();
     _runStateSub?.cancel();
@@ -924,7 +929,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
     // 🍅 发起端重连后，服务端回推了历史专注状态
     // 若本地已无对应状态，则通知云端清除残留
-    _syncService.onStaleSyncFocus = (state) async {
+    if (_staleSyncFocusHandler != null) {
+      _syncService.unregisterStaleSyncFocusHandler(_staleSyncFocusHandler!);
+    }
+    _staleSyncFocusHandler = (state) async {
       // debugPrint('[工作台] 收到服务端回推的残留状态，校验本地...');
       final saved = await PomodoroService.loadRunState();
       if (saved == null ||
@@ -936,6 +944,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         // debugPrint('[工作台] 本地仍有运行中的专注，保留云端状态');
       }
     };
+    _syncService.registerStaleSyncFocusHandler(_staleSyncFocusHandler!);
 
     // 🚀 获取 auth token 用于 WebSocket 鉴权
     final authToken = await StorageService.getAuthToken();
@@ -3958,11 +3967,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.groups_rounded,
-            size: 14,
-            color: colorScheme.primary,
-          ),
+          Icon(Icons.groups_rounded, size: 14, color: colorScheme.primary),
           const SizedBox(width: 6),
           Text(
             '今日全站人均专注 ${formatDurationChinese(stats.avgSeconds)}',

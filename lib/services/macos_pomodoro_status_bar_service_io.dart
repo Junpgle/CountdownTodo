@@ -544,6 +544,9 @@ class MacPomodoroStatusBarService {
     return restoring && now.difference(triggerAt) <= _restoreGracePeriod;
   }
 
+  static Future<void> showIslandReminder(Map<String, dynamic> reminder) =>
+      _showIslandReminder(reminder);
+
   static Future<void> _showIslandReminder(Map<String, dynamic> reminder) async {
     try {
       await _channel.invokeMethod('showIslandReminder', reminder);

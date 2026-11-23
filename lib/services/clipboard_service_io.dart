@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:ffi';
+import 'dart:io';
 
 import 'package:ffi/ffi.dart';
 import 'package:win32/win32.dart';
+
+import 'windows_island_build_config.dart';
 
 /// Configuration constants for ClipboardService
 class ClipboardConfig {
@@ -104,6 +107,7 @@ class ClipboardService {
 
   /// Get text from Windows clipboard using Win32 API
   String? _getClipboardText({bool formatAvailable = false}) {
+    if (kDisableWindowsIsland || !Platform.isWindows) return null;
     if (!formatAvailable && !IsClipboardFormatAvailable(CF_UNICODETEXT).value) {
       return null;
     }
@@ -130,7 +134,7 @@ class ClipboardService {
 
   /// Initialize clipboard state
   Future<void> _initClipboard() async {
-    if (_initialized) return;
+    if (kDisableWindowsIsland || !Platform.isWindows || _initialized) return;
     _initialized = true;
     try {
       _lastClipboardSequenceNumber = GetClipboardSequenceNumber();
@@ -144,6 +148,7 @@ class ClipboardService {
 
   /// Start listening for clipboard changes
   void startListening() async {
+    if (kDisableWindowsIsland || !Platform.isWindows) return;
     await _initClipboard();
     if (_pollTimer?.isActive == true) {
       //       debugPrint('[ClipboardService] Already listening');

@@ -59,7 +59,7 @@ jobs:
 
       - name: Build Android APK (Debug)
         if: steps.check_version.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
-        run: flutter build apk --debug
+        run: flutter build apk --debug --dart-define=countdown.disable_windows_island=true
 
       - name: Publish to Dev Release
         if: steps.check_version.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'

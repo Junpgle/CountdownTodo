@@ -181,7 +181,7 @@ class ZfSoftScheduleParser {
       11: 2050,
       12: 2145,
     };
-    return defaultTimes[jc] ?? 800;
+    return defaultTimes[jc.clamp(1, 12)] ?? 800;
   }
 
   static int _getEndTime(int jc, Map<int, Map<String, int>>? customTimes) {
@@ -202,7 +202,7 @@ class ZfSoftScheduleParser {
       11: 2135,
       12: 2230,
     };
-    return defaultTimes[jc] ?? 940;
+    return defaultTimes[jc.clamp(1, 12)] ?? 940;
   }
 
   static List<int> _parseZfWeeks(String rawStr) {

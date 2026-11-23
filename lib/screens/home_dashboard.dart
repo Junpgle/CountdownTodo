@@ -353,6 +353,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   StreamSubscription? _remotePomodoroSub;
   StreamSubscription? _connStateSub; // 🚀 兼容性修复：改为通配订阅类型
   final _syncService = PomodoroSyncService();
+  void Function(CrossDevicePomodoroState)? _staleSyncFocusHandler;
   String _deviceId = '';
   bool _hasShownUpdate = false;
   bool _hasCheckedHolidayPreset = false;

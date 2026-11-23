@@ -41,6 +41,7 @@ HomeDrawerMenu _drawerMenu({
   onScreenTime: (key) => onNavigate('screenTime', key),
   onPlanCenter: (key) => onNavigate('planCenter', key),
   onHabits: (key) => onNavigate('habits', key),
+  onFeatureExplorer: (key) => onNavigate('featureExplorer', key),
 );
 
 void main() {

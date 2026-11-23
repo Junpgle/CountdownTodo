@@ -115,10 +115,12 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put('./index.html', clone);
-          });
+          if (response && response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put('./index.html', clone);
+            });
+          }
           return response;
         })
         .catch(async () =>
@@ -150,13 +152,15 @@ self.addEventListener('fetch', (event) => {
   // Same-origin static assets: cache-first, populate and refresh on fetch.
   event.respondWith(
     caches.match(request).then((cached) => {
-      const fetchAndCache = fetch(request).then((response) => {
-        if (response && response.status === 200) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-        }
-        return response;
-      });
+      const fetchAndCache = fetch(request)
+        .then((response) => {
+          if (response && response.status === 200) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return response;
+        })
+        .catch(() => cached);
 
       return cached || fetchAndCache;
     }).catch(() => caches.match(request))

@@ -97,9 +97,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
         _suppressNextLanToast = false;
         return;
       }
-      final toastText = result.message.isNotEmpty
-          ? result.message
-          : '局域网同步成功';
+      final toastText = result.message.isNotEmpty ? result.message : '局域网同步成功';
       if (_syncButtonKey.currentContext != null) {
         AppStatusToast.show(
           context: context,
@@ -380,6 +378,10 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     _disposeWallpaperListeners();
     _connStateSub?.cancel();
     _remotePomodoroSub?.cancel();
+    if (_staleSyncFocusHandler != null) {
+      _syncService.unregisterStaleSyncFocusHandler(_staleSyncFocusHandler!);
+      _staleSyncFocusHandler = null;
+    }
     _localPomodoroSub?.cancel();
     _macIslandCommandSub?.cancel();
     _macIslandActionSub?.cancel();
@@ -388,6 +390,21 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     ExternalShareHandler.dispose();
     _stopDashboardTimers();
     _todoPersistDebounce?.cancel();
+    final pendingTodos = _pendingTodosToPersist;
+    _pendingTodosToPersist = null;
+    if (pendingTodos != null) {
+      unawaited(
+        _todoPersistChain
+            .catchError((Object _) {})
+            .then(
+              (_) => StorageService.saveTodos(
+                widget.username,
+                pendingTodos,
+                sync: false,
+              ),
+            ),
+      );
+    }
     if (_todoPersistDebounceCompleter?.isCompleted == false) {
       _todoPersistDebounceCompleter!.complete();
     }

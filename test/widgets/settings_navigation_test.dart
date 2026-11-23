@@ -30,9 +30,15 @@ Finder _navigationSource(String id) => find.byWidgetPredicate(
 Future<void> _finishSettingsLoad(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 250));
   // Package/cache sections probe the filesystem outside the fake test clock.
-  await tester.runAsync(
-    () => Future<void>.delayed(const Duration(milliseconds: 30)),
-  );
+  for (var i = 0; i < 20; i++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 30)),
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+    if (find.byType(CircularProgressIndicator).evaluate().isEmpty) {
+      break;
+    }
+  }
   await tester.pumpAndSettle();
 }
 

@@ -9,9 +9,11 @@ import 'package:uuid/uuid.dart';
 
 import '../services/api_service.dart';
 import '../services/background_notification_service.dart';
+import '../services/desktop_renderer_preference.dart';
 import '../services/storage/app_settings_storage.dart';
 import '../services/storage/user_session_storage.dart';
 import '../storage_service.dart';
+import '../utils/app_platform.dart';
 import '../widgets/privacy_policy_dialog.dart';
 import '../widgets/turnstile_verification_widget.dart';
 import 'home_dashboard.dart';
@@ -454,6 +456,84 @@ class _ServerSelector extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────
+//  Desktop renderer selector (macOS / Windows)
+// ─────────────────────────────────────────────
+class _RendererSelector extends StatelessWidget {
+  const _RendererSelector({
+    required this.value,
+    required this.enabled,
+    required this.isMacOS,
+    required this.onChanged,
+  });
+
+  final DesktopFlutterRenderer value;
+  final bool enabled;
+  final bool isMacOS;
+  final ValueChanged<DesktopFlutterRenderer?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = _T(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.memory_outlined, size: 14, color: t.textHint),
+            const SizedBox(width: 6),
+            Text('渲染引擎：', style: TextStyle(fontSize: 12, color: t.textHint)),
+            DropdownButton<DesktopFlutterRenderer>(
+              value: value,
+              underline: const SizedBox(),
+              dropdownColor: t.dropdownBg,
+              icon: Icon(
+                Icons.keyboard_arrow_down_rounded,
+                size: 16,
+                color: t.textHint,
+              ),
+              style: TextStyle(
+                color: t.primaryLt,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+              items: [
+                DropdownMenuItem(
+                  value: DesktopFlutterRenderer.skia,
+                  child: Text(
+                    DesktopRendererPreference.labelFor(
+                      DesktopFlutterRenderer.skia,
+                      isMacOS: isMacOS,
+                    ),
+                    style: TextStyle(color: t.textSec),
+                  ),
+                ),
+                DropdownMenuItem(
+                  value: DesktopFlutterRenderer.impeller,
+                  child: Text(
+                    DesktopRendererPreference.labelFor(
+                      DesktopFlutterRenderer.impeller,
+                      isMacOS: isMacOS,
+                    ),
+                    style: TextStyle(color: t.textSec),
+                  ),
+                ),
+              ],
+              onChanged: enabled ? onChanged : null,
+            ),
+          ],
+        ),
+        Text(
+          '如登录后卡死，可切换渲染引擎并完全退出重启应用',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 11, color: t.textHint),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
 //  Legacy-data migration banner
 // ─────────────────────────────────────────────
 class _LegacyBanner extends StatelessWidget {
@@ -673,6 +753,10 @@ class _LoginScreenState extends State<LoginScreen>
   bool _awaitingVerification = false;
   String? _legacyLocalUser;
   String _serverChoice = ApiService.serverChoiceAliyunDirect;
+  DesktopFlutterRenderer _desktopRenderer =
+      DesktopRendererPreference.defaultRenderer;
+  bool _desktopRendererLoaded = false;
+  bool _desktopRendererSaving = false;
   bool _privacyAgreed = false;
   int _forgotPasswordStep = 0;
   final _resetEmailCtrl = TextEditingController();
@@ -711,6 +795,7 @@ class _LoginScreenState extends State<LoginScreen>
     _contentTransitionController.forward();
     _checkLocalLegacyAccount();
     _loadServerChoice();
+    _loadDesktopRenderer();
   }
 
   @override
@@ -743,6 +828,41 @@ class _LoginScreenState extends State<LoginScreen>
     final choice = ApiService.normalizeServerChoice(val);
     setState(() => _serverChoice = choice);
     await StorageService.saveServerChoice(choice);
+  }
+
+  Future<void> _loadDesktopRenderer() async {
+    if (!DesktopRendererPreference.isSupported) return;
+    var renderer = DesktopRendererPreference.defaultRenderer;
+    try {
+      renderer = await DesktopRendererPreference.load();
+    } catch (error) {
+      debugPrint('[LoginScreen] Failed to load desktop renderer: $error');
+    }
+    if (mounted) {
+      setState(() {
+        _desktopRenderer = renderer;
+        _desktopRendererLoaded = true;
+      });
+    }
+  }
+
+  Future<void> _onDesktopRendererChanged(DesktopFlutterRenderer? val) async {
+    if (val == null || val == _desktopRenderer) return;
+    if (!_desktopRendererLoaded || _desktopRendererSaving) return;
+
+    setState(() => _desktopRendererSaving = true);
+    try {
+      await DesktopRendererPreference.save(val);
+      if (!mounted) return;
+      setState(() => _desktopRenderer = val);
+      final name = val == DesktopFlutterRenderer.impeller ? 'Impeller' : 'Skia';
+      _snack('已切换为 $name，完全退出并重新启动应用后生效');
+    } catch (error) {
+      if (!mounted) return;
+      _snack('保存渲染引擎失败：$error');
+    } finally {
+      if (mounted) setState(() => _desktopRendererSaving = false);
+    }
   }
 
   void _checkLocalLegacyAccount() async {
@@ -1384,6 +1504,15 @@ class _LoginScreenState extends State<LoginScreen>
           value: _serverChoice,
           onChanged: _onServerChoiceChanged,
         ),
+        if (DesktopRendererPreference.isSupported) ...[
+          const SizedBox(height: 4),
+          _RendererSelector(
+            value: _desktopRenderer,
+            enabled: _desktopRendererLoaded && !_desktopRendererSaving,
+            isMacOS: AppPlatform.isMacOS,
+            onChanged: _onDesktopRendererChanged,
+          ),
+        ],
       ],
     );
   }

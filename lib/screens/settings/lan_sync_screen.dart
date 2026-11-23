@@ -173,6 +173,7 @@ class _LanSyncScreenState extends State<LanSyncScreen>
         actions: [
           TextButton(
             onPressed: () {
+              _service.rejectIncomingRequest(device);
               Navigator.pop(context);
             },
             child: const Text('拒绝'),
@@ -256,7 +257,12 @@ class _LanSyncScreenState extends State<LanSyncScreen>
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () {
+                if (isAccept) {
+                  _service.rejectIncomingRequest(device);
+                }
+                Navigator.pop(context);
+              },
               child: const Text('取消'),
             ),
             ElevatedButton(

@@ -1,0 +1,35 @@
+{
+  "root": true,
+  "env": {
+    "commonjs": true,
+    "es6": true
+  },
+  "parserOptions": {
+    "ecmaVersion": 2020
+  },
+  "globals": {
+    "setTimeout": "readonly",
+    "clearTimeout": "readonly",
+    "setInterval": "readonly",
+    "clearInterval": "readonly",
+    "console": "readonly"
+  },
+  "rules": {
+    "no-undef": "error",
+    "no-dupe-keys": "error",
+    "no-dupe-args": "error",
+    "no-unreachable": "error",
+    "no-constant-condition": "warn",
+    "use-isnan": "error",
+    "valid-typeof": "error",
+    "no-unused-vars": [
+      "error",
+      {
+        "args": "none",
+        "caughtErrors": "none"
+      }
+    ],
+    "semi": "off",
+    "no-var": "off"
+  }
+}

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../services/float_window_service.dart';
+import '../services/windows_island_build_config.dart';
 import '../utils/app_platform.dart';
 import '../windows_island/island_debug.dart';
 import '../windows_island/island_ui.dart';
@@ -9,16 +10,17 @@ import '../windows_island/island_ui.dart';
 class IslandDebugHost {
   IslandDebugHost._();
 
-  static bool get shouldShowOverlay => AppPlatform.isWindows && kDebugMode;
+  static bool get shouldShowOverlay =>
+      !kDisableWindowsIsland && AppPlatform.isWindows && kDebugMode;
 
-  static Widget route() => AppPlatform.isWindows
+  static Widget route() => (!kDisableWindowsIsland && AppPlatform.isWindows)
       ? const IslandDebugPage()
       : const Scaffold(
           body: Center(child: Text('Windows island is not available here')),
         );
 
   static Widget overlay() {
-    if (!AppPlatform.isWindows || !kDebugMode) {
+    if (kDisableWindowsIsland || !AppPlatform.isWindows || !kDebugMode) {
       return const SizedBox.shrink();
     }
     return ValueListenableBuilder<Map<String, dynamic>?>(

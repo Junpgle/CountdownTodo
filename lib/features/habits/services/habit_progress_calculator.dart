@@ -6,6 +6,7 @@ import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
 import 'habit_adaptation_service.dart';
+import 'habit_drink_log_service.dart';
 import 'habit_rule_resolver.dart';
 import 'habit_source_resolver.dart';
 
@@ -498,10 +499,20 @@ abstract final class HabitProgressCalculator {
       }
     }
 
+    final successCheckIns = <HabitCheckIn>[];
+    var hasDrinkFailure = false;
+    for (final checkIn in periodCheckIns) {
+      if (HabitDrinkLogService.isDrinkFailureCheckIn(habit, checkIn)) {
+        hasDrinkFailure = true;
+      } else {
+        successCheckIns.add(checkIn);
+      }
+    }
+
     if (isAggregated) {
       // 周期累计：按已完成日期去重统计（兼容未迁移的旧待办实例）。
       final completedDays = <String>{
-        for (final checkIn in periodCheckIns) checkIn.logicalDate,
+        for (final checkIn in successCheckIns) checkIn.logicalDate,
       };
       if (todos.isNotEmpty) {
         for (final todo in todos) {
@@ -522,7 +533,7 @@ abstract final class HabitProgressCalculator {
         currentValue: doneCount.toDouble(),
         targetValue: target,
         completionRatio: target <= 0 ? 0 : doneCount / target,
-        hasRecord: doneCount > 0,
+        hasRecord: periodCheckIns.isNotEmpty || doneCount > 0,
         goalMet: met,
         isPlanned: planned,
         isFinished: finished,
@@ -535,8 +546,9 @@ abstract final class HabitProgressCalculator {
       );
     }
 
-    final doneFromCheckIns = periodCheckIns.isNotEmpty;
+    final doneFromCheckIns = !hasDrinkFailure && successCheckIns.isNotEmpty;
     final doneFromTodos =
+        !hasDrinkFailure &&
         !doneFromCheckIns &&
         todos.isNotEmpty &&
         (todoIndex?.isTodoDoneOn(logicalDate) ??
@@ -548,10 +560,10 @@ abstract final class HabitProgressCalculator {
       currentValue: done ? 1.0 : 0.0,
       targetValue: target,
       completionRatio: done ? 1.0 : 0.0,
-      hasRecord: done,
+      hasRecord: done || hasDrinkFailure,
       goalMet: done,
       isPlanned: planned,
-      isFinished: finished,
+      isFinished: finished || hasDrinkFailure,
       recordCount: periodCheckIns.isNotEmpty
           ? periodCheckIns.length
           : (done ? 1 : 0),
@@ -656,10 +668,15 @@ abstract final class HabitProgressCalculator {
         _checkInsInPeriod(checkIns, start, end);
 
     double total = 0;
+    var hasDrinkFailure = false;
     DateTime? firstRecordAt;
     DateTime? lastRecordAt;
     for (final c in dayCheckIns) {
-      total += c.value;
+      if (HabitDrinkLogService.isDrinkFailureCheckIn(habit, c)) {
+        hasDrinkFailure = true;
+      } else {
+        total += c.value;
+      }
       final local = c.localOccurredAt;
       final first = firstRecordAt;
       final last = lastRecordAt;
@@ -668,7 +685,7 @@ abstract final class HabitProgressCalculator {
     }
 
     final target = rule.targetValue <= 0 ? 0.0 : rule.targetValue;
-    final met = target > 0 && total >= target;
+    final met = !hasDrinkFailure && target > 0 && total >= target;
     return HabitProgress(
       period: start,
       currentValue: total,
@@ -677,7 +694,7 @@ abstract final class HabitProgressCalculator {
       hasRecord: dayCheckIns.isNotEmpty,
       goalMet: met,
       isPlanned: planned,
-      isFinished: finished,
+      isFinished: finished || hasDrinkFailure,
       recordCount: dayCheckIns.length,
       firstRecordAt: firstRecordAt,
       lastRecordAt: lastRecordAt,

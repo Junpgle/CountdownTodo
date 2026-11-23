@@ -14,7 +14,7 @@ import '../../../services/island_data_provider.dart';
 import '../../../services/macos_pomodoro_status_bar_service.dart';
 import '../../../services/notification_service.dart';
 import '../../../services/window_service.dart';
-import '../../../services/windows_renderer_preference.dart';
+import '../../../services/desktop_renderer_preference.dart';
 import '../../../services/permission_request_coordinator.dart';
 import '../../../utils/app_dialogs.dart';
 import '../../../utils/theme_color_tokens.dart';
@@ -47,6 +47,7 @@ class _PlatformSpecificSettingsPageState
   final Map<String, GlobalKey> _itemKeys = {
     'float_window_style': GlobalKey(),
     'windows_renderer': GlobalKey(),
+    'macos_renderer': GlobalKey(),
     'force_refresh': GlobalKey(),
     'island_priority': GlobalKey(),
     'tai_db': GlobalKey(),
@@ -66,12 +67,15 @@ class _PlatformSpecificSettingsPageState
   Timer? _highlightTimer;
   Timer? _priorityRefreshTimer;
 
+  // Desktop Renderer (Windows & macOS)
+  DesktopFlutterRenderer _desktopRenderer =
+      DesktopRendererPreference.defaultRenderer;
+  bool _desktopRendererLoaded = false;
+  bool _desktopRendererSaving = false;
+
   // Windows Specific
   int _floatWindowStyle = 0;
   String _taiDbPath = '';
-  WindowsFlutterRenderer _windowsRenderer = WindowsFlutterRenderer.skia;
-  bool _windowsRendererLoaded = false;
-  bool _windowsRendererSaving = false;
 
   // Android Specific
   String _islandStatus = "点击检测设备是否支持";
@@ -134,20 +138,21 @@ class _PlatformSpecificSettingsPageState
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    if (AppPlatform.isWindows) {
-      var renderer = WindowsFlutterRenderer.skia;
+    if (DesktopRendererPreference.isSupported) {
+      var renderer = DesktopRendererPreference.defaultRenderer;
       try {
-        renderer = await WindowsRendererPreference.load();
+        renderer = await DesktopRendererPreference.load();
       } catch (error) {
-        debugPrint('[WindowsRendererPreference] Failed to load: $error');
+        debugPrint('[DesktopRendererPreference] Failed to load: $error');
       }
       if (mounted) {
         setState(() {
-          _windowsRenderer = renderer;
-          _windowsRendererLoaded = true;
+          _desktopRenderer = renderer;
+          _desktopRendererLoaded = true;
         });
       }
-
+    }
+    if (AppPlatform.isWindows) {
       String? username = prefs.getString(StorageService.keyCurrentUser);
       int style = 0;
       if (username != null && username.isNotEmpty) {
@@ -311,26 +316,110 @@ class _PlatformSpecificSettingsPageState
     );
   }
 
-  // --- Windows Methods ---
-  Future<void> _selectWindowsRenderer(WindowsFlutterRenderer renderer) async {
-    if (_windowsRendererSaving || !_windowsRendererLoaded) return;
-    if (renderer == _windowsRenderer) return;
+  // --- Desktop Renderer Methods ---
+  Future<void> _selectDesktopRenderer(DesktopFlutterRenderer renderer) async {
+    if (_desktopRendererSaving || !_desktopRendererLoaded) return;
+    if (renderer == _desktopRenderer) return;
 
-    setState(() => _windowsRendererSaving = true);
+    setState(() => _desktopRendererSaving = true);
     try {
-      await WindowsRendererPreference.save(renderer);
+      await DesktopRendererPreference.save(renderer);
       if (!mounted) return;
-      setState(() => _windowsRenderer = renderer);
+      setState(() => _desktopRenderer = renderer);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已保存。完全退出应用并重新启动后，主窗口和灵动岛会使用新引擎。')),
+        SnackBar(
+          content: Text(
+            AppPlatform.isMacOS
+                ? '已保存。完全退出应用并重新启动后生效。'
+                : '已保存。完全退出应用并重新启动后，主窗口和灵动岛会使用新引擎。',
+          ),
+        ),
       );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('保存渲染引擎失败：$error')));
     } finally {
-      if (mounted) setState(() => _windowsRendererSaving = false);
+      if (mounted) setState(() => _desktopRendererSaving = false);
     }
+  }
+
+  Widget _buildDesktopRendererSection(
+    ColorScheme colorScheme, {
+    required String targetId,
+    required bool isMacOS,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: AppSettingsSection(
+        title: '图形渲染',
+        headerPadding: const EdgeInsets.only(left: 8, bottom: 8, top: 0),
+        children: [
+          _buildTile(
+            targetId: targetId,
+            child: Column(
+              children: [
+                ListTile(
+                  leading: Icon(
+                    Icons.memory_outlined,
+                    color: colorScheme.primary,
+                  ),
+                  title: const Text('Flutter 渲染引擎'),
+                  subtitle: Text(
+                    DesktopRendererPreference.labelFor(
+                      _desktopRenderer,
+                      isMacOS: isMacOS,
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: SegmentedButton<DesktopFlutterRenderer>(
+                      segments: const [
+                        ButtonSegment(
+                          value: DesktopFlutterRenderer.skia,
+                          label: Text('Skia'),
+                        ),
+                        ButtonSegment(
+                          value: DesktopFlutterRenderer.impeller,
+                          label: Text('Impeller'),
+                        ),
+                      ],
+                      selected: {_desktopRenderer},
+                      onSelectionChanged:
+                          !_desktopRendererLoaded || _desktopRendererSaving
+                          ? null
+                          : (selection) {
+                              if (selection.isNotEmpty) {
+                                _selectDesktopRenderer(selection.first);
+                              }
+                            },
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      isMacOS
+                          ? '切换后需完全退出并重新启动应用生效；如开启 Impeller 后遇卡死或显示异常可切回 Skia。'
+                          : '切换后需完全退出并重新启动应用；新引擎也会应用到灵动岛。',
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _pickTaiDatabase() async {
@@ -460,83 +549,10 @@ class _PlatformSpecificSettingsPageState
               ),
             ],
             if (AppPlatform.isWindows) ...[
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                child: AppSettingsSection(
-                  title: '图形渲染',
-                  headerPadding: const EdgeInsets.only(
-                    left: 8,
-                    bottom: 8,
-                    top: 0,
-                  ),
-                  children: [
-                    _buildTile(
-                      targetId: 'windows_renderer',
-                      child: Column(
-                        children: [
-                          ListTile(
-                            leading: Icon(
-                              Icons.memory_outlined,
-                              color: colorScheme.primary,
-                            ),
-                            title: const Text('Flutter 渲染引擎'),
-                            subtitle: Text(
-                              _windowsRenderer == WindowsFlutterRenderer.skia
-                                  ? 'Skia（默认）'
-                                  : 'Impeller（实验）',
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                            child: SizedBox(
-                              width: double.infinity,
-                              child: SegmentedButton<WindowsFlutterRenderer>(
-                                segments: const [
-                                  ButtonSegment(
-                                    value: WindowsFlutterRenderer.skia,
-                                    label: Text('Skia'),
-                                  ),
-                                  ButtonSegment(
-                                    value: WindowsFlutterRenderer.impeller,
-                                    label: Text('Impeller'),
-                                  ),
-                                ],
-                                selected: {_windowsRenderer},
-                                onSelectionChanged:
-                                    !_windowsRendererLoaded ||
-                                        _windowsRendererSaving
-                                    ? null
-                                    : (selection) {
-                                        if (selection.isNotEmpty) {
-                                          _selectWindowsRenderer(
-                                            selection.first,
-                                          );
-                                        }
-                                      },
-                              ),
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                '切换后需完全退出并重新启动应用；新引擎也会应用到灵动岛。',
-                                style: TextStyle(
-                                  color: colorScheme.onSurfaceVariant,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+              _buildDesktopRendererSection(
+                colorScheme,
+                targetId: 'windows_renderer',
+                isMacOS: false,
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(
@@ -749,6 +765,11 @@ class _PlatformSpecificSettingsPageState
               ),
             ],
             if (AppPlatform.isMacOS) ...[
+              _buildDesktopRendererSection(
+                colorScheme,
+                targetId: 'macos_renderer',
+                isMacOS: true,
+              ),
               Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,

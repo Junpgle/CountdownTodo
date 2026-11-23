@@ -6,6 +6,24 @@ import 'package:flutter/services.dart';
 
 import 'storage/app_settings_storage.dart';
 
+class BandSyncListener {
+  final void Function(Map<String, dynamic> info)? onDeviceConnected;
+  final void Function()? onDeviceDisconnected;
+  final void Function(Map<String, dynamic> data)? onMessageReceived;
+  final void Function(Map<String, dynamic> error)? onError;
+  final void Function(List<String> permissions)? onPermissionGranted;
+  final void Function(bool granted)? onPermissionChecked;
+
+  const BandSyncListener({
+    this.onDeviceConnected,
+    this.onDeviceDisconnected,
+    this.onMessageReceived,
+    this.onError,
+    this.onPermissionGranted,
+    this.onPermissionChecked,
+  });
+}
+
 class BandSyncService {
   static const MethodChannel _channel = MethodChannel(
     'com.math_quiz_app/band_communication',
@@ -60,10 +78,19 @@ class BandSyncService {
     _failPendingSyncResults();
     unawaited(_shutdownNativeService());
     _resetConnectionState(notify: false);
+    _listeners.clear();
+    _onDeviceConnected = null;
+    _onDeviceDisconnected = null;
+    _onMessageReceived = null;
+    _onError = null;
+    _onPermissionGranted = null;
+    _onPermissionChecked = null;
     if (!_pomodoroActionCtrl.isClosed) _pomodoroActionCtrl.close();
     _logs.clear();
     _receivedMessages.clear();
   }
+
+  static final List<BandSyncListener> _listeners = [];
 
   static Function(Map<String, dynamic>)? _onDeviceConnected;
   static Function()? _onDeviceDisconnected;
@@ -71,6 +98,16 @@ class BandSyncService {
   static Function(Map<String, dynamic>)? _onError;
   static Function(List<String>)? _onPermissionGranted;
   static Function(bool)? _onPermissionChecked;
+
+  static void addListener(BandSyncListener listener) {
+    if (!_listeners.contains(listener)) {
+      _listeners.add(listener);
+    }
+  }
+
+  static void removeListener(BandSyncListener listener) {
+    _listeners.remove(listener);
+  }
 
   // 同步数据提供者（由外部设置，默认从本地存储读取）
   static Future<List<Map<String, dynamic>>> Function(String type)?
@@ -250,7 +287,12 @@ class BandSyncService {
     _failPendingSyncResults();
     _nodeId = '';
     _deviceName = '';
-    if (notify && wasConnected) _onDeviceDisconnected?.call();
+    if (notify && wasConnected) {
+      _onDeviceDisconnected?.call();
+      for (final listener in List<BandSyncListener>.of(_listeners)) {
+        listener.onDeviceDisconnected?.call();
+      }
+    }
   }
 
   static void _failPendingSyncResults() {
@@ -278,6 +320,9 @@ class BandSyncService {
         _deviceName = args['name'] ?? '小米手环';
         _addLog('设备已连接: $_deviceName');
         _onDeviceConnected?.call(args);
+        for (final listener in List<BandSyncListener>.of(_listeners)) {
+          listener.onDeviceConnected?.call(args);
+        }
         break;
 
       case 'onDeviceDisconnected':
@@ -334,10 +379,17 @@ class BandSyncService {
               unawaited(_handleSyncRequest(type));
             } else {
               _onMessageReceived?.call(jsonData);
+              for (final listener in List<BandSyncListener>.of(_listeners)) {
+                listener.onMessageReceived?.call(jsonData);
+              }
             }
           } catch (e) {
-            _addReceivedMessage({'raw': data});
-            _onMessageReceived?.call({'raw': data});
+            final rawPayload = {'raw': data};
+            _addReceivedMessage(rawPayload);
+            _onMessageReceived?.call(rawPayload);
+            for (final listener in List<BandSyncListener>.of(_listeners)) {
+              listener.onMessageReceived?.call(rawPayload);
+            }
           }
         }
         break;
@@ -357,6 +409,9 @@ class BandSyncService {
           permissionCompleter.complete(false);
         }
         _onError?.call(args);
+        for (final listener in List<BandSyncListener>.of(_listeners)) {
+          listener.onError?.call(args);
+        }
         break;
 
       case 'onServiceDisconnected':
@@ -384,6 +439,9 @@ class BandSyncService {
           permissionCompleter.complete(true);
         }
         _onPermissionGranted?.call(permissions);
+        for (final listener in List<BandSyncListener>.of(_listeners)) {
+          listener.onPermissionGranted?.call(permissions);
+        }
         break;
 
       case 'onPermissionChecked':
@@ -392,6 +450,9 @@ class BandSyncService {
         final granted = args['granted'] as bool? ?? false;
         _addLog('权限检查结果: granted=$granted');
         _onPermissionChecked?.call(granted);
+        for (final listener in List<BandSyncListener>.of(_listeners)) {
+          listener.onPermissionChecked?.call(granted);
+        }
         break;
     }
   }
