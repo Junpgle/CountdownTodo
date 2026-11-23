@@ -14,6 +14,7 @@ import '../../features/thirty_day_challenge/screens/challenge_center_screen.dart
 import '../../models/todo_create_save_result.dart';
 import '../../services/feature_tip_service.dart';
 import '../../services/onboarding_checklist_service.dart';
+import '../../services/storage/app_settings_storage.dart';
 import '../../storage_service.dart';
 import '../../utils/app_dialogs.dart';
 import '../../utils/app_platform.dart';
@@ -46,6 +47,7 @@ import '../settings/device_calendar_read_page.dart';
 import '../settings/home_text_config_page.dart';
 import '../settings/lan_sync_screen.dart';
 import '../settings/notification_settings_page.dart';
+import '../settings/pages/account_devices_page.dart';
 import '../settings/pages/ai_assistant_settings_page.dart';
 import '../settings/pages/auto_backup_page.dart';
 import '../settings/pages/data_import_page.dart';
@@ -92,6 +94,7 @@ class FeatureExplorerItem {
   final Widget Function(BuildContext context, String username)? pageBuilder;
   final Future<void> Function(BuildContext context, String username)?
   customAction;
+  final bool markSeenOnLaunch;
 
   const FeatureExplorerItem({
     required this.id,
@@ -109,6 +112,7 @@ class FeatureExplorerItem {
     this.tutorialUri,
     this.pageBuilder,
     this.customAction,
+    this.markSeenOnLaunch = true,
   });
 }
 
@@ -486,16 +490,50 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
         actionLabel: '配置通知与提醒',
         pageBuilder: (_, _) => const NotificationSettingsPage(),
       ),
+      FeatureExplorerItem(
+        id: 'countdown_semantic_and_live_activity',
+        title: '倒数日语义识别、到达提醒与实时活动',
+        subtitle: '自动识别生日、纪念日、考试、假期、出行、重要节点等语义分类，当天 08:00 触发提醒并适配 Android 实时活动与 macOS 动态灵动岛',
+        locationPath: '设置 > 通知与提醒 > 倒计时到达通知 / 首页倒数日',
+        category: FeatureExplorerCategory.schedule,
+        icon: Icons.hourglass_bottom_rounded,
+        badgeText: 'v7.25 新增',
+        isNew: true,
+        keywords: const [
+          '倒数日',
+          '倒计时',
+          '语义识别',
+          '到达提醒',
+          '08:00',
+          '生日',
+          '纪念日',
+          '考试',
+          '假期',
+          '出行',
+          '实时活动',
+          '灵动岛',
+          '动态图标',
+          'v7.25',
+        ],
+        steps: const [
+          '创建或编辑倒数日时，系统会自动识别生日、纪念日、考试、假期、出行与重要节点等语义分类并匹配专属图标。',
+          '在「设置 > 通知与提醒」中开启「倒计时到达通知」，可在倒数日当天 08:00 自动触发到达提醒。',
+          'Android 端实时活动支持静态分类图标与浅深色主题自适应；macOS 端灵动岛支持动态倒数日图标与左文右图展开布局。',
+        ],
+        actionLabel: '配置倒计时到达通知',
+        pageBuilder: (_, _) => const NotificationSettingsPage(),
+      ),
 
       // ── 专注与复盘 ──────────────────────────────────────────
       FeatureExplorerItem(
         id: 'pomodoro_focus',
         title: '番茄钟与跨端实时专注',
-        subtitle: '支持倒计时/正计时、绑定待办与标签、多设备实时同步专注状态与灵动岛展示',
+        subtitle: '支持倒计时/正计时、绑定待办与标签、多设备实时同步专注状态与灵动岛展示，并展示今日全站人均专注时长',
         locationPath: '底部导航「番茄钟」/ 首页专注Tab',
         category: FeatureExplorerCategory.focus,
         icon: Icons.timer_rounded,
-        badgeText: 'v3.0 升级',
+        badgeText: 'v7.25 升级',
+        isNew: true,
         keywords: const [
           '番茄钟',
           '专注',
@@ -503,13 +541,18 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
           '倒计时',
           '标签',
           '跨端同步',
+          '全站人均',
+          '人均专注',
+          '社区专注',
           'v1.0',
           'v3.0',
+          'v7.25',
         ],
         steps: const [
           '点击底部导航栏的「番茄钟」图标进入专注工作台。',
           '可选择倒计时或正计时模式，绑定当前正在攻克的待办事项与专注标签。',
           '登录同一账号后，手机开启专注，电脑端/平板端与桌面悬浮窗会通过 WebSocket 实时同步显示专注进度。',
+          '工作台与首页今日专注卡片还会实时展示今日全站人均专注时长，随时参照社区平均专注节奏。',
         ],
         actionLabel: '开启专注',
         pageBuilder: (_, username) => PomodoroScreen(username: username),
@@ -567,11 +610,11 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
       FeatureExplorerItem(
         id: 'pomodoro_stats_board',
         title: '专注统计看板与多维视图下钻',
-        subtitle: '按日/周/月/年聚合专注总时长与标签分布，支持日、周、月视图快速选择跳转与下钻复盘',
+        subtitle: '按日/周/月/年聚合专注总时长与标签分布，支持日、周、月视图快速选择跳转、下钻复盘与今日全站人均参考',
         locationPath: '底部导航「番茄钟」> 底部切换「统计看板」',
         category: FeatureExplorerCategory.focus,
         icon: Icons.bar_chart_rounded,
-        badgeText: 'v7.23 升级',
+        badgeText: 'v7.25 升级',
         isNew: true,
         keywords: const [
           '统计看板',
@@ -584,14 +627,17 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
           '标签统计',
           '年度复盘',
           '年份筛选',
+          '全站人均',
+          '人均专注',
           'v3.0',
           'v7.22',
           'v7.23',
+          'v7.25',
         ],
         steps: const [
           '从底部导航栏进入「番茄钟」页面。',
           '点击底部浮动导航栏右侧的「统计看板」Tab。',
-          '可按日、周、月、年四个维度切换查看专注总时长、完成率折线趋势与标签时间占比分布。',
+          '可按日、周、月、年四个维度切换查看专注总时长、完成率折线趋势与标签时间占比分布，并在日视图参考今日全站人均专注时长。',
           '支持日/周/月视图快速日期选择跳转与数据下钻查看明细，年视图可快速切换年份纵览全年自律成长曲线。',
         ],
         actionLabel: '查看专注统计看板',
@@ -861,13 +907,16 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
         locationPath: '侧边栏「记账」> 右上角设置 > 账单导入',
         category: FeatureExplorerCategory.growth,
         icon: Icons.file_upload_outlined,
-        badgeText: 'v7.24 新增',
+        badgeText: 'v7.25 升级',
         isNew: true,
         keywords: const [
           '账单导入',
           '微信账单',
           '支付宝账单',
           '银行流水',
+          '云闪付',
+          '记账软件',
+          '通用表格',
           'CSV',
           'XLSX',
           'JSON',
@@ -876,11 +925,12 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
           '批量导入',
           '记账',
           'v7.24',
+          'v7.25',
         ],
         steps: const [
-          '从微信或支付宝导出账单文件（微信支持 CSV / XLSX，支付宝支持 CSV）。',
+          '准备微信（CSV/XLSX）、支付宝（CSV）、银行流水、云闪付、常见记账软件或通用表格 / JSON / OFX / QIF 账单文件。',
           '进入「记账 > 设置 > 账单导入」，选择文件后即可自动识别时间、商户、收支类型与金额。',
-          '导入前支持预览与筛选明细，并可一键批量写入记账本，快速补齐历史流水。',
+          '导入前支持预览、映射校验与筛选明细，一键批量写入记账本，快速补齐多平台历史流水。',
         ],
         actionLabel: '打开账单导入',
         pageBuilder: (_, _) => const FinanceBillImportScreen(),
@@ -914,17 +964,20 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
       FeatureExplorerItem(
         id: 'habit_center',
         title: '习惯中心与专属打卡日历',
-        subtitle: '支持完成型、专注时长型、数量型、时间点型四种习惯，支持防误触盖章与按单个习惯筛选专属完成日历视图',
+        subtitle: '支持完成型、专注时长型、数量型、时间点型四种习惯，支持防误触盖章、专属日历图标点亮与宽屏双栏适配',
         locationPath: '侧边栏「习惯中心」/ 首页「专注」Tab 今日习惯卡片',
         category: FeatureExplorerCategory.growth,
         icon: Icons.track_changes_rounded,
-        badgeText: 'v7.23 升级',
+        badgeText: 'v7.25 升级',
         isNew: true,
         keywords: const [
           '习惯',
           '打卡',
           '专属日历',
           '按习惯筛选',
+          '图标点亮',
+          '戒掉饮料',
+          '宽屏适配',
           '早起',
           '背单词',
           '喝水',
@@ -934,11 +987,42 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
           'v6.0',
           'v7.1',
           'v7.23',
+          'v7.25',
         ],
         steps: const [
           '从侧边栏或首页「专注」Tab 进入「习惯中心」，点击新建习惯。',
           '可选择普通打卡、按数量打卡（如喝 8 杯水）、按时间点打卡（如 23:00 前早睡）或绑定番茄钟标签自动累计时长。',
-          '支持防误触延迟盖章动效、趋势分析，以及在日历视图中按单个习惯筛选查看专属打卡完成日历与回溯补卡。',
+          '支持防误触延迟盖章动效、趋势分析，以及在日历视图中按单个习惯筛选查看专属打卡完成日历、轻点快捷点亮图标并在宽屏设备上分栏展示。',
+        ],
+        actionLabel: '打开习惯中心',
+        pageBuilder: (_, username) => HabitCenterScreen(username: username),
+      ),
+      FeatureExplorerItem(
+        id: 'habit_calendar_light_up_and_drinks',
+        title: '习惯日历图标点亮与戒掉饮料饮品记录',
+        subtitle: '轻点习惯日历即可点亮单日多个专属图标，戒掉饮料类习惯支持记录具体饮品、自定义常用饮品图标并自动增量云同步',
+        locationPath: '侧边栏「习惯中心」> 习惯日历 / 戒掉饮料打卡面板',
+        category: FeatureExplorerCategory.growth,
+        icon: Icons.local_cafe_rounded,
+        badgeText: 'v7.25 新增',
+        isNew: true,
+        keywords: const [
+          '习惯日历',
+          '图标点亮',
+          '点亮图标',
+          '戒掉饮料',
+          '喝奶茶',
+          '饮品记录',
+          '自定义饮品',
+          '常用饮品',
+          '云同步',
+          '宽屏适配',
+          'v7.25',
+        ],
+        steps: const [
+          '进入「习惯中心」日历视图后，轻点任意日期可弹出「快捷点亮图标」面板，单日可连续点亮多个专属习惯图标（宽屏下亦同步适配展示）。',
+          '对于「戒掉饮料」等习惯，支持直接打卡“今日未喝饮料”，也可进入饮品选择器多选记录当天喝了什么饮品。',
+          '在饮品面板可自定义常用饮品图标与名称并随时编辑删除，配置改动会自动纳入增量云同步。',
         ],
         actionLabel: '打开习惯中心',
         pageBuilder: (_, username) => HabitCenterScreen(username: username),
@@ -1356,11 +1440,11 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
         id: 'platform_island_and_widgets',
         title: '灵动岛、悬浮窗与桌面小组件',
         subtitle:
-            '支持 Android 桌面/平板记账小组件、Windows 灵动岛悬浮窗、macOS 灵动岛拖放 AI 识待办与低电量模式适配',
+            '支持 Android 倒数日/记账/桌面小组件、Windows 灵动岛悬浮窗、macOS 倒数日动态图标灵动岛与拖放 AI 识待办',
         locationPath: '设置 > 平台专属设置 / 动画设置',
         category: FeatureExplorerCategory.aiAndSync,
         icon: Icons.widgets_rounded,
-        badgeText: 'v7.24 升级',
+        badgeText: 'v7.25 升级',
         isNew: true,
         keywords: const [
           '小组件',
@@ -1368,6 +1452,9 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
           '平板小组件',
           '记账小组件',
           '灵动岛',
+          '倒计时灵动岛',
+          '倒数日实时活动',
+          '动态图标',
           '悬浮窗',
           '菜单栏',
           '状态栏',
@@ -1379,11 +1466,12 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
           'v5.4',
           'v7.23',
           'v7.24',
+          'v7.25',
         ],
         steps: const [
-          'Android / 平板：长按桌面空白处添加 CountDownTodo 小部件，主屏直接查看待办（含地点）、课表、专注进度与平板近期账单列表。',
+          'Android / 平板：长按桌面添加小部件可查看待办（含地点）、课表、专注进度与账单；实时活动现已支持倒数日静态分类图标与浅深色主题适配。',
           'Windows：支持最小化到系统托盘、开启桌面灵动岛悬浮窗展示倒计时与专注状态，并支持读取 Tai 屏幕使用时间。',
-          'macOS：菜单栏实时显示专注倒计时，灵动岛支持直接拖放文件或文本触发 AI 识别创建待办、联动 QuickLook，并在低电量模式下自动优化省电策略。',
+          'macOS：菜单栏实时显示专注倒计时，灵动岛支持倒数日动态图标与左文右图展开布局、拖放文件或文本触发 AI 识别创建待办及联动 QuickLook。',
           '全平台：在「设置 > 动画设置」中可开启 Liquid Glass 液态玻璃质感与调整动画速度。',
         ],
         actionLabel: kIsWeb ? '打开动画与视觉设置' : '打开平台专属设置',
@@ -1393,6 +1481,40 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
             ? const AnimationSettingsPage()
             : const PlatformSpecificSettingsPage(),
       ),
+      if (!kIsWeb && (AppPlatform.isMacOS || AppPlatform.isWindows))
+        FeatureExplorerItem(
+          id: 'desktop_renderer_switch',
+          title: '桌面端 Skia / Impeller 渲染引擎切换',
+          subtitle: 'macOS 与 Windows 桌面端支持在 Skia 与 Impeller 渲染引擎间自由切换，设置页与登录页均可随时调整并在重启后生效',
+          locationPath: '设置 > 平台专属设置 > 渲染引擎 / 登录页底部',
+          category: FeatureExplorerCategory.aiAndSync,
+          icon: Icons.memory_rounded,
+          badgeText: 'v7.25 新增',
+          isNew: true,
+          keywords: const [
+            '渲染引擎',
+            'Skia',
+            'Impeller',
+            '图形兼容',
+            '卡死',
+            '桌面端',
+            'macOS',
+            'Windows',
+            '登录页切换',
+            'v7.25',
+          ],
+          steps: const [
+            '在 macOS 或 Windows 桌面端前往「设置 > 平台专属设置」，即可按需切换「Skia」与「Impeller」渲染引擎。',
+            '若遇到显卡驱动兼容或界面异常，也可以在登录页底部直接切换渲染引擎。',
+            '切换保存后，完全退出并重启应用即可应用新的渲染后端。',
+          ],
+          actionLabel: '配置渲染引擎',
+          pageBuilder: (_, _) => PlatformSpecificSettingsPage(
+            initialTarget: AppPlatform.isMacOS
+                ? 'macos_renderer'
+                : 'windows_renderer',
+          ),
+        ),
       if (kIsWeb)
         FeatureExplorerItem(
           id: 'web_pwa_app',
@@ -1498,6 +1620,54 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
         ],
         actionLabel: '打开同步健康度诊断',
         pageBuilder: (_, username) => SyncHealthPage(username: username),
+      ),
+      FeatureExplorerItem(
+        id: 'account_online_devices',
+        title: '在线登录设备管理与安全踢出',
+        subtitle: '查看账号当前全部已登录终端与最近活跃时间，支持通过邮箱验证码远程将异常或旧设备安全踢出下线',
+        locationPath: '设置 > 账户与同步 > 账户管理 > 登录设备管理',
+        category: FeatureExplorerCategory.aiAndSync,
+        icon: Icons.devices_other_rounded,
+        badgeText: 'v7.25 新增',
+        isNew: true,
+        keywords: const [
+          '在线设备',
+          '登录设备',
+          '设备管理',
+          '踢出设备',
+          '远程下线',
+          '账号安全',
+          '邮箱验证',
+          'v7.25',
+        ],
+        steps: const [
+          '前往「设置 > 账户与同步 > 账户管理 > 登录设备管理」。',
+          '可查看当前账号下全部在线终端的名称、设备类型、客户端版本、最近活跃时间及本机标识。',
+          '如发现陌生终端或需下线旧设备，点击「踢出」并通过邮箱验证码校验即可远程强制退出登录。',
+        ],
+        actionLabel: '管理登录设备',
+        markSeenOnLaunch: false,
+        customAction: (context, _) async {
+          final prefs = await StorageService.prefs;
+          final userId = prefs.getInt('current_user_id');
+          final offline = await AppSettingsStorage.isOfflineModeEnabled();
+          if (!context.mounted) return;
+          if (userId == null || offline) {
+            AppSnackBars.showSnackBar(
+              context,
+              const SnackBar(content: Text('当前为离线模式，请先登录账号')),
+            );
+            return;
+          }
+          await FeatureTipService.markFeatureBadgeSeen(
+            'account_online_devices',
+          );
+          if (!context.mounted) return;
+          await Navigator.of(
+            context,
+            rootNavigator: true,
+          ).push(PageTransitions.slideHorizontal(const AccountDevicesPage()));
+        },
       ),
 
       // ── 隐藏神技 (Tips & Tricks) ─────────────────────────────────
@@ -1812,7 +1982,9 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
   }
 
   Future<void> _launchFeature(FeatureExplorerItem item) async {
-    await FeatureTipService.markFeatureBadgeSeen(item.id);
+    if (item.markSeenOnLaunch) {
+      await FeatureTipService.markFeatureBadgeSeen(item.id);
+    }
     // Also mark corresponding onboarding task if applicable
     switch (item.id) {
       case 'todos_and_countdowns':

@@ -1,7 +1,16 @@
+import 'package:countdown_todo/features/finance/screens/finance_bill_import_screen.dart';
+import 'package:countdown_todo/features/habits/screens/habit_center_screen.dart';
 import 'package:countdown_todo/screens/help/feature_explorer_screen.dart';
+import 'package:countdown_todo/screens/settings/notification_settings_page.dart';
+import 'package:countdown_todo/screens/settings/pages/account_devices_page.dart';
+import 'package:countdown_todo/screens/settings/pages/ai_assistant_settings_page.dart';
+import 'package:countdown_todo/screens/settings/pages/auto_backup_page.dart';
+import 'package:countdown_todo/screens/settings/pages/platform_specific_settings_page.dart';
 import 'package:countdown_todo/services/feature_tip_service.dart';
 import 'package:countdown_todo/services/onboarding_checklist_service.dart';
+import 'package:countdown_todo/utils/app_platform.dart';
 import 'package:countdown_todo/widgets/onboarding_checklist_card.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -297,7 +306,7 @@ void main() {
         '微信账单',
       );
       await tester.pumpAndSettle();
-      expect(find.text('微信与支付宝账单一键导入'), findsOneWidget);
+      expect(find.text('多平台账单批量导入'), findsOneWidget);
 
       // Search for '账户互转'
       await tester.enterText(
@@ -330,6 +339,148 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('局域网面对面互传同步'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'FeatureExplorerScreen displays and searches v7.25 newly updated features',
+    (tester) async {
+      tester.view.physicalSize = const Size(430, 1400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        const MaterialApp(home: FeatureExplorerScreen(username: 'tester')),
+      );
+      await tester.pumpAndSettle();
+
+      // Search for '语义识别'
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('feature-explorer-search-field')),
+        '语义识别',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('倒数日语义识别、到达提醒与实时活动'), findsOneWidget);
+
+      // Search for '人均专注'
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('feature-explorer-search-field')),
+        '人均专注',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('番茄钟与跨端实时专注'), findsOneWidget);
+
+      // Search for '戒掉饮料'
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('feature-explorer-search-field')),
+        '戒掉饮料',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('习惯日历图标点亮与戒掉饮料饮品记录'), findsOneWidget);
+
+      // Search for '踢出设备'
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('feature-explorer-search-field')),
+        '踢出设备',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('在线登录设备管理与安全踢出'), findsOneWidget);
+
+      if (!kIsWeb && (AppPlatform.isMacOS || AppPlatform.isWindows)) {
+        // Search for 'Impeller'
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('feature-explorer-search-field')),
+          'Impeller',
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('桌面端 Skia / Impeller 渲染引擎切换'), findsOneWidget);
+      }
+
+      // Search for '云闪付'
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('feature-explorer-search-field')),
+        '云闪付',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('多平台账单批量导入'), findsOneWidget);
+    },
+  );
+
+  test(
+    'FeatureTipService records v7.24-v7.25 newly mapped pages as explored',
+    () async {
+      await FeatureTipService.recordWidgetOpened(const AccountDevicesPage());
+      await FeatureTipService.recordWidgetOpened(
+        const FinanceBillImportScreen(),
+      );
+      await FeatureTipService.recordWidgetOpened(const AutoBackupPage());
+      await FeatureTipService.recordWidgetOpened(
+        const AiAssistantSettingsPage(),
+      );
+      await FeatureTipService.recordWidgetOpened(
+        const NotificationSettingsPage(),
+      );
+      await FeatureTipService.recordWidgetOpened(
+        const HabitCenterScreen(username: 'tester'),
+      );
+      await FeatureTipService.recordWidgetOpened(
+        const PlatformSpecificSettingsPage(),
+      );
+
+      final seen = await FeatureTipService.getSeenFeatureBadges();
+      expect(
+        seen,
+        containsAll([
+          'account_online_devices',
+          'finance_bill_import',
+          'auto_backup_snapshots',
+          'daily_ai_suggestion_and_memory',
+          'countdown_semantic_and_live_activity',
+          'habit_calendar_light_up_and_drinks',
+          'desktop_renderer_switch',
+        ]),
+      );
+    },
+  );
+
+  testWidgets(
+    'FeatureExplorerScreen guards online device management when offline or logged out',
+    (tester) async {
+      tester.view.physicalSize = const Size(430, 1400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        const MaterialApp(home: FeatureExplorerScreen(username: 'tester')),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('feature-explorer-search-field')),
+        '踢出设备',
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>(
+            'feature-explorer-card-account_online_devices',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('管理登录设备'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('当前为离线模式，请先登录账号'), findsOneWidget);
+      expect(find.byType(AccountDevicesPage), findsNothing);
+      expect(
+        await FeatureTipService.getSeenFeatureBadges(),
+        isNot(contains('account_online_devices')),
+      );
     },
   );
 }

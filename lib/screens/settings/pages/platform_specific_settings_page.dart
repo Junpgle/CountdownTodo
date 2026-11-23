@@ -337,9 +337,8 @@ class _PlatformSpecificSettingsPageState
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('保存渲染引擎失败：$error')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('保存渲染引擎失败：$error')));
     } finally {
       if (mounted) setState(() => _desktopRendererSaving = false);
     }
@@ -406,7 +405,7 @@ class _PlatformSpecificSettingsPageState
                     alignment: Alignment.centerLeft,
                     child: Text(
                       isMacOS
-                          ? '切换后需完全退出并重新启动应用生效；如遇卡死或显示异常可切换至 Skia。'
+                          ? '切换后需完全退出并重新启动应用生效；如开启 Impeller 后遇卡死或显示异常可切回 Skia。'
                           : '切换后需完全退出并重新启动应用；新引擎也会应用到灵动岛。',
                       style: TextStyle(
                         color: colorScheme.onSurfaceVariant,
