@@ -508,21 +508,22 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
               ],
             ),
             const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildWallpaperCard('bing', 'Bing每日一图', Icons.image_outlined),
-                const SizedBox(width: 24),
-                _buildWallpaperCard('github', 'GitHub随机', Icons.code),
-                if (!AppPlatform.isWeb) ...[
-                  const SizedBox(width: 24),
-                  _buildWallpaperCard(
-                    'custom',
-                    '自定义图片',
-                    Icons.folder_special_outlined,
-                  ),
+            Center(
+              child: Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 16,
+                runSpacing: 12,
+                children: [
+                  _buildWallpaperCard('bing', 'Bing每日一图', Icons.image_outlined),
+                  _buildWallpaperCard('github', 'GitHub随机', Icons.code),
+                  if (!AppPlatform.isWeb)
+                    _buildWallpaperCard(
+                      'custom',
+                      '自定义图片',
+                      Icons.folder_special_outlined,
+                    ),
                 ],
-              ],
+              ),
             ),
           ],
         ),
@@ -1174,10 +1175,13 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
         ],
       ),
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: children,
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: children,
+        ),
       ),
     );
   }
