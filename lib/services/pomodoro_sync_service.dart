@@ -261,6 +261,21 @@ class PomodoroSyncService {
   Stream<SyncConnectionState> get onConnectionChanged => _connStateCtrl.stream;
 
   Function(CrossDevicePomodoroState state)? onStaleSyncFocus;
+  final List<Function(CrossDevicePomodoroState state)> _staleSyncFocusHandlers =
+      [];
+
+  void registerStaleSyncFocusHandler(
+    Function(CrossDevicePomodoroState state) handler,
+  ) {
+    _staleSyncFocusHandlers.remove(handler);
+    _staleSyncFocusHandlers.add(handler);
+  }
+
+  void unregisterStaleSyncFocusHandler(
+    Function(CrossDevicePomodoroState state) handler,
+  ) {
+    _staleSyncFocusHandlers.remove(handler);
+  }
 
   void disconnect() {
     _connectGeneration++;
@@ -287,6 +302,8 @@ class PomodoroSyncService {
     _reconnectTimer?.cancel();
     _heartbeatTimer?.cancel();
     _wsSub?.cancel();
+    _staleSyncFocusHandlers.clear();
+    onStaleSyncFocus = null;
     try {
       _channel?.sink.close(ws_status.normalClosure);
     } catch (_) {}
@@ -739,10 +756,14 @@ class PomodoroSyncService {
       }
 
       if (signal.action == 'SYNC_FOCUS' &&
-          isFromCurrentDevice(signal.sourceDevice) &&
-          onStaleSyncFocus != null) {
-        // debugPrint('[PomodoroSync] 🍅 检测ato服务端残留状态回推，触发本地状态校验');
-        onStaleSyncFocus!(signal);
+          isFromCurrentDevice(signal.sourceDevice)) {
+        final handler = _staleSyncFocusHandlers.isNotEmpty
+            ? _staleSyncFocusHandlers.last
+            : onStaleSyncFocus;
+        if (handler != null) {
+          // debugPrint('[PomodoroSync] 🍅 检测到服务端残留状态回推，触发本地状态校验');
+          handler(signal);
+        }
       }
 
       _lastMessageTime = DateTime.now(); // 🚀 每次收到有效消息都刷新时间

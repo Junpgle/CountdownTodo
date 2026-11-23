@@ -378,6 +378,10 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     _disposeWallpaperListeners();
     _connStateSub?.cancel();
     _remotePomodoroSub?.cancel();
+    if (_staleSyncFocusHandler != null) {
+      _syncService.unregisterStaleSyncFocusHandler(_staleSyncFocusHandler!);
+      _staleSyncFocusHandler = null;
+    }
     _localPomodoroSub?.cancel();
     _macIslandCommandSub?.cancel();
     _macIslandActionSub?.cancel();

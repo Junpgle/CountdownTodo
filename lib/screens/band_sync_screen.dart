@@ -33,11 +33,56 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
   bool _isServiceEnabled = false;
   bool _isTogglingService = false;
   late final PermissionRequestCoordinator _permissionCoordinator;
+  late final BandSyncListener _bandListener;
 
   @override
   void initState() {
     super.initState();
     _permissionCoordinator = PermissionRequestCoordinator(context: context);
+    _bandListener = BandSyncListener(
+      onDeviceConnected: (info) {
+        if (!mounted) return;
+        setState(() {
+          _isConnected = true;
+          _deviceName = info['name'] ?? '小米手环';
+        });
+        _autoRequestPermission();
+      },
+      onDeviceDisconnected: () {
+        if (!mounted) return;
+        setState(() {
+          _isConnected = false;
+          _deviceName = '';
+          _hasPermission = false;
+        });
+      },
+      onMessageReceived: (data) {
+        if (!mounted) return;
+        setState(() {
+          _logs.add('收到: ${data.toString()}');
+        });
+        _handleBandMessage(data);
+      },
+      onError: (error) {
+        if (!mounted) return;
+        setState(() {
+          _logs.add('错误: ${error['message']}');
+        });
+      },
+      onPermissionGranted: (permissions) {
+        if (!mounted) return;
+        setState(() {
+          _hasPermission = true;
+        });
+        _logs.add('权限已授予: ${permissions.join(", ")}，自动注册监听...');
+        BandSyncService.registerListener();
+      },
+      onPermissionChecked: (granted) {
+        if (!mounted) return;
+        _logs.add('权限检查结果: granted=$granted');
+      },
+    );
+    BandSyncService.addListener(_bandListener);
     _loadUpdateSettings();
     _loadServiceSettings();
     _initBandService();
@@ -51,6 +96,7 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
 
   Future<void> _loadUpdateSettings() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     setState(() {
       _isAutoUpdateEnabled = prefs.getBool('band_auto_update_enabled') ?? true;
     });
@@ -59,6 +105,7 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
   Future<void> _saveUpdateSettings(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('band_auto_update_enabled', value);
+    if (!mounted) return;
     setState(() {
       _isAutoUpdateEnabled = value;
     });
@@ -95,43 +142,7 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
       return;
     }
 
-    final success = await BandSyncService.init(
-      onDeviceConnected: (info) {
-        setState(() {
-          _isConnected = true;
-          _deviceName = info['name'] ?? '小米手环';
-        });
-        _autoRequestPermission();
-      },
-      onDeviceDisconnected: () {
-        setState(() {
-          _isConnected = false;
-          _deviceName = '';
-          _hasPermission = false;
-        });
-      },
-      onMessageReceived: (data) {
-        setState(() {
-          _logs.add('收到: ${data.toString()}');
-        });
-        _handleBandMessage(data);
-      },
-      onError: (error) {
-        setState(() {
-          _logs.add('错误: ${error['message']}');
-        });
-      },
-      onPermissionGranted: (permissions) {
-        setState(() {
-          _hasPermission = true;
-        });
-        _logs.add('权限已授予: ${permissions.join(", ")}，自动注册监听...');
-        BandSyncService.registerListener();
-      },
-      onPermissionChecked: (granted) {
-        _logs.add('权限检查结果: granted=$granted');
-      },
-    );
+    final success = await BandSyncService.init();
 
     if (success) {
       await BandSyncService.getConnectedDevice();
@@ -141,8 +152,10 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
   Future<void> _autoRequestPermission() async {
     // 等待一下让设备连接完成
     await Future.delayed(const Duration(milliseconds: 500));
+    if (!mounted) return;
 
     final status = await BandSyncService.getConnectionStatus();
+    if (!mounted) return;
     if (status['hasPermission'] == true) {
       setState(() => _hasPermission = true);
       _logs.add('已有权限，自动注册监听...');
@@ -217,6 +230,7 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
 
   @override
   void dispose() {
+    BandSyncService.removeListener(_bandListener);
     _permissionCoordinator.dispose();
     super.dispose();
   }

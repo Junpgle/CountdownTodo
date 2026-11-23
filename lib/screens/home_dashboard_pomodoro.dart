@@ -21,7 +21,10 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
 
     // 🍅 发起端重连后，服务端回推了历史专注状态
     // 若本地已无对应状态（说明已被用户关闭/完成），则通知云端清除残留
-    _syncService.onStaleSyncFocus = (state) async {
+    if (_staleSyncFocusHandler != null) {
+      _syncService.unregisterStaleSyncFocusHandler(_staleSyncFocusHandler!);
+    }
+    _staleSyncFocusHandler = (state) async {
       // debugPrint('[首页] 收到服务端回推的残留状态，校验本地...');
       final saved = await PomodoroService.loadRunState();
       if (saved == null ||
@@ -33,6 +36,7 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
         // debugPrint('[首页] 本地仍有运行中的专注，保留云端状态');
       }
     };
+    _syncService.registerStaleSyncFocusHandler(_staleSyncFocusHandler!);
 
     // 监听网络重连，主动上报本地专注状态
     _connStateSub?.cancel();
