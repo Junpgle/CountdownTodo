@@ -817,9 +817,12 @@ mixin _StorageSync on _StorageServiceBase {
         for (final item in allLocalCountdowns) item.id: item,
       };
       if (!forceFullSync &&
-          ((syncCountdowns && allLocalCountdowns.isEmpty) ||
-              (syncTimeLogs && allLocalTimeLogs.isEmpty))) {
-        debugPrint('🔄 本地倒数日/时间日志为空，自动降级为全量拉取以修复空库');
+          allLocalTodos.isEmpty &&
+          allLocalGroups.isEmpty &&
+          allLocalCountdowns.isEmpty &&
+          allLocalTimeLogs.isEmpty &&
+          (syncTodos || syncCountdowns || syncTimeLogs)) {
+        debugPrint('🔄 本地核心同步表为空，自动降级为全量拉取以修复空库');
         lastSyncTime = 0;
       }
 
