@@ -870,6 +870,74 @@ private final class MacNowPlayingMonitor {
         }
     }
 
+    private struct ProcessRunResult {
+        let timedOut: Bool
+        let terminationStatus: Int32
+        let stdout: Data
+        let stderr: Data
+    }
+
+    private func runProcess(
+        executablePath: String,
+        arguments: [String],
+        timeout: TimeInterval = 1.5
+    ) throws -> ProcessRunResult {
+        let process = Process()
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        let exitSemaphore = DispatchSemaphore(value: 0)
+        let drainGroup = DispatchGroup()
+        let dataLock = NSLock()
+        var stdoutData = Data()
+        var stderrData = Data()
+
+        process.executableURL = URL(fileURLWithPath: executablePath)
+        process.arguments = arguments
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
+        process.terminationHandler = { _ in exitSemaphore.signal() }
+
+        try process.run()
+
+        // Drain stdout/stderr concurrently before waiting for termination to avoid
+        // a 64 KiB pipe buffer deadlock if osascript emits large output or errors.
+        drainGroup.enter()
+        DispatchQueue.global(qos: .utility).async {
+            let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+            dataLock.lock()
+            stdoutData = data
+            dataLock.unlock()
+            drainGroup.leave()
+        }
+
+        drainGroup.enter()
+        DispatchQueue.global(qos: .utility).async {
+            let data = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            dataLock.lock()
+            stderrData = data
+            dataLock.unlock()
+            drainGroup.leave()
+        }
+
+        let timedOut = exitSemaphore.wait(timeout: .now() + timeout) != .success
+        if timedOut {
+            process.terminate()
+        }
+        _ = drainGroup.wait(timeout: .now() + 0.25)
+
+        dataLock.lock()
+        let finalStdout = stdoutData
+        let finalStderr = stderrData
+        dataLock.unlock()
+
+        return ProcessRunResult(
+            timedOut: timedOut,
+            terminationStatus: timedOut ? -1 : process.terminationStatus,
+            stdout: finalStdout,
+            stderr: finalStderr
+        )
+    }
+
     /// macOS 15.4 起 mediaremoted 会拒绝未持有 Apple 私有 entitlement 的
     /// 第三方进程直接读取 Now Playing。由系统签名的 osascript 读取同一份
     /// 本机媒体状态，可以得到播放器拖动后的 calculatedPlaybackPosition。
@@ -912,37 +980,28 @@ private final class MacNowPlayingMonitor {
         })();
         """#
 
-        let process = Process()
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        let exitSemaphore = DispatchSemaphore(value: 0)
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-l", "JavaScript", "-e", script]
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
-        process.terminationHandler = { _ in exitSemaphore.signal() }
-
+        let result: ProcessRunResult
         do {
-            try process.run()
+            result = try runProcess(
+                executablePath: "/usr/bin/osascript",
+                arguments: ["-l", "JavaScript", "-e", script]
+            )
         } catch {
             logSystemPlaybackFailureOnce(error.localizedDescription)
             return nil
         }
-        guard exitSemaphore.wait(timeout: .now() + 1.5) == .success else {
-            process.terminate()
+        guard !result.timedOut else {
             logSystemPlaybackFailureOnce("读取超时")
             return nil
         }
-        guard process.terminationStatus == 0 else {
-            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-            let errorText = String(decoding: errorData, as: UTF8.self)
+        guard result.terminationStatus == 0 else {
+            let errorText = String(decoding: result.stderr, as: UTF8.self)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            logSystemPlaybackFailureOnce(errorText.isEmpty ? "退出码 \(process.terminationStatus)" : errorText)
+            logSystemPlaybackFailureOnce(errorText.isEmpty ? "退出码 \(result.terminationStatus)" : errorText)
             return nil
         }
 
-        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        guard let state = try? JSONDecoder().decode(SystemPlaybackState.self, from: data),
+        guard let state = try? JSONDecoder().decode(SystemPlaybackState.self, from: result.stdout),
               !state.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             logSystemPlaybackFailureOnce("系统未返回有效媒体状态")
             return nil
@@ -984,29 +1043,16 @@ private final class MacNowPlayingMonitor {
         end tell
         """#
 
-        let process = Process()
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        let exitSemaphore = DispatchSemaphore(value: 0)
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-e", script]
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
-        process.terminationHandler = { _ in exitSemaphore.signal() }
-
-        do {
-            try process.run()
-        } catch {
+        guard let result = try? runProcess(
+            executablePath: "/usr/bin/osascript",
+            arguments: ["-e", script]
+        ),
+        !result.timedOut,
+        result.terminationStatus == 0 else {
             return nil
         }
-        guard exitSemaphore.wait(timeout: .now() + 1.5) == .success else {
-            process.terminate()
-            return nil
-        }
-        guard process.terminationStatus == 0 else { return nil }
 
-        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        let output = String(decoding: data, as: UTF8.self)
+        let output = String(decoding: result.stdout, as: UTF8.self)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let fields = output
             .split(separator: "\u{001F}", omittingEmptySubsequences: false)
@@ -1508,21 +1554,10 @@ private final class MacNowPlayingMonitor {
           \(command)
         end tell
         """
-        let process = Process()
-        let errorPipe = Pipe()
-        let exitSemaphore = DispatchSemaphore(value: 0)
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-e", script]
-        process.standardError = errorPipe
-        process.terminationHandler = { _ in exitSemaphore.signal() }
-        do {
-            try process.run()
-            if exitSemaphore.wait(timeout: .now() + 1.5) == .timedOut {
-                process.terminate()
-            }
-        } catch {
-            return
-        }
+        _ = try? runProcess(
+            executablePath: "/usr/bin/osascript",
+            arguments: ["-e", script]
+        )
     }
 
     private func scheduleCommandRefreshes() {
@@ -7405,10 +7440,13 @@ class MacPomodoroStatusBarController: NSObject {
             }
 
             // 3. AppleScript 保底：能直接解冻并置顶最小化至 Dock 的窗口
-            DispatchQueue.global(qos: .userInitiated).async {
-                let script = NSAppleScript(source: "tell application id \"\(bundleId)\" to activate")
-                var error: NSDictionary?
-                script?.executeAndReturnError(&error)
+            if Self.isSafeBundleIdentifier(bundleId) {
+                let escapedBundleId = Self.escapeAppleScriptString(bundleId)
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let script = NSAppleScript(source: "tell application id \"\(escapedBundleId)\" to activate")
+                    var error: NSDictionary?
+                    script?.executeAndReturnError(&error)
+                }
             }
             return
         }
@@ -7433,6 +7471,22 @@ class MacPomodoroStatusBarController: NSObject {
             var error: NSDictionary?
             script?.executeAndReturnError(&error)
         }
+    }
+
+    private static func isSafeBundleIdentifier(_ bundleId: String) -> Bool {
+        guard !bundleId.isEmpty else { return false }
+        return bundleId.unicodeScalars.allSatisfy { scalar in
+            (scalar.value >= 0x30 && scalar.value <= 0x39) || // 0-9
+            (scalar.value >= 0x41 && scalar.value <= 0x5A) || // A-Z
+            (scalar.value >= 0x61 && scalar.value <= 0x7A) || // a-z
+            scalar == "." || scalar == "-" || scalar == "_"
+        }
+    }
+
+    private static func escapeAppleScriptString(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
     }
 }
 
