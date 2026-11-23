@@ -1876,6 +1876,7 @@ void main() {
       await prefs.setBool(initial.bootstrapKey, true);
       await prefs.setBool(initial.balanceCapabilityKey, true);
       await prefs.setBool(initial.balanceBootstrapKey, true);
+      await prefs.setBool(initial.transferBootstrapKey, true);
       final request = await FinanceSyncService.prepare(
         username: user,
         forceFullSync: false,
@@ -2239,6 +2240,7 @@ void main() {
       await prefs.setBool(initial.bootstrapKey, true);
       await prefs.setBool(initial.balanceCapabilityKey, true);
       await prefs.setBool(initial.balanceBootstrapKey, true);
+      await prefs.setBool(initial.transferBootstrapKey, true);
       await prefs.setInt(initial.cursorKey, 100);
       final original = FinanceTransaction(
         uuid: 'deferred-original',

@@ -2,7 +2,7 @@ import 'package:countdown_todo/screens/settings/handlers/permission_handler.dart
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('Android includes all 9 manageable app permissions', () {
+  test('Android includes all 10 manageable app permissions', () {
     final defs = PermissionHandler.defsForPlatform(
       isWeb: false,
       isAndroid: true,
@@ -18,24 +18,32 @@ void main() {
       'storage',
       'usage_stats',
       'calendar',
+      'location',
       'local_network',
       'live_updates',
       'request_install',
     ]);
   });
 
-  test('iOS and macOS only show notification and calendar permissions', () {
-    for (final isIOS in [true, false]) {
-      final defs = PermissionHandler.defsForPlatform(
-        isWeb: false,
-        isAndroid: false,
-        isIOS: isIOS,
-        isMacOS: !isIOS,
-        isWindows: false,
-      );
-      expect(defs.map((def) => def['key']), ['notification', 'calendar']);
-    }
-  });
+  test(
+    'iOS and macOS show notification, calendar, and location permissions',
+    () {
+      for (final isIOS in [true, false]) {
+        final defs = PermissionHandler.defsForPlatform(
+          isWeb: false,
+          isAndroid: false,
+          isIOS: isIOS,
+          isMacOS: !isIOS,
+          isWindows: false,
+        );
+        expect(defs.map((def) => def['key']), [
+          'notification',
+          'calendar',
+          'location',
+        ]);
+      }
+    },
+  );
 
   test('Windows only shows notification and Web shows none', () {
     final windowsDefs = PermissionHandler.defsForPlatform(

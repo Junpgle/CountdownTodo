@@ -53,30 +53,30 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('手动同步'), findsOneWidget);
-    expect(find.text('已选 8 / 9 项模块'), findsOneWidget);
-    expect(find.text('开始同步 (8)'), findsOneWidget);
+    expect(find.text('当前通道：服务器同步 • 已选 8 / 9 项模块'), findsOneWidget);
+    expect(find.text('服务器同步 (8)'), findsOneWidget);
     expect(find.text('全选'), findsOneWidget);
 
     // Toggle finance on -> 9/9 and button changes to 取消全选
     await tester.tap(find.text('记账'));
     await tester.pumpAndSettle();
-    expect(find.text('已选 9 / 9 项模块'), findsOneWidget);
-    expect(find.text('开始同步 (9)'), findsOneWidget);
+    expect(find.text('当前通道：服务器同步 • 已选 9 / 9 项模块'), findsOneWidget);
+    expect(find.text('服务器同步 (9)'), findsOneWidget);
     expect(find.text('取消全选'), findsOneWidget);
 
     // Tap 取消全选 -> 0/9 and submit button disabled
     await tester.tap(find.text('取消全选'));
     await tester.pumpAndSettle();
-    expect(find.text('已选 0 / 9 项模块'), findsOneWidget);
+    expect(find.text('当前通道：服务器同步 • 已选 0 / 9 项模块'), findsOneWidget);
     expect(find.text('请选择模块'), findsOneWidget);
 
     // Tap 待办事项 & 记账 -> 2/9 and submit
     await tester.tap(find.text('待办事项'));
     await tester.tap(find.text('记账'));
     await tester.pumpAndSettle();
-    expect(find.text('开始同步 (2)'), findsOneWidget);
+    expect(find.text('服务器同步 (2)'), findsOneWidget);
 
-    await tester.tap(find.text('开始同步 (2)'));
+    await tester.tap(find.text('服务器同步 (2)'));
     await tester.pumpAndSettle();
 
     expect(captured, isNotNull);
@@ -107,7 +107,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(Dialog), findsOneWidget);
-    expect(find.text('已选 9 / 9 项模块'), findsOneWidget);
+    expect(find.text('当前通道：服务器同步 • 已选 9 / 9 项模块'), findsOneWidget);
 
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();

@@ -278,6 +278,9 @@ void main() {
       const channel = MethodChannel(
         'plugins.it_nomads.com/flutter_secure_storage',
       );
+      const deviceContextChannel = MethodChannel(
+        'com.math_quiz_app/device_context',
+      );
       final messenger =
           TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
       messenger.setMockMethodCallHandler(channel, (call) async {
@@ -297,7 +300,16 @@ void main() {
         }
         return null;
       });
-      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+      messenger.setMockMethodCallHandler(deviceContextChannel, (call) async {
+        if (call.method == 'getLocationPermissionStatus') {
+          return 'denied';
+        }
+        return null;
+      });
+      addTearDown(() {
+        messenger.setMockMethodCallHandler(channel, null);
+        messenger.setMockMethodCallHandler(deviceContextChannel, null);
+      });
     });
 
     testWidgets('exposes behavior controls and persists smart context', (

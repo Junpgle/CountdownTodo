@@ -466,7 +466,7 @@ void main() {
         clientFactory: () => _FixtureClient((body) {
           requests++;
           if (requests == 1) {
-            expect(body['tools'], hasLength(3));
+            expect(body['tools'], hasLength(tools.length));
             expect(body['messages'], messages);
             return _sse({
               'tool_calls': [
@@ -697,7 +697,11 @@ void main() {
             ],
           );
         } else {
-          expect(roundTools, hasLength(3));
+          expect(roundTools, hasLength(tools.length));
+          expect(
+            roundTools.map((tool) => (tool['function'] as Map)['name']),
+            isNot(contains('propose_cdt_actions')),
+          );
           expect(
             jsonDecode(history.last['content'] as String)['status'],
             'awaiting_confirmation',
