@@ -250,7 +250,12 @@ abstract final class HabitDrinkLogService {
 
   /// 判断习惯是否为「戒掉饮料 / 控糖戒饮」类习惯。
   static bool isDrinkChoiceHabit(HabitGoal goal) {
-    final name = goal.name.trim();
+    return isDrinkChoiceName(goal.name);
+  }
+
+  /// 判断习惯名称是否属于「戒掉饮料 / 控糖戒饮」类习惯。
+  static bool isDrinkChoiceName(String rawName) {
+    final name = rawName.trim();
     if (name.isEmpty) return false;
     const directKeywords = <String>[
       '戒掉饮料',
@@ -653,4 +658,136 @@ abstract final class HabitDrinkLogService {
       safeMinute % 60,
     );
   }
+
+  /// 统计戒掉饮料习惯的累计与近 7 天饮品摄入情况（按饮品打卡记录聚合）。
+  static HabitDrinkStats summarizeDrinkLogs({
+    required HabitGoal goal,
+    required List<HabitCheckIn> allCheckIns,
+    DateTime? referenceDate,
+  }) {
+    if (!isDrinkChoiceHabit(goal)) {
+      return const HabitDrinkStats.empty();
+    }
+    final now = referenceDate ?? DateTime.now();
+    final endDate = DateTime(now.year, now.month, now.day);
+    final startDate = HabitRuleResolver.addCalendarDays(endDate, -6);
+
+    var totalDrinks = 0;
+    var last7DaysDrinks = 0;
+    final totalDays = <String>{};
+    final last7Days = <String>{};
+    final breakdownMap = <String, _MutableDrinkBreakdown>{};
+
+    for (final checkIn in allCheckIns) {
+      final icon = extractDrinkIconFromCheckIn(checkIn);
+      if (icon == null) continue;
+
+      totalDrinks += 1;
+      totalDays.add(checkIn.logicalDate);
+
+      final parsedDay = HabitRuleResolver.parseDayKey(checkIn.logicalDate);
+      final inLast7Days =
+          parsedDay != null &&
+          !parsedDay.isBefore(startDate) &&
+          !parsedDay.isAfter(endDate);
+      if (inLast7Days) {
+        last7DaysDrinks += 1;
+        last7Days.add(checkIn.logicalDate);
+      }
+
+      final label = _extractDrinkLabel(icon, checkIn.note);
+      final entry = breakdownMap.putIfAbsent(
+        icon,
+        () => _MutableDrinkBreakdown(icon: icon, label: label),
+      );
+      entry.totalCount += 1;
+      if (inLast7Days) {
+        entry.last7DaysCount += 1;
+      }
+    }
+
+    final breakdown =
+        breakdownMap.values
+            .map(
+              (item) => HabitDrinkBreakdownItem(
+                icon: item.icon,
+                label: item.label,
+                totalCount: item.totalCount,
+                last7DaysCount: item.last7DaysCount,
+              ),
+            )
+            .toList()
+          ..sort((a, b) {
+            final byLast7 = b.last7DaysCount.compareTo(a.last7DaysCount);
+            if (byLast7 != 0) return byLast7;
+            return b.totalCount.compareTo(a.totalCount);
+          });
+
+    return HabitDrinkStats(
+      totalDrinks: totalDrinks,
+      totalDrinkDays: totalDays.length,
+      last7DaysDrinks: last7DaysDrinks,
+      last7DaysDrinkDays: last7Days.length,
+      breakdown: List<HabitDrinkBreakdownItem>.unmodifiable(breakdown),
+    );
+  }
+
+  static String _extractDrinkLabel(String icon, String? note) {
+    final trimmed = note?.trim() ?? '';
+    if (trimmed.startsWith(icon)) {
+      final rest = trimmed.substring(icon.length).trim();
+      if (rest.isNotEmpty) return rest;
+    }
+    final spec = _defaultSpecs.where((s) => s.icon == icon).firstOrNull;
+    if (spec != null) return spec.label;
+    return trimmed.isNotEmpty ? trimmed : icon;
+  }
+}
+
+class _MutableDrinkBreakdown {
+  final String icon;
+  final String label;
+  int totalCount = 0;
+  int last7DaysCount = 0;
+
+  _MutableDrinkBreakdown({required this.icon, required this.label});
+}
+
+/// 单个饮品品类的累计与近 7 天统计项。
+class HabitDrinkBreakdownItem {
+  final String icon;
+  final String label;
+  final int totalCount;
+  final int last7DaysCount;
+
+  const HabitDrinkBreakdownItem({
+    required this.icon,
+    required this.label,
+    required this.totalCount,
+    required this.last7DaysCount,
+  });
+}
+
+/// 戒掉饮料习惯的饮品摄入统计摘要。
+class HabitDrinkStats {
+  final int totalDrinks;
+  final int totalDrinkDays;
+  final int last7DaysDrinks;
+  final int last7DaysDrinkDays;
+  final List<HabitDrinkBreakdownItem> breakdown;
+
+  const HabitDrinkStats({
+    required this.totalDrinks,
+    required this.totalDrinkDays,
+    required this.last7DaysDrinks,
+    required this.last7DaysDrinkDays,
+    required this.breakdown,
+  });
+
+  const HabitDrinkStats.empty()
+    : totalDrinks = 0,
+      totalDrinkDays = 0,
+      last7DaysDrinks = 0,
+      last7DaysDrinkDays = 0,
+      breakdown = const <HabitDrinkBreakdownItem>[];
 }

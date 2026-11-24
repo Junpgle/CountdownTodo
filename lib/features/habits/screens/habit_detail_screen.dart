@@ -10,6 +10,7 @@ import '../models/habit_progress.dart';
 import '../repositories/habit_repository.dart';
 import '../services/habit_adaptation_service.dart';
 import '../services/habit_day_loader.dart';
+import '../services/habit_drink_log_service.dart';
 import '../services/habit_progress_calculator.dart';
 import '../services/habit_rule_resolver.dart';
 import '../services/habit_source_resolver.dart';
@@ -62,6 +63,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   HabitTimeLogImportPreview? _timeLogImportPreview;
   HabitTimeLogImportPart? _timeLogImportPart;
   HabitSleepCoachingSnapshot? _sleepCoachingSnapshot;
+  HabitDrinkStats? _drinkStats;
   bool _loading = true;
 
   bool get _isSleepDuration =>
@@ -159,6 +161,10 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     final freezeBalanceFuture = HabitFreezeService.getAvailableCards(
       _goal.uuid,
     );
+    final isDrinkGoal = HabitDrinkLogService.isDrinkChoiceHabit(_goal);
+    final allDrinkCheckInsFuture = isDrinkGoal
+        ? HabitRepository.getCheckIns(habitUuid: _goal.uuid)
+        : Future<List<HabitCheckIn>>.value(const <HabitCheckIn>[]);
 
     final results = await Future.wait([
       progressFuture,
@@ -166,6 +172,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
       timeTrendFuture,
       focusRecordsFuture,
       freezeBalanceFuture,
+      allDrinkCheckInsFuture,
     ]);
 
     final progress = results[0] as HabitProgress?;
@@ -173,6 +180,14 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     final timeTrend = results[2] as List<HabitDayProgress>;
     final focusRecords = results[3] as List<PomodoroRecord>;
     var freezeBalance = results[4] as int;
+    final allDrinkCheckIns = results[5] as List<HabitCheckIn>;
+    final drinkStats = isDrinkGoal
+        ? HabitDrinkLogService.summarizeDrinkLogs(
+            goal: _goal,
+            allCheckIns: allDrinkCheckIns,
+            referenceDate: displayDate,
+          )
+        : null;
     final checkIns = progress?.checkIns ?? const <HabitCheckIn>[];
 
     if (summary != null && summary.currentStreak > 0) {
@@ -195,6 +210,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
         _timeTrend = timeTrend;
         _freezeBalance = freezeBalance;
         _sleepCoachingSnapshot = sleepCoachingSnapshot;
+        _drinkStats = drinkStats;
         _loading = false;
       });
     }
@@ -1825,6 +1841,160 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     );
   }
 
+  Widget _buildDrinkStatsCard(ColorScheme colorScheme) {
+    final stats = _drinkStats ?? const HabitDrinkStats.empty();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.45),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.local_cafe_rounded,
+                size: 18,
+                color: colorScheme.primary,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '饮品摄入统计',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '按饮品记录统计',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildDrinkStatTile(
+                  colorScheme,
+                  label: '近 7 天喝了',
+                  value: '${stats.last7DaysDrinks} 次',
+                  subtitle: stats.last7DaysDrinkDays > 0
+                      ? '${stats.last7DaysDrinkDays} 天有记录'
+                      : '近 7 天未喝饮料',
+                  highlight: stats.last7DaysDrinks > 0,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildDrinkStatTile(
+                  colorScheme,
+                  label: '累计喝了',
+                  value: '${stats.totalDrinks} 次',
+                  subtitle: stats.totalDrinkDays > 0
+                      ? '共 ${stats.totalDrinkDays} 天有记录'
+                      : '暂无饮料记录',
+                  highlight: false,
+                ),
+              ),
+            ],
+          ),
+          if (stats.breakdown.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: stats.breakdown.map((item) {
+                final detailText = item.last7DaysCount > 0
+                    ? '累计 ${item.totalCount} · 近7天 ${item.last7DaysCount}'
+                    : '累计 ${item.totalCount}';
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerHighest.withValues(
+                      alpha: 0.6,
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '${item.icon} ${item.label} · $detailText',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDrinkStatTile(
+    ColorScheme colorScheme, {
+    required String label,
+    required String value,
+    required String subtitle,
+    required bool highlight,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: highlight
+            ? colorScheme.errorContainer.withValues(alpha: 0.45)
+            : colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: highlight ? colorScheme.error : colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            style: TextStyle(
+              fontSize: 11.5,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildAdaptationSection(ColorScheme colorScheme) {
     final adaptation = HabitAdaptationService.forHabit(_goal);
     if (adaptation == null) return const SizedBox.shrink();
@@ -1842,6 +2012,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
         adaptation.kind == HabitAdaptationKind.meditation;
     final isSleepDurationAdaptation =
         adaptation.kind == HabitAdaptationKind.sleepDuration;
+    final isQuitSugaryDrinksAdaptation =
+        adaptation.kind == HabitAdaptationKind.quitSugaryDrinks;
     final isFocusDurationAdaptation =
         isReadingAdaptation || isLearningAdaptation || isMeditationAdaptation;
     return Column(
@@ -1849,7 +2021,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
       children: [
         HabitAdaptationPanel(
           adaptation: adaptation,
-          currentValue: isSleepAdaptation
+          currentValue: (isSleepAdaptation || isQuitSugaryDrinksAdaptation)
               ? null
               : isSleepDurationAdaptation
               ? _todayProgress == null
@@ -1860,7 +2032,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                     ? null
                     : _todayProgress!.currentValue / 60
               : _todayProgress?.currentValue,
-          targetValue: isSleepAdaptation
+          targetValue: (isSleepAdaptation || isQuitSugaryDrinksAdaptation)
               ? null
               : isSleepDurationAdaptation
               ? _rule.targetValue / 3600
@@ -1941,6 +2113,10 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
             periodType: _rule.periodType,
             weekdaysMask: _rule.weekdaysMask,
           ),
+        ],
+        if (isQuitSugaryDrinksAdaptation) ...[
+          const SizedBox(height: 12),
+          _buildDrinkStatsCard(colorScheme),
         ],
         if (isSleepDurationAdaptation) ...[
           const SizedBox(height: 12),

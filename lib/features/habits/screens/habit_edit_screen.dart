@@ -9,6 +9,7 @@ import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../repositories/habit_repository.dart';
 import '../services/habit_adaptation_service.dart';
+import '../services/habit_drink_log_service.dart';
 import '../services/habit_reminder_service.dart';
 import '../services/habit_rule_resolver.dart';
 import '../widgets/habit_adaptation_panel.dart';
@@ -151,6 +152,12 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     ),
     _HabitTemplate('每日签到', '✅', HabitSourceType.recurringTodo),
     _HabitTemplate(
+      '戒掉饮料',
+      '🥤',
+      HabitSourceType.recurringTodo,
+      adaptationKind: HabitAdaptationKind.quitSugaryDrinks,
+    ),
+    _HabitTemplate(
       '俯卧撑',
       '💪',
       HabitSourceType.quantityCheckIn,
@@ -233,7 +240,8 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
                 sourceType: template.type,
                 name: template.name,
               ) !=
-              null;
+              null ||
+          HabitDrinkLogService.isDrinkChoiceName(template.name);
       (hasAdaptation ? adapted : standard).add(template);
     }
     return [...adapted, ...standard];
@@ -619,6 +627,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       HabitAdaptationKind.vocabulary => null,
       HabitAdaptationKind.meditation => null,
       HabitAdaptationKind.sleepDuration => null,
+      HabitAdaptationKind.quitSugaryDrinks => null,
     };
     if (anchor == null) return null;
     return HabitAdaptationService.pairSuggestionFor(
@@ -1927,27 +1936,40 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         ),
         const SizedBox(height: 12),
         switch (_sourceType) {
-          HabitSourceType.recurringTodo => Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerLow,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  '完成型习惯：每天在待办中完成一次即可。提醒由关联的循环待办触发。',
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.5,
-                    color: colorScheme.onSurfaceVariant,
+          HabitSourceType.recurringTodo => () {
+            final adaptation = HabitAdaptationService.forDraft(
+              sourceType: _sourceType,
+              name: _nameController.text,
+            );
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (adaptation != null) ...[
+                  HabitAdaptationPanel(
+                    adaptation: adaptation,
+                    showTargetSuggestions: false,
+                  ),
+                  const SizedBox(height: 14),
+                ],
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '完成型习惯：每天在待办中完成一次即可。提醒由关联的循环待办触发。',
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.5,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            );
+          }(),
           HabitSourceType.pomodoroTag => _buildDurationTarget(colorScheme),
           HabitSourceType.durationCheckIn => _buildDurationTarget(colorScheme),
           HabitSourceType.quantityCheckIn => _buildQuantityTarget(colorScheme),

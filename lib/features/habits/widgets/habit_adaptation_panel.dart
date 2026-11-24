@@ -40,6 +40,7 @@ class HabitAdaptationPanel extends StatelessWidget {
       HabitAdaptationKind.earlyWake => Icons.wb_sunny_rounded,
       HabitAdaptationKind.earlySleep => Icons.bedtime_rounded,
       HabitAdaptationKind.sleepDuration => Icons.hotel_rounded,
+      HabitAdaptationKind.quitSugaryDrinks => Icons.no_drinks_rounded,
     };
     final displayUnit = (targetUnitOverride ?? adaptation.targetUnit).trim();
     final progress =
@@ -132,7 +133,9 @@ class HabitAdaptationPanel extends StatelessWidget {
               ],
             ),
           ],
-          if (showTargetSuggestions && onTargetSelected != null) ...[
+          if (showTargetSuggestions &&
+              onTargetSelected != null &&
+              adaptation.targetSuggestions.isNotEmpty) ...[
             const SizedBox(height: 12),
             Text(
               adaptation.targetSuggestionTitle,
