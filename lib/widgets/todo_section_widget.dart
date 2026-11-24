@@ -77,6 +77,8 @@ part 'todo_section_widget_recurrence.dart';
 part 'todo_section_widget_view.dart';
 part 'todo_section_widget_independent_status.dart';
 part 'todo_edit_screen.dart';
+part 'todo_edit_screen_actions.dart';
+part 'todo_edit_screen_sections.dart';
 
 enum _TodoFolderDisplayMode { inline, separate, urgentFirst, hidden }
 
