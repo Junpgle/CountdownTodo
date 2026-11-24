@@ -84,6 +84,9 @@ part 'todo_chat_screen_send.dart';
 part 'todo_chat_screen_queries.dart';
 part 'todo_chat_screen_layout.dart';
 part 'todo_chat_screen_actions.dart';
+part 'todo_chat_screen_actions_finance.dart';
+part 'todo_chat_screen_actions_editor.dart';
+part 'todo_chat_screen_actions_execution.dart';
 part 'todo_chat_screen_messages.dart';
 part 'todo_chat_screen_widgets.dart';
 
@@ -184,4 +187,7 @@ class _TodoChatScreenState extends _TodoChatScreenStateBase
         _TodoChatQueries,
         _TodoChatLayout,
         _TodoChatActions,
+        _TodoChatFinanceActions,
+        _TodoChatActionEditor,
+        _TodoChatActionExecution,
         _TodoChatMessages {}

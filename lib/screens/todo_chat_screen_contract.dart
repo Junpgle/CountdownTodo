@@ -452,6 +452,13 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   bool _isDangerousAction(AiTodoAction action);
   String _getDangerHint(AiTodoAction action);
   Future<void> _saveHistorySilently();
+  String _formatHabitActionSummary(AiTodoAction action);
+  String _countdownTeamLabel(AiTodoAction action);
+  Future<void> _updateTodoActionDraft(
+    AiTodoAction source,
+    void Function(AiTodoAction draft) update,
+  );
+  Future<void> _commitTodoActionDraft(AiTodoAction source, AiTodoAction draft);
   Future<void> _addTodosForMessage(ChatMessage msg);
   Future<void> _executePomodoroAction(AiTodoAction action);
   Widget _buildQuickQuestion(
