@@ -159,6 +159,8 @@ part 'home_dashboard_data.dart';
 part 'home_dashboard_persistence.dart';
 part 'home_dashboard_wallpaper.dart';
 part 'home_dashboard_view.dart';
+part 'home_dashboard_view_actions.dart';
+part 'home_dashboard_view_widgets.dart';
 
 const _homeFocusTabIndex = 4;
 const String _defaultWallpaperAsset = 'assets/images/default_wallpaper.webp';
@@ -439,6 +441,7 @@ class _HomeDashboardState extends _HomeDashboardStateBase
         _HomeDashboardDataMixin,
         _HomeDashboardPersistenceMixin,
         _HomeDashboardWallpaperMixin,
+        _HomeDashboardViewActionsMixin,
         _HomeDashboardViewMixin {}
 
 /// 🚀 首页 Banner 事件模型
