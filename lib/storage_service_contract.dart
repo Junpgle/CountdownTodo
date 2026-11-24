@@ -412,7 +412,17 @@ abstract class _StorageServiceBase {
   Future<void> _refreshTodoScheduleConflicts(
     String username, {
     Set<String>? affectedDayKeys,
+    Set<String>? affectedTodoIds,
   });
+  bool _requiresScheduleConflictRefresh(
+    TodoItem item,
+    Map<String, dynamic>? previousData,
+  );
+  Set<String> _scheduleConflictDayKeysFor(
+    TodoItem item, {
+    Map<String, dynamic>? previousData,
+  });
+  Set<String> _scheduleConflictDayKeysForRow(Map<String, dynamic> row);
   Future<Map<String, int>> scanAllTodoConflicts(String username);
   Future<void> clearLocalTodoScheduleConflicts(String username);
   Future<void> ignoreLocalScheduleConflict(String username, TodoItem item);
@@ -857,6 +867,9 @@ class _StorageServiceImpl extends _StorageServiceBase
         _StorageFixed,
         _StorageCore,
         _StorageTodos,
+        _StorageTodoConflicts,
+        _StorageTodoQueries,
+        _StorageTodoRecurrence,
         _StorageSync,
         _StorageConflict,
         _StorageSettings {}
