@@ -11,6 +11,7 @@ import '../../../widgets/app_settings_widgets.dart';
 import '../../../widgets/app_state_views.dart';
 import '../../../widgets/settings_toggle_card.dart';
 import '../server_choice_page.dart';
+import '../../../utils/app_dialogs.dart';
 import '../pages/sync_health_page.dart';
 
 class SyncSettingsSection extends StatefulWidget {
@@ -110,7 +111,7 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection>
 
   Future<void> _setOfflineModeEnabled(bool enabled) async {
     if (enabled) {
-      final confirmed = await showDialog<bool>(
+      final confirmed = await showAppDialog<bool>(
         context: context,
         builder: (dialogContext) {
           final colorScheme = Theme.of(dialogContext).colorScheme;

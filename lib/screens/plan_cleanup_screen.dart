@@ -14,6 +14,7 @@ import '../services/todo_editor_save_service.dart';
 import '../storage_service.dart';
 import '../widgets/todo_section_widget.dart';
 import 'pomodoro_screen.dart';
+import '../utils/app_dialogs.dart';
 import 'settings/calendar_sync_page.dart';
 
 bool _affectsPlanCleanup(
@@ -716,7 +717,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
         ..sort();
       final ends = preview.rows.map((r) => r['end_time'] as int).toList()
         ..sort();
-      final confirmed = await showDialog<bool>(
+      final confirmed = await showAppDialog<bool>(
         context: context,
         builder: (context) {
           void submit(bool value) {
@@ -868,7 +869,7 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     if (_working || _inspecting) return;
     setState(() => _inspecting = true);
     try {
-      await showDialog<void>(
+      await showAppDialog<void>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('规划核对'),

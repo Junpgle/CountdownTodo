@@ -434,7 +434,7 @@ extension _FixedScheduleEditorSave on _FixedScheduleEditorScreenState {
       if (impact.hasImpact || hasPresentedReview) {
         hasPresentedReview = true;
         if (!mounted) return null;
-        final accepted = await showDialog<FixedScheduleRescheduleImpact>(
+        final accepted = await showAppDialog<FixedScheduleRescheduleImpact>(
           context: context,
           barrierDismissible: false,
           builder: (dialogContext) => FixedScheduleRescheduleImpactDialog(

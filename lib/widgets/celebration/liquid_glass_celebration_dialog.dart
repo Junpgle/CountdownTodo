@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../optional_liquid_glass_surface.dart';
+import '../../utils/app_dialogs.dart';
 import 'confetti_particle_canvas.dart';
 
 /// 居中 Liquid Glass 庆祝弹层公共组件。
@@ -82,7 +83,7 @@ class LiquidGlassCelebrationDialog extends StatefulWidget {
     bool barrierDismissible = true,
     Color? barrierColor,
   }) {
-    return showDialog<void>(
+    return showAppDialog<void>(
       context: context,
       barrierDismissible: barrierDismissible,
       barrierColor: barrierColor ?? Colors.black.withValues(alpha: 0.35),

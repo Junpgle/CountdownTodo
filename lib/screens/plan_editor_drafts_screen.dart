@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../services/plan_editor_draft_repository.dart';
 import '../services/plan_todo_guard.dart';
 import '../widgets/plan_block_editor_sheet.dart';
+import '../utils/app_dialogs.dart';
 import '../utils/time_utils.dart';
 
 Future<void> openPlanEditorDrafts(
@@ -103,7 +104,7 @@ class _PlanEditorDraftsScreenState extends State<PlanEditorDraftsScreen>
     }
     if (!mounted) return;
     final f = draft?.fields;
-    await showDialog<void>(
+    await showAppDialog<void>(
       context: context,
       builder: (c) => AlertDialog(
         title: Text(row.title),
@@ -201,7 +202,7 @@ class _PlanEditorDraftsScreenState extends State<PlanEditorDraftsScreen>
   }
 
   Future<void> _delete(PlanDraftSummary row) async {
-    final confirm = await showDialog<bool>(
+    final confirm = await showAppDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('删除本机草稿？'),

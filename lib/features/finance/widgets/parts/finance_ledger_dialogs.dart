@@ -602,7 +602,7 @@ class _FinanceBatchEditDialogState extends State<_FinanceBatchEditDialog> {
   }
 
   Future<void> _pickDate() async {
-    final picked = await showDatePicker(
+    final picked = await showAppDatePicker(
       context: context,
       initialDate: _date,
       firstDate: DateTime(2000),

@@ -165,7 +165,7 @@ class _MonthPickerDialogState extends State<_MonthPickerDialog> {
           InkWell(
             borderRadius: BorderRadius.circular(8),
             onTap: () async {
-              final year = await showDialog<int>(
+              final year = await showAppDialog<int>(
                 context: context,
                 builder: (dialogCtx) => AlertDialog(
                   title: const Text('选择年份'),

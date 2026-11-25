@@ -15,6 +15,7 @@ import '../utils/page_transitions.dart';
 import '../utils/time_utils.dart';
 import '../widgets/plan_block_editor_sheet.dart';
 import '../widgets/time_estimation_hint.dart';
+import '../utils/app_dialogs.dart';
 import 'todo_plan_screen.dart';
 
 typedef PlanPreparationScheduleLoader = Future<FixedScheduleItem?> Function(
@@ -317,7 +318,7 @@ class _PlanPreparationScreenState extends State<PlanPreparationScreen> {
   }
 
   Future<void> _useAppOnly() async {
-    final allowed = await showDialog<bool>(
+    final allowed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('仅检查应用内日程？'),

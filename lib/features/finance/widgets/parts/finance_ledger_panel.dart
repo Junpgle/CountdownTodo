@@ -374,7 +374,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
   Future<void> _pickDateRange() async {
     final now = widget.clock();
     final month = widget.month ?? now;
-    final picked = await showDateRangePicker(
+    final picked = await showAppDateRangePicker(
       context: context,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),

@@ -286,12 +286,13 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       if (!await MinorModeService.instance.authorizeAiInteraction()) return;
       if (!mounted) return;
       ChatUsageSummary? voiceUsage;
-      final text = await showModalBottomSheet<String>(
+      final text = await showAppModalBottomSheet<String>(
         context: context,
         isScrollControlled: true,
         isDismissible: false,
         enableDrag: false,
         backgroundColor: Colors.transparent,
+        useGlassSheet: false,
         builder: (_) => QuickVoiceChatSheet(
           apiKey: key,
           onUsageSummary: (usage) => voiceUsage = usage,

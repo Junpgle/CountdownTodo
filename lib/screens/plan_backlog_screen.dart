@@ -13,6 +13,7 @@ import '../widgets/plan_block_editor_sheet.dart';
 import '../widgets/todo_section_widget.dart';
 import 'pomodoro_screen.dart';
 import 'plan_editor_drafts_screen.dart';
+import '../utils/app_dialogs.dart';
 import 'plan_cleanup_screen.dart';
 
 class _PlanBacklogSectionHeader {
@@ -176,7 +177,7 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
 
   Future<void> _pickDate() async {
     final today = DateUtils.dateOnly(_now);
-    final chosen = await showDatePicker(
+    final chosen = await showAppDatePicker(
       context: context,
       initialDate: _date.isBefore(today) ? today : _date,
       firstDate: today,

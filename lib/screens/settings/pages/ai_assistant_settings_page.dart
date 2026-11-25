@@ -365,7 +365,7 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage>
 
   Future<void> _showMemoryEditorDialog({AiMemoryItem? existing}) async {
     final controller = TextEditingController(text: existing?.content ?? '');
-    final result = await showDialog<String>(
+    final result = await showAppDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(existing == null ? '添加 AI 记忆' : '编辑 AI 记忆'),
@@ -416,7 +416,7 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage>
   }
 
   Future<void> _confirmClearMemories() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('清空 AI 记忆'),

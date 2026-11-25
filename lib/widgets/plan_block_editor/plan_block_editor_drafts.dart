@@ -181,7 +181,7 @@ extension _PlanBlockEditorDrafts on _PlanBlockEditorSheetState {
       return;
     }
     _exitPrompt = true;
-    final action = await showDialog<String>(
+    final action = await showAppDialog<String>(
       context: context,
       builder: (c) => AlertDialog(
         title: Text(_supportsDraft ? '保留这次规划？' : '放弃未保存的修改？'),
@@ -266,7 +266,7 @@ extension _PlanBlockEditorDrafts on _PlanBlockEditorSheetState {
     final offer = _draftOffer;
     if (offer == null || _busy || _draftLoading) return;
     if (_dirty) {
-      final replace = await showDialog<bool>(
+      final replace = await showAppDialog<bool>(
         context: context,
         builder: (c) => AlertDialog(
           title: const Text('继续上次草稿？'),
@@ -434,7 +434,7 @@ extension _PlanBlockEditorDrafts on _PlanBlockEditorSheetState {
         return;
       } on PlanAvailabilityException catch (error) {
         if (!error.canUseAppOnly || appOnly || !mounted) rethrow;
-        final fallback = await showDialog<bool>(
+        final fallback = await showAppDialog<bool>(
           context: context,
           builder: (c) => AlertDialog(
             title: const Text('手机日历读取失败'),
@@ -542,7 +542,7 @@ extension _PlanBlockEditorDrafts on _PlanBlockEditorSheetState {
       return;
     }
     if (!mounted) throw const PlanAvailabilityException('页面已关闭');
-    final append = await showDialog<bool>(
+    final append = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(_isReuse ? '此待办已有安排' : '此待办已有新的安排'),
@@ -582,7 +582,7 @@ extension _PlanBlockEditorDrafts on _PlanBlockEditorSheetState {
         );
         await _saveIdentity!.check();
         if (mounted) {
-          await showDialog<void>(
+          await showAppDialog<void>(
             context: context,
             builder: (c) => AlertDialog(
               title: const Text('已有安排'),

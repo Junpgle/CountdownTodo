@@ -165,7 +165,7 @@ class _AutoBackupPageState extends State<AutoBackupPage> {
   }
 
   Future<void> _deleteEntry(AutoBackupEntry entry) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (dialogContext) {
         final colorScheme = Theme.of(dialogContext).colorScheme;

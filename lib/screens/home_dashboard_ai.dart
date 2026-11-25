@@ -87,12 +87,13 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
         voiceUsage = result?.usageSummary;
         sendImmediately = result?.sendImmediately ?? true;
       } else {
-        text = await showModalBottomSheet<String>(
+        text = await showAppModalBottomSheet<String>(
           context: context,
           isScrollControlled: true,
           isDismissible: false,
           enableDrag: false,
           backgroundColor: Colors.transparent,
+          useGlassSheet: false,
           builder: (_) => QuickVoiceChatSheet(
             apiKey: asrKey,
             onUsageSummary: (usage) => voiceUsage = usage,

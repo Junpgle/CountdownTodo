@@ -125,7 +125,7 @@ extension _PlanBlockEditorActions on _PlanBlockEditorSheetState {
         return candidate;
       } on PlanAvailabilityException catch (error) {
         if (!error.canUseAppOnly || appOnly || !mounted) rethrow;
-        final fallback = await showDialog<bool>(
+        final fallback = await showAppDialog<bool>(
           context: context,
           builder: (c) => AlertDialog(
             title: const Text('手机日历读取失败'),
@@ -211,7 +211,7 @@ extension _PlanBlockEditorActions on _PlanBlockEditorSheetState {
   Future<void> _returnSingle() async {
     if (_busy || _splitPersisted) return;
     if (_splitAdjusted) {
-      final yes = await showDialog<bool>(
+      final yes = await showAppDialog<bool>(
         context: context,
         builder: (c) => AlertDialog(
           title: const Text('放弃已调整的分段？'),
@@ -244,14 +244,14 @@ extension _PlanBlockEditorActions on _PlanBlockEditorSheetState {
   Future<void> _adjustSplit(int index) async {
     if (_busy || _splitPersisted) return;
     final selection = _split!, old = selection.slots[index];
-    final date = await showDatePicker(
+    final date = await showAppDatePicker(
       context: context,
       initialDate: old.start,
       firstDate: selection.query.base.dayStart,
       lastDate: CalendarDateMath.inclusiveEndDate(selection.query.endDate),
     );
     if (date == null || !mounted) return;
-    final time = await showTimePicker(
+    final time = await showAppTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(old.start),
     );
@@ -862,7 +862,7 @@ extension _PlanBlockEditorActions on _PlanBlockEditorSheetState {
     final corrections = seed.settings.corrections;
     if (corrections.isEmpty) return true;
 
-    final accepted = await showDialog<bool>(
+    final accepted = await showAppDialog<bool>(
       context: context,
       builder: (dialogContext) {
         final colors = Theme.of(dialogContext).colorScheme;

@@ -433,7 +433,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
 
   Future<void> _pickMonth() async {
     final now = DateTime.now();
-    final picked = await showDialog<DateTime>(
+    final picked = await showAppDialog<DateTime>(
       context: context,
       builder: (dialogContext) => _MonthPickerDialog(
         initialDate: _selected,
@@ -452,7 +452,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
   Future<void> _pickYear() async {
     final now = DateTime.now();
     final pickerYear = _selected.year.clamp(1970, now.year);
-    final year = await showDialog<int>(
+    final year = await showAppDialog<int>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('选择年份'),

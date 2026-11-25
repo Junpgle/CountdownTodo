@@ -620,7 +620,7 @@ class _TimeLogEntrySheetState extends State<TimeLogEntrySheet> {
     }
 
     _isExitDialogOpen = true;
-    final choice = await showDialog<_TimeLogExitChoice>(
+    final choice = await showAppDialog<_TimeLogExitChoice>(
       context: context,
       barrierDismissible: true,
       builder: (dialogContext) => AlertDialog(

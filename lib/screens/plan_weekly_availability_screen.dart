@@ -7,7 +7,7 @@ import '../services/plan_todo_guard.dart';
 import '../utils/app_dialogs.dart';
 
 Future<bool> _discardWeeklyChanges(BuildContext context) async =>
-    await showDialog<bool>(
+    await showAppDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('放弃未保存的修改？'),
@@ -153,7 +153,7 @@ class _PlanWeeklyAvailabilityScreenState
   Future<void> _copy() async {
     var source = 0;
     final targets = <int>{};
-    final apply = await showDialog<bool>(
+    final apply = await showAppDialog<bool>(
       context: context,
       builder: (c) => StatefulBuilder(
         builder: (c, update) => AlertDialog(

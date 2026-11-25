@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../services/todo_deadline_fixed_schedule_review_service.dart';
+import '../utils/app_dialogs.dart';
 import '../utils/time_utils.dart';
 
 Future<bool?> showTodoDeadlineFixedScheduleReviewDialog(
@@ -11,7 +12,7 @@ Future<bool?> showTodoDeadlineFixedScheduleReviewDialog(
   TodoDeadlineFixedScheduleReview review,
 ) {
   if (!review.needsReview) return Future.value(true);
-  return showDialog<bool>(
+  return showAppDialog<bool>(
     context: context,
     builder: (dialogContext) {
       final colors = Theme.of(dialogContext).colorScheme;

@@ -1387,7 +1387,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     final dateRange = plan.preview.firstDate == plan.preview.lastDate
         ? dateFormat.format(plan.preview.firstDate)
         : '${dateFormat.format(plan.preview.firstDate)} – ${dateFormat.format(plan.preview.lastDate)}';
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('恢复整组重复待办？'),
