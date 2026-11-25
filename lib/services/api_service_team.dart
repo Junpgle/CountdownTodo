@@ -193,7 +193,7 @@ Future<Map<String, dynamic>> _apiTeamGetPoWChallenge() async {
   }
 }
 
-String? _apiTeam_calculatePoW(String challenge, int difficulty) {
+String? _apiTeamCalculatePoW(String challenge, int difficulty) {
   String prefix = '0' * difficulty;
   int nonce = 0;
   while (true) {
@@ -223,7 +223,7 @@ Future<Map<String, dynamic>> _apiTeamRequestJoinTeam(
     final difficulty = challengeRes['difficulty'] ?? 4;
 
     // 2. 计算 PoW
-    final nonce = _apiTeam_calculatePoW(challenge, difficulty);
+    final nonce = _apiTeamCalculatePoW(challenge, difficulty);
     if (nonce == null) return {'success': false, 'error': '算力验证失败'};
 
     // 3. 提交申请

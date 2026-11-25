@@ -75,7 +75,6 @@ class _PlanGridViewState extends State<_PlanGridView>
   late final _manualCompletion = PlanManualCompletionService(
     clock: () => widget.dragService.now,
   );
-  void _mutateState(VoidCallback fn) => setState(fn);
   late Map<String, TodoItem> _todoById;
   int? _dragStartBlock;
   int? _dragEndBlock;

@@ -7,7 +7,7 @@ Future<void> _updDialogCheckUpdateAndPrompt(
   final running = UpdateService._updateCheckFuture;
   if (running != null) return running;
 
-  final future = _updDialog_checkUpdateAndPromptInternal(
+  final future = _updDialogCheckUpdateAndPromptInternal(
     context,
     isManual: isManual,
   );
@@ -27,7 +27,7 @@ Future<void> _updDialogCheckUpdateAndPrompt(
   return future;
 }
 
-Future<void> _updDialog_checkUpdateAndPromptInternal(
+Future<void> _updDialogCheckUpdateAndPromptInternal(
   BuildContext context, {
   bool isManual = false,
 }) async {
@@ -107,7 +107,7 @@ Future<void> _updDialog_checkUpdateAndPromptInternal(
   if (hasUpdate &&
       !manifest.forceUpdate &&
       !isManual &&
-      await _updDialog_isUpdateDialogSnoozedToday(manifest.versionName)) {
+      await _updDialogIsUpdateDialogSnoozedToday(manifest.versionName)) {
     hasUpdate = false;
   }
 
@@ -179,9 +179,9 @@ Future<void> _updDialogTriggerWebSocketUpdate(
   String localVersion = packageInfo.version;
 
   // 核心版本对比逻辑
-  bool hasUpdate = _updDialog_compareVersions(latestVersion, localVersion);
+  bool hasUpdate = _updDialogCompareVersions(latestVersion, localVersion);
   if (!hasUpdate) return;
-  if (await _updDialog_isUpdateDialogSnoozedToday(latestVersion)) return;
+  if (await _updDialogIsUpdateDialogSnoozedToday(latestVersion)) return;
 
   // 🚀 即使弹窗已显示，也要更新通知栏，以显示“紧急直连”状态
   NotificationService.showUpdateNotification(
@@ -237,7 +237,7 @@ Future<void> _updDialogAutoDownloadLatestOnWifi(
   // explicitly marked as forceUpdate keeps its existing repair-install path.
   final packageInfo = await PackageInfo.fromPlatform();
   if (!manifest.forceUpdate &&
-      !_updDialog_compareVersions(manifest.versionName, packageInfo.version)) {
+      !_updDialogCompareVersions(manifest.versionName, packageInfo.version)) {
     debugPrint(
       '[UpdateService] 跳过 Wi-Fi 自动下载：${manifest.versionName} 不高于已安装版本 ${packageInfo.version}',
     );
@@ -259,7 +259,7 @@ Future<void> _updDialogAutoDownloadLatestOnWifi(
 
   if (UpdateService._isDownloading || !context.mounted) return;
   unawaited(
-    _updDownload_startForegroundDownload(
+    _updDownloadStartForegroundDownload(
       context,
       manifest,
       onProgress: onProgress,
@@ -269,7 +269,7 @@ Future<void> _updDialogAutoDownloadLatestOnWifi(
   );
 }
 
-bool _updDialog_compareVersions(String manifestVersion, String localVersion) {
+bool _updDialogCompareVersions(String manifestVersion, String localVersion) {
   try {
     String cleanManifestVersion = manifestVersion.split('+')[0].split('-')[0];
     String cleanLocalVersion = localVersion.split('+')[0].split('-')[0];
@@ -331,7 +331,7 @@ Future<void> _updDialogShowUpdateDialog(
   if (UpdateService._isDialogShowing) return;
   if (hasUpdate &&
       !manifest.forceUpdate &&
-      !_updDialog_compareVersions(manifest.versionName, currentVersion)) {
+      !_updDialogCompareVersions(manifest.versionName, currentVersion)) {
     debugPrint(
       '[UpdateService] 忽略非新版本更新弹窗：${manifest.versionName}，当前版本 $currentVersion',
     );
@@ -350,7 +350,7 @@ Future<void> _updDialogShowUpdateDialog(
   if (hasUpdate &&
       respectTodaySnooze &&
       !manifest.forceUpdate &&
-      await _updDialog_isUpdateDialogSnoozedToday(manifest.versionName)) {
+      await _updDialogIsUpdateDialogSnoozedToday(manifest.versionName)) {
     UpdateService._isDialogShowing = false;
     return;
   }
@@ -501,10 +501,11 @@ Future<void> _updDialogShowUpdateDialog(
                                       ),
                                     TextButton(
                                       onPressed: () {
-                                        if (UpdateService._isDownloading)
+                                        if (UpdateService._isDownloading) {
                                           return;
+                                        }
                                         setState(() {});
-                                        _updDownload_startForegroundDownload(
+                                        _updDownloadStartForegroundDownload(
                                           context,
                                           manifest,
                                         );
@@ -576,7 +577,7 @@ Future<void> _updDialogShowUpdateDialog(
                                     onPressed: () {
                                       if (UpdateService._isDownloading) return;
                                       setState(() {});
-                                      _updDownload_startForegroundDownload(
+                                      _updDownloadStartForegroundDownload(
                                         context,
                                         manifest,
                                       );
@@ -597,7 +598,7 @@ Future<void> _updDialogShowUpdateDialog(
                     !UpdateService._isDownloading)
                   TextButton(
                     onPressed: () async {
-                      await _updDialog_snoozeUpdateDialogForToday(
+                      await _updDialogSnoozeUpdateDialogForToday(
                         manifest.versionName,
                       );
                       if (ctx.mounted) Navigator.pop(ctx);
@@ -627,26 +628,26 @@ Future<void> _updDialogShowUpdateDialog(
   UpdateService._uiErrorCallback = null;
 }
 
-String _updDialog_todayKey([DateTime? now]) {
+String _updDialogTodayKey([DateTime? now]) {
   final date = now ?? DateTime.now();
   final month = date.month.toString().padLeft(2, '0');
   final day = date.day.toString().padLeft(2, '0');
   return '${date.year}-$month-$day';
 }
 
-String _updDialog_snoozeValue(String versionName, [DateTime? now]) =>
-    '${_updDialog_todayKey(now)}|$versionName';
+String _updDialogSnoozeValue(String versionName, [DateTime? now]) =>
+    '${_updDialogTodayKey(now)}|$versionName';
 
-Future<bool> _updDialog_isUpdateDialogSnoozedToday(String versionName) async {
+Future<bool> _updDialogIsUpdateDialogSnoozedToday(String versionName) async {
   final prefs = await SharedPreferences.getInstance();
   return prefs.getString(UpdateService._updateDialogSnoozeTodayKey) ==
-      _updDialog_snoozeValue(versionName);
+      _updDialogSnoozeValue(versionName);
 }
 
-Future<void> _updDialog_snoozeUpdateDialogForToday(String versionName) async {
+Future<void> _updDialogSnoozeUpdateDialogForToday(String versionName) async {
   final prefs = await SharedPreferences.getInstance();
   await prefs.setString(
     UpdateService._updateDialogSnoozeTodayKey,
-    _updDialog_snoozeValue(versionName),
+    _updDialogSnoozeValue(versionName),
   );
 }

@@ -6,7 +6,7 @@ String _updDownloadGetUpdateFileName(String versionName) {
   return "CountdownTodo_v$versionName.apk";
 }
 
-String _updDownload_normalizeMacArch(String rawArch) {
+String _updDownloadNormalizeMacArch(String rawArch) {
   final normalized = rawArch.trim().toLowerCase();
   if (normalized == 'x86_64' ||
       normalized == 'x64' ||
@@ -38,13 +38,13 @@ Future<String> _updDownloadGetDeviceArchitecture() async {
   if (Platform.isMacOS) {
     try {
       final macInfo = await DeviceInfoPlugin().macOsInfo;
-      final arch = _updDownload_normalizeMacArch(macInfo.arch);
+      final arch = _updDownloadNormalizeMacArch(macInfo.arch);
       if (arch.isNotEmpty) return arch;
     } catch (_) {}
     try {
       final result = await Process.run('uname', ['-m']);
       if (result.exitCode == 0) {
-        final arch = _updDownload_normalizeMacArch(result.stdout.toString());
+        final arch = _updDownloadNormalizeMacArch(result.stdout.toString());
         if (arch.isNotEmpty) return arch;
       }
     } catch (_) {}
@@ -68,18 +68,18 @@ Future<String> _updDownloadGetDownloadUrlForArch(AppManifest manifest) async {
         '[UpdateService] macOS architecture: $architecture, package: $packageUrl',
       );
       if (packageUrl != null && packageUrl.isNotEmpty) {
-        return _updManifest_giteePackageUrl(packageUrl);
+        return _updManifestGiteePackageUrl(packageUrl);
       }
     }
     if (manifest.updateInfo.macPackageUrl.isNotEmpty) {
       debugPrint(
         '[UpdateService] Using macPackageUrl: ${manifest.updateInfo.macPackageUrl}',
       );
-      return _updManifest_giteePackageUrl(manifest.updateInfo.macPackageUrl);
+      return _updManifestGiteePackageUrl(manifest.updateInfo.macPackageUrl);
     }
   }
   if (Platform.isWindows && manifest.updateInfo.pcPackageUrl.isNotEmpty) {
-    return _updManifest_giteePackageUrl(manifest.updateInfo.pcPackageUrl);
+    return _updManifestGiteePackageUrl(manifest.updateInfo.pcPackageUrl);
   }
   final archPackages = manifest.updateInfo.androidArchPackages;
   if (archPackages.isNotEmpty) {
@@ -89,21 +89,21 @@ Future<String> _updDownloadGetDownloadUrlForArch(AppManifest manifest) async {
       '[UpdateService] Android architecture: $architecture, package: $packageUrl',
     );
     if (packageUrl != null && packageUrl.isNotEmpty) {
-      return _updManifest_giteePackageUrl(packageUrl);
+      return _updManifestGiteePackageUrl(packageUrl);
     }
   }
   debugPrint(
     '[UpdateService] Using fullPackageUrl: ${manifest.updateInfo.fullPackageUrl}',
   );
-  return _updManifest_giteePackageUrl(manifest.updateInfo.fullPackageUrl);
+  return _updManifestGiteePackageUrl(manifest.updateInfo.fullPackageUrl);
 }
 
-String? _updDownload_resolveExpectedSha256SyncFallback(AppManifest manifest) {
+String? _updDownloadResolveExpectedSha256SyncFallback(AppManifest manifest) {
   final fullSha = manifest.updateInfo.fullPackageSha256;
   return fullSha.isEmpty ? null : fullSha;
 }
 
-Future<String?> _updDownload_getExpectedSha256ForArch(
+Future<String?> _updDownloadGetExpectedSha256ForArch(
   AppManifest manifest,
 ) async {
   if (Platform.isMacOS) {
@@ -124,7 +124,7 @@ Future<String?> _updDownload_getExpectedSha256ForArch(
     final archSha = manifest.updateInfo.androidArchSha256[arch]?.trim();
     if (archSha != null && archSha.isNotEmpty) return archSha;
   }
-  return _updDownload_resolveExpectedSha256SyncFallback(manifest);
+  return _updDownloadResolveExpectedSha256SyncFallback(manifest);
 }
 
 Uri _updDownloadValidateDownloadUrl(String url) {
@@ -149,12 +149,12 @@ Future<void> _updDownloadVerifyArtifactSha256(
   }
 }
 
-Future<_UpdateArtifact> _updDownload_getUpdateArtifact(
+Future<_UpdateArtifact> _updDownloadGetUpdateArtifact(
   AppManifest manifest, {
   bool preferDelta = true,
 }) async {
   final fullUrl = await UpdateService.getDownloadUrlForArch(manifest);
-  final expectedFullSha256 = await _updDownload_getExpectedSha256ForArch(
+  final expectedFullSha256 = await _updDownloadGetExpectedSha256ForArch(
     manifest,
   );
   final fullArtifact = _UpdateArtifact(
@@ -171,7 +171,7 @@ Future<_UpdateArtifact> _updDownload_getUpdateArtifact(
     if (candidates == null || candidates.isEmpty) return fullArtifact;
 
     final packageInfo = await PackageInfo.fromPlatform();
-    final localVersion = _updManifest_cleanVersion(packageInfo.version);
+    final localVersion = _updManifestCleanVersion(packageInfo.version);
     final basePath = await AndroidDeltaService.getInstalledApkPath();
     if (basePath == null || basePath.isEmpty) return fullArtifact;
 
@@ -181,14 +181,14 @@ Future<_UpdateArtifact> _updDownload_getUpdateArtifact(
 
     for (final candidate in candidates) {
       if (!candidate.isUsable ||
-          _updManifest_cleanVersion(candidate.fromVersion) != localVersion ||
-          _updManifest_cleanVersion(candidate.toVersion) !=
-              _updManifest_cleanVersion(manifest.versionName) ||
+          _updManifestCleanVersion(candidate.fromVersion) != localVersion ||
+          _updManifestCleanVersion(candidate.toVersion) !=
+              _updManifestCleanVersion(manifest.versionName) ||
           candidate.fromSha256.toLowerCase() != baseSha256.toLowerCase()) {
         continue;
       }
 
-      final patchUrl = _updManifest_giteePackageUrl(candidate.patchUrl);
+      final patchUrl = _updManifestGiteePackageUrl(candidate.patchUrl);
       if (patchUrl.isEmpty) continue;
 
       debugPrint(
@@ -213,7 +213,7 @@ Future<_UpdateArtifact> _updDownload_getUpdateArtifact(
 
 Future<bool> _updDownloadHasUsableDeltaPackage(AppManifest manifest) async {
   if (!Platform.isAndroid) return false;
-  final artifact = await _updDownload_getUpdateArtifact(manifest);
+  final artifact = await _updDownloadGetUpdateArtifact(manifest);
   return artifact.isDelta;
 }
 
@@ -221,7 +221,7 @@ Future<String?> _updDownloadIsPackageAlreadyDownloaded(
   String versionName,
 ) async {
   final fileName = UpdateService.getUpdateFileName(versionName);
-  for (final path in await _updDownload_getDownloadDirectories()) {
+  for (final path in await _updDownloadGetDownloadDirectories()) {
     File file = File("$path/$fileName");
 
     if (!await file.exists()) {
@@ -251,7 +251,7 @@ Future<void> _updDownloadClearDownloadedPackage(String filePath) async {
   }
 
   final pathsToClear = <String>{file.path};
-  for (final directory in await _updDownload_getDownloadDirectories()) {
+  for (final directory in await _updDownloadGetDownloadDirectories()) {
     for (final relatedName in relatedNames) {
       pathsToClear.add('$directory/$relatedName');
     }
@@ -270,7 +270,7 @@ Future<void> _updDownloadClearDownloadedPackage(String filePath) async {
   }
 }
 
-Future<List<String>> _updDownload_getDownloadDirectories() async {
+Future<List<String>> _updDownloadGetDownloadDirectories() async {
   final directories = <String>[];
   final publicDirectory = await UpdateService.getDownloadDirectory();
   if (publicDirectory != null) directories.add(publicDirectory);
@@ -316,7 +316,7 @@ Future<bool> _updDownloadPrepareForDownload(
   }
 
   try {
-    for (final path in await _updDownload_getDownloadDirectories()) {
+    for (final path in await _updDownloadGetDownloadDirectories()) {
       final dir = Directory(path);
       if (await dir.exists()) {
         final List<FileSystemEntity> files = dir.listSync();
@@ -450,7 +450,7 @@ Future<void> _updDownloadDownloadLatestPackage(
   }
 
   try {
-    final finalFile = await _updDownload_downloadUpdateWithFallback(
+    final finalFile = await _updDownloadDownloadUpdateWithFallback(
       manifest,
       path,
       preferDelta: preferDelta,
@@ -508,7 +508,7 @@ Future<void> _updDownloadForceDownloadLatest(
   }
 
   try {
-    final finalFile = await _updDownload_downloadUpdateWithFallback(
+    final finalFile = await _updDownloadDownloadUpdateWithFallback(
       manifest,
       path,
       preferDelta: false,
@@ -520,13 +520,13 @@ Future<void> _updDownloadForceDownloadLatest(
   }
 }
 
-Future<File> _updDownload_downloadUpdateWithFallback(
+Future<File> _updDownloadDownloadUpdateWithFallback(
   AppManifest manifest,
   String directory, {
   bool preferDelta = true,
   required void Function(double) onProgress,
 }) async {
-  final artifact = await _updDownload_getUpdateArtifact(
+  final artifact = await _updDownloadGetUpdateArtifact(
     manifest,
     preferDelta: preferDelta,
   );
@@ -535,7 +535,7 @@ Future<File> _updDownload_downloadUpdateWithFallback(
   }
 
   try {
-    return await _updDownload_downloadArtifact(
+    return await _updDownloadDownloadArtifact(
       artifact,
       directory,
       onProgress: onProgress,
@@ -547,12 +547,12 @@ Future<File> _updDownload_downloadUpdateWithFallback(
       '[UpdateService] Delta update failed, falling back to full APK: $error',
     );
     onProgress(0.0);
-    final fullArtifact = await _updDownload_getUpdateArtifact(
+    final fullArtifact = await _updDownloadGetUpdateArtifact(
       manifest,
       preferDelta: false,
     );
     if (fullArtifact.url.isEmpty) rethrow;
-    return _updDownload_downloadArtifact(
+    return _updDownloadDownloadArtifact(
       fullArtifact,
       directory,
       onProgress: onProgress,
@@ -560,7 +560,7 @@ Future<File> _updDownload_downloadUpdateWithFallback(
   }
 }
 
-Future<File> _updDownload_downloadArtifact(
+Future<File> _updDownloadDownloadArtifact(
   _UpdateArtifact artifact,
   String directory, {
   required void Function(double) onProgress,
@@ -649,7 +649,7 @@ Future<File> _updDownload_downloadArtifact(
   }
 }
 
-Future<void> _updDownload_startForegroundDownload(
+Future<void> _updDownloadStartForegroundDownload(
   BuildContext context,
   AppManifest manifest, {
   void Function(double)? onProgress,
@@ -691,7 +691,7 @@ Future<void> _updDownload_startForegroundDownload(
   }
 
   try {
-    final finalFile = await _updDownload_downloadUpdateWithFallback(
+    final finalFile = await _updDownloadDownloadUpdateWithFallback(
       manifest,
       path,
       onProgress: (progress) {

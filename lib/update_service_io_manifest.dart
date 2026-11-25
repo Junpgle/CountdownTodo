@@ -170,7 +170,7 @@ bool _updManifestShouldShowAnnouncement(
   return !isRead;
 }
 
-int _updManifest_dateTimeToSortKey(DateTime dt) {
+int _updManifestDateTimeToSortKey(DateTime dt) {
   final y = dt.year.toString().padLeft(4, '0');
   final m = dt.month.toString().padLeft(2, '0');
   final d = dt.day.toString().padLeft(2, '0');
@@ -189,7 +189,7 @@ int _updManifestParseAnnouncementSortKey(String id) {
   if (unixMs != null) {
     final ms = int.tryParse(unixMs);
     if (ms != null) {
-      return _updManifest_dateTimeToSortKey(
+      return _updManifestDateTimeToSortKey(
         DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toLocal(),
       );
     }
@@ -201,7 +201,7 @@ int _updManifestParseAnnouncementSortKey(String id) {
   if (unixSec != null) {
     final sec = int.tryParse(unixSec);
     if (sec != null) {
-      return _updManifest_dateTimeToSortKey(
+      return _updManifestDateTimeToSortKey(
         DateTime.fromMillisecondsSinceEpoch(sec * 1000, isUtc: true).toLocal(),
       );
     }
@@ -255,10 +255,10 @@ Future<List<Announcement>?> _updManifestGetAnnouncementsForSettings() async {
   }
 }
 
-String _updManifest_cleanVersion(String version) =>
+String _updManifestCleanVersion(String version) =>
     version.split('+').first.split('-').first.trim();
 
-String _updManifest_giteePackageUrl(String url) {
+String _updManifestGiteePackageUrl(String url) {
   final uri = Uri.tryParse(url);
   if (uri?.scheme == 'https' && uri?.host.toLowerCase() == 'gitee.com') {
     return url;
@@ -267,7 +267,7 @@ String _updManifest_giteePackageUrl(String url) {
   return '';
 }
 
-Future<AppManifest?> _updManifest_readManifestCache() async {
+Future<AppManifest?> _updManifestReadManifestCache() async {
   try {
     final prefs = await SharedPreferences.getInstance();
     final cached = prefs.getString(UpdateService._manifestCacheKey);
@@ -278,7 +278,7 @@ Future<AppManifest?> _updManifest_readManifestCache() async {
   }
 }
 
-Future<AppManifest?> _updManifest_readBundledManifest() async {
+Future<AppManifest?> _updManifestReadBundledManifest() async {
   try {
     final rawJson = await rootBundle.loadString('update_manifest.json');
     return AppManifest.fromJson(jsonDecode(rawJson));
@@ -288,7 +288,7 @@ Future<AppManifest?> _updManifest_readBundledManifest() async {
   }
 }
 
-Future<void> _updManifest_writeManifestCache(String rawJson) async {
+Future<void> _updManifestWriteManifestCache(String rawJson) async {
   try {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(UpdateService._manifestCacheKey, rawJson);
@@ -299,20 +299,20 @@ Future<void> _updManifest_writeManifestCache(String rawJson) async {
   } catch (_) {}
 }
 
-Future<AppManifest?> _updManifest_fetchManifestFromNetwork() async {
+Future<AppManifest?> _updManifestFetchManifestFromNetwork() async {
   final updateSource = await UpdateService.getUpdateSource();
 
   // 根据用户偏好选择数据源
   if (updateSource == UpdateService.updateSourceServer) {
     // 用户选择服务器优先
-    return await _updManifest_fetchFromServerFirst();
+    return await _updManifestFetchFromServerFirst();
   } else {
     // 默认：GitHub 优先，失败降级服务器
-    return await _updManifest_fetchFromGitHubFirst();
+    return await _updManifestFetchFromGitHubFirst();
   }
 }
 
-Future<AppManifest?> _updManifest_fetchFromGitHubFirst() async {
+Future<AppManifest?> _updManifestFetchFromGitHubFirst() async {
   // 优先从 GitHub 获取
   try {
     final response = await UpdateService._resourceService
@@ -321,7 +321,7 @@ Future<AppManifest?> _updManifest_fetchFromGitHubFirst() async {
     if (response.statusCode == 200) {
       final body = utf8.decode(response.bodyBytes);
       final manifest = AppManifest.fromJson(jsonDecode(body));
-      await _updManifest_writeManifestCache(body);
+      await _updManifestWriteManifestCache(body);
       debugPrint(
         '[UpdateService] GitHub manifest 获取成功: v${manifest.versionName}',
       );
@@ -340,7 +340,7 @@ Future<AppManifest?> _updManifest_fetchFromGitHubFirst() async {
     if (response.statusCode == 200) {
       final body = utf8.decode(response.bodyBytes);
       final manifest = AppManifest.fromJson(jsonDecode(body));
-      await _updManifest_writeManifestCache(body);
+      await _updManifestWriteManifestCache(body);
       debugPrint('[UpdateService] 服务器 manifest 获取成功: v${manifest.versionName}');
       return manifest;
     }
@@ -351,7 +351,7 @@ Future<AppManifest?> _updManifest_fetchFromGitHubFirst() async {
   return null;
 }
 
-Future<AppManifest?> _updManifest_fetchFromServerFirst() async {
+Future<AppManifest?> _updManifestFetchFromServerFirst() async {
   // 优先从服务器获取
   try {
     final response = await UpdateService._resourceService
@@ -360,7 +360,7 @@ Future<AppManifest?> _updManifest_fetchFromServerFirst() async {
     if (response.statusCode == 200) {
       final body = utf8.decode(response.bodyBytes);
       final manifest = AppManifest.fromJson(jsonDecode(body));
-      await _updManifest_writeManifestCache(body);
+      await _updManifestWriteManifestCache(body);
       debugPrint('[UpdateService] 服务器 manifest 获取成功: v${manifest.versionName}');
       return manifest;
     }
@@ -377,7 +377,7 @@ Future<AppManifest?> _updManifest_fetchFromServerFirst() async {
     if (response.statusCode == 200) {
       final body = utf8.decode(response.bodyBytes);
       final manifest = AppManifest.fromJson(jsonDecode(body));
-      await _updManifest_writeManifestCache(body);
+      await _updManifestWriteManifestCache(body);
       debugPrint(
         '[UpdateService] GitHub manifest 获取成功: v${manifest.versionName}',
       );
@@ -390,7 +390,7 @@ Future<AppManifest?> _updManifest_fetchFromServerFirst() async {
   return null;
 }
 
-List<ChangelogEntry> _updManifest_parseChangelogArchive(String rawJson) {
+List<ChangelogEntry> _updManifestParseChangelogArchive(String rawJson) {
   final decoded = jsonDecode(rawJson);
   final source = decoded is List
       ? decoded
@@ -402,30 +402,30 @@ List<ChangelogEntry> _updManifest_parseChangelogArchive(String rawJson) {
       .toList();
 }
 
-Future<List<ChangelogEntry>> _updManifest_readChangelogArchiveCache() async {
+Future<List<ChangelogEntry>> _updManifestReadChangelogArchiveCache() async {
   try {
     final prefs = await SharedPreferences.getInstance();
     final cached = prefs.getString(UpdateService._changelogArchiveCacheKey);
     if (cached == null || cached.isEmpty) return const [];
-    return _updManifest_parseChangelogArchive(cached);
+    return _updManifestParseChangelogArchive(cached);
   } catch (_) {
     return const [];
   }
 }
 
-Future<List<ChangelogEntry>> _updManifest_readBundledChangelogArchive() async {
+Future<List<ChangelogEntry>> _updManifestReadBundledChangelogArchive() async {
   try {
     final rawJson = await rootBundle.loadString(
       'update_changelog_archive.json',
     );
-    return _updManifest_parseChangelogArchive(rawJson);
+    return _updManifestParseChangelogArchive(rawJson);
   } catch (e) {
     debugPrint('[UpdateService] bundled changelog archive unavailable: $e');
     return const [];
   }
 }
 
-Future<void> _updManifest_writeChangelogArchiveCache(String rawJson) async {
+Future<void> _updManifestWriteChangelogArchiveCache(String rawJson) async {
   try {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(UpdateService._changelogArchiveCacheKey, rawJson);
@@ -445,7 +445,7 @@ Future<List<ChangelogEntry>> _updManifestLoadChangelogArchive({
       : UpdateService.changelogArchiveUrl;
 
   if (preferCache) {
-    final cached = await _updManifest_readChangelogArchiveCache();
+    final cached = await _updManifestReadChangelogArchiveCache();
     if (cached.isNotEmpty) return cached;
   }
 
@@ -455,16 +455,16 @@ Future<List<ChangelogEntry>> _updManifestLoadChangelogArchive({
     );
     if (response.statusCode == 200) {
       final body = utf8.decode(response.bodyBytes);
-      final archive = _updManifest_parseChangelogArchive(body);
-      await _updManifest_writeChangelogArchiveCache(body);
+      final archive = _updManifestParseChangelogArchive(body);
+      await _updManifestWriteChangelogArchiveCache(body);
       return archive;
     }
   } catch (_) {}
 
-  final cached = await _updManifest_readChangelogArchiveCache();
+  final cached = await _updManifestReadChangelogArchiveCache();
   if (cached.isNotEmpty) return cached;
 
-  return _updManifest_readBundledChangelogArchive();
+  return _updManifestReadBundledChangelogArchive();
 }
 
 Future<AppManifest?> _updManifestRefreshManifestCache({bool dedupe = true}) {
@@ -474,7 +474,7 @@ Future<AppManifest?> _updManifestRefreshManifestCache({bool dedupe = true}) {
 
   UpdateService._lastManifestRefreshAttemptMs =
       DateTime.now().millisecondsSinceEpoch;
-  final future = _updManifest_fetchManifestFromNetwork();
+  final future = _updManifestFetchManifestFromNetwork();
   UpdateService._manifestRefreshFuture = future;
 
   future.whenComplete(() {
@@ -487,12 +487,12 @@ Future<AppManifest?> _updManifestRefreshManifestCache({bool dedupe = true}) {
 }
 
 Future<void> _updManifestPreloadManifestCache() async {
-  final cached = await _updManifest_readManifestCache();
+  final cached = await _updManifestReadManifestCache();
   if (cached == null) {
     await UpdateService.refreshManifestCache();
     return;
   }
-  if (await _updManifest_shouldRefreshManifestCache()) {
+  if (await _updManifestShouldRefreshManifestCache()) {
     unawaited(UpdateService.refreshManifestCache());
   }
 }
@@ -502,10 +502,10 @@ Future<AppManifest?> _updManifestCheckManifest({
   bool refreshInBackground = true,
 }) async {
   if (preferCache) {
-    final cached = await _updManifest_readManifestCache();
+    final cached = await _updManifestReadManifestCache();
     if (cached != null) {
       if (refreshInBackground &&
-          await _updManifest_shouldRefreshManifestCache()) {
+          await _updManifestShouldRefreshManifestCache()) {
         unawaited(UpdateService.refreshManifestCache());
       }
       return cached;
@@ -515,13 +515,13 @@ Future<AppManifest?> _updManifestCheckManifest({
   final network = await UpdateService.refreshManifestCache();
   if (network != null) return network;
 
-  final cached = await _updManifest_readManifestCache();
+  final cached = await _updManifestReadManifestCache();
   if (cached != null) return cached;
 
-  return _updManifest_readBundledManifest();
+  return _updManifestReadBundledManifest();
 }
 
-Future<bool> _updManifest_shouldRefreshManifestCache() async {
+Future<bool> _updManifestShouldRefreshManifestCache() async {
   final prefs = await SharedPreferences.getInstance();
   return UpdateService.isManifestRefreshDue(
     nowMs: DateTime.now().millisecondsSinceEpoch,
