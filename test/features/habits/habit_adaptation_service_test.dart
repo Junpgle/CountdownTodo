@@ -256,7 +256,12 @@ void main() {
       expect(recurring?.citations, hasLength(4));
       expect(
         recurring?.citations.map((c) => c.publisher).join(' '),
-        allOf(contains('中国营养学会'), contains('WHO'), contains('CDC'), contains('NHS')),
+        allOf(
+          contains('中国营养学会'),
+          contains('WHO'),
+          contains('CDC'),
+          contains('NHS'),
+        ),
       );
 
       final quantity = HabitAdaptationService.forDraft(

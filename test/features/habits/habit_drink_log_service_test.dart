@@ -97,5 +97,56 @@ void main() {
       expect(stats.last7DaysDrinks, 0);
       expect(stats.breakdown, isEmpty);
     });
+
+    test('支持复合 ZWJ、按键和 BMP 自定义 Emoji 饮品提取与统计', () {
+      final goal = makeGoal();
+      final referenceDate = DateTime(2026, 11, 23);
+      final checkIns = [
+        makeCheckIn(uuid: 'c1', dayKey: '2026-11-23', note: '👨‍👩‍👧‍👦 家庭聚餐'),
+        makeCheckIn(uuid: 'c2', dayKey: '2026-11-23', note: '🏋🏽‍♀️ 蛋白饮'),
+        makeCheckIn(uuid: 'c3', dayKey: '2026-11-23', note: '1️⃣ 第一杯'),
+        makeCheckIn(uuid: 'c4', dayKey: '2026-11-23', note: '⏰ 下午茶'),
+        makeCheckIn(uuid: 'c5', dayKey: '2026-11-22', note: '喝了奶茶'),
+        makeCheckIn(uuid: 'c6', dayKey: '2026-11-21', note: 'cola'),
+      ];
+
+      expect(
+        HabitDrinkLogService.extractDrinkIconFromCheckIn(checkIns[0]),
+        '👨‍👩‍👧‍👦',
+      );
+      expect(
+        HabitDrinkLogService.extractDrinkIconFromCheckIn(checkIns[1]),
+        '🏋🏽‍♀️',
+      );
+      expect(
+        HabitDrinkLogService.extractDrinkIconFromCheckIn(checkIns[2]),
+        '1️⃣',
+      );
+      expect(
+        HabitDrinkLogService.extractDrinkIconFromCheckIn(checkIns[3]),
+        '⏰',
+      );
+      // 中文文本应走关键字兜底，不应把文字误提取为图标
+      expect(
+        HabitDrinkLogService.extractDrinkIconFromCheckIn(checkIns[4]),
+        '🧋',
+      );
+      // 纯英文普通单词不应被误提取为图标
+      expect(
+        HabitDrinkLogService.extractDrinkIconFromCheckIn(checkIns[5]),
+        isNull,
+      );
+
+      final stats = HabitDrinkLogService.summarizeDrinkLogs(
+        goal: goal,
+        allCheckIns: checkIns,
+        referenceDate: referenceDate,
+      );
+      expect(stats.totalDrinks, 5);
+      expect(stats.breakdown.any((b) => b.icon == '👨‍👩‍👧‍👦'), isTrue);
+      expect(stats.breakdown.any((b) => b.icon == '🏋🏽‍♀️'), isTrue);
+      expect(stats.breakdown.any((b) => b.icon == '1️⃣'), isTrue);
+      expect(stats.breakdown.any((b) => b.icon == '⏰'), isTrue);
+    });
   });
 }

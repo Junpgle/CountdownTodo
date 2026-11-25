@@ -1,34 +1,5 @@
 part of '../habit_edit_screen.dart';
 
-const List<String> _icons = [
-  '🎯',
-  '✅',
-  '💧',
-  '🧋',
-  '🥤',
-  '☕',
-  '🌅',
-  '🌙',
-  '💪',
-  '📖',
-  '🏃',
-  '📚',
-  '🧘',
-  '💊',
-  '🧹',
-  '🔤',
-  '🍎',
-  '🦷',
-  '🌿',
-  '🥗',
-  '🍰',
-  '🍺',
-  '🏊',
-  '🚶',
-  '✍️',
-  '🎹',
-];
-
 const List<_HabitTemplate> _templates = <_HabitTemplate>[
   _HabitTemplate(
     '喝水',
@@ -457,56 +428,61 @@ extension _HabitEditCreationAndTypeSteps on _HabitEditScreenState {
   Widget _buildIconPicker() {
     final colorScheme = Theme.of(context).colorScheme;
     return InkWell(
+      key: const ValueKey('habit-edit-icon-picker'),
       onTap: () => _showIconDialog(),
       borderRadius: BorderRadius.circular(12),
-      child: Container(
-        width: 56,
-        height: 56,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: colorScheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: colorScheme.outlineVariant),
+      child: Tooltip(
+        message: '自定义习惯图标',
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: colorScheme.outlineVariant),
+              ),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Text(_icon, style: const TextStyle(fontSize: 26)),
+                ),
+              ),
+            ),
+            Positioned(
+              right: -4,
+              bottom: -4,
+              child: Container(
+                width: 20,
+                height: 20,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: colorScheme.surface, width: 1.5),
+                ),
+                child: Icon(
+                  Icons.edit_rounded,
+                  size: 12,
+                  color: colorScheme.onPrimaryContainer,
+                ),
+              ),
+            ),
+          ],
         ),
-        child: Text(_icon, style: const TextStyle(fontSize: 26)),
       ),
     );
   }
 
   Future<void> _showIconDialog() async {
-    final selected = await showAppDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('选择图标'),
-        content: Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: _icons
-              .map(
-                (icon) => InkWell(
-                  onTap: () => Navigator.pop(context, icon),
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    width: 44,
-                    height: 44,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerLow,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(icon, style: const TextStyle(fontSize: 22)),
-                  ),
-                ),
-              )
-              .toList(),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-        ],
-      ),
+    final selected = await HabitEmojiPickerDialog.show(
+      context,
+      initialIcon: _icon,
+      title: '选择习惯图标',
     );
     if (selected != null && mounted) {
       _mutateState(() => _icon = selected);

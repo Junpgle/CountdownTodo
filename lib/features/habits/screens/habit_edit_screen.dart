@@ -13,6 +13,7 @@ import '../services/habit_drink_log_service.dart';
 import '../services/habit_reminder_service.dart';
 import '../services/habit_rule_resolver.dart';
 import '../widgets/habit_adaptation_panel.dart';
+import '../widgets/habit_emoji_picker_dialog.dart';
 import '../widgets/habit_water_target_picker.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../../utils/app_dialogs.dart';

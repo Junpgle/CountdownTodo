@@ -1,3 +1,5 @@
+import 'package:flutter/widgets.dart';
+
 import '../../../services/storage/habit_storage.dart';
 import '../../../services/storage/user_session_storage.dart';
 import '../../../storage_service.dart';
@@ -6,6 +8,7 @@ import '../models/habit_drink_option.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../repositories/habit_repository.dart';
+import '../utils/habit_emoji_utils.dart';
 import 'habit_rule_resolver.dart';
 
 export '../models/habit_drink_option.dart';
@@ -103,7 +106,7 @@ abstract final class HabitDrinkLogService {
     required String label,
     String username = '',
   }) async {
-    final cleanIcon = icon.trim().isEmpty ? '🥤' : icon.trim();
+    final cleanIcon = HabitEmojiUtils.normalizeIcon(icon, fallback: '🥤');
     final cleanLabel = label.trim().isEmpty ? '饮品' : label.trim();
     final existing = await _ensureSeededAndLoadAll();
     final active = existing.where((e) => !e.isDeleted).toList();
@@ -129,7 +132,7 @@ abstract final class HabitDrinkLogService {
     required String label,
     String username = '',
   }) async {
-    final cleanIcon = icon.trim().isEmpty ? '🥤' : icon.trim();
+    final cleanIcon = HabitEmojiUtils.normalizeIcon(icon, fallback: '🥤');
     final cleanLabel = label.trim().isEmpty ? '饮品' : label.trim();
     final allRows = await _ensureSeededAndLoadAll();
     final deviceId = await UserSessionStorage.getDeviceId();
@@ -314,13 +317,18 @@ abstract final class HabitDrinkLogService {
     return null;
   }
 
-  /// 提取 `icon label` 格式中开头的 emoji / 符号图标（支持自定义 emoji）。
+  /// 提取 `icon label` 格式中开头的 emoji / 符号图标（支持自定义与复合 emoji）。
   static String? _extractLeadingEmojiToken(String note) {
     final spaceIndex = note.indexOf(' ');
-    final head = spaceIndex > 0 ? note.substring(0, spaceIndex).trim() : note;
-    if (head.isEmpty || head.runes.length > 4) return null;
+    final head = spaceIndex > 0
+        ? note.substring(0, spaceIndex).trim()
+        : note.trim();
+    if (head.isEmpty || head.characters.length != 1) return null;
+    if (HabitEmojiUtils.isEmojiGrapheme(head)) {
+      return head;
+    }
     final firstRune = head.runes.first;
-    // 排除普通 ASCII 字母/数字与常见中日韩汉字，保留 Emoji 与符号区段。
+    // 排除普通 ASCII 字母/数字与常见中日韩汉字，保留其余单个符号。
     final isAsciiAlphaNum = (firstRune >= 0x20 && firstRune <= 0x7E);
     final isCjk =
         (firstRune >= 0x4E00 && firstRune <= 0x9FFF) ||

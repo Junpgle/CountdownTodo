@@ -732,10 +732,8 @@ abstract final class HabitAdaptationService {
     kind: HabitAdaptationKind.quitSugaryDrinks,
     title: '科学控糖戒饮',
     headline: '不喝或少喝含糖饮料：把每日添加糖控制在 50 g 以下，最好低于 25 g',
-    explanation:
-        '含糖饮料（奶茶、汽水、果汁饮料、含糖茶饮或调味咖啡等）能量密度高但饱腹感低，很容易在不知不觉中摄入过量游离糖。建议用白水、无糖茶或气泡水替代；如果当天喝了饮料，也可以直接在饮品面板记录具体饮品，诚实观察触发场景比一次性硬戒更容易长期坚持。',
-    safetyNote:
-        '低血糖发作、高强度耐力运动补给，或有糖尿病等需要遵循医嘱控制碳水/饮品的群体，请按医生或营养师的方案处理，不要机械套用一般控糖建议；用无糖或代糖饮品过渡时，也应注意不要因此忽视日常补水。',
+    explanation: '含糖饮料（奶茶、汽水、果汁饮料、含糖茶饮或调味咖啡等）能量密度高但饱腹感低，很容易在不知不觉中摄入过量游离糖。建议用白水、无糖茶或气泡水替代；如果当天喝了饮料，也可以直接在饮品面板记录具体饮品，诚实观察触发场景比一次性硬戒更容易长期坚持。',
+    safetyNote: '低血糖发作、高强度耐力运动补给，或有糖尿病等需要遵循医嘱控制碳水/饮品的群体，请按医生或营养师的方案处理，不要机械套用一般控糖建议；用无糖或代糖饮品过渡时，也应注意不要因此忽视日常补水。',
     targetSuggestions: [],
     suggestedQuickValues: [],
     targetUnit: '',
@@ -750,15 +748,13 @@ abstract final class HabitAdaptationService {
         title: 'Guideline: Sugars intake for adults and children',
         publisher: 'World Health Organization (WHO)',
         url: 'https://www.who.int/publications/i/item/9789241549028',
-        takeaway:
-            '强烈建议将成人和儿童游离糖摄入降至总能量的 10% 以下，条件性建议进一步降至 5% 以下（约 25 g/天）以降低超重与龋齿风险。',
+        takeaway: '强烈建议将成人和儿童游离糖摄入降至总能量的 10% 以下，条件性建议进一步降至 5% 以下（约 25 g/天）以降低超重与龋齿风险。',
       ),
       HabitCitation(
         title: 'Rethink Your Drink',
         publisher: 'Centers for Disease Control and Prevention (CDC)',
         url: 'https://www.cdc.gov/healthy-weight-growth/rethink-your-drink/index.html',
-        takeaway:
-            '含糖饮料是日常饮食中添加糖的最大来源，用白水或无糖饮品替代汽水、奶茶与甜茶可显著减少隐形热量与糖分摄入。',
+        takeaway: '含糖饮料是日常饮食中添加糖的最大来源，用白水或无糖饮品替代汽水、奶茶与甜茶可显著减少隐形热量与糖分摄入。',
       ),
       HabitCitation(
         title: 'Sugar: the facts',
