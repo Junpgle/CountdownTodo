@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../../utils/emoji_utils.dart';
+import '../../../widgets/emoji_picker_dialog.dart';
 import '../models/finance_models.dart';
 
 class FinanceCatalogDraft {
@@ -54,24 +58,28 @@ class FinanceCatalogEditor extends StatefulWidget {
 
 class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
   static const _noParentValue = '__finance_no_parent__';
+  static const _recentPrefsKey = 'finance_recent_custom_emojis';
 
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameController;
   late final TextEditingController _iconController;
+  late String _selectedIcon;
   late FinanceCategoryType? _type;
   String? _parentUuid;
   bool _isSaving = false;
   String? _saveError;
+  String? _iconError;
 
   bool get _isPayment => widget.categoryType == null;
+  String get _defaultFallbackIcon => _isPayment ? '💼' : '📦';
   String get _label => _isPayment
       ? '付款方式'
       : widget.isSubcategory
       ? '细分类'
       : '分类';
-  String get _icon => _iconController.text.trim().isEmpty
-      ? (_isPayment ? '💼' : '📦')
-      : _iconController.text.trim();
+  String get _icon => _selectedIcon.trim().isEmpty
+      ? _defaultFallbackIcon
+      : _selectedIcon.trim();
 
   bool get _hasChildren =>
       widget.editingCategoryUuid != null &&
@@ -172,7 +180,11 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.initialName);
-    _iconController = TextEditingController(text: widget.initialIcon);
+    final initial = widget.initialIcon.trim().isEmpty
+        ? _defaultFallbackIcon
+        : widget.initialIcon.trim();
+    _selectedIcon = initial;
+    _iconController = TextEditingController(text: initial);
     _type = widget.categoryType;
     final parentUuid = widget.initialParentUuid?.trim();
     _parentUuid = parentUuid == null || parentUuid.isEmpty ? null : parentUuid;
@@ -185,20 +197,96 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
     super.dispose();
   }
 
+  String _helperHintForPlatform(TargetPlatform platform) {
+    switch (platform) {
+      case TargetPlatform.macOS:
+        return '可用 ⌃⌘Space 调出系统表情键盘，或直接粘贴任意 Emoji';
+      case TargetPlatform.windows:
+        return '可用 Win + . 调出系统表情键盘，或直接粘贴任意 Emoji';
+      case TargetPlatform.android:
+      case TargetPlatform.iOS:
+      case TargetPlatform.linux:
+      case TargetPlatform.fuchsia:
+        return '可用系统表情键盘输入或粘贴任意 Emoji';
+    }
+  }
+
+  void _handleCustomIconChanged(String value) {
+    final composing = _iconController.value.composing;
+    if (composing.isValid && !composing.isCollapsed) {
+      return;
+    }
+
+    if (value.trim().isEmpty) {
+      setState(() {
+        _selectedIcon = _defaultFallbackIcon;
+        _iconError = null;
+      });
+      return;
+    }
+
+    final extracted = EmojiUtils.extractSingleEmoji(value);
+    setState(() {
+      if (extracted != null) {
+        _selectedIcon = extracted;
+        _iconError = null;
+      } else {
+        _iconError = '请输入或粘贴 1 个 Emoji';
+      }
+    });
+  }
+
+  Future<void> _openFullEmojiPicker() async {
+    if (_isSaving) return;
+    FocusScope.of(context).unfocus();
+    final picked = await AppEmojiPickerDialog.show(
+      context,
+      initialIcon: _icon,
+      initialCategory: EmojiPickerCategory.finance,
+      title: '选择$_label图标',
+      recentPrefsKey: _recentPrefsKey,
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _selectedIcon = picked;
+      _iconController.text = picked;
+      _iconError = null;
+    });
+  }
+
   Future<void> _save() async {
     if (_isSaving || !_formKey.currentState!.validate()) return;
+    final rawIcon = _iconController.text.trim();
+    String resolvedIcon;
+    if (rawIcon.isEmpty) {
+      resolvedIcon = _defaultFallbackIcon;
+    } else {
+      final extracted = EmojiUtils.extractSingleEmoji(rawIcon);
+      if (extracted == null) {
+        setState(() => _iconError = '请输入或粘贴 1 个 Emoji');
+        return;
+      }
+      resolvedIcon = extracted;
+    }
     FocusScope.of(context).unfocus();
     setState(() {
       _isSaving = true;
       _saveError = null;
+      _iconError = null;
     });
     try {
       await widget.onSave(
         FinanceCatalogDraft(
           name: _nameController.text.trim(),
-          icon: _icon,
+          icon: resolvedIcon,
           type: _type,
           parentUuid: _parentUuid,
+        ),
+      );
+      unawaited(
+        AppEmojiPickerDialog.recordRecentEmoji(
+          resolvedIcon,
+          prefsKey: _recentPrefsKey,
         ),
       );
       if (mounted) Navigator.of(context).pop(true);
@@ -248,10 +336,59 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                   ),
                   child: Row(
                     children: [
-                      Text(
-                        _icon,
-                        textScaler: TextScaler.noScaling,
-                        style: const TextStyle(fontSize: 32),
+                      InkWell(
+                        onTap: _isSaving ? null : _openFullEmojiPicker,
+                        borderRadius: BorderRadius.circular(14),
+                        child: Tooltip(
+                          message: '选择全部 Emoji',
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Container(
+                                width: 48,
+                                height: 48,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: colors.surface.withValues(alpha: 0.72),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(4),
+                                    child: Text(
+                                      _icon,
+                                      textScaler: TextScaler.noScaling,
+                                      style: const TextStyle(fontSize: 30),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Positioned(
+                                right: -4,
+                                bottom: -4,
+                                child: Container(
+                                  width: 18,
+                                  height: 18,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: colors.primaryContainer,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: colors.surface,
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    Icons.edit_rounded,
+                                    size: 11,
+                                    color: colors.onPrimaryContainer,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
@@ -387,7 +524,33 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                   ),
                   const SizedBox(height: 16),
                 ],
-                Text('选择图标', style: theme.textTheme.titleSmall),
+                SizedBox(
+                  width: double.infinity,
+                  child: Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      Text('选择图标', style: theme.textTheme.titleSmall),
+                      TextButton.icon(
+                        key: const ValueKey('finance-more-emoji-button'),
+                        onPressed: _isSaving ? null : _openFullEmojiPicker,
+                        icon: const Icon(
+                          Icons.emoji_emotions_outlined,
+                          size: 16,
+                        ),
+                        label: const Text('全部 Emoji'),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 10),
                 Wrap(
                   spacing: 8,
@@ -421,7 +584,11 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                                 ? null
                                 : () {
                                     FocusScope.of(context).unfocus();
-                                    setState(() => _iconController.text = icon);
+                                    setState(() {
+                                      _selectedIcon = icon;
+                                      _iconController.text = icon;
+                                      _iconError = null;
+                                    });
                                   },
                             child: SizedBox(
                               width: 48,
@@ -444,16 +611,33 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                   key: const ValueKey('finance-catalog-icon'),
                   controller: _iconController,
                   enabled: !_isSaving,
-                  maxLength: 4,
                   decoration: InputDecoration(
-                    labelText: '自定义图标',
-                    helperText: '也可以粘贴喜欢的表情',
+                    labelText: '自定义 Emoji',
+                    hintText: '输入或粘贴任意 Emoji',
+                    helperText: _helperHintForPlatform(theme.platform),
+                    helperMaxLines: 2,
+                    errorText: _iconError,
                     prefixIcon: const Icon(Icons.emoji_emotions_outlined),
+                    suffixIcon: _iconController.text.isNotEmpty
+                        ? IconButton(
+                            tooltip: '清空图标',
+                            onPressed: _isSaving
+                                ? null
+                                : () {
+                                    setState(() {
+                                      _iconController.clear();
+                                      _selectedIcon = _defaultFallbackIcon;
+                                      _iconError = null;
+                                    });
+                                  },
+                            icon: const Icon(Icons.close_rounded, size: 18),
+                          )
+                        : null,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                  onChanged: (_) => setState(() {}),
+                  onChanged: _handleCustomIconChanged,
                 ),
                 if (_saveError != null)
                   Padding(
