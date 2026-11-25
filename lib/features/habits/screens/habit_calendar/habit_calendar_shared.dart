@@ -92,14 +92,8 @@ extension _HabitCalendarShared on _HabitCalendarTabState {
     final today = DateTime(now.year, now.month, now.day);
     for (int day = 1; day <= daysInMonth; day++) {
       final date = DateTime(_month.year, _month.month, day);
-      final isToday =
-          date.year == today.year &&
-          date.month == today.month &&
-          date.day == today.day;
-      final isSelected =
-          date.year == _selectedDay.year &&
-          date.month == _selectedDay.month &&
-          date.day == _selectedDay.day;
+      final isToday = AppTimeFormats.isSameDay(date, today);
+      final isSelected = AppTimeFormats.isSameDay(date, _selectedDay);
       final isFuture = date.isAfter(today);
       cells.add(cellBuilder(date, day, isToday, isSelected, isFuture));
     }

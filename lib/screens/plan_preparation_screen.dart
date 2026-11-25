@@ -667,10 +667,7 @@ class _PlanPreparationScreenState extends State<PlanPreparationScreen> {
   ) {
     final start = selection.slot.start;
     final end = selection.slot.end;
-    final sameDay =
-        start.year == end.year &&
-        start.month == end.month &&
-        start.day == end.day;
+    final sameDay = AppTimeFormats.isSameDay(start, end);
     return Card(
       key: ValueKey('preparation-candidate-$index'),
       child: Padding(

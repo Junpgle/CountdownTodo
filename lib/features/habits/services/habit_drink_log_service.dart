@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import '../../../services/storage/habit_storage.dart';
 import '../../../services/storage/user_session_storage.dart';
 import '../../../storage_service.dart';
+import '../../../utils/time_utils.dart';
 import '../models/habit_checkin.dart';
 import '../models/habit_drink_option.dart';
 import '../models/habit_goal.dart';
@@ -650,9 +651,7 @@ abstract final class HabitDrinkLogService {
       now,
       rule.dayBoundaryMinute,
     );
-    if (todayLogical.year == logicalDate.year &&
-        todayLogical.month == logicalDate.month &&
-        todayLogical.day == logicalDate.day) {
+    if (AppTimeFormats.isSameDay(todayLogical, logicalDate)) {
       return now;
     }
     final safeMinute = rule.dayBoundaryMinute >= 720

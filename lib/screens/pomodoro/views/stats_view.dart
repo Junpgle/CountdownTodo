@@ -400,9 +400,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
     );
     if (!mounted || picked == null) return;
     final pickedDate = DateTime(picked.year, picked.month, picked.day);
-    if (pickedDate.year == _selected.year &&
-        pickedDate.month == _selected.month &&
-        pickedDate.day == _selected.day) {
+    if (AppTimeFormats.isSameDay(pickedDate, _selected)) {
       return;
     }
     setState(() => _selected = pickedDate);

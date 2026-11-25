@@ -675,8 +675,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
         '${AppTimeFormats.fullDateTime(entry.end)}';
   }
 
-  bool _isSameDate(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
+  bool _isSameDate(DateTime a, DateTime b) => AppTimeFormats.isSameDay(a, b);
 
   String _buildIcs(List<CalendarSyncEntry> entries) {
     final lines = <String>[

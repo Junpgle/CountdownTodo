@@ -1,6 +1,7 @@
 import '../models.dart';
 import '../models/widget_snapshot.dart';
 import '../services/todo_recurrence_date_service.dart';
+import 'time_utils.dart';
 
 const int _pastOccurrenceLimit = 8;
 const int _futureOccurrenceLimit = 40;
@@ -101,9 +102,7 @@ _WidgetRecurrenceSeriesAnalysis _analyzeSeriesOccurrences(
 
   for (final todo in occurrences) {
     final start = _startOf(todo);
-    if (start.year == today.year &&
-        start.month == today.month &&
-        start.day == today.day) {
+    if (AppTimeFormats.isSameDay(start, today)) {
       firstToday ??= todo;
       if (!todo.isDone) firstUndoneToday ??= todo;
     }

@@ -332,9 +332,7 @@ mixin _StorageCore on _StorageServiceBase {
         int score = map['score'], duration = map['duration'];
         if (map['date'] != null) {
           DateTime date = DateTime.parse(map['date']);
-          if (date.year == now.year &&
-              date.month == now.month &&
-              date.day == now.day) {
+          if (AppTimeFormats.isSameDay(date, now)) {
             todayCount++;
           }
         }

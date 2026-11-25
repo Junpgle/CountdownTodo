@@ -338,7 +338,7 @@ abstract final class HabitSourceResolver {
   }
 
   static bool _sameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
+      AppTimeFormats.isSameDay(a, b);
 }
 
 class HabitTodoIndex {

@@ -342,7 +342,7 @@ extension _PersonalTimelinePosterExt on _PersonalTimelineScreenState {
   ) {
     switch (dimension) {
       case TimelineDimension.daily:
-        return a.year == b.year && a.month == b.month && a.day == b.day;
+        return AppTimeFormats.isSameDay(a, b);
       case TimelineDimension.weekly:
         final aStart = AppTimeFormats.localDayStartOffset(
           AppTimeFormats.dayStart(a),
@@ -352,9 +352,7 @@ extension _PersonalTimelinePosterExt on _PersonalTimelineScreenState {
           AppTimeFormats.dayStart(b),
           -(b.weekday - 1),
         );
-        return aStart.year == bStart.year &&
-            aStart.month == bStart.month &&
-            aStart.day == bStart.day;
+        return AppTimeFormats.isSameDay(aStart, bStart);
       case TimelineDimension.monthly:
         return a.year == b.year && a.month == b.month;
       case TimelineDimension.yearly:

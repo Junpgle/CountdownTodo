@@ -434,9 +434,7 @@ class MacPomodoroStatusBarService {
     final includeCurrentFocus =
         activePhase == PomodoroPhase.focusing.name &&
         activeStart != null &&
-        activeStart.year == localNow.year &&
-        activeStart.month == localNow.month &&
-        activeStart.day == localNow.day &&
+        AppTimeFormats.isSameDay(activeStart, localNow) &&
         !recordedSessionIds.contains(activeSessionId);
 
     final nearest = activeCountdowns.isEmpty ? null : activeCountdowns.first;

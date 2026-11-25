@@ -16,6 +16,7 @@ import '../services/habit_stamp_animation_queue.dart';
 import '../services/habit_sleep_coaching_service.dart';
 import '../../../utils/theme_color_tokens.dart';
 import '../../../utils/app_platform.dart';
+import '../../../utils/time_utils.dart';
 import '../../../services/liquid_glass_effect_service.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
 import 'habit_drink_picker_sheet.dart';
@@ -325,9 +326,7 @@ class _HabitCardState extends State<HabitCard> {
   }
 
   bool _sameLogicalDate(DateTime first, DateTime second) =>
-      first.year == second.year &&
-      first.month == second.month &&
-      first.day == second.day;
+      AppTimeFormats.isSameDay(first, second);
 
   @override
   void dispose() {

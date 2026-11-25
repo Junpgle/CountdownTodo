@@ -436,9 +436,7 @@ class IslandSlotProvider {
           .toList();
 
       for (var t in active) {
-        if (t.dueDate!.year == now.year &&
-            t.dueDate!.month == now.month &&
-            t.dueDate!.day == now.day) {
+        if (AppTimeFormats.isSameDay(t.dueDate!, now)) {
           queue.add({
             'text': t.title,
             'type': 'todo',
@@ -454,9 +452,7 @@ class IslandSlotProvider {
         for (final c in countdowns) {
           if (c.isDeleted || c.isCompleted) continue;
           final targetLocal = c.targetDate.toLocal();
-          if (targetLocal.year == now.year &&
-              targetLocal.month == now.month &&
-              targetLocal.day == now.day) {
+          if (AppTimeFormats.isSameDay(targetLocal, now)) {
             final category = ItemSemanticsService.countdownCategoryForTitle(
               c.title,
             );

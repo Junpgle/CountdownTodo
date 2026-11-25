@@ -122,9 +122,7 @@ class PlanWeeklyRules {
     final matches = <DateTime>[];
     for (final offset in offsets) {
       final candidate = wall.subtract(Duration(minutes: offset)).toLocal();
-      if (candidate.year == wall.year &&
-          candidate.month == wall.month &&
-          candidate.day == wall.day &&
+      if (AppTimeFormats.isSameDay(candidate, wall) &&
           candidate.hour == wall.hour &&
           candidate.minute == wall.minute) {
         matches.add(candidate);

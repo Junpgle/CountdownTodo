@@ -801,9 +801,7 @@ extension _ConflictInboxScheduleExt on _ConflictInboxScreenState {
   bool _isSameLocalDayMs(int leftMs, int rightMs) {
     final left = DateTime.fromMillisecondsSinceEpoch(leftMs);
     final right = DateTime.fromMillisecondsSinceEpoch(rightMs);
-    return left.year == right.year &&
-        left.month == right.month &&
-        left.day == right.day;
+    return AppTimeFormats.isSameDay(left, right);
   }
 
   String? _itemIdFromData(Map<String, dynamic> data) {

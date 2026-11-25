@@ -1418,10 +1418,7 @@ class ShareScheduleSection extends StatelessWidget {
           : '${AppTimeFormats.dateFormatter('MM/dd').format(date)} · 时间待定';
     }
     if (start != null && end != null) {
-      final sameDay =
-          start.year == end.year &&
-          start.month == end.month &&
-          start.day == end.day;
+      final sameDay = AppTimeFormats.isSameDay(start, end);
       return sameDay
           ? '${AppTimeFormats.dateFormatter('MM/dd').format(start)} '
                 '${AppTimeFormats.dateFormatter('HH:mm').format(start)} → '

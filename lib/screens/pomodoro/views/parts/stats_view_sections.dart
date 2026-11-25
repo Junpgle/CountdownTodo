@@ -60,10 +60,7 @@ extension _PomodoroStatsSections on PomodoroStatsState {
 
       if (_dimension == 0) {
         label = AppTimeFormats.dateFormatter('MM/dd').format(start);
-        isSelected =
-            start.year == _selected.year &&
-            start.month == _selected.month &&
-            start.day == _selected.day;
+        isSelected = AppTimeFormats.isSameDay(start, _selected);
       } else if (_dimension == 1) {
         label = AppTimeFormats.dateFormatter('MM/dd').format(start);
         isSelected = start.isAtSameMomentAs(selectedWeekRange!.start);

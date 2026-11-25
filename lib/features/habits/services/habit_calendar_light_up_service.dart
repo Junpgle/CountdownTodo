@@ -1,3 +1,4 @@
+import '../../../utils/time_utils.dart';
 import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
@@ -222,9 +223,7 @@ abstract final class HabitCalendarLightUpService {
       now,
       rule.dayBoundaryMinute,
     );
-    if (todayLogical.year == logicalDate.year &&
-        todayLogical.month == logicalDate.month &&
-        todayLogical.day == logicalDate.day) {
+    if (AppTimeFormats.isSameDay(todayLogical, logicalDate)) {
       return now;
     }
 

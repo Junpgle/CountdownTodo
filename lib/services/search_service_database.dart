@@ -118,9 +118,7 @@ extension _SearchServiceDatabase on SearchService {
     final isTodayQuery =
         isDateQuery &&
         targetDateValue != null &&
-        targetDateValue.year == now.year &&
-        targetDateValue.month == now.month &&
-        targetDateValue.day == now.day;
+        AppTimeFormats.isSameDay(targetDateValue, now);
     final dateQueryHint = isDateQuery && startOfDay != null
         ? '搜索到${AppTimeFormats.dateFormatter('yyyy年M月d日').format(startOfDay)}的结果'
         : null;

@@ -24,10 +24,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                 start.minute == 0 &&
                 todo.dueDate!.hour == 23 &&
                 todo.dueDate!.minute == 59;
-            bool isCrossDay =
-                !(start.year == end.year &&
-                    start.month == end.month &&
-                    start.day == end.day);
+            bool isCrossDay = !AppTimeFormats.isSameDay(start, end);
             bool treatAsAllDay = isAllDayFlag || isCrossDay;
 
             if (!treatAsAllDay) return false;

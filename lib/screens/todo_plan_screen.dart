@@ -604,9 +604,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   bool _isSameLocalDay(DateTime a, DateTime b) {
     final left = a.toLocal();
     final right = b.toLocal();
-    return left.year == right.year &&
-        left.month == right.month &&
-        left.day == right.day;
+    return AppTimeFormats.isSameDay(left, right);
   }
 
   void _prevDay() {

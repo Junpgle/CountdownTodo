@@ -250,9 +250,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
     if (sessionEndMs <= sessionStartMs) {
       final startLocal = DateTime.fromMillisecondsSinceEpoch(sessionStartMs)
           .toLocal();
-      if (startLocal.year == targetDate.year &&
-          startLocal.month == targetDate.month &&
-          startLocal.day == targetDate.day &&
+      if (AppTimeFormats.isSameDay(startLocal, targetDate) &&
           startLocal.hour >= 0 &&
           startLocal.hour < 24) {
         hourlySeconds[startLocal.hour] = min(

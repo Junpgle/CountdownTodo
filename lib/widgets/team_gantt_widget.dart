@@ -128,10 +128,7 @@ class _TeamGanttWidgetState extends State<TeamGanttWidget> {
                 Row(
                   children: List.generate(totalDays, (i) {
                     final date = CalendarDateMath.addDays(timelineStart, i);
-                    final isToday =
-                        date.year == now.year &&
-                        date.month == now.month &&
-                        date.day == now.day;
+                    final isToday = AppTimeFormats.isSameDay(date, now);
                     return Container(
                       width: timelineWidth / totalDays,
                       alignment: Alignment.center,

@@ -66,9 +66,7 @@ abstract final class GlobalSearchExtraService {
   }) {
     if (targetDate != null) {
       return recordDate != null &&
-          targetDate.year == recordDate.year &&
-          targetDate.month == recordDate.month &&
-          targetDate.day == recordDate.day;
+          AppTimeFormats.isSameDay(targetDate, recordDate);
     }
     final text = values.where((value) => value != null).join(' ').toLowerCase();
     return _matchesNormalizedTerms(terms, text);
@@ -82,9 +80,7 @@ abstract final class GlobalSearchExtraService {
     final recordDate = record.recordDate;
     if (targetDate != null) {
       return recordDate != null &&
-          targetDate.year == recordDate.year &&
-          targetDate.month == recordDate.month &&
-          targetDate.day == recordDate.day;
+          AppTimeFormats.isSameDay(targetDate, recordDate);
     }
     return _matchesNormalizedTerms(terms, record.searchableText);
   }

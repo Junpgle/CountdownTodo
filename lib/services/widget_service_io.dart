@@ -444,9 +444,7 @@ class WidgetService {
             l.startTime,
             isUtc: true,
           ).toLocal();
-          return d.year == today.year &&
-              d.month == today.month &&
-              d.day == today.day;
+          return AppTimeFormats.isSameDay(d, today);
         })
         .map(
           (l) => {
@@ -466,9 +464,7 @@ class WidgetService {
             p.startTime,
             isUtc: true,
           ).toLocal();
-          return d.year == today.year &&
-              d.month == today.month &&
-              d.day == today.day;
+          return AppTimeFormats.isSameDay(d, today);
         })
         .map(
           (p) => {

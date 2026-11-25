@@ -677,7 +677,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
   }
 
   bool _isSameLocalDay(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
+    return AppTimeFormats.isSameDay(a, b);
   }
 }
 

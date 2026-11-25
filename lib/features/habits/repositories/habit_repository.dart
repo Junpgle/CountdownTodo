@@ -6,6 +6,7 @@ import '../../../models.dart';
 import '../../../services/storage/habit_storage.dart';
 import '../../../services/storage/user_session_storage.dart';
 import '../../../storage_service.dart';
+import '../../../utils/time_utils.dart';
 import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
@@ -922,10 +923,7 @@ abstract final class HabitRepository {
                   targetValue: 1,
                 ));
       final now = DateTime.now();
-      final isToday =
-          now.year == logicalDate.year &&
-          now.month == logicalDate.month &&
-          now.day == logicalDate.day;
+      final isToday = AppTimeFormats.isSameDay(now, logicalDate);
       final occurredAt = isToday
           ? now
           : DateTime(logicalDate.year, logicalDate.month, logicalDate.day, 12);

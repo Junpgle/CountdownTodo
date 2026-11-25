@@ -627,10 +627,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
           tStart.minute == 0 &&
           t.dueDate!.hour == 23 &&
           t.dueDate!.minute == 59;
-      bool isAcross =
-          !(tStart.year == tEnd.year &&
-              tStart.month == tEnd.month &&
-              tStart.day == tEnd.day);
+      bool isAcross = !AppTimeFormats.isSameDay(tStart, tEnd);
 
       _forEachExpandedDay(
         start: tStart,
@@ -929,10 +926,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
             start.minute == 0 &&
             effectiveTodo.dueDate!.hour == 23 &&
             effectiveTodo.dueDate!.minute == 59;
-        bool isCrossDay =
-            !(start.year == end.year &&
-                start.month == end.month &&
-                start.day == end.day);
+        bool isCrossDay = !AppTimeFormats.isSameDay(start, end);
         bool treatAsAllDay = isAllDayFlag || isCrossDay;
 
         if (_activeDataViews.contains('hideCrossDay') && isCrossDay) {
