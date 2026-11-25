@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../screens/login_screen.dart';
 import '../storage_service.dart';
+import '../utils/app_dialogs.dart';
 import '../utils/navigator_utils.dart';
 import '../utils/page_transitions.dart';
 import 'api_service.dart';
@@ -50,7 +51,8 @@ class SessionRevocationService {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           final currentContext = appNavigatorKey.currentContext;
           if (currentContext != null && currentContext.mounted) {
-            ScaffoldMessenger.of(currentContext).showSnackBar(
+            AppSnackBars.showSnackBar(
+              currentContext,
               SnackBar(
                 content: Text(notice),
                 behavior: SnackBarBehavior.floating,

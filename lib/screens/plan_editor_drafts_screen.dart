@@ -134,8 +134,10 @@ class _PlanEditorDraftsScreenState extends State<PlanEditorDraftsScreen>
               onPressed: () async {
                 await Clipboard.setData(ClipboardData(text: f.remark));
                 if (c.mounted) {
-                  ScaffoldMessenger.of(c)
-                      .showSnackBar(const SnackBar(content: Text('备注已复制')));
+                  AppSnackBars.showSnackBar(
+                    c,
+                    const SnackBar(content: Text('备注已复制')),
+                  );
                 }
               },
               child: const Text('复制备注'),
@@ -225,8 +227,10 @@ class _PlanEditorDraftsScreenState extends State<PlanEditorDraftsScreen>
       await _repository.delete(_identity!, row.id, row.revision);
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(_message(error))));
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(content: Text(_message(error))),
+        );
       }
     } finally {
       if (mounted) {

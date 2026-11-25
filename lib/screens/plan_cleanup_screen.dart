@@ -943,7 +943,8 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
                   onChanged: enabled
                       ? (value) {
                           if (value == true && _selected.length >= 50) {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            AppSnackBars.showSnackBar(
+                              context,
                               const SnackBar(content: Text('一次最多选择50段')),
                             );
                             return;

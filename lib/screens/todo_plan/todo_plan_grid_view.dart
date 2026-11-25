@@ -192,8 +192,10 @@ class _PlanGridViewState extends State<_PlanGridView>
         _dragEndBlock = null;
       });
     } on PlanDragException catch (error) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(error.message)));
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(content: Text(error.message)),
+      );
     }
   }
 

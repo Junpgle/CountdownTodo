@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../services/sync_health_service.dart';
+import '../../../utils/app_dialogs.dart';
 import '../../../utils/settings_navigation.dart';
 import '../../../utils/time_utils.dart';
 import '../../../widgets/floating_glass_control.dart';
@@ -91,8 +92,7 @@ class _SyncHealthPageState extends State<SyncHealthPage> {
         : snapshot.totalConflictCount > 0
         ? '同步请求已完成，仍有 ${snapshot.totalConflictCount} 项冲突待核对'
         : '同步请求已完成';
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    AppSnackBars.showSnackBar(context, SnackBar(content: Text(message)));
   }
 
   Future<void> _openConflicts() async {

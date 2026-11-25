@@ -495,7 +495,8 @@ extension _PlanBlockEditorActions on _PlanBlockEditorSheetState {
         _localDraft = null;
       } catch (_) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          AppSnackBars.showSnackBar(
+            context,
             const SnackBar(content: Text('规划已保存，但本机草稿清理失败；恢复时会识别已有规划')),
           );
         }
@@ -503,8 +504,10 @@ extension _PlanBlockEditorActions on _PlanBlockEditorSheetState {
     }
     widget.onSaved();
     if (widget.recovery != null && mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('已新建规划，原漏做记录已保留')));
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('已新建规划，原漏做记录已保留')),
+      );
     }
     return saved;
   }

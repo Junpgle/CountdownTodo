@@ -247,8 +247,10 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(_message(e))));
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(content: Text(_message(e))),
+        );
       }
     } finally {
       _opening = false;
@@ -297,13 +299,17 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
         ),
       );
       if (mounted && saved) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('规划已保存，可在“已有安排”查看')));
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(content: Text('规划已保存，可在“已有安排”查看')),
+        );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(_message(e))));
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(content: Text(_message(e))),
+        );
       }
     } finally {
       _opening = false;
@@ -337,8 +343,10 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
       );
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(_message(error))));
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(content: Text(_message(error))),
+        );
       }
     } finally {
       _opening = false;

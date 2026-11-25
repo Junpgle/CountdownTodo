@@ -10,6 +10,7 @@ import '../screens/pomodoro_screen.dart';
 import '../services/device_calendar_read_service.dart';
 import '../services/plan_conflict_review_service.dart';
 import '../storage_service.dart';
+import '../utils/app_dialogs.dart';
 import '../utils/calendar_date_math.dart';
 import '../utils/page_transitions.dart';
 import 'optional_liquid_glass_surface.dart';
@@ -338,7 +339,8 @@ Future<void> showPlanConflictReview({
     }
   } catch (error) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(
           content: Text(
             error is PlanAvailabilityException ? error.message : '读取安排失败，请重试',

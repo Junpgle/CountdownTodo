@@ -1263,8 +1263,7 @@ String _status(Object? value) => switch (value) {
   _ => '待核对',
 };
 void _notice(BuildContext context, String message) =>
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    AppSnackBars.showSnackBar(context, SnackBar(content: Text(message)));
 Future<void> _scope(BuildContext context) => showAppDialog<void>(
   context: context,
   builder: (context) => AlertDialog(

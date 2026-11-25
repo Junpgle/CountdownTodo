@@ -768,17 +768,17 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
     final saved = await _saveSkippedOccurrence(latest, skipped: true);
     if (!saved) return;
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: const Text('已跳过本期，后续期次仍会继续'),
-          action: SnackBarAction(
-            label: '撤销',
-            onPressed: () => _restoreSkippedOccurrence(latest),
-          ),
+    AppSnackBars.hideCurrent(ScaffoldMessenger.of(context));
+    AppSnackBars.showSnackBar(
+      context,
+      SnackBar(
+        content: const Text('已跳过本期，后续期次仍会继续'),
+        action: SnackBarAction(
+          label: '撤销',
+          onPressed: () => _restoreSkippedOccurrence(latest),
         ),
-      );
+      ),
+    );
   }
 
   bool _runFocusesOccurrence(

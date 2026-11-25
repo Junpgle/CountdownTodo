@@ -309,12 +309,16 @@ class _FeatureExplorerScreenState extends State<FeatureExplorerScreen> {
         mode: LaunchMode.externalApplication,
       );
       if (launched || !mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('无法打开教程链接，请稍后重试。')));
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('无法打开教程链接，请稍后重试。')),
+      );
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('打开教程失败，请检查网络后重试。')));
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('打开教程失败，请检查网络后重试。')),
+      );
     }
   }
 

@@ -163,8 +163,10 @@ extension _PlanBlockEditorDrafts on _PlanBlockEditorSheetState {
         _reuseNeedsRetention = false;
         _operationError = null;
       });
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('已保留到本机规划草稿')));
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('已保留到本机规划草稿')),
+      );
       return true;
     } catch (error) {
       _reportError(error);

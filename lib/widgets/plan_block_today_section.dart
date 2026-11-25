@@ -501,8 +501,7 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
       failed = true;
       if (mounted) {
         if (preserveOnError) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text('$error')));
+          AppSnackBars.showSnackBar(context, SnackBar(content: Text('$error')));
         } else {
           setState(() {
             _data = null;
@@ -700,8 +699,7 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
       await action();
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$error')));
+        AppSnackBars.showSnackBar(context, SnackBar(content: Text('$error')));
       }
     } finally {
       if (mounted) {
@@ -1075,8 +1073,7 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
           : _error != null
           ? '今日规划读取失败：$_error'
           : '今日规划尚未就绪，正在重新读取';
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
+      AppSnackBars.showSnackBar(context, SnackBar(content: Text(message)));
       if (!_loading && !_opening) unawaited(_load());
       return;
     }

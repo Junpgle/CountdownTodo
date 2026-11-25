@@ -464,9 +464,10 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
           }
         });
         widget.onQueryChanged?.call(_query);
-        ScaffoldMessenger.of(
+        AppSnackBars.showSnackBar(
           context,
-        ).showSnackBar(const SnackBar(content: Text('本次查找已使用，默认设置未能记住，请重试')));
+          const SnackBar(content: Text('本次查找已使用，默认设置未能记住，请重试')),
+        );
       }),
     );
   }
@@ -1160,8 +1161,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       await PlanAvailabilityPreferences.validateQueryDefaults(selection.query);
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$error')));
+        AppSnackBars.showSnackBar(context, SnackBar(content: Text('$error')));
       }
       return;
     }
@@ -1177,8 +1177,10 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
           selection.snapshot,
           now: _now,
         )) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('安排已变化，请重新选择推荐时段')));
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('安排已变化，请重新选择推荐时段')),
+      );
       return;
     }
     final query = selection.query;

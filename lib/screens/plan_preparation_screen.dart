@@ -414,7 +414,8 @@ class _PlanPreparationScreenState extends State<PlanPreparationScreen> {
       }
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(
             content: Text(
               error is StateError ? error.message.toString() : '$error',

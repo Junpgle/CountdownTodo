@@ -306,7 +306,8 @@ class _PlatformSpecificSettingsPageState
       await DesktopRendererPreference.save(renderer);
       if (!mounted) return;
       setState(() => _desktopRenderer = renderer);
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(
           content: Text(
             AppPlatform.isMacOS
@@ -317,8 +318,10 @@ class _PlatformSpecificSettingsPageState
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('保存渲染引擎失败：$error')));
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(content: Text('保存渲染引擎失败：$error')),
+      );
     } finally {
       if (mounted) setState(() => _desktopRendererSaving = false);
     }
