@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../models.dart';
 import 'storage/app_settings_storage.dart';
+import '../utils/time_utils.dart';
 import 'item_semantics_service.dart';
 import 'scheduled_reminder_registry.dart';
 import 'notification_service_shared.dart';
@@ -192,7 +193,7 @@ class NotificationService {
     final due = todo.dueDate?.toLocal();
     final timeText = due == null
         ? '即将开始'
-        : '${due.month}/${due.day} ${due.hour.toString().padLeft(2, '0')}:${due.minute.toString().padLeft(2, '0')}';
+        : '${due.month}/${due.day} ${AppTimeFormats.clock(due)}';
     final remark = todo.remark?.trim();
     return _showLiveActivityNotification(
       todo.title,

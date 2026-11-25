@@ -282,7 +282,7 @@ class WidgetService {
     if (diffDays < 0) {
       return '已逾期';
     } else if (diffDays == 0) {
-      return '今天 ${dueDate.hour.toString().padLeft(2, '0')}:${dueDate.minute.toString().padLeft(2, '0')}';
+      return '今天 ${AppTimeFormats.clock(dueDate)}';
     } else if (diffDays == 1) {
       return '明天';
     } else {
@@ -620,7 +620,7 @@ class WidgetService {
     String format(int millisecondsSinceEpoch) {
       final date = DateTime.fromMillisecondsSinceEpoch(millisecondsSinceEpoch)
           .toLocal();
-      return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+      return AppTimeFormats.clock(date);
     }
 
     final startText = format(startMs);
@@ -803,8 +803,7 @@ class WidgetService {
                   timeText = '已逾期';
                   priority = 3;
                 } else if (diffDays == 0) {
-                  timeText =
-                      '今天 ${t.dueDate!.hour.toString().padLeft(2, '0')}:${t.dueDate!.minute.toString().padLeft(2, '0')}';
+                  timeText = '今天 ${AppTimeFormats.clock(t.dueDate!)}';
                   priority = 2;
                 } else if (diffDays == 1) {
                   timeText = '明天';

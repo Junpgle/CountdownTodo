@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import '../storage_service.dart';
 import '../services/course_service.dart';
 import '../services/island_slot_provider.dart';
+import '../utils/time_utils.dart';
 import 'island_config.dart';
 
 /// Service for checking and managing reminders for the island window.
@@ -150,10 +151,8 @@ class IslandReminderService {
           'type': 'todo',
           'title': title,
           'subtitle': remark,
-          'startTime':
-              '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}',
-          'endTime':
-              '${dueDate.hour.toString().padLeft(2, '0')}:${dueDate.minute.toString().padLeft(2, '0')}',
+          'startTime': AppTimeFormats.clock(startTime),
+          'endTime': AppTimeFormats.clock(dueDate),
           'minutesUntil': startDiff,
           'isEnding': false,
           'itemId': id,
@@ -173,10 +172,9 @@ class IslandReminderService {
         'title': title,
         'subtitle': remark,
         'startTime': hasExplicitStartTime && startTime != null
-            ? '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}'
+            ? AppTimeFormats.clock(startTime)
             : '',
-        'endTime':
-            '${dueDate.hour.toString().padLeft(2, '0')}:${dueDate.minute.toString().padLeft(2, '0')}',
+        'endTime': AppTimeFormats.clock(dueDate),
         'minutesUntil': endDiff,
         'isEnding': true,
         'itemId': id,
@@ -201,8 +199,7 @@ class IslandReminderService {
         '[IslandReminder] Got ${courses.length} courses for $username',
       );
 
-      final todayStr =
-          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      final todayStr = AppTimeFormats.date(now);
 
       for (final c in courses.where((c) => c.date == todayStr)) {
         final startHour = c.startTime ~/ 100;

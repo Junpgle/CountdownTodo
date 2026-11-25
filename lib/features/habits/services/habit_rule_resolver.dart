@@ -1,3 +1,4 @@
+import '../../../utils/time_utils.dart';
 import '../models/habit_goal_rule.dart';
 
 /// 习惯规则解析：逻辑日期、生效规则、计划日与周期计算。
@@ -33,9 +34,7 @@ abstract final class HabitRuleResolver {
   /// 逻辑日期键（'yyyy-MM-dd'），用于数据库存储与比较。
   static String dayKey(DateTime logicalDate) {
     final d = DateTime(logicalDate.year, logicalDate.month, logicalDate.day);
-    return '${d.year.toString().padLeft(4, '0')}-'
-        '${d.month.toString().padLeft(2, '0')}-'
-        '${d.day.toString().padLeft(2, '0')}';
+    return AppTimeFormats.date(d);
   }
 
   /// 解析 'yyyy-MM-dd' 为本地日期。
@@ -232,7 +231,7 @@ abstract final class HabitRuleResolver {
         return dayKey(logicalDate);
       case HabitPeriodType.weekly:
         final start = periodStart(rule, logicalDate);
-        return 'w-${start.year}-${start.month.toString().padLeft(2, '0')}-${start.day.toString().padLeft(2, '0')}';
+        return 'w-${AppTimeFormats.date(start)}';
       case HabitPeriodType.monthly:
         final start = periodStart(rule, logicalDate);
         return 'm-${start.year}-${start.month.toString().padLeft(2, '0')}';

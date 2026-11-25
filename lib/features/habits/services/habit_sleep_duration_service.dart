@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import '../../../services/storage/user_session_storage.dart';
+import '../../../utils/time_utils.dart';
 import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
@@ -338,8 +339,7 @@ abstract final class HabitSleepDurationService {
     return HabitCheckIn.buildDedupeKey(goal.uuid, 'sleep-pair/$logicalDate')!;
   }
 
-  static String _formatTime(DateTime value) =>
-      '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+  static String _formatTime(DateTime value) => AppTimeFormats.clock(value);
 
   static String _formatDuration(int minutes) {
     final hours = minutes ~/ 60;

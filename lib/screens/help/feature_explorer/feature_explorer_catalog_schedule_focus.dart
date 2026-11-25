@@ -601,8 +601,7 @@ extension _FeatureExplorerScheduleFocusCatalog on _FeatureExplorerScreenState {
         customAction: (context, _) async {
           final history = await StorageService.getScreenTimeHistory();
           final now = DateTime.now();
-          final todayKey =
-              '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+          final todayKey = AppTimeFormats.date(now);
           final todayStats = history[todayKey] ?? const [];
           if (!context.mounted) return;
           await Navigator.of(context, rootNavigator: true).push(

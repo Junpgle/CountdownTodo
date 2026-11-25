@@ -644,8 +644,7 @@ class NotificationService {
     );
     final emoji = ItemSemanticsService.countdownCategoryEmoji(category);
     final label = ItemSemanticsService.countdownCategoryLabel(category);
-    final dateStr =
-        '${targetLocal.year}-${targetLocal.month.toString().padLeft(2, '0')}-${targetLocal.day.toString().padLeft(2, '0')}';
+    final dateStr = AppTimeFormats.date(targetLocal);
     final notifId = countdownLiveNotifId(countdown.id);
 
     if (_isDesktopSupported) {

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models.dart';
 import '../course_schedule_semantics.dart';
 import '../../utils/app_dialogs.dart';
+import '../../utils/time_utils.dart';
 
 /// Lets the user repair courses for which a source export did not contain a
 /// usable time range.  Courses with the same identity and weekday share one
@@ -111,7 +112,7 @@ class _CourseTimeRepairDialogState extends State<CourseTimeRepairDialog> {
   static int _minutes(TimeOfDay value) => value.hour * 60 + value.minute;
 
   static String _formatTime(TimeOfDay value) {
-    return '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+    return AppTimeFormats.hourMinute(value.hour, value.minute);
   }
 
   Future<void> _pickTime(

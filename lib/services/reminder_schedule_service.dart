@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 import '../features/finance/services/finance_automation_service.dart';
 import '../storage_service.dart';
+import '../utils/time_utils.dart';
 import 'course_service.dart';
 import 'item_semantics_service.dart';
 import 'notification_service.dart';
@@ -425,8 +426,7 @@ class ReminderScheduleService {
       );
       final emoji = ItemSemanticsService.countdownCategoryEmoji(category);
       final label = ItemSemanticsService.countdownCategoryLabel(category);
-      final dateStr =
-          '${targetLocal.year}-${targetLocal.month.toString().padLeft(2, '0')}-${targetLocal.day.toString().padLeft(2, '0')}';
+      final dateStr = AppTimeFormats.date(targetLocal);
 
       reminders.add({
         'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
@@ -541,8 +541,7 @@ class ReminderScheduleService {
     return reminders;
   }
 
-  static String _hm(DateTime dt) =>
-      '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  static String _hm(DateTime dt) => AppTimeFormats.clock(dt);
 
   /// 提前提醒时间已过但事项尚未开始时仍应保留，供灵动岛立即补发。
   static bool shouldSchedulePreStart({

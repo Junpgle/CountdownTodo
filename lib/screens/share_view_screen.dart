@@ -7,6 +7,7 @@ import '../services/api_service.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/share_readonly_widgets.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/time_utils.dart';
 
 class ShareViewScreen extends StatefulWidget {
   final String shareCode;
@@ -1300,7 +1301,6 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
 
   String _fmtDateTime(int ts) {
     final d = DateTime.fromMillisecondsSinceEpoch(ts);
-    return '${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} '
-        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    return AppTimeFormats.compactDateTime(d);
   }
 }

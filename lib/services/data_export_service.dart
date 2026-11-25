@@ -518,7 +518,7 @@ class DataExportService {
 
   static String _buildExportFileName() {
     final now = DateTime.now();
-    return 'cdt_backup_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}.json';
+    return 'cdt_backup_${AppTimeFormats.fileTimestamp(now)}.json';
   }
 
   static Future<Map<String, dynamic>> _exportSettings(String username) async {

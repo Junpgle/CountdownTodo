@@ -1051,8 +1051,7 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
       if (future) '待发生',
       transaction.type.label,
       if (title != categoryName) categoryName,
-      if (time != null)
-        '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
+      if (time != null) AppTimeFormats.clock(time),
     ].join(' · ');
     final sourceKey = GlobalKey(
       debugLabel: 'finance-calendar-${transaction.uuid}',

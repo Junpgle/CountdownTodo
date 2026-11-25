@@ -1034,8 +1034,7 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
 
     final courses = await CourseService.getAllCourses(username);
     final now = DateTime.now();
-    final todayStr =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final todayStr = AppTimeFormats.date(now);
 
     // 只发送今天及未来两周的课程，按日期精确匹配
     final twoWeeksLater = now.add(const Duration(days: 14));
@@ -1065,10 +1064,8 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
             'weekday': c.weekday,
             'weekIndex': c.weekIndex,
             'date': c.date,
-            'startTime':
-                '${startH.toString().padLeft(2, '0')}:${startM.toString().padLeft(2, '0')}',
-            'endTime':
-                '${endH.toString().padLeft(2, '0')}:${endM.toString().padLeft(2, '0')}',
+            'startTime': AppTimeFormats.hourMinute(startH, startM),
+            'endTime': AppTimeFormats.hourMinute(endH, endM),
           };
         })
         .toList();

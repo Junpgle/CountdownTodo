@@ -8,6 +8,7 @@ import '../services/api_service.dart';
 import '../services/team_share_link.dart';
 import '../widgets/floating_glass_control.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/time_utils.dart';
 
 class TeamShareManageScreen extends StatefulWidget {
   final Team team;
@@ -344,7 +345,7 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
 
   String _formatDate(int timestamp) {
     final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    return AppTimeFormats.date(date);
   }
 }
 

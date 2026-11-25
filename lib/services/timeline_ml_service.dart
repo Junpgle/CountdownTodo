@@ -221,8 +221,7 @@ class TimelineMLService {
       final byDay = <String, _HistoricalDayAccumulator>{};
       for (final r in records) {
         final date = DateTime.fromMillisecondsSinceEpoch(r.createdAt);
-        final key =
-            '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+        final key = AppTimeFormats.date(date);
         final day = byDay.putIfAbsent(key, () => _HistoricalDayAccumulator());
         day.focusSeconds += r.effectiveDuration;
         day.totalSessions++;

@@ -182,8 +182,7 @@ mixin _HomeDashboardWallpaperMixin on _HomeDashboardStateBase {
     final paramsKey = '$resolution:$format:$index:$mkt';
 
     final now = DateTime.now();
-    final today =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final today = AppTimeFormats.date(now);
 
     if (!force) {
       final cached = await StorageService.getCachedBingWallpaper();

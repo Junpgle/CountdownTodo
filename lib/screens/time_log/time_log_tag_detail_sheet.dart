@@ -21,11 +21,9 @@ class _TagRecord {
   });
 }
 
-String _tagMonthDay(DateTime date) =>
-    '${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')}';
+String _tagMonthDay(DateTime date) => AppTimeFormats.monthDaySlash(date);
 
-String _tagClockTime(DateTime date) =>
-    '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+String _tagClockTime(DateTime date) => AppTimeFormats.clock(date);
 
 String _tagDateTimeRange(DateTime start, DateTime end) =>
     '${_tagMonthDay(start)} ${_tagClockTime(start)} → ${_tagClockTime(end)}';
@@ -235,7 +233,7 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
   static String _formatChartDuration(int value) => '${value}m';
 
   static String _formatChartClockTime(int value) =>
-      '${(value ~/ 60).toString().padLeft(2, '0')}:${(value % 60).toString().padLeft(2, '0')}';
+      AppTimeFormats.hourMinute(value ~/ 60, value % 60);
 
   Widget _buildChartTab(String title, int index, Color color) {
     final isSel = _chartType == index;

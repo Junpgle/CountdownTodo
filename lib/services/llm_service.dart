@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../features/finance/services/finance_ai_context_service.dart';
 import '../utils/image_input_reader.dart';
+import '../utils/time_utils.dart';
 import 'ai_chat_service.dart';
 import 'ai_multimodal_message_builder.dart';
 import 'legacy_ai_prompt_sanitizer.dart';
@@ -965,8 +966,7 @@ class LLMService {
     }
 
     final now = DateTime.now();
-    final nowStr =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    final nowStr = AppTimeFormats.fullDateTime(now);
 
     final resolvedPrompt = _ensureRecognitionPrompt(
       config.textPrompt,
@@ -1133,8 +1133,7 @@ class LLMService {
     }
 
     final now = DateTime.now();
-    final nowStr =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    final nowStr = AppTimeFormats.fullDateTime(now);
     final prompt = await promptBuilder(config, nowStr);
 
     final configuredVisionProvider = config.visionProvider?.trim() ?? '';

@@ -28,7 +28,7 @@ class GreetingTimeSlot {
   }
 
   String _formatTime(int hour, int minute) {
-    return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+    return AppTimeFormats.hourMinute(hour, minute);
   }
 
   bool get isCrossDay {
@@ -80,7 +80,7 @@ class SalutationTimeSlot {
   }
 
   String _formatTime(int hour, int minute) {
-    return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+    return AppTimeFormats.hourMinute(hour, minute);
   }
 
   bool get isCrossDay {
@@ -1314,7 +1314,7 @@ class _SalutationSlotEditDialogState extends State<_SalutationSlotEditDialog> {
   }
 
   String _formatTime(TimeOfDay time) {
-    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    return AppTimeFormats.hourMinute(time.hour, time.minute);
   }
 
   Future<void> _pickTime(bool isStart) async {
@@ -1470,7 +1470,7 @@ class _TimeSlotEditDialogState extends State<_TimeSlotEditDialog> {
   }
 
   String _formatTime(TimeOfDay time) {
-    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    return AppTimeFormats.hourMinute(time.hour, time.minute);
   }
 
   Future<void> _pickTime(bool isStart) async {
