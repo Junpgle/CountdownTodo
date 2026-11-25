@@ -16,6 +16,7 @@ import '../parsers/xidian_parser.dart';
 import '../parsers/zfsoft_parser.dart';
 import '../widgets/zf_time_config_dialog.dart';
 import '../widgets/course_time_repair_dialog.dart';
+import '../widgets/course_import_shared_dialogs.dart';
 import '../widgets/course_webview_screen.dart';
 import '../../utils/page_transitions.dart';
 import '../../utils/settings_navigation.dart';
@@ -36,11 +37,8 @@ class CourseImportHandler {
   final FutureOr<void> Function() onRescheduleReminders;
   final Function(String) showMessage;
 
-  bool _loadingDialogOpen = false;
-  Route<void>? _loadingDialogRoute;
-  Future<void>? _loadingDialogFuture;
-  Future<void>? _loadingDialogReady;
-  NavigatorState? _loadingDialogNavigator;
+  final CourseLoadingDialogController _loadingDialog =
+      CourseLoadingDialogController(logPrefix: '课表导入进度弹窗');
 
   CourseImportHandler({
     required this.context,
@@ -173,86 +171,21 @@ class CourseImportHandler {
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // 替换选项
-                InkWell(
-                  borderRadius: BorderRadius.circular(12),
+                CourseImportOptionCard(
+                  icon: Icons.swap_horiz_rounded,
+                  title: '替换现有课表',
+                  subtitle: '清除该学期旧课表，仅保留新导入的课程',
+                  accentColor: colorScheme.secondary,
                   onTap: () => Navigator.pop(ctx, ImportMode.replace),
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: colorScheme.outlineVariant),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.swap_horiz_rounded,
-                          color: colorScheme.secondary,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                '替换现有课表',
-                                style: TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '清除该学期旧课表，仅保留新导入的课程',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ),
                 const SizedBox(height: 12),
-                // 共存选项
-                InkWell(
-                  borderRadius: BorderRadius.circular(12),
+                CourseImportOptionCard(
+                  icon: Icons.merge_rounded,
+                  title: '与现有课表共存',
+                  subtitle: '替换该学期的冲突课程，保留其他学期的课表',
+                  accentColor: colorScheme.primary,
+                  highlighted: true,
                   onTap: () => Navigator.pop(ctx, ImportMode.merge),
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: colorScheme.primary),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.merge_rounded, color: colorScheme.primary),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '与现有课表共存',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: colorScheme.primary,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '替换该学期的冲突课程，保留其他学期的课表',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ),
               ],
             ),
@@ -958,77 +891,8 @@ class CourseImportHandler {
     }
   }
 
-  void _showLoadingDialog(String message) {
-    if (!context.mounted || _loadingDialogOpen) return;
+  void _showLoadingDialog(String message) =>
+      _loadingDialog.show(context, message);
 
-    final navigator = Navigator.of(context, rootNavigator: true);
-    final route = DialogRoute<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        content: Row(
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(width: 20),
-            Expanded(child: Text(message)),
-          ],
-        ),
-      ),
-    );
-
-    _loadingDialogOpen = true;
-    _loadingDialogRoute = route;
-    _loadingDialogNavigator = navigator;
-    _loadingDialogReady = Future<void>.delayed(Duration.zero);
-    final dialogFuture = navigator.push<void>(route);
-    _loadingDialogFuture = dialogFuture;
-    unawaited(_observeLoadingDialog(route, dialogFuture));
-  }
-
-  Future<void> _observeLoadingDialog(
-    Route<void> route,
-    Future<void> dialogFuture,
-  ) async {
-    try {
-      await dialogFuture;
-    } catch (error, stackTrace) {
-      debugPrint('⚠️ 课表导入进度弹窗异常结束: $error\n$stackTrace');
-    } finally {
-      if (identical(_loadingDialogRoute, route)) {
-        _loadingDialogOpen = false;
-        _loadingDialogRoute = null;
-        _loadingDialogFuture = null;
-        _loadingDialogReady = null;
-        _loadingDialogNavigator = null;
-      }
-    }
-  }
-
-  Future<void> _closeLoadingDialog() async {
-    if (!_loadingDialogOpen) return;
-
-    final route = _loadingDialogRoute;
-    final dialogFuture = _loadingDialogFuture;
-    final ready = _loadingDialogReady;
-    if (route == null) return;
-    if (ready != null) await ready;
-
-    // Remove only the route created by _showLoadingDialog. A concurrent
-    // share/import page or confirmation dialog must never be popped here.
-    final navigator = _loadingDialogNavigator;
-    if (identical(_loadingDialogRoute, route) &&
-        navigator != null &&
-        navigator.mounted &&
-        route.isActive) {
-      navigator.removeRoute(route);
-    }
-
-    if (dialogFuture != null) {
-      try {
-        await dialogFuture;
-      } catch (_) {
-        // The observer already records unexpected route failures.
-      }
-    }
-  }
+  Future<void> _closeLoadingDialog() => _loadingDialog.close();
 }

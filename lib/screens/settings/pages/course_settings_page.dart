@@ -11,6 +11,7 @@ import '../../../course_import/handlers/course_import_handler.dart';
 import '../../../course_import/course_import_preflight.dart';
 import '../../../course_import/course_schedule_semantics.dart';
 import '../../../course_import/widgets/course_adaptation_screen.dart';
+import '../../../course_import/widgets/course_import_shared_dialogs.dart';
 import '../../../course_import/widgets/course_time_repair_dialog.dart';
 import '../../course_calendar_adjustment_screen.dart';
 import '../../../models.dart';
@@ -71,11 +72,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage>
 
   late CourseImportHandler _courseImportHandler;
 
-  bool _loadingDialogOpen = false;
-  Route<void>? _loadingDialogRoute;
-  Future<void>? _loadingDialogFuture;
-  Future<void>? _loadingDialogReady;
-  NavigatorState? _loadingDialogNavigator;
+  final CourseLoadingDialogController _loadingDialog =
+      CourseLoadingDialogController(logPrefix: '课表设置进度弹窗');
 
   void _mutateState(VoidCallback fn) => setState(fn);
 
@@ -97,19 +95,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage>
 
   @override
   void dispose() {
-    final route = _loadingDialogRoute;
-    final navigator = _loadingDialogNavigator;
-    if (route != null &&
-        navigator != null &&
-        navigator.mounted &&
-        route.isActive) {
-      navigator.removeRoute(route);
-    }
-    _loadingDialogOpen = false;
-    _loadingDialogRoute = null;
-    _loadingDialogFuture = null;
-    _loadingDialogReady = null;
-    _loadingDialogNavigator = null;
+    _loadingDialog.dispose();
     super.dispose();
   }
 
@@ -208,77 +194,10 @@ class _CourseSettingsPageState extends State<CourseSettingsPage>
     }
   }
 
-  void _showLoadingDialog(String message) {
-    if (!mounted || _loadingDialogOpen) return;
+  void _showLoadingDialog(String message) =>
+      _loadingDialog.show(context, message);
 
-    final navigator = Navigator.of(context, rootNavigator: true);
-    final route = DialogRoute<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        content: Row(
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(width: 20),
-            Expanded(child: Text(message)),
-          ],
-        ),
-      ),
-    );
-
-    _loadingDialogOpen = true;
-    _loadingDialogRoute = route;
-    _loadingDialogNavigator = navigator;
-    _loadingDialogReady = Future<void>.delayed(Duration.zero);
-    final dialogFuture = navigator.push<void>(route);
-    _loadingDialogFuture = dialogFuture;
-    unawaited(_observeLoadingDialog(route, dialogFuture));
-  }
-
-  Future<void> _observeLoadingDialog(
-    Route<void> route,
-    Future<void> dialogFuture,
-  ) async {
-    try {
-      await dialogFuture;
-    } catch (error, stackTrace) {
-      debugPrint('⚠️ 课表设置进度弹窗异常结束: $error\n$stackTrace');
-    } finally {
-      if (identical(_loadingDialogRoute, route)) {
-        _loadingDialogOpen = false;
-        _loadingDialogRoute = null;
-        _loadingDialogFuture = null;
-        _loadingDialogReady = null;
-        _loadingDialogNavigator = null;
-      }
-    }
-  }
-
-  Future<void> _closeLoadingDialog() async {
-    if (!_loadingDialogOpen) return;
-
-    final route = _loadingDialogRoute;
-    final dialogFuture = _loadingDialogFuture;
-    final ready = _loadingDialogReady;
-    if (route == null) return;
-    if (ready != null) await ready;
-
-    final navigator = _loadingDialogNavigator;
-    if (identical(_loadingDialogRoute, route) &&
-        navigator != null &&
-        navigator.mounted &&
-        route.isActive) {
-      navigator.removeRoute(route);
-    }
-
-    if (dialogFuture != null) {
-      try {
-        await dialogFuture;
-      } catch (_) {
-        // The observer records unexpected route failures.
-      }
-    }
-  }
+  Future<void> _closeLoadingDialog() => _loadingDialog.close();
 
   Widget _buildTile({required String targetId, required Widget child}) {
     final bool isHighlighted = highlightTarget == targetId;

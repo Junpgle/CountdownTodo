@@ -492,84 +492,21 @@ extension _CourseSettingsCloud on _CourseSettingsPageState {
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                InkWell(
-                  borderRadius: BorderRadius.circular(12),
+                CourseImportOptionCard(
+                  icon: Icons.swap_horiz_rounded,
+                  title: '替换本地课表',
+                  subtitle: '清除本地课表，仅保留云端数据',
+                  accentColor: colorScheme.secondary,
                   onTap: () => Navigator.pop(ctx, ImportMode.replace),
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: colorScheme.outlineVariant),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.swap_horiz_rounded,
-                          color: colorScheme.secondary,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                '替换本地课表',
-                                style: TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '清除本地课表，仅保留云端数据',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ),
                 const SizedBox(height: 12),
-                InkWell(
-                  borderRadius: BorderRadius.circular(12),
+                CourseImportOptionCard(
+                  icon: Icons.merge_rounded,
+                  title: '与本地课表共存',
+                  subtitle: '合并云端和本地课表，适用于不同学期',
+                  accentColor: colorScheme.primary,
+                  highlighted: true,
                   onTap: () => Navigator.pop(ctx, ImportMode.merge),
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: colorScheme.primary),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.merge_rounded, color: colorScheme.primary),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '与本地课表共存',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: colorScheme.primary,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '合并云端和本地课表，适用于不同学期',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ),
               ],
             ),
