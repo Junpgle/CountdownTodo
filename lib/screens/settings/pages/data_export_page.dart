@@ -3,11 +3,10 @@ import 'package:flutter/material.dart';
 import '../../../models/data_export_models.dart';
 import '../../../services/data_export_service.dart';
 import '../../../services/minor_mode_policy.dart';
-import '../../../services/minor_mode_service.dart';
 import '../../../storage_service.dart';
 import '../../../utils/app_platform.dart';
-import '../../../widgets/floating_glass_control.dart';
 import '../../../utils/app_dialogs.dart';
+import '../widgets/data_transfer_shared.dart';
 
 class DataExportPage extends StatefulWidget {
   final bool isEmbedded;
@@ -72,24 +71,11 @@ class _DataExportPageState extends State<DataExportPage> {
   Future<void> _export() async {
     if (_selectedTypes.isEmpty) return;
 
-    final authorized = await MinorModeService.instance.authorizeAction(
+    final authorized = await authorizeMinorModeDataTransfer(
+      context,
       MinorModeAction.dataExport,
     );
-    if (!authorized) {
-      if (mounted) {
-        AppSnackBars.showSnackBar(
-          context,
-          SnackBar(
-            content: Text(
-              MinorModeService.instance.authorizationFailureMessage(
-                MinorModeAction.dataExport,
-              ),
-            ),
-          ),
-        );
-      }
-      return;
-    }
+    if (!authorized) return;
 
     setState(() => _isExporting = true);
 
@@ -143,145 +129,48 @@ class _DataExportPageState extends State<DataExportPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final screenWidth = MediaQuery.sizeOf(context).width;
-    final isLandscape =
-        MediaQuery.orientationOf(context) == Orientation.landscape;
-    final isWideScreen = screenWidth > 600;
-    final standalone = !widget.isEmbedded && !isWideScreen;
+    final colorScheme = Theme.of(context).colorScheme;
+    final selectionWidgets = [
+      _buildInfoCard(colorScheme),
+      const SizedBox(height: 16),
+      _buildSelectAllRow(colorScheme),
+      const SizedBox(height: 8),
+      ..._types.map((type) => _buildTypeTile(type, colorScheme)),
+    ];
+    final actionWidgets = [
+      _buildExportOptionsCard(colorScheme),
+      const SizedBox(height: 16),
+      _buildExportMethodCard(colorScheme),
+      const SizedBox(height: 24),
+      _buildExportButton(),
+    ];
 
-    return Scaffold(
-      extendBodyBehindAppBar: standalone,
-      appBar: widget.isEmbedded
-          ? null
-          : FloatingGlassAppBar(
-              flexibleSpace: const FloatingGlassTopBarBackground(),
-              title: const Text('数据导出'),
-            ),
-      body: floatingGlassSettingsBody(
-        context,
-        standalone: standalone,
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : _buildBody(
-                colorScheme,
-                isLandscape || isWideScreen,
-                standalone: standalone,
-              ),
-      ),
-    );
-  }
-
-  Widget _buildBody(
-    ColorScheme colorScheme,
-    bool isWide, {
-    required bool standalone,
-  }) {
-    if (isWide) {
-      return _buildWideLayout(colorScheme);
-    }
-    return _buildNarrowLayout(colorScheme, standalone: standalone);
-  }
-
-  Widget _buildNarrowLayout(
-    ColorScheme colorScheme, {
-    required bool standalone,
-  }) {
-    return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        standalone ? floatingGlassSettingsContentTopInset(context) : 16,
-        16,
-        16,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildInfoCard(colorScheme),
-          const SizedBox(height: 16),
-          _buildSelectAllRow(colorScheme),
-          const SizedBox(height: 8),
-          ..._types.map((type) => _buildTypeTile(type, colorScheme)),
-          const SizedBox(height: 16),
-          _buildExportOptionsCard(colorScheme),
-          const SizedBox(height: 16),
-          _buildExportMethodCard(colorScheme),
-          const SizedBox(height: 24),
-          _buildExportButton(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWideLayout(ColorScheme colorScheme) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          flex: 3,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildInfoCard(colorScheme),
-                const SizedBox(height: 16),
-                _buildSelectAllRow(colorScheme),
-                const SizedBox(height: 8),
-                ..._types.map((type) => _buildTypeTile(type, colorScheme)),
-              ],
-            ),
-          ),
-        ),
-        Expanded(
-          flex: 2,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildExportOptionsCard(colorScheme),
-                const SizedBox(height: 16),
-                _buildExportMethodCard(colorScheme),
-                const SizedBox(height: 24),
-                _buildExportButton(),
-              ],
-            ),
-          ),
-        ),
+    return DataTransferScaffold(
+      title: '数据导出',
+      isEmbedded: widget.isEmbedded,
+      isLoading: _isLoading,
+      primaryChildren: selectionWidgets,
+      secondaryChildren: actionWidgets,
+      narrowChildren: [
+        ...selectionWidgets,
+        const SizedBox(height: 16),
+        ...actionWidgets,
       ],
     );
   }
 
   Widget _buildInfoCard(ColorScheme colorScheme) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.info_outline, color: colorScheme.primary, size: 20),
-                const SizedBox(width: 8),
-                const Text(
-                  '选择要导出的数据',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '导出的数据将保存为 JSON 格式文件，可用于备份或在其他设备上导入。',
-              style: TextStyle(
-                fontSize: 13,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
+    return DataTransferSectionCard(
+      icon: Icons.info_outline,
+      title: '选择要导出的数据',
+      titleFontSize: 16,
+      headerSpacing: 8,
+      children: [
+        Text(
+          '导出的数据将保存为 JSON 格式文件，可用于备份或在其他设备上导入。',
+          style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
         ),
-      ),
+      ],
     );
   }
 
@@ -307,131 +196,94 @@ class _DataExportPageState extends State<DataExportPage> {
   }
 
   Widget _buildExportMethodCard(ColorScheme colorScheme) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '导出方式',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            RadioGroup<bool>(
-              groupValue: _saveToFile,
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() => _saveToFile = value);
-                }
-              },
-              child: Column(
-                children: [
-                  RadioListTile<bool>(
-                    title: Text(AppPlatform.isWeb ? '浏览器下载' : '保存到文件'),
-                    subtitle: Text(
-                      AppPlatform.isWeb ? '下载 JSON 备份文件' : '保存到本地文档目录',
-                    ),
-                    value: true,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  if (!AppPlatform.isWeb)
-                    const RadioListTile<bool>(
-                      title: Text('分享'),
-                      subtitle: Text('通过系统分享发送给其他应用'),
-                      value: false,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                ],
+    return DataTransferSectionCard(
+      title: '导出方式',
+      children: [
+        RadioGroup<bool>(
+          groupValue: _saveToFile,
+          onChanged: (value) {
+            if (value != null) {
+              setState(() => _saveToFile = value);
+            }
+          },
+          child: Column(
+            children: [
+              RadioListTile<bool>(
+                title: Text(AppPlatform.isWeb ? '浏览器下载' : '保存到文件'),
+                subtitle: Text(
+                  AppPlatform.isWeb ? '下载 JSON 备份文件' : '保存到本地文档目录',
+                ),
+                value: true,
+                contentPadding: EdgeInsets.zero,
               ),
-            ),
-          ],
+              if (!AppPlatform.isWeb)
+                const RadioListTile<bool>(
+                  title: Text('分享'),
+                  subtitle: Text('通过系统分享发送给其他应用'),
+                  value: false,
+                  contentPadding: EdgeInsets.zero,
+                ),
+            ],
+          ),
         ),
-      ),
+      ],
     );
   }
 
   Widget _buildExportOptionsCard(ColorScheme colorScheme) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.tune, color: colorScheme.primary, size: 20),
-                const SizedBox(width: 8),
-                const Text(
-                  '导出选项',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '选择要清理的数据，使导出文件更适合跨设备或跨账号使用',
-              style: TextStyle(
-                fontSize: 12,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 12),
-            CheckboxListTile(
-              title: const Text('去除团队绑定'),
-              subtitle: const Text('导出的数据将不包含团队信息'),
-              value: _removeTeamBinding,
-              onChanged: (v) => setState(() => _removeTeamBinding = v!),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-            ),
-            CheckboxListTile(
-              title: const Text('去除图片路径'),
-              subtitle: const Text('本地图片路径在其他设备上无效'),
-              value: _removeImagePath,
-              onChanged: (v) => setState(() => _removeImagePath = v!),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-            ),
-            CheckboxListTile(
-              title: const Text('去除冲突数据'),
-              subtitle: const Text('同步冲突信息无需导出'),
-              value: _removeConflictData,
-              onChanged: (v) => setState(() => _removeConflictData = v!),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-            ),
-            CheckboxListTile(
-              title: const Text('去除设备ID'),
-              subtitle: const Text('设备标识在其他设备上无效'),
-              value: _removeDeviceId,
-              onChanged: (v) => setState(() => _removeDeviceId = v!),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-            ),
-          ],
+    return DataTransferSectionCard(
+      icon: Icons.tune,
+      title: '导出选项',
+      headerSpacing: 8,
+      children: [
+        Text(
+          '选择要清理的数据，使导出文件更适合跨设备或跨账号使用',
+          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
         ),
-      ),
+        const SizedBox(height: 12),
+        CheckboxListTile(
+          title: const Text('去除团队绑定'),
+          subtitle: const Text('导出的数据将不包含团队信息'),
+          value: _removeTeamBinding,
+          onChanged: (v) => setState(() => _removeTeamBinding = v!),
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+        ),
+        CheckboxListTile(
+          title: const Text('去除图片路径'),
+          subtitle: const Text('本地图片路径在其他设备上无效'),
+          value: _removeImagePath,
+          onChanged: (v) => setState(() => _removeImagePath = v!),
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+        ),
+        CheckboxListTile(
+          title: const Text('去除冲突数据'),
+          subtitle: const Text('同步冲突信息无需导出'),
+          value: _removeConflictData,
+          onChanged: (v) => setState(() => _removeConflictData = v!),
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+        ),
+        CheckboxListTile(
+          title: const Text('去除设备ID'),
+          subtitle: const Text('设备标识在其他设备上无效'),
+          value: _removeDeviceId,
+          onChanged: (v) => setState(() => _removeDeviceId = v!),
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+        ),
+      ],
     );
   }
 
   Widget _buildExportButton() {
-    return SizedBox(
-      width: double.infinity,
-      child: FilledButton.icon(
-        onPressed: _selectedTypes.isEmpty || _isExporting ? null : _export,
-        icon: _isExporting
-            ? const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              )
-            : const Icon(Icons.upload_file),
-        label: Text(_isExporting ? '导出中...' : '开始导出'),
-      ),
+    return DataTransferPrimaryActionButton(
+      onPressed: _selectedTypes.isEmpty || _isExporting ? null : _export,
+      isBusy: _isExporting,
+      icon: Icons.upload_file,
+      label: '开始导出',
+      busyLabel: '导出中...',
     );
   }
 
