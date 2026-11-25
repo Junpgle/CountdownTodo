@@ -44,4 +44,48 @@ void main() {
       '2026-09',
     );
   });
+
+  test('记账账单全局搜索支持按多种金额格式检索', () async {
+    SharedPreferences.setMockInitialValues({});
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    FinanceStorage.databaseOverride = db;
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    await FinanceStorage.saveTransaction(
+      FinanceTransaction(
+        uuid: 'tx-amount-1',
+        type: FinanceTransactionType.expense,
+        amountMinor: 123450,
+        currencyCode: 'CNY',
+        transactionDate: '2026-11-20',
+        occurredAt: DateTime(2026, 11, 20, 10).millisecondsSinceEpoch,
+        merchant: '测试商户',
+      ),
+    );
+    await FinanceStorage.saveTransaction(
+      FinanceTransaction(
+        uuid: 'tx-amount-2',
+        type: FinanceTransactionType.expense,
+        amountMinor: 8800,
+        currencyCode: 'CNY',
+        transactionDate: '2026-11-20',
+        occurredAt: DateTime(2026, 11, 20, 11).millisecondsSinceEpoch,
+        merchant: '其他消费',
+      ),
+    );
+
+    for (final term in ['1234.50', '¥1234.50', '¥1,234.50', '1,234.50']) {
+      final results = await GlobalSearchExtraService.searchFinance([
+        term.toLowerCase(),
+      ], null);
+      final txResults = results
+          .where((item) => item.id.startsWith('finance_transaction_'))
+          .toList();
+      expect(txResults, hasLength(1), reason: 'Failed for query: $term');
+      expect(txResults.single.id, 'finance_transaction_tx-amount-1');
+    }
+  });
 }

@@ -892,3 +892,24 @@ String formatFinanceAmountInput(int amountMinor) => formatFinanceAmount(
 String formatSignedFinanceAmount(int amountMinor, FinanceTransactionType type) {
   return '${type.signedPrefix}${formatFinanceAmount(amountMinor)}';
 }
+
+/// Returns common formatted representations of [amountMinor] for text search.
+String formatFinanceAmountSearchText(
+  int amountMinor, {
+  String? currencyCode,
+  FinanceTransactionType? type,
+}) {
+  final plain = (amountMinor.abs() / 100).toStringAsFixed(2);
+  final formatted = formatFinanceAmount(amountMinor);
+  final formattedNoSymbol = formatFinanceAmount(amountMinor, withSymbol: false);
+  final parts = <String>[
+    plain,
+    '¥$plain',
+    formatted,
+    formattedNoSymbol,
+    if (currencyCode != null && currencyCode.trim().isNotEmpty)
+      '${currencyCode.trim()} $plain',
+    if (type != null) formatSignedFinanceAmount(amountMinor, type),
+  ];
+  return parts.join(' ');
+}

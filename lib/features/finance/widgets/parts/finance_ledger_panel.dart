@@ -332,6 +332,11 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
       _categoryDisplayName(transaction.categoryUuid),
       payment?.name,
       paymentName,
+      formatFinanceAmountSearchText(
+        transaction.amountMinor,
+        currencyCode: transaction.currencyCode,
+        type: transaction.type,
+      ),
       if (category?.isArchived == true || payment?.isArchived == true) '已归档',
       unknownPaymentLabel,
       if (hasPaymentMethodUuid) '已删除或未知付款方式',
