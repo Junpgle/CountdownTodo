@@ -743,6 +743,7 @@ class _HabitCardState extends State<HabitCard> {
               ? FilledButton.tonal(
                   onPressed: null,
                   style: FilledButton.styleFrom(
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     padding: EdgeInsets.symmetric(
                       vertical: widget.compact ? 8 : 12,
                     ),
@@ -777,6 +778,7 @@ class _HabitCardState extends State<HabitCard> {
                       child: FilledButton.tonal(
                         onPressed: () {},
                         style: FilledButton.styleFrom(
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           padding: EdgeInsets.symmetric(
                             vertical: widget.compact ? 8 : 12,
                           ),
@@ -1078,8 +1080,10 @@ class _HabitCardState extends State<HabitCard> {
         ? value.round().toString()
         : value.toString();
     final chipLabel = label ?? (unit.isNotEmpty ? '$text $unit' : text);
+    final chipRadius = BorderRadius.circular(widget.compact ? 10 : 12);
     return HabitCelebrationTrigger(
       burstColor: _colors.primary,
+      borderRadius: chipRadius,
       holdHint: '长按打卡 $chipLabel',
       semanticLabel: '${widget.goal.name}，增加 $chipLabel',
       enabled: !_busy,
@@ -1088,14 +1092,13 @@ class _HabitCardState extends State<HabitCard> {
         child: FilledButton.tonal(
           onPressed: () {},
           style: FilledButton.styleFrom(
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             padding: EdgeInsets.symmetric(
               horizontal: widget.compact ? 12 : 16,
               vertical: widget.compact ? 6 : 8,
             ),
             minimumSize: Size(0, widget.compact ? 32 : 36),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(widget.compact ? 10 : 12),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: chipRadius),
           ),
           child: Text(chipLabel),
         ),
@@ -1213,6 +1216,7 @@ class _HabitCardState extends State<HabitCard> {
                 child: FilledButton.tonal(
                   onPressed: () {},
                   style: FilledButton.styleFrom(
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     padding: EdgeInsets.symmetric(
                       vertical: widget.compact ? 8 : 12,
                     ),

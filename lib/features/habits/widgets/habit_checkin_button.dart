@@ -177,10 +177,25 @@ class _HabitCelebrationTriggerState extends State<HabitCelebrationTrigger>
         _triggerSuccess(primary);
       }
     });
+
+    HabitCelebrationService.holdToCheckinListenable.addListener(
+      _onHoldToCheckinSettingChanged,
+    );
+    if (widget.enableHoldToCheckin == null) {
+      unawaited(HabitCelebrationService.ensureInitialized());
+    }
+  }
+
+  void _onHoldToCheckinSettingChanged() {
+    if (!mounted || widget.enableHoldToCheckin != null) return;
+    setState(() {});
   }
 
   @override
   void dispose() {
+    HabitCelebrationService.holdToCheckinListenable.removeListener(
+      _onHoldToCheckinSettingChanged,
+    );
     _holdController.removeListener(_onHoldProgress);
     _scaleController.dispose();
     _holdController.dispose();
@@ -441,14 +456,16 @@ class _HoldProgressBorderPainter extends CustomPainter {
     );
     canvas.drawRRect(rrect, _fillPaint);
 
-    // 绘制蓄力流光边框
+    // 绘制蓄力流光边框（向内收缩半个线宽，使外缘与按钮圆角完全贴合）
+    final strokeWidth = 2.0 + (progress * 1.5);
+    final strokeRRect = rrect.deflate(strokeWidth / 2);
     _borderPaint
-      ..strokeWidth = 2.0 + (progress * 1.5)
+      ..strokeWidth = strokeWidth
       ..color = color.withValues(alpha: (0.4 + progress * 0.6).clamp(0.0, 1.0));
 
     _borderPath
       ..reset()
-      ..addRRect(rrect);
+      ..addRRect(strokeRRect);
     final iterator = _borderPath.computeMetrics().iterator;
     if (!iterator.moveNext()) return;
 
@@ -461,5 +478,7 @@ class _HoldProgressBorderPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _HoldProgressBorderPainter oldDelegate) =>
-      oldDelegate.progress != progress || oldDelegate.color != color;
+      oldDelegate.progress != progress ||
+      oldDelegate.color != color ||
+      oldDelegate.borderRadius != borderRadius;
 }

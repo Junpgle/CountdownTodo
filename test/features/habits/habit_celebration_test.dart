@@ -525,5 +525,46 @@ void main() {
         expect(parentTapped, isFalse);
       },
     );
+
+    testWidgets(
+      'HabitCelebrationTrigger initializes hold mode on cold start and reacts to updates',
+      (tester) async {
+        HabitCelebrationService.resetForTest();
+        SharedPreferences.setMockInitialValues({
+          'habit_hold_to_checkin_enabled': true,
+          'habit_checkin_haptics_enabled': false,
+        });
+        addTearDown(HabitCelebrationService.resetForTest);
+
+        var checkInCount = 0;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: HabitCelebrationTrigger(
+                onCheckIn: () async {
+                  checkInCount++;
+                },
+                child: const Text('首页打卡'),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(HabitCelebrationService.isHoldToCheckinEnabled, isTrue);
+
+        // 轻触不应触发打卡
+        await tester.tap(find.text('首页打卡'));
+        await tester.pumpAndSettle();
+        expect(checkInCount, 0);
+
+        // 动态关闭长按蓄力开关后，已挂载组件应立即恢复轻触打卡
+        await HabitCelebrationService.setHoldToCheckinEnabled(false);
+        await tester.pump();
+        await tester.tap(find.text('首页打卡'));
+        await tester.pumpAndSettle();
+        expect(checkInCount, 1);
+      },
+    );
   });
 }

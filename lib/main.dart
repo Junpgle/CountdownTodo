@@ -50,6 +50,7 @@ import 'services/app_deep_link_service.dart';
 import 'services/platform_bootstrap.dart';
 import 'services/minor_mode_service.dart';
 import 'services/session_revocation_service.dart';
+import 'features/habits/services/habit_celebration_service.dart';
 import 'services/liquid_glass_effect_service.dart';
 import 'services/power_save_mode_service.dart';
 import 'theme/app_liquid_glass_theme.dart';
@@ -291,6 +292,7 @@ Future<void> main(List<String> args) async {
 
   // 预热 SharedPreferences 缓存，避免启动时多次重复 load
   unawaited(StorageService.prefs);
+  unawaited(HabitCelebrationService.ensureInitialized());
 
   // Register island entry as a tear-off so the desktop_multi_window plugin
   // can start a new Dart isolate using this symbol name. The plugin expects
