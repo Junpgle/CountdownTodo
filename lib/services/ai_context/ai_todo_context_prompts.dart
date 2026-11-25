@@ -24,7 +24,7 @@ String _buildLeanSystemPrompt({
 }) {
   final nowValue = now ?? DateTime.now();
   final nowText =
-      '${DateFormat('yyyy-MM-dd HH:mm').format(nowValue)} (${_formatTimeZone(nowValue)})';
+      '${AppTimeFormats.fullDateTime(nowValue)} (${_formatTimeZone(nowValue)})';
   final basePrompt = promptEnabled && customPrompt.trim().isNotEmpty
       ? customPrompt
       : ChatStorageService.defaultPrompt;
@@ -520,7 +520,7 @@ String _buildSystemPrompt({
 }) {
   final nowValue = now ?? DateTime.now();
   final nowText =
-      '${DateFormat('yyyy-MM-dd HH:mm').format(nowValue)} (${_formatTimeZone(nowValue)})';
+      '${AppTimeFormats.fullDateTime(nowValue)} (${_formatTimeZone(nowValue)})';
   final todoList = _formatTodos(todos, todoGroups);
   final scheduleList = _formatFixedSchedules(fixedSchedules, '', nowValue);
   final basePrompt = promptEnabled && customPrompt.trim().isNotEmpty
@@ -631,7 +631,7 @@ String _buildPromptPreview({
 }) {
   final nowValue = now ?? DateTime.now();
   final nowText =
-      '${DateFormat('yyyy-MM-dd HH:mm').format(nowValue)} (${_formatTimeZone(nowValue)})';
+      '${AppTimeFormats.fullDateTime(nowValue)} (${_formatTimeZone(nowValue)})';
   final basePrompt = promptEnabled && customPrompt.trim().isNotEmpty
       ? customPrompt
       : ChatStorageService.defaultPrompt;

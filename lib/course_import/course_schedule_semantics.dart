@@ -1,7 +1,6 @@
-import 'package:intl/intl.dart';
-
 import '../models.dart';
 import '../utils/calendar_date_math.dart';
+import '../utils/time_utils.dart';
 
 /// Aggregated schedule information for all occurrences of one course series.
 class CourseSeriesSummary {
@@ -25,8 +24,6 @@ class CourseSeriesSummary {
 /// imported course is assigned to a semester, so the concrete date is always
 /// rebuilt from the relative position here.
 abstract final class CourseScheduleSemantics {
-  static final DateFormat _dateFormat = DateFormat('yyyy-MM-dd');
-
   static DateTime mondayOf(DateTime startDate) {
     final normalized = CalendarDateMath.dateOnly(startDate);
     return CalendarDateMath.addDays(normalized, 1 - normalized.weekday);
@@ -43,7 +40,7 @@ abstract final class CourseScheduleSemantics {
       mondayOf(semesterStart),
       (safeWeek - 1) * 7 + safeWeekday - 1,
     );
-    return _dateFormat.format(date);
+    return AppTimeFormats.date(date);
   }
 
   static int weekIndexForDate(DateTime semesterStart, DateTime date) =>

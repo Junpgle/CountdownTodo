@@ -5,7 +5,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:home_widget/home_widget.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../models/widget_snapshot.dart';
@@ -301,7 +300,7 @@ class WidgetService {
     DateTime today = DateTime(now.year, now.month, now.day);
     final tomorrow = DateTime(today.year, today.month, today.day + 1);
     final courseRangeEnd = DateTime(today.year, today.month, today.day + 15);
-    final courseDateFormat = DateFormat('yyyy-MM-dd');
+    final courseDateFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd');
 
     final results = await Future.wait([
       Future.value(todos),
@@ -574,14 +573,17 @@ class WidgetService {
   }) {
     final entries = transactions.toList(growable: false);
     final asOfAt = now.millisecondsSinceEpoch;
-    final eligible = entries
-        .where((transaction) => transaction.balanceEventAt() <= asOfAt)
-        .toList(growable: false)
-      ..sort((a, b) {
-        final eventCompare = b.balanceEventAt().compareTo(a.balanceEventAt());
-        if (eventCompare != 0) return eventCompare;
-        return b.updatedAt.compareTo(a.updatedAt);
-      });
+    final eligible =
+        entries
+            .where((transaction) => transaction.balanceEventAt() <= asOfAt)
+            .toList(growable: false)
+          ..sort((a, b) {
+            final eventCompare = b.balanceEventAt().compareTo(
+              a.balanceEventAt(),
+            );
+            if (eventCompare != 0) return eventCompare;
+            return b.updatedAt.compareTo(a.updatedAt);
+          });
     final latest = eligible.isEmpty ? null : eligible.first;
     final summary = FinanceSummary.fromTransactions(entries, asOfAt: asOfAt);
     String titleFor(FinanceTransaction transaction) {
@@ -768,7 +770,7 @@ class WidgetService {
     List<WidgetHabitItem> habitItems = const [],
     WidgetFinanceSummary finance = const WidgetFinanceSummary(),
   }) async {
-    final dateFormat = DateFormat('yyyy-MM-dd');
+    final dateFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd');
 
     // 1. 倒数日：未删除、未过期，按目标日期排序
     final countdownItems = <WidgetCountdownItem>[];

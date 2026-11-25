@@ -2,8 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import '../utils/time_utils.dart';
 
 import '../screens/personal_timeline_screen.dart';
 import 'app_deep_link_service.dart';
@@ -28,7 +29,7 @@ class AppReportLaunchService {
       path: '/report',
       queryParameters: {
         'dimension': dimension.name,
-        'date': DateFormat('yyyy-MM-dd').format(date),
+        'date': AppTimeFormats.date(date),
       },
     );
   }
@@ -62,8 +63,7 @@ class AppReportLaunchService {
         final info = (data['update_info'] as Map?) ?? const {};
         final pcUrl = info['PC_package_url']?.toString() ?? '';
         final macUrl = info['mac_package_url']?.toString() ?? '';
-        final macArchPackages =
-            (info['mac_arch_packages'] as Map?) ?? const {};
+        final macArchPackages = (info['mac_arch_packages'] as Map?) ?? const {};
         String? firstMacArchUrl;
         for (final value in macArchPackages.values) {
           final candidate = _giteePackageUrl(value.toString());

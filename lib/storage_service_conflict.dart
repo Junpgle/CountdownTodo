@@ -784,7 +784,6 @@ mixin _StorageConflict on _StorageServiceBase {
   }
 
   String _localDayKey(int ms) {
-    return DateFormat('yyyy-MM-dd')
-        .format(DateTime.fromMillisecondsSinceEpoch(ms));
+    return AppTimeFormats.date(DateTime.fromMillisecondsSinceEpoch(ms));
   }
 }

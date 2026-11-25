@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../features/habits/models/habit_progress.dart';
@@ -174,17 +173,13 @@ class DailyAiSuggestionContextConfig {
 
   bool isEnabled(DailyAiContextOption option) => _values[option] ?? true;
 
-  int get enabledCount =>
-      DailyAiContextOption.values.where(isEnabled).length;
+  int get enabledCount => DailyAiContextOption.values.where(isEnabled).length;
 
   DailyAiSuggestionContextConfig copyWithOption(
     DailyAiContextOption option,
     bool enabled,
   ) {
-    return DailyAiSuggestionContextConfig({
-      ..._values,
-      option: enabled,
-    });
+    return DailyAiSuggestionContextConfig({..._values, option: enabled});
   }
 
   Map<String, dynamic> toJson() => {
@@ -270,8 +265,7 @@ class DailyAiSuggestionService {
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
   static final Map<String, Future<DailyAiSuggestionSnapshot>> _inFlight = {};
 
-  static String formatDateKey(DateTime date) =>
-      DateFormat('yyyy-MM-dd').format(date);
+  static String formatDateKey(DateTime date) => AppTimeFormats.date(date);
 
   static String _scoped(String baseKey, String? username) =>
       StorageKeyScope.scoped(baseKey, username);
@@ -721,7 +715,8 @@ class DailyAiSuggestionService {
 
     try {
       final contextConfig = await loadContextConfig(username);
-      final memoryPromptBlock = contextConfig.isEnabled(DailyAiContextOption.memory)
+      final memoryPromptBlock =
+          contextConfig.isEnabled(DailyAiContextOption.memory)
           ? await AiMemoryService.loadPromptBlock(username)
           : '';
       final recentFeedbackBlock =
@@ -751,9 +746,7 @@ class DailyAiSuggestionService {
           (!contextConfig.isEnabled(DailyAiContextOption.timeLogs) ||
               loadTodayTimeLogs == null)
           ? const <TimeLogItem>[]
-          : await loadTodayTimeLogs().catchError(
-              (_) => const <TimeLogItem>[],
-            );
+          : await loadTodayTimeLogs().catchError((_) => const <TimeLogItem>[]);
       final habitSummaryBlock =
           (!contextConfig.isEnabled(DailyAiContextOption.habits) ||
               loadHabitSummary == null)
@@ -917,7 +910,7 @@ class DailyAiSuggestionService {
 
     final buffer = StringBuffer();
     buffer.writeln(
-      '当前时间：${DateFormat('yyyy-MM-dd HH:mm').format(now)} $weekdayLabel'
+      '当前时间：${AppTimeFormats.fullDateTime(now)} $weekdayLabel'
       '（${isManualRefresh ? '用户手动刷新/重新评估' : '今日首次生成'}）',
     );
     buffer.writeln();
@@ -931,7 +924,7 @@ class DailyAiSuggestionService {
       for (final todo in list.take(limit)) {
         final dueText = todo.dueDate == null
             ? '未设截止日期'
-            : DateFormat('MM-dd HH:mm').format(todo.dueDate!.toLocal());
+            : AppTimeFormats.compactDateTime(todo.dueDate!.toLocal());
         final recurrencePart = todo.recurrence != RecurrenceType.none
             ? ' | 重复'
             : '';
@@ -965,12 +958,12 @@ class DailyAiSuggestionService {
         todayPlans.isNotEmpty) {
       buffer.writeln('【今日已安排时间（课程/固定日程/规划块）】');
       for (final course in todayCourses) {
-        final start = DateFormat('HH:mm').format(
+        final start = AppTimeFormats.clock(
           DateTime.fromMillisecondsSinceEpoch(course.startTime).toLocal(),
         );
-        final end = DateFormat(
-          'HH:mm',
-        ).format(DateTime.fromMillisecondsSinceEpoch(course.endTime).toLocal());
+        final end = AppTimeFormats.clock(
+          DateTime.fromMillisecondsSinceEpoch(course.endTime).toLocal(),
+        );
         final room = course.roomName.trim().isNotEmpty
             ? ' @${course.roomName.trim()}'
             : '';
@@ -979,17 +972,17 @@ class DailyAiSuggestionService {
       for (final schedule in todaySchedules) {
         final timeText = schedule.startTime == null
             ? '时间待定'
-            : '${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(schedule.startTime!).toLocal())}'
-                  '${schedule.endTime != null ? '-${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(schedule.endTime!).toLocal())}' : ''}';
+            : '${AppTimeFormats.clock(DateTime.fromMillisecondsSinceEpoch(schedule.startTime!).toLocal())}'
+                  '${schedule.endTime != null ? '-${AppTimeFormats.clock(DateTime.fromMillisecondsSinceEpoch(schedule.endTime!).toLocal())}' : ''}';
         buffer.writeln('- 日程 $timeText ${schedule.title}');
       }
       for (final plan in todayPlans) {
-        final start = DateFormat(
-          'HH:mm',
-        ).format(DateTime.fromMillisecondsSinceEpoch(plan.startTime).toLocal());
-        final end = DateFormat(
-          'HH:mm',
-        ).format(DateTime.fromMillisecondsSinceEpoch(plan.endTime).toLocal());
+        final start = AppTimeFormats.clock(
+          DateTime.fromMillisecondsSinceEpoch(plan.startTime).toLocal(),
+        );
+        final end = AppTimeFormats.clock(
+          DateTime.fromMillisecondsSinceEpoch(plan.endTime).toLocal(),
+        );
         final title = plan.titleSnapshot?.trim().isNotEmpty == true
             ? plan.titleSnapshot!.trim()
             : '规划块';
@@ -1014,35 +1007,34 @@ class DailyAiSuggestionService {
     if (freeSlots.isNotEmpty) {
       buffer.writeln('【今日剩余可用空档（至23:00）】');
       for (final slot in freeSlots.take(6)) {
-        final start = DateFormat(
-          'HH:mm',
-        ).format(DateTime.fromMillisecondsSinceEpoch(slot.startMs).toLocal());
-        final end = DateFormat(
-          'HH:mm',
-        ).format(DateTime.fromMillisecondsSinceEpoch(slot.endMs).toLocal());
+        final start = AppTimeFormats.clock(
+          DateTime.fromMillisecondsSinceEpoch(slot.startMs).toLocal(),
+        );
+        final end = AppTimeFormats.clock(
+          DateTime.fromMillisecondsSinceEpoch(slot.endMs).toLocal(),
+        );
         final minutes = ((slot.endMs - slot.startMs) / 60000).round();
         buffer.writeln('- $start-$end ($minutes分钟)');
       }
       buffer.writeln();
     }
 
-    final todayPomodoros = contextConfig.isEnabled(DailyAiContextOption.pomodoro)
+    final todayPomodoros =
+        contextConfig.isEnabled(DailyAiContextOption.pomodoro)
         ? (todayPomodoroRecords.where((r) {
-              if (r.isDeleted) return false;
-              final endMs = r.endTime ?? r.startTime;
-              return endMs >= todayStartMs && r.startTime < tomorrowStartMs;
-            }).toList()
-            ..sort((a, b) => a.startTime.compareTo(b.startTime)))
+            if (r.isDeleted) return false;
+            final endMs = r.endTime ?? r.startTime;
+            return endMs >= todayStartMs && r.startTime < tomorrowStartMs;
+          }).toList()..sort((a, b) => a.startTime.compareTo(b.startTime)))
         : const <PomodoroRecord>[];
 
     final filteredTimeLogs =
         contextConfig.isEnabled(DailyAiContextOption.timeLogs)
         ? (todayTimeLogs.where((log) {
-              if (log.isDeleted) return false;
-              return log.endTime > todayStartMs &&
-                  log.startTime < tomorrowStartMs;
-            }).toList()
-            ..sort((a, b) => a.startTime.compareTo(b.startTime)))
+            if (log.isDeleted) return false;
+            return log.endTime > todayStartMs &&
+                log.startTime < tomorrowStartMs;
+          }).toList()..sort((a, b) => a.startTime.compareTo(b.startTime)))
         : const <TimeLogItem>[];
 
     if (todayPomodoros.isNotEmpty) {
@@ -1055,11 +1047,11 @@ class DailyAiSuggestionService {
         '【今日番茄钟专注记录（共${todayPomodoros.length}次，完成$completedCount次，累计$totalFocusMinutes分钟）】',
       );
       for (final record in todayPomodoros.take(10)) {
-        final start = DateFormat('HH:mm').format(
+        final start = AppTimeFormats.clock(
           DateTime.fromMillisecondsSinceEpoch(record.startTime).toLocal(),
         );
         final endText = record.endTime != null
-            ? '-${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(record.endTime!).toLocal())}'
+            ? '-${AppTimeFormats.clock(DateTime.fromMillisecondsSinceEpoch(record.endTime!).toLocal())}'
             : '';
         final title = record.todoTitle?.trim().isNotEmpty == true
             ? record.todoTitle!.trim()
@@ -1071,9 +1063,7 @@ class DailyAiSuggestionService {
           PomodoroRecordStatus.switched => '已切换',
         };
         final note = record.note?.trim();
-        final notePart = (note != null && note.isNotEmpty)
-            ? ' | 备注:$note'
-            : '';
+        final notePart = (note != null && note.isNotEmpty) ? ' | 备注:$note' : '';
         buffer.writeln(
           '- $start$endText $title ($minutes分钟, $statusLabel$notePart)',
         );
@@ -1105,12 +1095,12 @@ class DailyAiSuggestionService {
         final clampedEnd = log.endTime > tomorrowStartMs
             ? tomorrowStartMs
             : log.endTime;
-        final start = DateFormat(
-          'HH:mm',
-        ).format(DateTime.fromMillisecondsSinceEpoch(clampedStart).toLocal());
-        final end = DateFormat(
-          'HH:mm',
-        ).format(DateTime.fromMillisecondsSinceEpoch(clampedEnd).toLocal());
+        final start = AppTimeFormats.clock(
+          DateTime.fromMillisecondsSinceEpoch(clampedStart).toLocal(),
+        );
+        final end = AppTimeFormats.clock(
+          DateTime.fromMillisecondsSinceEpoch(clampedEnd).toLocal(),
+        );
         final minutes = ((clampedEnd - clampedStart) / 60000).round();
         final title = log.title.trim().isNotEmpty ? log.title.trim() : '未命名记录';
         final remark = log.remark?.trim();
@@ -1141,7 +1131,8 @@ class DailyAiSuggestionService {
       DailyAiContextOption.yesterdayAndTomorrow,
     );
     final filteredYesterdayPomodoros =
-        (includeRhythm && contextConfig.isEnabled(DailyAiContextOption.pomodoro))
+        (includeRhythm &&
+            contextConfig.isEnabled(DailyAiContextOption.pomodoro))
         ? yesterdayPomodoroRecords
               .where(
                 (r) =>
@@ -1163,7 +1154,7 @@ class DailyAiSuggestionService {
               )
               .toList()
             ..sort((a, b) => a.startTime.compareTo(b.startTime))) {
-        final start = DateFormat('HH:mm').format(
+        final start = AppTimeFormats.clock(
           DateTime.fromMillisecondsSinceEpoch(course.startTime).toLocal(),
         );
         tomorrowMorningItems.add('明早$start 课程:${course.courseName}');
@@ -1180,10 +1171,9 @@ class DailyAiSuggestionService {
             ..sort((a, b) => (a.startTime ?? 0).compareTo(b.startTime ?? 0))) {
         final start = schedule.startTime == null
             ? '上午'
-            : DateFormat('HH:mm').format(
-                DateTime.fromMillisecondsSinceEpoch(
-                  schedule.startTime!,
-                ).toLocal(),
+            : AppTimeFormats.clock(
+                DateTime.fromMillisecondsSinceEpoch(schedule.startTime!)
+                    .toLocal(),
               );
         tomorrowMorningItems.add('明早$start 日程:${schedule.title}');
       }
@@ -1199,17 +1189,14 @@ class DailyAiSuggestionService {
       }
       if (filteredYesterdayPomodoros.isNotEmpty) {
         final yMinutes =
-            (PomodoroService.totalFocusSeconds(filteredYesterdayPomodoros) /
-                    60)
+            (PomodoroService.totalFocusSeconds(filteredYesterdayPomodoros) / 60)
                 .round();
         buffer.writeln(
           '- 昨日番茄专注：${filteredYesterdayPomodoros.length} 次，累计 $yMinutes 分钟',
         );
       }
       if (tomorrowMorningItems.isNotEmpty) {
-        buffer.writeln(
-          '- 明日上午安排：${tomorrowMorningItems.take(5).join('；')}',
-        );
+        buffer.writeln('- 明日上午安排：${tomorrowMorningItems.take(5).join('；')}');
       }
       buffer.writeln();
     }

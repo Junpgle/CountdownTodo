@@ -16,10 +16,10 @@ String _buildContextQueryText({
     now: now,
   );
   if (customRange != null) {
-    final start = DateFormat('yyyy-MM-dd').format(customRange.start);
-    final end = DateFormat(
-      'yyyy-MM-dd',
-    ).format(AppTimeFormats.localDayStartOffset(customRange.endExclusive, -1));
+    final start = AppTimeFormats.date(customRange.start);
+    final end = AppTimeFormats.date(
+      AppTimeFormats.localDayStartOffset(customRange.endExclusive, -1),
+    );
     final queryText = userMessage
         .replaceAll(_explicitIsoDateRangePattern, '')
         .replaceAll(_explicitIsoDatePattern, '')

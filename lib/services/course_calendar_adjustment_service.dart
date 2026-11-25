@@ -1,12 +1,12 @@
 import 'dart:convert';
 
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../course_import/course_schedule_semantics.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../utils/calendar_date_math.dart';
+import '../utils/time_utils.dart';
 import 'storage/storage_key_scope.dart';
 
 class CourseDayTransfer {
@@ -131,7 +131,6 @@ class CourseCalendarAdjustmentService {
   static const String _officialHolidaySnoozeTodayKey =
       'official_holiday_prompt_snooze_today';
   static const int _officialHolidayPromptLeadDays = 7;
-  static final DateFormat _df = DateFormat('yyyy-MM-dd');
   static const String official2026SourceName = '国务院办公厅关于2026年部分节假日安排的通知';
   static const String official2026SourceUrl =
       'https://www.gov.cn/gongbao/2025/issue_12406/202511/content_7048922.html';
@@ -302,7 +301,13 @@ class CourseCalendarAdjustmentService {
         continue;
       }
       final dates =
-          window.holidayDates.map((date) => _df.parseStrict(date)).toList()
+          window.holidayDates
+              .map(
+                (date) =>
+                    AppTimeFormats.dateFormatter('yyyy-MM-dd')
+                        .parseStrict(date),
+              )
+              .toList()
             ..sort();
       final first = CalendarDateMath.addDays(
         dates.first,
@@ -365,7 +370,7 @@ class CourseCalendarAdjustmentService {
   }
 
   static String _officialHolidaySnoozeValue(String key, [DateTime? now]) =>
-      '${_df.format(now ?? DateTime.now())}|$key';
+      '${AppTimeFormats.date(now ?? DateTime.now())}|$key';
 
   static bool _isWindowConfigured(
     CourseCalendarAdjustment adjustment,
@@ -446,7 +451,8 @@ class CourseCalendarAdjustmentService {
     for (final transfer in resolvedAdjustment.transfers) {
       final sourceCourses = byDate[transfer.fromDate] ?? const <CourseItem>[];
       if (sourceCourses.isEmpty) continue;
-      final targetDate = _df.parseStrict(transfer.toDate);
+      final targetDate = AppTimeFormats.dateFormatter('yyyy-MM-dd')
+          .parseStrict(transfer.toDate);
       final targetWeekday = targetDate.weekday;
 
       for (final course in sourceCourses) {
@@ -489,7 +495,8 @@ class CourseCalendarAdjustmentService {
     if (dated.isEmpty) return null;
     try {
       final first = dated.first;
-      final firstDate = _df.parseStrict(first.date);
+      final firstDate = AppTimeFormats.dateFormatter('yyyy-MM-dd')
+          .parseStrict(first.date);
       return CalendarDateMath.addDays(
         CalendarDateMath.dateOnly(firstDate),
         -(first.weekday - 1) - (first.weekIndex - 1) * 7,

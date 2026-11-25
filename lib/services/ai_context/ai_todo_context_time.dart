@@ -501,7 +501,7 @@ _TimeLogPeriod? _resolveTimeLogPeriod(String text, DateTime now) {
       return null;
     }
     return _TimeLogPeriod(
-      label: DateFormat('yyyy-MM-dd').format(start),
+      label: AppTimeFormats.date(start),
       start: start,
       end: AppTimeFormats.localDayStartOffset(start, 1),
     );

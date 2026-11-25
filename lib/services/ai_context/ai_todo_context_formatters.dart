@@ -74,7 +74,7 @@ String _formatCountdowns(
     ..sort((left, right) => left.targetDate.compareTo(right.targetDate));
   final displayed = ordered.take(40).toList();
   return '倒计时（按目标时间升序，展示 ${displayed.length}/${ordered.length} 条）:\n${displayed.map((c) {
-    final target = DateFormat('yyyy-MM-dd HH:mm').format(c.targetDate);
+    final target = AppTimeFormats.fullDateTime(c.targetDate);
     final status = c.isCompleted ? '已达成' : '进行中';
     return '- [ID: ${c.id}] 标题: ${c.title} | 目标: $target | 状态: $status';
   }).join('\n')}';
@@ -120,8 +120,8 @@ String _formatPlanBlocks(
 
   final selectedRangeNotice = priorityRange == null ? '' : '，优先用户所选范围';
   return '待办规划（按时间范围筛选，展示 ${blocksToFormat.length}/${active.length} 条$selectedRangeNotice）:\n${blocksToFormat.map((b) {
-    final start = DateFormat('yyyy-MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(b.startTime));
-    final end = DateFormat('yyyy-MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(b.endTime));
+    final start = AppTimeFormats.fullDateTime(DateTime.fromMillisecondsSinceEpoch(b.startTime));
+    final end = AppTimeFormats.fullDateTime(DateTime.fromMillisecondsSinceEpoch(b.endTime));
     final actualMinutes = b.actualFocusSeconds ~/ 60;
     return '- [ID: ${b.id}] 待办ID: ${b.todoId} | 标题: ${b.titleSnapshot ?? todoTitle(b.todoId)} | 时间: $start-$end | 计划: ${b.plannedMinutes}分钟 | 实际专注: $actualMinutes分钟 | 状态: ${b.status.name} | 提醒: 提前${b.reminderMinutes}分钟';
   }).join('\n')}';
@@ -175,8 +175,8 @@ String _formatFixedSchedules(
         final time = item.startTime == null
             ? '时间待定'
             : item.endTime == null
-            ? '${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.startTime!).toLocal())}（结束待定）'
-            : '${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.startTime!).toLocal())}-${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.endTime!).toLocal())}';
+            ? '${AppTimeFormats.clock(DateTime.fromMillisecondsSinceEpoch(item.startTime!).toLocal())}（结束待定）'
+            : '${AppTimeFormats.clock(DateTime.fromMillisecondsSinceEpoch(item.startTime!).toLocal())}-${AppTimeFormats.clock(DateTime.fromMillisecondsSinceEpoch(item.endTime!).toLocal())}';
         final series = item.recurrenceSeriesId?.trim().isNotEmpty == true
             ? ' | 系列ID: ${item.recurrenceSeriesId} | 重复: ${item.recurrence.name}'
             : '';
@@ -402,13 +402,13 @@ String _formatEpochMillis(int value) {
 }
 
 String _formatDateTime(DateTime value) {
-  return DateFormat('yyyy-MM-dd HH:mm').format(value.toLocal());
+  return AppTimeFormats.fullDateTime(value.toLocal());
 }
 
 String _formatDate(DateTime value) {
-  return DateFormat('yyyy-MM-dd').format(value.toLocal());
+  return AppTimeFormats.date(value.toLocal());
 }
 
 String _formatCompactDate(DateTime value) {
-  return DateFormat('yyyyMMdd').format(value.toLocal());
+  return AppTimeFormats.dayKey(value.toLocal());
 }
