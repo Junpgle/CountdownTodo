@@ -529,16 +529,23 @@ extension _FinanceOverviewChartsExt on _FinanceOverviewPanelState {
     ColorScheme colorScheme,
     List<_FinanceCategoryTotal> topCategories,
     List<_FinanceCategoryTotal> shareTotals,
-    _FinanceOverviewPeriod period,
-  ) {
+    _FinanceOverviewPeriod period, {
+    required FinanceCategoryType categoryType,
+  }) {
     return _FinanceUnifiedCategoryCard(
       colorScheme: colorScheme,
       topCategories: topCategories,
       shareTotals: shareTotals,
       period: period,
+      categoryType: categoryType,
       categories: categories,
       categoryDisplayName: _categoryDisplayName,
-      onOpenCategoryDetail: _openCategoryDetail,
+      onOpenCategoryDetail: (entry, period, sourceKey) => _openCategoryDetail(
+        entry,
+        period,
+        sourceKey,
+        categoryType: categoryType,
+      ),
       categorySourceKeys: _categorySourceKeys,
       view: _view,
     );
@@ -552,6 +559,7 @@ extension _FinanceOverviewChartsExt on _FinanceOverviewPanelState {
 
     final topTotals = <String, int>{};
     final shareTotals = <String, int>{};
+    final incomeTotals = <String, int>{};
     final hourlyNetExpenseMinor = _view == _FinanceOverviewView.day
         ? List<int>.filled(25, 0)
         : null;
@@ -575,7 +583,10 @@ extension _FinanceOverviewChartsExt on _FinanceOverviewPanelState {
       final includeInShares =
           transaction.type == FinanceTransactionType.expense &&
           transaction.amountMinor > 0;
-      if (topAmount == 0 && !includeInShares) continue;
+      final includeInIncome =
+          transaction.type == FinanceTransactionType.income &&
+          transaction.amountMinor > 0;
+      if (topAmount == 0 && !includeInShares && !includeInIncome) continue;
 
       final categoryUuid = transaction.categoryUuid?.trim();
       final category = categoryUuid == null || categoryUuid.isEmpty
@@ -591,6 +602,10 @@ extension _FinanceOverviewChartsExt on _FinanceOverviewPanelState {
       if (includeInShares) {
         shareTotals[rootUuid] =
             (shareTotals[rootUuid] ?? 0) + transaction.amountMinor;
+      }
+      if (includeInIncome) {
+        incomeTotals[rootUuid] =
+            (incomeTotals[rootUuid] ?? 0) + transaction.amountMinor;
       }
     }
 
@@ -608,6 +623,14 @@ extension _FinanceOverviewChartsExt on _FinanceOverviewPanelState {
           categoryUuid: entry.key.isEmpty ? null : entry.key,
           value: entry.value,
         ),
+    ]..sort((a, b) => b.value.compareTo(a.value));
+    final topIncomeCategories = [
+      for (final entry in incomeTotals.entries)
+        if (entry.value > 0)
+          _FinanceCategoryTotal(
+            categoryUuid: entry.key.isEmpty ? null : entry.key,
+            value: entry.value,
+          ),
     ]..sort((a, b) => b.value.compareTo(a.value));
 
     FinanceTransaction? maxExpenseTransaction;
@@ -646,6 +669,7 @@ extension _FinanceOverviewChartsExt on _FinanceOverviewPanelState {
     final analytics = _FinanceOverviewAnalytics(
       topExpenseCategories: topExpenseCategories,
       categoryExpenseShares: categoryExpenseShares,
+      topIncomeCategories: topIncomeCategories,
       outflowTransactionCount: outflowTransactionCount,
       hourlyNetExpenseMinor: hourlyNetExpenseMinor,
       maxExpenseTransaction: maxExpenseTransaction,
@@ -680,8 +704,9 @@ extension _FinanceOverviewChartsExt on _FinanceOverviewPanelState {
   Future<void> _openCategoryDetail(
     _FinanceCategoryTotal entry,
     _FinanceOverviewPeriod period,
-    GlobalKey sourceKey,
-  ) async {
+    GlobalKey sourceKey, {
+    FinanceCategoryType categoryType = FinanceCategoryType.expense,
+  }) async {
     final category = entry.categoryUuid == null
         ? null
         : categories[entry.categoryUuid];
@@ -693,6 +718,7 @@ extension _FinanceOverviewChartsExt on _FinanceOverviewPanelState {
       periodEnd: period.to,
       clock: clock,
       isPlanned: period.isPlanned,
+      categoryType: categoryType,
       rootCategoryUuid: entry.categoryUuid,
       categoryTapOpensLedger: widget.categoryTapOpensLedger,
       transactions: period.transactions,

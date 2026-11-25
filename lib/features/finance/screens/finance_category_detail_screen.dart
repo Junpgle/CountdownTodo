@@ -17,6 +17,7 @@ class FinanceCategoryDetailScreen extends StatefulWidget {
   final DateTime? periodEnd;
   final DateTime Function() clock;
   final bool isPlanned;
+  final FinanceCategoryType categoryType;
   final String? rootCategoryUuid;
   final bool categoryTapOpensLedger;
   final List<FinanceTransaction> transactions;
@@ -47,6 +48,7 @@ class FinanceCategoryDetailScreen extends StatefulWidget {
     this.periodEnd,
     this.clock = DateTime.now,
     this.isPlanned = false,
+    this.categoryType = FinanceCategoryType.expense,
     required this.rootCategoryUuid,
     this.categoryTapOpensLedger = true,
     required this.transactions,
@@ -86,6 +88,10 @@ class _FinanceCategoryDetailScreenState
   String? get rootCategoryUuid => widget.rootCategoryUuid;
   List<FinanceTransaction> get transactions => _transactions;
   Map<String, FinanceCategory> get categories => _categories;
+  bool get _isIncome => widget.categoryType == FinanceCategoryType.income;
+  bool _matchesCategoryType(FinanceTransaction transaction) => _isIncome
+      ? transaction.type == FinanceTransactionType.income
+      : transaction.isExpenseLike;
   bool get _isPlanned {
     final from = widget.periodStart;
     return from == null ? widget.isPlanned : from.isAfter(widget.clock());
@@ -114,11 +120,14 @@ class _FinanceCategoryDetailScreenState
     final periodChanged =
         oldWidget.periodStart != widget.periodStart ||
         oldWidget.periodEnd != widget.periodEnd;
+    if (periodChanged || oldWidget.categoryType != widget.categoryType) {
+      _selectedCategoryUuid = null;
+      _expandedCategoryUuid = null;
+      _donutAnimationController.forward(from: 0.0);
+    }
     if (periodChanged) {
       _upcomingTransactionTimer?.cancel();
       _upcomingTransactionTimer = null;
-      _selectedCategoryUuid = null;
-      _donutAnimationController.forward(from: 0.0);
       unawaited(_reloadPeriodData());
     }
     if (!identical(oldWidget.transactions, widget.transactions)) {
@@ -196,7 +205,7 @@ class _FinanceCategoryDetailScreenState
       _donutAnimationController.forward(from: 0.0);
     } catch (error) {
       if (!mounted) return;
-      debugPrint('刷新支出分类详情失败：$error');
+      debugPrint('刷新${_isIncome ? '收入' : '支出'}分类详情失败：$error');
       // Keep the last usable detail visible if refreshing from local storage fails.
     }
   }
@@ -286,7 +295,7 @@ class _FinanceCategoryDetailScreenState
   List<FinanceTransaction> get _matchingTransactions => transactions
       .where(
         (transaction) =>
-            transaction.isExpenseLike && _belongsToRoot(transaction),
+            _matchesCategoryType(transaction) && _belongsToRoot(transaction),
       )
       .toList();
 
@@ -297,11 +306,16 @@ class _FinanceCategoryDetailScreenState
     final countByCategory = <String, int>{};
     var total = 0;
     for (final transaction in matchingTransactions) {
-      final contribution = switch (transaction.type) {
-        FinanceTransactionType.expense => transaction.amountMinor,
-        FinanceTransactionType.refund => -transaction.amountMinor,
-        FinanceTransactionType.income || FinanceTransactionType.transfer => 0,
-      };
+      final contribution = _isIncome
+          ? (transaction.type == FinanceTransactionType.income
+                ? transaction.amountMinor
+                : 0)
+          : switch (transaction.type) {
+              FinanceTransactionType.expense => transaction.amountMinor,
+              FinanceTransactionType.refund => -transaction.amountMinor,
+              FinanceTransactionType.income ||
+              FinanceTransactionType.transfer => 0,
+            };
       total += contribution;
       final categoryUuid = transaction.categoryUuid;
       if (categoryUuid == null) continue;
@@ -531,7 +545,9 @@ class _FinanceCategoryDetailScreenState
                     ),
                   ] else ...[
                     Text(
-                      isPlanned ? '计划小类支出' : '小类净支出',
+                      _isIncome
+                          ? (isPlanned ? '计划小类收入' : '小类收入')
+                          : (isPlanned ? '计划小类支出' : '小类净支出'),
                       style: TextStyle(
                         fontSize: titleFontSize,
                         fontWeight: FontWeight.w600,
@@ -641,7 +657,11 @@ class _FinanceCategoryDetailScreenState
 
     return Scaffold(
       appBar: FloatingGlassAppBar(
-        title: Text(isPlanned ? '计划支出分类详情' : '支出分类详情'),
+        title: Text(
+          _isIncome
+              ? (isPlanned ? '计划收入分类详情' : '收入分类详情')
+              : (isPlanned ? '计划支出分类详情' : '支出分类详情'),
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
@@ -693,7 +713,9 @@ class _FinanceCategoryDetailScreenState
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        isPlanned ? '计划净支出' : '净支出',
+                        _isIncome
+                            ? (isPlanned ? '计划收入' : '总收入')
+                            : (isPlanned ? '计划净支出' : '净支出'),
                         style: TextStyle(
                           color: colorScheme.onPrimaryContainer.withValues(
                             alpha: 0.75,
@@ -1079,7 +1101,7 @@ class _FinanceCategoryDetailScreenState
   ) {
     final matches = <FinanceTransaction>[];
     for (final transaction in transactions) {
-      if (!transaction.isExpenseLike) continue;
+      if (!_matchesCategoryType(transaction)) continue;
       final matchesCategory =
           item.categoryUuid == financeUncategorizedCategoryFilterUuid
           ? transaction.categoryUuid == null ||
@@ -1135,7 +1157,9 @@ class _FinanceCategoryDetailScreenState
       if (note?.isNotEmpty == true && note != title) note!,
     ];
     final isRefund = transaction.type == FinanceTransactionType.refund;
-    final amount = isRefund
+    final isPositive =
+        isRefund || transaction.type == FinanceTransactionType.income;
+    final amount = isPositive
         ? '+${formatFinanceAmount(transaction.amountMinor)}'
         : '−${formatFinanceAmount(transaction.amountMinor)}';
     return InkWell(
@@ -1150,7 +1174,7 @@ class _FinanceCategoryDetailScreenState
             Icon(
               isRefund ? Icons.undo_rounded : Icons.receipt_long_outlined,
               size: 18,
-              color: isRefund
+              color: isPositive
                   ? colorScheme.primary
                   : colorScheme.onSurfaceVariant,
             ),
@@ -1176,7 +1200,7 @@ class _FinanceCategoryDetailScreenState
             Text(
               amount,
               style: TextStyle(
-                color: isRefund ? colorScheme.primary : colorScheme.error,
+                color: isPositive ? colorScheme.primary : colorScheme.error,
                 fontWeight: FontWeight.w600,
               ),
             ),

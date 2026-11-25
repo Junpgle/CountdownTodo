@@ -96,6 +96,7 @@ class _FinanceOverviewPeriod {
 class _FinanceOverviewAnalytics {
   final List<_FinanceCategoryTotal> topExpenseCategories;
   final List<_FinanceCategoryTotal> categoryExpenseShares;
+  final List<_FinanceCategoryTotal> topIncomeCategories;
   final int outflowTransactionCount;
   final List<int>? hourlyNetExpenseMinor;
   final FinanceTransaction? maxExpenseTransaction;
@@ -105,6 +106,7 @@ class _FinanceOverviewAnalytics {
   const _FinanceOverviewAnalytics({
     required this.topExpenseCategories,
     required this.categoryExpenseShares,
+    this.topIncomeCategories = const [],
     required this.outflowTransactionCount,
     required this.hourlyNetExpenseMinor,
     this.maxExpenseTransaction,

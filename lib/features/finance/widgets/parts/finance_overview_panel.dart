@@ -75,6 +75,7 @@ class FinanceOverviewPanel extends StatefulWidget {
 class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   _FinanceOverviewMode _mode = _FinanceOverviewMode.report;
   _FinanceOverviewView _view = _FinanceOverviewView.month;
+  FinanceCategoryType _categoryChartType = FinanceCategoryType.expense;
   late DateTime _focusedDate;
   int? _cumulativeBalanceMinor;
   String? _selectedCumulativeTrendMonthKey;
@@ -243,8 +244,13 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   ) {
     final period = _currentPeriod;
     final analytics = _overviewAnalytics(period);
-    final topCategories = analytics.topExpenseCategories;
-    final categoryExpenseShares = analytics.categoryExpenseShares;
+    final isIncomeChart = _categoryChartType == FinanceCategoryType.income;
+    final topCategories = isIncomeChart
+        ? analytics.topIncomeCategories
+        : analytics.topExpenseCategories;
+    final categoryShares = isIncomeChart
+        ? analytics.topIncomeCategories
+        : analytics.categoryExpenseShares;
 
     return RefreshIndicator(
       onRefresh: onRefresh,
@@ -296,27 +302,28 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
           const SizedBox(height: 10),
           _buildBudgetCard(context, colorScheme, period),
           const SizedBox(height: 16),
-          Text(
-            period.isPlanned ? '计划支出分类' : '支出分类',
-            style: Theme.of(context).textTheme.titleMedium
-                ?.copyWith(fontWeight: FontWeight.w800),
-          ),
+          _buildCategoryChartHeader(context, period),
           const SizedBox(height: 8),
           if (topCategories.isEmpty)
             _buildEmptyCard(
               context,
               icon: Icons.pie_chart_outline,
-              message: period.isPlanned
-                  ? '${period.shortTitle}没有可展示的计划净支出分类'
-                  : '${period.shortTitle}没有可展示的净支出分类',
+              message: isIncomeChart
+                  ? (period.isPlanned
+                        ? '${period.shortTitle}没有可展示的计划收入分类'
+                        : '${period.shortTitle}没有可展示的收入分类')
+                  : (period.isPlanned
+                        ? '${period.shortTitle}没有可展示的计划净支出分类'
+                        : '${period.shortTitle}没有可展示的净支出分类'),
             )
           else
             _buildUnifiedCategoryCard(
               context,
               colorScheme,
               topCategories,
-              categoryExpenseShares,
+              categoryShares,
               period,
+              categoryType: _categoryChartType,
             ),
           _buildEnhancedInsightCard(context, colorScheme, period, analytics),
           _buildPaymentMethodSpendingCard(
@@ -357,6 +364,54 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
           _buildCumulativeBalanceCard(context, colorScheme),
         ],
       ),
+    );
+  }
+
+  Widget _buildCategoryChartHeader(
+    BuildContext context,
+    _FinanceOverviewPeriod period,
+  ) {
+    final isIncome = _categoryChartType == FinanceCategoryType.income;
+    final title = isIncome
+        ? (period.isPlanned ? '计划收入分类' : '收入分类')
+        : (period.isPlanned ? '计划支出分类' : '支出分类');
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w800),
+          ),
+        ),
+        const SizedBox(width: 12),
+        SizedBox(
+          width: 148,
+          child: FinanceGlassSegmentSelector<FinanceCategoryType>(
+            keyPrefix: 'finance-overview-category-type-selector',
+            height: 40,
+            segments: const [
+              FinanceGlassSegment(
+                id: 'expense',
+                label: '支出',
+                value: FinanceCategoryType.expense,
+              ),
+              FinanceGlassSegment(
+                id: 'income',
+                label: '收入',
+                value: FinanceCategoryType.income,
+              ),
+            ],
+            selected: _categoryChartType,
+            onSelected: (value) {
+              if (_categoryChartType == value) return;
+              setState(() => _categoryChartType = value);
+            },
+          ),
+        ),
+      ],
     );
   }
 

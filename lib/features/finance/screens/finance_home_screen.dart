@@ -842,8 +842,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         hasPaymentMethod
             ? '删除后，这笔退款不再抵扣净支出，也不再增加退款到账账户的余额。确认继续吗？'
             : '删除后，这笔退款不再抵扣净支出。确认继续吗？',
-      FinanceTransactionType.transfer =>
-        '删除后，转出账户与转入账户的余额将恢复。确认继续吗？',
+      FinanceTransactionType.transfer => '删除后，转出账户与转入账户的余额将恢复。确认继续吗？',
     };
   }
 
@@ -1271,7 +1270,10 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                           ? '清除附加筛选'
                           : '返回全部账单'
                     : _isCategoryLedgerRoute
-                    ? '返回支出分类'
+                    ? (_categoryMap[widget.initialCategoryFilterUuid]?.type ==
+                              FinanceCategoryType.income
+                          ? '返回收入分类'
+                          : '返回支出分类')
                     : widget._isMonthLedgerRoute
                     ? '返回结余趋势'
                     : '返回概览',

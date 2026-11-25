@@ -5,6 +5,7 @@ class _FinanceUnifiedCategoryCard extends StatefulWidget {
   final List<_FinanceCategoryTotal> topCategories;
   final List<_FinanceCategoryTotal> shareTotals;
   final _FinanceOverviewPeriod period;
+  final FinanceCategoryType categoryType;
   final Map<String, FinanceCategory> categories;
   final String Function(String?) categoryDisplayName;
   final Future<void> Function(
@@ -21,6 +22,7 @@ class _FinanceUnifiedCategoryCard extends StatefulWidget {
     required this.topCategories,
     required this.shareTotals,
     required this.period,
+    this.categoryType = FinanceCategoryType.expense,
     required this.categories,
     required this.categoryDisplayName,
     required this.onOpenCategoryDetail,
@@ -58,7 +60,8 @@ class _FinanceUnifiedCategoryCardState
     super.didUpdateWidget(oldWidget);
     if (oldWidget.period.from != widget.period.from ||
         oldWidget.period.to != widget.period.to ||
-        oldWidget.view != widget.view) {
+        oldWidget.view != widget.view ||
+        oldWidget.categoryType != widget.categoryType) {
       _selectedCategoryUuid = null;
       _animationController.forward(from: 0.0);
     }
@@ -202,12 +205,17 @@ class _FinanceUnifiedCategoryCardState
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
         child: LayoutBuilder(
           builder: (context, constraints) {
+            final isIncome = widget.categoryType == FinanceCategoryType.income;
             final isWide = constraints.maxWidth >= 600 && total > 0;
             final donutWidget = total > 0
                 ? Semantics(
-                    label: widget.period.isPlanned
-                        ? '计划支出占比：$semanticSummary'
-                        : '各类别支出占比：$semanticSummary',
+                    label: isIncome
+                        ? (widget.period.isPlanned
+                              ? '计划收入占比：$semanticSummary'
+                              : '各类别收入占比：$semanticSummary')
+                        : (widget.period.isPlanned
+                              ? '计划支出占比：$semanticSummary'
+                              : '各类别支出占比：$semanticSummary'),
                     child: SizedBox(
                       height: donutSize + 4,
                       child: Center(
@@ -343,9 +351,10 @@ class _FinanceUnifiedCategoryCardState
     int categoryCount,
     double donutSize,
   ) {
+    final isIncome = widget.categoryType == FinanceCategoryType.income;
     final isDark = colorScheme.brightness == Brightness.dark;
     final contentKey = ValueKey(
-      selectedSlice?.categoryUuid ?? 'total-overview',
+      '${widget.categoryType.name}-${selectedSlice?.categoryUuid ?? 'total-overview'}',
     );
     final isLarge = donutSize >= 160.0;
     final titleFontSize = isLarge ? 13.5 : 11.5;
@@ -452,7 +461,9 @@ class _FinanceUnifiedCategoryCardState
                     ),
                   ] else ...[
                     Text(
-                      period.isPlanned ? '计划总额' : '总净支出',
+                      isIncome
+                          ? (period.isPlanned ? '计划总收入' : '总收入')
+                          : (period.isPlanned ? '计划总额' : '总净支出'),
                       style: TextStyle(
                         fontSize: titleFontSize,
                         fontWeight: FontWeight.w500,
@@ -515,15 +526,16 @@ class _FinanceUnifiedCategoryCardState
       'finance-overview-category-${entry.categoryUuid ?? 'uncategorized'}',
     );
     final sourceKey = widget.categorySourceKeys.putIfAbsent(
-      entry.categoryUuid ?? 'uncategorized',
+      '${widget.categoryType.name}:${entry.categoryUuid ?? 'uncategorized'}',
       GlobalKey.new,
     );
+    final isIncome = widget.categoryType == FinanceCategoryType.income;
     final isDark = colorScheme.brightness == Brightness.dark;
 
     return Semantics(
       key: categoryKey,
       button: true,
-      label: '查看$categoryLabel支出详情',
+      label: isIncome ? '查看$categoryLabel收入详情' : '查看$categoryLabel支出详情',
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOutCubic,
