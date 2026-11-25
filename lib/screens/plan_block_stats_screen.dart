@@ -16,21 +16,6 @@ import '../widgets/floating_glass_control.dart';
 import '../widgets/missed_plan_recovery_flow.dart';
 import 'course_screens.dart';
 
-String? _reviewDateLocale;
-final _reviewDateFormats = <String, DateFormat>{};
-
-DateFormat _reviewDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  if (_reviewDateLocale != locale) {
-    _reviewDateLocale = locale;
-    _reviewDateFormats.clear();
-  }
-  return _reviewDateFormats.putIfAbsent(
-    pattern,
-    () => DateFormat(pattern, locale),
-  );
-}
-
 String reviewDuration(int seconds) {
   if (seconds == 0) return '0分钟';
   final hours = seconds ~/ 3600, minutes = seconds % 3600 ~/ 60;
@@ -44,8 +29,10 @@ String reviewDuration(int seconds) {
 
 String _date(int ms) {
   if (ms <= 0 || ms > 8640000000000000) return '时间待核对';
-  return _reviewDateFormat('M/d HH:mm')
-      .format(DateTime.fromMillisecondsSinceEpoch(ms));
+  return AppTimeFormats.format(
+    DateTime.fromMillisecondsSinceEpoch(ms),
+    'M/d HH:mm',
+  );
 }
 
 String _period(PlanReviewEntry e) => '${_date(e.start)} — ${_date(e.end)}';
@@ -211,11 +198,11 @@ class _PlanBlockStatsScreenState
   }
 
   String get _rangeLabel => _dimension == 2
-      ? _reviewDateFormat('yyyy年M月').format(_current)
+      ? AppTimeFormats.format(_current, 'yyyy年M月')
       : _dimension == 0
-      ? _reviewDateFormat('yyyy年M月d日').format(_current)
-      : '${_reviewDateFormat('M/d').format(_range.start)} — '
-            '${_reviewDateFormat('M/d').format(DateTime(_range.end.year, _range.end.month, _range.end.day - 1))}';
+      ? AppTimeFormats.format(_current, 'yyyy年M月d日')
+      : '${AppTimeFormats.format(_range.start, 'M/d')} — '
+            '${AppTimeFormats.format(DateTime(_range.end.year, _range.end.month, _range.end.day - 1), 'M/d')}';
   @override
   void initState() {
     _current = widget.initialDate ?? _now;
@@ -392,7 +379,7 @@ class _PlanBlockStatsScreenState
                               message: _rangeLabel,
                               child: Text(
                                 compactDate && _dimension == 0
-                                    ? _reviewDateFormat('M月d日').format(_current)
+                                    ? AppTimeFormats.format(_current, 'M月d日')
                                     : _rangeLabel,
                                 textAlign: TextAlign.center,
                                 style: theme.textTheme.titleMedium,
@@ -692,7 +679,7 @@ class _PlanBlockStatsScreenState
       return cached;
     }
 
-    final dateFormat = _reviewDateFormat('M/d');
+    final dateFormat = AppTimeFormats.dateFormatter('M/d');
     var maxSeconds = 1;
     final points = <_ReviewTrendPoint>[];
     for (var i = 0; i < summary.days.length; i++) {
@@ -1125,8 +1112,8 @@ class _PlanReviewDetailScreenState
                       Text(
                         widget.cumulative
                             ? '累计有效记录 · 按唯一规划关联'
-                            : '${_reviewDateFormat('yyyy/M/d').format(widget.start)} — '
-                                  '${_reviewDateFormat('yyyy/M/d').format(DateTime(widget.end.year, widget.end.month, widget.end.day - 1))}',
+                            : '${AppTimeFormats.format(widget.start, 'yyyy/M/d')} — '
+                                  '${AppTimeFormats.format(DateTime(widget.end.year, widget.end.month, widget.end.day - 1), 'yyyy/M/d')}',
                       ),
                       if (focusFilters.contains(widget.filter))
                         Padding(

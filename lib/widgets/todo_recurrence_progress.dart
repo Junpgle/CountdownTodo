@@ -1,15 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
-final Map<String?, DateFormat> _recurrenceDateFormats = {};
-
-DateFormat _recurrenceDateFormat() {
-  final locale = Intl.defaultLocale;
-  return _recurrenceDateFormats.putIfAbsent(
-    locale,
-    () => DateFormat('M/d', locale),
-  );
-}
+import '../utils/time_utils.dart';
 
 enum TodoRecurrenceNodeState {
   completed,
@@ -265,7 +256,7 @@ class _TodoRecurrenceProgressState extends State<TodoRecurrenceProgress> {
     final nodeDay = DateTime(node.date.year, node.date.month, node.date.day);
     final label =
         node.label ??
-        (nodeDay == today ? '今天' : _recurrenceDateFormat().format(node.date));
+        (nodeDay == today ? '今天' : AppTimeFormats.format(node.date, 'M/d'));
 
     return Semantics(
       button: widget.onNodeTap != null,

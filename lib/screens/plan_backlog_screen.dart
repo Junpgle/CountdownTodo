@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../services/database_helper.dart';
@@ -15,21 +14,6 @@ import '../widgets/todo_section_widget.dart';
 import 'pomodoro_screen.dart';
 import 'plan_editor_drafts_screen.dart';
 import 'plan_cleanup_screen.dart';
-
-String? _planBacklogDateLocale;
-final _planBacklogDateFormatters = <String, DateFormat>{};
-
-DateFormat _planBacklogDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  if (_planBacklogDateLocale != locale) {
-    _planBacklogDateLocale = locale;
-    _planBacklogDateFormatters.clear();
-  }
-  return _planBacklogDateFormatters.putIfAbsent(
-    pattern,
-    () => DateFormat(pattern, locale),
-  );
-}
 
 class _PlanBacklogSectionHeader {
   const _PlanBacklogSectionHeader(this.group);
@@ -362,8 +346,8 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
   }
 
   String _heading(int group) => switch (group) {
-    0 => '截止早于 ${_planBacklogDateFormat('M月d日').format(_date)}',
-    1 => '${_planBacklogDateFormat('M月d日').format(_date)} 到期',
+    0 => '截止早于 ${AppTimeFormats.format(_date, 'M月d日')}',
+    1 => '${AppTimeFormats.format(_date, 'M月d日')} 到期',
     2 => '之后到期',
     _ => '未设截止',
   };
@@ -388,12 +372,14 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
       return row.paused ? '已暂停 · 查看当前专注' : '正在专注 · 查看当前专注';
     }
     if (row.legacy) {
-      final start = _planBacklogDateFormat('M/d HH:mm')
-          .format(row.todo.effectiveStartTime);
+      final start = AppTimeFormats.format(
+        row.todo.effectiveStartTime,
+        'M/d HH:mm',
+      );
       return '旧式时间安排 · $start';
     }
     if (row.planCount > 0) {
-      final dateTimeFormat = _planBacklogDateFormat('M/d HH:mm');
+      final dateTimeFormat = AppTimeFormats.dateFormatter('M/d HH:mm');
       final start = dateTimeFormat.format(
         DateTime.fromMillisecondsSinceEpoch(row.nextStart!),
       );
@@ -410,7 +396,7 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
     if (due.isBefore(_date)) return '截止早于目标日期 · 请先查看待办';
     if (_cannotPlanOnTargetDay(row.todo)) return '已截止 · 请先查看待办';
     final duePattern = row.todo.isDateOnly ? 'M月d日' : 'M月d日 HH:mm';
-    final dueText = _planBacklogDateFormat(duePattern).format(due);
+    final dueText = AppTimeFormats.format(due, duePattern);
     return '$dueText 前完成';
   }
 
@@ -511,7 +497,7 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
           OutlinedButton.icon(
             onPressed: _pickDate,
             icon: const Icon(Icons.calendar_today_rounded, size: 18),
-            label: Text('目标：${_planBacklogDateFormat('M月d日').format(_date)}'),
+            label: Text('目标：${AppTimeFormats.format(_date, 'M月d日')}'),
           ),
         ],
       ),

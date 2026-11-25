@@ -7,21 +7,6 @@ import '../services/pomodoro_service.dart';
 import '../utils/app_color_utils.dart';
 import '../utils/calendar_date_math.dart';
 
-String? _courseMonthDateLocale;
-final _courseMonthDateFormatters = <String, DateFormat>{};
-
-DateFormat _courseMonthDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  if (_courseMonthDateLocale != locale) {
-    _courseMonthDateLocale = locale;
-    _courseMonthDateFormatters.clear();
-  }
-  return _courseMonthDateFormatters.putIfAbsent(
-    pattern,
-    () => DateFormat(pattern, locale),
-  );
-}
-
 class _GanttTodoInterval {
   final TodoItem todo;
   final DateTime start;
@@ -214,7 +199,7 @@ class _CourseMonthDerivedViewState extends State<_CourseMonthDerivedView> {
       return cachedData;
     }
 
-    final dateKeyFormat = _courseMonthDateFormat('yyyy-MM-dd');
+    final dateKeyFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd');
     final rowCount = (showDays / 7).ceil();
     final weeks = List.generate(
       rowCount,
@@ -411,7 +396,7 @@ class CourseMonthView extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     DateFormat? eventTimeFormat;
     DateFormat getEventTimeFormat() =>
-        eventTimeFormat ??= _courseMonthDateFormat('HH:mm');
+        eventTimeFormat ??= AppTimeFormats.dateFormatter('HH:mm');
 
     return _CourseMonthDerivedView(
       selectedMonth: selectedMonth,

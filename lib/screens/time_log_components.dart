@@ -1,20 +1,5 @@
 part of 'time_log_screen.dart';
 
-String? _timeLogComponentDateLocale;
-final _timeLogComponentDateFormatters = <String, DateFormat>{};
-
-DateFormat _timeLogComponentDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  if (_timeLogComponentDateLocale != locale) {
-    _timeLogComponentDateLocale = locale;
-    _timeLogComponentDateFormatters.clear();
-  }
-  return _timeLogComponentDateFormatters.putIfAbsent(
-    pattern,
-    () => DateFormat(pattern, locale),
-  );
-}
-
 ButtonStyle _timeLogPrimaryActionStyle({
   required Color backgroundColor,
   required Color foregroundColor,
@@ -325,7 +310,7 @@ class _DayViewState extends State<_DayView> {
       builder: (_) => StatefulBuilder(
         builder: (ctx, setModal) {
           final colorScheme = Theme.of(ctx).colorScheme;
-          final timeFormat = _timeLogComponentDateFormat('HH:mm');
+          final timeFormat = AppTimeFormats.dateFormatter('HH:mm');
           final dayLogs =
               widget.logs
                   .where((l) => l.endTime > gsMs && l.startTime < geMs)
@@ -1034,7 +1019,7 @@ class _DayViewState extends State<_DayView> {
     final gs = _gridStart;
     final st = gs.add(Duration(minutes: _ss * _minutesPerBlock));
     final en = gs.add(Duration(minutes: (_se + 1) * _minutesPerBlock));
-    final timeFormat = _timeLogComponentDateFormat('HH:mm');
+    final timeFormat = AppTimeFormats.dateFormatter('HH:mm');
     final colorScheme = Theme.of(context).colorScheme;
     return OptionalLiquidGlassSheet(
       topRadius: 20,

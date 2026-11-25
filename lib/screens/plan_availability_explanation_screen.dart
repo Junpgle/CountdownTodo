@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models/plan_availability.dart';
 import '../models/plan_weekly_availability.dart';
@@ -12,6 +11,7 @@ import '../services/conflict_visibility_service.dart';
 import '../services/plan_todo_guard.dart';
 import '../services/plan_weekly_availability_preferences.dart';
 import '../storage_service.dart';
+import '../utils/time_utils.dart';
 
 enum PlanExplanationAction { modify, split }
 
@@ -64,9 +64,6 @@ class _PlanAvailabilityExplanationScreenState
   bool _busy = false, _stale = false;
   int _sequence = 0;
   String? _error;
-  String? _dateFormatLocale;
-  DateFormat? _dateFormatter;
-  DateFormat? _timeFormatter;
   PlanAvailabilityQuery? _derivedQuery;
   PlanAvailabilitySnapshot? _derivedSnapshot;
   DateTime? _derivedToday;
@@ -74,18 +71,6 @@ class _PlanAvailabilityExplanationScreenState
   _PlanExplanationDerivedData? _cachedDerivedData;
   DateTime get _now => widget.clock?.call() ?? DateTime.now();
   PlanAvailabilityQuery get _query => widget.query;
-
-  void _ensureDateFormatters() {
-    final locale = Intl.defaultLocale;
-    if (_dateFormatLocale == locale &&
-        _dateFormatter != null &&
-        _timeFormatter != null) {
-      return;
-    }
-    _dateFormatLocale = locale;
-    _dateFormatter = DateFormat('MM月dd日', locale);
-    _timeFormatter = DateFormat('HH:mm', locale);
-  }
 
   @override
   void initState() {
@@ -300,15 +285,9 @@ class _PlanAvailabilityExplanationScreenState
     }
   }
 
-  String _date(DateTime d) {
-    _ensureDateFormatters();
-    return _dateFormatter!.format(d);
-  }
+  String _date(DateTime d) => AppTimeFormats.monthDayCn(d);
 
-  String _time(DateTime d) {
-    _ensureDateFormatters();
-    return _timeFormatter!.format(d);
-  }
+  String _time(DateTime d) => AppTimeFormats.clock(d);
 
   _PlanExplanationDerivedData _derivedDataFor(DateTime now) {
     final query = _query;

@@ -1035,7 +1035,7 @@ class _TimePickerCard extends StatelessWidget {
           GestureDetector(
             onTap: onTapDate,
             child: Text(
-              _timeLogComponentDateFormat('MM月dd日').format(dt),
+              AppTimeFormats.monthDayCn(dt),
               style: TextStyle(fontSize: 11, color: _TC.textSub(context)),
             ),
           ),
@@ -1046,7 +1046,7 @@ class _TimePickerCard extends StatelessWidget {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
-                _timeLogComponentDateFormat('HH:mm').format(dt),
+                AppTimeFormats.clock(dt),
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w700,

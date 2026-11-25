@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models/plan_availability.dart';
 import '../screens/course_screens.dart';
@@ -9,22 +8,13 @@ import '../services/missed_plan_recovery_service.dart';
 import '../services/plan_availability_service.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/page_transitions.dart';
+import '../utils/time_utils.dart';
 import 'plan_block_editor_sheet.dart';
 
 final _openingRecovery = <String>{};
 
-final Map<String?, DateFormat> _periodDateFormats = {};
-
-DateFormat _periodDateFormat() {
-  final locale = Intl.defaultLocale;
-  return _periodDateFormats.putIfAbsent(
-    locale,
-    () => DateFormat('MM-dd HH:mm', locale),
-  );
-}
-
 String _period(int start, int end) {
-  final dateFormat = _periodDateFormat();
+  final dateFormat = AppTimeFormats.dateFormatter('MM-dd HH:mm');
   return '${dateFormat.format(DateTime.fromMillisecondsSinceEpoch(start))}–'
       '${dateFormat.format(DateTime.fromMillisecondsSinceEpoch(end))}';
 }

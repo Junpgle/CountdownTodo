@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:flutter_zoom_drawer/flutter_zoom_drawer.dart';
 
 import '../screens/course_screens.dart';
 import '../models/todo_create_save_result.dart';
 import '../utils/page_transitions.dart';
+import '../utils/time_utils.dart';
 import 'floating_glass_control.dart';
 
 class ShimmerWidget extends StatefulWidget {
@@ -163,8 +163,6 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
 class _HomeAppBarState extends State<HomeAppBar>
     with SingleTickerProviderStateMixin {
   late final AnimationController _syncRotationController;
-  String? _cachedDateFormatPattern;
-  DateFormat? _cachedDateFormat;
 
   @override
   void initState() {
@@ -198,11 +196,7 @@ class _HomeAppBarState extends State<HomeAppBar>
   }
 
   String _formatDate(DateTime date, String pattern) {
-    if (_cachedDateFormatPattern != pattern) {
-      _cachedDateFormatPattern = pattern;
-      _cachedDateFormat = DateFormat(pattern, 'zh_CN');
-    }
-    return _cachedDateFormat!.format(date);
+    return AppTimeFormats.format(date, pattern, locale: 'zh_CN');
   }
 
   Widget _buildActionButton(
