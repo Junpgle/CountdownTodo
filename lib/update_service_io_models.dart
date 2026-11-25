@@ -1,25 +1,5 @@
 part of 'update_service_io.dart';
 
-class ChangelogEntry {
-  final String versionName;
-  final String date;
-  final List<String> items;
-
-  const ChangelogEntry({
-    required this.versionName,
-    required this.date,
-    required this.items,
-  });
-
-  factory ChangelogEntry.fromJson(Map<String, dynamic> json) => ChangelogEntry(
-    versionName: json['version_name'] ?? '',
-    date: json['date'] ?? '',
-    items: (json['items'] as List<dynamic>? ?? [])
-        .map((e) => e.toString())
-        .toList(),
-  );
-}
-
 class AppManifest {
   final int versionCode;
   final String versionName;
@@ -68,30 +48,6 @@ class AppManifest {
       ),
     );
   }
-}
-
-class ChangelogArchiveConfig {
-  final String url;
-  final int count;
-  final String latestVersion;
-  final String oldestVersion;
-
-  const ChangelogArchiveConfig({
-    required this.url,
-    this.count = 0,
-    this.latestVersion = '',
-    this.oldestVersion = '',
-  });
-
-  bool get isAvailable => url.isNotEmpty && count > 0;
-
-  factory ChangelogArchiveConfig.fromJson(Map<String, dynamic> json) =>
-      ChangelogArchiveConfig(
-        url: json['url']?.toString() ?? '',
-        count: int.tryParse(json['count']?.toString() ?? '0') ?? 0,
-        latestVersion: json['latest_version']?.toString() ?? '',
-        oldestVersion: json['oldest_version']?.toString() ?? '',
-      );
 }
 
 class UpdateInfo {
@@ -162,36 +118,6 @@ class UpdateInfo {
   }
 }
 
-class Announcement {
-  final bool show;
-  final String id;
-  final String title;
-  final String content;
-  final String remindMode;
-  final List<String> targetVersions; // 空列表=所有版本, 非空=仅指定版本可见
-
-  Announcement.fromJson(Map<String, dynamic> json)
-    : show = json['show'] ?? false,
-      id = json['id'] ?? '',
-      title = json['title'] ?? '',
-      content = json['content'] ?? '',
-      remindMode = json['remind_mode'] ?? 'once',
-      targetVersions =
-          (json['target_versions'] as List<dynamic>?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          [];
-}
-
-class WallpaperConfig {
-  final bool show;
-  final String imageUrl;
-
-  WallpaperConfig.fromJson(Map<String, dynamic> json)
-    : show = json['show'] ?? false,
-      imageUrl = json['image_url'] ?? '';
-}
-
 class _UpdateArtifact {
   final String url;
   final String fileName;
@@ -208,99 +134,4 @@ class _UpdateArtifact {
   });
 
   bool get isDelta => delta != null;
-}
-
-class _AnnouncementCarouselDialog extends StatefulWidget {
-  final List<Announcement> announcements;
-
-  const _AnnouncementCarouselDialog({required this.announcements});
-
-  @override
-  State<_AnnouncementCarouselDialog> createState() =>
-      _AnnouncementCarouselDialogState();
-}
-
-class _AnnouncementCarouselDialogState
-    extends State<_AnnouncementCarouselDialog> {
-  int _currentIndex = 0;
-
-  @override
-  Widget build(BuildContext context) {
-    final announcement = widget.announcements[_currentIndex];
-    final isLast = _currentIndex == widget.announcements.length - 1;
-    final isFirst = _currentIndex == 0;
-
-    return AlertDialog(
-      title: Row(
-        children: [
-          const Icon(Icons.campaign, color: Colors.orange),
-          const SizedBox(width: 8),
-          Expanded(child: Text(announcement.title)),
-        ],
-      ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(announcement.content),
-          if (widget.announcements.length > 1) ...[
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(
-                widget.announcements.length,
-                (index) => Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 3),
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _currentIndex == index
-                        ? Colors.orange
-                        : Colors.grey[300],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-      actions: [
-        if (!isFirst)
-          TextButton(
-            onPressed: () {
-              setState(() => _currentIndex--);
-            },
-            child: const Text("上一条"),
-          ),
-        TextButton(
-          onPressed: () {
-            Navigator.pop(context);
-          },
-          child: const Text("关闭"),
-        ),
-        if (!isLast)
-          ElevatedButton(
-            onPressed: () {
-              setState(() => _currentIndex++);
-            },
-            child: const Text("下一条"),
-          )
-        else
-          ElevatedButton(
-            onPressed: () async {
-              for (var ann in widget.announcements) {
-                if (ann.remindMode == 'once') {
-                  await UpdateService.markAnnouncementAsRead(ann.id);
-                }
-              }
-              if (context.mounted) {
-                Navigator.pop(context);
-              }
-            },
-            child: const Text("全部已读"),
-          ),
-      ],
-    );
-  }
 }

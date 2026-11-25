@@ -312,7 +312,10 @@ Future<void> _updDialogShowAnnouncementDialog(
     context: context,
     barrierDismissible: true,
     builder: (ctx) {
-      return _AnnouncementCarouselDialog(announcements: announcements);
+      return AnnouncementCarouselDialog(
+        announcements: announcements,
+        onMarkAsRead: UpdateService.markAnnouncementAsRead,
+      );
     },
   );
 

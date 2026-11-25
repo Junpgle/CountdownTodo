@@ -8,7 +8,7 @@ import '../models.dart';
 import 'storage/app_settings_storage.dart';
 import 'item_semantics_service.dart';
 import 'scheduled_reminder_registry.dart';
-import 'plan_reminder_guard.dart';
+import 'notification_service_shared.dart';
 import 'focus_do_not_disturb_service.dart';
 
 class NotificationService {
@@ -467,60 +467,7 @@ class NotificationService {
 
   static Future<List<Map<String, dynamic>>> _filterScheduledReminders(
     Iterable<Map<String, dynamic>> reminders,
-  ) async {
-    final liveActivityEnabled =
-        await AppSettingsStorage.isLiveActivityNotificationEnabled();
-    final reminderEnabled =
-        await AppSettingsStorage.isReminderNotificationEnabled();
-    final courseEnabled =
-        await AppSettingsStorage.isCourseNotificationEnabled();
-    final todoLiveEnabled =
-        await AppSettingsStorage.isTodoLiveNotificationEnabled();
-    final specialTodoEnabled =
-        await AppSettingsStorage.isSpecialTodoNotificationEnabled();
-    final countdownEnabled =
-        await AppSettingsStorage.isCountdownNotificationEnabled();
-    final financeEnabled =
-        await AppSettingsStorage.isFinanceRecurringReminderEnabled();
-    final pomodoroEndEnabled =
-        await AppSettingsStorage.isPomodoroEndNotificationEnabled();
-
-    return PlanReminderGuard.filterSchedulablePlanReminders(
-      reminders
-          .where((reminder) {
-            final source = ScheduledReminderRegistry.sourceOf(reminder);
-            final type = reminder['type']?.toString();
-            if (FocusDoNotDisturbService.isActive &&
-                source != ScheduledReminderSources.pomodoro &&
-                type != 'pomodoro' &&
-                type != 'pomodoro_end') {
-              return false;
-            }
-            if (source == ScheduledReminderSources.pomodoro ||
-                type == 'pomodoro' ||
-                type == 'pomodoro_end') {
-              return pomodoroEndEnabled;
-            }
-            if (!reminderEnabled) return false;
-            switch (type) {
-              case 'course':
-                return liveActivityEnabled && courseEnabled;
-              case 'upcoming_todo':
-                return liveActivityEnabled && todoLiveEnabled;
-              case 'special_todo':
-                return liveActivityEnabled && specialTodoEnabled;
-              case 'countdown':
-                return liveActivityEnabled && countdownEnabled;
-              case 'finance_recurring':
-                return financeEnabled;
-              default:
-                return true;
-            }
-          })
-          .map(Map<String, dynamic>.from)
-          .toList(growable: false),
-    );
-  }
+  ) => NotificationServiceShared.filterScheduledReminders(reminders);
 
   static int? _readInt(dynamic value) {
     if (value is int) return value;

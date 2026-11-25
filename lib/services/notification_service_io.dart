@@ -14,7 +14,7 @@ import 'macos_pomodoro_status_bar_service.dart';
 import 'todo_notification_policy.dart';
 import 'item_semantics_service.dart';
 import 'scheduled_reminder_registry.dart';
-import 'plan_reminder_guard.dart';
+import 'notification_service_shared.dart';
 import 'focus_do_not_disturb_service.dart';
 import '../utils/time_utils.dart';
 
@@ -1001,66 +1001,10 @@ class NotificationService {
 
   static Future<List<Map<String, dynamic>>> _filterScheduledReminders(
     Iterable<Map<String, dynamic>> reminders,
-  ) async {
-    final liveActivityEnabled =
-        await AppSettingsStorage.isLiveActivityNotificationEnabled();
-    final reminderEnabled =
-        await AppSettingsStorage.isReminderNotificationEnabled();
-    final courseEnabled =
-        await AppSettingsStorage.isCourseNotificationEnabled();
-    final todoLiveEnabled =
-        await AppSettingsStorage.isTodoLiveNotificationEnabled();
-    final specialTodoEnabled =
-        await AppSettingsStorage.isSpecialTodoNotificationEnabled();
-    final countdownEnabled =
-        await AppSettingsStorage.isCountdownNotificationEnabled();
-    final financeEnabled =
-        await AppSettingsStorage.isFinanceRecurringReminderEnabled();
-    final pomodoroEndEnabled =
-        await AppSettingsStorage.isPomodoroEndNotificationEnabled();
+  ) => NotificationServiceShared.filterScheduledReminders(reminders);
 
-    return PlanReminderGuard.filterSchedulablePlanReminders(
-      reminders
-          .where((reminder) {
-            final source = ScheduledReminderRegistry.sourceOf(reminder);
-            final type = reminder['type']?.toString();
-            if (FocusDoNotDisturbService.isActive &&
-                !_isPomodoroReminder(reminder)) {
-              return false;
-            }
-            if (source == ScheduledReminderSources.pomodoro ||
-                type == 'pomodoro' ||
-                type == 'pomodoro_end') {
-              return pomodoroEndEnabled;
-            }
-            if (!reminderEnabled) return false;
-            switch (type) {
-              case 'course':
-                return liveActivityEnabled && courseEnabled;
-              case 'upcoming_todo':
-                return liveActivityEnabled && todoLiveEnabled;
-              case 'special_todo':
-                return liveActivityEnabled && specialTodoEnabled;
-              case 'countdown':
-                return liveActivityEnabled && countdownEnabled;
-              case 'finance_recurring':
-                return financeEnabled;
-              default:
-                return true;
-            }
-          })
-          .map(Map<String, dynamic>.from)
-          .toList(growable: false),
-    );
-  }
-
-  static bool _isPomodoroReminder(Map<String, dynamic> reminder) {
-    final source = ScheduledReminderRegistry.sourceOf(reminder);
-    final type = reminder['type']?.toString();
-    return source == ScheduledReminderSources.pomodoro ||
-        type == 'pomodoro' ||
-        type == 'pomodoro_end';
-  }
+  static bool _isPomodoroReminder(Map<String, dynamic> reminder) =>
+      NotificationServiceShared.isPomodoroReminder(reminder);
 
   /// Desktop notifications are scheduled directly with the OS, so cancel
   /// non-Pomodoro alarms while DND is active and restore them afterwards.

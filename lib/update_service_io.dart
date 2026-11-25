@@ -16,7 +16,10 @@ import 'services/android_delta_service.dart';
 import 'services/api_service.dart';
 import 'services/permission_request_coordinator.dart';
 import 'services/github_resource_service.dart';
+import 'update_service_models.dart';
 import './utils/app_dialogs.dart';
+
+export 'update_service_models.dart';
 
 // 数据模型类
 
