@@ -81,6 +81,9 @@ import '../utils/app_dialogs.dart';
 part 'todo_chat_screen_contract.dart';
 part 'todo_chat_screen_lifecycle.dart';
 part 'todo_chat_screen_send.dart';
+part 'todo_chat_screen_send_fallback.dart';
+part 'todo_chat_screen_send_attachments.dart';
+part 'todo_chat_screen_send_manual.dart';
 part 'todo_chat_screen_queries.dart';
 part 'todo_chat_screen_layout.dart';
 part 'todo_chat_screen_actions.dart';
@@ -184,6 +187,9 @@ class _TodoChatScreenState extends _TodoChatScreenStateBase
     with
         _TodoChatLifecycle,
         _TodoChatSend,
+        _TodoChatSendFallback,
+        _TodoChatSendAttachments,
+        _TodoChatSendManual,
         _TodoChatQueries,
         _TodoChatLayout,
         _TodoChatActions,

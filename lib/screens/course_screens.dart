@@ -36,6 +36,10 @@ part 'course_screens_contract.dart';
 part 'course_screens_lifecycle.dart';
 part 'course_screens_navigation.dart';
 part 'course_screens_grid.dart';
+part 'course_screens_grid_indexes.dart';
+part 'course_screens_grid_header.dart';
+part 'course_screens_grid_layers_foreground.dart';
+part 'course_screens_grid_layers_background.dart';
 part 'course_screens_view.dart';
 part 'course_detail_screens.dart';
 
@@ -113,5 +117,8 @@ class _WeeklyCourseScreenState extends _WeeklyCourseScreenStateBase
     with
         _WeeklyCourseLifecycle,
         _WeeklyCourseNavigation,
+        _WeeklyCourseGridHeader,
+        _WeeklyCourseGridForegroundLayers,
+        _WeeklyCourseGridBackgroundLayers,
         _WeeklyCourseGrid,
         _WeeklyCourseView {}

@@ -198,6 +198,10 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   Map<String, List<DeviceCalendarEvent>> _monthDeviceCalendarMap = {};
   bool _monthDataPrepared = false;
   final int _maxExpandedSpanDays = 366;
+  final _todoIndexCache = _IdentityIndexCache<TodoItem>();
+  final _timeLogIndexCache = _IdentityIndexCache<TimeLogItem>();
+  final _pomodoroIndexCache = _IdentityIndexCache<PomodoroRecord>();
+  final _courseIndexCache = _IdentityIndexCache<CourseItem>();
   void initState();
   void dispose();
   Future<void> _loadData();
@@ -316,6 +320,36 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   double _mapTimeToVirtualMinutes(int hour, int minute);
   double _timeToY(int hour, int minute, double minuteHeight);
   Color _getCourseColor(String courseName);
+  Color _harmonizeWeekEventColor(
+    Color rawColor, {
+    double opacity = 0.85,
+    double maxSaturation = 0.52,
+  });
+  Color get _weekLazyLoadPlaceholderColor;
+  ({int titleMaxLines, int subMaxLines, bool showSubtitle})
+  _computeCardTextLayout({
+    required String title,
+    required String? subtitle,
+    required double width,
+    required double height,
+    required double effectiveHeight,
+    required double titleFontSize,
+    required double subFontSize,
+    double extraReservedHeight = 0.0,
+    double horizontalPadding = 6.0,
+  });
+  void _showAggregatedTimelineSheet(
+    BuildContext context,
+    int weekday,
+    List<Object> items,
+  );
+  void _collectTodoGridEvents(_WeeklyGridLayerContext ctx);
+  void _collectTimeLogGridEvents(_WeeklyGridLayerContext ctx);
+  void _collectPlanBlockGridEvents(_WeeklyGridLayerContext ctx);
+  void _collectFixedScheduleGridEvents(_WeeklyGridLayerContext ctx);
+  void _collectPomodoroGridEvents(_WeeklyGridLayerContext ctx);
+  void _collectDeviceCalendarGridEvents(_WeeklyGridLayerContext ctx);
+  void _collectCourseGridEvents(_WeeklyGridLayerContext ctx);
   void _showAllDayTodos(
     BuildContext context,
     List<TodoItem> todos,

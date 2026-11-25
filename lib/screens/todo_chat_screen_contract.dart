@@ -353,6 +353,112 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   });
   String _buildContextSummary();
   Future<void> _sendMessage();
+  bool _hasUnresolvedCountdownTeamBinding(AiTodoAction action);
+  String _fallbackCdtActionLabel(String name);
+  Set<String> _parsedCdtActionNames(Iterable<AiTodoAction> actions);
+  int _parsedTodoCreationCount(Iterable<AiTodoAction> actions);
+  Future<bool> _tryRevealPendingPlanningDraft(String text);
+  Future<bool> _tryConfirmPendingPlanningDraft(String text);
+  String _planningDraftSummary(List<AiTodoAction> actions);
+  String _queryResultSummary(Map<String, dynamic>? result);
+  List<ChatNativeToolCall> _buildNativeToolCallRecords({
+    required List<AiChatFunctionCall> calls,
+    required List<AiTodoAction> todoActions,
+    required List<FinanceEntryDraft> financeDrafts,
+    required List<FinanceAiAction> financeActions,
+    bool interrupted = false,
+  });
+  Future<bool> _tryHandleExplicitFinanceText(String text);
+  String _financeDraftSummary(int count);
+  String _appendPendingWriteConfirmationNotice({
+    required String content,
+    required List<AiTodoAction> todoActions,
+    required List<FinanceEntryDraft> financeDrafts,
+    required List<FinanceAiAction> financeActions,
+  });
+  Future<bool> _tryConfirmPendingFinanceDraft(String text);
+  bool _ignoreSupersededDateCorrectionDrafts(
+    ChatMessage latestAssistant,
+    FinanceEntryDraft draft,
+  );
+  Future<Map<String, String>> _existingTodoTitleMap(
+    Set<String> allowedActionNames,
+  );
+  Future<Map<String, Set<String>>> _loadKnownReferenceIdsByDomain(
+    Set<String> allowedActionNames,
+  );
+  Future<
+    ({
+      String fullContent,
+      String reasoningContent,
+      String latestRawModelReply,
+      ChatUsageSummary? usageSummary,
+    })
+  >
+  _retryMissingFallbackProposalBlocks({
+    required String fullContent,
+    required String reasoningContent,
+    required String latestRawModelReply,
+    required List<Map<String, dynamic>> apiMessages,
+    required List<Map<String, dynamic>> fallbackWriteTools,
+    required Set<String> allowedProposalToolNames,
+    required Set<String> requiredFallbackCdtActionNames,
+    required int? requiredFallbackTodoCount,
+    required int? requiredFallbackFinanceDraftCount,
+    required Stream<AiChatStreamChunk> Function(
+      List<Map<String, dynamic>> messages,
+      List<Map<String, dynamic>> tools, {
+      String? toolChoiceName,
+    })
+    streamRound,
+    required List<ChatUsageSummary> usageSummaries,
+    required ChatUsageSummary? usageSummary,
+  });
+  Future<void> _persistInterruptedAssistantReply({
+    required String sessionId,
+    required String requestText,
+    required bool nativeToolMode,
+    required String fullContent,
+    required String actionContent,
+    required String rawModelReply,
+    required String reasoningContent,
+    required ChatUsageSummary? usageSummary,
+    required List<AiChatFunctionCall> nativeToolCalls,
+    required Set<String> allowedCdtActionNames,
+    required Set<String> allowedFinanceActionNames,
+    required Set<String> allowedProposalToolNames,
+    required List<String> settingsTargets,
+    required Map<String, String> existingTodoTitles,
+  });
+  Future<void> _finalizeStreamedAssistantReply({
+    required String sessionId,
+    required String requestText,
+    required bool nativeToolMode,
+    required bool hasRequestedCountdownTeamBinding,
+    required Team? requestedCountdownTeam,
+    required String? requestedCountdownTeamName,
+    required List<Map<String, dynamic>> fallbackWriteTools,
+    required String fullContent,
+    required String actionContent,
+    required String rawModelReply,
+    required String reasoningContent,
+    required ChatUsageSummary? usageSummary,
+    required List<AiChatFunctionCall> nativeToolCalls,
+    required Set<String> allowedCdtActionNames,
+    required Set<String> allowedFinanceActionNames,
+    required Set<String> allowedProposalToolNames,
+    required Set<String> requiredFallbackCdtActionNames,
+    required int? requiredFallbackTodoCount,
+    required int? requiredFallbackFinanceDraftCount,
+    required List<String> settingsTargets,
+    required Map<String, String> existingTodoTitles,
+  });
+  Future<void> _handleSendMessageError({
+    required Object error,
+    required String sessionId,
+    required bool useQueryTools,
+    required ChatUsageSummary? usageSummary,
+  });
   ChatUsageSummary? _takePendingVoiceUsageSummary();
   Future<void> _openVoiceInput();
   Future<void> _pickChatAttachment();

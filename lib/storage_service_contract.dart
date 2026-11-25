@@ -860,6 +860,16 @@ abstract class _StorageServiceBase {
     bool createOplog = false,
     bool touchUpdatedAt = true,
   });
+  Future<void> _prepareSyncUploadPayload(_SyncRunContext ctx);
+  Future<void> _executeSyncNetworkRound(_SyncRunContext ctx);
+  Future<void> _mergeServerSyncResponse(_SyncRunContext ctx);
+  Future<void> _persistSyncMergeResults(_SyncRunContext ctx);
+  Future<void> _finalizeSyncWatermarksAndNotify(_SyncRunContext ctx);
+  Future<Set<String>> _autoResolveEquivalentHabitConflicts({
+    required List<HabitGoal> goals,
+    required List<HabitGoalRuleRevision> rules,
+    required Map<String, Map<String, dynamic>> snapshots,
+  });
 }
 
 class _StorageServiceImpl extends _StorageServiceBase
@@ -870,7 +880,12 @@ class _StorageServiceImpl extends _StorageServiceBase
         _StorageTodoConflicts,
         _StorageTodoQueries,
         _StorageTodoRecurrence,
+        _StorageScreenTime,
         _StorageSync,
+        _StorageSyncPrepare,
+        _StorageSyncNetwork,
+        _StorageSyncMerge,
+        _StorageSyncPersist,
         _StorageConflict,
         _StorageSettings {}
 
