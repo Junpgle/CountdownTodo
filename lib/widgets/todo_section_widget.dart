@@ -75,6 +75,8 @@ part 'todo_section_widget_lifecycle.dart';
 part 'todo_section_widget_capture.dart';
 part 'todo_section_widget_recurrence.dart';
 part 'todo_section_widget_view.dart';
+part 'todo_section_widget_view_card.dart';
+part 'todo_section_widget_view_model.dart';
 part 'todo_section_widget_independent_status.dart';
 part 'todo_edit_screen.dart';
 part 'todo_edit_screen_actions.dart';
@@ -347,6 +349,8 @@ class TodoSectionWidgetState extends _TodoSectionStateBase
         _TodoSectionLifecycleMixin,
         _TodoSectionCaptureMixin,
         _TodoSectionRecurrenceMixin,
+        _TodoSectionViewCardMixin,
+        _TodoSectionViewModelMixin,
         _TodoSectionViewMixin {
   @visibleForTesting
   static List<TodoItem> collapseRecurrenceInstancesForDisplayForTest(

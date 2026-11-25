@@ -128,7 +128,12 @@ mixin _TodoSectionContract {
     required bool isFuture,
     required DateTime now,
     Key? key,
+    Widget? dragHandle,
   });
+
+  Widget _buildTodoDragHandleIcon(TodoItem todo, Color color);
+
+  Widget _buildExpandTransition(Widget child, Animation<double> animation);
 
   Widget _buildAnimatedSection({required bool expanded, required Widget child});
 
@@ -138,6 +143,7 @@ mixin _TodoSectionContract {
     required VoidCallback onTap,
     Color? color,
     IconData? icon,
+    Widget? trailing,
   });
 
   Widget _buildTodoList();
@@ -157,6 +163,7 @@ mixin _TodoSectionContract {
     required bool useDarkUI,
   });
 
-
   void _showIndependentTodoStatus(TodoItem todo);
+
+  void _checkAndTriggerTodayAllDoneCelebration(TodoItem justCompletedTodo);
 }
