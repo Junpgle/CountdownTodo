@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../../../utils/app_platform.dart';
@@ -35,7 +33,10 @@ class InterconnectSettingsPage extends StatefulWidget {
       _InterconnectSettingsPageState();
 }
 
-class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
+class _InterconnectSettingsPageState extends State<InterconnectSettingsPage>
+    with
+        SettingsNavigationMixin<InterconnectSettingsPage>,
+        SettingsTargetHighlightMixin<InterconnectSettingsPage> {
   final Map<String, GlobalKey> _itemKeys = {
     'lan_sync': GlobalKey(),
     'mcp': GlobalKey(),
@@ -49,26 +50,16 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
     'data_import': GlobalKey(),
   };
 
-  String? _highlightTarget;
-  Timer? _highlightTimer;
   bool _bandServiceBusy = false;
 
-  GlobalKey _navigationKey(String id) =>
-      _itemKeys.putIfAbsent(id, () => GlobalKey(debugLabel: 'settings-$id'));
+  @override
+  Map<String, GlobalKey> get settingsNavigationKeyStore => _itemKeys;
 
-  Future<T?> _openSettingsPage<T>(
-    String id,
-    Widget page, {
-    RouteSettings? settings,
-    bool rootNavigator = false,
-  }) => SettingsNavigation.push<T>(
-    context: context,
-    page: page,
-    sourceKey: _navigationKey(id),
-    isEmbedded: widget.isEmbedded,
-    rootNavigator: rootNavigator,
-    settings: settings,
-  );
+  @override
+  bool get isEmbeddedSettingsPage => widget.isEmbedded;
+
+  @override
+  GlobalKey? resolveSettingsTargetKey(String target) => _itemKeys[target];
 
   @override
   void initState() {
@@ -76,17 +67,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
     if (AppPlatform.isAndroid) {
       BandSyncService.loadServiceEnabled();
     }
-    if (widget.initialTarget != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _scrollToTarget(widget.initialTarget!);
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _highlightTimer?.cancel();
-    super.dispose();
+    scheduleInitialSettingsTarget(widget.initialTarget);
   }
 
   Future<void> _setBandServiceEnabled(bool enabled) async {
@@ -141,28 +122,10 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
     );
   }
 
-  void _scrollToTarget(String target) {
-    final key = _itemKeys[target];
-    if (key?.currentContext != null) {
-      setState(() => _highlightTarget = target);
-      Scrollable.ensureVisible(
-        key!.currentContext!,
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOut,
-        alignment: 0.15,
-      );
-      _highlightTimer?.cancel();
-      _highlightTimer = Timer(const Duration(milliseconds: 3000), () {
-        _highlightTimer = null;
-        if (mounted) setState(() => _highlightTarget = null);
-      });
-    }
-  }
-
   Widget _buildTile({required String targetId, required Widget child}) {
-    final bool isHighlighted = _highlightTarget == targetId;
+    final bool isHighlighted = highlightTarget == targetId;
     return Container(
-      key: _navigationKey(targetId),
+      key: settingsNavigationKey(targetId),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 500),
         curve: Curves.easeInOut,
@@ -258,7 +221,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
         title: 'MCP 接入',
         subtitle: '让外部 AI 助手连接并管理个人待办',
         onTap: () {
-          _openSettingsPage(
+          openSettingsPage(
             'mcp',
             McpIntroductionPage(isEmbedded: widget.isEmbedded),
             settings: const RouteSettings(name: 'MCP 接入说明'),
@@ -272,7 +235,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
           title: '局域网同步',
           subtitle: '同账号设备间无缝互传数据',
           onTap: () {
-            _openSettingsPage(
+            openSettingsPage(
               'lan_sync',
               LanSyncScreen(isEmbedded: widget.isEmbedded),
               settings: const RouteSettings(name: '局域网互传与同步'),
@@ -286,7 +249,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
             title: '小米手环',
             subtitle: '借助快应用将待办同步至手环',
             onTap: () {
-              _openSettingsPage(
+              openSettingsPage(
                 'band_sync',
                 BandSyncScreen(isEmbedded: widget.isEmbedded),
                 settings: const RouteSettings(name: '智能手环同步'),
@@ -300,7 +263,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
             title: '读取手机日历',
             subtitle: '只读展示到首页、周视图和半月/月视图，永不写入或同步',
             onTap: () {
-              _openSettingsPage(
+              openSettingsPage(
                 'calendar_read',
                 const DeviceCalendarReadPage(),
                 settings: const RouteSettings(name: '读取手机日历'),
@@ -313,7 +276,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
           title: '写入手机系统日历',
           subtitle: '将 App 内课程、待办和规划写入系统日历',
           onTap: () {
-            _openSettingsPage(
+            openSettingsPage(
               'calendar_sync',
               CalendarSyncPage(isEmbedded: widget.isEmbedded),
               settings: const RouteSettings(name: '日历同步向导'),
@@ -328,7 +291,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
           title: '日历 ICS',
           subtitle: '导出课程、待办、倒数日和规划',
           onTap: () {
-            _openSettingsPage(
+            openSettingsPage(
               'calendar_sync',
               CalendarSyncPage(isEmbedded: widget.isEmbedded),
               settings: const RouteSettings(name: '导出日历文件'),
@@ -341,7 +304,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
         title: '批量标签',
         subtitle: '为番茄钟和时间日志批量添加标签',
         onTap: () {
-          _openSettingsPage(
+          openSettingsPage(
             'batch_tag',
             BatchTagPage(
               username: widget.username,
@@ -357,7 +320,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
         title: '重复待办合并',
         subtitle: '手动选择并归并被拆开的循环系列',
         onTap: () {
-          _openSettingsPage(
+          openSettingsPage(
             'recurrence_merge',
             RecurrenceSeriesMergePage(
               username: widget.username,
@@ -373,7 +336,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
         title: '定期自动备份',
         subtitle: isWeb ? 'Web 端暂不支持静默本地备份' : '定期自动保存本地快照，支持自定义目录与一键恢复',
         onTap: () {
-          _openSettingsPage(
+          openSettingsPage(
             'auto_backup',
             AutoBackupPage(isEmbedded: widget.isEmbedded),
             settings: const RouteSettings(name: '定期自动备份'),
@@ -386,7 +349,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
         title: '数据导出',
         subtitle: isWeb ? '下载为浏览器文件' : '将待办、课程、倒计时等数据导出为文件',
         onTap: () {
-          _openSettingsPage(
+          openSettingsPage(
             'data_export',
             DataExportPage(isEmbedded: widget.isEmbedded),
             settings: const RouteSettings(name: '数据导出'),
@@ -399,7 +362,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
         title: '数据导入',
         subtitle: isWeb ? '从浏览器选择备份文件' : '从备份文件恢复或合并数据',
         onTap: () {
-          _openSettingsPage(
+          openSettingsPage(
             'data_import',
             DataImportPage(isEmbedded: widget.isEmbedded),
             settings: const RouteSettings(name: '数据导入'),

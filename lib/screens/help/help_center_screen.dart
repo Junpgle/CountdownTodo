@@ -33,25 +33,13 @@ class HelpCenterScreen extends StatefulWidget {
   State<HelpCenterScreen> createState() => _HelpCenterScreenState();
 }
 
-class _HelpCenterScreenState extends State<HelpCenterScreen> {
-  final Map<String, GlobalKey> _navigationKeys = {};
+class _HelpCenterScreenState extends State<HelpCenterScreen>
+    with SettingsNavigationMixin<HelpCenterScreen> {
+  @override
+  bool get isEmbeddedSettingsPage => widget.isEmbedded;
 
-  GlobalKey _navigationKey(String id) => _navigationKeys.putIfAbsent(
-    id,
-    () => GlobalKey(debugLabel: 'settings-help-$id'),
-  );
-
-  Future<T?> _openSettingsPage<T>(
-    String id,
-    Widget page, {
-    bool rootNavigator = false,
-  }) => SettingsNavigation.push<T>(
-    context: context,
-    page: page,
-    sourceKey: _navigationKey(id),
-    isEmbedded: widget.isEmbedded,
-    rootNavigator: rootNavigator,
-  );
+  @override
+  String get settingsNavigationKeyPrefix => 'settings-help';
 
   @override
   Widget build(BuildContext context) {
@@ -90,7 +78,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
                   Icons.explore_rounded,
                   scheme.primary,
                   () {
-                    _openSettingsPage(
+                    openSettingsPage(
                       '功能探索百宝箱',
                       FeatureExplorerScreen(
                         username: widget.username,
@@ -122,7 +110,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
                   Icons.auto_awesome_rounded,
                   scheme.tertiary,
                   () {
-                    _openSettingsPage(
+                    openSettingsPage(
                       '挑战中心',
                       const ChallengeCenterScreen(),
                       rootNavigator: true,
@@ -617,7 +605,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
   }
 
   void _openArticle(HelpArticle article, {String? sourceId}) {
-    _openSettingsPage(
+    openSettingsPage(
       sourceId ?? article.title,
       HelpArticleScreen(article: article, isEmbedded: widget.isEmbedded),
     );
@@ -655,7 +643,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
   }
 
   void _showChangelog() {
-    _openSettingsPage(
+    openSettingsPage(
       '查看更新日志',
       FeatureGuideScreen(
         mode: FeatureGuideMode.changelog,
@@ -720,7 +708,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
         if (showTopDivider)
           Divider(height: 1, indent: 72, color: scheme.outlineVariant),
         ListTile(
-          key: _navigationKey(entry.title),
+          key: settingsNavigationKey(entry.title),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 16,
             vertical: 4,

@@ -166,26 +166,26 @@ extension _AddTodoParsingExt on _AddTodoScreenState {
       if (result.isAllDay) {
         return result.startTime == null
             ? '日期待确认 · 时间待定'
-            : '${_cachedDateFormat('MM-dd').format(result.startTime!)} · 时间待定';
+            : '${AppTimeFormats.dateFormatter('MM-dd').format(result.startTime!)} · 时间待定';
       }
       if (result.startTime != null && result.endTime != null) {
-        return '${_cachedDateFormat('MM-dd HH:mm').format(result.startTime!)}–${_cachedDateFormat('HH:mm').format(result.endTime!)}';
+        return '${AppTimeFormats.dateFormatter('MM-dd HH:mm').format(result.startTime!)}–${AppTimeFormats.dateFormatter('HH:mm').format(result.endTime!)}';
       }
       if (result.startTime != null) {
-        return '${_cachedDateFormat('MM-dd HH:mm').format(result.startTime!)}开始 · 结束待定';
+        return '${AppTimeFormats.dateFormatter('MM-dd HH:mm').format(result.startTime!)}开始 · 结束待定';
       }
       return '日期和时间待确认';
     }
     if (intent == CaptureIntentKind.planBlock) {
       return result.startTime != null && result.endTime != null
-          ? '${_cachedDateFormat('MM-dd HH:mm').format(result.startTime!)}–${_cachedDateFormat('HH:mm').format(result.endTime!)}'
+          ? '${AppTimeFormats.dateFormatter('MM-dd HH:mm').format(result.startTime!)}–${AppTimeFormats.dateFormatter('HH:mm').format(result.endTime!)}'
           : '规划时段待确认';
     }
     if (result.isAllDay && result.startTime != null) {
-      return '${_cachedDateFormat('MM-dd').format(result.startTime!)}内完成';
+      return '${AppTimeFormats.dateFormatter('MM-dd').format(result.startTime!)}内完成';
     }
     if (result.endTime != null) {
-      return '${_cachedDateFormat('MM-dd HH:mm').format(result.endTime!)}前完成';
+      return '${AppTimeFormats.dateFormatter('MM-dd HH:mm').format(result.endTime!)}前完成';
     }
     return '未安排';
   }
@@ -659,14 +659,6 @@ extension _AddTodoParsingExt on _AddTodoScreenState {
   String _dateWithSemesterWeek(DateTime date, String formattedDate) =>
       _semesterWeekContext?.appendWeekLabel(date, formattedDate) ??
       formattedDate;
-
-  DateFormat _cachedDateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
-  }
 
   Future<void> _pickScheduleStartTime() async {
     _unfocusActiveInput();

@@ -68,7 +68,7 @@ extension _CourseSettingsSemesters on _CourseSettingsPageState {
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        '开学: ${_cachedDateFormat('yyyy/MM/dd').format(semester.startDate)}',
+                        '开学: ${AppTimeFormats.dateFormatter('yyyy/MM/dd').format(semester.startDate)}',
                         style: TextStyle(
                           fontSize: 13,
                           color: Colors.grey.shade600,
@@ -89,7 +89,7 @@ extension _CourseSettingsSemesters on _CourseSettingsPageState {
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          '放假: ${_cachedDateFormat('yyyy/MM/dd').format(semester.endDate!)}',
+                          '放假: ${AppTimeFormats.dateFormatter('yyyy/MM/dd').format(semester.endDate!)}',
                           style: TextStyle(
                             fontSize: 13,
                             color: Colors.grey.shade600,
@@ -289,7 +289,7 @@ extension _CourseSettingsSemesters on _CourseSettingsPageState {
                         child: OutlinedButton.icon(
                           icon: const Icon(Icons.calendar_month),
                           label: Text(
-                            '开学日期: ${_cachedDateFormat('yyyy/MM/dd').format(startDate!)}',
+                            '开学日期: ${AppTimeFormats.dateFormatter('yyyy/MM/dd').format(startDate!)}',
                           ),
                           onPressed: () async {
                             final picked = await showAppDatePicker(
@@ -314,7 +314,7 @@ extension _CourseSettingsSemesters on _CourseSettingsPageState {
                           icon: const Icon(Icons.calendar_month_outlined),
                           label: Text(
                             endDate != null
-                                ? '放假日期: ${_cachedDateFormat('yyyy/MM/dd').format(endDate!)}'
+                                ? '放假日期: ${AppTimeFormats.dateFormatter('yyyy/MM/dd').format(endDate!)}'
                                 : '选择放假日期 (可选)',
                           ),
                           onPressed: () async {
@@ -523,7 +523,7 @@ extension _CourseSettingsSemesters on _CourseSettingsPageState {
                           icon: const Icon(Icons.calendar_month),
                           label: Text(
                             startDate != null
-                                ? '开学日期: ${_cachedDateFormat('yyyy/MM/dd').format(startDate!)}'
+                                ? '开学日期: ${AppTimeFormats.dateFormatter('yyyy/MM/dd').format(startDate!)}'
                                 : '选择开学日期',
                           ),
                           onPressed: () async {
@@ -555,7 +555,7 @@ extension _CourseSettingsSemesters on _CourseSettingsPageState {
                           icon: const Icon(Icons.calendar_month_outlined),
                           label: Text(
                             endDate != null
-                                ? '放假日期: ${_cachedDateFormat('yyyy/MM/dd').format(endDate!)}'
+                                ? '放假日期: ${AppTimeFormats.dateFormatter('yyyy/MM/dd').format(endDate!)}'
                                 : '选择放假日期 (可选)',
                           ),
                           onPressed: () async {
@@ -708,7 +708,7 @@ extension _CourseSettingsSemesters on _CourseSettingsPageState {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  '开学: ${_cachedDateFormat('yyyy/MM/dd').format(semester.startDate)}',
+                                  '开学: ${AppTimeFormats.dateFormatter('yyyy/MM/dd').format(semester.startDate)}',
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: colorScheme.onSurfaceVariant,

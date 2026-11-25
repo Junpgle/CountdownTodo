@@ -93,7 +93,7 @@ extension _TeamManagementCardsActionsExt on _TeamManagementScreenState {
                           ),
                         const SizedBox(height: 4),
                         Text(
-                          '创建于 ${_teamManagementDateFormat('yyyy年MM月dd日').format(DateTime.fromMillisecondsSinceEpoch(team.createdAt))}',
+                          '创建于 ${AppTimeFormats.dateFormatter('yyyy年MM月dd日').format(DateTime.fromMillisecondsSinceEpoch(team.createdAt))}',
                           style: TextStyle(
                             fontSize: 12,
                             color: Colors.grey.shade500,

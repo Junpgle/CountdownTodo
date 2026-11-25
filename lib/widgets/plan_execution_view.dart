@@ -1,7 +1,6 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../screens/course_screens.dart';
@@ -9,16 +8,6 @@ import '../services/pomodoro_service.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/page_transitions.dart';
 import 'optional_liquid_glass_surface.dart';
-
-final Map<(String?, String), DateFormat> _planExecutionDateFormats = {};
-
-DateFormat _planExecutionDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _planExecutionDateFormats.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
-}
 
 /// Presentation only: actual records keep their identity and never become
 /// draggable plans or change the plan's linked focus duration.
@@ -141,7 +130,7 @@ class PlanExecutionEntry {
     final format = DateUtils.isSameDay(startDate, endDate)
         ? 'HH:mm'
         : 'MM-dd HH:mm';
-    final dateFormat = _planExecutionDateFormat(format);
+    final dateFormat = AppTimeFormats.dateFormatter(format);
     return '${dateFormat.format(startDate)}–${dateFormat.format(endDate)}';
   }
 
@@ -187,7 +176,7 @@ class PlanExecutionSummary extends StatelessWidget {
     BuildContext context,
     List<PlanExecutionEntry> entries,
   ) async {
-    final dateFormat = _planExecutionDateFormat('M月d日');
+    final dateFormat = AppTimeFormats.dateFormatter('M月d日');
     ModalRoute<dynamic>? sheetRoute;
     final selected = await showAppModalBottomSheet<PlanExecutionEntry>(
       context: context,

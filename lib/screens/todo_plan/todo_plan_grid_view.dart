@@ -461,8 +461,8 @@ class _PlanGridViewState extends State<_PlanGridView>
                                         child: Text(
                                           _saving
                                               ? '正在保存调整…'
-                                              : '${_todoPlanDateFormat('HH:mm').format(_preview!.start)} → '
-                                                    '${_todoPlanDateFormat('HH:mm').format(_preview!.end)} · ${_preview!.minutes}分钟',
+                                              : '${AppTimeFormats.dateFormatter('HH:mm').format(_preview!.start)} → '
+                                                    '${AppTimeFormats.dateFormatter('HH:mm').format(_preview!.end)} · ${_preview!.minutes}分钟',
                                           textAlign: TextAlign.center,
                                           style: TextStyle(
                                             color: Theme.of(context)

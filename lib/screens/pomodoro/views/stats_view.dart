@@ -32,17 +32,6 @@ class _MonthlyPomodoroSummary {
   }
 }
 
-final Map<(String?, String), DateFormat> _pomodoroStatsDateFormatters = {};
-
-DateFormat _pomodoroStatsDateFormat(String pattern, [String? locale]) {
-  final effectiveLocale = locale ?? Intl.defaultLocale;
-  final key = (effectiveLocale, pattern);
-  return _pomodoroStatsDateFormatters[key] ??= DateFormat(
-    pattern,
-    effectiveLocale,
-  );
-}
-
 class PomodoroStats extends StatefulWidget {
   final String username;
   final bool isCompact;
@@ -352,17 +341,18 @@ class PomodoroStatsState extends State<PomodoroStats> {
 
   String _rangeLabel() {
     if (_dimension == 0) {
-      return _pomodoroStatsDateFormat('yyyy年MM月dd日').format(_selected);
+      return AppTimeFormats.dateFormatter('yyyy年MM月dd日').format(_selected);
     }
     if (_dimension == 1) {
       final range = _getRange();
-      final startStr = _pomodoroStatsDateFormat('MM/dd').format(range.start);
-      final endStr = _pomodoroStatsDateFormat('MM/dd')
+      final startStr = AppTimeFormats.dateFormatter('MM/dd')
+          .format(range.start);
+      final endStr = AppTimeFormats.dateFormatter('MM/dd')
           .format(range.end.subtract(const Duration(seconds: 1)));
       return '$startStr - $endStr';
     }
     if (_dimension == 2) {
-      return _pomodoroStatsDateFormat('yyyy年MM月').format(_selected);
+      return AppTimeFormats.dateFormatter('yyyy年MM月').format(_selected);
     }
     return '${_selected.year}年';
   }

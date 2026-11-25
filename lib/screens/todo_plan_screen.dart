@@ -11,7 +11,6 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../services/course_service.dart';
@@ -51,15 +50,6 @@ part 'todo_plan/todo_plan_grid_blocks.dart';
 const double kTimeAxisW = 46.0;
 
 final GlobalKey planDragKey = GlobalKey();
-final Map<(String?, String), DateFormat> _todoPlanDateFormatters = {};
-
-DateFormat _todoPlanDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _todoPlanDateFormatters.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
-}
 
 class TodoPlanScreen extends StatefulWidget {
   final String username;
@@ -260,7 +250,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   }
 
   String _dragTime(int value) =>
-      _todoPlanDateFormat('HH:mm')
+      AppTimeFormats.dateFormatter('HH:mm')
           .format(DateTime.fromMillisecondsSinceEpoch(value));
 
   Future<void> _checkUndo() async {
@@ -688,11 +678,12 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
               ),
             Flexible(
               child: Tooltip(
-                message: _todoPlanDateFormat('yyyy年M月d日').format(_focusedDate),
+                message: AppTimeFormats.dateFormatter('yyyy年M月d日')
+                    .format(_focusedDate),
                 child: GestureDetector(
                   onTap: _pickDate,
                   child: Text(
-                    _todoPlanDateFormat(shortDate ? 'M/d' : 'MM月dd日')
+                    AppTimeFormats.dateFormatter(shortDate ? 'M/d' : 'MM月dd日')
                         .format(_focusedDate),
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,

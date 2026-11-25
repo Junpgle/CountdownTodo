@@ -765,7 +765,7 @@ extension _ConflictInboxCardsExt on _ConflictInboxScreenState {
     final end = _parseMs(
       map['due_date'] ?? map['dueDate'] ?? map['end_time'] ?? map['endTime'],
     );
-    final timeFormat = _conflictInboxDateFormat('HH:mm');
+    final timeFormat = AppTimeFormats.dateFormatter('HH:mm');
 
     return Container(
       padding: const EdgeInsets.all(16),

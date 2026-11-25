@@ -5,7 +5,7 @@ part of 'todo_chat_screen.dart';
 mixin _TodoChatMessages on _TodoChatScreenStateBase {
   Widget _buildMessageBubble(ChatMessage msg, bool isDark) {
     final isUser = msg.role == ChatRole.user;
-    final timeStr = _todoChatDateFormat('HH:mm').format(msg.timestamp);
+    final timeStr = AppTimeFormats.dateFormatter('HH:mm').format(msg.timestamp);
     final colorScheme = Theme.of(context).colorScheme;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final maxBubbleWidth = screenWidth >= 900
@@ -620,10 +620,9 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
               valueListenable: AiRecognitionChatBridge.streamChanges,
               builder: (context, _, _) {
                 final live = AiRecognitionChatBridge.liveContentFor(msg.id);
-                final displayContent =
-                    (live != null && live.trim().isNotEmpty)
-                        ? live
-                        : msg.content;
+                final displayContent = (live != null && live.trim().isNotEmpty)
+                    ? live
+                    : msg.content;
                 if (displayContent.isEmpty) return const SizedBox.shrink();
                 return AiChatMarkdown(
                   data: AiActionParser.cleanActionContent(displayContent),
@@ -640,9 +639,8 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
             if (msg.rawContent.trim().isNotEmpty) ...[
               const SizedBox(height: 6),
               Theme(
-                data: Theme.of(
-                  context,
-                ).copyWith(dividerColor: Colors.transparent),
+                data: Theme.of(context)
+                    .copyWith(dividerColor: Colors.transparent),
                 child: ExpansionTile(
                   tilePadding: EdgeInsets.zero,
                   childrenPadding: const EdgeInsets.only(top: 4),
@@ -667,9 +665,7 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: AiChatMarkdown(
-                        data: AiActionParser.cleanActionContent(
-                          msg.rawContent,
-                        ),
+                        data: AiActionParser.cleanActionContent(msg.rawContent),
                       ),
                     ),
                   ],

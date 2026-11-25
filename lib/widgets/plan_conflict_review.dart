@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../models/plan_availability.dart';
@@ -15,6 +14,7 @@ import '../utils/calendar_date_math.dart';
 import '../utils/page_transitions.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'plan_block_editor_sheet.dart';
+import '../utils/time_utils.dart';
 
 typedef PlanConflictReviewLoader = Future<PlanConflictReviewResult> Function(
   String username,
@@ -23,18 +23,8 @@ typedef PlanConflictReviewLoader = Future<PlanConflictReviewResult> Function(
   bool appOnly,
 });
 
-final Map<(String?, String), DateFormat> _planConflictReviewDateFormats = {};
-
-DateFormat _planConflictReviewDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _planConflictReviewDateFormats.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
-}
-
 String _time(DateTime value) =>
-    _planConflictReviewDateFormat('MM-dd HH:mm').format(value);
+    AppTimeFormats.dateFormatter('MM-dd HH:mm').format(value);
 DateTime _day(DateTime value) => DateTime(value.year, value.month, value.day);
 String _sourceName(PlanBusySource source) => switch (source) {
   PlanBusySource.course => '课程',
@@ -585,7 +575,7 @@ class _PlanConflictReviewSheetState extends State<PlanConflictReviewSheet>
     final padding = MediaQuery.paddingOf(context);
     final colors = Theme.of(context).colorScheme;
     final result = _result;
-    final conflictDateFormat = _planConflictReviewDateFormat('M月d日');
+    final conflictDateFormat = AppTimeFormats.dateFormatter('M月d日');
     final rows = <Object>[];
     DateTime? group;
     for (final entry in result?.entries ?? const <PlanConflictEntry>[]) {

@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../models/todo_create_save_result.dart';
@@ -33,16 +32,6 @@ String _lessonTypeLabel(String? type) {
   if (type == 'EXPERIMENT') return '实验';
   if (type == 'THEORY') return '理论';
   return type?.trim() ?? '';
-}
-
-final Map<(String?, String), DateFormat> _courseSectionDateFormats = {};
-
-DateFormat _courseSectionDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _courseSectionDateFormats.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
 }
 
 // ─────────────────────────────────────────────
@@ -351,7 +340,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     final tomorrowFixedSchedules = results[3] as List<FixedScheduleItem>;
     final allCourses = results[4] as List<CourseItem>;
     final deviceCalendarEvents = results[5] as List<DeviceCalendarEvent>;
-    final dateFormat = _courseSectionDateFormat('yyyy-MM-dd');
+    final dateFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd');
     final today = dateFormat.format(now);
     final tomorrow = dateFormat.format(tomorrowStart);
 
@@ -476,7 +465,8 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final nowMs = now.millisecondsSinceEpoch;
-    final fallbackToday = _courseSectionDateFormat('yyyy-MM-dd').format(now);
+    final fallbackToday = AppTimeFormats.dateFormatter('yyyy-MM-dd')
+        .format(now);
     final fallbackCourses = widget.courses
         .where((course) => course.date == fallbackToday)
         .toList();
@@ -848,7 +838,7 @@ class _DeviceCalendarCompactCardState
     final accent = widget.event.colorValue == null
         ? colors.tertiary
         : Color(widget.event.colorValue!);
-    final timeFormat = _courseSectionDateFormat('HH:mm');
+    final timeFormat = AppTimeFormats.dateFormatter('HH:mm');
     final timeStart = timeFormat.format(widget.event.start);
     final timeEnd = timeFormat.format(widget.event.end);
     return OptionalLiquidGlassCard(
@@ -986,14 +976,14 @@ class _FixedScheduleCompactCard extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final startLabel = item.startTime == null
         ? '时间待定'
-        : _courseSectionDateFormat('HH:mm').format(
+        : AppTimeFormats.dateFormatter('HH:mm').format(
             DateTime.fromMillisecondsSinceEpoch(item.startTime!).toLocal(),
           );
     final endLabel = item.startTime == null
         ? null
         : item.endTime == null
         ? '结束待定'
-        : _courseSectionDateFormat('HH:mm').format(
+        : AppTimeFormats.dateFormatter('HH:mm').format(
             DateTime.fromMillisecondsSinceEpoch(item.endTime!).toLocal(),
           );
     final supportingText = [
@@ -1312,7 +1302,7 @@ class _PlanCompactCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final timeFormat = _courseSectionDateFormat('HH:mm');
+    final timeFormat = AppTimeFormats.dateFormatter('HH:mm');
     final start = timeFormat.format(
       DateTime.fromMillisecondsSinceEpoch(block.startTime),
     );
@@ -1580,7 +1570,7 @@ class _TodoCompactCardState extends State<_TodoCompactCard> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        _courseSectionDateFormat('HH:mm').format(start),
+                        AppTimeFormats.dateFormatter('HH:mm').format(start),
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.bold,
@@ -1589,7 +1579,7 @@ class _TodoCompactCardState extends State<_TodoCompactCard> {
                         ),
                       ),
                       Text(
-                        _courseSectionDateFormat('HH:mm').format(end),
+                        AppTimeFormats.dateFormatter('HH:mm').format(end),
                         style: TextStyle(
                           fontSize: 10.5,
                           color: statusColor.withValues(alpha: 0.58),

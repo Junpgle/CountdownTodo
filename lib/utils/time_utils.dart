@@ -77,7 +77,7 @@ String formatCountdown(int totalSeconds) {
 // ── 日期时间格式化 ──────────────────────────────────────────
 
 class AppTimeFormats {
-  static const int _maximumCachedDateFormats = 32;
+  static const int _maximumCachedDateFormats = 64;
   static final Map<(String?, String), DateFormat> _dateFormatters = {};
 
   const AppTimeFormats._();

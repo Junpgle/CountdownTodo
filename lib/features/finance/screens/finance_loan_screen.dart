@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
@@ -11,6 +10,7 @@ import '../widgets/finance_management_widgets.dart';
 import '../widgets/finance_loan_payment_dialog.dart';
 import 'finance_loan_entry_screen.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/time_utils.dart';
 
 const _maxOverdueRefreshDelay = Duration(days: 24);
 
@@ -499,19 +499,10 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen>
   List<FinancePaymentMethod> _paymentMethods = const [];
   bool? _paidFilter;
   final _updating = <String>{};
-  final Map<(String?, String), DateFormat> _dateFormatters = {};
   bool _isLoading = true;
   String? _loadError;
   int _loadGeneration = 0;
   Timer? _overdueRefreshTimer;
-
-  DateFormat _cachedDateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
-  }
 
   FinanceLoan get _currentLoan => _loan ?? widget.loan;
 
@@ -754,7 +745,7 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen>
     final paidAt = installment.paidAt;
     final paidDateFormat = paidAt == null
         ? null
-        : _cachedDateFormat('yyyy年M月d日 HH:mm');
+        : AppTimeFormats.dateFormatter('yyyy年M月d日 HH:mm');
     return FinanceSectionCard(
       key: ValueKey('finance-loan-installment-${installment.uuid}'),
       child: Column(

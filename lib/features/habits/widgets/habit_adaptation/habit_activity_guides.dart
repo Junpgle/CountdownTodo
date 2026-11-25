@@ -300,7 +300,7 @@ class HabitReadingGuide extends StatelessWidget {
             colorScheme: colorScheme,
           ),
           const SizedBox(height: 6),
-          const _ReadingFaq(),
+          const HabitGuideFaq(items: _readingFaqItems),
         ],
       ),
     );
@@ -334,100 +334,28 @@ class HabitReadingGuide extends StatelessWidget {
   }
 }
 
-class _ReadingFaq extends StatelessWidget {
-  const _ReadingFaq();
-
-  static const _items = [
-    (
-      '一定要每天读 30 分钟吗？',
-      '不一定。30 分钟只是可编辑起点，没有适合所有人的统一阅读处方。先选择能长期坚持的时长，比一开始定得很高更重要。',
-    ),
-    ('读得越久、页数越多越好吗？', '不一定。阅读还包括理解和回忆；如果注意力已经明显下降，可以先停下来休息或拆成两个阅读块。'),
-    ('只读不做笔记可以吗？', '可以。笔记不是必需品，但读完后用自己的话回忆一句或说出 3 个要点，通常比被动重读更能检验理解。'),
-    ('纸书和电子书应该选哪个？', '优先选择更容易持续、眼睛和姿势更舒服的载体。屏幕阅读时注意远眺、眨眼和亮度，出现持续不适就减少屏幕时长。'),
-    ('今天读不下去怎么办？', '把目标降到 10–15 分钟，换成更容易进入状态的章节，或者只完成“读一小节并复述一句”；先保留节奏，再逐步增加。'),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Theme(
-      data: Theme.of(
-        context,
-      ).copyWith(dividerColor: colorScheme.outlineVariant.withValues(alpha: 0)),
-      child: Material(
-        color: Colors.transparent,
-        child: ExpansionTile(
-          initiallyExpanded: false,
-          tilePadding: EdgeInsets.zero,
-          childrenPadding: const EdgeInsets.only(bottom: 2),
-          leading: Icon(
-            Icons.help_outline_rounded,
-            size: 19,
-            color: colorScheme.primary,
-          ),
-          title: Text(
-            '常见问题',
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w800,
-              color: colorScheme.onSurface,
-            ),
-          ),
-          children: [
-            for (final item in _items)
-              _ReadingFaqItem(
-                question: item.$1,
-                answer: item.$2,
-                colorScheme: colorScheme,
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ReadingFaqItem extends StatelessWidget {
-  final String question;
-  final String answer;
-  final ColorScheme colorScheme;
-
-  const _ReadingFaqItem({
-    required this.question,
-    required this.answer,
-    required this.colorScheme,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 4, right: 4, bottom: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            question,
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w800,
-              color: colorScheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            answer,
-            style: TextStyle(
-              fontSize: 11.5,
-              height: 1.45,
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+const List<HabitGuideFaqItem> _readingFaqItems = [
+  HabitGuideFaqItem(
+    '一定要每天读 30 分钟吗？',
+    '不一定。30 分钟只是可编辑起点，没有适合所有人的统一阅读处方。先选择能长期坚持的时长，比一开始定得很高更重要。',
+  ),
+  HabitGuideFaqItem(
+    '读得越久、页数越多越好吗？',
+    '不一定。阅读还包括理解和回忆；如果注意力已经明显下降，可以先停下来休息或拆成两个阅读块。',
+  ),
+  HabitGuideFaqItem(
+    '只读不做笔记可以吗？',
+    '可以。笔记不是必需品，但读完后用自己的话回忆一句或说出 3 个要点，通常比被动重读更能检验理解。',
+  ),
+  HabitGuideFaqItem(
+    '纸书和电子书应该选哪个？',
+    '优先选择更容易持续、眼睛和姿势更舒服的载体。屏幕阅读时注意远眺、眨眼和亮度，出现持续不适就减少屏幕时长。',
+  ),
+  HabitGuideFaqItem(
+    '今天读不下去怎么办？',
+    '把目标降到 10–15 分钟，换成更容易进入状态的章节，或者只完成“读一小节并复述一句”；先保留节奏，再逐步增加。',
+  ),
+];
 
 /// 学习、单词和冥想共用的轻量领域指导卡，避免把建议硬编码进通用目标控件。
 class _HabitDomainGuide extends StatelessWidget {

@@ -954,7 +954,7 @@ extension _PlanBlockEditorActions on _PlanBlockEditorSheetState {
       if (!mounted || route?.isCurrent == false) return;
       if (_dirty) throw StateError('请先保存修改，或放弃修改后重新打开');
       final block = request.block;
-      final format = _planBlockEditorDateFormat('M月d日 HH:mm');
+      final format = AppTimeFormats.dateFormatter('M月d日 HH:mm');
       final confirmed = await showAppDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(

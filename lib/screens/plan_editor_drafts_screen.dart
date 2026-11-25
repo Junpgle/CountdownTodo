@@ -2,11 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 
 import '../services/plan_editor_draft_repository.dart';
 import '../services/plan_todo_guard.dart';
 import '../widgets/plan_block_editor_sheet.dart';
+import '../utils/time_utils.dart';
 
 Future<void> openPlanEditorDrafts(
   BuildContext context,
@@ -45,15 +45,6 @@ class _PlanEditorDraftsScreenState extends State<PlanEditorDraftsScreen>
   String? _error;
   bool _loading = true, _opening = false;
   int _sequence = 0;
-  final Map<(String?, String), DateFormat> _dateFormatters = {};
-
-  DateFormat _cachedDateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
-  }
 
   @override
   void initState() {
@@ -245,7 +236,7 @@ class _PlanEditorDraftsScreenState extends State<PlanEditorDraftsScreen>
   }
 
   String _time(int value) =>
-      _cachedDateFormat('M月d日 HH:mm')
+      AppTimeFormats.dateFormatter('M月d日 HH:mm')
           .format(DateTime.fromMillisecondsSinceEpoch(value));
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -307,7 +298,7 @@ class _PlanEditorDraftsScreenState extends State<PlanEditorDraftsScreen>
                               ),
                               Text(
                                 row.parts > 1
-                                    ? '${row.parts}段 · 共${row.total}分钟 · 日期${_cachedDateFormat('M/d').format(DateTime.fromMillisecondsSinceEpoch(row.start))}至${_cachedDateFormat('M/d').format(DateTime.fromMillisecondsSinceEpoch(row.lastEnd))}'
+                                    ? '${row.parts}段 · 共${row.total}分钟 · 日期${AppTimeFormats.dateFormatter('M/d').format(DateTime.fromMillisecondsSinceEpoch(row.start))}至${AppTimeFormats.dateFormatter('M/d').format(DateTime.fromMillisecondsSinceEpoch(row.lastEnd))}'
                                     : '${_time(row.start)} — ${_time(row.end)}',
                               ),
                               Text('保留于 ${_time(row.updatedAt)}'),

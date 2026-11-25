@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
 import '../models.dart';
@@ -9,6 +8,7 @@ import '../utils/app_dialogs.dart';
 import '../utils/calendar_date_math.dart';
 import 'ai_water_border.dart';
 import 'optional_liquid_glass_surface.dart';
+import '../utils/time_utils.dart';
 
 class TodoGroupWidget extends StatefulWidget {
   final TodoGroup group;
@@ -84,7 +84,6 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
   int? _cachedProgressNextChangeMicros;
   int? _cachedProgressLastNowMicros;
   double _cachedGroupFillProgress = 0;
-  final Map<(String?, String), DateFormat> _dateFormatters = {};
 
   GlobalKey _todoCardKeyFor(String todoId) =>
       _todoCardKeys.putIfAbsent(todoId, () => GlobalKey());
@@ -233,14 +232,6 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     _cachedProgressNextChangeMicros = nextChangeMicros;
     _cachedProgressLastNowMicros = nowMicros;
     return _cachedGroupFillProgress = groupFillProgress;
-  }
-
-  DateFormat _cachedDateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
   }
 
   @override
@@ -686,7 +677,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
       label = "逾期";
       color = Colors.red;
     } else {
-      label = _cachedDateFormat('MM-dd').format(deadline);
+      label = AppTimeFormats.dateFormatter('MM-dd').format(deadline);
       color = Colors.grey;
     }
 
@@ -733,9 +724,10 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     String timeStr = "";
     if (dueDate != null) {
       if (isDateOnly) {
-        timeStr = '${_cachedDateFormat('MM/dd').format(dueDate)}内完成';
+        timeStr = '${AppTimeFormats.dateFormatter('MM/dd').format(dueDate)}内完成';
       } else {
-        timeStr = '${_cachedDateFormat('MM/dd HH:mm').format(dueDate)}前完成';
+        timeStr =
+            '${AppTimeFormats.dateFormatter('MM/dd HH:mm').format(dueDate)}前完成';
       }
     } else {
       timeStr = '未安排';
@@ -766,7 +758,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
         badgeBg = colorScheme.secondaryContainer.withValues(alpha: 0.5);
       }
     } else {
-      badge = _cachedDateFormat('MM/dd').format(start);
+      badge = AppTimeFormats.dateFormatter('MM/dd').format(start);
       badgeColor = colorScheme.onSurface.withValues(alpha: 0.45);
       badgeBg = colorScheme.onSurface.withValues(alpha: 0.06);
     }

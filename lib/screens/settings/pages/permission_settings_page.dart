@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../../utils/app_platform.dart';
+import '../../../utils/settings_navigation.dart';
 import '../../../widgets/app_state_views.dart';
 import '../../../services/minor_mode_policy.dart';
 import '../../../services/minor_mode_service.dart';
@@ -24,7 +25,8 @@ class PermissionSettingsPage extends StatefulWidget {
   State<PermissionSettingsPage> createState() => _PermissionSettingsPageState();
 }
 
-class _PermissionSettingsPageState extends State<PermissionSettingsPage> {
+class _PermissionSettingsPageState extends State<PermissionSettingsPage>
+    with SettingsTargetHighlightMixin<PermissionSettingsPage> {
   static const platform = MethodChannel(
     'com.math_quiz.junpgle.com.math_quiz_app/notifications',
   );
@@ -34,6 +36,9 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> {
   late handlers.PermissionHandler _permissionHandler;
   bool _isCheckingPermissions = false;
   final Map<String, PermissionStatus?> _permissionStatuses = {};
+
+  @override
+  GlobalKey? resolveSettingsTargetKey(String target) => _itemKeys[target];
 
   @override
   void initState() {
@@ -56,23 +61,7 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> {
     );
     _permissionHandler.checkAllPermissions();
 
-    if (widget.initialTarget != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _scrollToTarget(widget.initialTarget!);
-      });
-    }
-  }
-
-  void _scrollToTarget(String target) {
-    final key = _itemKeys[target];
-    if (key?.currentContext != null) {
-      Scrollable.ensureVisible(
-        key!.currentContext!,
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOut,
-        alignment: 0.15,
-      );
-    }
+    scheduleInitialSettingsTarget(widget.initialTarget, highlight: false);
   }
 
   @override

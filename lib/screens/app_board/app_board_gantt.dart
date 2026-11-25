@@ -492,7 +492,7 @@ class _GanttChartState extends State<GanttChart> {
           math.min(8.0, completedRowHeight * 0.55),
         );
         _scheduleScrollToToday(minDate, effectiveDayWidth);
-        final weekdayFormatter = _appBoardDateFormat('E');
+        final weekdayFormatter = AppTimeFormats.dateFormatter('E');
 
         return SingleChildScrollView(
           controller: _scrollController,

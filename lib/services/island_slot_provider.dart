@@ -1,5 +1,3 @@
-import 'package:intl/intl.dart';
-
 import '../storage_service.dart';
 import '../models.dart';
 import '../utils/calendar_date_math.dart';
@@ -59,16 +57,6 @@ class IslandSlotData {
 class IslandSlotProvider {
   IslandSlotProvider._();
 
-  static final Map<(String?, String), DateFormat> _dateFormatters = {};
-
-  static DateFormat _dateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
-  }
-
   /// Detect special todo type from title keywords
   static String detectTodoType(String title) =>
       ItemSemanticsService.specialTodoTypeForTitle(title);
@@ -124,7 +112,7 @@ class IslandSlotProvider {
   /// Get date slot data
   static Future<IslandSlotData> _getDateSlot(bool isLeft) async {
     final now = DateTime.now();
-    final display = _dateFormat('M月d日').format(now);
+    final display = AppTimeFormats.dateFormatter('M月d日').format(now);
     return IslandSlotData(display: display, type: 'date', detailTitle: display);
   }
 
@@ -190,7 +178,7 @@ class IslandSlotProvider {
       return const IslandSlotData(display: '', type: 'todo');
     }
     final time = t.dueDate != null
-        ? _dateFormat('MM-dd').format(t.dueDate!)
+        ? AppTimeFormats.dateFormatter('MM-dd').format(t.dueDate!)
         : '';
 
     // 判断是否逾期
@@ -205,7 +193,7 @@ class IslandSlotProvider {
         : (time.isNotEmpty ? '${t.title} [$overdueTag$time]' : t.title);
 
     final timeRange = t.dueDate != null
-        ? _dateFormat('HH:mm').format(t.dueDate!)
+        ? AppTimeFormats.dateFormatter('HH:mm').format(t.dueDate!)
         : '';
 
     return IslandSlotData(
@@ -295,7 +283,8 @@ class IslandSlotProvider {
     DateTime? courseDate;
     if (course.date.isNotEmpty) {
       try {
-        courseDate = _dateFormat('yyyy-MM-dd').parseStrict(course.date);
+        courseDate = AppTimeFormats.dateFormatter('yyyy-MM-dd')
+            .parseStrict(course.date);
       } catch (_) {
         courseDate = null;
       }
@@ -319,7 +308,7 @@ class IslandSlotProvider {
     try {
       final record = await PomodoroService.getLatestRecord();
       if (record != null) {
-        final time = _dateFormat('HH:mm').format(
+        final time = AppTimeFormats.dateFormatter('HH:mm').format(
           DateTime.fromMillisecondsSinceEpoch(
             record.endTime ?? record.startTime,
           ),
@@ -367,7 +356,8 @@ class IslandSlotProvider {
           display: display,
           type: 'countdown',
           detailTitle: c.title,
-          detailTime: _dateFormat('yyyy-MM-dd').format(c.targetDate),
+          detailTime: AppTimeFormats.dateFormatter('yyyy-MM-dd')
+              .format(c.targetDate),
           detailNote: '还有$days天',
         );
       }
@@ -453,7 +443,8 @@ class IslandSlotProvider {
           queue.add({
             'text': t.title,
             'type': 'todo',
-            'timeLabel': _dateFormat('HH:mm').format(t.dueDate!),
+            'timeLabel': AppTimeFormats.dateFormatter('HH:mm')
+                .format(t.dueDate!),
           });
         }
       }

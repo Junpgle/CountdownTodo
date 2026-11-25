@@ -307,19 +307,20 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
 
     if (todo.dueDate != null) {
       if (isDateOnly) {
-        return '${_cachedDateFormat('MM/dd').format(todo.dueDate!)}内完成';
+        return '${AppTimeFormats.dateFormatter('MM/dd').format(todo.dueDate!)}内完成';
       }
       if (todo.hasLegacyTimeRange) {
-        final dateTimeFormat = _cachedDateFormat('MM/dd HH:mm');
+        final dateTimeFormat = AppTimeFormats.dateFormatter('MM/dd HH:mm');
         final startStr = dateTimeFormat.format(cDate);
         final dueStr = dateTimeFormat.format(todo.dueDate!);
         return '$startStr → $dueStr';
       }
-      final dueStr = _cachedDateFormat('MM/dd HH:mm').format(todo.dueDate!);
+      final dueStr = AppTimeFormats.dateFormatter('MM/dd HH:mm')
+          .format(todo.dueDate!);
       return '$dueStr前完成';
     } else {
       if (todo.hasLegacyTiming) {
-        return '开始 ${_cachedDateFormat('MM/dd HH:mm').format(cDate)}';
+        return '开始 ${AppTimeFormats.dateFormatter('MM/dd HH:mm').format(cDate)}';
       }
       return '未安排';
     }
@@ -536,7 +537,7 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
       context,
       SnackBar(
         content: Text(
-          '${_cachedDateFormat('M月d日').format(node.date)}的待办实例尚未生成',
+          '${AppTimeFormats.dateFormatter('M月d日').format(node.date)}的待办实例尚未生成',
         ),
         behavior: SnackBarBehavior.floating,
       ),
@@ -561,7 +562,8 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
                 color: colorScheme.primary,
               ),
               title: Text(
-                _cachedDateFormat('yyyy年M月d日').format(occurrenceDate),
+                AppTimeFormats.dateFormatter('yyyy年M月d日')
+                    .format(occurrenceDate),
               ),
               subtitle: Text(occurrence.title),
             ),
@@ -684,7 +686,8 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
                   block.status == TodoPlanStatus.reminded),
         )
         .length;
-    final dateLabel = _cachedDateFormat('yyyy年M月d日').format(occurrenceDate);
+    final dateLabel = AppTimeFormats.dateFormatter('yyyy年M月d日')
+        .format(occurrenceDate);
     if (!mounted) return;
     final confirmed = await showAppDialog<bool>(
       context: context,

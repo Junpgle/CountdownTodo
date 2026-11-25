@@ -29,11 +29,11 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
 
     String formatDateTime(DateTime dt, bool showDate, bool showTime) {
       if (showDate && showTime) {
-        return _todoChatDateFormat('MM/dd HH:mm').format(dt);
+        return AppTimeFormats.dateFormatter('MM/dd HH:mm').format(dt);
       } else if (showDate) {
-        return _todoChatDateFormat('MM/dd').format(dt);
+        return AppTimeFormats.dateFormatter('MM/dd').format(dt);
       } else {
-        return _todoChatDateFormat('HH:mm').format(dt);
+        return AppTimeFormats.dateFormatter('HH:mm').format(dt);
       }
     }
 
@@ -43,26 +43,26 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
 
     if (isAllDay) {
       if (start != null && end != null && sameDay(start, end)) {
-        return '全天 ${_todoChatDateFormat('MM/dd').format(start)}';
+        return '全天 ${AppTimeFormats.dateFormatter('MM/dd').format(start)}';
       } else if (start != null && end != null) {
-        final dateFormat = _todoChatDateFormat('MM/dd');
+        final dateFormat = AppTimeFormats.dateFormatter('MM/dd');
         return '全天 ${dateFormat.format(start)} ~ ${dateFormat.format(end)}';
       } else if (start != null) {
-        return '全天 ${_todoChatDateFormat('MM/dd').format(start)}';
+        return '全天 ${AppTimeFormats.dateFormatter('MM/dd').format(start)}';
       } else if (end != null) {
-        return '全天 ${_todoChatDateFormat('MM/dd').format(end)}';
+        return '全天 ${AppTimeFormats.dateFormatter('MM/dd').format(end)}';
       }
     }
 
     if (start != null && end != null) {
       if (sameDay(start, end)) {
-        final dateText = _todoChatDateFormat('MM/dd').format(start);
-        final timeFormat = _todoChatDateFormat('HH:mm');
+        final dateText = AppTimeFormats.dateFormatter('MM/dd').format(start);
+        final timeFormat = AppTimeFormats.dateFormatter('HH:mm');
         final startText = timeFormat.format(start);
         final endText = timeFormat.format(end);
         return '$dateText $startText ~ $endText';
       } else {
-        final dateTimeFormat = _todoChatDateFormat('MM/dd HH:mm');
+        final dateTimeFormat = AppTimeFormats.dateFormatter('MM/dd HH:mm');
         return '${dateTimeFormat.format(start)} ~ ${dateTimeFormat.format(end)}';
       }
     } else if (start != null) {
@@ -104,11 +104,11 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         ? date!
         : start == null
         ? '日期待定'
-        : _todoChatDateFormat('yyyy-MM-dd').format(start);
+        : AppTimeFormats.dateFormatter('yyyy-MM-dd').format(start);
     if (start == null) return '$day 时间待定';
-    final startText = _todoChatDateFormat('HH:mm').format(start);
+    final startText = AppTimeFormats.dateFormatter('HH:mm').format(start);
     if (end == null) return '$day $startText（结束待定）';
-    return '$day $startText-${_todoChatDateFormat('HH:mm').format(end)}';
+    return '$day $startText-${AppTimeFormats.dateFormatter('HH:mm').format(end)}';
   }
 
   String _formatHabitActionSummary(AiTodoAction action) {

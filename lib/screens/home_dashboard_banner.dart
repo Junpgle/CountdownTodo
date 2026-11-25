@@ -48,16 +48,6 @@ bool _didDashboardPomodoroDisplayChange(
   return previousDisplaySeconds != nextDisplaySeconds;
 }
 
-final Map<(String?, String), DateFormat> _dashboardDateFormats = {};
-
-DateFormat _dashboardDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _dashboardDateFormats.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
-}
-
 mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
   bool _hasCheckedCourseNotification = false;
   List<TodoItem>? _dashboardTodoCandidateSource;
@@ -1196,7 +1186,7 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
 
     if (todo.isOverdueAt(now)) return '待处理';
     if (todo.isDateOnly) return '今日';
-    return _dashboardDateFormat('HH:mm').format(dueDate);
+    return AppTimeFormats.dateFormatter('HH:mm').format(dueDate);
   }
 
   // === 业务与辅助逻辑 ===
@@ -1212,7 +1202,7 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
     if (dateText.isNotEmpty) {
       // Prefer strict date parsing, then allow DateTime-compatible fallback.
       try {
-        day = _dashboardDateFormat('yyyy-MM-dd').parseStrict(dateText);
+        day = AppTimeFormats.dateFormatter('yyyy-MM-dd').parseStrict(dateText);
       } catch (_) {
         day = DateTime.tryParse(dateText);
       }

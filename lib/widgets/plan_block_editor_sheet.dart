@@ -6,7 +6,6 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
@@ -44,16 +43,6 @@ import 'time_estimation_hint.dart';
 part 'plan_block_editor/plan_block_editor_drafts.dart';
 part 'plan_block_editor/plan_block_editor_actions.dart';
 part 'plan_block_editor/plan_block_editor_ui.dart';
-
-final Map<(String?, String), DateFormat> _planBlockEditorDateFormats = {};
-
-DateFormat _planBlockEditorDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _planBlockEditorDateFormats.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
-}
 
 Future<T?> showPlanBlockEditorPage<T>({
   required BuildContext context,

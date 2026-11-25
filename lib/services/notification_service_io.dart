@@ -4,7 +4,6 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:intl/intl.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -105,15 +104,6 @@ class NotificationService {
 
   // Dedupe keys for Windows all-day todo notifications: "todoId@yyyy-MM-dd"
   static final Set<String> _windowsTodoNotificationKeys = <String>{};
-  static final Map<(String?, String), DateFormat>
-  _todoNotificationDateFormatters = {};
-
-  static DateFormat _todoNotificationDateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _todoNotificationDateFormatters.putIfAbsent((locale, pattern), () {
-      return DateFormat(pattern, locale);
-    });
-  }
 
   static const NotificationDetails _desktopNotificationDetails =
       NotificationDetails(
@@ -495,7 +485,7 @@ class NotificationService {
     required bool isSpecialTodo,
   }) {
     if (isSpecialTodo) return '${todo.id}@pickup-v${todo.version}';
-    final dayStr = _todoNotificationDateFormat('yyyy-MM-dd')
+    final dayStr = AppTimeFormats.dateFormatter('yyyy-MM-dd')
         .format(todo.dueDate!.toLocal());
     return '${todo.id}@$dayStr';
   }
@@ -558,7 +548,7 @@ class NotificationService {
     } else if (isAllDayTodo) {
       timeStr = '当天内完成';
     } else {
-      timeStr = '${_todoNotificationDateFormat('HH:mm').format(dueDate!)}前完成';
+      timeStr = '${AppTimeFormats.dateFormatter('HH:mm').format(dueDate!)}前完成';
     }
     final notifId = todo.id.hashCode;
 
@@ -568,7 +558,7 @@ class NotificationService {
     if (_isDesktopSupported) {
       if (isAllDayTodo) {
         final todaySuffix =
-            '@${_todoNotificationDateFormat('yyyy-MM-dd').format(DateTime.now())}';
+            '@${AppTimeFormats.dateFormatter('yyyy-MM-dd').format(DateTime.now())}';
         _windowsTodoNotificationKeys.removeWhere(
           (key) => !key.contains('@pickup-v') && !key.endsWith(todaySuffix),
         );

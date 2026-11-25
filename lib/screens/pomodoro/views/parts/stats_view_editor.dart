@@ -198,7 +198,7 @@ extension _PomodoroStatsEditor on PomodoroStatsState {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    _pomodoroStatsDateFormat('yyyy-MM-dd HH:mm:ss').format(
+                    AppTimeFormats.dateFormatter('yyyy-MM-dd HH:mm:ss').format(
                       DateTime.fromMillisecondsSinceEpoch(
                         editSession.startTime,
                         isUtc: true,
@@ -268,7 +268,7 @@ extension _PomodoroStatsEditor on PomodoroStatsState {
                           const Icon(Icons.access_time, size: 18),
                           const SizedBox(width: 8),
                           Text(
-                            _pomodoroStatsDateFormat('HH:mm').format(
+                            AppTimeFormats.dateFormatter('HH:mm').format(
                               DateTime.fromMillisecondsSinceEpoch(
                                 editSession.endTime ?? editSession.startTime,
                                 isUtc: true,
@@ -585,7 +585,7 @@ extension _PomodoroStatsEditor on PomodoroStatsState {
     int index,
     PauseInterval interval,
   ) {
-    final startStr = _pomodoroStatsDateFormat('HH:mm:ss').format(
+    final startStr = AppTimeFormats.dateFormatter('HH:mm:ss').format(
       DateTime.fromMillisecondsSinceEpoch(
         interval.startMs,
         isUtc: true,
@@ -593,7 +593,7 @@ extension _PomodoroStatsEditor on PomodoroStatsState {
     );
     final endStr = interval.isOngoing
         ? '进行中'
-        : _pomodoroStatsDateFormat('HH:mm:ss').format(
+        : AppTimeFormats.dateFormatter('HH:mm:ss').format(
             DateTime.fromMillisecondsSinceEpoch(
               interval.endMs!,
               isUtc: true,

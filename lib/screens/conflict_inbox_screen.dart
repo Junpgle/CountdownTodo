@@ -16,8 +16,6 @@ import '../services/todo_editor_save_service.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/floating_glass_control.dart';
 
-import 'package:intl/intl.dart';
-
 import '../widgets/todo_section_widget.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 import '../features/habits/models/habit_goal.dart';
@@ -30,16 +28,6 @@ part 'conflict_inbox/conflict_inbox_cards_and_banners.dart';
 part 'conflict_inbox/conflict_inbox_batch_actions.dart';
 part 'conflict_inbox/conflict_inbox_schedule_resolution.dart';
 part 'conflict_inbox/conflict_resolution_sheet.dart';
-
-final Map<(String?, String), DateFormat> _conflictInboxDateFormats = {};
-
-DateFormat _conflictInboxDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _conflictInboxDateFormats.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
-}
 
 enum _ConflictFilter { all, time, other }
 

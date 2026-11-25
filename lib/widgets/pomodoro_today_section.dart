@@ -63,18 +63,9 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
   int? _selectedHour;
   PomodoroCommunityStats? _communityStats;
   late AnimationController _chartAnimationController;
-  final Map<(String?, String), DateFormat> _dateFormatters = {};
 
   /// 每日建议专注标准基准（2 小时 = 7200 秒，供环形进度条参考）
   static const int _dailyFocusTargetSeconds = 7200;
-
-  DateFormat _cachedDateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
-  }
 
   @override
   void initState() {
@@ -1230,7 +1221,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
   // 番茄钟记录明细列表
   // ==========================================
   Widget _buildRecordsList(ColorScheme colorScheme, bool isDark) {
-    final timeFormat = _cachedDateFormat('HH:mm');
+    final timeFormat = AppTimeFormats.dateFormatter('HH:mm');
     final displayRecords = _showAllRecords
         ? _records
         : _records.take(3).toList();
@@ -1567,7 +1558,10 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
               icon: const Icon(Icons.play_arrow_rounded, size: 18),
               label: const Text('开启今日专注'),
               style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 10,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),

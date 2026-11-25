@@ -3,28 +3,18 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart' hide TextDirection;
 
 import '../storage_service.dart';
 import '../utils/calendar_date_math.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/floating_bottom_bar.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
+import '../utils/time_utils.dart';
 
 part 'screen_time/screen_time_helpers.dart';
 part 'screen_time/screen_time_sections.dart';
 part 'screen_time/screen_time_sub_screens.dart';
 part 'screen_time/screen_time_chart_painters.dart';
-
-final Map<(String?, String), DateFormat> _screenTimeDateFormats = {};
-
-DateFormat _screenTimeDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _screenTimeDateFormats.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
-}
 
 // ─────────────────────────────────────────────
 // 设备过滤枚举
@@ -228,7 +218,8 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   Future<void> _loadHistory() async {
     final history = await StorageService.getScreenTimeHistory();
     final mappings = await StorageService.getAppMappings();
-    final todayStr = _screenTimeDateFormat('yyyy-MM-dd').format(DateTime.now());
+    final todayStr = AppTimeFormats.dateFormatter('yyyy-MM-dd')
+        .format(DateTime.now());
     history[todayStr] = widget.todayStats;
     if (mounted) {
       setState(() {

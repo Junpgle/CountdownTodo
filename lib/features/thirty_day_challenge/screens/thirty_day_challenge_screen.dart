@@ -47,16 +47,6 @@ String _safeHashTag(String value) {
   return sanitized.isEmpty ? '我的挑战' : sanitized;
 }
 
-final Map<(String?, String), DateFormat> _challengeDateFormats = {};
-
-DateFormat _challengeDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _challengeDateFormats.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
-}
-
 class ThirtyDayChallengeScreen extends StatefulWidget {
   const ThirtyDayChallengeScreen({
     super.key,

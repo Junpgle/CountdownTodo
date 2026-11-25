@@ -103,7 +103,7 @@ mixin _WeeklyCourseGridHeader on _WeeklyCourseScreenStateBase {
                                 ),
                               ),
                             Text(
-                              "开始: ${_cachedDateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt, isUtc: true).toLocal())}\n截止: ${todo.dueDate != null ? _cachedDateFormat('MM-dd HH:mm').format(todo.dueDate!) : '无'}",
+                              "开始: ${AppTimeFormats.dateFormatter('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt, isUtc: true).toLocal())}\n截止: ${todo.dueDate != null ? AppTimeFormats.dateFormatter('MM-dd HH:mm').format(todo.dueDate!) : '无'}",
                             ),
                           ],
                         ),
@@ -219,7 +219,7 @@ mixin _WeeklyCourseGridHeader on _WeeklyCourseScreenStateBase {
       return const SizedBox.shrink();
     }
 
-    final dateKeyFormat = _cachedDateFormat('yyyy-MM-dd');
+    final dateKeyFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd');
     final String todayKey = dateKeyFormat.format(DateTime.now());
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -349,7 +349,7 @@ mixin _WeeklyCourseGridHeader on _WeeklyCourseScreenStateBase {
                   : null,
               child: GestureDetector(
                 onTap: () {
-                  String dateStr = _cachedDateFormat('MM-dd')
+                  String dateStr = AppTimeFormats.dateFormatter('MM-dd')
                       .format(currentDay);
                   if (fixedSchedules.isNotEmpty || dayTodos.isNotEmpty) {
                     _showDayDetailSheet(currentDay);
@@ -465,8 +465,8 @@ mixin _WeeklyCourseGridHeader on _WeeklyCourseScreenStateBase {
 
   Widget _buildHeader(DateTime? monday) {
     DateTime now = DateTime.now();
-    final dateKeyFormat = _cachedDateFormat('yyyy-MM-dd');
-    final headerDateFormat = _cachedDateFormat('M/dd');
+    final dateKeyFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd');
+    final headerDateFormat = AppTimeFormats.dateFormatter('M/dd');
     String todayStr = dateKeyFormat.format(now);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -613,7 +613,7 @@ mixin _WeeklyCourseGridHeader on _WeeklyCourseScreenStateBase {
     final day = monday != null
         ? CalendarDateMath.addDays(monday, weekday - 1)
         : DateTime.now();
-    final dateStr = _cachedDateFormat('M月d日').format(day);
+    final dateStr = AppTimeFormats.dateFormatter('M月d日').format(day);
     final weekdayStr = const [
       '周一',
       '周二',
@@ -623,7 +623,7 @@ mixin _WeeklyCourseGridHeader on _WeeklyCourseScreenStateBase {
       '周六',
       '周日',
     ][(weekday - 1).clamp(0, 6)];
-    final sourceDate = _cachedDateFormat('yyyy-MM-dd').format(day);
+    final sourceDate = AppTimeFormats.dateFormatter('yyyy-MM-dd').format(day);
 
     showAppModalBottomSheet(
       context: context,

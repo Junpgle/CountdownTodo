@@ -324,7 +324,7 @@ extension _AddTodoSavingSuggestionsExt on _AddTodoScreenState {
               : null);
     final item = FixedScheduleItem(
       title: parsed.title.trim().isEmpty ? _titleCtrl.text : parsed.title,
-      date: _cachedDateFormat('yyyy-MM-dd').format(dateSource),
+      date: AppTimeFormats.dateFormatter('yyyy-MM-dd').format(dateSource),
       startTime: start?.millisecondsSinceEpoch,
       endTime: end?.millisecondsSinceEpoch,
       source: resolvedSource,
@@ -837,7 +837,7 @@ extension _AddTodoSavingSuggestionsExt on _AddTodoScreenState {
             _buildSuggestionItem(
               icon: Icons.calendar_today_rounded,
               label:
-                  "建议截止: ${_cachedDateFormat('MM-dd HH:mm').format(_suggestedDueDate!)}",
+                  "建议截止: ${AppTimeFormats.dateFormatter('MM-dd HH:mm').format(_suggestedDueDate!)}",
               showAccept: true,
               onAccept: _acceptDueDateSuggestion,
               accentColor: Colors.deepOrangeAccent,

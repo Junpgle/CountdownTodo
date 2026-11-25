@@ -16,7 +16,7 @@ extension _PersonalTimelineDataExt on _PersonalTimelineScreenState {
     final day = AppTimeFormats.dayStart(_selectedDate);
 
     try {
-      final screenTimeDateFormat = _timelineDateFormat('yyyy-MM-dd');
+      final screenTimeDateFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd');
       Future<
         ({
           List<FinanceTransaction> transactions,
@@ -223,7 +223,7 @@ extension _PersonalTimelineDataExt on _PersonalTimelineScreenState {
       final Map<String, int> coursesByDay = {};
       var courseCount = 0;
       var maxDailyCourseCount = 0;
-      final courseDateFormat = _timelineDateFormat('yyyy-MM-dd');
+      final courseDateFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd');
       for (final course in courses) {
         DateTime? courseDay;
         try {
@@ -464,7 +464,9 @@ extension _PersonalTimelineDataExt on _PersonalTimelineScreenState {
       final start = DateTime(2020);
       final end = AppTimeFormats.localDayStartOffset(DateTime.now(), 1);
 
-      final allTimeScreenTimeDateFormat = _timelineDateFormat('yyyy-MM-dd');
+      final allTimeScreenTimeDateFormat = AppTimeFormats.dateFormatter(
+        'yyyy-MM-dd',
+      );
       final loaded = await Future.wait<dynamic>([
         TimelineService.instance.getSummaryForRange(
           widget.username,

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../models.dart';
 import '../../services/pomodoro_service.dart';
@@ -40,16 +39,6 @@ class _RebindTagPageState extends State<RebindTagPage>
   // 选中的记录
   final Set<String> _selectedPomodoros = {};
   final Set<String> _selectedTimeLogs = {};
-
-  final Map<(String?, String), DateFormat> _dateFormatters = {};
-
-  DateFormat _cachedDateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
-  }
 
   final TextEditingController _searchController = TextEditingController();
 
@@ -560,7 +549,7 @@ class _RebindTagPageState extends State<RebindTagPage>
   }
 
   Widget _buildFilterToolbar(ColorScheme colorScheme) {
-    final dateFormat = _cachedDateFormat('MM/dd');
+    final dateFormat = AppTimeFormats.dateFormatter('MM/dd');
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
@@ -678,7 +667,7 @@ class _RebindTagPageState extends State<RebindTagPage>
         ),
       );
     }
-    final recordDateFormat = _cachedDateFormat('yyyy-MM-dd HH:mm');
+    final recordDateFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd HH:mm');
 
     return Column(
       children: [
@@ -853,7 +842,7 @@ class _RebindTagPageState extends State<RebindTagPage>
         ),
       );
     }
-    final recordDateFormat = _cachedDateFormat('yyyy-MM-dd HH:mm');
+    final recordDateFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd HH:mm');
 
     return Column(
       children: [

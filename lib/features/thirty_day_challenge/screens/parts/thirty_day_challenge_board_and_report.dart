@@ -605,7 +605,7 @@ extension _ThirtyDayChallengeBoardExt on _ThirtyDayChallengeScreenState {
     final imageCount = state.tasks
         .where((task) => task.imageBase64?.isNotEmpty == true)
         .length;
-    final reportDateFormat = _challengeDateFormat('yyyy年M月d日');
+    final reportDateFormat = AppTimeFormats.dateFormatter('yyyy年M月d日');
     final generatedAt = reportDateFormat.format(DateTime.now());
     final startedAt = reportDateFormat.format(state.startedAt);
 
@@ -1000,6 +1000,6 @@ extension _ThirtyDayChallengeBoardExt on _ThirtyDayChallengeScreenState {
 
   String _formatReportDate(DateTime? date) {
     if (date == null) return '日期未知';
-    return _challengeDateFormat('yyyy年M月d日').format(date);
+    return AppTimeFormats.dateFormatter('yyyy年M月d日').format(date);
   }
 }

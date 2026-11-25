@@ -97,7 +97,7 @@ mixin _TodoSectionViewCardMixin on _TodoSectionStateBase {
         badgeBg = Colors.orange.withValues(alpha: 0.12);
       }
     } else {
-      badge = _cachedDateFormat('MM/dd').format(cDate);
+      badge = AppTimeFormats.dateFormatter('MM/dd').format(cDate);
       badgeColor = colorScheme.onSurface.withValues(alpha: 0.45);
       badgeBg = colorScheme.onSurface.withValues(alpha: 0.06);
     }

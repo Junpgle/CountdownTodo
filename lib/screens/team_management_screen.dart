@@ -11,8 +11,6 @@ import '../services/api_service.dart';
 import '../services/pomodoro_sync_service.dart';
 import '../utils/app_dialogs.dart';
 
-import 'package:intl/intl.dart';
-
 import './unified_waterfall_screen.dart';
 import './conflict_inbox_screen.dart';
 import './team_message_center_screen.dart';
@@ -35,16 +33,6 @@ part 'team_management/team_management_cards_and_actions.dart';
 part 'team_management/team_management_sub_views.dart';
 
 final Map<String, _TeamManagementSnapshot> _cachedSnapshots = {};
-
-final Map<(String?, String), DateFormat> _teamManagementDateFormats = {};
-
-DateFormat _teamManagementDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _teamManagementDateFormats.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
-}
 
 final RegExp _teamInviteCopyCodePattern = RegExp(r'邀请码：\[([a-zA-Z0-9]+)\]');
 

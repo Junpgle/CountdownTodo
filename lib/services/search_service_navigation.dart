@@ -432,7 +432,8 @@ class SearchNavigationHandler {
       final appName = data['app_name'];
       if (appName != null) {
         final history = await StorageService.getScreenTimeHistory();
-        final todayKey = _searchDateFormat('yyyy-MM-dd').format(DateTime.now());
+        final todayKey = AppTimeFormats.dateFormatter('yyyy-MM-dd')
+            .format(DateTime.now());
         if (history[todayKey] == null || history[todayKey]!.isEmpty) {
           final cachedToday = await StorageService.getScreenTimeCache();
           if (cachedToday.isNotEmpty) {

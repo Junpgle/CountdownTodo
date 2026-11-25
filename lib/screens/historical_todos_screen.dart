@@ -13,6 +13,7 @@ import '../services/todo_trash_multi_restore_service.dart';
 import '../services/todo_trash_purge_service.dart';
 import '../widgets/management_page.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/time_utils.dart';
 
 class _HistoricalTodoDateHeader {
   const _HistoricalTodoDateHeader(this.date, this.count);
@@ -100,16 +101,6 @@ class _HistoricalTodoDateLabel {
   final String? locale;
   final String value;
 }
-
-final Map<(String?, String), DateFormat> _historicalTodoDateFormats = {};
-
-DateFormat _historicalTodoDateFormat(
-  String? locale, {
-  String pattern = 'yyyy-MM-dd',
-}) => _historicalTodoDateFormats.putIfAbsent((
-  locale,
-  pattern,
-), () => DateFormat(pattern, locale));
 
 class HistoricalTodosScreen extends StatefulWidget {
   final String username;
@@ -561,8 +552,10 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
       return cached.value;
     }
 
-    final value = _historicalTodoDateFormat(locale)
-        .format(DateTime.fromMillisecondsSinceEpoch(updatedAt).toLocal());
+    final value = AppTimeFormats.dateFormatter(
+      'yyyy-MM-dd',
+      locale: locale,
+    ).format(DateTime.fromMillisecondsSinceEpoch(updatedAt).toLocal());
     _dateLabels[item] = _HistoricalTodoDateLabel(
       updatedAt: updatedAt,
       locale: locale,
@@ -760,10 +753,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
 
   Future<bool> _confirmTrashMultiRestore(TodoTrashMultiRestorePlan plan) async {
     final preview = plan.preview;
-    final dateFormat = _historicalTodoDateFormat(
-      Intl.defaultLocale,
-      pattern: 'yyyy/M/d',
-    );
+    final dateFormat = AppTimeFormats.dateFormatter('yyyy/M/d');
     final dateRange = preview.firstDate == preview.lastDate
         ? dateFormat.format(preview.firstDate)
         : '${dateFormat.format(preview.firstDate)} – '
@@ -913,10 +903,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
         preview.hasActiveSeriesMembers ? '清理该系列回收站记录？' : '删除该系列全部现存记录？',
       TodoTrashPurgeScope.recycleBin => '清空全部回收站？',
     };
-    final dateFormat = _historicalTodoDateFormat(
-      Intl.defaultLocale,
-      pattern: 'yyyy/M/d',
-    );
+    final dateFormat = AppTimeFormats.dateFormatter('yyyy/M/d');
     final firstDate = preview.firstDate;
     final lastDate = preview.lastDate;
     final dateRange = firstDate == null || lastDate == null
@@ -1241,10 +1228,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     if (group.skippedCount > 0) {
       countParts.add('${group.skippedCount} 期已跳过');
     }
-    final rangeFormat = _historicalTodoDateFormat(
-      Intl.defaultLocale,
-      pattern: 'yyyy/M/d',
-    );
+    final rangeFormat = AppTimeFormats.dateFormatter('yyyy/M/d');
     final dateRange = group.firstDate == group.lastDate
         ? rangeFormat.format(group.firstDate)
         : '${rangeFormat.format(group.firstDate)} – ${rangeFormat.format(group.lastDate)}';
@@ -1399,10 +1383,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     }
     if (!mounted) return;
 
-    final dateFormat = _historicalTodoDateFormat(
-      Intl.defaultLocale,
-      pattern: 'yyyy/M/d',
-    );
+    final dateFormat = AppTimeFormats.dateFormatter('yyyy/M/d');
     final dateRange = plan.preview.firstDate == plan.preview.lastDate
         ? dateFormat.format(plan.preview.firstDate)
         : '${dateFormat.format(plan.preview.firstDate)} – ${dateFormat.format(plan.preview.lastDate)}';
@@ -1477,10 +1458,8 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     final scheme = theme.colorScheme;
     final busy = _busyId == item.id;
     final enabled = _busyId == null;
-    final time = _historicalTodoDateFormat(
-      Intl.defaultLocale,
-      pattern: 'HH:mm',
-    ).format(DateTime.fromMillisecondsSinceEpoch(item.updatedAt).toLocal());
+    final time = AppTimeFormats.dateFormatter('HH:mm')
+        .format(DateTime.fromMillisecondsSinceEpoch(item.updatedAt).toLocal());
     return ManagementCard(
       key: ValueKey(item.id),
       margin: EdgeInsets.only(

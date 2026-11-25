@@ -336,16 +336,17 @@ extension _PersonalTimelineChromeOverviewExt on _PersonalTimelineScreenState {
   String _timelinePeriodLabel() {
     switch (_dimension) {
       case TimelineDimension.daily:
-        return _timelineDateFormat('yyyy年MM月dd日').format(_selectedDate);
+        return AppTimeFormats.dateFormatter('yyyy年MM月dd日')
+            .format(_selectedDate);
       case TimelineDimension.weekly:
         final start = AppTimeFormats.localDayStartOffset(
           AppTimeFormats.dayStart(_selectedDate),
           -(_selectedDate.weekday - 1),
         );
         final end = AppTimeFormats.localDayStartOffset(start, 6);
-        return '${_timelineDateFormat('MM/dd').format(start)} - ${_timelineDateFormat('MM/dd').format(end)}';
+        return '${AppTimeFormats.dateFormatter('MM/dd').format(start)} - ${AppTimeFormats.dateFormatter('MM/dd').format(end)}';
       case TimelineDimension.monthly:
-        return _timelineDateFormat('yyyy年MM月').format(_selectedDate);
+        return AppTimeFormats.dateFormatter('yyyy年MM月').format(_selectedDate);
       case TimelineDimension.yearly:
         return '${_selectedDate.year}年';
     }
@@ -354,7 +355,10 @@ extension _PersonalTimelineChromeOverviewExt on _PersonalTimelineScreenState {
   String _timelinePeriodSubtitle() {
     switch (_dimension) {
       case TimelineDimension.daily:
-        return _timelineDateFormat('EEEE', 'zh_CN').format(_selectedDate);
+        return AppTimeFormats.dateFormatter(
+          'EEEE',
+          locale: 'zh_CN',
+        ).format(_selectedDate);
       case TimelineDimension.weekly:
         return '本周回顾';
       case TimelineDimension.monthly:
@@ -426,7 +430,7 @@ extension _PersonalTimelineChromeOverviewExt on _PersonalTimelineScreenState {
     if (_summary != null &&
         _summary!.actualStartTime != null &&
         _summary!.actualEndTime != null) {
-      return '${_timelineDateFormat('yyyy.MM.dd').format(_summary!.actualStartTime!)} - ${_timelineDateFormat('yyyy.MM.dd').format(_summary!.actualEndTime!)}';
+      return '${AppTimeFormats.dateFormatter('yyyy.MM.dd').format(_summary!.actualStartTime!)} - ${AppTimeFormats.dateFormatter('yyyy.MM.dd').format(_summary!.actualEndTime!)}';
     }
 
     DateTime start;
@@ -441,22 +445,22 @@ extension _PersonalTimelineChromeOverviewExt on _PersonalTimelineScreenState {
 
     switch (_dimension) {
       case TimelineDimension.daily:
-        return _timelineDateFormat('yyyy.MM.dd').format(day);
+        return AppTimeFormats.dateFormatter('yyyy.MM.dd').format(day);
       case TimelineDimension.weekly:
         start = AppTimeFormats.localDayStartOffset(day, -(day.weekday - 1));
         end = AppTimeFormats.localDayStartOffset(start, 6);
         final displayEnd = end.isAfter(today) ? today : end;
-        return '${_timelineDateFormat('yyyy.MM.dd').format(start)} - ${_timelineDateFormat('yyyy.MM.dd').format(displayEnd)}';
+        return '${AppTimeFormats.dateFormatter('yyyy.MM.dd').format(start)} - ${AppTimeFormats.dateFormatter('yyyy.MM.dd').format(displayEnd)}';
       case TimelineDimension.monthly:
         start = DateTime(day.year, day.month, 1);
         end = DateTime(day.year, day.month + 1, 0);
         final displayEnd = end.isAfter(today) ? today : end;
-        return '${_timelineDateFormat('yyyy.MM.dd').format(start)} - ${_timelineDateFormat('yyyy.MM.dd').format(displayEnd)}';
+        return '${AppTimeFormats.dateFormatter('yyyy.MM.dd').format(start)} - ${AppTimeFormats.dateFormatter('yyyy.MM.dd').format(displayEnd)}';
       case TimelineDimension.yearly:
         start = DateTime(day.year, 1, 1);
         end = DateTime(day.year, 12, 31);
         final displayEnd = end.isAfter(today) ? today : end;
-        return '${_timelineDateFormat('yyyy.MM.dd').format(start)} - ${_timelineDateFormat('yyyy.MM.dd').format(displayEnd)}';
+        return '${AppTimeFormats.dateFormatter('yyyy.MM.dd').format(start)} - ${AppTimeFormats.dateFormatter('yyyy.MM.dd').format(displayEnd)}';
     }
   }
 
@@ -1076,12 +1080,12 @@ extension _PersonalTimelineChromeOverviewExt on _PersonalTimelineScreenState {
     if (time == null) return _getDateRangeString();
     switch (_dimension) {
       case TimelineDimension.daily:
-        return _timelineDateFormat('HH:mm').format(time);
+        return AppTimeFormats.dateFormatter('HH:mm').format(time);
       case TimelineDimension.weekly:
       case TimelineDimension.monthly:
-        return _timelineDateFormat('MM/dd HH:mm').format(time);
+        return AppTimeFormats.dateFormatter('MM/dd HH:mm').format(time);
       case TimelineDimension.yearly:
-        return _timelineDateFormat('yyyy/MM/dd').format(time);
+        return AppTimeFormats.dateFormatter('yyyy/MM/dd').format(time);
     }
   }
 

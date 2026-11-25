@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../models.dart';
 import '../../services/pomodoro_service.dart';
@@ -40,16 +39,6 @@ class _BatchTagPageState extends State<BatchTagPage>
   // 选中状态
   final Set<String> _selectedPomodoros = {};
   final Set<String> _selectedTimeLogs = {};
-
-  final Map<(String?, String), DateFormat> _dateFormatters = {};
-
-  DateFormat _cachedDateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
-  }
 
   // 待添加的标签（支持多选）
   final Set<String> _targetTagUuids = {};
@@ -381,7 +370,7 @@ class _BatchTagPageState extends State<BatchTagPage>
   }
 
   Widget _buildFilterBar() {
-    final dateFormat = _cachedDateFormat('MM/dd');
+    final dateFormat = AppTimeFormats.dateFormatter('MM/dd');
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       color: Theme.of(context).colorScheme.surface,
@@ -551,8 +540,8 @@ class _BatchTagPageState extends State<BatchTagPage>
         child: Text('没有符合条件的番茄钟记录', style: TextStyle(color: Colors.grey)),
       );
     }
-    final startDateFormat = _cachedDateFormat('MM/dd HH:mm');
-    final endTimeFormat = _cachedDateFormat('HH:mm');
+    final startDateFormat = AppTimeFormats.dateFormatter('MM/dd HH:mm');
+    final endTimeFormat = AppTimeFormats.dateFormatter('HH:mm');
 
     return Column(
       children: [
@@ -636,8 +625,8 @@ class _BatchTagPageState extends State<BatchTagPage>
         child: Text('没有符合条件的时间日志', style: TextStyle(color: Colors.grey)),
       );
     }
-    final startDateFormat = _cachedDateFormat('MM/dd HH:mm');
-    final endTimeFormat = _cachedDateFormat('HH:mm');
+    final startDateFormat = AppTimeFormats.dateFormatter('MM/dd HH:mm');
+    final endTimeFormat = AppTimeFormats.dateFormatter('HH:mm');
 
     return Column(
       children: [

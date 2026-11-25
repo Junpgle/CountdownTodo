@@ -59,16 +59,16 @@ extension _PomodoroStatsSections on PomodoroStatsState {
       bool isSelected = false;
 
       if (_dimension == 0) {
-        label = _pomodoroStatsDateFormat('MM/dd').format(start);
+        label = AppTimeFormats.dateFormatter('MM/dd').format(start);
         isSelected =
             start.year == _selected.year &&
             start.month == _selected.month &&
             start.day == _selected.day;
       } else if (_dimension == 1) {
-        label = _pomodoroStatsDateFormat('MM/dd').format(start);
+        label = AppTimeFormats.dateFormatter('MM/dd').format(start);
         isSelected = start.isAtSameMomentAs(selectedWeekRange!.start);
       } else if (_dimension == 2) {
-        label = _pomodoroStatsDateFormat('MM月').format(start);
+        label = AppTimeFormats.dateFormatter('MM月').format(start);
         isSelected =
             start.year == _selected.year && start.month == _selected.month;
       } else {
@@ -268,7 +268,7 @@ extension _PomodoroStatsSections on PomodoroStatsState {
   }
 
   List<Widget> _buildSessionList() {
-    final timeFormatter = _pomodoroStatsDateFormat('HH:mm');
+    final timeFormatter = AppTimeFormats.dateFormatter('HH:mm');
 
     if (_dimension == 0) {
       return _sessions.map((session) {
@@ -285,8 +285,8 @@ extension _PomodoroStatsSections on PomodoroStatsState {
     }
 
     final dayLabelFormatter = (_dimension == 1 || _dimension == 2)
-        ? _pomodoroStatsDateFormat('MM月dd日')
-        : _pomodoroStatsDateFormat('yyyy年MM月dd日');
+        ? AppTimeFormats.dateFormatter('MM月dd日')
+        : AppTimeFormats.dateFormatter('yyyy年MM月dd日');
     final widgets = <Widget>[];
     DateTime? previousDay;
     for (final session in _sessions) {

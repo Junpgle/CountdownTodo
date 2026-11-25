@@ -3,7 +3,6 @@ import 'package:flutter/rendering.dart';
 
 import 'dart:ui';
 
-import 'package:intl/intl.dart';
 import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/storage_service.dart';
 import 'package:countdown_todo/services/api_service.dart';
@@ -22,16 +21,7 @@ import 'platform_backdrop_filter.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'version_history_sheet.dart';
 import '../utils/app_dialogs.dart';
-
-final Map<(String?, String), DateFormat> _countdownSectionDateFormats = {};
-
-DateFormat _countdownSectionDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _countdownSectionDateFormats.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
-}
+import '../utils/time_utils.dart';
 
 class _CountdownDerivedInput {
   const _CountdownDerivedInput({
@@ -191,7 +181,7 @@ Future<void> showCountdownEditorDialog({
                     side: BorderSide(color: Theme.of(context).dividerColor),
                   ),
                   title: Text(
-                    "目标日期: ${_countdownSectionDateFormat('yyyy-MM-dd').format(selectedDate)}",
+                    "目标日期: ${AppTimeFormats.dateFormatter('yyyy-MM-dd').format(selectedDate)}",
                     style: const TextStyle(fontSize: 14),
                   ),
                   trailing: const Icon(Icons.calendar_today, size: 20),
@@ -932,7 +922,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                               const SizedBox(height: 2),
                               // 🚀 紧凑化
                               Text(
-                                "目标日: ${_countdownSectionDateFormat('yyyy-MM-dd').format(item.targetDate)}",
+                                "目标日: ${AppTimeFormats.dateFormatter('yyyy-MM-dd').format(item.targetDate)}",
                                 style: TextStyle(
                                   fontSize: 9,
                                   color: subTextColor,

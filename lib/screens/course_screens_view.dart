@@ -5,7 +5,7 @@ part of 'course_screens.dart';
 mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
   Widget _buildTodaySidebar() {
     DateTime now = DateTime.now();
-    String dateStr = _cachedDateFormat('M月d日').format(now);
+    String dateStr = AppTimeFormats.dateFormatter('M月d日').format(now);
     String weekdayStr = [
       '周一',
       '周二',
@@ -326,7 +326,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                         alignment: Alignment.center,
                         child: Text(
                           _viewMode == 2
-                              ? _cachedDateFormat('yyyy年M月')
+                              ? AppTimeFormats.dateFormatter('yyyy年M月')
                                     .format(_selectedMonth)
                               : (_viewMode == 1
                                     ? _getBiWeekLabel()

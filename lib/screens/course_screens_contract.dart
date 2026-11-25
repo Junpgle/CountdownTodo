@@ -39,7 +39,6 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   Map<int, List<PomodoroRecord>> _pomodorosPerDay = {};
   Map<int, List<TodoPlanBlock>> _planBlocksPerDay = {};
   Map<int, List<FixedScheduleItem>> _fixedSchedulesPerDay = {};
-  final Map<(String?, String), DateFormat> _dateFormatters = {};
   final Set<String> _activeDataViews = {
     'courses',
     'fixedSchedules',
@@ -52,14 +51,6 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   String _weekPerspective = 'all'; // 'all' | 'schedule' | 'review' | 'custom'
   bool get _isReviewPerspective => _weekPerspective == 'review';
   bool _collapseFreeTime = true;
-
-  DateFormat _cachedDateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
-  }
 
   // --- 🚀 视图模式分级 (1周, 2周, 1个月) ---
   int _viewMode = 0; // 0: 1周, 1: 2周, 2: 1个月
@@ -216,7 +207,7 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
 
   String _fixedScheduleTimeLabel(FixedScheduleItem item) {
     if (item.startTime == null) return '时间待定';
-    final timeFormat = _cachedDateFormat('HH:mm');
+    final timeFormat = AppTimeFormats.dateFormatter('HH:mm');
     final start = DateTime.fromMillisecondsSinceEpoch(item.startTime!);
     if (item.endTime == null) {
       return '${timeFormat.format(start)} · 结束待定';

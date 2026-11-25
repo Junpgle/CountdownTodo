@@ -233,7 +233,7 @@ DateTime _shiftPeriod(DateTime periodStart, ScreenTimeRange range, int offset) {
 }
 
 String _historyKey(DateTime date) =>
-    _screenTimeDateFormat('yyyy-MM-dd').format(date);
+    AppTimeFormats.dateFormatter('yyyy-MM-dd').format(date);
 
 Iterable<DateTime> _daysInPeriod(
   DateTime periodStart,
@@ -254,18 +254,18 @@ String _periodLabel(
     case ScreenTimeRange.day:
       return periodStart == today
           ? "今日"
-          : _screenTimeDateFormat('MM/dd').format(periodStart);
+          : AppTimeFormats.dateFormatter('MM/dd').format(periodStart);
     case ScreenTimeRange.week:
       final thisWeek = _startOfWeek(today);
       final end = _periodEnd(periodStart, range);
       if (periodStart == thisWeek) return "本周";
-      final dateFormat = _screenTimeDateFormat('MM/dd');
+      final dateFormat = AppTimeFormats.dateFormatter('MM/dd');
       return "${dateFormat.format(periodStart)}-${dateFormat.format(end)}";
     case ScreenTimeRange.month:
       if (periodStart.year == today.year && periodStart.month == today.month) {
         return "本月";
       }
-      return _screenTimeDateFormat('yyyy/MM').format(periodStart);
+      return AppTimeFormats.dateFormatter('yyyy/MM').format(periodStart);
   }
 }
 

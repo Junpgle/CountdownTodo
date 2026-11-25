@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../services/home_agenda_repository.dart';
 import '../services/plan_review_repository.dart';
@@ -8,16 +7,7 @@ import 'floating_glass_control.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'plan_day_overview.dart' show planOverviewDuration;
 import 'platform_backdrop_filter.dart';
-
-final Map<(String?, String), DateFormat> _homeAgendaDateFormats = {};
-
-DateFormat _homeAgendaDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _homeAgendaDateFormats.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
-}
+import '../utils/time_utils.dart';
 
 /// The single homepage surface. Source-specific actions live in the host.
 class HomeAgendaCard extends StatefulWidget {
@@ -114,7 +104,9 @@ class _HomeAgendaCardState extends State<HomeAgendaCard> {
     final current = item.isCurrent(widget.snapshot!.instant);
     final attention = item.needsAttention(widget.snapshot!.instant);
     final crossDay = !DateUtils.isSameDay(item.start, item.end);
-    final format = _homeAgendaDateFormat(crossDay ? 'MM-dd\nHH:mm' : 'HH:mm');
+    final format = AppTimeFormats.dateFormatter(
+      crossDay ? 'MM-dd\nHH:mm' : 'HH:mm',
+    );
     final plan = item.plan;
     final expanded = plan != null && widget.expandedPlanId == plan.entry.id;
     final endLabel = item.fixed?.isEndTimeTbd == true
@@ -474,7 +466,7 @@ class _HomeAgendaCardState extends State<HomeAgendaCard> {
     final current = data?.currentCount ?? 0,
         upcoming = data?.upcomingCount ?? 0;
     final subtitle = widget.collapsed && next != null
-        ? '接下来 ${_homeAgendaDateFormat('HH:mm').format(next.start)} · ${next.title}'
+        ? '接下来 ${AppTimeFormats.dateFormatter('HH:mm').format(next.start)} · ${next.title}'
         : data == null
         ? (widget.error == null ? '正在读取今日安排…' : '今日安排暂不可用')
         : (current > 0 || upcoming > 0

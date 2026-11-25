@@ -10,7 +10,6 @@ import 'dart:convert';
 import 'plan_buffer_controls.dart';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../models/plan_availability.dart';
@@ -20,16 +19,7 @@ import '../services/plan_availability_repository.dart';
 import '../services/plan_availability_service.dart';
 import '../storage_service.dart';
 import '../utils/app_dialogs.dart';
-
-final Map<(String?, String), DateFormat> _planAvailabilityDateFormats = {};
-
-DateFormat _planAvailabilityDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _planAvailabilityDateFormats.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
-}
+import '../utils/time_utils.dart';
 
 class _PlanSplitRequest {
   const _PlanSplitRequest(this.query);
@@ -993,14 +983,14 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${_planAvailabilityDateFormat('HH:mm').format(slot.start)}–${_planAvailabilityDateFormat('HH:mm').format(slot.end)}',
+                    '${AppTimeFormats.dateFormatter('HH:mm').format(slot.start)}–${AppTimeFormats.dateFormatter('HH:mm').format(slot.end)}',
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${_planAvailabilityDateFormat('MM-dd').format(slot.start)} · ${slot.minutes} 分钟${_selectedStart == slot.start ? ' · 已选用' : ''}',
+                    '${AppTimeFormats.dateFormatter('MM-dd').format(slot.start)} · ${slot.minutes} 分钟${_selectedStart == slot.start ? ' · 已选用' : ''}',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: colors.onSurfaceVariant,
                     ),
@@ -1542,7 +1532,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                           size: 18,
                         ),
                         label: Text(
-                          _planAvailabilityDateFormat('yyyy-MM-dd')
+                          AppTimeFormats.dateFormatter('yyyy-MM-dd')
                               .format(_date),
                         ),
                       ),
@@ -1722,8 +1712,8 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                         padding: const EdgeInsets.only(top: 6),
                         child: Text(
                           _snapshot!.todo.isDateOnly
-                              ? '须在 ${_planAvailabilityDateFormat('MM-dd').format(_snapshot!.todo.dueDate!)} 当天结束前完成'
-                              : '须在 ${_planAvailabilityDateFormat('MM-dd HH:mm').format(_snapshot!.todo.dueDate!)} 截止前完成',
+                              ? '须在 ${AppTimeFormats.dateFormatter('MM-dd').format(_snapshot!.todo.dueDate!)} 当天结束前完成'
+                              : '须在 ${AppTimeFormats.dateFormatter('MM-dd HH:mm').format(_snapshot!.todo.dueDate!)} 截止前完成',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: colors.onSurfaceVariant,
                           ),
@@ -1747,7 +1737,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                               child: Align(
                                 alignment: Alignment.centerLeft,
                                 child: Text(
-                                  '${_sourceLabel(item.source)} · ${_planAvailabilityDateFormat('MM-dd HH:mm').format(item.start)}–${_planAvailabilityDateFormat('MM-dd HH:mm').format(item.end)}',
+                                  '${_sourceLabel(item.source)} · ${AppTimeFormats.dateFormatter('MM-dd HH:mm').format(item.start)}–${AppTimeFormats.dateFormatter('MM-dd HH:mm').format(item.end)}',
                                   style: theme.textTheme.bodySmall,
                                 ),
                               ),

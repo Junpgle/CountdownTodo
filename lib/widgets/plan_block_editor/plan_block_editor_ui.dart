@@ -14,7 +14,7 @@ extension _PlanBlockEditorUi on _PlanBlockEditorSheetState {
   String _todoUrgencyLabel(TodoItem todo) {
     final target = todo.dueDate;
     if (target == null) return '无时间';
-    return _planBlockEditorDateFormat('MM-dd HH:mm').format(target);
+    return AppTimeFormats.dateFormatter('MM-dd HH:mm').format(target);
   }
 
   Widget _buildTodoDropdownRow(TodoItem todo) {
@@ -123,7 +123,7 @@ extension _PlanBlockEditorUi on _PlanBlockEditorSheetState {
           ),
           const SizedBox(height: 4),
           Text(
-            _planBlockEditorDateFormat('HH:mm').format(start ? _start : _end),
+            AppTimeFormats.dateFormatter('HH:mm').format(start ? _start : _end),
             style: theme.textTheme.headlineSmall?.copyWith(
               fontWeight: FontWeight.w600,
             ),
@@ -328,7 +328,7 @@ extension _PlanBlockEditorUi on _PlanBlockEditorSheetState {
             ),
           if (widget.recovery != null) ...[
             Text(
-              '原安排：${_planBlockEditorDateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(widget.recovery!.source.startTime))}–${_planBlockEditorDateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(widget.recovery!.source.endTime))} · 漏做',
+              '原安排：${AppTimeFormats.dateFormatter('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(widget.recovery!.source.startTime))}–${AppTimeFormats.dateFormatter('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(widget.recovery!.source.endTime))} · 漏做',
               key: const ValueKey('plan-recovery-origin'),
             ),
             for (final notice in widget.recovery!.notices)
@@ -459,7 +459,7 @@ extension _PlanBlockEditorUi on _PlanBlockEditorSheetState {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Text(
-                  '${_planBlockEditorDateFormat('M月d日').format(_start)} 周${['一', '二', '三', '四', '五', '六', '日'][_start.weekday - 1]}',
+                  '${AppTimeFormats.dateFormatter('M月d日').format(_start)} 周${['一', '二', '三', '四', '五', '六', '日'][_start.weekday - 1]}',
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w600,
                   ),

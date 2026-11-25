@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import 'dart:ui' as ui;
@@ -60,14 +59,6 @@ typedef _FinanceCardMetrics = ({
   int incomeCount,
   int refundCount,
 });
-
-final Map<(String?, String), DateFormat> _timelineDateFormatters = {};
-
-DateFormat _timelineDateFormat(String pattern, [String? locale]) {
-  final effectiveLocale = locale ?? Intl.defaultLocale;
-  final key = (effectiveLocale, pattern);
-  return _timelineDateFormatters[key] ??= DateFormat(pattern, effectiveLocale);
-}
 
 @visibleForTesting
 ({DateTime start, DateTime end}) timelineDateRange(

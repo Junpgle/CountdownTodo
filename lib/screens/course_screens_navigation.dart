@@ -78,7 +78,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
 
   String _getWeekLabel() {
     if (_viewMode == 2) {
-      return _cachedDateFormat('yyyy年M月').format(_selectedMonth);
+      return AppTimeFormats.dateFormatter('yyyy年M月').format(_selectedMonth);
     }
     if (_semesterMonday == null || _semesters.isEmpty) {
       return '第 $_currentWeek 周';
@@ -98,7 +98,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     }
 
     final sunday = CalendarDateMath.addDays(currentWeekMonday, 6);
-    return '${_cachedDateFormat('M/d').format(currentWeekMonday)}-${_cachedDateFormat('M/d').format(sunday)}';
+    return '${AppTimeFormats.dateFormatter('M/d').format(currentWeekMonday)}-${AppTimeFormats.dateFormatter('M/d').format(sunday)}';
   }
 
   String _getBiWeekLabel() {
@@ -120,7 +120,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         final relativeWeek = _relativeWeekForDate(date, semester);
         return '${semester.name} 第$relativeWeek周';
       }
-      return _cachedDateFormat('M/d').format(date);
+      return AppTimeFormats.dateFormatter('M/d').format(date);
     }
 
     String label1 = getSemesterWeekLabel(w1Monday);
@@ -236,7 +236,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
   }
 
   List<dynamic> _dayDetailItems(DateTime day) {
-    final String dStr = _cachedDateFormat('yyyy-MM-dd').format(day);
+    final String dStr = AppTimeFormats.dateFormatter('yyyy-MM-dd').format(day);
     final List<dynamic> items = [];
     final weekMonday = _getMondayOfCurrentWeek();
     final weekStart = weekMonday == null
@@ -401,7 +401,8 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     String keyScope = 'sidebar',
   }) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final String dateStr = _cachedDateFormat('yyyy年M月d日').format(day);
+    final String dateStr = AppTimeFormats.dateFormatter('yyyy年M月d日')
+        .format(day);
     final String weekdayStr = [
       '周一',
       '周二',
@@ -411,7 +412,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       '周六',
       '周日',
     ][day.weekday - 1];
-    final sourceDate = _cachedDateFormat('yyyy-MM-dd').format(day);
+    final sourceDate = AppTimeFormats.dateFormatter('yyyy-MM-dd').format(day);
 
     final items = dayItems ?? _dayDetailItems(day);
 
@@ -606,7 +607,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         subtitle: Text(
           (item.teamUuid != null ? '${item.teamName ?? '团队'} · ' : '') +
               (item.dueDate != null
-                  ? '截止: ${_cachedDateFormat('HH:mm').format(item.dueDate!)}'
+                  ? '截止: ${AppTimeFormats.dateFormatter('HH:mm').format(item.dueDate!)}'
                   : '无截止时间') +
               (item.remark != null && item.remark!.isNotEmpty
                   ? ' · ${item.remark}'
@@ -638,7 +639,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       );
       final remarkStr = item.remark?.trim();
       final timeRange =
-          '${_cachedDateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true).toLocal())} - ${_cachedDateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.endTime, isUtc: true).toLocal())}';
+          '${AppTimeFormats.dateFormatter('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true).toLocal())} - ${AppTimeFormats.dateFormatter('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.endTime, isUtc: true).toLocal())}';
       final subtitleParts = [
         timeRange,
         '时长: $durationStr',
@@ -701,7 +702,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
           style: const TextStyle(fontSize: 15),
         ),
         subtitle: Text(
-          '${_cachedDateFormat('HH:mm').format(start)} - ${_cachedDateFormat('HH:mm').format(end)} · 计划 ${item.plannedMinutes} 分钟',
+          '${AppTimeFormats.dateFormatter('HH:mm').format(start)} - ${AppTimeFormats.dateFormatter('HH:mm').format(end)} · 计划 ${item.plannedMinutes} 分钟',
           style: const TextStyle(fontSize: 12),
         ),
         onTap: () => _openSidebarDetailFromRect(
@@ -791,7 +792,8 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
           ? colorScheme.tertiary
           : Color(item.colorValue!);
       final dateKey =
-          sourceDate ?? _cachedDateFormat('yyyy-MM-dd').format(item.start);
+          sourceDate ??
+          AppTimeFormats.dateFormatter('yyyy-MM-dd').format(item.start);
       final sourceKey = _getDeviceCalendarCardKey(
         item.id,
         dateKey,
@@ -811,7 +813,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         subtitle: Text(
           item.allDay
               ? '全天 · 手机日历（只读）'
-              : '${_cachedDateFormat('HH:mm').format(item.start)} - ${_cachedDateFormat('HH:mm').format(item.end)} · 手机日历（只读）',
+              : '${AppTimeFormats.dateFormatter('HH:mm').format(item.start)} - ${AppTimeFormats.dateFormatter('HH:mm').format(item.end)} · 手机日历（只读）',
           style: const TextStyle(fontSize: 12),
         ),
         onTap: () =>

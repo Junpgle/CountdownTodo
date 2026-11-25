@@ -10,8 +10,6 @@ import '../screens/plan_cleanup_screen.dart';
 
 import '../utils/app_dialogs.dart';
 
-import 'package:intl/intl.dart';
-
 import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -307,7 +305,6 @@ abstract class _TodoSectionStateBase extends State<TodoSectionWidget>
   final Map<String, Key> _todoDismissKeys = {};
   final Map<String, AnimationController> _completingAnimations = {};
   final Map<String, bool> _isCompleting = {};
-  final Map<(String?, String), DateFormat> _dateFormatters = {};
   bool _inlineFolders = true;
   _TodoFolderDisplayMode _folderDisplayMode = _TodoFolderDisplayMode.inline;
   _TodoSectionViewModel? _cachedVm;
@@ -332,14 +329,6 @@ abstract class _TodoSectionStateBase extends State<TodoSectionWidget>
   final Map<String, String> _teamRoles = {}; // 🚀 缓存团队 ID -> 角色 (admin/member)
   List<Team> _teams = [];
   Set<String> _habitOnlyRecurringSeriesIds = <String>{};
-
-  DateFormat _cachedDateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
-  }
 
   bool _isAiGeneratedTodo(TodoItem todo) => isAiGeneratedTodo(todo);
 }

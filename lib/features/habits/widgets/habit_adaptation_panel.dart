@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/habit_goal_rule.dart';
 import '../services/habit_adaptation_service.dart';
 import '../../../utils/app_dialogs.dart';
+import 'habit_guide_faq.dart';
 
 part 'habit_adaptation/habit_activity_guides.dart';
 part 'habit_adaptation/habit_sleep_clock_guide.dart';
@@ -313,110 +314,35 @@ class HabitPushUpGuide extends StatelessWidget {
             colorScheme: colorScheme,
           ),
           const SizedBox(height: 6),
-          const _PushUpFaq(),
+          const HabitGuideFaq(items: _pushUpFaqItems),
         ],
       ),
     );
   }
 }
 
-class _PushUpFaq extends StatelessWidget {
-  const _PushUpFaq();
-
-  static const _items = [
-    (
-      '一次做得越多越好吗？',
-      '不一定。俯卧撑的有效训练取决于动作质量、总训练量和持续性，不是单次硬撑到最大数量。出现塌腰、耸肩或动作幅度明显变小，就应停止这一组或降低难度。',
-    ),
-    ('需要每天做吗？', '不需要。模板默认安排每周 2–3 个训练日，让同一肌群有恢复时间；其他日子可以休息，或训练下肢、背部等不同肌群。'),
-    ('做不到标准俯卧撑怎么办？', '可以先从斜板俯卧撑、跪姿俯卧撑或更高支撑面开始。选择能保持身体稳定和完整控制的版本，比勉强做标准动作更合适。'),
-    ('每组都要做到力竭吗？', '不需要。保留动作质量比做到完全力竭更重要；当下一次重复可能破坏姿势时结束这一组，之后再逐步增加次数或难度。'),
-    (
-      '肌肉酸痛还能继续做吗？',
-      '轻微延迟性酸痛可以先休息或降低训练量；关节疼痛、刺痛、明显肿胀，或伴随胸闷头晕时不要硬练，应停止并视情况咨询专业人士。',
-    ),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Theme(
-      data: Theme.of(
-        context,
-      ).copyWith(dividerColor: colorScheme.outlineVariant.withValues(alpha: 0)),
-      child: Material(
-        color: Colors.transparent,
-        child: ExpansionTile(
-          initiallyExpanded: false,
-          tilePadding: EdgeInsets.zero,
-          childrenPadding: const EdgeInsets.only(bottom: 2),
-          leading: Icon(
-            Icons.help_outline_rounded,
-            size: 19,
-            color: colorScheme.primary,
-          ),
-          title: Text(
-            '常见问题',
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w800,
-              color: colorScheme.onSurface,
-            ),
-          ),
-          children: [
-            for (final item in _items)
-              _PushUpFaqItem(
-                question: item.$1,
-                answer: item.$2,
-                colorScheme: colorScheme,
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PushUpFaqItem extends StatelessWidget {
-  final String question;
-  final String answer;
-  final ColorScheme colorScheme;
-
-  const _PushUpFaqItem({
-    required this.question,
-    required this.answer,
-    required this.colorScheme,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 4, right: 4, bottom: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            question,
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w800,
-              color: colorScheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            answer,
-            style: TextStyle(
-              fontSize: 11.5,
-              height: 1.45,
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+const List<HabitGuideFaqItem> _pushUpFaqItems = [
+  HabitGuideFaqItem(
+    '一次做得越多越好吗？',
+    '不一定。俯卧撑的有效训练取决于动作质量、总训练量和持续性，不是单次硬撑到最大数量。出现塌腰、耸肩或动作幅度明显变小，就应停止这一组或降低难度。',
+  ),
+  HabitGuideFaqItem(
+    '需要每天做吗？',
+    '不需要。模板默认安排每周 2–3 个训练日，让同一肌群有恢复时间；其他日子可以休息，或训练下肢、背部等不同肌群。',
+  ),
+  HabitGuideFaqItem(
+    '做不到标准俯卧撑怎么办？',
+    '可以先从斜板俯卧撑、跪姿俯卧撑或更高支撑面开始。选择能保持身体稳定和完整控制的版本，比勉强做标准动作更合适。',
+  ),
+  HabitGuideFaqItem(
+    '每组都要做到力竭吗？',
+    '不需要。保留动作质量比做到完全力竭更重要；当下一次重复可能破坏姿势时结束这一组，之后再逐步增加次数或难度。',
+  ),
+  HabitGuideFaqItem(
+    '肌肉酸痛还能继续做吗？',
+    '轻微延迟性酸痛可以先休息或降低训练量；关节疼痛、刺痛、明显肿胀，或伴随胸闷头晕时不要硬练，应停止并视情况咨询专业人士。',
+  ),
+];
 
 class _HabitGuideMetric extends StatelessWidget {
   final IconData icon;

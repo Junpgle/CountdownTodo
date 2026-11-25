@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
+import '../utils/time_utils.dart';
 
 /// 循环待办编辑页顶部的期次选择器。
 ///
@@ -30,17 +30,8 @@ class _TodoRecurrenceOccurrencePickerState
   static const double _spacing = 8;
 
   final ScrollController _scrollController = ScrollController();
-  final Map<(String?, String), DateFormat> _dateFormats = {};
   bool _needsCenter = true;
   bool _animateNextCenter = false;
-
-  DateFormat _cachedDateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormats.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
-  }
 
   @override
   void didUpdateWidget(covariant TodoRecurrenceOccurrencePicker oldWidget) {
@@ -143,7 +134,7 @@ class _TodoRecurrenceOccurrencePickerState
       occurrence.createdDate ?? occurrence.createdAt,
       isUtc: true,
     ).toLocal();
-    final dateLabel = _cachedDateFormat('M月d日').format(start);
+    final dateLabel = AppTimeFormats.dateFormatter('M月d日').format(start);
 
     return Semantics(
       selected: isCurrent,

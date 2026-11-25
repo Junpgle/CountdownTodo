@@ -54,7 +54,6 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   final GlobalKey _planKey = GlobalKey();
   final GlobalKey _focusKey = GlobalKey();
   final GlobalKey _dataKey = GlobalKey();
-  final Map<(String?, String), DateFormat> _dateFormatCache = {};
   String? _verifiedEditingTodoImagePath;
   bool _showCoachMarks = false;
   bool _saving = false;
@@ -69,14 +68,6 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   TodoItem _copyTodo(TodoItem todo) => TodoItem.fromJson(todo.toJson());
 
   TodoGroup _copyGroup(TodoGroup group) => TodoGroup.fromJson(group.toJson());
-
-  DateFormat _dateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormatCache.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
-  }
 
   bool get _isWholeSeriesEdit =>
       widget.recurrenceEditScope == TodoRecurrenceEditScope.series;
@@ -661,7 +652,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                             Expanded(
                               child: _buildSquareTile(
                                 title: "完成日期",
-                                subtitle: _dateFormat('MM-dd')
+                                subtitle: AppTimeFormats.dateFormatter('MM-dd')
                                     .format(_createdDate),
                                 icon: Icons.event_available_rounded,
                                 color: Theme.of(context).colorScheme.secondary,
@@ -715,8 +706,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                             Expanded(
                               child: _buildSquareTile(
                                 title: "开始时间",
-                                subtitle: _dateFormat('MM-dd HH:mm')
-                                    .format(_createdDate),
+                                subtitle: AppTimeFormats.dateFormatter(
+                                  'MM-dd HH:mm',
+                                ).format(_createdDate),
                                 icon: Icons.play_circle_outline_rounded,
                                 color: colorScheme.primary,
                                 onTap: () async {
@@ -757,9 +749,10 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                                 subtitle: _dueDate == null
                                     ? (_preserveLegacyTiming ? "结束时间待定" : "未安排")
                                     : _preserveLegacyTiming
-                                    ? _dateFormat('MM-dd HH:mm')
-                                          .format(_dueDate!)
-                                    : "${_dateFormat('MM-dd HH:mm').format(_dueDate!)} 前完成",
+                                    ? AppTimeFormats.dateFormatter(
+                                        'MM-dd HH:mm',
+                                      ).format(_dueDate!)
+                                    : "${AppTimeFormats.dateFormatter('MM-dd HH:mm').format(_dueDate!)} 前完成",
                                 icon: _preserveLegacyTiming
                                     ? Icons.stop_circle_outlined
                                     : Icons.flag_rounded,
@@ -984,7 +977,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                                         Text(
                                           _recurrenceEndDate == null
                                               ? "未指定"
-                                              : _dateFormat(
+                                              : AppTimeFormats.dateFormatter(
                                                   'yyyy-MM-dd',
                                                 ).format(_recurrenceEndDate!),
                                           style: TextStyle(

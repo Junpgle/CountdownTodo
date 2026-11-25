@@ -519,7 +519,7 @@ mixin _WeeklyCourseGridBackgroundLayers on _WeeklyCourseScreenStateBase {
           );
           final calendarCardKey = _getDeviceCalendarCardKey(
             event.id,
-            _cachedDateFormat('yyyy-MM-dd').format(dayStart),
+            AppTimeFormats.dateFormatter('yyyy-MM-dd').format(dayStart),
             surface: 'week-timed',
           );
           final String? location = event.location?.trim().isNotEmpty == true

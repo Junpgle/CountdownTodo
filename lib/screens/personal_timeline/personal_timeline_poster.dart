@@ -320,16 +320,16 @@ extension _PersonalTimelinePosterExt on _PersonalTimelineScreenState {
     final day = DateTime(date.year, date.month, date.day);
     switch (dimension) {
       case TimelineDimension.daily:
-        return _timelineDateFormat('yyyy年MM月dd日').format(day);
+        return AppTimeFormats.dateFormatter('yyyy年MM月dd日').format(day);
       case TimelineDimension.weekly:
         final start = AppTimeFormats.localDayStartOffset(
           day,
           -(day.weekday - 1),
         );
         final end = AppTimeFormats.localDayStartOffset(start, 6);
-        return '${_timelineDateFormat('MM/dd').format(start)} - ${_timelineDateFormat('MM/dd').format(end)}';
+        return '${AppTimeFormats.dateFormatter('MM/dd').format(start)} - ${AppTimeFormats.dateFormatter('MM/dd').format(end)}';
       case TimelineDimension.monthly:
-        return _timelineDateFormat('yyyy年MM月').format(day);
+        return AppTimeFormats.dateFormatter('yyyy年MM月').format(day);
       case TimelineDimension.yearly:
         return '${day.year}年';
     }
@@ -428,7 +428,7 @@ extension _PersonalTimelinePosterExt on _PersonalTimelineScreenState {
       }
 
       final safePeriod = _getPeriodName();
-      final timestamp = _timelineDateFormat('yyyyMMdd_HHmmss')
+      final timestamp = AppTimeFormats.dateFormatter('yyyyMMdd_HHmmss')
           .format(DateTime.now());
       final fileName = 'CountDownTodo_${safePeriod}_timeline_$timestamp.png';
       final pngBytes = bytes.buffer.asUint8List();
@@ -531,7 +531,8 @@ extension _PersonalTimelinePosterExt on _PersonalTimelineScreenState {
                 ),
               ),
               Text(
-                _timelineDateFormat('yyyy.MM.dd HH:mm').format(DateTime.now()),
+                AppTimeFormats.dateFormatter('yyyy.MM.dd HH:mm')
+                    .format(DateTime.now()),
                 style: TextStyle(
                   fontSize: 15,
                   color: cs.onSurfaceVariant,

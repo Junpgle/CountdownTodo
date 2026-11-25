@@ -321,7 +321,7 @@ extension _PlanBlockEditorDrafts on _PlanBlockEditorSheetState {
           leading: const Icon(Icons.drafts_outlined),
           title: const Text('此待办有未完成的本机草稿'),
           subtitle: Text(
-            _planBlockEditorDateFormat('M月d日 HH:mm').format(
+            AppTimeFormats.dateFormatter('M月d日 HH:mm').format(
               DateTime.fromMillisecondsSinceEpoch(_draftOffer!.updatedAt),
             ),
           ),
@@ -591,7 +591,7 @@ extension _PlanBlockEditorDrafts on _PlanBlockEditorSheetState {
                   rows
                       .map(
                         (r) =>
-                            '${_planBlockEditorDateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(r['start_time'] as int))}–${_planBlockEditorDateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(r['end_time'] as int))}',
+                            '${AppTimeFormats.dateFormatter('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(r['start_time'] as int))}–${AppTimeFormats.dateFormatter('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(r['end_time'] as int))}',
                       )
                       .join('\n'),
                 ),

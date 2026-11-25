@@ -369,7 +369,7 @@ class MissionControl extends StatelessWidget {
       if (todo.isDone == showCompleted) displayTasks.add(todo);
     }
     final now = clock();
-    final dueTimeFormat = _appBoardDateFormat('HH:mm');
+    final dueTimeFormat = AppTimeFormats.dateFormatter('HH:mm');
 
     return Column(
       children: [
@@ -606,7 +606,7 @@ class TaskDetailModal extends StatelessWidget {
                 _buildInfoRow(
                   Icons.access_time,
                   '开始时间',
-                  _appBoardDateFormat(
+                  AppTimeFormats.dateFormatter(
                     'yyyy-MM-dd HH:mm',
                   ).format(DateTime.fromMillisecondsSinceEpoch(task.createdAt)),
                 ),
@@ -614,7 +614,7 @@ class TaskDetailModal extends StatelessWidget {
                   Icons.calendar_today,
                   '截止时间',
                   task.dueDate != null
-                      ? _appBoardDateFormat('yyyy-MM-dd HH:mm')
+                      ? AppTimeFormats.dateFormatter('yyyy-MM-dd HH:mm')
                             .format(task.dueDate!)
                       : '无截止日期',
                 ),

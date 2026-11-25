@@ -625,15 +625,16 @@ extension _TodoEditScreenActions on TodoEditScreenState {
           : _isAllDay
           ? DateTime(newStart.year, newStart.month, newStart.day, 23, 59)
           : newStart.add(editedDuration);
-      final oldLabel = _dateFormat(datePattern).format(start);
-      final newLabel = _dateFormat(datePattern).format(newStart);
+      final oldLabel = AppTimeFormats.dateFormatter(datePattern).format(start);
+      final newLabel = AppTimeFormats.dateFormatter(datePattern)
+          .format(newStart);
       if (_isAllDay) return '$oldLabel → $newLabel';
       final oldRange = oldEnd == null
           ? oldLabel
-          : '$oldLabel–${_dateFormat(datePattern).format(oldEnd)}';
+          : '$oldLabel–${AppTimeFormats.dateFormatter(datePattern).format(oldEnd)}';
       final newRange = newEnd == null
           ? newLabel
-          : '$newLabel–${_dateFormat(datePattern).format(newEnd)}';
+          : '$newLabel–${AppTimeFormats.dateFormatter(datePattern).format(newEnd)}';
       return '$oldRange → $newRange';
     }
 
@@ -658,7 +659,7 @@ extension _TodoEditScreenActions on TodoEditScreenState {
                 if (dateOrTimeChanged && occurrences.isNotEmpty) ...[
                   const SizedBox(height: 14),
                   Text(
-                    '日期变化基准：${_dateFormat(datePattern).format(_originalCreatedDate)} 这期',
+                    '日期变化基准：${AppTimeFormats.dateFormatter(datePattern).format(_originalCreatedDate)} 这期',
                     style: Theme.of(context).textTheme.labelLarge,
                   ),
                   const SizedBox(height: 6),

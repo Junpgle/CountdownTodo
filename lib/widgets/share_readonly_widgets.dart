@@ -1,18 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../utils/calendar_date_math.dart';
-
-final Map<(String?, String), DateFormat> _shareReadonlyDateFormats = {};
-
-DateFormat _shareReadonlyDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _shareReadonlyDateFormats.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
-}
+import '../utils/time_utils.dart';
 
 /// 分享页只读待办组件（支持折叠，与手机端布局一致）
 class ShareTodoSection extends StatefulWidget {
@@ -843,7 +833,8 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
                   if (nearestDeadline != null && !expanded) ...[
                     const SizedBox(width: 8),
                     Text(
-                      _shareReadonlyDateFormat('MM/dd').format(nearestDeadline),
+                      AppTimeFormats.dateFormatter('MM/dd')
+                          .format(nearestDeadline),
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
@@ -951,7 +942,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
         badgeBg = Colors.orange.withValues(alpha: 0.12);
       }
     } else {
-      badge = _shareReadonlyDateFormat('MM/dd').format(cDate);
+      badge = AppTimeFormats.dateFormatter('MM/dd').format(cDate);
       badgeColor = colorScheme.onSurface.withValues(alpha: 0.45);
       badgeBg = colorScheme.onSurface.withValues(alpha: 0.06);
     }
@@ -1109,17 +1100,17 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
       final date = end ?? start;
       return date == null
           ? null
-          : '${_shareReadonlyDateFormat('MM/dd').format(date)} 内完成';
+          : '${AppTimeFormats.dateFormatter('MM/dd').format(date)} 内完成';
     }
     if (start != null && end != null && todo.hasLegacyTimeRange) {
-      return '${_shareReadonlyDateFormat('MM/dd HH:mm').format(start)} → '
-          '${_shareReadonlyDateFormat('MM/dd HH:mm').format(end)}';
+      return '${AppTimeFormats.dateFormatter('MM/dd HH:mm').format(start)} → '
+          '${AppTimeFormats.dateFormatter('MM/dd HH:mm').format(end)}';
     }
     if (end != null) {
-      return '${_shareReadonlyDateFormat('MM/dd HH:mm').format(end)} 前完成';
+      return '${AppTimeFormats.dateFormatter('MM/dd HH:mm').format(end)} 前完成';
     }
     if (start != null) {
-      return '开始 ${_shareReadonlyDateFormat('MM/dd HH:mm').format(start)}';
+      return '开始 ${AppTimeFormats.dateFormatter('MM/dd HH:mm').format(start)}';
     }
     return null;
   }
@@ -1424,7 +1415,7 @@ class ShareScheduleSection extends StatelessWidget {
     if (start == null && end == null) {
       return date == null
           ? '时间待定'
-          : '${_shareReadonlyDateFormat('MM/dd').format(date)} · 时间待定';
+          : '${AppTimeFormats.dateFormatter('MM/dd').format(date)} · 时间待定';
     }
     if (start != null && end != null) {
       final sameDay =
@@ -1432,16 +1423,16 @@ class ShareScheduleSection extends StatelessWidget {
           start.month == end.month &&
           start.day == end.day;
       return sameDay
-          ? '${_shareReadonlyDateFormat('MM/dd').format(start)} '
-                '${_shareReadonlyDateFormat('HH:mm').format(start)} → '
-                '${_shareReadonlyDateFormat('HH:mm').format(end)}'
-          : '${_shareReadonlyDateFormat('MM/dd HH:mm').format(start)} → '
-                '${_shareReadonlyDateFormat('MM/dd HH:mm').format(end)}';
+          ? '${AppTimeFormats.dateFormatter('MM/dd').format(start)} '
+                '${AppTimeFormats.dateFormatter('HH:mm').format(start)} → '
+                '${AppTimeFormats.dateFormatter('HH:mm').format(end)}'
+          : '${AppTimeFormats.dateFormatter('MM/dd HH:mm').format(start)} → '
+                '${AppTimeFormats.dateFormatter('MM/dd HH:mm').format(end)}';
     }
     if (start != null) {
-      return '${_shareReadonlyDateFormat('MM/dd HH:mm').format(start)} · 结束待定';
+      return '${AppTimeFormats.dateFormatter('MM/dd HH:mm').format(start)} · 结束待定';
     }
-    return '${_shareReadonlyDateFormat('MM/dd HH:mm').format(end!)} · 开始待定';
+    return '${AppTimeFormats.dateFormatter('MM/dd HH:mm').format(end!)} · 开始待定';
   }
 
   Color _phaseColor(ColorScheme colorScheme, FixedSchedulePhase phase) {
@@ -1677,7 +1668,7 @@ class ShareCountdownSection extends StatelessWidget {
                         const SizedBox(height: 2),
                         // 目标日
                         Text(
-                          "目标日: ${_shareReadonlyDateFormat('yyyy-MM-dd').format(item.targetDate)}",
+                          "目标日: ${AppTimeFormats.dateFormatter('yyyy-MM-dd').format(item.targetDate)}",
                           style: TextStyle(
                             fontSize: 9,
                             color: subTextColor,

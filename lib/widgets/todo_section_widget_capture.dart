@@ -236,7 +236,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(
-                        "完成日期: ${_cachedDateFormat('yyyy-MM-dd').format(createdAt)}",
+                        "完成日期: ${AppTimeFormats.dateFormatter('yyyy-MM-dd').format(createdAt)}",
                       ),
                       trailing: Icon(
                         Icons.edit_calendar,
@@ -295,7 +295,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                       title: Text(
                         dueDate == null
                             ? "设置截止时间（当前未安排）"
-                            : "${_cachedDateFormat('yyyy-MM-dd HH:mm').format(dueDate!)} 前完成",
+                            : "${AppTimeFormats.dateFormatter('yyyy-MM-dd HH:mm').format(dueDate!)} 前完成",
                       ),
                       trailing: Icon(
                         Icons.event,
@@ -405,7 +405,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                       title: Text(
                         recurrenceEndDate == null
                             ? "重复结束日期 (可选)"
-                            : "重复结束: ${_cachedDateFormat('yyyy-MM-dd').format(recurrenceEndDate!)}",
+                            : "重复结束: ${AppTimeFormats.dateFormatter('yyyy-MM-dd').format(recurrenceEndDate!)}",
                       ),
                       trailing: Icon(
                         Icons.event_busy,
@@ -1228,7 +1228,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                               remark: remarkCtrl.text.trim().isEmpty
                                   ? null
                                   : (remarkCtrl.text.trim() ==
-                                            (currentParsed.effectiveTodoRemark ??
+                                            (currentParsed
+                                                    .effectiveTodoRemark ??
                                                 '')
                                         ? currentParsed.remark
                                         : remarkCtrl.text.trim()),
@@ -1401,7 +1402,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
     }
     final item = FixedScheduleItem(
       title: parsed.title,
-      date: _cachedDateFormat('yyyy-MM-dd').format(dateSource),
+      date: AppTimeFormats.dateFormatter('yyyy-MM-dd').format(dateSource),
       startTime: start?.millisecondsSinceEpoch,
       endTime: end?.millisecondsSinceEpoch,
       source: FixedScheduleSource.ai,
@@ -1639,26 +1640,26 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
       if (result.isAllDay) {
         return result.startTime == null
             ? '日期待确认 · 时间待定'
-            : '${_cachedDateFormat('yyyy-MM-dd').format(result.startTime!)} · 时间待定';
+            : '${AppTimeFormats.dateFormatter('yyyy-MM-dd').format(result.startTime!)} · 时间待定';
       }
       if (result.startTime != null && result.endTime != null) {
-        return '${_cachedDateFormat('yyyy-MM-dd HH:mm').format(result.startTime!)}–${_cachedDateFormat('HH:mm').format(result.endTime!)}';
+        return '${AppTimeFormats.dateFormatter('yyyy-MM-dd HH:mm').format(result.startTime!)}–${AppTimeFormats.dateFormatter('HH:mm').format(result.endTime!)}';
       }
       if (result.startTime != null) {
-        return '${_cachedDateFormat('yyyy-MM-dd HH:mm').format(result.startTime!)}开始 · 结束待定';
+        return '${AppTimeFormats.dateFormatter('yyyy-MM-dd HH:mm').format(result.startTime!)}开始 · 结束待定';
       }
       return '日期和时间待确认';
     }
     if (intent == CaptureIntentKind.planBlock) {
       return result.startTime != null && result.endTime != null
-          ? '${_cachedDateFormat('yyyy-MM-dd HH:mm').format(result.startTime!)}–${_cachedDateFormat('HH:mm').format(result.endTime!)}'
+          ? '${AppTimeFormats.dateFormatter('yyyy-MM-dd HH:mm').format(result.startTime!)}–${AppTimeFormats.dateFormatter('HH:mm').format(result.endTime!)}'
           : '规划时段待确认';
     }
     if (result.isAllDay && result.startTime != null) {
-      return '${_cachedDateFormat('yyyy-MM-dd').format(result.startTime!)} 内完成';
+      return '${AppTimeFormats.dateFormatter('yyyy-MM-dd').format(result.startTime!)} 内完成';
     }
     if (result.endTime != null) {
-      return '${_cachedDateFormat('yyyy-MM-dd HH:mm').format(result.endTime!)} 前完成';
+      return '${AppTimeFormats.dateFormatter('yyyy-MM-dd HH:mm').format(result.endTime!)} 前完成';
     }
     return '未安排';
   }

@@ -5,7 +5,6 @@ import 'dart:math' as math;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart' hide TextDirection;
 
 import '../models.dart';
 import '../models/ai_todo_action.dart';
@@ -93,18 +92,8 @@ part 'todo_chat_screen_actions_execution.dart';
 part 'todo_chat_screen_messages.dart';
 part 'todo_chat_screen_widgets.dart';
 
-final Map<(String?, String), DateFormat> _todoChatDateFormats = {};
-
-DateFormat _todoChatDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _todoChatDateFormats.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
-}
-
 String _formatTodoChatDateRange(DateTime start, DateTime end) {
-  final dateFormat = _todoChatDateFormat('yyyy-MM-dd');
+  final dateFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd');
   final startText = dateFormat.format(start);
   final endText = dateFormat.format(end);
   return '自定义范围: $startText 至 $endText';

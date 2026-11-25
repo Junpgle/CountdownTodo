@@ -41,11 +41,11 @@ class AboutScreen extends StatefulWidget {
   State<AboutScreen> createState() => _AboutScreenState();
 }
 
-class _AboutScreenState extends State<AboutScreen> {
+class _AboutScreenState extends State<AboutScreen>
+    with SettingsNavigationMixin<AboutScreen> {
   static const _appIconAsset = 'assets/icon/app_icon.png';
   static final GitHubResourceService _resourceService = GitHubResourceService();
   static final RegExp _privacyDatePattern = RegExp(r'\*\*版本日期：(.+?)\*\*');
-  final Map<String, GlobalKey> _navigationKeys = {};
   String _version = '加载中...';
   List<ChangelogEntry> _changelogEntries = [];
   bool _isLoadingChangelog = true;
@@ -79,24 +79,8 @@ class _AboutScreenState extends State<AboutScreen> {
   static const String privacyRawUrl =
       'https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/PRIVACY_POLICY.md';
 
-  GlobalKey _navigationKey(String id) => _navigationKeys.putIfAbsent(
-    id,
-    () => GlobalKey(debugLabel: 'settings-$id'),
-  );
-
-  Future<T?> _openSettingsPage<T>(
-    String id,
-    Widget page, {
-    RouteSettings? settings,
-    bool rootNavigator = false,
-  }) => SettingsNavigation.push<T>(
-    context: context,
-    page: page,
-    sourceKey: _navigationKey(id),
-    isEmbedded: widget.isEmbedded,
-    rootNavigator: rootNavigator,
-    settings: settings,
-  );
+  @override
+  bool get isEmbeddedSettingsPage => widget.isEmbedded;
 
   @override
   void initState() {
@@ -352,7 +336,7 @@ class _AboutScreenState extends State<AboutScreen> {
   }
 
   Future<void> _showPrivacyPolicyPage() async {
-    await _openSettingsPage(
+    await openSettingsPage(
       'privacy',
       PrivacyPolicyPage(
         content: _privacyPolicyContent,
@@ -595,12 +579,14 @@ class _AboutScreenState extends State<AboutScreen> {
                               ),
                             ),
                             _LinkItem(
-                              sourceKey: _navigationKey('device_versions'),
+                              sourceKey: settingsNavigationKey(
+                                'device_versions',
+                              ),
                               icon: Icons.devices_other_outlined,
                               title: '设备版本明细',
                               subtitle: '查看在线设备与历史版本分布',
                               onTap: () {
-                                _openSettingsPage(
+                                openSettingsPage(
                                   'device_versions',
                                   DeviceVersionDetailPage(
                                     isEmbedded: widget.isEmbedded,
@@ -732,12 +718,12 @@ class _AboutScreenState extends State<AboutScreen> {
                   ),
                 ),
                 _LinkItem(
-                  sourceKey: _navigationKey('device_versions'),
+                  sourceKey: settingsNavigationKey('device_versions'),
                   icon: Icons.devices_other_outlined,
                   title: '设备版本明细',
                   subtitle: '查看在线设备与历史版本分布',
                   onTap: () {
-                    _openSettingsPage(
+                    openSettingsPage(
                       'device_versions',
                       DeviceVersionDetailPage(isEmbedded: widget.isEmbedded),
                       settings: const RouteSettings(name: '设备版本明细'),
@@ -793,7 +779,7 @@ class _AboutScreenState extends State<AboutScreen> {
           subtitle: Text(subtitle),
           trailing: const Icon(Icons.chevron_right),
           onTap: () {
-            _openSettingsPage(
+            openSettingsPage(
               'sync_health',
               SyncHealthPage(username: _syncUsername ?? ''),
               settings: const RouteSettings(name: '同步状态'),

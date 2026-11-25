@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../services/course_service.dart';
@@ -20,6 +19,7 @@ import '../../../utils/settings_navigation.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/settings_focus_page.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/time_utils.dart';
 
 part 'course_settings/course_settings_cloud.dart';
 part 'course_settings/course_settings_semesters.dart';
@@ -37,17 +37,10 @@ class CourseSettingsPage extends StatefulWidget {
   State<CourseSettingsPage> createState() => _CourseSettingsPageState();
 }
 
-class _CourseSettingsPageState extends State<CourseSettingsPage> {
-  final Map<(String?, String), DateFormat> _dateFormatters = {};
-
-  DateFormat _cachedDateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
-  }
-
+class _CourseSettingsPageState extends State<CourseSettingsPage>
+    with
+        SettingsNavigationMixin<CourseSettingsPage>,
+        SettingsTargetHighlightMixin<CourseSettingsPage> {
   final Map<String, GlobalKey> _itemKeys = {
     'webview_import': GlobalKey(),
     'smart_import': GlobalKey(),
@@ -64,8 +57,6 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
 
   bool _isLoading = true;
   bool _initialEditorOpened = false;
-  String? _highlightTarget;
-  Timer? _highlightTimer;
 
   String _username = '';
   int? _userId;
@@ -88,37 +79,24 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
 
   void _mutateState(VoidCallback fn) => setState(fn);
 
-  GlobalKey _navigationKey(String id) =>
-      _itemKeys.putIfAbsent(id, () => GlobalKey(debugLabel: 'settings-$id'));
+  @override
+  Map<String, GlobalKey> get settingsNavigationKeyStore => _itemKeys;
 
-  Future<T?> _openSettingsPage<T>(
-    String id,
-    Widget page, {
-    RouteSettings? settings,
-    bool rootNavigator = false,
-  }) => SettingsNavigation.push<T>(
-    context: context,
-    page: page,
-    sourceKey: _navigationKey(id),
-    isEmbedded: widget.isEmbedded,
-    rootNavigator: rootNavigator,
-    settings: settings,
-  );
+  @override
+  bool get isEmbeddedSettingsPage => widget.isEmbedded;
+
+  @override
+  GlobalKey? resolveSettingsTargetKey(String target) => _itemKeys[target];
 
   @override
   void initState() {
     super.initState();
     _loadSettings();
-    if (widget.initialTarget != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _scrollToTarget(widget.initialTarget!);
-      });
-    }
+    scheduleInitialSettingsTarget(widget.initialTarget);
   }
 
   @override
   void dispose() {
-    _highlightTimer?.cancel();
     final route = _loadingDialogRoute;
     final navigator = _loadingDialogNavigator;
     if (route != null &&
@@ -133,24 +111,6 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     _loadingDialogReady = null;
     _loadingDialogNavigator = null;
     super.dispose();
-  }
-
-  void _scrollToTarget(String target) {
-    final key = _itemKeys[target];
-    if (key?.currentContext != null) {
-      setState(() => _highlightTarget = target);
-      Scrollable.ensureVisible(
-        key!.currentContext!,
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOut,
-        alignment: 0.15,
-      );
-      _highlightTimer?.cancel();
-      _highlightTimer = Timer(const Duration(milliseconds: 3000), () {
-        _highlightTimer = null;
-        if (mounted) setState(() => _highlightTarget = null);
-      });
-    }
   }
 
   Future<void> _loadSettings() async {
@@ -321,7 +281,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
   }
 
   Widget _buildTile({required String targetId, required Widget child}) {
-    final bool isHighlighted = _highlightTarget == targetId;
+    final bool isHighlighted = highlightTarget == targetId;
     return Container(
       key: _itemKeys[targetId],
       child: AnimatedContainer(
@@ -461,7 +421,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                 subtitle: const Text('设置停课日期，以及补哪一天的课'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () async {
-                  await _openSettingsPage(
+                  await openSettingsPage(
                     'course_calendar_adjustment',
                     CourseCalendarAdjustmentScreen(
                       isEmbedded: widget.isEmbedded,
@@ -508,7 +468,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                     subtitle: isWeb ? '导出文件后导入' : '推荐方式',
                     color: Colors.teal,
                     onTap: () => _courseImportHandler.importFromWebView(
-                      sourceKey: _navigationKey('webview_import'),
+                      sourceKey: settingsNavigationKey('webview_import'),
                       isEmbedded: widget.isEmbedded,
                     ),
                   ),
@@ -575,7 +535,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                   ),
                 ),
                 onTap: () {
-                  _openSettingsPage(
+                  openSettingsPage(
                     'course_adapt',
                     CourseAdaptationScreen(isEmbedded: widget.isEmbedded),
                     settings: const RouteSettings(name: '课程表适配机制'),

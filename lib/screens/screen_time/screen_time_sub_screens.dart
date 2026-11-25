@@ -339,15 +339,15 @@ class AppDetailScreen extends StatelessWidget {
         case ScreenTimeRange.day:
           return isCurrentSlot && periodStart == today
               ? "今日"
-              : _screenTimeDateFormat('MM/dd').format(periodStart);
+              : AppTimeFormats.dateFormatter('MM/dd').format(periodStart);
         case ScreenTimeRange.week:
           return isCurrentSlot
               ? _periodLabel(periodStart, range, today)
-              : _screenTimeDateFormat('MM/dd').format(periodStart);
+              : AppTimeFormats.dateFormatter('MM/dd').format(periodStart);
         case ScreenTimeRange.month:
           return isCurrentSlot
               ? _periodLabel(periodStart, range, today)
-              : _screenTimeDateFormat('MM月').format(periodStart);
+              : AppTimeFormats.dateFormatter('MM月').format(periodStart);
       }
     }
 

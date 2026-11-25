@@ -122,7 +122,7 @@ extension _SearchServiceDatabase on SearchService {
         targetDateValue.month == now.month &&
         targetDateValue.day == now.day;
     final dateQueryHint = isDateQuery && startOfDay != null
-        ? '搜索到${_searchDateFormat('yyyy年M月d日').format(startOfDay)}的结果'
+        ? '搜索到${AppTimeFormats.dateFormatter('yyyy年M月d日').format(startOfDay)}的结果'
         : null;
 
     if (scope.includes(SearchResultType.todo)) {
@@ -170,7 +170,7 @@ extension _SearchServiceDatabase on SearchService {
         // debugPrint('Todo search error: $e');
       }
 
-      final todoDateFormat = _searchDateFormat('MM/dd');
+      final todoDateFormat = AppTimeFormats.dateFormatter('MM/dd');
       for (var t in todos) {
         // 构建副标题：备注（优先）+ 截止时间 + 归属团队
         // 🚀 修复：备注始终显示在副标题第一行，而非仅作兜底
@@ -361,7 +361,8 @@ extension _SearchServiceDatabase on SearchService {
                   : int.tryParse(targetMs.toString()) ?? 0,
             );
             final diff = CalendarDateMath.daysBetween(now, target);
-            final dateStr = _searchDateFormat('yyyy/MM/dd').format(target);
+            final dateStr = AppTimeFormats.dateFormatter('yyyy/MM/dd')
+                .format(target);
             subtitle = diff >= 0
                 ? '还有 $diff 天 · $dateStr'
                 : '已过 ${-diff} 天 · $dateStr';
@@ -424,7 +425,7 @@ extension _SearchServiceDatabase on SearchService {
           }).toList();
         }
 
-        final logDateFormat = _searchDateFormat('MM/dd HH:mm');
+        final logDateFormat = AppTimeFormats.dateFormatter('MM/dd HH:mm');
         for (final log in matchedLogs) {
           final startMs = (log['start_time'] as num?)?.toInt() ?? 0;
           final endMs = (log['end_time'] as num?)?.toInt() ?? startMs;
@@ -536,7 +537,7 @@ extension _SearchServiceDatabase on SearchService {
 
           final history = await StorageService.getScreenTimeHistory();
           if (shouldContinue?.call() == false) return dbItems;
-          final targetDateKey = _searchDateFormat('yyyy-MM-dd')
+          final targetDateKey = AppTimeFormats.dateFormatter('yyyy-MM-dd')
               .format(startOfDay!);
           final targetDayStats = history[targetDateKey];
 
@@ -632,7 +633,7 @@ extension _SearchServiceDatabase on SearchService {
                   }
                   return _matchesAllTerms(searchable.toString(), searchTerms);
                 }).toList();
-          final pomodoroTimeFormat = _searchDateFormat('HH:mm');
+          final pomodoroTimeFormat = AppTimeFormats.dateFormatter('HH:mm');
           for (var p in matchedPoms) {
             final start = DateTime.fromMillisecondsSinceEpoch(p.startTime);
             final end = p.endTime != null

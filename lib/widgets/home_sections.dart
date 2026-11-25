@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'dart:math' as math;
 
-import 'package:intl/intl.dart' hide TextDirection;
-
 import '../services/liquid_glass_effect_service.dart';
 import '../services/power_save_mode_service.dart';
 import '../utils/android_energy_policy.dart';
@@ -248,17 +246,8 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
   late Animation<double> _pieAnim;
   late Animation<double> _shimmerAnim;
   _ScreenTimeChartData? _chartData;
-  final Map<(String?, String), DateFormat> _dateFormatters = {};
 
   bool get _showsShimmer => widget.hasPermission && widget.isLoading;
-
-  DateFormat _cachedDateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
-  }
 
   @override
   void initState() {
@@ -621,7 +610,7 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
                                   ),
                                   if (widget.lastSyncTime != null)
                                     Text(
-                                      "更新: ${_cachedDateFormat('HH:mm').format(widget.lastSyncTime!)}",
+                                      "更新: ${AppTimeFormats.dateFormatter('HH:mm').format(widget.lastSyncTime!)}",
                                       style: TextStyle(
                                         fontSize: isTablet ? 11 : 10,
                                         color: secondaryColor.withValues(

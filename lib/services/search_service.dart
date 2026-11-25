@@ -13,8 +13,6 @@ import 'database_helper.dart';
 import 'api_service.dart';
 import 'pomodoro_service.dart';
 
-import 'package:intl/intl.dart';
-
 import '../screens/home_settings_screen.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/todo_section_widget.dart';
@@ -66,15 +64,6 @@ final RegExp _fullSearchDatePattern = RegExp(
 final RegExp _shortSearchDatePattern = RegExp(
   r'^(\d{1,2})[./\-/月](\d{1,2})[日号]?$',
 );
-final Map<(String?, String), DateFormat> _searchDateFormats = {};
-
-DateFormat _searchDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _searchDateFormats.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
-}
 
 class SearchResultWithScore {
   final SearchResult result;

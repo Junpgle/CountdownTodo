@@ -57,8 +57,9 @@ extension _TodoEditScreenSections on TodoEditScreenState {
             seriesId,
             now: _now,
           );
-    final baseDateLabel = _dateFormat(_isAllDay ? 'M月d日' : 'M月d日 HH:mm')
-        .format(_originalCreatedDate);
+    final baseDateLabel = AppTimeFormats.dateFormatter(
+      _isAllDay ? 'M月d日' : 'M月d日 HH:mm',
+    ).format(_originalCreatedDate);
 
     return Container(
       key: const ValueKey('series_scope_summary'),
@@ -153,7 +154,7 @@ extension _TodoEditScreenSections on TodoEditScreenState {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _dateFormat('M月d日').format(start),
+                  AppTimeFormats.dateFormatter('M月d日').format(start),
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
                   ),
@@ -392,7 +393,7 @@ extension _TodoEditScreenSections on TodoEditScreenState {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '${_dateFormat('MM-dd HH:mm').format(startLocal)} · $durationMin 分钟',
+                          '${AppTimeFormats.dateFormatter('MM-dd HH:mm').format(startLocal)} · $durationMin 分钟',
                           style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
@@ -610,7 +611,7 @@ extension _TodoEditScreenSections on TodoEditScreenState {
                               color: colorScheme.primary.withValues(alpha: 0.7),
                             ),
                             title: Text(
-                              "${_dateFormat('MM-dd').format(start)} ${_dateFormat('HH:mm').format(start)} - ${_dateFormat('HH:mm').format(end)}",
+                              "${AppTimeFormats.dateFormatter('MM-dd').format(start)} ${AppTimeFormats.dateFormatter('HH:mm').format(start)} - ${AppTimeFormats.dateFormatter('HH:mm').format(end)}",
                               style: const TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w500,

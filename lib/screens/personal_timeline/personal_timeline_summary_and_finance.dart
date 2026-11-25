@@ -88,7 +88,8 @@ extension _PersonalTimelineSummaryFinanceExt on _PersonalTimelineScreenState {
   }
 
   Widget _buildJournalEntry(TimelineEvent event, ColorScheme cs) {
-    final timeStr = _timelineDateFormat('HH:mm').format(event.timestamp);
+    final timeStr = AppTimeFormats.dateFormatter('HH:mm')
+        .format(event.timestamp);
     final isImportant =
         event.type == TimelineEventType.pomodoroEnd ||
         event.type == TimelineEventType.todoCompleted ||
@@ -746,7 +747,7 @@ extension _PersonalTimelineSummaryFinanceExt on _PersonalTimelineScreenState {
               _buildRankItem(
                 0,
                 '最高支出日',
-                '${_timelineDateFormat('MM/dd').format(dateFromKey(peakDay.key))} · '
+                '${AppTimeFormats.dateFormatter('MM/dd').format(dateFromKey(peakDay.key))} · '
                     '${formatFinanceAmount(peakDay.value)}',
                 cs,
               ),

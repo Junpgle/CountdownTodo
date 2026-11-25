@@ -36,19 +36,47 @@ void main() {
     final chinese = AppTimeFormats.dateFormatter('EEEE');
     expect(chinese, isNot(same(english)));
     expect(AppTimeFormats.dateFormatter('EEEE'), same(chinese));
+
+    final explicitEn = AppTimeFormats.dateFormatter('MMMM', locale: 'en_US');
+    final explicitZh = AppTimeFormats.dateFormatter('MMMM', locale: 'zh_CN');
+    expect(
+      AppTimeFormats.dateFormatter('MMMM', locale: 'en_US'),
+      same(explicitEn),
+    );
+    expect(explicitZh, isNot(same(explicitEn)));
   });
 
-  test('formatDurationHMin formats duration as xhxmin / xh / xmin / xs / 0min', () {
-    expect(formatDurationHMin(0), '0min');
-    expect(formatDurationHMin(-10), '0min');
-    expect(formatDurationHMin(15), '15s');
-    expect(formatDurationHMin(59), '59s');
-    expect(formatDurationHMin(60), '1min');
-    expect(formatDurationHMin(1500), '25min');
-    expect(formatDurationHMin(3600), '1h');
-    expect(formatDurationHMin(3660), '1h1min');
-    expect(formatDurationHMin(5400), '1h30min');
-    expect(formatDurationHMin(7200), '2h');
-    expect(formatDurationHMin(7500), '2h5min');
+  test('date formatter cache retains at least 48 distinct patterns without eviction', () {
+    final originalLocale = Intl.defaultLocale;
+    addTearDown(() => Intl.defaultLocale = originalLocale);
+    Intl.defaultLocale = 'en_US';
+
+    final formatters = [
+      for (var i = 0; i < 48; i++)
+        AppTimeFormats.dateFormatter("yyyy-MM-dd 'tag$i'"),
+    ];
+    for (var i = 0; i < 48; i++) {
+      expect(
+        AppTimeFormats.dateFormatter("yyyy-MM-dd 'tag$i'"),
+        same(formatters[i]),
+      );
+    }
   });
+
+  test(
+    'formatDurationHMin formats duration as xhxmin / xh / xmin / xs / 0min',
+    () {
+      expect(formatDurationHMin(0), '0min');
+      expect(formatDurationHMin(-10), '0min');
+      expect(formatDurationHMin(15), '15s');
+      expect(formatDurationHMin(59), '59s');
+      expect(formatDurationHMin(60), '1min');
+      expect(formatDurationHMin(1500), '25min');
+      expect(formatDurationHMin(3600), '1h');
+      expect(formatDurationHMin(3660), '1h1min');
+      expect(formatDurationHMin(5400), '1h30min');
+      expect(formatDurationHMin(7200), '2h');
+      expect(formatDurationHMin(7500), '2h5min');
+    },
+  );
 }

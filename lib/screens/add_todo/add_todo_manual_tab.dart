@@ -148,7 +148,7 @@ extension _AddTodoManualTabExt on _AddTodoScreenState {
     final parsedDate = DateTime.tryParse(schedule.date)?.toLocal();
     final dateLabel = parsedDate == null
         ? schedule.date
-        : _cachedDateFormat('yyyy年M月d日').format(parsedDate);
+        : AppTimeFormats.dateFormatter('yyyy年M月d日').format(parsedDate);
     final start = schedule.startTime == null
         ? null
         : DateTime.fromMillisecondsSinceEpoch(schedule.startTime!).toLocal();
@@ -158,8 +158,8 @@ extension _AddTodoManualTabExt on _AddTodoScreenState {
     final timeLabel = start == null
         ? '时间待定'
         : end == null
-        ? '${_cachedDateFormat('HH:mm').format(start)} · 结束待定'
-        : '${_cachedDateFormat('HH:mm').format(start)} - ${_cachedDateFormat('HH:mm').format(end)}';
+        ? '${AppTimeFormats.dateFormatter('HH:mm').format(start)} · 结束待定'
+        : '${AppTimeFormats.dateFormatter('HH:mm').format(start)} - ${AppTimeFormats.dateFormatter('HH:mm').format(end)}';
 
     return Container(
       key: const ValueKey('related-fixed-schedule-context'),
@@ -496,12 +496,12 @@ extension _AddTodoManualTabExt on _AddTodoScreenState {
                               _isAllDay
                                   ? _dateWithSemesterWeek(
                                       _createdAt,
-                                      _cachedDateFormat('MM-dd')
+                                      AppTimeFormats.dateFormatter('MM-dd')
                                           .format(_createdAt),
                                     )
                                   : (_dueDate == null
                                         ? "未安排"
-                                        : "${_dateWithSemesterWeek(_dueDate!, _cachedDateFormat('MM-dd HH:mm').format(_dueDate!))} 前完成"),
+                                        : "${_dateWithSemesterWeek(_dueDate!, AppTimeFormats.dateFormatter('MM-dd HH:mm').format(_dueDate!))} 前完成"),
                             ),
                             trailing: _dueDate != null && !_isAllDay
                                 ? IconButton(
@@ -526,7 +526,7 @@ extension _AddTodoManualTabExt on _AddTodoScreenState {
                             subtitle: Text(
                               _dateWithSemesterWeek(
                                 _scheduleDate,
-                                _cachedDateFormat('yyyy-MM-dd')
+                                AppTimeFormats.dateFormatter('yyyy-MM-dd')
                                     .format(_scheduleDate),
                               ),
                             ),
@@ -806,7 +806,7 @@ extension _AddTodoManualTabExt on _AddTodoScreenState {
                                                   ? "未指定"
                                                   : _dateWithSemesterWeek(
                                                       _recurrenceEndDate!,
-                                                      _cachedDateFormat(
+                                                      AppTimeFormats.dateFormatter(
                                                         'yyyy-MM-dd',
                                                       ).format(
                                                         _recurrenceEndDate!,

@@ -3,7 +3,6 @@ import 'dart:async';
 import '../../../widgets/floating_glass_control.dart';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
@@ -11,6 +10,7 @@ import '../services/finance_storage.dart';
 import '../widgets/finance_management_widgets.dart';
 import '../widgets/finance_trash_manager.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/time_utils.dart';
 
 class FinanceTrashScreen extends StatefulWidget {
   const FinanceTrashScreen({super.key});
@@ -31,15 +31,6 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
   String? _loadError;
   int _loadGeneration = 0;
   Timer? _financeChangeRefreshTimer;
-  final Map<(String?, String), DateFormat> _dateFormatters = {};
-
-  DateFormat _cachedDateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
-  }
 
   @override
   void initState() {
@@ -205,7 +196,9 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
   }
 
   List<FinanceTrashEntry> get _entries {
-    final balanceSnapshotDateFormat = _cachedDateFormat('yyyy年M月d日 HH:mm');
+    final balanceSnapshotDateFormat = AppTimeFormats.dateFormatter(
+      'yyyy年M月d日 HH:mm',
+    );
     final categories = {
       for (final category in _categories) category.uuid: category,
     };

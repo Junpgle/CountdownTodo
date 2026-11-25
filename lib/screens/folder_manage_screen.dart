@@ -6,14 +6,13 @@ import '../storage_service.dart';
 import '../models.dart';
 import '../models/todo_create_save_result.dart';
 
-import 'package:intl/intl.dart';
-
 import 'add_todo_screen.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/management_page.dart';
 import '../utils/app_dialogs.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
+import '../utils/time_utils.dart';
 
 class FolderManageScreen extends StatefulWidget {
   final String username;
@@ -45,7 +44,6 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
   late List<TodoGroup> _groups;
   late List<TodoItem> _todos;
   final _searchController = TextEditingController();
-  final Map<(String?, String), DateFormat> _dateFormatters = {};
 
   TodoItem _copyTodo(TodoItem todo) => TodoItem.fromJson(todo.toJson());
 
@@ -85,14 +83,6 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
       context,
       SnackBar(content: Text('保存失败，原清单未更改：$error')),
     );
-  }
-
-  DateFormat _cachedDateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
   }
 
   @override
@@ -335,14 +325,15 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
                     itemBuilder: (context, index) {
                       final t = unassigned[index];
                       final startStr = t.createdDate != null
-                          ? _cachedDateFormat('MM-dd HH:mm').format(
+                          ? AppTimeFormats.dateFormatter('MM-dd HH:mm').format(
                               DateTime.fromMillisecondsSinceEpoch(
                                 t.createdDate!,
                               ),
                             )
                           : null;
                       final dueStr = t.dueDate != null
-                          ? _cachedDateFormat('MM-dd HH:mm').format(t.dueDate!)
+                          ? AppTimeFormats.dateFormatter('MM-dd HH:mm')
+                                .format(t.dueDate!)
                           : null;
 
                       return RepaintBoundary(

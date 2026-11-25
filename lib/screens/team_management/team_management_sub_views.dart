@@ -85,7 +85,7 @@ class _TeamDetailViewState extends State<_TeamDetailView>
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '创建于 ${_teamManagementDateFormat('yyyy-MM-dd').format(DateTime.fromMillisecondsSinceEpoch(widget.team.createdAt))}',
+                          '创建于 ${AppTimeFormats.dateFormatter('yyyy-MM-dd').format(DateTime.fromMillisecondsSinceEpoch(widget.team.createdAt))}',
                           style: TextStyle(
                             color: Colors.grey.shade500,
                             fontSize: 13,
@@ -351,7 +351,7 @@ class _TeamAnnouncementViewState extends State<_TeamAnnouncementView> {
                                 DateTime.now();
                           }
                           return Text(
-                            _teamManagementDateFormat('MM-dd HH:mm')
+                            AppTimeFormats.dateFormatter('MM-dd HH:mm')
                                 .format(date),
                             style: TextStyle(
                               fontSize: 12,

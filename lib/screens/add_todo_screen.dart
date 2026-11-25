@@ -2,8 +2,9 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
+
+import '../utils/time_utils.dart';
 
 import '../models.dart';
 import '../models/chat_message.dart';
@@ -135,7 +136,6 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   Set<String> _scheduleRelatedTodoIds = {};
   final GlobalKey _relatedTodosTileKey = GlobalKey();
   SemesterWeekContext? _semesterWeekContext;
-  final Map<(String?, String), DateFormat> _dateFormatters = {};
 
   int _selectedTabIndex = 0;
   bool _isParsing = false;

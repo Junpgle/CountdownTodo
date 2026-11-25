@@ -39,13 +39,17 @@ class AiAssistantSettingsPage extends StatefulWidget {
       _AiAssistantSettingsPageState();
 }
 
-class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
+class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage>
+    with SettingsTargetHighlightMixin<AiAssistantSettingsPage> {
   final GlobalKey _modelConfigKey = GlobalKey();
   final GlobalKey _dailyAiSuggestionKey = GlobalKey();
   final TextEditingController _promptController = TextEditingController();
 
-  String? _highlightTarget;
-  Timer? _highlightTimer;
+  @override
+  GlobalKey? resolveSettingsTargetKey(String target) => switch (target) {
+    AiAssistantSettingsPage.dailyAiSuggestionTarget => _dailyAiSuggestionKey,
+    _ => null,
+  };
 
   bool _isLoading = true;
   bool _isSavingPrompt = false;
@@ -78,7 +82,6 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
   @override
   void dispose() {
     AiMemoryService.revision.removeListener(_onMemoryRevisionChanged);
-    _highlightTimer?.cancel();
     _promptController.dispose();
     super.dispose();
   }
@@ -95,26 +98,6 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
     setState(() {
       _aiMemoryEnabled = enabled;
       _aiMemories = memories;
-    });
-  }
-
-  void _scrollToTarget(String target) {
-    final key = switch (target) {
-      AiAssistantSettingsPage.dailyAiSuggestionTarget => _dailyAiSuggestionKey,
-      _ => null,
-    };
-    if (key?.currentContext == null) return;
-    setState(() => _highlightTarget = target);
-    Scrollable.ensureVisible(
-      key!.currentContext!,
-      duration: const Duration(milliseconds: 500),
-      curve: Curves.easeInOut,
-      alignment: 0.15,
-    );
-    _highlightTimer?.cancel();
-    _highlightTimer = Timer(const Duration(milliseconds: 3000), () {
-      _highlightTimer = null;
-      if (mounted) setState(() => _highlightTarget = null);
     });
   }
 
@@ -155,17 +138,12 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
       _locationPermissionStatus = values[13] as PermissionStatus;
       _isLoading = false;
     });
-    if (widget.initialTarget != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _scrollToTarget(widget.initialTarget!);
-      });
-    }
+    scheduleInitialSettingsTarget(widget.initialTarget);
   }
 
   Future<void> _requestLocationPermission() async {
-    final result = await PermissionRequestCoordinator(
-      context: context,
-    ).request(AppPermissionKind.location, fallbackToSettingsOnDenied: true);
+    final result = await PermissionRequestCoordinator(context: context)
+        .request(AppPermissionKind.location, fallbackToSettingsOnDenied: true);
     if (!mounted) return;
     setState(() {
       _locationPermissionStatus = result.status;
@@ -742,7 +720,7 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
                   curve: Curves.easeInOut,
                   decoration: BoxDecoration(
                     color:
-                        _highlightTarget ==
+                        highlightTarget ==
                             AiAssistantSettingsPage.dailyAiSuggestionTarget
                         ? colorScheme.primary.withValues(alpha: 0.12)
                         : Colors.transparent,

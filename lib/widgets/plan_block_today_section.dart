@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models.dart';
@@ -34,16 +33,6 @@ import '../screens/add_todo_screen.dart';
 import '../utils/app_dialogs.dart';
 import 'floating_glass_control.dart';
 import 'home_agenda_card.dart';
-
-final Map<(String?, String), DateFormat> _planTodayDateFormats = {};
-
-DateFormat _planTodayDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _planTodayDateFormats.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
-}
 
 /// Display reloads never trigger the legacy missed-state maintenance.
 class PlanBlockTodaySection extends StatefulWidget {
@@ -899,7 +888,7 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
     if (!mounted || !_active || route?.isCurrent == false) return;
 
     final block = request.block;
-    final format = _planTodayDateFormat('M月d日 HH:mm');
+    final format = AppTimeFormats.dateFormatter('M月d日 HH:mm');
     var saving = false;
     String? saveError;
     final confirmedReceipt = await showAppDialog<PlanManualCompletionReceipt>(
@@ -1195,7 +1184,7 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
     final a = DateTime.fromMillisecondsSinceEpoch(entry.start);
     final b = DateTime.fromMillisecondsSinceEpoch(entry.end);
     final pattern = DateUtils.isSameDay(a, b) ? 'HH:mm' : 'MM-dd HH:mm';
-    final dateFormat = _planTodayDateFormat(pattern);
+    final dateFormat = AppTimeFormats.dateFormatter(pattern);
     return '${dateFormat.format(a)}–${dateFormat.format(b)}';
   }
 

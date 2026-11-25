@@ -177,7 +177,7 @@ extension _PlanGridBlocks on _PlanGridViewState {
                           if (segmentW >
                               180 * MediaQuery.textScalerOf(context).scale(1))
                             Text(
-                              '${_todoPlanDateFormat('HH:mm').format(start)}-${_todoPlanDateFormat('HH:mm').format(end)}',
+                              '${AppTimeFormats.dateFormatter('HH:mm').format(start)}-${AppTimeFormats.dateFormatter('HH:mm').format(end)}',
                               style: TextStyle(
                                 fontSize: min(8.0, contentFontSize),
                                 color: color.withValues(alpha: 0.72),
@@ -406,7 +406,7 @@ extension _PlanGridBlocks on _PlanGridViewState {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              '习惯软预留 · ${_todoPlanDateFormat('HH:mm').format(start)}–${_todoPlanDateFormat('HH:mm').format(end)} (${block.plannedMinutes} 分钟)',
+                              '习惯软预留 · ${AppTimeFormats.dateFormatter('HH:mm').format(start)}–${AppTimeFormats.dateFormatter('HH:mm').format(end)} (${block.plannedMinutes} 分钟)',
                               style: Theme.of(sheetCtx).textTheme.bodySmall
                                   ?.copyWith(color: cs.onSurfaceVariant),
                             ),
@@ -500,7 +500,7 @@ extension _PlanGridBlocks on _PlanGridViewState {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              '${challenge.challengeTitle} · ${_todoPlanDateFormat('HH:mm').format(start)}–${_todoPlanDateFormat('HH:mm').format(end)} (${block.plannedMinutes} 分钟)',
+                              '${challenge.challengeTitle} · ${AppTimeFormats.dateFormatter('HH:mm').format(start)}–${AppTimeFormats.dateFormatter('HH:mm').format(end)} (${block.plannedMinutes} 分钟)',
                               style: Theme.of(sheetCtx).textTheme.bodySmall
                                   ?.copyWith(color: cs.onSurfaceVariant),
                             ),

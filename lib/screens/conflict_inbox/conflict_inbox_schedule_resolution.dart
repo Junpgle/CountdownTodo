@@ -369,7 +369,7 @@ extension _ConflictInboxScheduleExt on _ConflictInboxScreenState {
           data['dueDate'],
     );
 
-    final sf = _conflictInboxDateFormat('HH:mm');
+    final sf = AppTimeFormats.dateFormatter('HH:mm');
     final originalTime = start > 0 && end > 0
         ? '${sf.format(DateTime.fromMillisecondsSinceEpoch(start))} ~ ${sf.format(DateTime.fromMillisecondsSinceEpoch(end))}'
         : '时间未知';
@@ -696,8 +696,8 @@ extension _ConflictInboxScheduleExt on _ConflictInboxScreenState {
         ((recommendedWindow.start.millisecondsSinceEpoch - startMs) /
                 const Duration(minutes: 1).inMilliseconds)
             .round();
-    final startDateFormat = _conflictInboxDateFormat('MM-dd HH:mm');
-    final endTimeFormat = _conflictInboxDateFormat('HH:mm');
+    final startDateFormat = AppTimeFormats.dateFormatter('MM-dd HH:mm');
+    final endTimeFormat = AppTimeFormats.dateFormatter('HH:mm');
     return '推荐：仅移动开始时间，保留 $durationMinutes 分钟时长。新时间为 '
         '${startDateFormat.format(recommendedWindow.start)} ~ '
         '${endTimeFormat.format(recommendedWindow.end)}'

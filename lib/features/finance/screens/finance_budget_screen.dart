@@ -12,6 +12,7 @@ import '../widgets/finance_management_widgets.dart';
 import '../../../widgets/floating_glass_control.dart';
 import 'finance_budget_entry_screen.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/time_utils.dart';
 
 class FinanceBudgetScreen extends StatefulWidget {
   final DateTime? initialMonth;
@@ -44,21 +45,12 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   List<FinancePaymentMethod>? _paymentMethodCacheSource;
   Map<String, FinancePaymentMethod> _paymentMethodMapCache = const {};
   final Map<String, String> _paymentMethodDisplayNames = {};
-  final Map<(String?, String), DateFormat> _dateFormatters = {};
   bool? _balanceSyncSupported;
   FinanceSummary _summary = const FinanceSummary();
   bool _isLoading = true;
   String? _loadError;
   int _loadGeneration = 0;
   Timer? _balanceRefreshTimer;
-
-  DateFormat _cachedDateFormat(String pattern) {
-    final locale = Intl.defaultLocale;
-    return _dateFormatters.putIfAbsent((
-      locale,
-      pattern,
-    ), () => DateFormat(pattern, locale));
-  }
 
   @override
   void initState() {
@@ -145,8 +137,9 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     return _month.year == now.year && _month.month == now.month;
   }
 
-  String get _monthLabel =>
-      _isCurrentMonth ? '本月' : _cachedDateFormat('yyyy年M月').format(_month);
+  String get _monthLabel => _isCurrentMonth
+      ? '本月'
+      : AppTimeFormats.dateFormatter('yyyy年M月').format(_month);
 
   String get _paymentBalanceSectionTitle {
     if (_isCurrentMonth) return '付款方式实时余额';
@@ -903,7 +896,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
       budget.effectiveBalanceSnapshotAt,
     );
     final balanceSnapshotDateFormat = budget.isPaymentMethod
-        ? _cachedDateFormat('yyyy年M月d日 HH:mm')
+        ? AppTimeFormats.dateFormatter('yyyy年M月d日 HH:mm')
         : null;
     final progress = budget.amountMinor == 0
         ? 0.0

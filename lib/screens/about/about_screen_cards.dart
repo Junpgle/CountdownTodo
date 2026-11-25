@@ -537,7 +537,7 @@ extension _AboutScreenCards on _AboutScreenState {
         child: Column(
           children: [
             ListTile(
-              key: _navigationKey('privacy'),
+              key: settingsNavigationKey('privacy'),
               leading: Icon(
                 Icons.privacy_tip_outlined,
                 color: Theme.of(context).colorScheme.primary,

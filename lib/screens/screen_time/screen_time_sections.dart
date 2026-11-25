@@ -325,15 +325,15 @@ extension _ScreenTimeDetailSections on _ScreenTimeDetailScreenState {
       case ScreenTimeRange.day:
         return isCurrent
             ? "今日"
-            : _screenTimeDateFormat('MM/dd').format(periodStart);
+            : AppTimeFormats.dateFormatter('MM/dd').format(periodStart);
       case ScreenTimeRange.week:
         return isCurrent
             ? "本周"
-            : _screenTimeDateFormat('MM/dd').format(periodStart);
+            : AppTimeFormats.dateFormatter('MM/dd').format(periodStart);
       case ScreenTimeRange.month:
         return isCurrent
             ? "本月"
-            : _screenTimeDateFormat('MM月').format(periodStart);
+            : AppTimeFormats.dateFormatter('MM月').format(periodStart);
     }
   }
 

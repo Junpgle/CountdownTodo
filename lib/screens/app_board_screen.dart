@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../storage_service.dart';
@@ -13,6 +12,7 @@ import '../utils/android_energy_policy.dart';
 import '../utils/calendar_date_math.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
+import '../utils/time_utils.dart';
 
 part 'app_board/app_board_gantt.dart';
 part 'app_board/app_board_widgets.dart';
@@ -20,16 +20,6 @@ part 'app_board/app_board_widgets.dart';
 // Custom Colors to match Tailwind Emerald
 const Color emerald = Color(0xFF10B981);
 const Color emeraldAccent = Color(0xFF34D399);
-
-final Map<(String?, String), DateFormat> _appBoardDateFormats = {};
-
-DateFormat _appBoardDateFormat(String pattern) {
-  final locale = Intl.defaultLocale;
-  return _appBoardDateFormats.putIfAbsent((
-    locale,
-    pattern,
-  ), () => DateFormat(pattern, locale));
-}
 
 class AppBoardScreen extends StatefulWidget {
   final String username;
@@ -509,7 +499,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
             ValueListenableBuilder<DateTime>(
               valueListenable: _nowNotifier,
               builder: (context, now, _) => Text(
-                _appBoardDateFormat('HH:mm').format(now),
+                AppTimeFormats.dateFormatter('HH:mm').format(now),
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.8),
                   fontSize: 48,

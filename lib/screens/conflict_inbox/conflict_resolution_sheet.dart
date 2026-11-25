@@ -334,7 +334,7 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
           : int.tryParse(start.toString()) ?? 0;
       final endMs = end is int ? end : int.tryParse(end.toString()) ?? 0;
       if (startMs > 0 && endMs > 0) {
-        final sf = _conflictInboxDateFormat('MM-dd HH:mm');
+        final sf = AppTimeFormats.dateFormatter('MM-dd HH:mm');
         timeStr =
             '${sf.format(DateTime.fromMillisecondsSinceEpoch(startMs))} ~ ${sf.format(DateTime.fromMillisecondsSinceEpoch(endMs))}';
       }
@@ -343,7 +343,7 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
           ? targetTime
           : int.tryParse(targetTime.toString()) ?? 0;
       if (tMs > 0) {
-        timeStr = _conflictInboxDateFormat('MM-dd HH:mm')
+        timeStr = AppTimeFormats.dateFormatter('MM-dd HH:mm')
             .format(DateTime.fromMillisecondsSinceEpoch(tMs));
       }
     }
@@ -619,14 +619,14 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
   String _formatTimestamp(dynamic value) {
     final ms = _toMillis(value);
     if (ms == null || ms <= 0) return '空';
-    return _conflictInboxDateFormat('yyyy-MM-dd HH:mm:ss')
+    return AppTimeFormats.dateFormatter('yyyy-MM-dd HH:mm:ss')
         .format(DateTime.fromMillisecondsSinceEpoch(ms));
   }
 
   String _formatDateTimeMs(dynamic value) {
     final ms = _toMillis(value);
     if (ms == null || ms <= 0) return '空';
-    return _conflictInboxDateFormat('MM-dd HH:mm')
+    return AppTimeFormats.dateFormatter('MM-dd HH:mm')
         .format(DateTime.fromMillisecondsSinceEpoch(ms));
   }
 

@@ -1133,7 +1133,7 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
 
   String _formatDate(DateTime? date) {
     if (date == null) return '日期未知';
-    return _challengeDateFormat('M月d日').format(date);
+    return AppTimeFormats.dateFormatter('M月d日').format(date);
   }
 
   Widget _buildFeelingPreview(
