@@ -79,4 +79,44 @@ void main() {
       expect(formatDurationHMin(7500), '2h5min');
     },
   );
+
+  test(
+    'weekday helpers and timestamp/hourMinute helpers format accurately',
+    () {
+      expect(AppTimeFormats.weekdayShortLabelsZh, [
+        '一',
+        '二',
+        '三',
+        '四',
+        '五',
+        '六',
+        '日',
+      ]);
+      expect(AppTimeFormats.weekdayLabelsZh, [
+        '周一',
+        '周二',
+        '周三',
+        '周四',
+        '周五',
+        '周六',
+        '周日',
+      ]);
+      expect(AppTimeFormats.weekdayShortZh(1), '一');
+      expect(AppTimeFormats.weekdayShortZh(7), '日');
+      expect(AppTimeFormats.weekdayShortZh(0), '一');
+      expect(AppTimeFormats.weekdayShortZh(99), '日');
+
+      expect(AppTimeFormats.weekdayZh(1), '周一');
+      expect(AppTimeFormats.weekdayZh(5), '周五');
+      expect(AppTimeFormats.weekdayZh(0), '周一');
+      expect(AppTimeFormats.weekdayZh(8), '周日');
+
+      // 2026-11-25 is Wednesday (weekday == 3)
+      final dt = DateTime(2026, 11, 25, 8, 5, 9);
+      expect(AppTimeFormats.weekdayLabel(dt), '周三');
+      expect(AppTimeFormats.fileTimestamp(dt), '20261125_080509');
+      expect(AppTimeFormats.hourMinute(8, 5), '08:05');
+      expect(AppTimeFormats.hourMinute(19, 42), '19:42');
+    },
+  );
 }

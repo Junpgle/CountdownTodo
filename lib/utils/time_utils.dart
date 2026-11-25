@@ -77,8 +77,26 @@ String formatCountdown(int totalSeconds) {
 // ── 日期时间格式化 ──────────────────────────────────────────
 
 class AppTimeFormats {
-  static const int _maximumCachedDateFormats = 64;
+  static const int _maximumCachedDateFormats = 128;
   static final Map<(String?, String), DateFormat> _dateFormatters = {};
+  static const List<String> weekdayShortLabelsZh = <String>[
+    '一',
+    '二',
+    '三',
+    '四',
+    '五',
+    '六',
+    '日',
+  ];
+  static const List<String> weekdayLabelsZh = <String>[
+    '周一',
+    '周二',
+    '周三',
+    '周四',
+    '周五',
+    '周六',
+    '周日',
+  ];
 
   const AppTimeFormats._();
 
@@ -146,6 +164,19 @@ class AppTimeFormats {
   static String fullDateTime(DateTime time) => format(time, 'yyyy-MM-dd HH:mm');
 
   static String clock(DateTime time) => format(time, 'HH:mm');
+
+  static String weekdayShortZh(int weekday) =>
+      weekdayShortLabelsZh[(weekday - 1).clamp(0, 6)];
+
+  static String weekdayZh(int weekday) =>
+      weekdayLabelsZh[(weekday - 1).clamp(0, 6)];
+
+  static String weekdayLabel(DateTime time) => weekdayZh(time.weekday);
+
+  static String fileTimestamp(DateTime time) => format(time, 'yyyyMMdd_HHmmss');
+
+  static String hourMinute(int hour, int minute) =>
+      '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
 
   static String range(
     DateTime start,
