@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../services/browser_file_service.dart';
 import '../../services/calendar_sync_service.dart';
@@ -8,6 +7,7 @@ import '../../storage_service.dart';
 import '../../utils/app_platform.dart';
 import '../../utils/app_dialogs.dart';
 import '../../utils/calendar_date_math.dart';
+import '../../utils/time_utils.dart';
 import '../../widgets/floating_bottom_bar.dart';
 
 class CalendarSyncPage extends StatefulWidget {
@@ -201,7 +201,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
     setState(() => _working = true);
     try {
       final fileName =
-          'countdowntodo-calendar-${DateFormat('yyyyMMdd-HHmmss').format(DateTime.now())}.ics';
+          'countdowntodo-calendar-${AppTimeFormats.format(DateTime.now(), 'yyyyMMdd-HHmmss')}.ics';
       await BrowserFileService.saveTextFile(
         _buildIcs(selected),
         fileName,
@@ -660,23 +660,19 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
   }
 
   String _formatEntryTime(CalendarSyncEntry entry) {
-    final dateFormat = DateFormat('yyyy-MM-dd');
-    final timeFormat = DateFormat('HH:mm');
-    final dateTimeFormat = DateFormat('yyyy-MM-dd HH:mm');
-
     if (entry.allDay) {
       final inclusiveEnd = CalendarDateMath.inclusiveEndDate(entry.end);
-      final startDate = dateFormat.format(entry.start);
+      final startDate = AppTimeFormats.date(entry.start);
       if (_isSameDate(entry.start, inclusiveEnd)) return '$startDate 全天';
-      return '$startDate 至 ${dateFormat.format(inclusiveEnd)} 全天';
+      return '$startDate 至 ${AppTimeFormats.date(inclusiveEnd)} 全天';
     }
 
     if (_isSameDate(entry.start, entry.end)) {
-      return '${dateFormat.format(entry.start)} '
-          '${timeFormat.format(entry.start)}-${timeFormat.format(entry.end)}';
+      return '${AppTimeFormats.date(entry.start)} '
+          '${AppTimeFormats.clock(entry.start)}-${AppTimeFormats.clock(entry.end)}';
     }
-    return '${dateTimeFormat.format(entry.start)} 至 '
-        '${dateTimeFormat.format(entry.end)}';
+    return '${AppTimeFormats.fullDateTime(entry.start)} 至 '
+        '${AppTimeFormats.fullDateTime(entry.end)}';
   }
 
   bool _isSameDate(DateTime a, DateTime b) =>
@@ -727,10 +723,10 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
     return '${lines.expand(_foldIcsLine).join('\r\n')}\r\n';
   }
 
-  String _formatIcsDate(DateTime date) => DateFormat('yyyyMMdd').format(date);
+  String _formatIcsDate(DateTime date) => AppTimeFormats.dayKey(date);
 
   String _formatIcsDateTime(DateTime dateTime) =>
-      DateFormat("yyyyMMdd'T'HHmmss'Z'").format(dateTime.toUtc());
+      AppTimeFormats.format(dateTime.toUtc(), "yyyyMMdd'T'HHmmss'Z'");
 
   String _escapeIcsText(String value) {
     return value

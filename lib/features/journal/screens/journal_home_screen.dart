@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models/journal_entry.dart';
 import '../services/journal_media_service.dart';
@@ -11,8 +10,6 @@ import 'journal_detail_screen.dart';
 import 'journal_editor_screen.dart';
 import 'journal_trash_screen.dart';
 import '../../../utils/app_dialogs.dart';
-
-DateFormat _photoWallDateFormat() => AppTimeFormats.dateFormatter('MM月dd日');
 
 class JournalHomeScreen extends StatefulWidget {
   final String username;
@@ -576,7 +573,6 @@ class _PhotoWall extends StatelessWidget {
 }
 
 class _JournalCard extends StatelessWidget {
-  static final DateFormat _entryDateFormat = DateFormat('MM月dd日 · E', 'zh_CN');
   static final RegExp _previewWhitespace = RegExp(r'\s+');
 
   final JournalEntry entry;
@@ -622,7 +618,11 @@ class _JournalCard extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        _entryDateFormat.format(entry.occurredAt),
+                        AppTimeFormats.format(
+                          entry.occurredAt,
+                          'MM月dd日 · E',
+                          locale: 'zh_CN',
+                        ),
                         style: Theme.of(context).textTheme.labelMedium
                             ?.copyWith(
                               color: scheme.primary,
@@ -703,7 +703,6 @@ class _PhotoWallCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final entryDateFormat = _photoWallDateFormat();
     return RepaintBoundary(
       child: Card(
         clipBehavior: Clip.antiAlias,
@@ -738,7 +737,7 @@ class _PhotoWallCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      entryDateFormat.format(entry.occurredAt),
+                      AppTimeFormats.monthDayCn(entry.occurredAt),
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
                         color: scheme.primary,
                         fontWeight: FontWeight.w700,

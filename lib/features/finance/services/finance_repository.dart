@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../services/browser_file_service.dart';
 import '../../../services/reminder_schedule_service.dart';
+import '../../../utils/time_utils.dart';
 import '../models/finance_models.dart';
 import 'finance_automation_service.dart';
 import 'finance_storage.dart';
@@ -822,7 +823,7 @@ abstract final class FinanceRepository {
     final csv = rows.map((row) => row.map(_escapeCsv).join(',')).join('\n');
     return BrowserFileService.saveTextFile(
       '\uFEFF$csv',
-      'countdown_todo_finance_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.csv',
+      'countdown_todo_finance_${AppTimeFormats.fileTimestamp(DateTime.now())}.csv',
       mimeType: 'text/csv;charset=utf-8',
     );
   }

@@ -11,8 +11,6 @@ import '../widgets/home_drawer_menu.dart';
 import '../widgets/ai_water_border.dart';
 import '../widgets/manual_sync_dialog.dart';
 
-import 'package:intl/intl.dart';
-
 import 'dart:math';
 import 'dart:convert';
 

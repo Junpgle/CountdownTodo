@@ -249,7 +249,7 @@ mixin _HomeDashboardViewActionsMixin
         throw Exception('不支持的壁纸来源');
       }
 
-      final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final ts = AppTimeFormats.fileTimestamp(DateTime.now());
       final savedPath = await BrowserFileService.saveBytesFile(
         Uint8List.fromList(bytes),
         'wallpaper_$ts.$ext',

@@ -16,7 +16,7 @@ import 'package:video_player/video_player.dart';
 
 import '../storage_service.dart';
 
-import 'package:intl/intl.dart';
+import '../utils/time_utils.dart';
 
 import '../services/api_service.dart';
 import '../utils/app_platform.dart';

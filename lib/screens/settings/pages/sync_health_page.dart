@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../../services/sync_health_service.dart';
 import '../../../utils/settings_navigation.dart';
+import '../../../utils/time_utils.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../conflict_inbox_screen.dart';
 import 'course_settings_page.dart';
@@ -601,7 +601,8 @@ class _SyncHealthPageState extends State<SyncHealthPage> {
     _ => '待同步操作',
   };
 
-  String _formatDate(DateTime date) => DateFormat('M月d日 HH:mm').format(date);
+  String _formatDate(DateTime date) =>
+      AppTimeFormats.format(date, 'M月d日 HH:mm');
 
   String _safeErrorSummary(String input) {
     var safe = input.trim();

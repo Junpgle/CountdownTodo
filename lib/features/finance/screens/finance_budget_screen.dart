@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
@@ -385,7 +384,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen>
     String? paymentMethodUuid,
   ]) async {
     final editorMonth = budget?.isPaymentMethod == true
-        ? DateFormat('yyyy-MM').parseStrict(budget!.monthKey)
+        ? AppTimeFormats.dateFormatter('yyyy-MM').parseStrict(budget!.monthKey)
         : _month;
     final result = await Navigator.of(context).push<FinanceBudget>(
       MaterialPageRoute(

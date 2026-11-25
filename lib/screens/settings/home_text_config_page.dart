@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../storage_service.dart';
 import '../../widgets/floating_glass_control.dart';
 import '../../widgets/optional_liquid_glass_surface.dart';
 import '../../utils/app_dialogs.dart';
+import '../../utils/time_utils.dart';
 
 class GreetingTimeSlot {
   String id;
@@ -764,10 +764,11 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
                     style: TextStyle(fontWeight: FontWeight.w500),
                   ),
                   Text(
-                    DateFormat(
+                    AppTimeFormats.format(
+                      DateTime.now(),
                       _selectedDateFormat,
-                      'zh_CN',
-                    ).format(DateTime.now()),
+                      locale: 'zh_CN',
+                    ),
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.primary,
                       fontWeight: FontWeight.bold,

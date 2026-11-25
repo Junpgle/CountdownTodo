@@ -402,7 +402,7 @@ extension _ThirtyDayChallengeActionsExt on _ThirtyDayChallengeScreenState {
       }
 
       final pngBytes = byteData.buffer.asUint8List();
-      final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final timestamp = AppTimeFormats.fileTimestamp(DateTime.now());
       final fileName =
           'CountDownTodo_${_safeFileName(state.challengeTitle)}_$timestamp.png';
       if (!kIsWeb) {

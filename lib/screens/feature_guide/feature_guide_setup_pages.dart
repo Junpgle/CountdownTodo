@@ -164,7 +164,7 @@ extension _FeatureGuideSetupPages on _FeatureGuideScreenState {
                     trailing: Text(
                       _semesterStart == null
                           ? "未设置"
-                          : DateFormat('yyyy-MM-dd').format(_semesterStart!),
+                          : AppTimeFormats.date(_semesterStart!),
                     ),
                     onTap: () => _pickSemesterDate(true),
                   ),
@@ -174,7 +174,7 @@ extension _FeatureGuideSetupPages on _FeatureGuideScreenState {
                     trailing: Text(
                       _semesterEnd == null
                           ? "未设置"
-                          : DateFormat('yyyy-MM-dd').format(_semesterEnd!),
+                          : AppTimeFormats.date(_semesterEnd!),
                     ),
                     onTap: () => _pickSemesterDate(false),
                   ),

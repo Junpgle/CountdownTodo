@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../../models/minor_age_signal_state.dart';
 import '../../../models/minor_mode_state.dart';
@@ -7,6 +6,7 @@ import '../../../services/minor_mode_policy.dart';
 import '../../../services/minor_mode_service.dart';
 import '../../../utils/app_platform.dart';
 import '../../../utils/settings_navigation.dart';
+import '../../../utils/time_utils.dart';
 import '../../../widgets/app_settings_widgets.dart';
 import '../../../widgets/settings_toggle_card.dart';
 import '../../../widgets/floating_glass_control.dart';
@@ -520,9 +520,7 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage>
                 : '仅保存在本机：${MinorAgeBandSystemMapping.fromBirthDate(birthDate).label}',
           ),
           trailing: Text(
-            birthDate == null
-                ? '未设置'
-                : DateFormat('yyyy-MM-dd').format(birthDate),
+            birthDate == null ? '未设置' : AppTimeFormats.date(birthDate),
             style: TextStyle(color: colorScheme.onSurfaceVariant),
           ),
           onTap: _pickManualBirthDate,
