@@ -738,13 +738,11 @@ class _TimeLogEntrySheetState extends State<TimeLogEntrySheet> {
       child: SizedBox(
         height: 24,
         child: Center(
-          child: Container(
+          child: AppSheetDragHandle(
             width: 36,
-            height: 4,
-            decoration: BoxDecoration(
-              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
-              borderRadius: BorderRadius.circular(4),
-            ),
+            margin: EdgeInsets.zero,
+            borderRadius: BorderRadius.circular(4),
+            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
           ),
         ),
       ),

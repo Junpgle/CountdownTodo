@@ -13,6 +13,7 @@ import '../widgets/management_page.dart';
 import '../utils/app_dialogs.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 import '../utils/time_utils.dart';
+import '../widgets/app_sheet_widgets.dart';
 
 class FolderManageScreen extends StatefulWidget {
   final String username;
@@ -294,15 +295,7 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
             ),
             child: Column(
               children: [
-                const SizedBox(height: 12),
-                Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
+                const AppSheetDragHandle(margin: EdgeInsets.only(top: 12)),
                 const Padding(
                   padding: EdgeInsets.all(20.0),
                   child: Text(

@@ -76,15 +76,8 @@ extension _ConflictInboxScheduleExt on _ConflictInboxScreenState {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
+                    const Center(
+                      child: AppSheetDragHandle(margin: EdgeInsets.zero),
                     ),
                     const SizedBox(height: 16),
                     const Text(

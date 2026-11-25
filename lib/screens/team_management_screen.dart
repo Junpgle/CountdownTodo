@@ -25,6 +25,7 @@ import '../services/conflict_visibility_service.dart';
 import '../services/database_helper.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/floating_glass_control.dart';
+import '../widgets/app_sheet_widgets.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 
 part 'team_management/team_management_data_and_dialogs.dart';

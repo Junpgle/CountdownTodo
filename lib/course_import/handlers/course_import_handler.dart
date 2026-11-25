@@ -23,6 +23,7 @@ import '../../utils/settings_navigation.dart';
 import '../../utils/text_file_reader.dart';
 import '../../storage_service.dart';
 import '../course_schedule_semantics.dart';
+import '../../widgets/app_sheet_widgets.dart';
 import '../course_import_preflight.dart';
 
 /// 导入模式
@@ -238,15 +239,7 @@ class CourseImportHandler {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const SizedBox(height: 12),
-                  Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
+                  const AppSheetDragHandle(margin: EdgeInsets.only(top: 12)),
                   Padding(
                     padding: EdgeInsets.symmetric(vertical: 20, horizontal: 24),
                     child: Row(
@@ -530,15 +523,7 @@ class CourseImportHandler {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const SizedBox(height: 12),
-                  Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
+                  const AppSheetDragHandle(margin: EdgeInsets.only(top: 12)),
                   Padding(
                     padding: EdgeInsets.symmetric(vertical: 20, horizontal: 24),
                     child: Row(

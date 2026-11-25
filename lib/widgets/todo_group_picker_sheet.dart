@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../utils/app_dialogs.dart';
+import 'app_sheet_widgets.dart';
 
 /// Result returned by [showTodoGroupPickerSheet] when the user confirms a choice.
 ///
@@ -154,17 +155,12 @@ class _TodoGroupPickerSheetState extends State<TodoGroupPickerSheet> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (!widget.isDialog) ...[
-              const SizedBox(height: 10),
-              Container(
+            if (!widget.isDialog)
+              AppSheetDragHandle(
                 width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: colors.outlineVariant.withValues(alpha: 0.7),
-                  borderRadius: BorderRadius.circular(2),
-                ),
+                margin: const EdgeInsets.only(top: 10),
+                color: colors.outlineVariant.withValues(alpha: 0.7),
               ),
-            ],
             Padding(
               padding: EdgeInsets.fromLTRB(
                 20,

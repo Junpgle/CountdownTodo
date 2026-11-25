@@ -9,6 +9,7 @@ import '../utils/app_dialogs.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/team_heatmap_widget.dart';
+import '../widgets/app_sheet_widgets.dart';
 import '../widgets/team_gantt_widget.dart';
 
 final _invalidUtf16SurrogatePattern = RegExp(
@@ -132,14 +133,11 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
             children: [
               // 顶部拖拽指示器
               Center(
-                child: Container(
+                child: AppSheetDragHandle(
                   width: 48,
                   height: 5,
                   margin: const EdgeInsets.only(bottom: 24),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
+                  borderRadius: BorderRadius.circular(10),
                 ),
               ),
               Row(

@@ -26,13 +26,9 @@ mixin _WeeklyCourseGridHeader on _WeeklyCourseScreenStateBase {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: colorScheme.outlineVariant,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+                  child: AppSheetDragHandle(
+                    margin: EdgeInsets.zero,
+                    color: colorScheme.outlineVariant,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -634,13 +630,9 @@ mixin _WeeklyCourseGridHeader on _WeeklyCourseScreenStateBase {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: colorScheme.outlineVariant,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+                  child: AppSheetDragHandle(
+                    margin: EdgeInsets.zero,
+                    color: colorScheme.outlineVariant,
                   ),
                 ),
                 const SizedBox(height: 16),

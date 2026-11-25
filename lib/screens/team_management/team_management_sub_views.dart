@@ -627,15 +627,7 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
 
     return Column(
       children: [
-        const SizedBox(height: 12),
-        Container(
-          width: 40,
-          height: 4,
-          decoration: BoxDecoration(
-            color: Colors.grey.withValues(alpha: 0.3),
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
+        const AppSheetDragHandle(margin: EdgeInsets.only(top: 12)),
         Padding(
           padding: const EdgeInsets.all(24),
           child: Row(

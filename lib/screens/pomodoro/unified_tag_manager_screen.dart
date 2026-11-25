@@ -12,6 +12,7 @@ import '../settings/rebind_tag_page.dart';
 import '../../services/pomodoro_service.dart';
 import '../../utils/app_color_utils.dart';
 import '../../utils/app_dialogs.dart';
+import '../../widgets/app_sheet_widgets.dart';
 
 class UnifiedTagManagerScreen extends StatefulWidget {
   final List<PomodoroTag> allTags;
@@ -912,15 +913,7 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(height: 8),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
+            const AppSheetDragHandle(margin: EdgeInsets.only(top: 8)),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
               child: Row(

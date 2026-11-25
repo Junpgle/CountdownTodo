@@ -5,6 +5,7 @@ import '../services/medal_recommendation_service.dart';
 import '../services/timeline_service.dart';
 import '../widgets/floating_glass_control.dart';
 import '../utils/app_dialogs.dart';
+import '../widgets/app_sheet_widgets.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 
 /// 完整勋章墙页面
@@ -1129,14 +1130,9 @@ class _MedalWallPageState extends State<MedalWallPage>
               ),
               Column(
                 children: [
-                  const SizedBox(height: 12),
-                  Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+                  AppSheetDragHandle(
+                    margin: const EdgeInsets.only(top: 12),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.1),
                   ),
                   Expanded(child: buildContent(false)),
                 ],

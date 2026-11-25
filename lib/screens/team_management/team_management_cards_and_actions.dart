@@ -459,14 +459,7 @@ extension _TeamManagementCardsActionsExt on _TeamManagementScreenState {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
+            const AppSheetDragHandle(margin: EdgeInsets.zero),
             const SizedBox(height: 24),
             const Text(
               '邀请新成员',
@@ -731,14 +724,7 @@ extension _TeamManagementCardsActionsExt on _TeamManagementScreenState {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
+                const AppSheetDragHandle(margin: EdgeInsets.zero),
                 const SizedBox(height: 24),
                 const Text(
                   '团队操作',

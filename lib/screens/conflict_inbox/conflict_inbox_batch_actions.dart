@@ -47,16 +47,7 @@ extension _ConflictInboxBatchActionsExt on _ConflictInboxScreenState {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
+            const Center(child: AppSheetDragHandle(margin: EdgeInsets.zero)),
             const SizedBox(height: 16),
             const Text(
               '暂无云端版本快照',
@@ -287,16 +278,7 @@ extension _ConflictInboxBatchActionsExt on _ConflictInboxScreenState {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
+            const Center(child: AppSheetDragHandle(margin: EdgeInsets.zero)),
             const SizedBox(height: 16),
             const Text(
               '批量推荐方案',
