@@ -23,6 +23,7 @@ import '../widgets/habit_format.dart';
 import 'habit_detail_screen.dart';
 import 'habit_edit_screen.dart';
 
+part 'habit_calendar/habit_calendar_shared.dart';
 part 'habit_calendar/habit_calendar_single_view.dart';
 part 'habit_calendar/habit_calendar_overview.dart';
 

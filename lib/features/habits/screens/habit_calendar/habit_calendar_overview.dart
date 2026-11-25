@@ -7,77 +7,22 @@ extension _HabitCalendarOverview on _HabitCalendarTabState {
     required bool isWide,
     required double bottomPadding,
   }) {
-    if (isWide) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            flex: 5,
-            child: RefreshIndicator(
-              edgeOffset: widget.topPadding,
-              onRefresh: _loadData,
-              child: ListView(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  widget.topPadding + 12,
-                  16,
-                  bottomPadding,
-                ),
-                children: [
-                  _buildMonthHeader(),
-                  const SizedBox(height: 10),
-                  _buildHabitFilterBar(),
-                  const SizedBox(height: 14),
-                  _buildWeekdayHeader(),
-                  const SizedBox(height: 4),
-                  _buildDayGrid(),
-                  const SizedBox(height: 16),
-                  _buildLegend(),
-                ],
-              ),
-            ),
-          ),
-          const VerticalDivider(width: 1, thickness: 1, color: Colors.black12),
-          Expanded(
-            flex: 4,
-            child: ListView(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                widget.topPadding + 12,
-                16,
-                bottomPadding,
-              ),
-              children: [_buildSelectedDayDetail()],
-            ),
-          ),
-        ],
-      );
-    }
-
-    return RefreshIndicator(
-      edgeOffset: widget.topPadding,
-      onRefresh: _loadData,
-      child: ListView(
-        padding: EdgeInsets.fromLTRB(
-          16,
-          widget.topPadding + 12,
-          16,
-          bottomPadding,
-        ),
-        children: [
-          _buildMonthHeader(),
-          const SizedBox(height: 10),
-          _buildHabitFilterBar(),
-          const SizedBox(height: 14),
-          _buildWeekdayHeader(),
-          const SizedBox(height: 4),
-          _buildDayGrid(),
-          const SizedBox(height: 16),
-          _buildLegend(),
-          const SizedBox(height: 16),
-          _buildSelectedDayDetail(),
-        ],
-      ),
+    return _buildResponsiveCalendarView(
+      isWide: isWide,
+      bottomPadding: bottomPadding,
+      calendarChildren: [
+        _buildMonthHeader(),
+        const SizedBox(height: 10),
+        _buildHabitFilterBar(),
+        const SizedBox(height: 14),
+        _buildWeekdayHeader(),
+        const SizedBox(height: 4),
+        _buildDayGrid(),
+        const SizedBox(height: 16),
+        _buildLegend(),
+      ],
+      detailSection: _buildSelectedDayDetail(),
+      narrowDetailSpacing: 16,
     );
   }
 
@@ -105,201 +50,127 @@ extension _HabitCalendarOverview on _HabitCalendarTabState {
 
   Widget _buildDayGrid() {
     final colorScheme = Theme.of(context).colorScheme;
-    final firstDay = DateTime(_month.year, _month.month, 1);
-    final daysInMonth = DateTime(_month.year, _month.month + 1, 0).day;
-    final leadingBlanks = firstDay.weekday - 1;
+    return _buildMonthDayGrid(
+      cellBuilder: (date, day, isToday, isSelected, isFuture) {
+        final aggData = _aggregate(date);
+        final aggregate = aggData.status;
+        final ratio = aggData.ratio;
+        final litIcons = _litIconsForDay(date);
+        final hasLit = litIcons.isNotEmpty;
+        final key = HabitRuleResolver.dayKey(date);
 
-    final cells = <Widget>[];
-    for (int i = 0; i < leadingBlanks; i++) {
-      cells.add(const SizedBox.shrink());
-    }
-
-    final today = DateTime.now();
-    for (int day = 1; day <= daysInMonth; day++) {
-      final date = DateTime(_month.year, _month.month, day);
-      final isToday =
-          date.year == today.year &&
-          date.month == today.month &&
-          date.day == today.day;
-      final isSelected =
-          date.year == _selectedDay.year &&
-          date.month == _selectedDay.month &&
-          date.day == _selectedDay.day;
-      final isFuture = _isFutureDate(date);
-      final aggData = _aggregate(date);
-      final aggregate = aggData.status;
-      final ratio = aggData.ratio;
-      final litIcons = _litIconsForDay(date);
-      final hasLit = litIcons.isNotEmpty;
-      final key = HabitRuleResolver.dayKey(date);
-
-      Color bg = Colors.transparent;
-      Color dot = colorScheme.outlineVariant;
-      if (hasLit) {
-        if (aggregate == _DayAggregate.allMet) {
-          bg = colorScheme.tertiaryContainer.withValues(alpha: 0.8);
-          dot = colorScheme.tertiary;
-        } else if (aggregate == _DayAggregate.noneMet) {
-          bg = colorScheme.errorContainer.withValues(alpha: 0.42);
-          dot = colorScheme.error;
+        Color bg = Colors.transparent;
+        Color dot = colorScheme.outlineVariant;
+        if (hasLit) {
+          if (aggregate == _DayAggregate.allMet) {
+            bg = colorScheme.tertiaryContainer.withValues(alpha: 0.8);
+            dot = colorScheme.tertiary;
+          } else if (aggregate == _DayAggregate.noneMet) {
+            bg = colorScheme.errorContainer.withValues(alpha: 0.42);
+            dot = colorScheme.error;
+          } else {
+            bg = colorScheme.primaryContainer.withValues(alpha: 0.55);
+            dot = colorScheme.primary;
+          }
         } else {
-          bg = colorScheme.primaryContainer.withValues(alpha: 0.55);
-          dot = colorScheme.primary;
+          switch (aggregate) {
+            case _DayAggregate.allMet:
+              bg = colorScheme.tertiaryContainer;
+              dot = colorScheme.tertiary;
+            case _DayAggregate.partial:
+              bg = Colors.transparent;
+              dot = colorScheme.tertiary;
+            case _DayAggregate.noneMet:
+            case _DayAggregate.none:
+            case _DayAggregate.future:
+              bg = Colors.transparent;
+              dot = colorScheme.outlineVariant;
+            case _DayAggregate.skipped:
+              bg = colorScheme.surfaceContainerHighest.withValues(alpha: 0.45);
+              dot = colorScheme.outline;
+          }
         }
-      } else {
-        switch (aggregate) {
-          case _DayAggregate.allMet:
-            bg = colorScheme.tertiaryContainer;
-            dot = colorScheme.tertiary;
-          case _DayAggregate.partial:
-            bg = Colors.transparent;
-            dot = colorScheme.tertiary;
-          case _DayAggregate.noneMet:
-          case _DayAggregate.none:
-          case _DayAggregate.future:
-            bg = Colors.transparent;
-            dot = colorScheme.outlineVariant;
-          case _DayAggregate.skipped:
-            bg = colorScheme.surfaceContainerHighest.withValues(alpha: 0.45);
-            dot = colorScheme.outline;
-        }
-      }
 
-      cells.add(
-        GestureDetector(
+        return _buildCalendarDayCellShell(
           key: ValueKey('habit_calendar_day_$key'),
           onTap: () => _handleDayTap(date),
-          child: Container(
-            margin: const EdgeInsets.all(2),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: isSelected
-                    ? colorScheme.primary
-                    : isToday
-                    ? colorScheme.primary.withValues(alpha: 0.45)
-                    : hasLit
-                    ? colorScheme.primary.withValues(alpha: 0.22)
-                    : Colors.transparent,
-                width: isSelected ? 2 : 1,
-              ),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Stack(
-                children: [
-                  Container(color: bg),
-                  if (!hasLit &&
-                      ratio > 0.0 &&
-                      aggregate == _DayAggregate.partial)
-                    Align(
-                      alignment: Alignment.bottomCenter,
-                      child: FractionallySizedBox(
-                        heightFactor: ratio,
-                        widthFactor: 1.0,
-                        child: Container(
-                          color: colorScheme.tertiaryContainer.withValues(
-                            alpha: 0.6,
-                          ),
-                        ),
-                      ),
-                    ),
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 2,
-                        vertical: 2,
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            '$day',
-                            style: TextStyle(
-                              fontSize: hasLit ? 11.5 : 13,
-                              fontWeight: isToday || isSelected
-                                  ? FontWeight.w800
-                                  : FontWeight.w500,
-                              color: isFuture
-                                  ? colorScheme.onSurfaceVariant.withValues(
-                                      alpha: 0.38,
-                                    )
-                                  : isSelected
-                                  ? colorScheme.primary
-                                  : colorScheme.onSurface,
-                            ),
-                          ),
-                          if (hasLit) ...[
-                            const SizedBox(height: 1),
-                            Flexible(
-                              child: _buildDayLitIcons(litIcons, colorScheme),
-                            ),
-                          ] else ...[
-                            const SizedBox(height: 2),
-                            Container(
-                              width: 6,
-                              height: 6,
-                              decoration: BoxDecoration(
-                                color:
-                                    aggregate == _DayAggregate.none ||
-                                        aggregate == _DayAggregate.future
-                                    ? Colors.transparent
-                                    : dot,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          ],
-                        ],
+          backgroundColor: bg,
+          borderColor: isSelected
+              ? colorScheme.primary
+              : isToday
+              ? colorScheme.primary.withValues(alpha: 0.45)
+              : hasLit
+              ? colorScheme.primary.withValues(alpha: 0.22)
+              : Colors.transparent,
+          borderWidth: isSelected ? 2 : 1,
+          backgroundOverlay:
+              (!hasLit && ratio > 0.0 && aggregate == _DayAggregate.partial)
+              ? Align(
+                  alignment: Alignment.bottomCenter,
+                  child: FractionallySizedBox(
+                    heightFactor: ratio,
+                    widthFactor: 1.0,
+                    child: Container(
+                      color: colorScheme.tertiaryContainer.withValues(
+                        alpha: 0.6,
                       ),
                     ),
                   ),
-                ],
+                )
+              : null,
+          contentChildren: [
+            Text(
+              '$day',
+              style: TextStyle(
+                fontSize: hasLit ? 11.5 : 13,
+                fontWeight: isToday || isSelected
+                    ? FontWeight.w800
+                    : FontWeight.w500,
+                color: isFuture
+                    ? colorScheme.onSurfaceVariant.withValues(alpha: 0.38)
+                    : isSelected
+                    ? colorScheme.primary
+                    : colorScheme.onSurface,
               ),
             ),
-          ),
-        ),
-      );
-    }
-
-    return GridView.count(
-      padding: EdgeInsets.zero,
-      primary: false,
-      crossAxisCount: 7,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      childAspectRatio: 0.84,
-      children: cells,
+            if (hasLit) ...[
+              const SizedBox(height: 1),
+              Flexible(child: _buildDayLitIcons(litIcons, colorScheme)),
+            ] else ...[
+              const SizedBox(height: 2),
+              Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color:
+                      aggregate == _DayAggregate.none ||
+                          aggregate == _DayAggregate.future
+                      ? Colors.transparent
+                      : dot,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 
   Widget _buildLegend() {
     final colorScheme = Theme.of(context).colorScheme;
-    Widget item(Color color, String label) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
-          ),
-        ],
-      );
-    }
-
     return Wrap(
       spacing: 16,
       runSpacing: 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        item(colorScheme.tertiary, '全部完成'),
-        item(colorScheme.tertiary.withValues(alpha: 0.5), '部分完成'),
-        item(colorScheme.outline, '已跳过'),
+        _buildLegendItem(colorScheme, colorScheme.tertiary, '全部完成'),
+        _buildLegendItem(
+          colorScheme,
+          colorScheme.tertiary.withValues(alpha: 0.5),
+          '部分完成',
+        ),
+        _buildLegendItem(colorScheme, colorScheme.outline, '已跳过'),
         Text(
           '点击日期可点亮习惯图标',
           style: TextStyle(
@@ -315,9 +186,7 @@ extension _HabitCalendarOverview on _HabitCalendarTabState {
   // ── 选中日明细（全部习惯列表） ──────────────────────────
   Widget _buildSelectedDayDetail() {
     final colorScheme = Theme.of(context).colorScheme;
-    final dayLabel =
-        '${_selectedDay.month} 月 ${_selectedDay.day} 日'
-        ' · 周${'一二三四五六日'[_selectedDay.weekday - 1]}';
+    final dayLabel = _formatSelectedDayLabel(_selectedDay);
     final rows = <Widget>[];
     final key = HabitRuleResolver.dayKey(_selectedDay);
 
@@ -360,22 +229,7 @@ extension _HabitCalendarOverview on _HabitCalendarTabState {
         ),
         const SizedBox(height: 16),
         if (rows.isEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 24),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Text(
-              '这一天没有习惯计划',
-              style: TextStyle(
-                fontSize: 14,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-          )
+          _buildEmptyDayDetailCard(colorScheme, '这一天没有习惯计划')
         else
           ...rows,
       ],
