@@ -30,45 +30,14 @@ class HabitSleepTimingGuide extends StatelessWidget {
         : '${_formatMinute(targetMinute + 7 * 60)}–'
               '${_formatMinute(targetMinute + 9 * 60)}';
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
+    return _HabitGuideCardShell(
+      icon: Icons.bedtime_outlined,
+      title: '睡眠时间反推',
+      trailingLabel: '7–9 小时',
+      trailingFontWeight: FontWeight.w700,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(
-                Icons.bedtime_outlined,
-                size: 19,
-                color: colorScheme.primary,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '睡眠时间反推',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: colorScheme.onSurface,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '7–9 小时',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: colorScheme.primary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
           HabitSleepClock(
             goalMinute: targetMinute,
             goalLabel: isWake ? '目标起床' : '目标入睡',

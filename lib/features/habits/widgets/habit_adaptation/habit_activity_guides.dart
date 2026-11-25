@@ -41,112 +41,58 @@ class HabitRunningGuide extends StatelessWidget {
         ? '切换为分钟后计算'
         : '$weeklyMinutes 分钟/周';
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.directions_run_rounded,
-                size: 19,
-                color: colorScheme.primary,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '跑步安排',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: colorScheme.onSurface,
+    return _HabitDomainGuide(
+      icon: Icons.directions_run_rounded,
+      title: '跑步安排',
+      targetLabel: targetLabel,
+      metrics: [
+        _HabitGuideMetricData(
+          icon: Icons.event_repeat_rounded,
+          title: '当前安排',
+          value: schedule,
+        ),
+        _HabitGuideMetricData(
+          icon: Icons.timelapse_rounded,
+          title: '估算周总量',
+          value: weeklyLabel,
+        ),
+      ],
+      sectionTitle: '运动量参考',
+      tips: const [
+        _HabitGuideTipData(
+          icon: Icons.flag_outlined,
+          text: '成年人每周可先以 75 分钟高强度，或 150 分钟中等强度有氧活动为起点；跑步强度因人而异。',
+        ),
+        _HabitGuideTipData(
+          icon: Icons.record_voice_over_outlined,
+          text: '能说完整句但不能唱歌≈中等强度；只能说几句话就要换气≈高强度。',
+        ),
+        _HabitGuideTipData(
+          icon: Icons.directions_walk_rounded,
+          text: '每次先快走 5–10 分钟热身，结束后放慢走几分钟；初学者可跑走交替，跑步日之间留恢复时间。',
+        ),
+      ],
+      footer: isDurationUnit
+          ? null
+          : Padding(
+              padding: const EdgeInsets.only(top: 9),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: colorScheme.tertiaryContainer,
+                  borderRadius: BorderRadius.circular(12),
                 ),
-              ),
-              const Spacer(),
-              Text(
-                targetLabel,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: colorScheme.primary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _HabitGuideMetric(
-                  icon: Icons.event_repeat_rounded,
-                  title: '当前安排',
-                  value: schedule,
-                  colorScheme: colorScheme,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _HabitGuideMetric(
-                  icon: Icons.timelapse_rounded,
-                  title: '估算周总量',
-                  value: weeklyLabel,
-                  colorScheme: colorScheme,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            '运动量参考',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              color: colorScheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 6),
-          _HabitGuideTip(
-            icon: Icons.flag_outlined,
-            text: '成年人每周可先以 75 分钟高强度，或 150 分钟中等强度有氧活动为起点；跑步强度因人而异。',
-            colorScheme: colorScheme,
-          ),
-          _HabitGuideTip(
-            icon: Icons.record_voice_over_outlined,
-            text: '能说完整句但不能唱歌≈中等强度；只能说几句话就要换气≈高强度。',
-            colorScheme: colorScheme,
-          ),
-          _HabitGuideTip(
-            icon: Icons.directions_walk_rounded,
-            text: '每次先快走 5–10 分钟热身，结束后放慢走几分钟；初学者可跑走交替，跑步日之间留恢复时间。',
-            colorScheme: colorScheme,
-          ),
-          if (!isDurationUnit) ...[
-            const SizedBox(height: 9),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: colorScheme.tertiaryContainer,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                '当前单位为“$unit”。健康指南以每周活动时长衡量，建议改用“分钟”记录，便于判断周运动量。',
-                style: TextStyle(
-                  fontSize: 11.5,
-                  height: 1.4,
-                  color: colorScheme.onTertiaryContainer,
+                child: Text(
+                  '当前单位为“$unit”。健康指南以每周活动时长衡量，建议改用“分钟”记录，便于判断周运动量。',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    height: 1.4,
+                    color: colorScheme.onTertiaryContainer,
+                  ),
                 ),
               ),
             ),
-          ],
-        ],
-      ),
     );
   }
 
@@ -200,7 +146,6 @@ class HabitReadingGuide extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     final target = targetMinutes > 0 ? targetMinutes : 30;
     final focus = math.min(defaultFocusMinutes ?? 25, target);
     final schedule = _scheduleLabel();
@@ -209,99 +154,44 @@ class HabitReadingGuide extends StatelessWidget {
         ? '$target 分钟/周'
         : '$target 分钟/天';
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.menu_book_rounded,
-                size: 19,
-                color: colorScheme.primary,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '阅读安排',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: colorScheme.onSurface,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                targetLabel,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: colorScheme.primary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _HabitGuideMetric(
-                  icon: Icons.timer_outlined,
-                  title: '专注节奏',
-                  value: pace,
-                  colorScheme: colorScheme,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _HabitGuideMetric(
-                  icon: Icons.event_repeat_rounded,
-                  title: '阅读安排',
-                  value: schedule,
-                  colorScheme: colorScheme,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            '把阅读变成理解闭环',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              color: colorScheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 6),
-          _HabitGuideTip(
-            icon: Icons.help_outline_rounded,
-            text: '读前：用 30 秒写下今天想回答的问题或阅读目的。',
-            colorScheme: colorScheme,
-          ),
-          _HabitGuideTip(
-            icon: Icons.bookmark_outline_rounded,
-            text: '读中：少量标记关键内容，每读完一小节停下来概括一句。',
-            colorScheme: colorScheme,
-          ),
-          _HabitGuideTip(
-            icon: Icons.lightbulb_outline_rounded,
-            text: '读后：合上书回忆 3 个要点；学习型内容下次先复述上次内容。',
-            colorScheme: colorScheme,
-          ),
-          _HabitGuideTip(
-            icon: Icons.visibility_outlined,
-            text: '屏幕阅读可采用 20-20-20：每 20 分钟看向约 6 米外 20 秒。',
-            colorScheme: colorScheme,
-          ),
-          const SizedBox(height: 6),
-          const HabitGuideFaq(items: _readingFaqItems),
-        ],
+    return _HabitDomainGuide(
+      icon: Icons.menu_book_rounded,
+      title: '阅读安排',
+      targetLabel: targetLabel,
+      metrics: [
+        _HabitGuideMetricData(
+          icon: Icons.timer_outlined,
+          title: '专注节奏',
+          value: pace,
+        ),
+        _HabitGuideMetricData(
+          icon: Icons.event_repeat_rounded,
+          title: '阅读安排',
+          value: schedule,
+        ),
+      ],
+      sectionTitle: '把阅读变成理解闭环',
+      tips: const [
+        _HabitGuideTipData(
+          icon: Icons.help_outline_rounded,
+          text: '读前：用 30 秒写下今天想回答的问题或阅读目的。',
+        ),
+        _HabitGuideTipData(
+          icon: Icons.bookmark_outline_rounded,
+          text: '读中：少量标记关键内容，每读完一小节停下来概括一句。',
+        ),
+        _HabitGuideTipData(
+          icon: Icons.lightbulb_outline_rounded,
+          text: '读后：合上书回忆 3 个要点；学习型内容下次先复述上次内容。',
+        ),
+        _HabitGuideTipData(
+          icon: Icons.visibility_outlined,
+          text: '屏幕阅读可采用 20-20-20：每 20 分钟看向约 6 米外 20 秒。',
+        ),
+      ],
+      footer: const Padding(
+        padding: EdgeInsets.only(top: 6),
+        child: HabitGuideFaq(items: _readingFaqItems),
       ),
     );
   }
@@ -365,6 +255,7 @@ class _HabitDomainGuide extends StatelessWidget {
   final List<_HabitGuideMetricData> metrics;
   final String sectionTitle;
   final List<_HabitGuideTipData> tips;
+  final Widget? footer;
 
   const _HabitDomainGuide({
     required this.icon,
@@ -373,46 +264,19 @@ class _HabitDomainGuide extends StatelessWidget {
     required this.metrics,
     required this.sectionTitle,
     required this.tips,
+    this.footer,
   });
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
+    return _HabitGuideCardShell(
+      icon: icon,
+      title: title,
+      trailingLabel: targetLabel,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(icon, size: 19, color: colorScheme.primary),
-              const SizedBox(width: 8),
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: colorScheme.onSurface,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                targetLabel,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: colorScheme.primary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
           Row(
             children: [
               for (var i = 0; i < metrics.length; i++) ...[
@@ -439,6 +303,7 @@ class _HabitDomainGuide extends StatelessWidget {
               text: tip.text,
               colorScheme: colorScheme,
             ),
+          ?footer,
         ],
       ),
     );

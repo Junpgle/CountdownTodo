@@ -220,7 +220,6 @@ class HabitPushUpGuide extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     final target = targetValue > 0 ? targetValue : 24;
     final setCount = target <= 12 ? 1 : math.min(5, (target / 12).ceil());
     final repsPerSet = (target / setCount).ceil();
@@ -228,94 +227,40 @@ class HabitPushUpGuide extends StatelessWidget {
         ? '当前：按指定训练日'
         : '建议：每周 2–3 天';
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.fitness_center_rounded,
-                size: 19,
-                color: colorScheme.primary,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '训练安排',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: colorScheme.onSurface,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '$target 个/次',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: colorScheme.primary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _HabitGuideMetric(
-                  icon: Icons.view_agenda_outlined,
-                  title: '分组完成',
-                  value: '$setCount 组 × $repsPerSet 个',
-                  colorScheme: colorScheme,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _HabitGuideMetric(
-                  icon: Icons.event_repeat_rounded,
-                  title: '训练频率',
-                  value: frequency,
-                  colorScheme: colorScheme,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            '动作质量优先',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              color: colorScheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 6),
-          _HabitGuideTip(
-            icon: Icons.straighten_rounded,
-            text: '头、背、髋尽量保持一条线，核心收紧。',
-            colorScheme: colorScheme,
-          ),
-          _HabitGuideTip(
-            icon: Icons.swap_vert_rounded,
-            text: '下放和撑起都保持受控，做不到标准姿势就降低难度。',
-            colorScheme: colorScheme,
-          ),
-          _HabitGuideTip(
-            icon: Icons.pause_circle_outline_rounded,
-            text: '组间充分休息；出现明显疼痛、头晕或异常气短时停止。',
-            colorScheme: colorScheme,
-          ),
-          const SizedBox(height: 6),
-          const HabitGuideFaq(items: _pushUpFaqItems),
-        ],
+    return _HabitDomainGuide(
+      icon: Icons.fitness_center_rounded,
+      title: '训练安排',
+      targetLabel: '$target 个/次',
+      metrics: [
+        _HabitGuideMetricData(
+          icon: Icons.view_agenda_outlined,
+          title: '分组完成',
+          value: '$setCount 组 × $repsPerSet 个',
+        ),
+        _HabitGuideMetricData(
+          icon: Icons.event_repeat_rounded,
+          title: '训练频率',
+          value: frequency,
+        ),
+      ],
+      sectionTitle: '动作质量优先',
+      tips: const [
+        _HabitGuideTipData(
+          icon: Icons.straighten_rounded,
+          text: '头、背、髋尽量保持一条线，核心收紧。',
+        ),
+        _HabitGuideTipData(
+          icon: Icons.swap_vert_rounded,
+          text: '下放和撑起都保持受控，做不到标准姿势就降低难度。',
+        ),
+        _HabitGuideTipData(
+          icon: Icons.pause_circle_outline_rounded,
+          text: '组间充分休息；出现明显疼痛、头晕或异常气短时停止。',
+        ),
+      ],
+      footer: const Padding(
+        padding: EdgeInsets.only(top: 6),
+        child: HabitGuideFaq(items: _pushUpFaqItems),
       ),
     );
   }
@@ -343,6 +288,66 @@ const List<HabitGuideFaqItem> _pushUpFaqItems = [
     '轻微延迟性酸痛可以先休息或降低训练量；关节疼痛、刺痛、明显肿胀，或伴随胸闷头晕时不要硬练，应停止并视情况咨询专业人士。',
   ),
 ];
+
+class _HabitGuideCardShell extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String trailingLabel;
+  final FontWeight trailingFontWeight;
+  final Widget child;
+
+  const _HabitGuideCardShell({
+    required this.icon,
+    required this.title,
+    required this.trailingLabel,
+    this.trailingFontWeight = FontWeight.w800,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 19, color: colorScheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                trailingLabel,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: trailingFontWeight,
+                  color: colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    );
+  }
+}
 
 class _HabitGuideMetric extends StatelessWidget {
   final IconData icon;
