@@ -403,15 +403,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final String dateStr = AppTimeFormats.dateFormatter('yyyy年M月d日')
         .format(day);
-    final String weekdayStr = [
-      '周一',
-      '周二',
-      '周三',
-      '周四',
-      '周五',
-      '周六',
-      '周日',
-    ][day.weekday - 1];
+    final String weekdayStr = AppTimeFormats.weekdayLabel(day);
     final sourceDate = AppTimeFormats.dateFormatter('yyyy-MM-dd').format(day);
 
     final items = dayItems ?? _dayDetailItems(day);

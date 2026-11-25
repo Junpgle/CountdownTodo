@@ -259,15 +259,7 @@ extension _TimeLogDetailSheetsExt on _TimeLogScreenState {
         ? (isDark ? const Color(0xFF64B5F6) : const Color(0xFF1E88E5))
         : (isDark ? const Color(0xFFFFB74D) : const Color(0xFFFB8C00));
     final dateStr = AppTimeFormats.monthDaySlash(date);
-    final weekdayStr = const [
-      '周一',
-      '周二',
-      '周三',
-      '周四',
-      '周五',
-      '周六',
-      '周日',
-    ][(date.weekday - 1).clamp(0, 6)];
+    final weekdayStr = AppTimeFormats.weekdayZh(date.weekday);
 
     showAppModalBottomSheet(
       context: context,

@@ -119,8 +119,7 @@ class IslandSlotProvider {
   /// Get weekday slot data
   static Future<IslandSlotData> _getWeekdaySlot(bool isLeft) async {
     final now = DateTime.now();
-    final weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-    final weekday = weekdays[now.weekday - 1];
+    final weekday = AppTimeFormats.weekdayLabel(now);
     return IslandSlotData(
       display: weekday,
       type: 'weekday',

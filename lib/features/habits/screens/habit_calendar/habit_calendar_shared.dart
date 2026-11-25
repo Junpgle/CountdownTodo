@@ -182,8 +182,7 @@ extension _HabitCalendarShared on _HabitCalendarTabState {
   }
 
   String _formatSelectedDayLabel(DateTime day) {
-    return '${day.month} 月 ${day.day} 日'
-        ' · 周${'一二三四五六日'[day.weekday - 1]}';
+    return '${day.month} 月 ${day.day} 日 · ${AppTimeFormats.weekdayLabel(day)}';
   }
 
   Widget _buildEmptyDayDetailCard(ColorScheme colorScheme, String message) {

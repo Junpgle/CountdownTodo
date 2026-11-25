@@ -658,7 +658,7 @@ extension _HabitEditCreationAndTypeSteps on _HabitEditScreenState {
             children: [
               for (int i = 0; i < 7; i++)
                 ChoiceChip(
-                  label: Text('周${'一二三四五六日'[i]}'),
+                  label: Text(AppTimeFormats.weekdayLabelsZh[i]),
                   selected: (_weekdaysMask & (1 << i)) != 0,
                   onSelected: (on) => _mutateState(() {
                     if (on) {

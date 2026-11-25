@@ -687,7 +687,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
                       padding: const EdgeInsets.only(right: 8),
                       child: Text(
                         i % 2 == 0
-                            ? ['一', '二', '三', '四', '五', '六', '日'][i]
+                            ? AppTimeFormats.weekdayShortLabelsZh[i]
                             : '',
                         style: TextStyle(
                           fontSize: 9,
@@ -954,7 +954,9 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
         }
     }
     if (summary.weakestWeekday != null) {
-      extras.add('易中断：周${'一二三四五六日'[summary.weakestWeekday!]}');
+      extras.add(
+        '易中断：周${AppTimeFormats.weekdayShortLabelsZh[summary.weakestWeekday!]}',
+      );
     }
 
     return Wrap(
@@ -998,7 +1000,8 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
     if (summary.currentStreak > 7) {
       insight = '太棒了！你已经连续坚持超过一周，继续保持！🔥';
     } else if (summary.weakestWeekday != null) {
-      final weekday = '一二三四五六日'[summary.weakestWeekday!];
+      final weekday =
+          AppTimeFormats.weekdayShortLabelsZh[summary.weakestWeekday!];
       insight = '小提示：周$weekday的达成率偏低，那天可以多给自己设点提醒哦。💡';
     } else if (summary.rate30 >= 0.8) {
       insight = '近 30 天表现极其优秀，习惯已经快要刻入你的 DNA 里啦！🧬';

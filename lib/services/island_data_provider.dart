@@ -197,8 +197,7 @@ class IslandDataProvider {
     }
     if (rightStr.isEmpty && leftSlotData.type != 'weekday') {
       final now = DateTime.now();
-      final weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-      rightStr = weekdays[now.weekday - 1];
+      rightStr = AppTimeFormats.weekdayLabel(now);
     }
 
     // TopBar overrides

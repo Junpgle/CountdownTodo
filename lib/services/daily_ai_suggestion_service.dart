@@ -839,8 +839,7 @@ class DailyAiSuggestionService {
     final upcomingEnd = todayStart.add(const Duration(days: 4));
     final todayKey = formatDateKey(now);
     final tomorrowKey = formatDateKey(tomorrowStart);
-    const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-    final weekdayLabel = weekdays[now.weekday - 1];
+    final weekdayLabel = AppTimeFormats.weekdayLabel(now);
 
     final activeTodos = todos
         .where((t) => !t.isDeleted && !t.isDone && !t.isSkipped)

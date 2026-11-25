@@ -6,15 +6,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
   Widget _buildTodaySidebar() {
     DateTime now = DateTime.now();
     String dateStr = AppTimeFormats.dateFormatter('M月d日').format(now);
-    String weekdayStr = [
-      '周一',
-      '周二',
-      '周三',
-      '周四',
-      '周五',
-      '周六',
-      '周日',
-    ][now.weekday - 1];
+    String weekdayStr = AppTimeFormats.weekdayLabel(now);
     bool isDark = Theme.of(context).brightness == Brightness.dark;
 
     List<TodoItem> todayAllDay = !_activeDataViews.contains('todos')

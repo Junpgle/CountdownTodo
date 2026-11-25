@@ -503,7 +503,7 @@ class _WeekViewState extends State<_WeekView>
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                '周${['一', '二', '三', '四', '五', '六', '日'][i]}',
+                                AppTimeFormats.weekdayLabelsZh[i],
                                 style: TextStyle(
                                   fontSize: 9.5,
                                   color: isToday ? accent : _TC.textHint(ctx),

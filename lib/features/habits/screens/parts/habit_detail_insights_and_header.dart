@@ -348,8 +348,9 @@ extension _HabitDetailInsightsAndHeader on _HabitDetailScreenState {
   String _shortDate(DateTime date) => '${date.month}/${date.day}';
 
   String _weekdayLabel(int weekday) {
-    const labels = <String>['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-    return weekday >= 0 && weekday < labels.length ? labels[weekday] : '—';
+    return weekday >= 0 && weekday < AppTimeFormats.weekdayLabelsZh.length
+        ? AppTimeFormats.weekdayLabelsZh[weekday]
+        : '—';
   }
 
   // ── 头部：图标 + 连续 ────────────────────────────────

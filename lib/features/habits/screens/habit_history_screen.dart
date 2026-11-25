@@ -651,8 +651,7 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
       int.parse(parts[1]),
       int.parse(parts[2]),
     );
-    const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-    return '${date.month}月${date.day}日 ${weekdays[date.weekday - 1]}';
+    return '${date.month}月${date.day}日 ${AppTimeFormats.weekdayLabel(date)}';
   }
 
   static String _trimNumber(double value) {

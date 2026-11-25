@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../utils/time_utils.dart';
+
 /// Wall-clock minutes. Midnight at the end of a day is represented by 1440.
 class PlanWeeklyWindow {
   const PlanWeeklyWindow(this.start, this.end);
@@ -24,7 +26,7 @@ class PlanWeeklyRules {
   );
   final bool enabled;
   final List<List<PlanWeeklyWindow>> days;
-  static const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+  static const weekdays = AppTimeFormats.weekdayLabelsZh;
   static List<PlanWeeklyWindow> _normalize(List<PlanWeeklyWindow> input) {
     if (input.length > 4 ||
         input.any((w) => w.start < 0 || w.end > 1440 || w.start >= w.end)) {

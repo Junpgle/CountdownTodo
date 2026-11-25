@@ -487,8 +487,7 @@ mixin _WeeklyCourseGridHeader on _WeeklyCourseScreenStateBase {
             isToday = dateKeyFormat.format(currentDate) == todayStr;
           }
 
-          const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-          final weekdayLabel = weekdays[index];
+          final weekdayLabel = AppTimeFormats.weekdayLabelsZh[index];
 
           return Expanded(
             child: Semantics(
@@ -614,15 +613,7 @@ mixin _WeeklyCourseGridHeader on _WeeklyCourseScreenStateBase {
         ? CalendarDateMath.addDays(monday, weekday - 1)
         : DateTime.now();
     final dateStr = AppTimeFormats.dateFormatter('M月d日').format(day);
-    final weekdayStr = const [
-      '周一',
-      '周二',
-      '周三',
-      '周四',
-      '周五',
-      '周六',
-      '周日',
-    ][(weekday - 1).clamp(0, 6)];
+    final weekdayStr = AppTimeFormats.weekdayZh(weekday);
     final sourceDate = AppTimeFormats.dateFormatter('yyyy-MM-dd').format(day);
 
     showAppModalBottomSheet(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/time_utils.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
@@ -574,7 +575,7 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
   }
 
   Widget _buildWeekdayHeader(ColorScheme colorScheme) {
-    const labels = ['一', '二', '三', '四', '五', '六', '日'];
+    const labels = AppTimeFormats.weekdayShortLabelsZh;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(

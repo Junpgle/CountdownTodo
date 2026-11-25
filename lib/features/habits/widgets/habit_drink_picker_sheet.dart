@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/time_utils.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../repositories/habit_repository.dart';
@@ -282,9 +283,8 @@ class _HabitDrinkPickerSheetState extends State<HabitDrinkPickerSheet> {
         widget.logicalDate.year == now.year &&
         widget.logicalDate.month == now.month &&
         widget.logicalDate.day == now.day;
-    final weekdayChar = '一二三四五六日'[widget.logicalDate.weekday - 1];
     final dateLabel =
-        '${widget.logicalDate.month} 月 ${widget.logicalDate.day} 日 · 周$weekdayChar';
+        '${widget.logicalDate.month} 月 ${widget.logicalDate.day} 日 · ${AppTimeFormats.weekdayLabel(widget.logicalDate)}';
     final selectedList = _orderedSelectedIcons();
 
     return SafeArea(

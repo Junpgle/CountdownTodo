@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../utils/app_platform.dart';
+import '../utils/time_utils.dart';
 
 /// Reads basic device environment information (local time, timezone, locale,
 /// platform) and, when authorized, the user's current geographic location.
@@ -12,7 +13,8 @@ class AiDeviceContextService {
   );
 
   static bool get supportsNativeLocation =>
-      !kIsWeb && (AppPlatform.isAndroid || AppPlatform.isIOS || AppPlatform.isMacOS);
+      !kIsWeb &&
+      (AppPlatform.isAndroid || AppPlatform.isIOS || AppPlatform.isMacOS);
 
   static Future<PermissionStatus> getLocationPermissionStatus() async {
     if (!supportsNativeLocation) return PermissionStatus.denied;
@@ -57,11 +59,14 @@ class AiDeviceContextService {
   }
 
   static PermissionStatus _parsePermissionStatus(String? raw) => switch (raw) {
-    'granted' || 'authorized' || 'authorizedAlways' || 'authorizedWhenInUse' =>
-      PermissionStatus.granted,
+    'granted' ||
+    'authorized' ||
+    'authorizedAlways' ||
+    'authorizedWhenInUse' => PermissionStatus.granted,
     'limited' => PermissionStatus.limited,
     'restricted' => PermissionStatus.restricted,
-    'permanentlyDenied' || 'deniedForever' => PermissionStatus.permanentlyDenied,
+    'permanentlyDenied' ||
+    'deniedForever' => PermissionStatus.permanentlyDenied,
     _ => PermissionStatus.denied,
   };
 
@@ -77,7 +82,6 @@ class AiDeviceContextService {
     final hours = (absMinutes ~/ 60).toString().padLeft(2, '0');
     final mins = (absMinutes % 60).toString().padLeft(2, '0');
     String two(int n) => n.toString().padLeft(2, '0');
-    const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
     final result = <String, dynamic>{
       'ok': true,
@@ -85,7 +89,7 @@ class AiDeviceContextService {
           '${current.year}-${two(current.month)}-${two(current.day)} '
           '${two(current.hour)}:${two(current.minute)}:${two(current.second)}',
       'iso_time': current.toIso8601String(),
-      'weekday': weekdays[current.weekday - 1],
+      'weekday': AppTimeFormats.weekdayLabel(current),
       'timezone_name': current.timeZoneName,
       'timezone_offset': '$sign$hours:$mins',
       'timezone_offset_minutes': offset.inMinutes,

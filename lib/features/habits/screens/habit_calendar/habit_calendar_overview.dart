@@ -27,9 +27,8 @@ extension _HabitCalendarOverview on _HabitCalendarTabState {
   }
 
   Widget _buildWeekdayHeader() {
-    const labels = ['一', '二', '三', '四', '五', '六', '日'];
     return Row(
-      children: labels
+      children: AppTimeFormats.weekdayShortLabelsZh
           .map(
             (label) => Expanded(
               child: Center(

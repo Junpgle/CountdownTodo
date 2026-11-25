@@ -1,3 +1,4 @@
+import '../../../utils/time_utils.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
@@ -16,11 +17,10 @@ abstract final class HabitText {
       case HabitPeriodType.monthly:
         return '每月';
       case HabitPeriodType.weekdays:
-        final names = <String>['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
         final selected = <String>[];
         for (int i = 0; i < 7; i++) {
           if ((rule.weekdaysMask & (1 << i)) != 0) {
-            selected.add(names[i]);
+            selected.add(AppTimeFormats.weekdayLabelsZh[i]);
           }
         }
         if (selected.isEmpty) return '每周';

@@ -1234,11 +1234,10 @@ class CourseMonthView extends StatelessWidget {
   }
 
   Widget _buildWeekdayHeader(BuildContext context) {
-    final weekdays = ['一', '二', '三', '四', '五', '六', '日'];
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
-        children: weekdays
+        children: AppTimeFormats.weekdayShortLabelsZh
             .map(
               (day) => Expanded(
                 child: Center(

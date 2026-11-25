@@ -459,7 +459,7 @@ extension _PlanBlockEditorUi on _PlanBlockEditorSheetState {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Text(
-                  '${AppTimeFormats.dateFormatter('M月d日').format(_start)} 周${['一', '二', '三', '四', '五', '六', '日'][_start.weekday - 1]}',
+                  '${AppTimeFormats.dateFormatter('M月d日').format(_start)} ${AppTimeFormats.weekdayLabel(_start)}',
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w600,
                   ),

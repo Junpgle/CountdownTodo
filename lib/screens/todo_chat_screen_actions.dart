@@ -165,10 +165,14 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       }
       if (fields.containsKey('weekdaysMask')) {
         final mask = int.tryParse(fields['weekdaysMask'].toString()) ?? 0;
-        const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
         final selectedDays = [
-          for (var index = 0; index < weekdays.length; index++)
-            if ((mask & (1 << index)) != 0) '周${weekdays[index]}',
+          for (
+            var index = 0;
+            index < AppTimeFormats.weekdayLabelsZh.length;
+            index++
+          )
+            if ((mask & (1 << index)) != 0)
+              AppTimeFormats.weekdayLabelsZh[index],
         ];
         changes.add(
           '星期：${selectedDays.isEmpty ? '未指定' : selectedDays.join('、')}',
