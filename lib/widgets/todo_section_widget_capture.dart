@@ -71,7 +71,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
           isAllDay: isAllDay,
           startTime: startTime,
           endTime: endTime,
-          timeSemantics: _parseTimeSemantics(
+          timeSemantics: RecognizedTodoAdapter.parseTimeSemantics(
             result['timeMode'] ?? result['time_mode'],
             isAllDay: isAllDay,
             startTime: startTime,
@@ -173,285 +173,44 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                     minLines: 1,
                   ),
                   const SizedBox(height: 12),
-                  LiquidGlassSwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text(
-                      "某天内完成",
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                      ),
+                  TodoAllDayScheduleFields(
+                    isAllDay: isAllDay,
+                    createdAt: createdAt,
+                    dueDate: dueDate,
+                    showTrailingIcons: true,
+                    allDayTitleStyle: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
                     ),
-                    value: isAllDay,
                     activeThumbColor: Theme.of(context).colorScheme.primary,
-                    onChanged: (val) {
+                    onChanged: (nextAllDay, nextCreatedAt, nextDueDate) {
                       setDialogState(() {
-                        final wasDateOnlyRange =
-                            dueDate != null &&
-                            TodoItem.looksLikeLegacyDateOnlyRange(
-                              createdAt,
-                              dueDate!,
-                            );
-                        isAllDay = val;
-                        if (isAllDay) {
-                          createdAt = DateTime(
-                            createdAt.year,
-                            createdAt.month,
-                            createdAt.day,
-                            0,
-                            0,
-                          );
-                          if (dueDate != null) {
-                            dueDate = DateTime(
-                              dueDate!.year,
-                              dueDate!.month,
-                              dueDate!.day,
-                              23,
-                              59,
-                            );
-                          } else {
-                            dueDate = DateTime(
-                              createdAt.year,
-                              createdAt.month,
-                              createdAt.day,
-                              23,
-                              59,
-                            );
-                          }
-                        } else if (wasDateOnlyRange) {
-                          final now = DateTime.now();
-                          createdAt = DateTime(
-                            createdAt.year,
-                            createdAt.month,
-                            createdAt.day,
-                            now.hour,
-                            now.minute,
-                          );
-                          dueDate = null;
-                        }
+                        isAllDay = nextAllDay;
+                        createdAt = nextCreatedAt;
+                        dueDate = nextDueDate;
                       });
                     },
                   ),
-                  if (isAllDay)
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(
-                        "完成日期: ${AppTimeFormats.dateFormatter('yyyy-MM-dd').format(createdAt)}",
-                      ),
-                      trailing: Icon(
-                        Icons.edit_calendar,
-                        size: 20,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      onTap: () async {
-                        final pickedDate = await showAppDatePicker(
-                          context: context,
-                          firstDate: DateTime(2000),
-                          lastDate: DateTime(2100),
-                          initialDate: createdAt,
-                        );
-                        if (pickedDate != null) {
-                          if (isAllDay) {
-                            setDialogState(() {
-                              createdAt = DateTime(
-                                pickedDate.year,
-                                pickedDate.month,
-                                pickedDate.day,
-                                0,
-                                0,
-                              );
-                              dueDate = DateTime(
-                                pickedDate.year,
-                                pickedDate.month,
-                                pickedDate.day,
-                                23,
-                                59,
-                              );
-                            });
-                          } else {
-                            if (!context.mounted) return;
-                            final pickedTime = await showAppTimePicker(
-                              context: context,
-                              initialTime: TimeOfDay.fromDateTime(createdAt),
-                            );
-                            if (pickedTime != null) {
-                              setDialogState(
-                                () => createdAt = DateTime(
-                                  pickedDate.year,
-                                  pickedDate.month,
-                                  pickedDate.day,
-                                  pickedTime.hour,
-                                  pickedTime.minute,
-                                ),
-                              );
-                            }
-                          }
-                        }
-                      },
-                    ),
-                  if (!isAllDay)
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(
-                        dueDate == null
-                            ? "设置截止时间（当前未安排）"
-                            : "${AppTimeFormats.dateFormatter('yyyy-MM-dd HH:mm').format(dueDate!)} 前完成",
-                      ),
-                      trailing: Icon(
-                        Icons.event,
-                        size: 20,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      onTap: () async {
-                        final pickedDate = await showAppDatePicker(
-                          context: context,
-                          firstDate: DateTime(2000),
-                          lastDate: DateTime(2100),
-                          initialDate: dueDate ?? createdAt,
-                        );
-                        if (pickedDate != null) {
-                          if (isAllDay) {
-                            setDialogState(
-                              () => dueDate = DateTime(
-                                pickedDate.year,
-                                pickedDate.month,
-                                pickedDate.day,
-                                23,
-                                59,
-                              ),
-                            );
-                          } else {
-                            if (!context.mounted) return;
-                            final pickedTime = await showAppTimePicker(
-                              context: context,
-                              initialTime: TimeOfDay.fromDateTime(
-                                dueDate ?? DateTime.now(),
-                              ),
-                            );
-                            if (pickedTime != null) {
-                              setDialogState(
-                                () => dueDate = DateTime(
-                                  pickedDate.year,
-                                  pickedDate.month,
-                                  pickedDate.day,
-                                  pickedTime.hour,
-                                  pickedTime.minute,
-                                ),
-                              );
-                            }
-                          }
-                        }
-                      },
-                    ),
                   const Divider(),
-                  DropdownButtonFormField<RecurrenceType>(
-                    initialValue: recurrence,
-                    decoration: InputDecoration(
-                      labelText: "重复 (可选)",
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: RecurrenceType.none,
-                        child: Text("不重复"),
-                      ),
-                      DropdownMenuItem(
-                        value: RecurrenceType.daily,
-                        child: Text("每天重复"),
-                      ),
-                      DropdownMenuItem(
-                        value: RecurrenceType.weekly,
-                        child: Text("每周重复"),
-                      ),
-                      DropdownMenuItem(
-                        value: RecurrenceType.monthly,
-                        child: Text("每月重复"),
-                      ),
-                      DropdownMenuItem(
-                        value: RecurrenceType.yearly,
-                        child: Text("每年重复"),
-                      ),
-                      DropdownMenuItem(
-                        value: RecurrenceType.weekdays,
-                        child: Text("工作日"),
-                      ),
-                      DropdownMenuItem(
-                        value: RecurrenceType.customDays,
-                        child: Text("间隔几天"),
-                      ),
-                    ],
-                    onChanged: (val) => setDialogState(() => recurrence = val!),
+                  TodoRecurrencePickerFields(
+                    recurrence: recurrence,
+                    customDaysController: customDaysCtrl,
+                    recurrenceEndDate: recurrenceEndDate,
+                    endDatePrefix: '重复结束: ',
+                    trailingIconColor: Theme.of(context).colorScheme.primary,
+                    initialEndDateBuilder: () =>
+                        DateTime.now().add(const Duration(days: 30)),
+                    onRecurrenceChanged: (val) =>
+                        setDialogState(() => recurrence = val),
+                    onCustomDaysChanged: (val) => customDays = val,
+                    onRecurrenceEndDateChanged: (val) =>
+                        setDialogState(() => recurrenceEndDate = val),
                   ),
-                  if (recurrence == RecurrenceType.customDays)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 12.0),
-                      child: TextField(
-                        controller: customDaysCtrl,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          labelText: "间隔天数",
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        onChanged: (val) => customDays = int.tryParse(val),
-                      ),
-                    ),
-                  if (recurrence != RecurrenceType.none)
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(
-                        recurrenceEndDate == null
-                            ? "重复结束日期 (可选)"
-                            : "重复结束: ${AppTimeFormats.dateFormatter('yyyy-MM-dd').format(recurrenceEndDate!)}",
-                      ),
-                      trailing: Icon(
-                        Icons.event_busy,
-                        size: 20,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      onTap: () async {
-                        final picked = await showAppDatePicker(
-                          context: context,
-                          firstDate: DateTime.now(),
-                          lastDate: DateTime(2100),
-                          initialDate: DateTime.now().add(
-                            const Duration(days: 30),
-                          ),
-                        );
-                        if (picked != null) {
-                          setDialogState(() => recurrenceEndDate = picked);
-                        }
-                      },
-                    ),
                   const Divider(),
-                  DropdownButtonFormField<int>(
-                    initialValue: reminderMinutes,
-                    decoration: InputDecoration(
-                      labelText: "温馨提醒 (提前量)",
-                      prefixIcon: const Icon(
-                        Icons.notifications_active_outlined,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 0, child: Text("准时提醒")),
-                      DropdownMenuItem(value: 5, child: Text("提前 5 分钟")),
-                      DropdownMenuItem(value: 10, child: Text("提前 10 分钟")),
-                      DropdownMenuItem(value: 15, child: Text("提前 15 分钟")),
-                      DropdownMenuItem(value: 30, child: Text("提前 30 分钟")),
-                      DropdownMenuItem(value: 45, child: Text("提前 45 分钟")),
-                      DropdownMenuItem(value: 60, child: Text("提前 1 小时")),
-                      DropdownMenuItem(value: 120, child: Text("提前 2 小时")),
-                      DropdownMenuItem(value: 1440, child: Text("提前 1 天")),
-                    ],
-                    onChanged: (val) => setDialogState(() {
-                      if (val != null) reminderMinutes = val;
-                    }),
+                  TodoReminderLeadTimeDropdown(
+                    value: reminderMinutes,
+                    onChanged: (val) =>
+                        setDialogState(() => reminderMinutes = val),
                   ),
                 ],
               ),
@@ -1556,44 +1315,24 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
       isAllDay: isAllDay,
       startTime: startTime,
       endTime: endTime,
-      timeSemantics: _parseTimeSemantics(
+      timeSemantics: RecognizedTodoAdapter.parseTimeSemantics(
         result['timeMode'] ?? result['time_mode'],
         isAllDay: isAllDay,
         startTime: startTime,
         endTime: endTime,
       ),
       recurrence: parseRecurrenceType(result['recurrence']?.toString()),
-      customIntervalDays: _parseNullableInt(
+      customIntervalDays: RecognizedTodoAdapter.parseNullableInt(
         result['customIntervalDays'] ?? result['custom_interval_days'],
       ),
       recurrenceEndDate: RecognizedTodoAdapter.parseDateTime(
         result['recurrenceEndDate'] ?? result['recurrence_end_date'],
       ),
-      reminderMinutes: _parseNullableInt(
+      reminderMinutes: RecognizedTodoAdapter.parseNullableInt(
         result['reminderMinutes'] ?? result['reminder_minutes'],
       ),
       itemKind: (result['itemKind'] ?? result['item_kind'])?.toString(),
       originalText: fallbackTitle,
-    );
-  }
-
-  int? _parseNullableInt(dynamic value) {
-    if (value is num) return value.toInt();
-    return int.tryParse(value?.toString() ?? '');
-  }
-
-  ParsedTimeSemantics _parseTimeSemantics(
-    dynamic raw, {
-    required bool isAllDay,
-    required DateTime? startTime,
-    required DateTime? endTime,
-  }) {
-    if (isAllDay) return ParsedTimeSemantics.dateOnly;
-    return ParsedTimeSemantics.values.firstWhere(
-      (value) => value.name == raw?.toString(),
-      orElse: () => startTime != null && endTime != null
-          ? ParsedTimeSemantics.range
-          : ParsedTimeSemantics.unscheduled,
     );
   }
 

@@ -65,6 +65,7 @@ import 'todo_overdue_triage_banner.dart';
 import 'todo_overdue_triage_sheet.dart';
 import '../services/todo_completion_celebration_service.dart';
 import '../utils/calendar_date_math.dart';
+import 'todo_capture_edit_fields.dart';
 import 'todo_completion_celebration.dart';
 import 'todo_recurrence_delete_dialog.dart';
 

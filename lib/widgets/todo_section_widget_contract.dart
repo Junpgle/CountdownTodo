@@ -54,13 +54,6 @@ mixin _TodoSectionContract {
 
   String _getRecurrenceText(RecurrenceType type);
 
-  ParsedTimeSemantics _parseTimeSemantics(
-    dynamic raw, {
-    required bool isAllDay,
-    required DateTime? startTime,
-    required DateTime? endTime,
-  });
-
   CaptureIntentKind _quickCaptureIntentFor(ParsedTodoResult result);
 
   String _quickCaptureKindLabel(ParsedTodoResult result);

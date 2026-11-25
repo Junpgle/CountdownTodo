@@ -88,22 +88,6 @@ extension _AddTodoParsingExt on _AddTodoScreenState {
     });
   }
 
-  ParsedTimeSemantics _parseTimeSemantics(
-    dynamic raw, {
-    required bool isAllDay,
-    required DateTime? startTime,
-    required DateTime? endTime,
-  }) {
-    if (isAllDay) return ParsedTimeSemantics.dateOnly;
-    final name = raw?.toString();
-    return ParsedTimeSemantics.values.firstWhere(
-      (value) => value.name == name,
-      orElse: () => startTime != null && endTime != null
-          ? ParsedTimeSemantics.range
-          : ParsedTimeSemantics.unscheduled,
-    );
-  }
-
   String _getRecurrenceLabel(RecurrenceType r) {
     switch (r) {
       case RecurrenceType.none:
@@ -434,7 +418,7 @@ extension _AddTodoParsingExt on _AddTodoScreenState {
           isAllDay: isAllDay,
           startTime: startTime,
           endTime: endTime,
-          timeSemantics: _parseTimeSemantics(
+          timeSemantics: RecognizedTodoAdapter.parseTimeSemantics(
             result['timeMode'] ?? result['time_mode'],
             isAllDay: isAllDay,
             startTime: startTime,
