@@ -5,9 +5,9 @@ import 'package:flutter/material.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
-import '../services/finance_storage.dart';
 import '../widgets/finance_management_widgets.dart';
 import '../widgets/finance_loan_payment_dialog.dart';
+import '../widgets/finance_revision_refresh_mixin.dart';
 import 'finance_loan_entry_screen.dart';
 import '../../../utils/app_dialogs.dart';
 import '../../../utils/time_utils.dart';
@@ -41,7 +41,12 @@ class FinanceLoanScreen extends StatefulWidget {
 }
 
 class _FinanceLoanScreenState extends State<FinanceLoanScreen>
-    with WidgetsBindingObserver {
+    with
+        WidgetsBindingObserver,
+        FinanceRevisionRefreshMixin<FinanceLoanScreen> {
+  @override
+  Duration get financeRevisionDebounce => Duration.zero;
+
   List<FinanceLoanOverview> _overviews = const [];
   bool? _paidOffFilter;
   bool _isLoading = true;
@@ -53,7 +58,7 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    FinanceStorage.revision.addListener(_onFinanceChanged);
+    startListeningToFinanceRevision();
     _load();
   }
 
@@ -61,7 +66,6 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen>
   void dispose() {
     _overdueRefreshTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
-    FinanceStorage.revision.removeListener(_onFinanceChanged);
     super.dispose();
   }
 
@@ -91,7 +95,8 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen>
     });
   }
 
-  void _onFinanceChanged() => _load(showLoading: false);
+  @override
+  void onFinanceRevisionRefresh() => _load(showLoading: false);
 
   String _displayName(FinanceLoan loan) =>
       financeLoanDisplayName(loan, _overviews.map((overview) => overview.loan));
@@ -493,7 +498,12 @@ class FinanceLoanDetailScreen extends StatefulWidget {
 }
 
 class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen>
-    with WidgetsBindingObserver {
+    with
+        WidgetsBindingObserver,
+        FinanceRevisionRefreshMixin<FinanceLoanDetailScreen> {
+  @override
+  Duration get financeRevisionDebounce => Duration.zero;
+
   FinanceLoan? _loan;
   List<FinanceLoanInstallment> _installments = const [];
   List<FinancePaymentMethod> _paymentMethods = const [];
@@ -510,7 +520,7 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    FinanceStorage.revision.addListener(_onFinanceChanged);
+    startListeningToFinanceRevision();
     _load();
   }
 
@@ -518,7 +528,6 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen>
   void dispose() {
     _overdueRefreshTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
-    FinanceStorage.revision.removeListener(_onFinanceChanged);
     super.dispose();
   }
 
@@ -545,7 +554,8 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen>
     });
   }
 
-  void _onFinanceChanged() => _load(showLoading: false);
+  @override
+  void onFinanceRevisionRefresh() => _load(showLoading: false);
 
   Future<void> _load({bool showLoading = true}) async {
     final generation = ++_loadGeneration;

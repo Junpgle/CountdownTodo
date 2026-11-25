@@ -6,9 +6,9 @@ import 'package:intl/intl.dart';
 
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
-import '../services/finance_storage.dart';
 import '../services/finance_sync_service.dart';
 import '../widgets/finance_management_widgets.dart';
+import '../widgets/finance_revision_refresh_mixin.dart';
 import '../../../widgets/floating_glass_control.dart';
 import 'finance_budget_entry_screen.dart';
 import '../../../utils/app_dialogs.dart';
@@ -28,7 +28,11 @@ class FinanceBudgetScreen extends StatefulWidget {
   State<FinanceBudgetScreen> createState() => _FinanceBudgetScreenState();
 }
 
-class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
+class _FinanceBudgetScreenState extends State<FinanceBudgetScreen>
+    with FinanceRevisionRefreshMixin<FinanceBudgetScreen> {
+  @override
+  Duration get financeRevisionDebounce => Duration.zero;
+
   late DateTime _month;
   List<FinanceBudget> _budgets = const [];
   List<FinanceBudget> _balanceSnapshots = const [];
@@ -57,18 +61,18 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     super.initState();
     final initial = widget.initialMonth ?? widget.clock();
     _month = DateTime(initial.year, initial.month);
-    FinanceStorage.revision.addListener(_onFinanceChanged);
+    startListeningToFinanceRevision();
     _load();
   }
 
   @override
   void dispose() {
     _balanceRefreshTimer?.cancel();
-    FinanceStorage.revision.removeListener(_onFinanceChanged);
     super.dispose();
   }
 
-  void _onFinanceChanged() => _load(showLoading: false);
+  @override
+  void onFinanceRevisionRefresh() => _load(showLoading: false);
 
   void _ensureCategoryCaches() {
     if (identical(_categoryCacheSource, _categories)) return;

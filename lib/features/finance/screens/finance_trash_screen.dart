@@ -8,6 +8,7 @@ import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 import '../services/finance_storage.dart';
 import '../widgets/finance_management_widgets.dart';
+import '../widgets/finance_revision_refresh_mixin.dart';
 import '../widgets/finance_trash_manager.dart';
 import '../../../utils/app_dialogs.dart';
 import '../../../utils/time_utils.dart';
@@ -19,7 +20,8 @@ class FinanceTrashScreen extends StatefulWidget {
   State<FinanceTrashScreen> createState() => _FinanceTrashScreenState();
 }
 
-class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
+class _FinanceTrashScreenState extends State<FinanceTrashScreen>
+    with FinanceRevisionRefreshMixin<FinanceTrashScreen> {
   List<FinanceTransaction> _transactions = const [];
   List<FinanceLoan> _loans = const [];
   List<FinanceBudget> _budgets = const [];
@@ -30,29 +32,16 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
   bool _isLoading = true;
   String? _loadError;
   int _loadGeneration = 0;
-  Timer? _financeChangeRefreshTimer;
 
   @override
   void initState() {
     super.initState();
-    FinanceStorage.revision.addListener(_onFinanceChanged);
+    startListeningToFinanceRevision();
     _load();
   }
 
   @override
-  void dispose() {
-    _financeChangeRefreshTimer?.cancel();
-    FinanceStorage.revision.removeListener(_onFinanceChanged);
-    super.dispose();
-  }
-
-  void _onFinanceChanged() {
-    _financeChangeRefreshTimer?.cancel();
-    _financeChangeRefreshTimer = Timer(const Duration(milliseconds: 100), () {
-      _financeChangeRefreshTimer = null;
-      if (mounted) unawaited(_load());
-    });
-  }
+  void onFinanceRevisionRefresh() => unawaited(_load());
 
   Future<void> _load() async {
     final generation = ++_loadGeneration;

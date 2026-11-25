@@ -6,8 +6,8 @@ import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_future_commitments_service.dart';
 import '../services/finance_repository.dart';
-import '../services/finance_storage.dart';
 import '../widgets/finance_management_widgets.dart';
+import '../widgets/finance_revision_refresh_mixin.dart';
 import 'finance_automation_screen.dart';
 import 'finance_loan_screen.dart';
 import 'finance_transaction_detail_screen.dart';
@@ -39,7 +39,9 @@ class FinanceFutureCommitmentsScreen extends StatefulWidget {
 
 class _FinanceFutureCommitmentsScreenState
     extends State<FinanceFutureCommitmentsScreen>
-    with WidgetsBindingObserver {
+    with
+        WidgetsBindingObserver,
+        FinanceRevisionRefreshMixin<FinanceFutureCommitmentsScreen> {
   int _horizonMonths = 3;
   int _loadGeneration = 0;
   FinanceFutureCommitmentForecast? _forecast;
@@ -47,21 +49,18 @@ class _FinanceFutureCommitmentsScreenState
   List<FinanceCategory> _categories = const [];
   bool _isLoading = true;
   String? _loadError;
-  Timer? _revisionRefreshTimer;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    FinanceStorage.revision.addListener(_onFinanceChanged);
+    startListeningToFinanceRevision();
     _load();
   }
 
   @override
   void dispose() {
-    _revisionRefreshTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
-    FinanceStorage.revision.removeListener(_onFinanceChanged);
     super.dispose();
   }
 
@@ -72,13 +71,8 @@ class _FinanceFutureCommitmentsScreenState
     }
   }
 
-  void _onFinanceChanged() {
-    _revisionRefreshTimer?.cancel();
-    _revisionRefreshTimer = Timer(const Duration(milliseconds: 100), () {
-      _revisionRefreshTimer = null;
-      if (mounted) unawaited(_load(showLoading: false));
-    });
-  }
+  @override
+  void onFinanceRevisionRefresh() => unawaited(_load(showLoading: false));
 
   Future<FinanceFutureCommitmentForecast> _read(DateTime now, int months) =>
       widget.loader?.call(now, months) ??

@@ -8,7 +8,7 @@ import '../../../widgets/app_detail_widgets.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
-import '../services/finance_storage.dart';
+import '../widgets/finance_revision_refresh_mixin.dart';
 import 'finance_entry_screen.dart';
 
 /// Read-only presentation of a saved finance transaction.
@@ -37,13 +37,13 @@ class FinanceTransactionDetailScreen extends StatefulWidget {
 }
 
 class _FinanceTransactionDetailScreenState
-    extends State<FinanceTransactionDetailScreen> {
+    extends State<FinanceTransactionDetailScreen>
+    with FinanceRevisionRefreshMixin<FinanceTransactionDetailScreen> {
   late FinanceTransaction transaction;
   FinanceCategory? category;
   String? categoryDisplayName;
   FinancePaymentMethod? paymentMethod;
   List<FinancePaymentMethod> _paymentMethods = const [];
-  Timer? _financeChangeRefreshTimer;
   bool _refreshInProgress = false;
   bool _refreshPending = false;
   bool _isUnavailable = false;
@@ -59,7 +59,7 @@ class _FinanceTransactionDetailScreenState
         widget.paymentMethods.isEmpty && widget.paymentMethod != null
         ? [widget.paymentMethod!]
         : widget.paymentMethods;
-    FinanceStorage.revision.addListener(_onFinanceChanged);
+    startListeningToFinanceRevision();
   }
 
   @override
@@ -84,19 +84,7 @@ class _FinanceTransactionDetailScreenState
   }
 
   @override
-  void dispose() {
-    _financeChangeRefreshTimer?.cancel();
-    FinanceStorage.revision.removeListener(_onFinanceChanged);
-    super.dispose();
-  }
-
-  void _onFinanceChanged() {
-    _financeChangeRefreshTimer?.cancel();
-    _financeChangeRefreshTimer = Timer(const Duration(milliseconds: 100), () {
-      _financeChangeRefreshTimer = null;
-      if (mounted) unawaited(_reloadLatestTransaction());
-    });
-  }
+  void onFinanceRevisionRefresh() => unawaited(_reloadLatestTransaction());
 
   Future<void> _reloadLatestTransaction() async {
     if (_refreshInProgress) {

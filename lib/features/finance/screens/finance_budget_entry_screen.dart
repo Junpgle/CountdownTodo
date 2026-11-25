@@ -6,8 +6,8 @@ import 'package:flutter/material.dart';
 
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
-import '../services/finance_storage.dart';
 import '../widgets/finance_management_widgets.dart';
+import '../widgets/finance_revision_refresh_mixin.dart';
 import '../../../utils/app_dialogs.dart';
 import '../../../utils/time_utils.dart';
 
@@ -28,7 +28,8 @@ class FinanceBudgetEntryScreen extends StatefulWidget {
       _FinanceBudgetEntryScreenState();
 }
 
-class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
+class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen>
+    with FinanceRevisionRefreshMixin<FinanceBudgetEntryScreen> {
   static const String _overallValue = '__finance_overall_budget__';
   static const String _categoryPrefix = 'category:';
   static const String _paymentPrefix = 'payment:';
@@ -45,7 +46,6 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
   bool _isSaving = false;
   bool _scopeRefreshPending = false;
   bool _scopeRefreshInProgress = false;
-  Timer? _financeChangeRefreshTimer;
   DateTime? _balanceTime;
   bool _useSaveTime = true;
   bool _balanceTimeChanged = false;
@@ -82,30 +82,25 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
       );
       _useSaveTime = false;
     }
-    FinanceStorage.revision.addListener(_onFinanceChanged);
+    startListeningToFinanceRevision();
     _loadScopeOptions();
   }
 
   @override
   void dispose() {
-    _financeChangeRefreshTimer?.cancel();
-    FinanceStorage.revision.removeListener(_onFinanceChanged);
     _amountController.dispose();
     _noteController.dispose();
     super.dispose();
   }
 
-  void _onFinanceChanged() {
-    _financeChangeRefreshTimer?.cancel();
-    _financeChangeRefreshTimer = Timer(const Duration(milliseconds: 100), () {
-      _financeChangeRefreshTimer = null;
-      if (!mounted || _isSaving) return;
-      if (_isLoading || _scopeRefreshInProgress) {
-        _scopeRefreshPending = true;
-        return;
-      }
-      unawaited(_refreshScopeOptions());
-    });
+  @override
+  void onFinanceRevisionRefresh() {
+    if (_isSaving) return;
+    if (_isLoading || _scopeRefreshInProgress) {
+      _scopeRefreshPending = true;
+      return;
+    }
+    unawaited(_refreshScopeOptions());
   }
 
   Future<void> _refreshScopeOptions() async {

@@ -9,7 +9,6 @@ import '../../../services/storage/app_settings_storage.dart';
 import '../models/finance_models.dart';
 import '../services/finance_automation_service.dart';
 import '../services/finance_repository.dart';
-import '../services/finance_storage.dart';
 import '../services/ai_usage_cost_service.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../widgets/floating_glass_control.dart';
@@ -17,6 +16,7 @@ import '../../../widgets/home_bottom_navigation_content.dart';
 import '../../../utils/page_transitions.dart';
 import '../widgets/finance_widgets.dart';
 import '../widgets/finance_intro_guide.dart';
+import '../widgets/finance_revision_refresh_mixin.dart';
 import 'finance_automation_screen.dart';
 import 'ai_usage_cost_screen.dart';
 import 'finance_budget_screen.dart';
@@ -89,7 +89,8 @@ class FinanceHomeScreen extends StatefulWidget {
   State<FinanceHomeScreen> createState() => _FinanceHomeScreenState();
 }
 
-class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
+class _FinanceHomeScreenState extends State<FinanceHomeScreen>
+    with FinanceRevisionRefreshMixin<FinanceHomeScreen> {
   late DateTime _month;
   List<FinanceTransaction> _transactions = const [];
   List<FinanceTransaction> _overviewTransactions = const [];
@@ -121,7 +122,6 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   String? _lastRecurringRuleSignature;
   Timer? _upcomingTransactionTimer;
   Timer? _autoGenerationTimer;
-  Timer? _financeChangeRefreshTimer;
   final GlobalKey _overviewAddActionKey = GlobalKey();
   final GlobalKey _bottomAddActionKey = GlobalKey();
   final GlobalKey _budgetActionKey = GlobalKey();
@@ -227,7 +227,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   void initState() {
     super.initState();
     _quickEntryInProgress = widget.openQuickEntry;
-    FinanceStorage.revision.addListener(_onFinanceStorageChanged);
+    startListeningToFinanceRevision();
     _ledgerDateRange = widget.initialLedgerDateRange;
     _isLedgerQueryLoading = widget._isMonthLedgerRoute;
     final initialMonth = widget.initialMonth ?? widget.clock();
@@ -280,18 +280,11 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   void dispose() {
     _upcomingTransactionTimer?.cancel();
     _autoGenerationTimer?.cancel();
-    _financeChangeRefreshTimer?.cancel();
-    FinanceStorage.revision.removeListener(_onFinanceStorageChanged);
     super.dispose();
   }
 
-  void _onFinanceStorageChanged() {
-    _financeChangeRefreshTimer?.cancel();
-    _financeChangeRefreshTimer = Timer(const Duration(milliseconds: 100), () {
-      _financeChangeRefreshTimer = null;
-      if (mounted) unawaited(_load(showLoading: false));
-    });
-  }
+  @override
+  void onFinanceRevisionRefresh() => unawaited(_load(showLoading: false));
 
   Future<void> _load({
     DateTime? targetMonth,

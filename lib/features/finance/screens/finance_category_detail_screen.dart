@@ -7,8 +7,8 @@ import '../../../utils/app_platform.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
-import '../services/finance_storage.dart';
 import '../widgets/finance_widgets.dart';
+import '../widgets/finance_revision_refresh_mixin.dart';
 
 class FinanceCategoryDetailScreen extends StatefulWidget {
   final String periodTitle;
@@ -64,7 +64,9 @@ class FinanceCategoryDetailScreen extends StatefulWidget {
 
 class _FinanceCategoryDetailScreenState
     extends State<FinanceCategoryDetailScreen>
-    with SingleTickerProviderStateMixin {
+    with
+        SingleTickerProviderStateMixin,
+        FinanceRevisionRefreshMixin<FinanceCategoryDetailScreen> {
   final Map<String, GlobalKey> _itemSourceKeys = {};
   final Map<String, GlobalKey> _billSourceKeys = {};
   bool _openingCategoryLedger = false;
@@ -79,7 +81,6 @@ class _FinanceCategoryDetailScreenState
   Map<String, FinanceCategory> _categoryRootsByUuid = const {};
   Map<String, FinanceCategory>? _categoryLabelCacheSource;
   final Map<String, String> _categoryLabelsByUuid = {};
-  Timer? _financeChangeRefreshTimer;
   Timer? _upcomingTransactionTimer;
   int _loadGeneration = 0;
 
@@ -109,7 +110,7 @@ class _FinanceCategoryDetailScreenState
       CurveTween(curve: Curves.easeOutCubic),
     );
     _donutAnimationController.forward();
-    FinanceStorage.revision.addListener(_onFinanceChanged);
+    startListeningToFinanceRevision();
     unawaited(_reloadPeriodData());
   }
 
@@ -140,19 +141,12 @@ class _FinanceCategoryDetailScreenState
   @override
   void dispose() {
     _donutAnimationController.dispose();
-    _financeChangeRefreshTimer?.cancel();
     _upcomingTransactionTimer?.cancel();
-    FinanceStorage.revision.removeListener(_onFinanceChanged);
     super.dispose();
   }
 
-  void _onFinanceChanged() {
-    _financeChangeRefreshTimer?.cancel();
-    _financeChangeRefreshTimer = Timer(const Duration(milliseconds: 100), () {
-      _financeChangeRefreshTimer = null;
-      if (mounted) unawaited(_reloadPeriodData());
-    });
-  }
+  @override
+  void onFinanceRevisionRefresh() => unawaited(_reloadPeriodData());
 
   Future<void> _reloadPeriodData() async {
     final from = widget.periodStart;

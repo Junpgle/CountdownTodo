@@ -6,10 +6,10 @@ import '../../../services/reminder_schedule_service.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
-import '../services/finance_storage.dart';
 import '../widgets/finance_automation_editor.dart';
 import '../widgets/finance_automation_manager.dart';
 import '../widgets/finance_management_widgets.dart';
+import '../widgets/finance_revision_refresh_mixin.dart';
 import 'finance_entry_screen.dart';
 import '../../../utils/app_dialogs.dart';
 
@@ -22,7 +22,8 @@ class FinanceAutomationScreen extends StatefulWidget {
       _FinanceAutomationScreenState();
 }
 
-class _FinanceAutomationScreenState extends State<FinanceAutomationScreen> {
+class _FinanceAutomationScreenState extends State<FinanceAutomationScreen>
+    with FinanceRevisionRefreshMixin<FinanceAutomationScreen> {
   List<FinanceRecurringRule> _rules = const [];
   List<FinanceEntryTemplate> _templates = const [];
   List<FinanceCategory> _categories = const [];
@@ -30,29 +31,16 @@ class _FinanceAutomationScreenState extends State<FinanceAutomationScreen> {
   bool _isLoading = true;
   String? _loadError;
   int _loadGeneration = 0;
-  Timer? _financeChangeRefreshTimer;
 
   @override
   void initState() {
     super.initState();
-    FinanceStorage.revision.addListener(_onFinanceChanged);
+    startListeningToFinanceRevision();
     _load();
   }
 
   @override
-  void dispose() {
-    _financeChangeRefreshTimer?.cancel();
-    FinanceStorage.revision.removeListener(_onFinanceChanged);
-    super.dispose();
-  }
-
-  void _onFinanceChanged() {
-    _financeChangeRefreshTimer?.cancel();
-    _financeChangeRefreshTimer = Timer(const Duration(milliseconds: 100), () {
-      _financeChangeRefreshTimer = null;
-      if (mounted) unawaited(_load());
-    });
-  }
+  void onFinanceRevisionRefresh() => unawaited(_load());
 
   Future<void> _load() async {
     final generation = ++_loadGeneration;

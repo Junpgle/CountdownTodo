@@ -11,6 +11,7 @@ import '../services/finance_storage.dart';
 import '../services/finance_text_parser.dart';
 import '../widgets/finance_amount_calculator.dart';
 import '../widgets/finance_catalog_editor.dart';
+import '../widgets/finance_revision_refresh_mixin.dart';
 import 'finance_loan_screen.dart';
 import '../../../utils/app_dialogs.dart';
 
@@ -56,7 +57,8 @@ class FinanceEntryScreen extends StatefulWidget {
   State<FinanceEntryScreen> createState() => _FinanceEntryScreenState();
 }
 
-class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
+class _FinanceEntryScreenState extends State<FinanceEntryScreen>
+    with FinanceRevisionRefreshMixin<FinanceEntryScreen> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _amountController;
   late final TextEditingController _merchantController;
@@ -96,7 +98,6 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   bool _saveCompleted = false;
   bool _catalogRefreshPending = false;
   bool _catalogRefreshInProgress = false;
-  Timer? _financeChangeRefreshTimer;
 
   bool get _isEditing => widget.transaction != null;
   bool get _isLoanInterest => _linkedRepayment != null;
@@ -195,14 +196,12 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         draft?.paymentMethodUuid ??
         template?.paymentMethodUuid;
     _selectedTemplateUuid = template?.uuid;
-    FinanceStorage.revision.addListener(_onFinanceChanged);
+    startListeningToFinanceRevision();
     _loadOptions();
   }
 
   @override
   void dispose() {
-    _financeChangeRefreshTimer?.cancel();
-    FinanceStorage.revision.removeListener(_onFinanceChanged);
     _amountController.dispose();
     _merchantController.dispose();
     _noteController.dispose();
@@ -211,17 +210,14 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     super.dispose();
   }
 
-  void _onFinanceChanged() {
-    _financeChangeRefreshTimer?.cancel();
-    _financeChangeRefreshTimer = Timer(const Duration(milliseconds: 100), () {
-      _financeChangeRefreshTimer = null;
-      if (!mounted || _isSaving || _saveCompleted) return;
-      if (_isLoading || _catalogRefreshInProgress) {
-        _catalogRefreshPending = true;
-        return;
-      }
-      unawaited(_refreshCatalogOptions());
-    });
+  @override
+  void onFinanceRevisionRefresh() {
+    if (_isSaving || _saveCompleted) return;
+    if (_isLoading || _catalogRefreshInProgress) {
+      _catalogRefreshPending = true;
+      return;
+    }
+    unawaited(_refreshCatalogOptions());
   }
 
   Future<void> _refreshCatalogOptions() async {

@@ -7,6 +7,7 @@ import '../../../widgets/optional_liquid_glass_surface.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 import '../services/finance_storage.dart';
+import 'finance_revision_refresh_mixin.dart';
 
 /// 首页专注 Tab 使用的紧凑记账概览。
 ///
@@ -30,7 +31,11 @@ class FinanceTodaySection extends StatefulWidget {
   State<FinanceTodaySection> createState() => _FinanceTodaySectionState();
 }
 
-class _FinanceTodaySectionState extends State<FinanceTodaySection> {
+class _FinanceTodaySectionState extends State<FinanceTodaySection>
+    with FinanceRevisionRefreshMixin<FinanceTodaySection> {
+  @override
+  Duration get financeRevisionDebounce => Duration.zero;
+
   FinanceSummary _summary = const FinanceSummary();
   FinanceTransaction? _latestTransaction;
   FinanceTransaction? _upcomingTransaction;
@@ -43,7 +48,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
   @override
   void initState() {
     super.initState();
-    FinanceStorage.revision.addListener(_onFinanceChanged);
+    startListeningToFinanceRevision();
     _loadData();
   }
 
@@ -55,12 +60,12 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
 
   @override
   void dispose() {
-    FinanceStorage.revision.removeListener(_onFinanceChanged);
     _upcomingTransactionTimer?.cancel();
     super.dispose();
   }
 
-  void _onFinanceChanged() {
+  @override
+  void onFinanceRevisionRefresh() {
     _loadData();
   }
 
