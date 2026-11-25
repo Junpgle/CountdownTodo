@@ -5,7 +5,7 @@ import '../../services/pomodoro_service.dart';
 import '../../storage_service.dart';
 import '../../widgets/floating_glass_control.dart';
 import '../../utils/app_dialogs.dart';
-import '../../utils/calendar_date_math.dart';
+import 'widgets/tag_batch_shared.dart';
 
 class RebindTagPage extends StatefulWidget {
   final String username;
@@ -89,93 +89,39 @@ class _RebindTagPageState extends State<RebindTagPage>
   /// 获取包含已删除标签的记录
   List<PomodoroRecord> get _pomodorosWithDeletedTags {
     if (_selectedOldTagUuids.isEmpty) return [];
-
-    var list = _allPomodoros.where((p) {
-      return p.tagUuids.any((uuid) => _selectedOldTagUuids.contains(uuid));
-    }).toList();
-
-    // 筛选时间范围
-    if (_dateRange != null) {
-      final range = CalendarDateMath.inclusiveDateRange(
-        _dateRange!.start,
-        _dateRange!.end,
-      );
-      final startMs = range.start.millisecondsSinceEpoch;
-      final endMs = range.endExclusive.millisecondsSinceEpoch;
-      list = list
-          .where((p) => p.startTime >= startMs && p.startTime < endMs)
-          .toList();
-    }
-
-    // 搜索
-    if (_searchQuery.isNotEmpty) {
-      final query = _searchQuery.toLowerCase();
-      list = list.where((p) {
-        final title = (p.todoTitle ?? '').toLowerCase();
-        final note = (p.note ?? '').toLowerCase();
-        return title.contains(query) || note.contains(query);
-      }).toList();
-    }
-
-    // 按时间倒序
-    list.sort((a, b) => b.startTime.compareTo(a.startTime));
-    return list;
+    return filterTagBatchPomodoros(
+      _allPomodoros,
+      dateRange: _dateRange,
+      searchQuery: _searchQuery,
+      extraPredicate: (p) =>
+          p.tagUuids.any((uuid) => _selectedOldTagUuids.contains(uuid)),
+    );
   }
 
   /// 获取包含已删除标签的时间日志
   List<TimeLogItem> get _timeLogsWithDeletedTags {
     if (_selectedOldTagUuids.isEmpty) return [];
-
-    var list = _allTimeLogs.where((l) {
-      return l.tagUuids.any((uuid) => _selectedOldTagUuids.contains(uuid));
-    }).toList();
-
-    // 筛选时间范围
-    if (_dateRange != null) {
-      final range = CalendarDateMath.inclusiveDateRange(
-        _dateRange!.start,
-        _dateRange!.end,
-      );
-      final startMs = range.start.millisecondsSinceEpoch;
-      final endMs = range.endExclusive.millisecondsSinceEpoch;
-      list = list
-          .where((l) => l.startTime >= startMs && l.startTime < endMs)
-          .toList();
-    }
-
-    // 搜索
-    if (_searchQuery.isNotEmpty) {
-      final query = _searchQuery.toLowerCase();
-      list = list.where((l) {
-        final title = l.title.toLowerCase();
-        final remark = (l.remark ?? '').toLowerCase();
-        return title.contains(query) || remark.contains(query);
-      }).toList();
-    }
-
-    // 按时间倒序
-    list.sort((a, b) => b.startTime.compareTo(a.startTime));
-    return list;
+    return filterTagBatchTimeLogs(
+      _allTimeLogs,
+      dateRange: _dateRange,
+      searchQuery: _searchQuery,
+      extraPredicate: (l) =>
+          l.tagUuids.any((uuid) => _selectedOldTagUuids.contains(uuid)),
+    );
   }
 
   void _toggleSelectAll(bool isPomodoro) {
     setState(() {
       if (isPomodoro) {
-        final filtered = _pomodorosWithDeletedTags;
-        if (_selectedPomodoros.length == filtered.length) {
-          _selectedPomodoros.clear();
-        } else {
-          _selectedPomodoros.clear();
-          _selectedPomodoros.addAll(filtered.map((p) => p.uuid));
-        }
+        toggleSelectAllRecordIds(
+          _selectedPomodoros,
+          _pomodorosWithDeletedTags.map((p) => p.uuid),
+        );
       } else {
-        final filtered = _timeLogsWithDeletedTags;
-        if (_selectedTimeLogs.length == filtered.length) {
-          _selectedTimeLogs.clear();
-        } else {
-          _selectedTimeLogs.clear();
-          _selectedTimeLogs.addAll(filtered.map((l) => l.id));
-        }
+        toggleSelectAllRecordIds(
+          _selectedTimeLogs,
+          _timeLogsWithDeletedTags.map((l) => l.id),
+        );
       }
     });
   }
@@ -236,20 +182,11 @@ class _RebindTagPageState extends State<RebindTagPage>
       if (_selectedPomodoros.isNotEmpty) {
         for (final pom in _allPomodoros) {
           if (_selectedPomodoros.contains(pom.uuid)) {
-            bool changed = false;
-            // 移除旧标签
-            for (final oldTagUuid in _selectedOldTagUuids) {
-              if (pom.tagUuids.contains(oldTagUuid)) {
-                pom.tagUuids.remove(oldTagUuid);
-                changed = true;
-              }
-            }
-            // 添加新标签（如果不存在）
-            if (!pom.tagUuids.contains(_selectedNewTagUuid)) {
-              pom.tagUuids.add(_selectedNewTagUuid!);
-              changed = true;
-            }
-            if (changed) {
+            if (mutateRecordTagUuids(
+              pom.tagUuids,
+              remove: _selectedOldTagUuids,
+              add: [_selectedNewTagUuid!],
+            )) {
               pom.markAsChanged();
               await PomodoroService.updateRecord(pom);
             }
@@ -261,20 +198,11 @@ class _RebindTagPageState extends State<RebindTagPage>
       if (_selectedTimeLogs.isNotEmpty) {
         for (final log in _allTimeLogs) {
           if (_selectedTimeLogs.contains(log.id)) {
-            bool changed = false;
-            // 移除旧标签
-            for (final oldTagUuid in _selectedOldTagUuids) {
-              if (log.tagUuids.contains(oldTagUuid)) {
-                log.tagUuids.remove(oldTagUuid);
-                changed = true;
-              }
-            }
-            // 添加新标签（如果不存在）
-            if (!log.tagUuids.contains(_selectedNewTagUuid)) {
-              log.tagUuids.add(_selectedNewTagUuid!);
-              changed = true;
-            }
-            if (changed) {
+            if (mutateRecordTagUuids(
+              log.tagUuids,
+              remove: _selectedOldTagUuids,
+              add: [_selectedNewTagUuid!],
+            )) {
               log.markAsChanged();
             }
           }
@@ -586,31 +514,17 @@ class _RebindTagPageState extends State<RebindTagPage>
           // 搜索
           Expanded(
             flex: 2,
-            child: TextField(
+            child: TagBatchRecordSearchField(
               controller: _searchController,
-              decoration: InputDecoration(
-                hintText: '搜索标题/备注...',
-                prefixIcon: const Icon(Icons.search, size: 18),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, size: 18),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() => _searchQuery = '');
-                        },
-                      )
-                    : null,
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
+              query: _searchQuery,
+              hintText: '搜索标题/备注...',
+              borderRadius: 8,
               onChanged: (value) {
                 setState(() => _searchQuery = value);
+              },
+              onClear: () {
+                _searchController.clear();
+                setState(() => _searchQuery = '');
               },
             ),
           ),
@@ -619,358 +533,173 @@ class _RebindTagPageState extends State<RebindTagPage>
     );
   }
 
-  Widget _buildPomodoroList(ColorScheme colorScheme) {
-    final records = _pomodorosWithDeletedTags;
+  Widget _buildRecordEmptyState(
+    ColorScheme colorScheme,
+    IconData icon,
+    String message,
+  ) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 48, color: colorScheme.onSurfaceVariant),
+          const SizedBox(height: 16),
+          Text(
+            message,
+            style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 16),
+          ),
+        ],
+      ),
+    );
+  }
 
+  List<String> _resolveSelectedOldTagNames(List<String> tagUuids) {
+    return tagUuids.where((uuid) => _selectedOldTagUuids.contains(uuid)).map((
+      uuid,
+    ) {
+      final tag = _allTags.firstWhere(
+        (t) => t.uuid == uuid,
+        orElse: () => PomodoroTag(
+          uuid: uuid,
+          name: '未知',
+          color: '#9E9E9E',
+          isDeleted: true,
+          version: 0,
+          createdAt: 0,
+          updatedAt: 0,
+        ),
+      );
+      return tag.name;
+    }).toList();
+  }
+
+  Widget _buildRebindRecordList<T>({
+    required ColorScheme colorScheme,
+    required List<T> items,
+    required String emptyMessage,
+    required bool isPomodoro,
+    required Set<String> selectedIds,
+    required String Function(T item) idOf,
+    required String Function(T item) titleOf,
+    required int Function(T item) startTimeOf,
+    required List<String> Function(T item) tagUuidsOf,
+    required int Function(T item) durationMinutesOf,
+  }) {
     if (_selectedOldTagUuids.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.touch_app,
-              size: 48,
-              color: colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '请先选择要替换的旧标签',
-              style: TextStyle(
-                color: colorScheme.onSurfaceVariant,
-                fontSize: 16,
-              ),
-            ),
-          ],
-        ),
+      return _buildRecordEmptyState(
+        colorScheme,
+        Icons.touch_app,
+        '请先选择要替换的旧标签',
       );
     }
 
-    if (records.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.check_circle_outline,
-              size: 48,
-              color: colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '没有找到包含已删除标签的番茄钟记录',
-              style: TextStyle(
-                color: colorScheme.onSurfaceVariant,
-                fontSize: 16,
-              ),
-            ),
-          ],
-        ),
+    if (items.isEmpty) {
+      return _buildRecordEmptyState(
+        colorScheme,
+        Icons.check_circle_outline,
+        emptyMessage,
       );
     }
+
     final recordDateFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd HH:mm');
 
-    return Column(
-      children: [
-        // 全选按钮
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          child: Row(
-            children: [
-              Checkbox(
-                value:
-                    _selectedPomodoros.length == records.length &&
-                    records.isNotEmpty,
-                tristate: true,
-                onChanged: (value) => _toggleSelectAll(true),
+    return TagBatchRecordListView<T>(
+      items: items,
+      idOf: idOf,
+      selectedIds: selectedIds,
+      onToggleItem: (id, selected) {
+        setState(() {
+          if (selected) {
+            selectedIds.add(id);
+          } else {
+            selectedIds.remove(id);
+          }
+        });
+      },
+      selectAllHeader: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        child: Row(
+          children: [
+            Checkbox(
+              value: selectedIds.length == items.length && items.isNotEmpty,
+              tristate: true,
+              onChanged: (value) => _toggleSelectAll(isPomodoro),
+            ),
+            Text(
+              '全选 (${selectedIds.length}/${items.length})',
+              style: const TextStyle(fontSize: 13),
+            ),
+          ],
+        ),
+      ),
+      itemTitle: (item) =>
+          Text(titleOf(item), maxLines: 1, overflow: TextOverflow.ellipsis),
+      itemSubtitle: (item) {
+        final oldTagNames = _resolveSelectedOldTagNames(tagUuidsOf(item));
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              recordDateFormat.format(
+                DateTime.fromMillisecondsSinceEpoch(startTimeOf(item)),
               ),
+              style: TextStyle(
+                fontSize: 12,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            if (oldTagNames.isNotEmpty)
               Text(
-                '全选 (${_selectedPomodoros.length}/${records.length})',
-                style: const TextStyle(fontSize: 13),
+                '旧标签: ${oldTagNames.join(', ')}',
+                style: TextStyle(fontSize: 11, color: colorScheme.error),
               ),
-            ],
-          ),
+          ],
+        );
+      },
+      itemTrailing: (item) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(4),
         ),
-        // 记录列表
-        Expanded(
-          child: ListView.builder(
-            findChildIndexCallback: (Key key) {
-              if (key is ValueKey<String>) {
-                final uuid = key.value;
-                final index = records.indexWhere((r) => r.uuid == uuid);
-                return index != -1 ? index : null;
-              }
-              return null;
-            },
-            itemCount: records.length,
-            itemBuilder: (context, index) {
-              final record = records[index];
-              final isSelected = _selectedPomodoros.contains(record.uuid);
-
-              // 获取记录中的旧标签名称
-              final oldTagNames = record.tagUuids
-                  .where((uuid) => _selectedOldTagUuids.contains(uuid))
-                  .map((uuid) {
-                    final tag = _allTags.firstWhere(
-                      (t) => t.uuid == uuid,
-                      orElse: () => PomodoroTag(
-                        uuid: uuid,
-                        name: '未知',
-                        color: '#9E9E9E',
-                        isDeleted: true,
-                        version: 0,
-                        createdAt: 0,
-                        updatedAt: 0,
-                      ),
-                    );
-                    return tag.name;
-                  })
-                  .toList();
-
-              return RepaintBoundary(
-                key: ValueKey<String>(record.uuid),
-                child: ListTile(
-                  leading: Checkbox(
-                    value: isSelected,
-                    onChanged: (value) {
-                      setState(() {
-                        if (value == true) {
-                          _selectedPomodoros.add(record.uuid);
-                        } else {
-                          _selectedPomodoros.remove(record.uuid);
-                        }
-                      });
-                    },
-                  ),
-                  title: Text(
-                    record.todoTitle ?? '专注',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        recordDateFormat.format(
-                          DateTime.fromMillisecondsSinceEpoch(record.startTime),
-                        ),
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      if (oldTagNames.isNotEmpty)
-                        Text(
-                          '旧标签: ${oldTagNames.join(', ')}',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: colorScheme.error,
-                          ),
-                        ),
-                    ],
-                  ),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      '${record.plannedDuration ~/ 60}分钟',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
+        child: Text(
+          '${durationMinutesOf(item)}分钟',
+          style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
         ),
-      ],
+      ),
+    );
+  }
+
+  Widget _buildPomodoroList(ColorScheme colorScheme) {
+    return _buildRebindRecordList<PomodoroRecord>(
+      colorScheme: colorScheme,
+      items: _pomodorosWithDeletedTags,
+      emptyMessage: '没有找到包含已删除标签的番茄钟记录',
+      isPomodoro: true,
+      selectedIds: _selectedPomodoros,
+      idOf: (record) => record.uuid,
+      titleOf: (record) => record.todoTitle ?? '专注',
+      startTimeOf: (record) => record.startTime,
+      tagUuidsOf: (record) => record.tagUuids,
+      durationMinutesOf: (record) => record.plannedDuration ~/ 60,
     );
   }
 
   Widget _buildTimeLogList(ColorScheme colorScheme) {
-    final logs = _timeLogsWithDeletedTags;
-
-    if (_selectedOldTagUuids.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.touch_app,
-              size: 48,
-              color: colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '请先选择要替换的旧标签',
-              style: TextStyle(
-                color: colorScheme.onSurfaceVariant,
-                fontSize: 16,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (logs.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.check_circle_outline,
-              size: 48,
-              color: colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '没有找到包含已删除标签的时间日志',
-              style: TextStyle(
-                color: colorScheme.onSurfaceVariant,
-                fontSize: 16,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-    final recordDateFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd HH:mm');
-
-    return Column(
-      children: [
-        // 全选按钮
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          child: Row(
-            children: [
-              Checkbox(
-                value:
-                    _selectedTimeLogs.length == logs.length && logs.isNotEmpty,
-                tristate: true,
-                onChanged: (value) => _toggleSelectAll(false),
-              ),
-              Text(
-                '全选 (${_selectedTimeLogs.length}/${logs.length})',
-                style: const TextStyle(fontSize: 13),
-              ),
-            ],
-          ),
-        ),
-        // 记录列表
-        Expanded(
-          child: ListView.builder(
-            findChildIndexCallback: (Key key) {
-              if (key is ValueKey<String>) {
-                final id = key.value;
-                final index = logs.indexWhere((l) => l.id == id);
-                return index != -1 ? index : null;
-              }
-              return null;
-            },
-            itemCount: logs.length,
-            itemBuilder: (context, index) {
-              final log = logs[index];
-              final isSelected = _selectedTimeLogs.contains(log.id);
-
-              // 获取记录中的旧标签名称
-              final oldTagNames = log.tagUuids
-                  .where((uuid) => _selectedOldTagUuids.contains(uuid))
-                  .map((uuid) {
-                    final tag = _allTags.firstWhere(
-                      (t) => t.uuid == uuid,
-                      orElse: () => PomodoroTag(
-                        uuid: uuid,
-                        name: '未知',
-                        color: '#9E9E9E',
-                        isDeleted: true,
-                        version: 0,
-                        createdAt: 0,
-                        updatedAt: 0,
-                      ),
-                    );
-                    return tag.name;
-                  })
-                  .toList();
-
-              final duration = DateTime.fromMillisecondsSinceEpoch(log.endTime)
-                  .difference(
-                    DateTime.fromMillisecondsSinceEpoch(log.startTime),
-                  )
-                  .inMinutes;
-
-              return RepaintBoundary(
-                key: ValueKey<String>(log.id),
-                child: ListTile(
-                  leading: Checkbox(
-                    value: isSelected,
-                    onChanged: (value) {
-                      setState(() {
-                        if (value == true) {
-                          _selectedTimeLogs.add(log.id);
-                        } else {
-                          _selectedTimeLogs.remove(log.id);
-                        }
-                      });
-                    },
-                  ),
-                  title: Text(
-                    log.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        recordDateFormat.format(
-                          DateTime.fromMillisecondsSinceEpoch(log.startTime),
-                        ),
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      if (oldTagNames.isNotEmpty)
-                        Text(
-                          '旧标签: ${oldTagNames.join(', ')}',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: colorScheme.error,
-                          ),
-                        ),
-                    ],
-                  ),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      '$duration分钟',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
+    return _buildRebindRecordList<TimeLogItem>(
+      colorScheme: colorScheme,
+      items: _timeLogsWithDeletedTags,
+      emptyMessage: '没有找到包含已删除标签的时间日志',
+      isPomodoro: false,
+      selectedIds: _selectedTimeLogs,
+      idOf: (log) => log.id,
+      titleOf: (log) => log.title,
+      startTimeOf: (log) => log.startTime,
+      tagUuidsOf: (log) => log.tagUuids,
+      durationMinutesOf: (log) =>
+          DateTime.fromMillisecondsSinceEpoch(log.endTime)
+              .difference(DateTime.fromMillisecondsSinceEpoch(log.startTime))
+              .inMinutes,
     );
   }
 }

@@ -4,9 +4,9 @@ import '../../models.dart';
 import '../../services/pomodoro_service.dart';
 import '../../storage_service.dart';
 import '../../utils/app_color_utils.dart';
-import '../../utils/calendar_date_math.dart';
 import '../../widgets/floating_glass_control.dart';
 import '../../utils/app_dialogs.dart';
+import 'widgets/tag_batch_shared.dart';
 
 class BatchTagPage extends StatefulWidget {
   final String username;
@@ -85,95 +85,35 @@ class _BatchTagPageState extends State<BatchTagPage>
   }
 
   List<PomodoroRecord> get _filteredPomodoros {
-    var list = _allPomodoros;
-
-    // 筛选未标签
-    if (_showOnlyUntagged) {
-      list = list.where((p) => p.tagUuids.isEmpty).toList();
-    }
-
-    // 筛选时间范围
-    if (_dateRange != null) {
-      final range = CalendarDateMath.inclusiveDateRange(
-        _dateRange!.start,
-        _dateRange!.end,
-      );
-      final startMs = range.start.millisecondsSinceEpoch;
-      final endMs = range.endExclusive.millisecondsSinceEpoch;
-      list = list
-          .where((p) => p.startTime >= startMs && p.startTime < endMs)
-          .toList();
-    }
-
-    // 搜索
-    if (_searchQuery.isNotEmpty) {
-      final query = _searchQuery.toLowerCase();
-      list = list.where((p) {
-        final title = (p.todoTitle ?? '').toLowerCase();
-        final note = (p.note ?? '').toLowerCase();
-        return title.contains(query) || note.contains(query);
-      }).toList();
-    }
-
-    // 按时间倒序
-    list.sort((a, b) => b.startTime.compareTo(a.startTime));
-    return list;
+    return filterTagBatchPomodoros(
+      _allPomodoros,
+      dateRange: _dateRange,
+      searchQuery: _searchQuery,
+      extraPredicate: _showOnlyUntagged ? (p) => p.tagUuids.isEmpty : null,
+    );
   }
 
   List<TimeLogItem> get _filteredTimeLogs {
-    var list = _allTimeLogs;
-
-    // 筛选未标签
-    if (_showOnlyUntagged) {
-      list = list.where((l) => l.tagUuids.isEmpty).toList();
-    }
-
-    // 筛选时间范围
-    if (_dateRange != null) {
-      final range = CalendarDateMath.inclusiveDateRange(
-        _dateRange!.start,
-        _dateRange!.end,
-      );
-      final startMs = range.start.millisecondsSinceEpoch;
-      final endMs = range.endExclusive.millisecondsSinceEpoch;
-      list = list
-          .where((l) => l.startTime >= startMs && l.startTime < endMs)
-          .toList();
-    }
-
-    // 搜索
-    if (_searchQuery.isNotEmpty) {
-      final query = _searchQuery.toLowerCase();
-      list = list.where((l) {
-        final title = l.title.toLowerCase();
-        final remark = (l.remark ?? '').toLowerCase();
-        return title.contains(query) || remark.contains(query);
-      }).toList();
-    }
-
-    // 按时间倒序
-    list.sort((a, b) => b.startTime.compareTo(a.startTime));
-    return list;
+    return filterTagBatchTimeLogs(
+      _allTimeLogs,
+      dateRange: _dateRange,
+      searchQuery: _searchQuery,
+      extraPredicate: _showOnlyUntagged ? (l) => l.tagUuids.isEmpty : null,
+    );
   }
 
   void _toggleSelectAll(bool isPomodoro) {
     setState(() {
       if (isPomodoro) {
-        final filtered = _filteredPomodoros;
-        if (_selectedPomodoros.length == filtered.length) {
-          _selectedPomodoros.clear();
-        } else {
-          _selectedPomodoros.clear();
-          _selectedPomodoros.addAll(filtered.map((p) => p.uuid));
-        }
+        toggleSelectAllRecordIds(
+          _selectedPomodoros,
+          _filteredPomodoros.map((p) => p.uuid),
+        );
       } else {
-        final filtered = _filteredTimeLogs;
-        if (_selectedTimeLogs.length == filtered.length) {
-          _selectedTimeLogs.clear();
-        } else {
-          _selectedTimeLogs.clear();
-          _selectedTimeLogs.addAll(filtered.map((l) => l.id));
-        }
+        toggleSelectAllRecordIds(
+          _selectedTimeLogs,
+          _filteredTimeLogs.map((l) => l.id),
+        );
       }
     });
   }
@@ -229,14 +169,7 @@ class _BatchTagPageState extends State<BatchTagPage>
       if (_selectedPomodoros.isNotEmpty) {
         for (final pom in _allPomodoros) {
           if (_selectedPomodoros.contains(pom.uuid)) {
-            bool changed = false;
-            for (final tagUuid in _targetTagUuids) {
-              if (!pom.tagUuids.contains(tagUuid)) {
-                pom.tagUuids.add(tagUuid);
-                changed = true;
-              }
-            }
-            if (changed) {
+            if (mutateRecordTagUuids(pom.tagUuids, add: _targetTagUuids)) {
               pom.markAsChanged();
               await PomodoroService.updateRecord(pom);
             }
@@ -248,14 +181,7 @@ class _BatchTagPageState extends State<BatchTagPage>
       if (_selectedTimeLogs.isNotEmpty) {
         for (final log in _allTimeLogs) {
           if (_selectedTimeLogs.contains(log.id)) {
-            bool changed = false;
-            for (final tagUuid in _targetTagUuids) {
-              if (!log.tagUuids.contains(tagUuid)) {
-                log.tagUuids.add(tagUuid);
-                changed = true;
-              }
-            }
-            if (changed) {
+            if (mutateRecordTagUuids(log.tagUuids, add: _targetTagUuids)) {
               log.markAsChanged();
             }
           }
@@ -380,30 +306,16 @@ class _BatchTagPageState extends State<BatchTagPage>
             children: [
               // 搜索框
               Expanded(
-                child: TextField(
+                child: TagBatchRecordSearchField(
                   controller: _searchController,
+                  query: _searchQuery,
+                  hintText: '搜索标题...',
+                  borderRadius: 20,
                   onChanged: (v) => setState(() => _searchQuery = v),
-                  decoration: InputDecoration(
-                    hintText: '搜索标题...',
-                    isDense: true,
-                    prefixIcon: const Icon(Icons.search, size: 18),
-                    suffixIcon: _searchQuery.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear, size: 18),
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() => _searchQuery = '');
-                            },
-                          )
-                        : null,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                  ),
+                  onClear: () {
+                    _searchController.clear();
+                    setState(() => _searchQuery = '');
+                  },
                 ),
               ),
               const SizedBox(width: 8),
@@ -543,77 +455,50 @@ class _BatchTagPageState extends State<BatchTagPage>
     final startDateFormat = AppTimeFormats.dateFormatter('MM/dd HH:mm');
     final endTimeFormat = AppTimeFormats.dateFormatter('HH:mm');
 
-    return Column(
-      children: [
-        _buildSelectAllBar(true, filtered.length),
-        Expanded(
-          child: Builder(
-            builder: (context) {
-              final listPadding = MediaQuery.paddingOf(context)
-                  .copyWith(top: 0);
-              return ListView.builder(
-                padding: listPadding,
-                findChildIndexCallback: (Key key) {
-                  if (key is ValueKey<String>) {
-                    final uuid = key.value;
-                    final index = filtered.indexWhere((p) => p.uuid == uuid);
-                    return index != -1 ? index : null;
-                  }
-                  return null;
-                },
-                itemCount: filtered.length,
-                itemBuilder: (ctx, i) {
-                  final pom = filtered[i];
-                  final isSelected = _selectedPomodoros.contains(pom.uuid);
-                  final startTime = DateTime.fromMillisecondsSinceEpoch(
-                    pom.startTime,
-                  );
-                  final endTime = pom.endTime != null
-                      ? DateTime.fromMillisecondsSinceEpoch(pom.endTime!)
-                      : startTime.add(Duration(seconds: pom.effectiveDuration));
-                  final duration = pom.effectiveDuration ~/ 60;
-
-                  return RepaintBoundary(
-                    key: ValueKey<String>(pom.uuid),
-                    child: ListTile(
-                      leading: Checkbox(
-                        value: isSelected,
-                        onChanged: (v) {
-                          setState(() {
-                            if (v == true) {
-                              _selectedPomodoros.add(pom.uuid);
-                            } else {
-                              _selectedPomodoros.remove(pom.uuid);
-                            }
-                          });
-                        },
-                      ),
-                      title: Text(
-                        pom.todoTitle ?? '番茄钟',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      subtitle: Text(
-                        '${startDateFormat.format(startTime)} → ${endTimeFormat.format(endTime)}  ${duration}min',
-                        style: const TextStyle(fontSize: 11),
-                      ),
-                      trailing: pom.tagUuids.isNotEmpty
-                          ? _buildTagChips(pom.tagUuids)
-                          : const Text(
-                              '无标签',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey,
-                              ),
-                            ),
-                    ),
-                  );
-                },
-              );
-            },
+    return Builder(
+      builder: (context) {
+        final listPadding = MediaQuery.paddingOf(context).copyWith(top: 0);
+        return TagBatchRecordListView<PomodoroRecord>(
+          items: filtered,
+          idOf: (pom) => pom.uuid,
+          selectedIds: _selectedPomodoros,
+          onToggleItem: (id, selected) {
+            setState(() {
+              if (selected) {
+                _selectedPomodoros.add(id);
+              } else {
+                _selectedPomodoros.remove(id);
+              }
+            });
+          },
+          selectAllHeader: _buildSelectAllBar(true, filtered.length),
+          listPadding: listPadding,
+          itemTitle: (pom) => Text(
+            pom.todoTitle ?? '番茄钟',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-        ),
-      ],
+          itemSubtitle: (pom) {
+            final startTime = DateTime.fromMillisecondsSinceEpoch(
+              pom.startTime,
+            );
+            final endTime = pom.endTime != null
+                ? DateTime.fromMillisecondsSinceEpoch(pom.endTime!)
+                : startTime.add(Duration(seconds: pom.effectiveDuration));
+            final duration = pom.effectiveDuration ~/ 60;
+            return Text(
+              '${startDateFormat.format(startTime)} → ${endTimeFormat.format(endTime)}  ${duration}min',
+              style: const TextStyle(fontSize: 11),
+            );
+          },
+          itemTrailing: (pom) => pom.tagUuids.isNotEmpty
+              ? _buildTagChips(pom.tagUuids)
+              : const Text(
+                  '无标签',
+                  style: TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+        );
+      },
     );
   }
 
@@ -628,77 +513,48 @@ class _BatchTagPageState extends State<BatchTagPage>
     final startDateFormat = AppTimeFormats.dateFormatter('MM/dd HH:mm');
     final endTimeFormat = AppTimeFormats.dateFormatter('HH:mm');
 
-    return Column(
-      children: [
-        _buildSelectAllBar(false, filtered.length),
-        Expanded(
-          child: Builder(
-            builder: (context) {
-              final listPadding = MediaQuery.paddingOf(context)
-                  .copyWith(top: 0);
-              return ListView.builder(
-                padding: listPadding,
-                findChildIndexCallback: (Key key) {
-                  if (key is ValueKey<String>) {
-                    final id = key.value;
-                    final index = filtered.indexWhere((l) => l.id == id);
-                    return index != -1 ? index : null;
-                  }
-                  return null;
-                },
-                itemCount: filtered.length,
-                itemBuilder: (ctx, i) {
-                  final log = filtered[i];
-                  final isSelected = _selectedTimeLogs.contains(log.id);
-                  final startTime = DateTime.fromMillisecondsSinceEpoch(
-                    log.startTime,
-                  );
-                  final endTime = DateTime.fromMillisecondsSinceEpoch(
-                    log.endTime,
-                  );
-                  final duration = (log.endTime - log.startTime) ~/ 60000;
-
-                  return RepaintBoundary(
-                    key: ValueKey<String>(log.id),
-                    child: ListTile(
-                      leading: Checkbox(
-                        value: isSelected,
-                        onChanged: (v) {
-                          setState(() {
-                            if (v == true) {
-                              _selectedTimeLogs.add(log.id);
-                            } else {
-                              _selectedTimeLogs.remove(log.id);
-                            }
-                          });
-                        },
-                      ),
-                      title: Text(
-                        log.title.isNotEmpty ? log.title : '时间日志',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      subtitle: Text(
-                        '${startDateFormat.format(startTime)} → ${endTimeFormat.format(endTime)}  ${duration}min',
-                        style: const TextStyle(fontSize: 11),
-                      ),
-                      trailing: log.tagUuids.isNotEmpty
-                          ? _buildTagChips(log.tagUuids)
-                          : const Text(
-                              '无标签',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey,
-                              ),
-                            ),
-                    ),
-                  );
-                },
-              );
-            },
+    return Builder(
+      builder: (context) {
+        final listPadding = MediaQuery.paddingOf(context).copyWith(top: 0);
+        return TagBatchRecordListView<TimeLogItem>(
+          items: filtered,
+          idOf: (log) => log.id,
+          selectedIds: _selectedTimeLogs,
+          onToggleItem: (id, selected) {
+            setState(() {
+              if (selected) {
+                _selectedTimeLogs.add(id);
+              } else {
+                _selectedTimeLogs.remove(id);
+              }
+            });
+          },
+          selectAllHeader: _buildSelectAllBar(false, filtered.length),
+          listPadding: listPadding,
+          itemTitle: (log) => Text(
+            log.title.isNotEmpty ? log.title : '时间日志',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-        ),
-      ],
+          itemSubtitle: (log) {
+            final startTime = DateTime.fromMillisecondsSinceEpoch(
+              log.startTime,
+            );
+            final endTime = DateTime.fromMillisecondsSinceEpoch(log.endTime);
+            final duration = (log.endTime - log.startTime) ~/ 60000;
+            return Text(
+              '${startDateFormat.format(startTime)} → ${endTimeFormat.format(endTime)}  ${duration}min',
+              style: const TextStyle(fontSize: 11),
+            );
+          },
+          itemTrailing: (log) => log.tagUuids.isNotEmpty
+              ? _buildTagChips(log.tagUuids)
+              : const Text(
+                  '无标签',
+                  style: TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+        );
+      },
     );
   }
 
