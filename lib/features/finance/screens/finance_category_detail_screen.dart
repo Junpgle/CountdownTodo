@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -378,216 +377,6 @@ class _FinanceCategoryDetailScreenState
     return (items: result, total: total);
   }
 
-  void _handleChartTap(
-    Offset localPosition,
-    double chartSize,
-    List<FinanceDonutSlice> slices,
-    int total,
-  ) {
-    if (total <= 0 || slices.isEmpty) return;
-    final center = Offset(chartSize / 2, chartSize / 2);
-    final distance = (localPosition - center).distance;
-    final isLarge = chartSize >= 160.0;
-    final baseRadius = chartSize / 2 - (isLarge ? 18.0 : 14.0);
-
-    // 点击环心：若当前已选中某小类，则切回总额
-    if (distance < baseRadius - (isLarge ? 18.0 : 15.0)) {
-      if (_selectedCategoryUuid != null) {
-        setState(() => _selectedCategoryUuid = null);
-        HapticFeedback.selectionClick();
-      }
-      return;
-    }
-
-    // 点击圆环附近区域
-    if (distance >= baseRadius - 22.0 && distance <= baseRadius + 26.0) {
-      final angle = math.atan2(
-        localPosition.dy - center.dy,
-        localPosition.dx - center.dx,
-      );
-      var normalized = (angle + math.pi / 2) % (2 * math.pi);
-      if (normalized < 0) normalized += 2 * math.pi;
-
-      var accumulated = 0.0;
-      for (final slice in slices) {
-        final sweep = 2 * math.pi * (slice.value / total);
-        if (normalized >= accumulated && normalized < accumulated + sweep) {
-          setState(() {
-            if (_selectedCategoryUuid == slice.categoryUuid) {
-              _selectedCategoryUuid = null;
-            } else {
-              _selectedCategoryUuid = slice.categoryUuid;
-            }
-          });
-          HapticFeedback.selectionClick();
-          return;
-        }
-        accumulated += sweep;
-      }
-    }
-  }
-
-  Widget _buildDonutCenterInfo(
-    BuildContext context,
-    ColorScheme colorScheme,
-    int total,
-    bool isPlanned,
-    FinanceDonutSlice? selectedSlice,
-    int subcategoryCount,
-    double donutSize,
-  ) {
-    final isDark = colorScheme.brightness == Brightness.dark;
-    final contentKey = ValueKey(
-      selectedSlice?.categoryUuid ?? 'subcategory-total',
-    );
-    final isLarge = donutSize >= 160.0;
-    final titleFontSize = isLarge ? 13.5 : 11.5;
-    final amountFontSize = isLarge ? 22.0 : 17.0;
-    final badgeFontSize = isLarge ? 11.5 : 10.0;
-    final badgePadding = isLarge
-        ? const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5)
-        : const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5);
-
-    return IgnorePointer(
-      child: Center(
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: isLarge ? 20.0 : 14.0),
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 220),
-            switchInCurve: Curves.easeOutCubic,
-            switchOutCurve: Curves.easeInCubic,
-            transitionBuilder: (child, animation) {
-              final scale = Tween<double>(
-                begin: 0.92,
-                end: 1.0,
-              ).animate(animation);
-              return AnimatedBuilder(
-                animation: animation,
-                child: child,
-                builder: (context, child) {
-                  if (animation.value <= 0.001) {
-                    return const SizedBox.shrink();
-                  }
-                  if (animation.value >= 0.999) {
-                    return child!;
-                  }
-                  return FadeTransition(
-                    opacity: animation,
-                    child: ScaleTransition(scale: scale, child: child),
-                  );
-                },
-              );
-            },
-            child: KeyedSubtree(
-              key: contentKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (selectedSlice != null) ...[
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        if (selectedSlice.icon != null &&
-                            selectedSlice.icon!.isNotEmpty) ...[
-                          Text(
-                            selectedSlice.icon!,
-                            style: TextStyle(fontSize: isLarge ? 14 : 12),
-                          ),
-                          const SizedBox(width: 4),
-                        ],
-                        Flexible(
-                          child: Text(
-                            selectedSlice.label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: titleFontSize,
-                              fontWeight: FontWeight.w600,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        formatFinanceAmount(selectedSlice.value),
-                        style: TextStyle(
-                          fontSize: amountFontSize,
-                          fontWeight: FontWeight.w800,
-                          color: selectedSlice.color,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Container(
-                      padding: badgePadding,
-                      decoration: BoxDecoration(
-                        color: selectedSlice.color.withValues(
-                          alpha: isDark ? 0.22 : 0.12,
-                        ),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        '占比 ${total > 0 ? (selectedSlice.value / total * 100).toStringAsFixed(1) : '0.0'}%',
-                        style: TextStyle(
-                          fontSize: badgeFontSize,
-                          fontWeight: FontWeight.w700,
-                          color: selectedSlice.color,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ),
-                  ] else ...[
-                    Text(
-                      _isIncome
-                          ? (isPlanned ? '计划小类收入' : '小类收入')
-                          : (isPlanned ? '计划小类支出' : '小类净支出'),
-                      style: TextStyle(
-                        fontSize: titleFontSize,
-                        fontWeight: FontWeight.w600,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        formatFinanceAmount(total),
-                        style: TextStyle(
-                          fontSize: amountFontSize,
-                          fontWeight: FontWeight.w800,
-                          color: colorScheme.onSurface,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '共 $subcategoryCount 项小类',
-                      style: TextStyle(
-                        fontSize: badgeFontSize,
-                        color: colorScheme.onSurfaceVariant.withValues(
-                          alpha: 0.8,
-                        ),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -623,7 +412,6 @@ class _FinanceCategoryDetailScreenState
       }
     }
 
-    final isDark = colorScheme.brightness == Brightness.dark;
     final isTest = AppPlatform.isFlutterTest;
     final donutSize = isTest ? 136.0 : 180.0;
     final sliceColors = <Color>[
@@ -645,15 +433,6 @@ class _FinanceCategoryDetailScreenState
             icon: items[index].icon,
           ),
     ];
-    FinanceDonutSlice? selectedSlice;
-    if (_selectedCategoryUuid != null) {
-      for (final slice in slices) {
-        if (slice.categoryUuid == _selectedCategoryUuid) {
-          selectedSlice = slice;
-          break;
-        }
-      }
-    }
 
     return Scaffold(
       appBar: FloatingGlassAppBar(
@@ -771,52 +550,24 @@ class _FinanceCategoryDetailScreenState
                     if (hasSubcategories &&
                         slices.length >= 2 &&
                         total > 0) ...[
-                      SizedBox(
-                        height: donutSize + 4,
-                        child: Center(
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTapUp: (details) => _handleChartTap(
-                              details.localPosition,
-                              donutSize,
-                              slices,
-                              total,
-                            ),
-                            child: SizedBox.square(
-                              dimension: donutSize,
-                              child: Stack(
-                                alignment: Alignment.center,
-                                children: [
-                                  RepaintBoundary(
-                                    child: CustomPaint(
-                                      size: Size.square(donutSize),
-                                      painter: FinanceDonutPainter(
-                                        slices: slices,
-                                        total: total,
-                                        selectedCategoryUuid:
-                                            _selectedCategoryUuid,
-                                        sweepProgress: _donutAnimation.value,
-                                        sweepAnimation: _donutAnimation,
-                                        emptyColor:
-                                            colorScheme.surfaceContainerHighest,
-                                        isDark: isDark,
-                                      ),
-                                    ),
-                                  ),
-                                  _buildDonutCenterInfo(
-                                    context,
-                                    colorScheme,
-                                    total,
-                                    isPlanned,
-                                    selectedSlice,
-                                    items.length,
-                                    donutSize,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
+                      FinanceCategoryDonutChart(
+                        slices: slices,
+                        total: total,
+                        donutSize: donutSize,
+                        sweepAnimation: _donutAnimation,
+                        colorScheme: colorScheme,
+                        selectedCategoryUuid: _selectedCategoryUuid,
+                        onSelectCategory: (uuid) =>
+                            setState(() => _selectedCategoryUuid = uuid),
+                        totalTitle: _isIncome
+                            ? (isPlanned ? '计划小类收入' : '小类收入')
+                            : (isPlanned ? '计划小类支出' : '小类净支出'),
+                        countLabel: '共 ${items.length} 项小类',
+                        totalContentKey: 'subcategory-total',
+                        largeRadiusInset: 18.0,
+                        totalTitleFontWeight: FontWeight.w600,
+                        countLabelColor: colorScheme.onSurfaceVariant
+                            .withValues(alpha: 0.8),
                       ),
                       const Divider(height: 14),
                     ],

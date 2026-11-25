@@ -24,6 +24,7 @@ part 'parts/finance_ledger_panel.dart';
 part 'parts/finance_ledger_actions_and_sections.dart';
 part 'parts/finance_ledger_dialogs.dart';
 part 'parts/finance_chart_models_and_painters.dart';
+part 'parts/finance_category_donut_chart.dart';
 
 /// Leaves enough scrollable room for the shared navigation bar and its bottom
 /// margin, so the final finance card can clear the bar completely.
