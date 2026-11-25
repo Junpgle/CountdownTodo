@@ -73,42 +73,6 @@ extension _PomodoroStatsEditor on PomodoroStatsState {
     return labels.isEmpty ? null : Text(labels.join(' · '));
   }
 
-  List<TodoItem> _sortTodosForPicker(
-    List<TodoItem> todos,
-    List<TodoGroup> groups,
-  ) {
-    final groupIndices = <String, int>{};
-    for (var index = 0; index < groups.length; index++) {
-      final groupId = groups[index].id;
-      if (!groupIndices.containsKey(groupId)) {
-        groupIndices[groupId] = index;
-      }
-    }
-
-    int groupRank(TodoItem todo) {
-      final groupId = todo.groupId;
-      if (groupId == null || groupId.isEmpty) return 1 << 30;
-      return groupIndices[groupId] ?? (1 << 30) - 1;
-    }
-
-    int urgencyMs(TodoItem todo) {
-      if (todo.dueDate != null) return todo.dueDate!.millisecondsSinceEpoch;
-      if (todo.createdDate != null && todo.createdDate! > 0) {
-        return todo.createdDate!;
-      }
-      return 1 << 62;
-    }
-
-    return List<TodoItem>.from(todos)..sort((a, b) {
-      if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
-      final groupCompare = groupRank(a).compareTo(groupRank(b));
-      if (groupCompare != 0) return groupCompare;
-      final urgencyCompare = urgencyMs(a).compareTo(urgencyMs(b));
-      if (urgencyCompare != 0) return urgencyCompare;
-      return a.title.compareTo(b.title);
-    });
-  }
-
   String _todoGroupName(TodoItem todo) {
     final groupId = todo.groupId;
     if (groupId == null || groupId.isEmpty) return '未分类';
@@ -355,7 +319,7 @@ extension _PomodoroStatsEditor on PomodoroStatsState {
                     borderRadius: BorderRadius.circular(12),
                     onTap: () async {
                       var searchQuery = '';
-                      final sortedTodos = _sortTodosForPicker(
+                      final sortedTodos = sortTodosForPicker(
                         collapseRecurrenceSeriesForTodoPicker(_todos),
                         _todoGroups,
                       );
