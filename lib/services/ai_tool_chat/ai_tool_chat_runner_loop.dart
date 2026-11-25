@@ -349,8 +349,8 @@ Stream<AiChatStreamChunk> _runAiToolChat({
       if (missingCdtActionNames.isNotEmpty) {
         final issue =
             '用户明确要求的 CDT 操作未全部包含：'
-            '${missingCdtActionNames.map(_cdtActionLabel).join('、')}；'
-            '当前提案只有 ${proposedCdtActionNames.map(_cdtActionLabel).join('、')}';
+            '${missingCdtActionNames.map(cdtActionDisplayLabel).join('、')}；'
+            '当前提案只有 ${proposedCdtActionNames.map(cdtActionDisplayLabel).join('、')}';
         for (final call in cdtProposalCalls) {
           proposalValidationIssues.update(
             call.id,

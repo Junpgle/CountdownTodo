@@ -12,6 +12,7 @@ import 'ai_planning_draft_validator.dart';
 import 'ai_tool_result_context.dart';
 import 'ai_settings_navigation_service.dart';
 import 'ai_todo_context_builder.dart';
+import 'ai_tool_chat/ai_cdt_action_labels.dart';
 
 part 'ai_tool_chat/ai_tool_chat_runner_loop.dart';
 part 'ai_tool_chat/ai_tool_chat_runner_legacy.dart';

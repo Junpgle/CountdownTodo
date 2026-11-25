@@ -77,7 +77,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
             startTime: startTime,
             endTime: endTime,
           ),
-          recurrence: _parseRecurrenceType(result['recurrence']),
+          recurrence: parseRecurrenceType(result['recurrence']),
           customIntervalDays:
               result['customIntervalDays'] ?? result['custom_interval_days'],
           recurrenceEndDate: RecognizedTodoAdapter.parseDateTime(
@@ -1528,25 +1528,6 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
     }
   }
 
-  RecurrenceType _parseRecurrenceType(String? value) {
-    switch (value) {
-      case 'daily':
-        return RecurrenceType.daily;
-      case 'weekly':
-        return RecurrenceType.weekly;
-      case 'monthly':
-        return RecurrenceType.monthly;
-      case 'yearly':
-        return RecurrenceType.yearly;
-      case 'weekdays':
-        return RecurrenceType.weekdays;
-      case 'customDays':
-        return RecurrenceType.customDays;
-      default:
-        return RecurrenceType.none;
-    }
-  }
-
   ParsedTodoResult _parseRecognizedResult(
     Map<String, dynamic> rawResult,
     String fallbackTitle,
@@ -1581,7 +1562,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
         startTime: startTime,
         endTime: endTime,
       ),
-      recurrence: _parseRecurrenceType(result['recurrence']?.toString()),
+      recurrence: parseRecurrenceType(result['recurrence']?.toString()),
       customIntervalDays: _parseNullableInt(
         result['customIntervalDays'] ?? result['custom_interval_days'],
       ),

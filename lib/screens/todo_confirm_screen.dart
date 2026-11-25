@@ -226,7 +226,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
           startTime: startTime,
           endTime: endTime,
         ),
-        recurrence: _parseRecurrenceType(result['recurrence']),
+        recurrence: parseRecurrenceType(result['recurrence']),
         customIntervalDays: _parseNullableInt(
           result['customIntervalDays'] ?? result['custom_interval_days'],
         ),
@@ -263,29 +263,6 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
   int? _parseNullableInt(dynamic value) {
     if (value is num) return value.toInt();
     return int.tryParse(value?.toString() ?? '');
-  }
-
-  RecurrenceType _parseRecurrenceType(dynamic type) {
-    final index = _parseNullableInt(type);
-    if (index != null && index >= 0 && index < RecurrenceType.values.length) {
-      return RecurrenceType.values[index];
-    }
-    switch (type?.toString()) {
-      case 'daily':
-        return RecurrenceType.daily;
-      case 'weekly':
-        return RecurrenceType.weekly;
-      case 'monthly':
-        return RecurrenceType.monthly;
-      case 'yearly':
-        return RecurrenceType.yearly;
-      case 'weekdays':
-        return RecurrenceType.weekdays;
-      case 'customDays':
-        return RecurrenceType.customDays;
-      default:
-        return RecurrenceType.none;
-    }
   }
 
   ParsedTimeSemantics _parseTimeSemantics(

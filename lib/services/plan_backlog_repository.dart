@@ -6,6 +6,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models.dart';
 import '../models/plan_availability.dart';
+import '../utils/digest_utils.dart';
 import 'conflict_visibility_service.dart';
 import 'database_helper.dart';
 import 'plan_todo_guard.dart';
@@ -325,7 +326,7 @@ class PlanBacklogRepository {
     DatabaseExecutor db,
     PlanTodoIdentity identity,
   ) async {
-    final digest = _DigestSink();
+    final digest = SingleDigestSink();
     final sink = sha256.startChunkedConversion(digest);
     for (final (table, key, projection, where, args) in [
       (
@@ -393,15 +394,4 @@ class PlanBacklogRepository {
       return (todo, PlanBacklogSaveContext(identity, id, fingerprint));
     });
   }
-}
-
-class _DigestSink implements Sink<Digest> {
-  Digest? value;
-  @override
-  void add(Digest data) {
-    value = data;
-  }
-
-  @override
-  void close() {}
 }

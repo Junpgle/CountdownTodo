@@ -174,6 +174,33 @@ enum RecurrenceType {
   weekdays,
 }
 
+/// Parses a serialized [RecurrenceType] from either a string key or enum index.
+RecurrenceType parseRecurrenceType(Object? value) {
+  if (value is RecurrenceType) return value;
+  final index = value is num
+      ? value.toInt()
+      : int.tryParse(value?.toString() ?? '');
+  if (index != null && index >= 0 && index < RecurrenceType.values.length) {
+    return RecurrenceType.values[index];
+  }
+  switch (value?.toString()) {
+    case 'daily':
+      return RecurrenceType.daily;
+    case 'weekly':
+      return RecurrenceType.weekly;
+    case 'monthly':
+      return RecurrenceType.monthly;
+    case 'yearly':
+      return RecurrenceType.yearly;
+    case 'weekdays':
+      return RecurrenceType.weekdays;
+    case 'customDays':
+      return RecurrenceType.customDays;
+    default:
+      return RecurrenceType.none;
+  }
+}
+
 /// The scope applied when editing a materialized fixed-schedule series.
 enum FixedScheduleEditScope { occurrence, future, series }
 

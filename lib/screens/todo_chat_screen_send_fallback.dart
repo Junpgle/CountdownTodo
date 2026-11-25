@@ -205,13 +205,13 @@ mixin _TodoChatSendFallback on _TodoChatScreenStateBase {
     required int? requiredFallbackTodoCount,
   }) {
     if (name != 'create_todo' || requiredFallbackTodoCount == null) {
-      return _fallbackCdtActionLabel(name);
+      return cdtActionDisplayLabel(name);
     }
     final remaining =
         requiredFallbackTodoCount - _fallbackCreatedTodoCount(content);
     return remaining > 0
         ? '新建待办（还需 $remaining 条）'
-        : _fallbackCdtActionLabel(name);
+        : cdtActionDisplayLabel(name);
   }
 
   List<String> _fallbackCdtBlocksForMissingActions(

@@ -88,25 +88,6 @@ extension _AddTodoParsingExt on _AddTodoScreenState {
     });
   }
 
-  RecurrenceType _parseRecurrenceType(String? type) {
-    switch (type) {
-      case 'daily':
-        return RecurrenceType.daily;
-      case 'weekly':
-        return RecurrenceType.weekly;
-      case 'monthly':
-        return RecurrenceType.monthly;
-      case 'yearly':
-        return RecurrenceType.yearly;
-      case 'weekdays':
-        return RecurrenceType.weekdays;
-      case 'customDays':
-        return RecurrenceType.customDays;
-      default:
-        return RecurrenceType.none;
-    }
-  }
-
   ParsedTimeSemantics _parseTimeSemantics(
     dynamic raw, {
     required bool isAllDay,
@@ -459,7 +440,7 @@ extension _AddTodoParsingExt on _AddTodoScreenState {
             startTime: startTime,
             endTime: endTime,
           ),
-          recurrence: _parseRecurrenceType(result['recurrence']?.toString()),
+          recurrence: parseRecurrenceType(result['recurrence']?.toString()),
           customIntervalDays:
               result['customIntervalDays'] ?? result['custom_interval_days'],
           recurrenceEndDate: RecognizedTodoAdapter.parseDateTime(

@@ -354,7 +354,6 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   String _buildContextSummary();
   Future<void> _sendMessage();
   bool _hasUnresolvedCountdownTeamBinding(AiTodoAction action);
-  String _fallbackCdtActionLabel(String name);
   Set<String> _parsedCdtActionNames(Iterable<AiTodoAction> actions);
   int _parsedTodoCreationCount(Iterable<AiTodoAction> actions);
   Future<bool> _tryRevealPendingPlanningDraft(String text);

@@ -201,7 +201,7 @@ mixin _TodoChatSendManual on _TodoChatScreenStateBase {
           .where(
             (name) => name != 'create_todo' || requiredManualTodoCount == null,
           )
-          .map(_fallbackCdtActionLabel),
+          .map(cdtActionDisplayLabel),
       ...missingManualFinanceActions.map(
         (name) => switch (name) {
           'update_finance' => '修改账单操作',

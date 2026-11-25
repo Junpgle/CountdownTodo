@@ -54,8 +54,6 @@ mixin _TodoSectionContract {
 
   String _getRecurrenceText(RecurrenceType type);
 
-  RecurrenceType _parseRecurrenceType(String? value);
-
   ParsedTimeSemantics _parseTimeSemantics(
     dynamic raw, {
     required bool isAllDay,

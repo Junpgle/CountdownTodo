@@ -9,6 +9,7 @@ import '../models.dart';
 import 'conflict_visibility_service.dart';
 import '../models/plan_availability.dart';
 import '../storage_service.dart';
+import '../utils/digest_utils.dart';
 import 'database_helper.dart';
 import 'plan_todo_guard.dart';
 
@@ -188,7 +189,7 @@ class PlanManualCompletionService {
     final hasConflict = (await db.rawQuery(
       'PRAGMA table_info(pomodoro_records)',
     )).any((r) => r['name'] == 'has_conflict');
-    final sink = _DigestSink();
+    final sink = SingleDigestSink();
     final hash = sha256.startChunkedConversion(sink);
     var cursor = -1;
     try {
@@ -222,7 +223,7 @@ class PlanManualCompletionService {
     } finally {
       hash.close();
     }
-    return sink.digest.toString();
+    return sink.requireValue.toString();
   }
 
   Future<PlanManualCompletionRequest> prepare(
@@ -421,12 +422,4 @@ class PlanManualCompletionService {
     }
     return TodoPlanBlock.fromJson(Map<String, dynamic>.from(after));
   }
-}
-
-class _DigestSink implements Sink<Digest> {
-  late Digest digest;
-  @override
-  void add(Digest value) => digest = value;
-  @override
-  void close() {}
 }
