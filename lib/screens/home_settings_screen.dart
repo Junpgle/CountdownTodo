@@ -1,3 +1,4 @@
+import '../widgets/app_skeleton.dart';
 import '../widgets/floating_glass_control.dart';
 
 import 'package:flutter/material.dart';
@@ -1150,7 +1151,7 @@ class _SettingsPageState extends State<SettingsPage>
         );
       },
       child: _isInitialLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppSkeletonSettingsPage(sectionCount: 3, rowsPerSection: 3)
           : LayoutBuilder(
               builder: (context, constraints) {
                 if (constraints.maxWidth < 150) {

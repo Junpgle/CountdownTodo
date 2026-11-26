@@ -13,6 +13,7 @@ import '../services/pomodoro_service.dart';
 import '../storage_service.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/page_transitions.dart';
+import '../widgets/app_skeleton.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/missed_plan_recovery_flow.dart';
 import 'course_screens.dart';
@@ -395,9 +396,11 @@ class _PlanBlockStatsScreenState
                         ],
                       ),
                       if (_loading && _data == null)
-                        const Padding(
-                          padding: EdgeInsets.all(40),
-                          child: Center(child: CircularProgressIndicator()),
+                        const AppSkeletonDashboardPage(
+                          shrinkWrap: true,
+                          showMetricGrid: true,
+                          showChart: true,
+                          listCount: 3,
                         )
                       else if (_error != null)
                         _ReviewError(error: _error!, retry: load)

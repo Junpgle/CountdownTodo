@@ -1,3 +1,4 @@
+import '../widgets/app_skeleton.dart';
 import '../widgets/floating_glass_control.dart';
 
 import 'package:flutter/material.dart';
@@ -106,7 +107,7 @@ class _LeaderboardListState extends State<_LeaderboardList> {
         future: _future,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const AppSkeletonListPage(itemCount: 6, itemHeight: 68);
           }
 
           if (snapshot.hasError) {
@@ -226,7 +227,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
           future: _historyFuture,
           builder: (context, snapshot) {
             if (!snapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
+              return AppSkeletonListPage(
+                topPadding: topBarHeight + 10,
+                itemCount: 6,
+                itemHeight: 68,
+              );
             }
             var list = snapshot.data!;
             if (list.isEmpty) return const Center(child: Text("暂无历史记录"));

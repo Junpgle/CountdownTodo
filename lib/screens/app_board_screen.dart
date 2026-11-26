@@ -10,6 +10,7 @@ import '../services/power_save_mode_service.dart';
 import '../course_import/course_schedule_semantics.dart';
 import '../utils/android_energy_policy.dart';
 import '../utils/calendar_date_math.dart';
+import '../widgets/app_skeleton.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 import '../utils/time_utils.dart';
@@ -277,10 +278,11 @@ class _AppBoardScreenState extends State<AppBoardScreen>
               _buildHeader(isDesktop),
               Expanded(
                 child: _isLoading
-                    ? Center(
-                        child: CircularProgressIndicator(
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
+                    ? const AppSkeletonDashboardPage(
+                        isLightSurface: true,
+                        showMetricGrid: true,
+                        showChart: true,
+                        listCount: 4,
                       )
                     : isDesktop
                     ? _buildDesktopLayout()

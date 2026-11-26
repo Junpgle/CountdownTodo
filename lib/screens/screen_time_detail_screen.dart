@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../storage_service.dart';
 import '../utils/calendar_date_math.dart';
 import '../utils/page_transitions.dart';
+import '../widgets/app_skeleton.dart';
 import '../widgets/floating_bottom_bar.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 import '../utils/time_utils.dart';
@@ -474,7 +475,13 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
           // full height so the first filter and summary cards stay visible.
           padding: EdgeInsets.only(top: topBarHeight),
           child: _isLoading
-              ? const Center(child: CircularProgressIndicator())
+              ? const AppSkeletonDashboardPage(
+                  maxWidth: 1080,
+                  showFilterChips: true,
+                  showMetricGrid: true,
+                  showChart: true,
+                  listCount: 5,
+                )
               : Align(
                   alignment: Alignment.topCenter,
                   child: ConstrainedBox(

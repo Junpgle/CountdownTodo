@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/course_calendar_adjustment_service.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/time_utils.dart';
+import '../widgets/app_skeleton.dart';
 import '../widgets/floating_glass_control.dart';
 
 class CourseCalendarAdjustmentScreen extends StatefulWidget {
@@ -233,7 +234,13 @@ class _CourseCalendarAdjustmentScreenState
         context,
         standalone: !widget.isEmbedded,
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: widget.isEmbedded
+                    ? 16
+                    : floatingGlassSettingsContentTopInset(context),
+                itemCount: 4,
+                itemHeight: 82,
+              )
             : ListView(
                 padding: EdgeInsets.fromLTRB(
                   16,

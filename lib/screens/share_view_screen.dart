@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../services/api_service.dart';
+import '../widgets/app_skeleton.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/share_readonly_widgets.dart';
 import '../utils/app_dialogs.dart';
@@ -320,29 +321,13 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
   }
 
   Widget _buildLoading() {
-    return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(
-              width: 48,
-              height: 48,
-              child: CircularProgressIndicator(
-                strokeWidth: 3,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              '加载中...',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey.shade500,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
+    return const Scaffold(
+      body: SafeArea(
+        child: AppSkeletonDashboardPage(
+          maxWidth: 960,
+          showMetricGrid: true,
+          showChart: false,
+          listCount: 4,
         ),
       ),
     );

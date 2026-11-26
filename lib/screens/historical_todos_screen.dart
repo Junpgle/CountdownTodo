@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../widgets/app_skeleton.dart';
 import '../widgets/floating_glass_control.dart';
 
 import 'package:flutter/material.dart';
@@ -1683,7 +1684,12 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: topBarHeight + 8,
+                showFilterChips: true,
+                itemCount: 6,
+                itemHeight: 84,
+              )
             : _loadFailed
             ? ManagementPage(
                 topPadding: topBarHeight,

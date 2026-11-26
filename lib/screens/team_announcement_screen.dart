@@ -5,6 +5,7 @@ import '../models.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/json_value_parser.dart';
 import '../widgets/app_sheet_widgets.dart';
+import '../widgets/app_skeleton.dart';
 import '../widgets/app_state_views.dart';
 import '../widgets/floating_glass_control.dart';
 import '../utils/time_utils.dart';
@@ -446,7 +447,11 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: topBarHeight + 8,
+                itemCount: 4,
+                itemHeight: 108,
+              )
             : _announcements.isEmpty
             ? _buildEmptyState(isDark)
             : RefreshIndicator(

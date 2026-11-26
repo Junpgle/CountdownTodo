@@ -253,7 +253,17 @@ class PrivacyPolicyPage extends StatelessWidget {
         context,
         standalone: !isEmbedded,
         child: isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonDocument(
+                paragraphs: 4,
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  isEmbedded
+                      ? 16
+                      : floatingGlassSettingsContentTopInset(context),
+                  16,
+                  24,
+                ),
+              )
             : content == null
             ? const Center(child: Text('加载失败，请检查网络连接'))
             : Markdown(

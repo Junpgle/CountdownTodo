@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../models/plan_availability.dart';
 import '../services/plan_editor_draft_repository.dart';
 import '../services/plan_todo_guard.dart';
+import '../widgets/app_skeleton.dart';
 import '../widgets/plan_block_editor_sheet.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/time_utils.dart';
@@ -260,7 +261,7 @@ class _PlanEditorDraftsScreenState extends State<PlanEditorDraftsScreen>
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 680),
           child: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? const AppSkeletonListPage(itemCount: 4, itemHeight: 84)
               : _error != null
               ? Center(
                   child: Padding(

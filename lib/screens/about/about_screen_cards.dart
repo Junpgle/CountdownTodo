@@ -803,11 +803,11 @@ extension _AboutScreenCards on _AboutScreenState {
               ),
               const SizedBox(height: 8),
               _isLoadingChangelog
-                  ? const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(20),
-                        child: CircularProgressIndicator(),
-                      ),
+                  ? const AppSkeletonSheetList(
+                      itemCount: 3,
+                      itemHeight: 42,
+                      shrinkWrap: true,
+                      padding: EdgeInsets.symmetric(vertical: 8),
                     )
                   : _changelogEntries.isEmpty
                   ? const Center(

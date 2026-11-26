@@ -4,6 +4,7 @@ import '../models.dart';
 import '../storage_service.dart';
 import '../utils/calendar_date_math.dart';
 import '../utils/time_utils.dart';
+import '../widgets/app_skeleton.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/management_page.dart';
 import '../utils/app_dialogs.dart';
@@ -204,7 +205,11 @@ class _HistoricalCountdownsScreenState
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: topBarHeight + 8,
+                itemCount: 5,
+                itemHeight: 88,
+              )
             : RefreshIndicator(
                 onRefresh: _loadData,
                 child: ManagementPage.builder(

@@ -4,6 +4,7 @@ import '../models/plan_availability.dart';
 import '../models/plan_weekly_availability.dart';
 import '../services/plan_weekly_availability_preferences.dart';
 import '../services/plan_todo_guard.dart';
+import '../widgets/app_skeleton.dart';
 import '../utils/app_dialogs.dart';
 
 Future<bool> _discardWeeklyChanges(BuildContext context) => AppDialogs.confirm(
@@ -241,7 +242,10 @@ class _PlanWeeklyAvailabilityScreenState
             controller: _scroll,
             padding: const EdgeInsets.all(16),
             children: [
-              if (_loading) const LinearProgressIndicator(),
+              if (_loading && _rules == null)
+                const AppSkeletonSettingsSection(rows: 7, showHeader: false)
+              else if (_loading)
+                const LinearProgressIndicator(),
               if (_error != null) ...[
                 Text(
                   _error!,

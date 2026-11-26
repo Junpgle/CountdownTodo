@@ -11,6 +11,7 @@ import '../services/plan_availability_service.dart';
 import '../services/plan_weekly_availability_preferences.dart';
 import '../services/time_estimation_service.dart';
 import '../storage_service.dart';
+import '../widgets/app_skeleton.dart';
 import '../utils/page_transitions.dart';
 import '../utils/time_utils.dart';
 import '../widgets/plan_block_editor_sheet.dart';
@@ -728,9 +729,11 @@ class _PlanPreparationScreenState extends State<PlanPreparationScreen> {
 
   Widget _resultSection(ColorScheme colors, ThemeData theme) {
     if (_searching) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 28),
-        child: Center(child: CircularProgressIndicator()),
+      return const AppSkeletonSheetList(
+        itemCount: 3,
+        itemHeight: 56,
+        shrinkWrap: true,
+        padding: EdgeInsets.symmetric(vertical: 8),
       );
     }
     final result = _result;
@@ -806,7 +809,7 @@ class _PlanPreparationScreenState extends State<PlanPreparationScreen> {
       key: const ValueKey('fixed-schedule-preparation-screen'),
       appBar: AppBar(title: const Text('安排准备时间')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppSkeletonFormPage(fieldCount: 4)
           : SafeArea(
               child: _error != null
                   ? Center(

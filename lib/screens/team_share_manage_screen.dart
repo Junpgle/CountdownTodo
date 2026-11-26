@@ -6,6 +6,7 @@ import 'dart:async';
 import '../models.dart';
 import '../services/api_service.dart';
 import '../services/team_share_link.dart';
+import '../widgets/app_skeleton.dart';
 import '../widgets/app_state_views.dart';
 import '../widgets/floating_glass_control.dart';
 import '../utils/app_dialogs.dart';
@@ -120,7 +121,11 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: topBarHeight + 8,
+                itemCount: 4,
+                itemHeight: 96,
+              )
             : _shares.isEmpty
             ? _buildEmptyState()
             : _buildSharesList(topBarHeight),

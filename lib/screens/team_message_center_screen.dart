@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/api_service.dart';
 import '../models.dart';
+import '../widgets/app_skeleton.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/management_page.dart';
 import '../utils/app_dialogs.dart';
@@ -210,7 +211,11 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: topBarHeight + 8,
+                itemCount: 5,
+                itemHeight: 92,
+              )
             : RefreshIndicator(
                 onRefresh: _loadAllMessages,
                 child: ManagementPage.builder(

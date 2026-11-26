@@ -25,6 +25,7 @@ import '../services/sync_health_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/github_resource_service.dart';
+import '../widgets/app_skeleton.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 import '../services/app_memory_monitor.dart';

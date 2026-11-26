@@ -266,7 +266,9 @@ class _TeamAnnouncementViewState extends State<_TeamAnnouncementView> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading) {
+      return const AppSkeletonListPage(itemCount: 4, itemHeight: 92);
+    }
     if (_announcements.isEmpty) {
       return Center(
         child: Column(
@@ -655,7 +657,7 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
         ),
         Expanded(
           child: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? const AppSkeletonListPage(itemCount: 5, itemHeight: 72)
               : ListView.builder(
                   controller: widget.scrollController,
                   padding: const EdgeInsets.symmetric(horizontal: 16),

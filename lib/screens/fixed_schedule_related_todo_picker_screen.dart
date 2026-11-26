@@ -6,6 +6,7 @@ import '../models.dart';
 import '../storage_service.dart';
 import '../utils/time_utils.dart';
 import '../utils/text_utils.dart';
+import '../widgets/app_skeleton.dart';
 
 typedef FixedScheduleRelatedTodoPageLoader =
     Future<({List<TodoItem> todos, bool hasMore})> Function(
@@ -399,7 +400,7 @@ class _FixedScheduleRelatedTodoPickerScreenState
   Widget _buildList(BuildContext context, List<_RelatedTodoRow> rows) {
     final scheme = Theme.of(context).colorScheme;
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const AppSkeletonListPage(itemCount: 6, itemHeight: 72);
     }
     if (_loadError != null) {
       return Center(

@@ -95,41 +95,11 @@ extension _TeamManagementListViewsExt on _TeamManagementScreenState {
   }
 
   Widget _buildInitialLoadingState(bool isDark) {
-    return SliverFillRemaining(
-      hasScrollBody: false,
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 42,
-              height: 42,
-              child: CircularProgressIndicator(
-                strokeWidth: 3,
-                color: isDark
-                    ? Colors.white70
-                    : Theme.of(context).colorScheme.secondary,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '正在加载团队数据...',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white70 : Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '首次进入或同步中可能需要一点时间',
-              style: TextStyle(
-                fontSize: 12,
-                color: isDark ? Colors.white54 : Colors.black54,
-              ),
-            ),
-          ],
-        ),
+    return const SliverToBoxAdapter(
+      child: AppSkeletonListPage(
+        shrinkWrap: true,
+        itemCount: 4,
+        itemHeight: 112,
       ),
     );
   }

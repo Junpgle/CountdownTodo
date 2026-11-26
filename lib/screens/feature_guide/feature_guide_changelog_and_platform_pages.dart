@@ -156,7 +156,11 @@ extension _FeatureGuideChangelogAndPlatformPages on _FeatureGuideScreenState {
                 ),
                 const SizedBox(height: 14),
                 if (_loadingChangelog)
-                  const Center(child: CircularProgressIndicator(strokeWidth: 2))
+                  const AppSkeletonDocument(
+                    paragraphs: 2,
+                    shrinkWrap: true,
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                  )
                 else if (_changelogFetchFailed)
                   Text(
                     '请联网后查看详细更新内容。',

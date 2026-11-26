@@ -10,6 +10,7 @@ import '../services/plan_todo_guard.dart';
 import '../services/pomodoro_service.dart';
 import '../services/todo_editor_save_service.dart';
 import '../storage_service.dart';
+import '../widgets/app_skeleton.dart';
 import '../widgets/plan_block_editor_sheet.dart';
 import '../widgets/todo_section_widget.dart';
 import 'pomodoro_screen.dart';
@@ -693,11 +694,10 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
                 return _row(row as PlanBacklogRow);
               }
               if (_loading) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: CircularProgressIndicator(),
-                  ),
+                return const AppSkeletonListPage(
+                  shrinkWrap: true,
+                  itemCount: 5,
+                  itemHeight: 80,
                 );
               }
               return TextButton(

@@ -23,6 +23,7 @@ import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
 import 'course_screens.dart';
 import 'personal_timeline_screen.dart';
+import '../widgets/app_skeleton.dart';
 import '../widgets/global_search_overlay.dart';
 import 'settings/pages/preference_settings_page.dart';
 import '../services/course_service.dart';
