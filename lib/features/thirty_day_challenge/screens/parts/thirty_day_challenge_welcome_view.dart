@@ -49,56 +49,37 @@ extension _ThirtyDayChallengeWelcomeExt on _ThirtyDayChallengeScreenState {
             decoration: BoxDecoration(color: scheme.surface),
             child: Stack(
               children: [
-                // Background blurred blobs isolated in a static RepaintBoundary
-                // so scrolling never re-triggers full-screen blur60.
+                // Background radial ambient glow blobs isolated in a static
+                // RepaintBoundary with no full-screen GPU backdrop blur pass.
                 Positioned.fill(
                   child: IgnorePointer(
                     child: RepaintBoundary(
                       child: Stack(
                         children: [
                           Positioned(
-                            top: -100,
-                            left: -50,
-                            child: Container(
-                              width: 300,
-                              height: 300,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: welcomePrimary.withValues(alpha: 0.15),
-                              ),
+                            top: -160,
+                            left: -110,
+                            child: _buildAmbientGlowBlob(
+                              size: 420,
+                              color: welcomePrimary.withValues(alpha: 0.18),
                             ),
                           ),
                           Positioned(
-                            bottom: -50,
-                            right: -50,
-                            child: Container(
-                              width: 250,
-                              height: 250,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: welcomeTertiary.withValues(alpha: 0.15),
-                              ),
+                            bottom: -105,
+                            right: -105,
+                            child: _buildAmbientGlowBlob(
+                              size: 360,
+                              color: welcomeTertiary.withValues(alpha: 0.18),
                             ),
                           ),
                           Positioned(
-                            top: 96,
-                            right: -34,
-                            child: Container(
-                              width: 132,
-                              height: 132,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: welcomeSecondary.withValues(alpha: 0.15),
-                              ),
+                            top: 42,
+                            right: -88,
+                            child: _buildAmbientGlowBlob(
+                              size: 240,
+                              color: welcomeSecondary.withValues(alpha: 0.18),
                             ),
                           ),
-                          if (!AppPlatform.isWindows)
-                            Positioned.fill(
-                              child: BackdropFilter.grouped(
-                                filter: AppImageFilters.blur60,
-                                child: const SizedBox(),
-                              ),
-                            ),
                         ],
                       ),
                     ),
@@ -554,36 +535,21 @@ extension _ThirtyDayChallengeWelcomeExt on _ThirtyDayChallengeScreenState {
                 child: Stack(
                   children: [
                     Positioned(
-                      top: -80,
-                      left: -80,
-                      child: Container(
-                        width: 220,
-                        height: 220,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: welcomePrimary.withValues(alpha: 0.15),
-                        ),
+                      top: -130,
+                      left: -130,
+                      child: _buildAmbientGlowBlob(
+                        size: 320,
+                        color: welcomePrimary.withValues(alpha: 0.18),
                       ),
                     ),
                     Positioned(
-                      bottom: -90,
-                      right: -70,
-                      child: Container(
-                        width: 220,
-                        height: 220,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: welcomeTertiary.withValues(alpha: 0.15),
-                        ),
+                      bottom: -140,
+                      right: -120,
+                      child: _buildAmbientGlowBlob(
+                        size: 320,
+                        color: welcomeTertiary.withValues(alpha: 0.18),
                       ),
                     ),
-                    if (!AppPlatform.isWindows)
-                      Positioned.fill(
-                        child: BackdropFilter.grouped(
-                          filter: AppImageFilters.blur48,
-                          child: const SizedBox(),
-                        ),
-                      ),
                   ],
                 ),
               ),
@@ -920,6 +886,21 @@ extension _ThirtyDayChallengeWelcomeExt on _ThirtyDayChallengeScreenState {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAmbientGlowBlob({required double size, required Color color}) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(
+            colors: [color, color.withValues(alpha: 0.0)],
+          ),
+        ),
       ),
     );
   }

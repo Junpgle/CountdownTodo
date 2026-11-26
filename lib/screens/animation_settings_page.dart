@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
 import '../services/animation_config_service.dart';
 import '../services/liquid_glass_effect_service.dart';
 import '../services/power_save_mode_service.dart';
+import '../utils/app_image_filters.dart';
 import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/animation_performance_metric_card.dart';

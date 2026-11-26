@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:ui' as ui show ImageFilter, lerpDouble;
+import 'dart:ui' as ui show lerpDouble;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/feature_tip_service.dart';
 import 'app_dialogs.dart';
+import 'app_image_filters.dart';
 import 'app_performance_monitor.dart';
 
 const _pageLayerCurve = Cubic(0.4, 0.65, 0.25, 1.0);
@@ -936,7 +937,7 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
       final blur = _bgBlur * progress;
       if (blur > 0.01) {
         current = ImageFiltered(
-          imageFilter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+          imageFilter: AppImageFilters.quantizedBlur(blur),
           child: current,
         );
       }
@@ -1048,7 +1049,7 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
     final sigma = _AnimSettings.motionBlurFor(progress);
     if (sigma <= 0.01) return child;
     return ImageFiltered(
-      imageFilter: ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+      imageFilter: AppImageFilters.quantizedBlur(sigma),
       child: child,
     );
   }
@@ -1899,10 +1900,7 @@ class _RenderDialogMorphLayout extends RenderShiftedBox {
       clipBehavior: Clip.hardEdge,
       (context, innerOffset) {
         final paintRect = currentRect.shift(innerOffset);
-        context.canvas.drawRect(
-          paintRect,
-          Paint()..color = _sourceColor,
-        );
+        context.canvas.drawRect(paintRect, Paint()..color = _sourceColor);
 
         if (contentAlpha <= 0) return;
 
@@ -1911,23 +1909,21 @@ class _RenderDialogMorphLayout extends RenderShiftedBox {
           ..translateByDouble(paintRect.left, paintRect.top, 0.0, 1.0)
           ..scaleByDouble(scale, scale, 1.0, 1.0);
 
-        context.pushTransform(
-          needsCompositing,
-          Offset.zero,
-          transform,
-          (context, childOffset) {
-            if (contentAlpha >= 255) {
-              context.paintChild(child, childOffset);
-            } else {
-              context.pushOpacity(
-                childOffset,
-                contentAlpha,
-                (context, opacityOffset) =>
-                    context.paintChild(child, opacityOffset),
-              );
-            }
-          },
-        );
+        context.pushTransform(needsCompositing, Offset.zero, transform, (
+          context,
+          childOffset,
+        ) {
+          if (contentAlpha >= 255) {
+            context.paintChild(child, childOffset);
+          } else {
+            context.pushOpacity(
+              childOffset,
+              contentAlpha,
+              (context, opacityOffset) =>
+                  context.paintChild(child, opacityOffset),
+            );
+          }
+        });
       },
     );
   }

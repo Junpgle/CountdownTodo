@@ -386,11 +386,8 @@ extension _AnimationSettingsWidgets on _AnimationSettingsPageState {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(
-                    sigmaX: blurSigma,
-                    sigmaY: blurSigma,
-                  ),
+                child: BackdropFilter.grouped(
+                  filter: AppImageFilters.quantizedBlur(blurSigma),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14),
                     decoration: BoxDecoration(

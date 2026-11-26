@@ -125,18 +125,17 @@ extension _PersonalTimelineChromeOverviewExt on _PersonalTimelineScreenState {
   }
 
   Widget _buildBlob(Color color, double size) {
-    return Container(
+    return SizedBox(
       width: size,
       height: size,
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      // Windows 的 BackdropFilter 会给透明窗口增加额外混合开销，
-      // 这个 blob 只是背景光晕装饰，在 Windows 保留半透明圆形即可。
-      child: AppPlatform.isWindows
-          ? const SizedBox.shrink()
-          : BackdropFilter(
-              filter: AppImageFilters.blur80,
-              child: Container(color: Colors.transparent),
-            ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(
+            colors: [color, color.withValues(alpha: 0.0)],
+          ),
+        ),
+      ),
     );
   }
 

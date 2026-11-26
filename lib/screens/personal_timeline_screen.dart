@@ -20,7 +20,6 @@ import '../services/course_service.dart';
 import '../services/medal_recommendation_service.dart';
 import '../services/timeline_ml_service.dart';
 import '../services/timeline_statistics_service.dart';
-import '../utils/app_image_filters.dart';
 import '../utils/app_platform.dart';
 import '../utils/app_scroll_behavior.dart';
 import '../utils/page_transitions.dart';

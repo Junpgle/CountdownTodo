@@ -62,6 +62,7 @@ class AppImageFilters {
   );
 
   static final Map<int, ui.ImageFilter> _quantizedClampedBlurCache = {};
+  static final Map<int, ui.ImageFilter> _quantizedBlurCache = {};
 
   /// Returns a shared, quantized clamped blur filter to avoid instantiating native
   /// image filters on every sub-pixel scroll step.
@@ -88,8 +89,25 @@ class AppImageFilters {
     );
   }
 
+  /// Returns a shared, quantized blur filter to avoid instantiating native
+  /// image filters on every animation frame.
+  static ui.ImageFilter quantizedBlur(double sigma) {
+    if (sigma <= 0.01) {
+      return _quantizedBlurCache.putIfAbsent(
+        0,
+        () => ui.ImageFilter.blur(sigmaX: 0.0, sigmaY: 0.0),
+      );
+    }
+    final key = (sigma * 2).round();
+    return _quantizedBlurCache.putIfAbsent(
+      key,
+      () => ui.ImageFilter.blur(sigmaX: key / 2.0, sigmaY: key / 2.0),
+    );
+  }
+
   /// Releases cached dynamic filters under memory pressure.
   static void clearFilterCache() {
     _quantizedClampedBlurCache.clear();
+    _quantizedBlurCache.clear();
   }
 }
