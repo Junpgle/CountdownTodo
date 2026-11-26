@@ -1,13 +1,13 @@
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../utils/calendar_date_math.dart';
+import '../utils/prefs_reload_coalescer.dart';
+import '../utils/time_utils.dart';
 import 'database_helper.dart';
 import 'plan_todo_guard.dart';
-import '../utils/calendar_date_math.dart';
-import '../utils/time_utils.dart';
 
 enum PlanReviewFilter {
   plans,
@@ -153,8 +153,7 @@ class PlanReviewRepository {
   }
 
   Future<Database> _database(String username) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.reload();
+    final prefs = await PrefsReloadCoalescer.getFresh();
     final pendingTodos =
         !(prefs.getBool('migration_marker_${username}_v4') ?? false) &&
         ((prefs.getStringList('user_todos_$username') ?? []).isNotEmpty ||

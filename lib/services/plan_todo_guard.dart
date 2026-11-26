@@ -5,10 +5,11 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models.dart';
 import '../models/plan_availability.dart';
+import '../utils/calendar_date_math.dart';
+import '../utils/prefs_reload_coalescer.dart';
 import 'conflict_visibility_service.dart';
 import 'pomodoro_service.dart';
 import 'storage/storage_key_scope.dart';
-import '../utils/calendar_date_math.dart';
 
 /// Identity travels with a read/draft, including the independent team member.
 class PlanTodoIdentity {
@@ -16,19 +17,20 @@ class PlanTodoIdentity {
   final String username;
   final int userId;
   static Future<PlanTodoIdentity> capture(String username) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.reload();
-    final identity = PlanTodoIdentity(
-      username,
-      prefs.getInt('current_user_id') ?? 0,
-    );
-    await identity.check();
-    return identity;
+    final prefs = await PrefsReloadCoalescer.getFresh();
+    final active = prefs.getString('current_login_user');
+    final activeUserId = prefs.getInt('current_user_id') ?? 0;
+    final normalizedActive = active == null || active.isEmpty
+        ? 'default'
+        : active;
+    if (normalizedActive != username) {
+      throw const PlanAvailabilityException('账号或成员身份已切换，请重新打开页面');
+    }
+    return PlanTodoIdentity(username, activeUserId);
   }
 
   Future<void> check() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.reload();
+    final prefs = await PrefsReloadCoalescer.getFresh();
     final active = prefs.getString('current_login_user');
     if ((active == null || active.isEmpty ? 'default' : active) != username ||
         (prefs.getInt('current_user_id') ?? 0) != userId) {

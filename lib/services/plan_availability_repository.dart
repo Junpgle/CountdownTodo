@@ -3,9 +3,9 @@ import 'plan_continuous_range_service.dart';
 
 import 'dart:convert';
 
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../utils/prefs_reload_coalescer.dart';
 import '../utils/time_utils.dart';
 
 import '../course_import/course_schedule_semantics.dart';
@@ -43,8 +43,7 @@ class PlanAvailabilityRepository {
 
   Future<String> _settingsFingerprint(String username) async {
     final dateFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd');
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.reload();
+    final prefs = await PrefsReloadCoalescer.getFresh();
     final keys =
         prefs
             .getKeys()

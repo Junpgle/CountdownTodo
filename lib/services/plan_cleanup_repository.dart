@@ -1,14 +1,14 @@
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models.dart';
-import 'conflict_visibility_service.dart';
 import '../models/plan_availability.dart';
 import '../models/plan_cleanup.dart';
 import '../storage_service.dart';
+import '../utils/prefs_reload_coalescer.dart';
+import 'conflict_visibility_service.dart';
 import 'database_helper.dart';
 import 'plan_todo_guard.dart';
 
@@ -112,8 +112,7 @@ class PlanCleanupRepository {
   static int _nextToken = 0;
   DateTime get now => clock?.call() ?? DateTime.now();
   Future<Database> _database(String username) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.reload();
+    final prefs = await PrefsReloadCoalescer.getFresh();
     final pendingTodos =
         !(prefs.getBool('migration_marker_${username}_v4') ?? false) &&
         ((prefs.getStringList('user_todos_$username') ?? []).isNotEmpty ||

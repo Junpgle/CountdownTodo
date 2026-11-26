@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/plan_availability.dart';
 import '../models/plan_weekly_availability.dart';
+import '../utils/prefs_reload_coalescer.dart';
 import 'plan_todo_guard.dart';
 
 class PlanWeeklyPreferencesSnapshot {
@@ -45,8 +46,7 @@ abstract final class PlanWeeklyAvailabilityPreferences {
   static Future<PlanWeeklyPreferencesSnapshot> load(String username) async {
     final pending = _pending;
     if (pending != null) await pending;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.reload();
+    final prefs = await PrefsReloadCoalescer.getFresh();
     return _read(prefs, username);
   }
 
@@ -61,8 +61,7 @@ abstract final class PlanWeeklyAvailabilityPreferences {
     final write = () async {
       if (previous != null) await previous;
       await identity.check();
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.reload();
+      final prefs = await PrefsReloadCoalescer.getFresh();
       if (_read(prefs, identity.username).key != expectedKey) {
         throw const PlanAvailabilityException('每周可安排时间已变化，请重新读取后再编辑');
       }
@@ -73,6 +72,7 @@ abstract final class PlanWeeklyAvailabilityPreferences {
       )) {
         throw const PlanAvailabilityException('每周可安排时间保存失败，修改仍保留在页面');
       }
+      PrefsReloadCoalescer.markFresh();
       await identity.check();
       revision.value++;
     }();
