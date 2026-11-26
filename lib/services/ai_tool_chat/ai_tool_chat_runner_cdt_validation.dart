@@ -652,11 +652,11 @@ String? _validateCdtMutationAction(
       return 'effectiveFromOption必须是today、nextPeriod或all';
     }
     if (effectiveFromOption == 'all' &&
-        !RegExp(r'全部历史|所有历史|历史目标全部|所有周期目标').hasMatch(requestText)) {
+        !_rxAiToolCdtVal1.hasMatch(requestText)) {
       return '只有用户明确要求覆盖全部历史目标时才能使用effectiveFromOption=all';
     }
     if (effectiveFromOption == 'nextPeriod' &&
-        !RegExp(r'下个周期|下一个周期|下一周期|下周|下个月|下月|下期').hasMatch(requestText)) {
+        !_rxAiToolCdtVal2.hasMatch(requestText)) {
       return '只有用户明确要求下个周期生效时才能使用effectiveFromOption=nextPeriod';
     }
     if (update.containsKey('sourceType') ||
@@ -897,3 +897,7 @@ String? _validateCdtActionReference(
   }
   return null;
 }
+
+// Cached RegExp patterns
+final RegExp _rxAiToolCdtVal1 = RegExp(r'全部历史|所有历史|历史目标全部|所有周期目标');
+final RegExp _rxAiToolCdtVal2 = RegExp(r'下个周期|下一个周期|下一周期|下周|下个月|下月|下期');

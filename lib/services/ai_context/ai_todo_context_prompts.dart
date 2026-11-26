@@ -68,7 +68,7 @@ $fallbackNowLine所有上下文时间均为本地时间，格式为yyyy-MM-dd HH
 }
 
 String _compactCapabilitySection(String text) {
-  final pattern = RegExp(r'【你的能力】[\s\S]*?(?=\n【|$)');
+  final pattern = _rxAiCtxPrompts1;
   if (!pattern.hasMatch(text)) return text;
   return text.replaceFirst(pattern, '【你的能力】\n按本轮动作协议执行，仅保留当前问题相关能力。');
 }
@@ -217,8 +217,7 @@ String _buildActionProtocolPrompt(
       (_matchesAny(userMessage, _financeKeywords) ||
           userMessage.contains('#记账') ||
           userMessage.contains('账单') ||
-          RegExp(r'\d+(?:\.\d+)?\s*(?:元|块(?:钱)?|人民币|¥|￥)')
-              .hasMatch(userMessage));
+          _rxAiCtxPrompts2.hasMatch(userMessage));
   final financeDraftIntent = _shouldOfferFinanceDraftProposal(userMessage);
   final financeMutationIntent =
       _hasExplicitFinanceUpdateIntent(userMessage) ||
@@ -659,3 +658,9 @@ String _buildManualCopyPrompt(List<Map<String, dynamic>> messages) {
   }
   return buffer.toString().trim();
 }
+
+// Cached RegExp patterns
+final RegExp _rxAiCtxPrompts1 = RegExp(r'【你的能力】[\s\S]*?(?=\n【|$)');
+final RegExp _rxAiCtxPrompts2 = RegExp(
+  r'\d+(?:\.\d+)?\s*(?:元|块(?:钱)?|人民币|¥|￥)',
+);

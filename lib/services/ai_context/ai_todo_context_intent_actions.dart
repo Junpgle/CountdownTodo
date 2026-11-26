@@ -38,7 +38,7 @@ bool _isReadOnlyRequest(String text) {
 /// write request or exposing unrelated proposal tools.
 bool _isExplicitOperationDecline(String text) {
   final message = text.trim().toLowerCase().replaceAll(
-    RegExp(r'[\s，。！？,.!?；;]'),
+    _rxAiCtxIntentActions1,
     '',
   );
   if (message.isEmpty) return false;
@@ -70,27 +70,13 @@ bool _isExplicitOperationDecline(String text) {
   };
   if (exactDeclines.contains(message)) return true;
 
-  final cancelsCurrentOperation = RegExp(
-    r'^(?:我)?(?:先|暂时)?(?:算了|取消|撤销|放弃)'
-    r'(?:(?:这次|本次|这个|它|这件事|这项操作|刚才那个))*'
-    r'(?:吧|了|好了)?$',
-  );
+  final cancelsCurrentOperation = _rxAiCtxIntentActions2;
   if (cancelsCurrentOperation.hasMatch(message)) return true;
 
-  final cancelsProposedWrite = RegExp(
-    r'^(?:我)?(?:先|暂时)?(?:取消|撤销|放弃)'
-    r'(?:再|继续)?(?:我|给我|帮我|替我)?'
-    r'(?:创建|新建|新增|添加|记录|记账|生成|执行|建)'
-    r'(?:(?:这次|本次|这个|它|习惯|待办|任务|专注|番茄|倒计时|分类|标签|账单|日程|时间块|了|吧|一下))*$',
-  );
+  final cancelsProposedWrite = _rxAiCtxIntentActions3;
   if (cancelsProposedWrite.hasMatch(message)) return true;
 
-  return RegExp(
-    r'^(?:我)?(?:先|暂时)?(?:不需要|不用|不要|不想|不打算|不准备|不|别)'
-    r'(?:再|继续)?(?:我|给我|帮我|替我)?(?:现在|以后)?'
-    r'(?:创建|新建|新增|添加|记录|记账|安排|规划|计划|做|弄|执行|生成|建)?'
-    r'(?:(?:这次|本次|这个|它|习惯|待办|任务|专注|番茄|倒计时|分类|标签|账单|日程|时间块|了|吧|一下))*$',
-  ).hasMatch(message);
+  return _rxAiCtxIntentActions4.hasMatch(message);
 }
 
 bool _isExplicitScheduleMutationRequest(String text) {
@@ -139,7 +125,7 @@ Set<String> _explicitScheduleActionNames(String text) {
   const deleteVerbs = ['删除', '删掉', '删', '移除', '清掉'];
   final actions = <String>{};
   final targets = [..._fixedScheduleEventKeywords, '日程', '日历'];
-  final clauses = text.split(RegExp(r'[，。；！？,;]|然后|并且|同时'));
+  final clauses = text.split(_rxAiCtxIntentActions5);
   for (final clause in clauses) {
     if (!_matchesAny(clause, targets)) continue;
     void addWhenExplicit(List<String> verbs, String action) {
@@ -199,7 +185,7 @@ Set<String> _explicitPlanningActionNames(String text) {
   const skipVerbs = ['跳过', '略过'];
   const startVerbs = ['开始', '启动'];
   final actions = <String>{};
-  final clauses = text.split(RegExp(r'[，。；！？,;]|然后|并且|同时'));
+  final clauses = text.split(_rxAiCtxIntentActions5);
   for (final clause in clauses) {
     void addWhenExplicit(List<String> verbs, String action) {
       for (final verb in verbs) {
@@ -241,23 +227,19 @@ bool _isHabitCreationFollowUp(
     return false;
   }
 
-  final answersHabitTypeChoice = RegExp(
-    r'^(?:那就|就|选择|选|创建成|按|我要|我选)?\s*习惯(?:打卡)?(?:吧|就行|也行|即可)?[。！!\s]*$',
-  ).hasMatch(message);
+  final answersHabitTypeChoice = _rxAiCtxIntentActions6.hasMatch(message);
   final assistantOfferedHabitOrTodo =
       previous.contains('习惯') &&
       _matchesAny(previous, const ['待办', '任务']) &&
-      RegExp(r'还是|或者|或').hasMatch(previous);
+      _rxAiCtxIntentActions7.hasMatch(previous);
   if (answersHabitTypeChoice && assistantOfferedHabitOrTodo) return true;
 
   final offeredHabitDraft =
-      previous.contains('习惯') &&
-      RegExp(r'(?:习惯.{0,24}(?:草案|生成|创建|追踪)|(?:生成|创建|新增|建立).{0,24}习惯)')
-          .hasMatch(previous);
+      previous.contains('习惯') && _rxAiCtxIntentActions8.hasMatch(previous);
   final requestedHabitDetails =
-      RegExp(r'告诉我|回答|补充|这些细节|还差|请提供|请告诉|请问').hasMatch(previous) ||
-      (RegExp(r'[？?]').hasMatch(previous) &&
-          RegExp(r'频率|每周|每天|每次|类型|时长|提醒|哪天|星期').hasMatch(previous));
+      _rxAiCtxIntentActions9.hasMatch(previous) ||
+      (_rxAiCtxIntentActions10.hasMatch(previous) &&
+          _rxAiCtxIntentActions11.hasMatch(previous));
   if (!offeredHabitDraft || !requestedHabitDetails) return false;
 
   final explicitlyTargetsOtherWrite =
@@ -292,8 +274,8 @@ bool _isHabitMutationFollowUp(
   final askedAboutHabitMutation =
       _matchesAny(previous, _habitKeywords) &&
       verbs.any((verb) => _matchesAny(previous, [verb])) &&
-      (RegExp(r'[？?]').hasMatch(previous) ||
-          RegExp(r'请告诉|请提供|还差|补充|选择|哪个|哪一个').hasMatch(previous));
+      (_rxAiCtxIntentActions10.hasMatch(previous) ||
+          _rxAiCtxIntentActions12.hasMatch(previous));
   if (!askedAboutHabitMutation) return false;
   return !_looksLikeInformationQuestion(message);
 }
@@ -309,9 +291,9 @@ String _inheritExplicitCreationClarification(
   final message = userMessage.trim();
   final previousRequest = previousUserMessage.trim();
   final assistantReply = previousAssistantMessage.trim();
-  final isIndependentQuestionOrLookup = RegExp(
-    r'[？?]|^(?:为什么|怎么|如何|怎样|有没有|有哪些|有什么|查看|查询|查一下|列出|统计|汇总|分析一下|帮我查|帮我分析)',
-  ).hasMatch(message);
+  final isIndependentQuestionOrLookup = _rxAiCtxIntentActions13.hasMatch(
+    message,
+  );
   if (message.isEmpty ||
       previousRequest.isEmpty ||
       assistantReply.isEmpty ||
@@ -324,20 +306,18 @@ String _inheritExplicitCreationClarification(
     return message;
   }
 
-  final assistantAlreadyGeneratedProposal = RegExp(
-    r'(?:已生成|已经生成|已创建|已经创建|已保存|已经保存).{0,16}(?:草案|确认卡|操作卡|待办|习惯|日程|账单)?',
-  ).hasMatch(assistantReply);
+  final assistantAlreadyGeneratedProposal = _rxAiCtxIntentActions14.hasMatch(
+    assistantReply,
+  );
   if (assistantAlreadyGeneratedProposal ||
       !_hasExplicitCreationIntent(previousRequest)) {
     return message;
   }
 
   final assistantRequestsDetails =
-      RegExp(r'请提供|请补充|请告诉|告诉我|还需要|还差|缺少|需要你提供|需要补充|请问')
-          .hasMatch(assistantReply) ||
-      (RegExp(r'[？?]').hasMatch(assistantReply) &&
-          RegExp(r'标题|名称|备注|时间|日期|时长|频率|提醒|颜色|分类|地点|截止|星期|哪天|几次|多久')
-              .hasMatch(assistantReply));
+      _rxAiCtxIntentActions15.hasMatch(assistantReply) ||
+      (_rxAiCtxIntentActions10.hasMatch(assistantReply) &&
+          _rxAiCtxIntentActions16.hasMatch(assistantReply));
   if (!assistantRequestsDetails) return message;
 
   return '$previousRequest\n$message';
@@ -401,7 +381,7 @@ bool _hasExplicitTodoCreationIntent(String text) {
     '专注',
     '提醒',
   ];
-  final clauses = text.split(RegExp(r'[，。；！？,;]|然后|并且|同时|并|再'));
+  final clauses = text.split(_rxAiCtxIntentActions17);
   for (final clause in clauses) {
     if (_isExplicitTodoCreationRequest(clause)) return true;
     for (final verb in implicitTodoVerbs) {
@@ -427,8 +407,7 @@ bool _hasExplicitTodoCreationIntent(String text) {
         }
       }
       if (todoAfterIndex >= 0) {
-        if (RegExp(r'^(?:待办|任务)(?:事项)?(?:分类|文件夹|分组)')
-            .hasMatch(after.substring(todoAfterIndex))) {
+        if (_rxAiCtxIntentActions18.hasMatch(after.substring(todoAfterIndex))) {
           continue;
         }
         var otherBeforeTodoIndex = -1;
@@ -447,8 +426,7 @@ bool _hasExplicitTodoCreationIntent(String text) {
           otherBeforeTodoIndex + otherBeforeTodo!.length,
           todoAfterIndex,
         );
-        if (RegExp(r'^(?:和|与|及)(?:(?:一个|一条|一项|几个|几条|两条|三条))?$')
-            .hasMatch(coordination)) {
+        if (_rxAiCtxIntentActions19.hasMatch(coordination)) {
           return true;
         }
         continue;
@@ -508,23 +486,17 @@ bool _isExplicitTodoGroupManagementRequest(String text) {
 /// "我要写两条任务" without treating how-to questions as write requests.
 bool _isExplicitTodoCreationRequest(String text) {
   if (!_matchesAny(text, const ['待办', '任务'])) return false;
-  if (RegExp(r'(?:怎么|如何|怎样).{0,12}(?:记|写|记录|登记|录入).{0,12}(?:待办|任务)')
-      .hasMatch(text)) {
+  if (_rxAiCtxIntentActions20.hasMatch(text)) {
     return false;
   }
-  final startsTodoRecord = RegExp(
-    r'^(?:(?:请|帮我|帮忙|麻烦(?:你)?|给我|替我|我想|我要|直接)\s*)*'
-    r'(?:分开|分别|单独|各自)?\s*'
-    r'(?:记(?:下|一下|上)?|记录|登记|录入|写(?:一下|一份|一个)?|'
-    r'加(?:个|一个|条|一条|几条))',
-  ).hasMatch(text.trim());
+  final startsTodoRecord = _rxAiCtxIntentActions21.hasMatch(text.trim());
   if (!startsTodoRecord) return false;
 
   // Phrases such as "帮我写一个待办分类" create a category, not a todo.
-  final todoTarget = RegExp(r'待办|任务').firstMatch(text);
+  final todoTarget = _rxAiCtxIntentActions22.firstMatch(text);
   if (todoTarget == null) return false;
   final afterTarget = text.substring(todoTarget.end);
-  if (RegExp(r'^(?:事项)?(?:分类|文件夹|分组|标签)').hasMatch(afterTarget)) {
+  if (_rxAiCtxIntentActions23.hasMatch(afterTarget)) {
     return false;
   }
   return true;
@@ -543,8 +515,7 @@ int? _explicitTodoCreationCount(String text) {
       ].any((verb) => _isExplicitlyRequested(text, verb));
   if (!explicitlyCreatesTodo) return null;
 
-  final match = RegExp(r'(\d+|[一二两三四五六七八九十]+)\s*(?:个|条|份|项|件)?\s*(?:待办|任务)')
-      .firstMatch(text);
+  final match = _rxAiCtxIntentActions24.firstMatch(text);
   final rawCount = match?.group(1);
   if (rawCount == null) return null;
   return _parseExplicitCount(rawCount);
@@ -665,7 +636,7 @@ Set<String> _explicitHabitActionNames(
   )) {
     actions.add('delete_habit');
   }
-  for (final clause in text.split(RegExp(r'[，。；！？,;]|然后|并且|同时'))) {
+  for (final clause in text.split(_rxAiCtxIntentActions5)) {
     if (!_matchesAny(clause, _habitTypeKeywords)) continue;
     if (_habitUpdateKeywords.any(
       (verb) =>
@@ -764,7 +735,7 @@ Set<String> _requiredExplicitCdtActionNames(
     '往前调',
   ];
   const todoCategorizeVerbs = ['分类', '归类', '分个类', '移出文件夹'];
-  for (final clause in text.split(RegExp(r'[，。；！？,;]|然后|并且|同时'))) {
+  for (final clause in text.split(_rxAiCtxIntentActions5)) {
     if (!_matchesAny(clause.toLowerCase(), todoTargets)) continue;
     bool requested(List<String> verbs) => verbs.any(
       (verb) =>
@@ -862,8 +833,8 @@ bool _isExplicitFocusMutationRequest(String text) {
     '？',
     '?',
   ];
-  final durationPattern = RegExp(r'(?:\d+|[一二两三四五六七八九十]+)\s*(?:分钟|小时)');
-  for (final clause in text.split(RegExp(r'[，。；,;]|然后|并且|并|同时|再'))) {
+  final durationPattern = _rxAiCtxIntentActions25;
+  for (final clause in text.split(_rxAiCtxIntentActions26)) {
     final hasExplicitVerb = mutationVerbs.any(
       (verb) => _isExplicitlyRequested(clause, verb),
     );
@@ -901,7 +872,7 @@ Set<String> _explicitFocusActionNames(String text) {
   const pomodoroStartVerbs = ['开始', '启动', '开启'];
   const pomodoroStopVerbs = ['停止', '结束'];
   final actions = <String>{};
-  final clauses = text.split(RegExp(r'[，。；！？,;]|然后|并且|同时'));
+  final clauses = text.split(_rxAiCtxIntentActions5);
   for (final clause in clauses) {
     if (!_matchesAny(clause, _timeLogActionKeywords)) continue;
     void addWhenExplicit(List<String> verbs, String action) {
@@ -961,7 +932,7 @@ Set<String> _explicitCountdownActionNames(String text) {
   const deleteVerbs = ['删除', '删掉', '删', '移除', '清掉', '取消'];
   final actions = <String>{};
   final targets = [..._countdownKeywords, 'countdown'];
-  final clauses = text.split(RegExp(r'[，。；！？,;]|然后|并且|同时'));
+  final clauses = text.split(_rxAiCtxIntentActions5);
   for (final clause in clauses) {
     if (!_matchesAny(clause.toLowerCase(), targets)) continue;
     void addWhenExplicit(List<String> verbs, String action) {
@@ -999,10 +970,7 @@ String? _pendingCountdownTitleSuffixForRequest(
   final requestedSuffix = _requestedAllTitleSuffix(text);
   if (requestedSuffix != null) return requestedSuffix;
 
-  final isTitleSuffixCorrection = RegExp(
-    r'(?:实际.{0,8})?(?:标题|名称).{0,16}(?:没|没有|未|并没有).{0,12}(?:加上|带上|追加|补上|添加)|'
-    r'(?:没|没有|未|并没有).{0,12}(?:加上|带上|追加|补上|添加).{0,12}(?:标题|名称)',
-  ).hasMatch(text);
+  final isTitleSuffixCorrection = _rxAiCtxIntentActions27.hasMatch(text);
   return isTitleSuffixCorrection
       ? _requestedAllTitleSuffix(previousUserMessage)
       : null;
@@ -1045,9 +1013,7 @@ String _extractPendingCountdownDraftContext(String text) {
 }
 
 String? _requestedAllTitleSuffix(String text) {
-  final targetsAllTitles = RegExp(
-    r'(?:所有|全部|每个|每条|这些)(?:的)?[^，。；！？\n]{0,10}(?:标题|名称)|(?:标题|名称)[^，。；！？\n]{0,10}(?:都|全部)',
-  ).hasMatch(text);
+  final targetsAllTitles = _rxAiCtxIntentActions28.hasMatch(text);
   if (!targetsAllTitles) return null;
   const suffixInstruction = r'(?:加上|带上|追加|补上|添加|加个|加一个)(?:后缀|标记|文字)?\s*';
   final bracketed = RegExp('$suffixInstruction([（(][^()（）\r\n]{1,32}[）)])')
@@ -1061,7 +1027,7 @@ String? _requestedAllTitleSuffix(String text) {
   return RegExp('$suffixInstruction([^\\s，。；！？,;]{1,16})')
       .firstMatch(text)
       ?.group(1)
-      ?.replaceFirst(RegExp(r'(?:吧|一下|即可|就行|了)$'), '');
+      ?.replaceFirst(_rxAiCtxIntentActions29, '');
 }
 
 bool _isExplicitCountdownMutationRequest(String text) {
@@ -1076,11 +1042,91 @@ bool _hasExplicitActionPrefix(String clause, String verb) {
   if (verbIndex < 0) return false;
   final prefix = clause.substring(0, verbIndex);
   if (prefix.trim().isEmpty) return true;
-  if (RegExp(
-    r'^(?:(?:今天|明天|后天|本周[一二三四五六日天]?|这周|下周[一二三四五六日天]?|周[一二三四五六日天]|周末|上午|下午|晚上|早上|中午|今晚|明晚|\d{1,2}月\d{1,2}日)\s*)+$',
-  ).hasMatch(prefix.trim())) {
+  if (_rxAiCtxIntentActions30.hasMatch(prefix.trim())) {
     return true;
   }
-  return RegExp(r'(?:请|麻烦|帮我|帮忙|给我|替我|我要|我想|我来|把|将|直接|先)[^，。；！？,;]*$')
-      .hasMatch(prefix);
+  return _rxAiCtxIntentActions31.hasMatch(prefix);
 }
+
+// Cached RegExp patterns
+final RegExp _rxAiCtxIntentActions1 = RegExp(r'[\s，。！？,.!?；;]');
+final RegExp _rxAiCtxIntentActions2 = RegExp(
+  r'^(?:我)?(?:先|暂时)?(?:算了|取消|撤销|放弃)'
+  r'(?:(?:这次|本次|这个|它|这件事|这项操作|刚才那个))*'
+  r'(?:吧|了|好了)?$',
+);
+final RegExp _rxAiCtxIntentActions3 = RegExp(
+  r'^(?:我)?(?:先|暂时)?(?:取消|撤销|放弃)'
+  r'(?:再|继续)?(?:我|给我|帮我|替我)?'
+  r'(?:创建|新建|新增|添加|记录|记账|生成|执行|建)'
+  r'(?:(?:这次|本次|这个|它|习惯|待办|任务|专注|番茄|倒计时|分类|标签|账单|日程|时间块|了|吧|一下))*$',
+);
+final RegExp _rxAiCtxIntentActions4 = RegExp(
+  r'^(?:我)?(?:先|暂时)?(?:不需要|不用|不要|不想|不打算|不准备|不|别)'
+  r'(?:再|继续)?(?:我|给我|帮我|替我)?(?:现在|以后)?'
+  r'(?:创建|新建|新增|添加|记录|记账|安排|规划|计划|做|弄|执行|生成|建)?'
+  r'(?:(?:这次|本次|这个|它|习惯|待办|任务|专注|番茄|倒计时|分类|标签|账单|日程|时间块|了|吧|一下))*$',
+);
+final RegExp _rxAiCtxIntentActions5 = RegExp(r'[，。；！？,;]|然后|并且|同时');
+final RegExp _rxAiCtxIntentActions6 = RegExp(
+  r'^(?:那就|就|选择|选|创建成|按|我要|我选)?\s*习惯(?:打卡)?(?:吧|就行|也行|即可)?[。！!\s]*$',
+);
+final RegExp _rxAiCtxIntentActions7 = RegExp(r'还是|或者|或');
+final RegExp _rxAiCtxIntentActions8 = RegExp(
+  r'(?:习惯.{0,24}(?:草案|生成|创建|追踪)|(?:生成|创建|新增|建立).{0,24}习惯)',
+);
+final RegExp _rxAiCtxIntentActions9 = RegExp(r'告诉我|回答|补充|这些细节|还差|请提供|请告诉|请问');
+final RegExp _rxAiCtxIntentActions10 = RegExp(r'[？?]');
+final RegExp _rxAiCtxIntentActions11 = RegExp(r'频率|每周|每天|每次|类型|时长|提醒|哪天|星期');
+final RegExp _rxAiCtxIntentActions12 = RegExp(r'请告诉|请提供|还差|补充|选择|哪个|哪一个');
+final RegExp _rxAiCtxIntentActions13 = RegExp(
+  r'[？?]|^(?:为什么|怎么|如何|怎样|有没有|有哪些|有什么|查看|查询|查一下|列出|统计|汇总|分析一下|帮我查|帮我分析)',
+);
+final RegExp _rxAiCtxIntentActions14 = RegExp(
+  r'(?:已生成|已经生成|已创建|已经创建|已保存|已经保存).{0,16}(?:草案|确认卡|操作卡|待办|习惯|日程|账单)?',
+);
+final RegExp _rxAiCtxIntentActions15 = RegExp(
+  r'请提供|请补充|请告诉|告诉我|还需要|还差|缺少|需要你提供|需要补充|请问',
+);
+final RegExp _rxAiCtxIntentActions16 = RegExp(
+  r'标题|名称|备注|时间|日期|时长|频率|提醒|颜色|分类|地点|截止|星期|哪天|几次|多久',
+);
+final RegExp _rxAiCtxIntentActions17 = RegExp(r'[，。；！？,;]|然后|并且|同时|并|再');
+final RegExp _rxAiCtxIntentActions18 = RegExp(
+  r'^(?:待办|任务)(?:事项)?(?:分类|文件夹|分组)',
+);
+final RegExp _rxAiCtxIntentActions19 = RegExp(
+  r'^(?:和|与|及)(?:(?:一个|一条|一项|几个|几条|两条|三条))?$',
+);
+final RegExp _rxAiCtxIntentActions20 = RegExp(
+  r'(?:怎么|如何|怎样).{0,12}(?:记|写|记录|登记|录入).{0,12}(?:待办|任务)',
+);
+final RegExp _rxAiCtxIntentActions21 = RegExp(
+  r'^(?:(?:请|帮我|帮忙|麻烦(?:你)?|给我|替我|我想|我要|直接)\s*)*'
+  r'(?:分开|分别|单独|各自)?\s*'
+  r'(?:记(?:下|一下|上)?|记录|登记|录入|写(?:一下|一份|一个)?|'
+  r'加(?:个|一个|条|一条|几条))',
+);
+final RegExp _rxAiCtxIntentActions22 = RegExp(r'待办|任务');
+final RegExp _rxAiCtxIntentActions23 = RegExp(r'^(?:事项)?(?:分类|文件夹|分组|标签)');
+final RegExp _rxAiCtxIntentActions24 = RegExp(
+  r'(\d+|[一二两三四五六七八九十]+)\s*(?:个|条|份|项|件)?\s*(?:待办|任务)',
+);
+final RegExp _rxAiCtxIntentActions25 = RegExp(
+  r'(?:\d+|[一二两三四五六七八九十]+)\s*(?:分钟|小时)',
+);
+final RegExp _rxAiCtxIntentActions26 = RegExp(r'[，。；,;]|然后|并且|并|同时|再');
+final RegExp _rxAiCtxIntentActions27 = RegExp(
+  r'(?:实际.{0,8})?(?:标题|名称).{0,16}(?:没|没有|未|并没有).{0,12}(?:加上|带上|追加|补上|添加)|'
+  r'(?:没|没有|未|并没有).{0,12}(?:加上|带上|追加|补上|添加).{0,12}(?:标题|名称)',
+);
+final RegExp _rxAiCtxIntentActions28 = RegExp(
+  r'(?:所有|全部|每个|每条|这些)(?:的)?[^，。；！？\n]{0,10}(?:标题|名称)|(?:标题|名称)[^，。；！？\n]{0,10}(?:都|全部)',
+);
+final RegExp _rxAiCtxIntentActions29 = RegExp(r'(?:吧|一下|即可|就行|了)$');
+final RegExp _rxAiCtxIntentActions30 = RegExp(
+  r'^(?:(?:今天|明天|后天|本周[一二三四五六日天]?|这周|下周[一二三四五六日天]?|周[一二三四五六日天]|周末|上午|下午|晚上|早上|中午|今晚|明晚|\d{1,2}月\d{1,2}日)\s*)+$',
+);
+final RegExp _rxAiCtxIntentActions31 = RegExp(
+  r'(?:请|麻烦|帮我|帮忙|给我|替我|我要|我想|我来|把|将|直接|先)[^，。；！？,;]*$',
+);

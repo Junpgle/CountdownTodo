@@ -82,10 +82,7 @@ _parseLegacyTextToolCalls(
   var hadDisallowedWriteMarkup = false;
   for (final blockMatch in _legacyTextToolBlock.allMatches(content)) {
     final block = blockMatch.group(1) ?? '';
-    final functionMatch = RegExp(
-      r'<function\s*=\s*([A-Za-z_][A-Za-z0-9_]*)\s*>',
-      caseSensitive: false,
-    ).firstMatch(block);
+    final functionMatch = _rxAiToolLegacy1.firstMatch(block);
     if (functionMatch == null) continue;
 
     final requestedName = functionMatch.group(1)!.toLowerCase();
@@ -118,10 +115,7 @@ _parseLegacyTextToolCalls(
     final functionBody = functionBodyEnd >= functionBodyStart
         ? block.substring(functionBodyStart, functionBodyEnd)
         : block.substring(functionBodyStart);
-    for (final parameterMatch in RegExp(
-      r'<parameter\s*=\s*([A-Za-z_][A-Za-z0-9_]*)\s*>([\s\S]*?)</parameter\s*>',
-      caseSensitive: false,
-    ).allMatches(functionBody)) {
+    for (final parameterMatch in _rxAiToolLegacy2.allMatches(functionBody)) {
       final name = parameterMatch.group(1)!;
       final specification = properties[name];
       if (specification is! Map || arguments.containsKey(name)) {
@@ -175,15 +169,9 @@ _parseLegacyTextToolCalls(
     );
   }
 
-  final hadToolMarkup = RegExp(
-    r'</?tool_call\b',
-    caseSensitive: false,
-  ).hasMatch(content);
+  final hadToolMarkup = _rxAiToolLegacy3.hasMatch(content);
   var cleaned = content.replaceAll(_legacyTextToolBlock, '');
-  final malformedStart = RegExp(
-    r'<tool_call\b',
-    caseSensitive: false,
-  ).allMatches(cleaned);
+  final malformedStart = _rxAiToolLegacy4.allMatches(cleaned);
   final malformedToolCall = malformedStart.isEmpty
       ? null
       : malformedStart.first;
@@ -392,7 +380,7 @@ int? _explicitTodoCount(String text) =>
 
 int? _explicitTodoRemarkCount(String text) {
   if (_explicitTodoCount(text) == null) return null;
-  final count = RegExp('备注').allMatches(text).length;
+  final count = _rxAiToolLegacy5.allMatches(text).length;
   return count > 1 ? count : null;
 }
 
@@ -469,22 +457,40 @@ String _formatPlanningTime(DateTime value) =>
 /// Shared by native and text-protocol write recovery so neither path turns a
 /// clarification into an inferred mutation.
 bool _isLikelyClarification(String content) {
-  final claimsCompletedMutation = RegExp(
-    r'(?:(?:已(?:经)?|成功(?:地)?|刚刚)(?:为你|帮你|把|将)?|(?:我)?帮你|(?:已)?为你)[^。！？\n]{0,20}(?:创建|新建|新增|添加|保存|删除|移除|完成|更新|修改|改期|调整|移动|移至|挪到|挪至|移到|改到|延期|推迟|提前|记录|取消|补记|安排|归类|分到|合并|拆分|开始|启动|开启|停止|结束|执行|搞定|搞好|做好|办好|处理好|弄好)',
-  ).hasMatch(content);
+  final claimsCompletedMutation = _rxAiToolLegacy6.hasMatch(content);
   if (claimsCompletedMutation) return false;
-  return RegExp(
-    r'(?:请提供|请补充|请告诉我|请确认.{0,12}(?:具体)?(?:金额|日期|时间|时段|对象|待办|任务|日程|账单|分类|标签|内容)|还需要(?:提供|补充)|需要你(?:提供|补充|选择)|缺少|缺乏|信息不足|需要明确|尚不清楚|不清楚|不确定|有歧义|无法确定|无法匹配|找不到|没有找到|哪一笔|哪一个|哪个(?:待办|账单|任务|日程)|哪种|哪天|哪一天|什么时间|什么时段|多少(?:元|钱|分钟|小时)?|习惯.{0,8}还是.{0,8}(?:待办|任务)|(?:待办|任务).{0,8}还是.{0,8}习惯|什么(?:待办|任务|日程|习惯|账单|内容|日期|时间|金额|分类|标签))',
-  ).hasMatch(content);
+  return _rxAiToolLegacy7.hasMatch(content);
 }
 
 bool _isSelfContainedPlanningRequest(String text) {
   final request = text.trim();
   if (request.isEmpty || request.length < 18) return false;
-  final hasPlanningIntent = RegExp(r'安排|规划|排程|联排').hasMatch(request);
-  final hasTimeBoundary = RegExp(
-    r'(?:\d{1,2}\s*(?::|：|点)|(?:截止|截至|到|之前).{0,10}(?:晚上|今晚|下午|夜里|早上|上午|中午|\d)|从现在|剩下的时间|今天|明天)',
-  ).hasMatch(request);
-  final listSeparators = RegExp(r'[、，,；;]|以及|还有|然后|再').allMatches(request);
+  final hasPlanningIntent = _rxAiToolLegacy8.hasMatch(request);
+  final hasTimeBoundary = _rxAiToolLegacy9.hasMatch(request);
+  final listSeparators = _rxAiToolLegacy10.allMatches(request);
   return hasPlanningIntent && hasTimeBoundary && listSeparators.length >= 2;
 }
+
+// Cached RegExp patterns
+final RegExp _rxAiToolLegacy1 = RegExp(
+  r'<function\s*=\s*([A-Za-z_][A-Za-z0-9_]*)\s*>',
+  caseSensitive: false,
+);
+final RegExp _rxAiToolLegacy2 = RegExp(
+  r'<parameter\s*=\s*([A-Za-z_][A-Za-z0-9_]*)\s*>([\s\S]*?)</parameter\s*>',
+  caseSensitive: false,
+);
+final RegExp _rxAiToolLegacy3 = RegExp(r'</?tool_call\b', caseSensitive: false);
+final RegExp _rxAiToolLegacy4 = RegExp(r'<tool_call\b', caseSensitive: false);
+final RegExp _rxAiToolLegacy5 = RegExp('备注');
+final RegExp _rxAiToolLegacy6 = RegExp(
+  r'(?:(?:已(?:经)?|成功(?:地)?|刚刚)(?:为你|帮你|把|将)?|(?:我)?帮你|(?:已)?为你)[^。！？\n]{0,20}(?:创建|新建|新增|添加|保存|删除|移除|完成|更新|修改|改期|调整|移动|移至|挪到|挪至|移到|改到|延期|推迟|提前|记录|取消|补记|安排|归类|分到|合并|拆分|开始|启动|开启|停止|结束|执行|搞定|搞好|做好|办好|处理好|弄好)',
+);
+final RegExp _rxAiToolLegacy7 = RegExp(
+  r'(?:请提供|请补充|请告诉我|请确认.{0,12}(?:具体)?(?:金额|日期|时间|时段|对象|待办|任务|日程|账单|分类|标签|内容)|还需要(?:提供|补充)|需要你(?:提供|补充|选择)|缺少|缺乏|信息不足|需要明确|尚不清楚|不清楚|不确定|有歧义|无法确定|无法匹配|找不到|没有找到|哪一笔|哪一个|哪个(?:待办|账单|任务|日程)|哪种|哪天|哪一天|什么时间|什么时段|多少(?:元|钱|分钟|小时)?|习惯.{0,8}还是.{0,8}(?:待办|任务)|(?:待办|任务).{0,8}还是.{0,8}习惯|什么(?:待办|任务|日程|习惯|账单|内容|日期|时间|金额|分类|标签))',
+);
+final RegExp _rxAiToolLegacy8 = RegExp(r'安排|规划|排程|联排');
+final RegExp _rxAiToolLegacy9 = RegExp(
+  r'(?:\d{1,2}\s*(?::|：|点)|(?:截止|截至|到|之前).{0,10}(?:晚上|今晚|下午|夜里|早上|上午|中午|\d)|从现在|剩下的时间|今天|明天)',
+);
+final RegExp _rxAiToolLegacy10 = RegExp(r'[、，,；;]|以及|还有|然后|再');

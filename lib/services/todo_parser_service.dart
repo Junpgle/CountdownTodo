@@ -96,18 +96,18 @@ class TodoParserService {
     RegExp(
       r'在([\u4e00-\u9fa5]{2,10}(?:图书馆|教室|办公室|会议室|学校|公司|食堂|超市|公园|医院|餐厅|咖啡厅|酒店|机场|车站|广场|体育馆|商场|社区|中心|家里|家|店里|楼上|楼下))',
     ),
-    RegExp(r'地点[：:]\s*([^\s，,。！!]{1,20})'),
+    _rxTodoParser1,
   ];
   static final _remarkPattern = RegExp(r'备注[：:]\s*([^\s，,。！!]{1,30})');
   static final _recurrencePatterns = <(RegExp, RecurrenceType, int)>[
     (RegExp(r'每天|天天|每日'), RecurrenceType.daily, 0),
     (RegExp(r'每周|每星期|每礼拜'), RecurrenceType.weekly, 0),
-    (RegExp(r'每月|每个月'), RecurrenceType.monthly, 0),
-    (RegExp(r'每一年|每年'), RecurrenceType.yearly, 0),
-    (RegExp(r'工作日|周一到周五|星期一至星期五'), RecurrenceType.weekdays, 0),
-    (RegExp(r'每两天|隔一天|每隔一天'), RecurrenceType.customDays, 2),
-    (RegExp(r'(?<num>\d+)\s*天\s*一次'), RecurrenceType.customDays, -1),
-    (RegExp(r'(?<num>\d+)\s*周\s*一次'), RecurrenceType.customDays, -7),
+    (_rxTodoParser2, RecurrenceType.monthly, 0),
+    (_rxTodoParser3, RecurrenceType.yearly, 0),
+    (_rxTodoParser4, RecurrenceType.weekdays, 0),
+    (_rxTodoParser5, RecurrenceType.customDays, 2),
+    (_rxTodoParser6, RecurrenceType.customDays, -1),
+    (_rxTodoParser7, RecurrenceType.customDays, -7),
   ];
   static final _recurrenceEndPattern = RegExp(
     r'(?:直到|到)\s*(?<y>\d{4}年)?(?<m>\d{1,2})月(?<d>\d{1,2})(?:日|号)?',
@@ -137,15 +137,13 @@ class TodoParserService {
     RegExp(
       r'(?<p1>上午|下午|早上|晚上|中午|凌晨)?\s*(?<sh>\d{1,2})[点时](?:(?<sm>\d{1,2})分?)?\s*(?:到|至|-|~)\s*(?<p2>上午|下午|早上|晚上|中午|凌晨)?\s*(?<eh>\d{1,2})[点时](?:(?<em>\d{1,2})分?)?',
     ),
-    RegExp(
-      r'(?<p1>上午|下午|早上|晚上|中午|凌晨)?\s*(?<sh>\d{1,2}):(?<sm>\d{2})\s*(?:到|至|-|~)\s*(?<p2>上午|下午|早上|晚上|中午|凌晨)?\s*(?<eh>\d{1,2}):(?<em>\d{2})',
-    ),
+    _rxTodoParser8,
   ];
   static final _singleTimePatterns = <RegExp>[
     RegExp(
       r'(?<p1>上午|早上|中午|下午|晚上|凌晨)?\s*(?<sh>\d{1,2})[点时](?:(?<sm>\d{1,2})分?)?',
     ),
-    RegExp(r'(?<p1>上午|早上|中午|下午|晚上|凌晨)?\s*(?<sh>\d{1,2}):(?<sm>\d{2})'),
+    _rxTodoParser9,
   ];
   static final _leadingTitlePunctuation = RegExp(r'^\s*[,，、；;]\s*');
   static final _trailingTitlePunctuation = RegExp(r'[,，、；;]\s*$');
@@ -607,3 +605,18 @@ class TodoParserService {
     return result.length > 100 ? result.substring(0, 100) : result;
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxTodoParser1 = RegExp(r'地点[：:]\s*([^\s，,。！!]{1,20})');
+final RegExp _rxTodoParser2 = RegExp(r'每月|每个月');
+final RegExp _rxTodoParser3 = RegExp(r'每一年|每年');
+final RegExp _rxTodoParser4 = RegExp(r'工作日|周一到周五|星期一至星期五');
+final RegExp _rxTodoParser5 = RegExp(r'每两天|隔一天|每隔一天');
+final RegExp _rxTodoParser6 = RegExp(r'(?<num>\d+)\s*天\s*一次');
+final RegExp _rxTodoParser7 = RegExp(r'(?<num>\d+)\s*周\s*一次');
+final RegExp _rxTodoParser8 = RegExp(
+  r'(?<p1>上午|下午|早上|晚上|中午|凌晨)?\s*(?<sh>\d{1,2}):(?<sm>\d{2})\s*(?:到|至|-|~)\s*(?<p2>上午|下午|早上|晚上|中午|凌晨)?\s*(?<eh>\d{1,2}):(?<em>\d{2})',
+);
+final RegExp _rxTodoParser9 = RegExp(
+  r'(?<p1>上午|早上|中午|下午|晚上|凌晨)?\s*(?<sh>\d{1,2}):(?<sm>\d{2})',
+);

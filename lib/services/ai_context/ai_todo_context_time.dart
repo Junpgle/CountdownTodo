@@ -166,16 +166,10 @@ _DateRange? _resolveRollingMonthRange(String text, DateTime now) {
 }
 
 _DateRange? _resolveRecentDayRange(String text, DateTime now) {
-  final numericDays = RegExp(r'(?:最近|过去|近)\s*(\d{1,6})\s*(?:天|日)')
-      .firstMatch(text);
-  final chineseDays = RegExp(
-    r'(?:最近|过去|近)\s*([零〇一二两三四五六七八九十百千]{1,12})\s*(?:天|日)',
-  ).firstMatch(text);
-  final numericWeeks = RegExp(r'(?:最近|过去|近)\s*(\d{1,3})\s*(?:周|星期|礼拜)')
-      .firstMatch(text);
-  final chineseWeeks = RegExp(
-    r'(?:最近|过去|近)\s*([一二两三四五六七八九十]{1,3})\s*(?:周|星期|礼拜)',
-  ).firstMatch(text);
+  final numericDays = _rxAiCtxTime1.firstMatch(text);
+  final chineseDays = _rxAiCtxTime2.firstMatch(text);
+  final numericWeeks = _rxAiCtxTime3.firstMatch(text);
+  final chineseWeeks = _rxAiCtxTime4.firstMatch(text);
   final weeks = numericWeeks != null
       ? int.tryParse(numericWeeks.group(1)!)
       : chineseWeeks != null
@@ -221,7 +215,7 @@ _DateRange? _resolveCoursePeriod(String text, DateTime now) {
       end: DateTime(now.year, now.month + 1),
     );
   }
-  final weekdayMatch = RegExp(r'(?:星期|礼拜|周)([一二三四五六日天])').firstMatch(text);
+  final weekdayMatch = _rxAiCtxTime5.firstMatch(text);
   if (weekdayMatch != null) {
     final targetWeekday = switch (weekdayMatch.group(1)) {
       '一' => DateTime.monday,
@@ -341,8 +335,7 @@ _DateRange? _resolveCoursePeriod(String text, DateTime now) {
 }
 
 int? _parseFutureDays(String text) {
-  final digitMatch = RegExp(r'(?:未来|接下来)\s*(\d{1,6})\s*(?:天|日)')
-      .firstMatch(text);
+  final digitMatch = _rxAiCtxTime6.firstMatch(text);
   if (digitMatch != null) {
     final parsed = int.tryParse(digitMatch.group(1)!);
     if (parsed != null && parsed > 0) {
@@ -350,8 +343,7 @@ int? _parseFutureDays(String text) {
     }
   }
 
-  final hanMatch = RegExp(r'(?:未来|接下来)\s*([零〇一二两三四五六七八九十百千]{1,12})\s*(?:天|日)')
-      .firstMatch(text);
+  final hanMatch = _rxAiCtxTime7.firstMatch(text);
   if (hanMatch != null) {
     final parsed = _parseChineseDayCount(hanMatch.group(1)!);
     if (parsed != null && parsed > 0) {
@@ -461,9 +453,7 @@ _TimeLogPeriod? _resolveTimeLogPeriod(String text, DateTime now) {
   if (explicitChineseRange != null) {
     return _parseExplicitChineseDateRange(explicitChineseRange, now);
   }
-  final dateMatches = RegExp(r'(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)')
-      .allMatches(text)
-      .toList();
+  final dateMatches = _rxAiCtxTime8.allMatches(text).toList();
   if (dateMatches.length == 1) {
     final match = dateMatches.single;
     final year = int.parse(match.group(1)!);
@@ -499,9 +489,7 @@ _TimeLogPeriod? _resolveTimeLogPeriod(String text, DateTime now) {
     );
   }
 
-  final explicitChineseDay = RegExp(
-    r'(?:^|[^\d])(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*(?:日|号)',
-  ).firstMatch(text);
+  final explicitChineseDay = _rxAiCtxTime9.firstMatch(text);
   if (explicitChineseDay != null) {
     final period = exactDayPeriod(
       int.parse(explicitChineseDay.group(1)!),
@@ -510,9 +498,7 @@ _TimeLogPeriod? _resolveTimeLogPeriod(String text, DateTime now) {
     );
     if (period != null) return period;
   }
-  final relativeMonthDay = RegExp(
-    r'(今年|去年)\s*(\d{1,2})\s*月\s*(\d{1,2})\s*(?:日|号)',
-  ).firstMatch(text);
+  final relativeMonthDay = _rxAiCtxTime10.firstMatch(text);
   if (relativeMonthDay != null) {
     final year = relativeMonthDay.group(1) == '去年' ? now.year - 1 : now.year;
     final period = exactDayPeriod(
@@ -522,17 +508,14 @@ _TimeLogPeriod? _resolveTimeLogPeriod(String text, DateTime now) {
     );
     if (period != null) return period;
   }
-  final monthDay = RegExp(r'(?:^|[^\d])(\d{1,2})\s*月\s*(\d{1,2})\s*(?:日|号)')
-      .firstMatch(text);
+  final monthDay = _rxAiCtxTime11.firstMatch(text);
   if (monthDay != null) {
     final month = int.parse(monthDay.group(1)!);
     final year = month > now.month ? now.year - 1 : now.year;
     final period = exactDayPeriod(year, month, int.parse(monthDay.group(2)!));
     if (period != null) return period;
   }
-  final explicitYearMonth = RegExp(
-    r'(?:^|[^\d])(\d{4})\s*年\s*(0?[1-9]|1[0-2])\s*月(?:份)?(?!\s*\d{1,2}\s*(?:日|号))',
-  ).firstMatch(text);
+  final explicitYearMonth = _rxAiCtxTime12.firstMatch(text);
   if (explicitYearMonth != null) {
     final year = int.parse(explicitYearMonth.group(1)!);
     final month = int.parse(explicitYearMonth.group(2)!);
@@ -542,9 +525,7 @@ _TimeLogPeriod? _resolveTimeLogPeriod(String text, DateTime now) {
       end: DateTime(year, month + 1),
     );
   }
-  final relativeYearMonth = RegExp(
-    r'(今年|去年)\s*(0?[1-9]|1[0-2])\s*月(?:份)?(?!\s*\d{1,2}\s*(?:日|号))',
-  ).firstMatch(text);
+  final relativeYearMonth = _rxAiCtxTime13.firstMatch(text);
   if (relativeYearMonth != null) {
     final year = relativeYearMonth.group(1) == '去年' ? now.year - 1 : now.year;
     final month = int.parse(relativeYearMonth.group(2)!);
@@ -554,9 +535,7 @@ _TimeLogPeriod? _resolveTimeLogPeriod(String text, DateTime now) {
       end: DateTime(year, month + 1),
     );
   }
-  final monthOnly = RegExp(
-    r'(?:^|[^\d])(0?[1-9]|1[0-2])\s*月(?:份)?(?!\s*\d{1,2}\s*(?:日|号))',
-  ).firstMatch(text);
+  final monthOnly = _rxAiCtxTime14.firstMatch(text);
   if (monthOnly != null) {
     final month = int.parse(monthOnly.group(1)!);
     final year = month > now.month ? now.year - 1 : now.year;
@@ -566,9 +545,7 @@ _TimeLogPeriod? _resolveTimeLogPeriod(String text, DateTime now) {
       end: DateTime(year, month + 1),
     );
   }
-  final explicitQuarter = RegExp(
-    r'(?:(今年|去年)\s*|(\d{4})\s*年\s*)?(?:第\s*)?([一二三四1-4])\s*季度',
-  ).firstMatch(text);
+  final explicitQuarter = _rxAiCtxTime15.firstMatch(text);
   if (explicitQuarter != null) {
     final quarter = switch (explicitQuarter.group(3)) {
       '一' || '1' => 1,
@@ -595,9 +572,7 @@ _TimeLogPeriod? _resolveTimeLogPeriod(String text, DateTime now) {
         : DateTime(year, start.month + 3);
     return _TimeLogPeriod(label: '$year年第$quarter季度', start: start, end: end);
   }
-  final explicitYear = RegExp(
-    r'(?:^|[^\d])(\d{4})\s*年(?:份)?(?!\s*(?:\d{1,2}\s*月|第?\s*[一二三四1-4]\s*季度))',
-  ).firstMatch(text);
+  final explicitYear = _rxAiCtxTime16.firstMatch(text);
   if (explicitYear != null) {
     final year = int.parse(explicitYear.group(1)!);
     return _TimeLogPeriod(
@@ -896,8 +871,8 @@ int _inferredChineseDateYear(
   DateTime now,
 ) {
   final prefix = text.substring(0, dateStart);
-  if (RegExp(r'去年\s*$').hasMatch(prefix)) return now.year - 1;
-  if (RegExp(r'今年\s*$').hasMatch(prefix)) return now.year;
+  if (_rxAiCtxTime17.hasMatch(prefix)) return now.year - 1;
+  if (_rxAiCtxTime18.hasMatch(prefix)) return now.year;
   return month > now.month ? now.year - 1 : now.year;
 }
 
@@ -978,7 +953,7 @@ bool _hasAmbiguousMonthPeriods(String text) {
 }
 
 bool _hasMultipleRecognizedDatePeriods(String text) {
-  final periodText = text.replaceAll(RegExp(r'(?:并)?扩大到未来30天范围'), '');
+  final periodText = text.replaceAll(_rxAiCtxTime19, '');
   final spans = <(int, int)>[];
   for (final pattern in [
     _explicitIsoDateRangePattern,
@@ -1024,7 +999,7 @@ int? _parseChineseOrNumericDateNumber(String value) =>
     int.tryParse(value) ?? _parseSimpleChineseNumber(value);
 
 DateTime? _parseStrictIsoDate(String value) {
-  final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(value);
+  final match = _rxAiCtxTime20.firstMatch(value);
   if (match == null) return null;
   final year = int.parse(match.group(1)!);
   final month = int.parse(match.group(2)!);
@@ -1309,3 +1284,47 @@ class _DateRange {
   final DateTime start;
   final DateTime end;
 }
+
+// Cached RegExp patterns
+final RegExp _rxAiCtxTime1 = RegExp(r'(?:最近|过去|近)\s*(\d{1,6})\s*(?:天|日)');
+final RegExp _rxAiCtxTime2 = RegExp(
+  r'(?:最近|过去|近)\s*([零〇一二两三四五六七八九十百千]{1,12})\s*(?:天|日)',
+);
+final RegExp _rxAiCtxTime3 = RegExp(r'(?:最近|过去|近)\s*(\d{1,3})\s*(?:周|星期|礼拜)');
+final RegExp _rxAiCtxTime4 = RegExp(
+  r'(?:最近|过去|近)\s*([一二两三四五六七八九十]{1,3})\s*(?:周|星期|礼拜)',
+);
+final RegExp _rxAiCtxTime5 = RegExp(r'(?:星期|礼拜|周)([一二三四五六日天])');
+final RegExp _rxAiCtxTime6 = RegExp(r'(?:未来|接下来)\s*(\d{1,6})\s*(?:天|日)');
+final RegExp _rxAiCtxTime7 = RegExp(
+  r'(?:未来|接下来)\s*([零〇一二两三四五六七八九十百千]{1,12})\s*(?:天|日)',
+);
+final RegExp _rxAiCtxTime8 = RegExp(r'(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)');
+final RegExp _rxAiCtxTime9 = RegExp(
+  r'(?:^|[^\d])(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*(?:日|号)',
+);
+final RegExp _rxAiCtxTime10 = RegExp(
+  r'(今年|去年)\s*(\d{1,2})\s*月\s*(\d{1,2})\s*(?:日|号)',
+);
+final RegExp _rxAiCtxTime11 = RegExp(
+  r'(?:^|[^\d])(\d{1,2})\s*月\s*(\d{1,2})\s*(?:日|号)',
+);
+final RegExp _rxAiCtxTime12 = RegExp(
+  r'(?:^|[^\d])(\d{4})\s*年\s*(0?[1-9]|1[0-2])\s*月(?:份)?(?!\s*\d{1,2}\s*(?:日|号))',
+);
+final RegExp _rxAiCtxTime13 = RegExp(
+  r'(今年|去年)\s*(0?[1-9]|1[0-2])\s*月(?:份)?(?!\s*\d{1,2}\s*(?:日|号))',
+);
+final RegExp _rxAiCtxTime14 = RegExp(
+  r'(?:^|[^\d])(0?[1-9]|1[0-2])\s*月(?:份)?(?!\s*\d{1,2}\s*(?:日|号))',
+);
+final RegExp _rxAiCtxTime15 = RegExp(
+  r'(?:(今年|去年)\s*|(\d{4})\s*年\s*)?(?:第\s*)?([一二三四1-4])\s*季度',
+);
+final RegExp _rxAiCtxTime16 = RegExp(
+  r'(?:^|[^\d])(\d{4})\s*年(?:份)?(?!\s*(?:\d{1,2}\s*月|第?\s*[一二三四1-4]\s*季度))',
+);
+final RegExp _rxAiCtxTime17 = RegExp(r'去年\s*$');
+final RegExp _rxAiCtxTime18 = RegExp(r'今年\s*$');
+final RegExp _rxAiCtxTime19 = RegExp(r'(?:并)?扩大到未来30天范围');
+final RegExp _rxAiCtxTime20 = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$');

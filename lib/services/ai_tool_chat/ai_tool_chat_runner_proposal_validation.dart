@@ -422,13 +422,8 @@ String? _writeProposalSemanticIssue(
               .isBefore(CalendarDateMath.dateOnly(dueDate))) {
         return 'recurrenceEndDate不能早于待办周期锚点';
       }
-      final hasRemarkedMonth = RegExp(
-        r'备注.{0,3}(?:正月|腊月|冬月|十[一二]?月|[一二三四五六七八九]月|\d{1,2}月)',
-      ).hasMatch(requestText);
-      final hasExplicitDeadline = RegExp(
-        r'截止|截至|最晚|期限|到期|前完成|之前完成|完成前|deadline',
-        caseSensitive: false,
-      ).hasMatch(requestText);
+      final hasRemarkedMonth = _rxAiToolPropVal1.hasMatch(requestText);
+      final hasExplicitDeadline = _rxAiToolPropVal2.hasMatch(requestText);
       if (hasRemarkedMonth &&
           !hasExplicitDeadline &&
           todo['dueDate']?.toString().trim().isNotEmpty == true) {
@@ -596,7 +591,7 @@ Map<String, Set<String>> _financeCatalogIdsFromQuery(
 String? _validateFinanceAmount(Map record) {
   final rawMinor = record['amount_minor'] ?? record['amountMinor'];
   if (rawMinor != null) {
-    final minor = rawMinor is String && RegExp(r'^\d+$').hasMatch(rawMinor)
+    final minor = rawMinor is String && _rxAiToolPropVal3.hasMatch(rawMinor)
         ? BigInt.tryParse(rawMinor)
         : rawMinor is int
         ? BigInt.from(rawMinor)
@@ -624,9 +619,7 @@ String? _validateFinanceAmount(Map record) {
 
 DateTime? _parseStrictLocalDateTime(Object? value) {
   if (value is! String) return null;
-  final match = RegExp(
-    r'^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?)?$',
-  ).firstMatch(value.trim());
+  final match = _rxAiToolPropVal4.firstMatch(value.trim());
   if (match == null) return null;
   final year = int.parse(match.group(1)!);
   final month = int.parse(match.group(2)!);
@@ -662,5 +655,19 @@ DateTime? _parseStrictLocalDateTime(Object? value) {
 
 bool _isStrictDateOnly(Object? value) =>
     value is String &&
-    RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value.trim()) &&
+    _rxAiToolPropVal5.hasMatch(value.trim()) &&
     _parseStrictLocalDateTime(value) != null;
+
+// Cached RegExp patterns
+final RegExp _rxAiToolPropVal1 = RegExp(
+  r'备注.{0,3}(?:正月|腊月|冬月|十[一二]?月|[一二三四五六七八九]月|\d{1,2}月)',
+);
+final RegExp _rxAiToolPropVal2 = RegExp(
+  r'截止|截至|最晚|期限|到期|前完成|之前完成|完成前|deadline',
+  caseSensitive: false,
+);
+final RegExp _rxAiToolPropVal3 = RegExp(r'^\d+$');
+final RegExp _rxAiToolPropVal4 = RegExp(
+  r'^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?)?$',
+);
+final RegExp _rxAiToolPropVal5 = RegExp(r'^\d{4}-\d{2}-\d{2}$');

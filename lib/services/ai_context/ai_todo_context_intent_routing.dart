@@ -52,8 +52,8 @@ bool _isExplicitFinanceDraftRequest(String text) {
     '？',
     '?',
   ];
-  final amountPattern = RegExp(r'\d+(?:\.\d+)?\s*(?:元|块(?:钱)?|人民币|¥|￥)');
-  for (final clause in text.split(RegExp(r'[，。；！？,;]|然后|并且|并|同时|再'))) {
+  final amountPattern = _rxAiCtxIntentRouting1;
+  for (final clause in text.split(_rxAiCtxIntentRouting2)) {
     if (amountPattern.hasMatch(clause) &&
         mutationVerbs.any((verb) => _isExplicitlyRequested(clause, verb)) &&
         !_matchesAny(clause, readOnlyWords)) {
@@ -67,14 +67,8 @@ bool _isExplicitFinanceDraftRequest(String text) {
 /// or a concise amount-bearing entry. Financial planning amounts such as a
 /// budget, loan, balance, or investment are not transactions by themselves.
 bool _shouldOfferFinanceDraftProposal(String text) {
-  final withoutReminderNegation = text.replaceAll(
-    RegExp(r'(?:别|不要)忘(?:了|记)?'),
-    '',
-  );
-  if (RegExp(
-    r'(?:不要|别|不必|无需|不用)(?:再|帮我|帮忙|替我|给我)?'
-    r'(?:记|记录|新增|添加|消费|花|买|进账|收款)',
-  ).hasMatch(withoutReminderNegation)) {
+  final withoutReminderNegation = text.replaceAll(_rxAiCtxIntentRouting3, '');
+  if (_rxAiCtxIntentRouting4.hasMatch(withoutReminderNegation)) {
     return false;
   }
   const clearDraftVerbs = [
@@ -136,12 +130,10 @@ bool _shouldOfferFinanceDraftProposal(String text) {
     );
   }
 
-  final hasAmount = RegExp(r'\d+(?:\.\d+)?\s*(?:元|块(?:钱)?|人民币|¥|￥)')
-      .hasMatch(text);
+  final hasAmount = _rxAiCtxIntentRouting1.hasMatch(text);
   if (!hasAmount) return false;
 
-  final amountMatch = RegExp(r'\d+(?:\.\d+)?\s*(?:元|块(?:钱)?|人民币|¥|￥)')
-      .firstMatch(text);
+  final amountMatch = _rxAiCtxIntentRouting1.firstMatch(text);
   if (amountMatch == null) return false;
   var descriptor =
       '${text.substring(0, amountMatch.start)} '
@@ -219,11 +211,8 @@ bool _hasExplicitFinanceDeleteIntent(String text) {
 
 bool _hasExplicitFinanceUpdateIntent(String text) {
   if (!_matchesAny(text, _financeKeywords)) return false;
-  final commandPrefix = RegExp(r'^(?:(?:请|帮我|替我|给我)\s*)*(?:把|将)');
-  final updateVerbPrefix = RegExp(
-    r'^(?:(?:请|帮我|替我|给我)\s*)*'
-    r'(?:更正|调整|修改|更新|更改|编辑|改成|改为|调成|调为)',
-  );
+  final commandPrefix = _rxAiCtxIntentRouting5;
+  final updateVerbPrefix = _rxAiCtxIntentRouting6;
   const updateVerbs = [
     '更正',
     '调整',
@@ -258,7 +247,7 @@ bool _hasExplicitFinanceUpdateIntent(String text) {
   final hasReadOnlyQuestion =
       _looksLikeInformationQuestion(text) ||
       _matchesAny(text, readOnlyFinanceQueryKeywords);
-  for (final clause in text.split(RegExp(r'[，。；！？,;]'))) {
+  for (final clause in text.split(_rxAiCtxIntentRouting7)) {
     final normalizedClause = clause.trim();
     final startsWithCommand =
         commandPrefix.hasMatch(normalizedClause) ||
@@ -268,12 +257,8 @@ bool _hasExplicitFinanceUpdateIntent(String text) {
       final suffix = normalizedClause.substring(
         normalizedClause.indexOf(verb) + verb.length,
       );
-      final directAssignment = RegExp(r'^\s*(?:为|成|到|至)\s*\S+\s*$')
-          .hasMatch(suffix);
-      final propertyAssignment = RegExp(
-        r'(?:金额|数额|价格|日期|时间|类别|分类|备注|账户|支付方式)\s*'
-        r'(?:更正|调整)?\s*(?:为|成|到|至)\s*\S+\s*$',
-      ).hasMatch(suffix);
+      final directAssignment = _rxAiCtxIntentRouting8.hasMatch(suffix);
+      final propertyAssignment = _rxAiCtxIntentRouting9.hasMatch(suffix);
       final readOnlyTail = _matchesAny(suffix, const [
         '影响',
         '效果',
@@ -319,80 +304,44 @@ bool _isExplicitlyRequested(String text, String trigger) {
   while (searchFrom < text.length) {
     final index = text.indexOf(trigger, searchFrom);
     if (index == -1) return false;
-    final clauseBoundary = text.lastIndexOf(RegExp(r'[，。；！？,;]'), index);
+    final clauseBoundary = text.lastIndexOf(_rxAiCtxIntentRouting7, index);
     final clauseStart = clauseBoundary == -1 ? 0 : clauseBoundary + 1;
     final prefix = text
         .substring(clauseStart, index)
-        .replaceAll(RegExp(r'(?:别|不要)忘(?:了|记)?'), '');
+        .replaceAll(_rxAiCtxIntentRouting3, '');
     final suffixBoundary = text.indexOf(
-      RegExp(r'[，。；！？,;]'),
+      _rxAiCtxIntentRouting7,
       index + trigger.length,
     );
     final suffix = text.substring(
       index + trigger.length,
       suffixBoundary == -1 ? text.length : suffixBoundary,
     );
-    final politeWriteRequest = RegExp(
-      r'^(?:(?:请问|麻烦|请|直接)\s*)?(?:能不能|可不可以|能否|可否|可以)'
-      r'(?:(?:请|直接)?(?:帮我|帮忙|替我|给我)(?:把[^，。；！？,;]{0,16})?|'
-      r'把[^，。；！？,;]{0,16})?$',
-    ).hasMatch(prefix.trim());
+    final politeWriteRequest = _rxAiCtxIntentRouting10.hasMatch(prefix.trim());
     final hasExplicitCommandPrefix =
-        RegExp(r'(?:请|麻烦|帮我|帮忙|把|将|给我|替我)[^，。；！？,;]*$').hasMatch(prefix) &&
-        !RegExp(r'(?:查询|查看|看看|看下|查下|查一下|查找|检索|统计|汇总|分析|列出|了解|问问)')
-            .hasMatch(prefix);
-    final mutationStatus = RegExp(r'(?:已|已经|已被|已经被|需要|应该|尚未|未|待|没|没有|被)\s*$')
-        .hasMatch(prefix);
+        _rxAiCtxIntentRouting11.hasMatch(prefix) &&
+        !_rxAiCtxIntentRouting12.hasMatch(prefix);
+    final mutationStatus = _rxAiCtxIntentRouting13.hasMatch(prefix);
     final mutationQuestion =
         !hasExplicitCommandPrefix &&
-        ((!politeWriteRequest &&
-                RegExp(
-                  r'(?:哪些|什么|多少|多久|多长时间|几天|几周|几个月|哪几|几个|几项|几条|几件|'
-                  r'几点|几时|何时|哪天|几号|几日|何日|是否|有没有|有无|要不要|需不需要|'
-                  r'该不该|应不应|应不应该|是否应该|是否需要|有没有必要|是不是要|是不是该|'
-                  r'是不是应该|想不想|会不会|能否|可否)[^，。；！？,;]*$',
-                ).hasMatch(prefix)) ||
-            RegExp(
-              r'^(?:(?:了|过|的|得)?)(?:哪些|什么|多少|哪几|几个|几项|几条|几件|吗|呢|情况|状态|明细|详情|得怎么样|得如何|是否|有没有|有无)',
-            ).hasMatch(suffix) ||
-            RegExp(
-              r'^(?:什么|哪些|多少|多久|多长时间|怎么|如何|怎样|为什么|是什么|是什么意思|'
-              r'有哪些|有什么|有多少|几点|几时|何时|哪天|几号|几日|什么时候|什么时间|'
-              r'什么情况|情况如何|状态如何|进度如何|是否|有没有|有无|要不要|需不需要|'
-              r'会不会|能不能|可不可以|能否|可否)[^，。；！？,;]{0,24}$',
-            ).hasMatch(suffix) ||
-            RegExp(
-              r'^[^，。；！？,;]{1,24}(?:需要什么|需要哪些|需要多少|要什么|要哪些|'
-              r'怎么|如何|怎样|为什么|是否|有没有|有无|几点|几时|何时|哪天|几号|几日|'
-              r'什么时候|什么时间|多久|多长时间)[^，。；！？,;]{0,16}$',
-            ).hasMatch(suffix) ||
-            RegExp(
-              r'^[^，。；！？,;]{1,16}(?:有哪些(?:好处|意义|作用|用途|区别|要求|条件|方法|原因|注意事项)|'
-              r'有什么(?:好处|意义|作用|用途|功能|区别|要求|条件|方法|原因|注意事项|需要注意)|'
-              r'是什么(?:原因|情况|状态|含义|意思|定义|功能)|是什么意思|'
-              r'(?:意义|作用|用途|含义|意思|定义|目的)是什么|'
-              r'有哪些|有什么|有多少|是什么|为什么|怎么|如何|怎样|'
-              r'多久|多长时间|几天|几周|几个月|几点|几时|何时|哪天|几号|几日|何日|'
-              r'什么时候|什么时间|什么情况|什么状态|情况如何|状态如何|进度如何|'
-              r'有什么影响|会有什么影响|会不会影响|是否会|有何影响|有无影响|'
-              r'造成什么影响|影响吗|有影响|会不会|会怎样|会如何|能不能|可不可以|'
-              r'能否|可否|是否|有没有|有无|要不要|需不需要|该不该|吗|呢)$',
-            ).hasMatch(suffix));
-    final firstPersonReport = RegExp(r'^(?:我|本人)(?!想|要|希望|需要|请|麻烦|让你|帮我)')
-        .hasMatch(prefix);
+        ((!politeWriteRequest && _rxAiCtxIntentRouting14.hasMatch(prefix)) ||
+            _rxAiCtxIntentRouting15.hasMatch(suffix) ||
+            _rxAiCtxIntentRouting16.hasMatch(suffix) ||
+            _rxAiCtxIntentRouting17.hasMatch(suffix) ||
+            _rxAiCtxIntentRouting18.hasMatch(suffix));
+    final firstPersonReport = _rxAiCtxIntentRouting19.hasMatch(prefix);
     final reportedMutation =
-        RegExp(r'^的').hasMatch(suffix) ||
-        (RegExp(r'^(?:了|过)').hasMatch(suffix) &&
+        _rxAiCtxIntentRouting20.hasMatch(suffix) ||
+        (_rxAiCtxIntentRouting21.hasMatch(suffix) &&
             (!hasExplicitCommandPrefix || firstPersonReport));
     final completionMetric =
         trigger == '完成' &&
-        RegExp(r'^(?:率|情况|数量|进度|状态)')
-            .hasMatch(text.substring(index + trigger.length));
-    final descriptiveStatus = RegExp(r'(?:哪些|什么|需要|应该|尚未|未|待)\s*$')
-        .hasMatch(prefix);
+        _rxAiCtxIntentRouting22.hasMatch(
+          text.substring(index + trigger.length),
+        );
+    final descriptiveStatus = _rxAiCtxIntentRouting23.hasMatch(prefix);
     final howToQuestion =
-        !politeWriteRequest &&
-        RegExp(r'(?:为什么|怎么|如何|怎样|是否|能不能|可不可以)[^，。；！？,;]*$').hasMatch(prefix);
+        !politeWriteRequest && _rxAiCtxIntentRouting24.hasMatch(prefix);
     if (mutationStatus ||
         mutationQuestion ||
         reportedMutation ||
@@ -402,8 +351,8 @@ bool _isExplicitlyRequested(String text, String trigger) {
       searchFrom = index + trigger.length;
       continue;
     }
-    final negations = RegExp(r'不|别|没|无需|禁止|避免').allMatches(prefix).toList();
-    final contrasts = RegExp(r'但是|不过|但|而是').allMatches(prefix).toList();
+    final negations = _rxAiCtxIntentRouting25.allMatches(prefix).toList();
+    final contrasts = _rxAiCtxIntentRouting26.allMatches(prefix).toList();
     final isNegated =
         negations.isNotEmpty &&
         (contrasts.isEmpty || negations.last.start > contrasts.last.start);
@@ -441,7 +390,7 @@ bool _shouldInjectTodoContext(String text) {
 bool _isContextFollowUp(String text, String previousUserMessage) {
   if (previousUserMessage.trim().isEmpty) return false;
   return _matchesAny(text, _contextReferenceKeywords) ||
-      RegExp(r'第(?:[一二三四五六七八九十]|\d+)个').hasMatch(text);
+      _rxAiCtxIntentRouting27.hasMatch(text);
 }
 
 bool _shouldInheritContext(
@@ -478,9 +427,7 @@ bool _looksLikeTodoListQuery(String text) {
 }
 
 bool _looksLikeCountdownQuery(String text) {
-  final asksRemainingDays = RegExp(
-    r'(?:还有|还剩|剩下?|距离).{0,12}(?:几|多少|[一二三四五六七八九十\d]+).{0,3}(?:天|日)',
-  ).hasMatch(text);
+  final asksRemainingDays = _rxAiCtxIntentRouting28.hasMatch(text);
   if (asksRemainingDays) return true;
   final hasNoun =
       text.contains('倒计时') ||
@@ -527,3 +474,87 @@ bool _looksLikeInformationQuestion(String text) {
       text.contains('？') ||
       text.contains('?');
 }
+
+// Cached RegExp patterns
+final RegExp _rxAiCtxIntentRouting1 = RegExp(
+  r'\d+(?:\.\d+)?\s*(?:元|块(?:钱)?|人民币|¥|￥)',
+);
+final RegExp _rxAiCtxIntentRouting2 = RegExp(r'[，。；！？,;]|然后|并且|并|同时|再');
+final RegExp _rxAiCtxIntentRouting3 = RegExp(r'(?:别|不要)忘(?:了|记)?');
+final RegExp _rxAiCtxIntentRouting4 = RegExp(
+  r'(?:不要|别|不必|无需|不用)(?:再|帮我|帮忙|替我|给我)?'
+  r'(?:记|记录|新增|添加|消费|花|买|进账|收款)',
+);
+final RegExp _rxAiCtxIntentRouting5 = RegExp(r'^(?:(?:请|帮我|替我|给我)\s*)*(?:把|将)');
+final RegExp _rxAiCtxIntentRouting6 = RegExp(
+  r'^(?:(?:请|帮我|替我|给我)\s*)*'
+  r'(?:更正|调整|修改|更新|更改|编辑|改成|改为|调成|调为)',
+);
+final RegExp _rxAiCtxIntentRouting7 = RegExp(r'[，。；！？,;]');
+final RegExp _rxAiCtxIntentRouting8 = RegExp(r'^\s*(?:为|成|到|至)\s*\S+\s*$');
+final RegExp _rxAiCtxIntentRouting9 = RegExp(
+  r'(?:金额|数额|价格|日期|时间|类别|分类|备注|账户|支付方式)\s*'
+  r'(?:更正|调整)?\s*(?:为|成|到|至)\s*\S+\s*$',
+);
+final RegExp _rxAiCtxIntentRouting10 = RegExp(
+  r'^(?:(?:请问|麻烦|请|直接)\s*)?(?:能不能|可不可以|能否|可否|可以)'
+  r'(?:(?:请|直接)?(?:帮我|帮忙|替我|给我)(?:把[^，。；！？,;]{0,16})?|'
+  r'把[^，。；！？,;]{0,16})?$',
+);
+final RegExp _rxAiCtxIntentRouting11 = RegExp(
+  r'(?:请|麻烦|帮我|帮忙|把|将|给我|替我)[^，。；！？,;]*$',
+);
+final RegExp _rxAiCtxIntentRouting12 = RegExp(
+  r'(?:查询|查看|看看|看下|查下|查一下|查找|检索|统计|汇总|分析|列出|了解|问问)',
+);
+final RegExp _rxAiCtxIntentRouting13 = RegExp(
+  r'(?:已|已经|已被|已经被|需要|应该|尚未|未|待|没|没有|被)\s*$',
+);
+final RegExp _rxAiCtxIntentRouting14 = RegExp(
+  r'(?:哪些|什么|多少|多久|多长时间|几天|几周|几个月|哪几|几个|几项|几条|几件|'
+  r'几点|几时|何时|哪天|几号|几日|何日|是否|有没有|有无|要不要|需不需要|'
+  r'该不该|应不应|应不应该|是否应该|是否需要|有没有必要|是不是要|是不是该|'
+  r'是不是应该|想不想|会不会|能否|可否)[^，。；！？,;]*$',
+);
+final RegExp _rxAiCtxIntentRouting15 = RegExp(
+  r'^(?:(?:了|过|的|得)?)(?:哪些|什么|多少|哪几|几个|几项|几条|几件|吗|呢|情况|状态|明细|详情|得怎么样|得如何|是否|有没有|有无)',
+);
+final RegExp _rxAiCtxIntentRouting16 = RegExp(
+  r'^(?:什么|哪些|多少|多久|多长时间|怎么|如何|怎样|为什么|是什么|是什么意思|'
+  r'有哪些|有什么|有多少|几点|几时|何时|哪天|几号|几日|什么时候|什么时间|'
+  r'什么情况|情况如何|状态如何|进度如何|是否|有没有|有无|要不要|需不需要|'
+  r'会不会|能不能|可不可以|能否|可否)[^，。；！？,;]{0,24}$',
+);
+final RegExp _rxAiCtxIntentRouting17 = RegExp(
+  r'^[^，。；！？,;]{1,24}(?:需要什么|需要哪些|需要多少|要什么|要哪些|'
+  r'怎么|如何|怎样|为什么|是否|有没有|有无|几点|几时|何时|哪天|几号|几日|'
+  r'什么时候|什么时间|多久|多长时间)[^，。；！？,;]{0,16}$',
+);
+final RegExp _rxAiCtxIntentRouting18 = RegExp(
+  r'^[^，。；！？,;]{1,16}(?:有哪些(?:好处|意义|作用|用途|区别|要求|条件|方法|原因|注意事项)|'
+  r'有什么(?:好处|意义|作用|用途|功能|区别|要求|条件|方法|原因|注意事项|需要注意)|'
+  r'是什么(?:原因|情况|状态|含义|意思|定义|功能)|是什么意思|'
+  r'(?:意义|作用|用途|含义|意思|定义|目的)是什么|'
+  r'有哪些|有什么|有多少|是什么|为什么|怎么|如何|怎样|'
+  r'多久|多长时间|几天|几周|几个月|几点|几时|何时|哪天|几号|几日|何日|'
+  r'什么时候|什么时间|什么情况|什么状态|情况如何|状态如何|进度如何|'
+  r'有什么影响|会有什么影响|会不会影响|是否会|有何影响|有无影响|'
+  r'造成什么影响|影响吗|有影响|会不会|会怎样|会如何|能不能|可不可以|'
+  r'能否|可否|是否|有没有|有无|要不要|需不需要|该不该|吗|呢)$',
+);
+final RegExp _rxAiCtxIntentRouting19 = RegExp(
+  r'^(?:我|本人)(?!想|要|希望|需要|请|麻烦|让你|帮我)',
+);
+final RegExp _rxAiCtxIntentRouting20 = RegExp(r'^的');
+final RegExp _rxAiCtxIntentRouting21 = RegExp(r'^(?:了|过)');
+final RegExp _rxAiCtxIntentRouting22 = RegExp(r'^(?:率|情况|数量|进度|状态)');
+final RegExp _rxAiCtxIntentRouting23 = RegExp(r'(?:哪些|什么|需要|应该|尚未|未|待)\s*$');
+final RegExp _rxAiCtxIntentRouting24 = RegExp(
+  r'(?:为什么|怎么|如何|怎样|是否|能不能|可不可以)[^，。；！？,;]*$',
+);
+final RegExp _rxAiCtxIntentRouting25 = RegExp(r'不|别|没|无需|禁止|避免');
+final RegExp _rxAiCtxIntentRouting26 = RegExp(r'但是|不过|但|而是');
+final RegExp _rxAiCtxIntentRouting27 = RegExp(r'第(?:[一二三四五六七八九十]|\d+)个');
+final RegExp _rxAiCtxIntentRouting28 = RegExp(
+  r'(?:还有|还剩|剩下?|距离).{0,12}(?:几|多少|[一二三四五六七八九十\d]+).{0,3}(?:天|日)',
+);
