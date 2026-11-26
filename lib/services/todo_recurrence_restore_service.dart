@@ -1,6 +1,7 @@
 import '../models.dart';
 import 'todo_recurrence_series_edit_service.dart';
 import '../utils/time_utils.dart';
+import '../utils/calendar_date_math.dart';
 
 class TodoRecurrenceRestorePreview {
   const TodoRecurrenceRestorePreview({
@@ -115,7 +116,7 @@ abstract final class TodoRecurrenceRestoreService {
     final local = AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
     );
-    return DateTime(local.year, local.month, local.day);
+    return CalendarDateMath.dateOnly(local);
   }
 
   static String _dayKey(DateTime date) =>

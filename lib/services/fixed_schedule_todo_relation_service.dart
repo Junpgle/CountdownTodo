@@ -1,5 +1,6 @@
 import '../models.dart';
 import '../utils/text_utils.dart';
+import '../utils/calendar_date_math.dart';
 
 /// A display group for fixed schedules related to a todo.
 ///
@@ -102,7 +103,7 @@ class FixedScheduleTodoRelationService {
       case FixedSchedulePhase.upcoming:
         return 1;
       case FixedSchedulePhase.timeTbd:
-        final today = DateTime(now.year, now.month, now.day);
+        final today = CalendarDateMath.dateOnly(now);
         return _dateTime(item).isBefore(today) ? 3 : 2;
       case FixedSchedulePhase.ended:
         return 3;
@@ -119,6 +120,6 @@ class FixedScheduleTodoRelationService {
     final parsed = DateTime.tryParse(item.date)?.toLocal();
     return parsed == null
         ? DateTime.fromMillisecondsSinceEpoch(item.createdAt).toLocal()
-        : DateTime(parsed.year, parsed.month, parsed.day);
+        : CalendarDateMath.dateOnly(parsed);
   }
 }

@@ -21,6 +21,7 @@ import 'device_calendar_read_service.dart';
 import 'plan_availability_service.dart';
 import 'plan_availability_preferences.dart';
 import '../features/habits/services/habit_challenge_planning_service.dart';
+import '../utils/calendar_date_math.dart';
 
 typedef PlanAvailabilityLoader = Future<PlanAvailabilitySnapshot> Function(
   PlanAvailabilityQuery query, {
@@ -250,11 +251,7 @@ class PlanAvailabilityRepository {
     }
 
     final courseIds = <String>{};
-    final sourceStartDay = DateTime(
-      query.sourceStart.year,
-      query.sourceStart.month,
-      query.sourceStart.day,
-    );
+    final sourceStartDay = CalendarDateMath.dateOnly(query.sourceStart);
     for (final course in local.courses) {
       if (course.isDeleted || !courseIds.add(course.uuid)) continue;
       DateTime date;
@@ -567,7 +564,7 @@ class PlanAvailabilityRepository {
       );
     }
     if (due != null && due.isBefore(end)) {
-      final midnight = DateTime(due.year, due.month, due.day);
+      final midnight = CalendarDateMath.dateOnly(due);
       end = due == midnight
           ? midnight
           : DateTime(due.year, due.month, due.day + 1);
@@ -650,18 +647,14 @@ class PlanAvailabilityRepository {
       throw const PlanAvailabilityException('固定日程已开始，无法再安排日程前准备时间');
     }
 
-    final start = DateTime(base.date.year, base.date.month, base.date.day);
-    final preparationDay = DateTime(
-      preparationEnd.year,
-      preparationEnd.month,
-      preparationEnd.day,
-    );
+    final start = CalendarDateMath.dateOnly(base.date);
+    final preparationDay = CalendarDateMath.dateOnly(preparationEnd);
     var rangeEnd = preparationEnd == preparationDay
         ? preparationDay
         : preparationDay.add(const Duration(days: 1));
     final due = PlanAvailabilityService.deadline(todo);
     if (due != null) {
-      final dueDay = DateTime(due.year, due.month, due.day);
+      final dueDay = CalendarDateMath.dateOnly(due);
       final dueRangeEnd = due == dueDay
           ? dueDay
           : dueDay.add(const Duration(days: 1));
@@ -879,7 +872,7 @@ class PlanAvailabilityRepository {
     if (days < 1 || days > 7) {
       throw const PlanAvailabilityException('检查范围须为1至7天');
     }
-    final start = DateTime(date.year, date.month, date.day);
+    final start = CalendarDateMath.dateOnly(date);
     final end = DateTime(start.year, start.month, start.day + days);
     final sources = await _readSources(
       username,

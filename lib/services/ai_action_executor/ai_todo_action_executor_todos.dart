@@ -180,13 +180,8 @@ List<TodoItem> _buildUpdatedTodos(
     final isPastRecurrenceEnd =
         recurrenceEnd != null &&
         shiftedCandidateDay != null &&
-        DateTime(
-          shiftedCandidateDay.year,
-          shiftedCandidateDay.month,
-          shiftedCandidateDay.day,
-        ).isAfter(
-          DateTime(recurrenceEnd.year, recurrenceEnd.month, recurrenceEnd.day),
-        );
+        CalendarDateMath.dateOnly(shiftedCandidateDay)
+            .isAfter(CalendarDateMath.dateOnly(recurrenceEnd));
     final shouldDelete =
         !isWholeSeriesEdit &&
         (action.type == AiTodoActionType.deleteTodo ||
@@ -390,11 +385,7 @@ TodoItem? _buildNewTodo(
   }
   if (recurrenceEndDate != null &&
       normalizedTime.start != null &&
-      DateTime(
-        recurrenceEndDate.year,
-        recurrenceEndDate.month,
-        recurrenceEndDate.day,
-      ).isBefore(
+      CalendarDateMath.dateOnly(recurrenceEndDate).isBefore(
         DateTime(
           normalizedTime.start!.year,
           normalizedTime.start!.month,

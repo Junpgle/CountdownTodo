@@ -72,11 +72,7 @@ AiContextDateRange? _resolveCustomInjectionDateRange({
   DateTime? now,
 }) {
   if (customStart == null || customEnd == null) return null;
-  final selectedStart = DateTime(
-    customStart.year,
-    customStart.month,
-    customStart.day,
-  );
+  final selectedStart = CalendarDateMath.dateOnly(customStart);
   final selectedEndExclusive = DateTime(
     customEnd.year,
     customEnd.month,
@@ -87,7 +83,7 @@ AiContextDateRange? _resolveCustomInjectionDateRange({
   }
 
   final current = now ?? DateTime.now();
-  final today = DateTime(current.year, current.month, current.day);
+  final today = CalendarDateMath.dateOnly(current);
   final futureEndExclusive = DateTime(today.year, today.month, today.day + 30);
   return AiContextDateRange(
     selectedStart.isBefore(today) ? selectedStart : today,
@@ -118,7 +114,7 @@ List<FixedScheduleItem> _scopeFixedSchedulesByTime(
     }).toList();
   }
   if (userMessage.trim().isEmpty) return active;
-  final today = DateTime(now.year, now.month, now.day);
+  final today = CalendarDateMath.dateOnly(now);
   return active.where((item) {
     final date = DateTime.tryParse(item.date);
     return date != null && !date.isBefore(today);
@@ -134,16 +130,16 @@ List<CourseItem> _selectCoursesForPeriod(
     return courses.where((c) {
       final date = DateTime.tryParse(c.date);
       if (date == null) return false;
-      final day = DateTime(date.year, date.month, date.day);
+      final day = CalendarDateMath.dateOnly(date);
       return !day.isBefore(period.start) && day.isBefore(period.end);
     }).toList();
   }
 
-  final today = DateTime(now.year, now.month, now.day);
+  final today = CalendarDateMath.dateOnly(now);
   return courses.where((c) {
     final date = DateTime.tryParse(c.date);
     if (date == null) return false;
-    final day = DateTime(date.year, date.month, date.day);
+    final day = CalendarDateMath.dateOnly(date);
     return !day.isBefore(today);
   }).toList();
 }
@@ -154,7 +150,7 @@ _DateRange? _resolveRollingMonthRange(String text, DateTime now) {
   final months = _parseRollingMonthCount(match.group(1) ?? '6');
   if (months == null || months < 1) return null;
 
-  final todayStart = DateTime(now.year, now.month, now.day);
+  final todayStart = CalendarDateMath.dateOnly(now);
   final targetMonth = DateTime(todayStart.year, todayStart.month - months);
   final lastDayOfTargetMonth = DateTime(
     targetMonth.year,
@@ -198,7 +194,7 @@ _DateRange? _resolveRecentDayRange(String text, DateTime now) {
       : null;
   if (days == null || days <= 0) return null;
 
-  final todayStart = DateTime(now.year, now.month, now.day);
+  final todayStart = CalendarDateMath.dateOnly(now);
   return _DateRange(
     label: '最近$days天',
     start: AppTimeFormats.localDayStartOffset(todayStart, -(days - 1)),
@@ -213,7 +209,7 @@ _DateRange? _resolveCoursePeriod(String text, DateTime now) {
   if (rollingMonthRange != null) return rollingMonthRange;
   final recentDayRange = _resolveRecentDayRange(text, now);
   if (recentDayRange != null) return recentDayRange;
-  final todayStart = DateTime(now.year, now.month, now.day);
+  final todayStart = CalendarDateMath.dateOnly(now);
   final currentMonthStart = DateTime(now.year, now.month);
   if (text.contains('上个月') || text.contains('上月')) {
     return _DateRange(
@@ -486,7 +482,7 @@ _TimeLogPeriod? _resolveTimeLogPeriod(String text, DateTime now) {
       );
     }
   }
-  final todayStart = DateTime(now.year, now.month, now.day);
+  final todayStart = CalendarDateMath.dateOnly(now);
   final rollingMonthRange = _resolveRollingMonthRange(text, now);
   if (rollingMonthRange != null) {
     return _TimeLogPeriod(
@@ -1077,11 +1073,7 @@ List<CountdownItem> _scopeCountdownsByTime(
   final period = _resolveCountdownPeriod(message, nowValue);
   if (period == null) return active;
   return active.where((c) {
-    final target = DateTime(
-      c.targetDate.year,
-      c.targetDate.month,
-      c.targetDate.day,
-    );
+    final target = CalendarDateMath.dateOnly(c.targetDate);
     return !target.isBefore(period.start) && target.isBefore(period.end);
   }).toList();
 }
@@ -1094,7 +1086,7 @@ _DateRange? _resolveCountdownPeriod(String text, DateTime now) {
   final recentDayRange = _resolveRecentDayRange(text, now);
   if (recentDayRange != null) return recentDayRange;
 
-  final todayStart = DateTime(now.year, now.month, now.day);
+  final todayStart = CalendarDateMath.dateOnly(now);
   if (text.contains('今天') || text.contains('今日')) {
     return _DateRange(
       label: '今日',

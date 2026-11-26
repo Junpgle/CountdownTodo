@@ -166,7 +166,7 @@ class TodoOverdueTriageService {
     int minutes = 45,
   }) async {
     final now = clock();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
 
     final todayQuery = PlanAvailabilityQuery(
       username: username,

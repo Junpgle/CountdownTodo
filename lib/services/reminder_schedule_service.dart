@@ -9,6 +9,7 @@ import 'item_semantics_service.dart';
 import 'notification_service.dart';
 import 'scheduled_reminder_registry.dart';
 import 'storage/user_session_storage.dart';
+import '../utils/calendar_date_math.dart';
 
 /// 保活提醒调度服务
 ///
@@ -145,7 +146,7 @@ class ReminderScheduleService {
       DateTime? dateOnlyDayStart;
       if (t.isDateOnly) {
         final date = t.effectiveStartTime;
-        dateOnlyDayStart = DateTime(date.year, date.month, date.day);
+        dateOnlyDayStart = CalendarDateMath.dateOnly(date);
         refTime = DateTime(date.year, date.month, date.day, 23, 59);
       } else if (t.createdDate != null && t.createdDate! > 0) {
         refTime = AppTimeFormats.localFromServerTimestamp(t.createdDate!);

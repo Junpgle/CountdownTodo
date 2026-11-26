@@ -1,5 +1,6 @@
 import '../models.dart';
 import '../utils/time_utils.dart';
+import '../utils/calendar_date_math.dart';
 
 enum TodoTrashPurgeScope { item, series, recycleBin }
 
@@ -164,7 +165,7 @@ class TodoTrashPurgeService {
     for (final item in items) {
       final timestamp = item.createdDate ?? item.createdAt;
       final local = AppTimeFormats.localFromServerTimestamp(timestamp);
-      final day = DateTime(local.year, local.month, local.day);
+      final day = CalendarDateMath.dateOnly(local);
       final key = '${day.year}-${day.month}-${day.day}';
       byDay.putIfAbsent(key, () => []).add(item);
       dates.add(day);

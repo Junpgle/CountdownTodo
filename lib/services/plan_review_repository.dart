@@ -331,7 +331,7 @@ class PlanReviewRepository {
     final identity = await PlanTodoIdentity.capture(username);
     final db = await _database(username);
     final instant = now;
-    final start = DateTime(instant.year, instant.month, instant.day);
+    final start = CalendarDateMath.dateOnly(instant);
     final end = DateTime(start.year, start.month, start.day + 1);
     final result = await db.transaction((tx) async {
       final sql = await _sql(tx, start, end, instant, schemaOwner: db);
@@ -374,7 +374,7 @@ class PlanReviewRepository {
     final identity = await PlanTodoIdentity.capture(username);
     final db = await _database(username);
     final instant = now;
-    final start = DateTime(instant.year, instant.month, instant.day);
+    final start = CalendarDateMath.dateOnly(instant);
     final end = DateTime(start.year, start.month, start.day + 1);
     final result = await db.transaction((tx) async {
       final sql = await _sql(

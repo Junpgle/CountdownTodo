@@ -419,7 +419,7 @@ String? _writeProposalSemanticIssue(
       if (rawRecurrenceEnd != null &&
           dueDate != null &&
           _parseStrictLocalDateTime(rawRecurrenceEnd)!
-              .isBefore(DateTime(dueDate.year, dueDate.month, dueDate.day))) {
+              .isBefore(CalendarDateMath.dateOnly(dueDate))) {
         return 'recurrenceEndDate不能早于待办周期锚点';
       }
       final hasRemarkedMonth = RegExp(

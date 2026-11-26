@@ -8,6 +8,7 @@ import '../models/plan_availability.dart';
 import 'conflict_visibility_service.dart';
 import 'pomodoro_service.dart';
 import 'storage/storage_key_scope.dart';
+import '../utils/calendar_date_math.dart';
 
 /// Identity travels with a read/draft, including the independent team member.
 class PlanTodoIdentity {
@@ -176,8 +177,8 @@ class PlanTodoGuard {
   ) async {
     await validate(db, context.identity, context.todoId);
     final todo = await read(db, context.identity, context.todoId);
-    final day = DateTime(start.year, start.month, start.day);
-    if (day.isBefore(DateTime(now.year, now.month, now.day)) ||
+    final day = CalendarDateMath.dateOnly(start);
+    if (day.isBefore(CalendarDateMath.dateOnly(now)) ||
         (todo.dueDate != null && todo.dueDate!.isBefore(day))) {
       throw const PlanAvailabilityException('目标日期或待办截止已变化，请查看待办');
     }

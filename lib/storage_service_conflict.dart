@@ -724,12 +724,8 @@ mixin _StorageConflict on _StorageServiceBase {
     final candidateStart = AppTimeFormats.localFromServerTimestamp(
       candidateStartMs,
     );
-    final ruleDay = DateTime(ruleStart.year, ruleStart.month, ruleStart.day);
-    final candidateDay = DateTime(
-      candidateStart.year,
-      candidateStart.month,
-      candidateStart.day,
-    );
+    final ruleDay = CalendarDateMath.dateOnly(ruleStart);
+    final candidateDay = CalendarDateMath.dateOnly(candidateStart);
     if (ruleSource.recurrence == RecurrenceType.weekdays &&
         (candidateDay.weekday == DateTime.saturday ||
             candidateDay.weekday == DateTime.sunday)) {
@@ -737,11 +733,7 @@ mixin _StorageConflict on _StorageServiceBase {
     }
     final recurrenceEnd = ruleSource.recurrenceEndDate;
     if (recurrenceEnd != null) {
-      final endDay = DateTime(
-        recurrenceEnd.year,
-        recurrenceEnd.month,
-        recurrenceEnd.day,
-      );
+      final endDay = CalendarDateMath.dateOnly(recurrenceEnd);
       if (candidateDay.isAfter(endDay)) return false;
     }
     if (candidateDay == ruleDay) return true;
@@ -751,7 +743,7 @@ mixin _StorageConflict on _StorageServiceBase {
     for (var i = 0; i < 500; i++) {
       final next = _nextRecurrenceDate(cursor, ruleSource);
       if (next == null || !next.isAfter(cursor)) return false;
-      final nextDay = DateTime(next.year, next.month, next.day);
+      final nextDay = CalendarDateMath.dateOnly(next);
       if (nextDay == target) return true;
       if (nextDay.isAfter(target)) return false;
       cursor = next;

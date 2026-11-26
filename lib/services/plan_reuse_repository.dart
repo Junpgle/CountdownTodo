@@ -6,6 +6,7 @@ import 'database_helper.dart';
 import 'plan_todo_guard.dart';
 import 'conflict_visibility_service.dart';
 import 'plan_settings_compatibility.dart';
+import '../utils/calendar_date_math.dart';
 
 /// Settings only: never carries the source plan's mutable execution metadata.
 class PlanReuseSettings {
@@ -132,8 +133,8 @@ class PlanReuseRepository {
       }
       final now = clock?.call() ?? DateTime.now();
       final original = DateTime.fromMillisecondsSinceEpoch(start);
-      final today = DateTime(now.year, now.month, now.day);
-      final sourceDay = DateTime(original.year, original.month, original.day);
+      final today = CalendarDateMath.dateOnly(now);
+      final sourceDay = CalendarDateMath.dateOnly(original);
       final day = sourceDay.isBefore(today) ? today : sourceDay;
       var tentative = DateTime(
         day.year,

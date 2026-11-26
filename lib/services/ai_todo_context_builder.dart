@@ -7,6 +7,7 @@ import 'ai_team_binding_resolver.dart';
 import 'chat_storage_service.dart';
 import 'pomodoro_service.dart';
 import 'ai_settings_navigation_service.dart';
+import '../utils/calendar_date_math.dart';
 
 part 'ai_context/ai_todo_context_prompts.dart';
 part 'ai_context/ai_todo_context_injection.dart';

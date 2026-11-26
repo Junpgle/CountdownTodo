@@ -2,6 +2,7 @@ import '../models.dart';
 import 'item_semantics_service.dart';
 import '../utils/text_utils.dart';
 import '../utils/time_utils.dart';
+import '../utils/calendar_date_math.dart';
 
 /// Normalizes recognition results before they enter the current TodoItem protocol.
 ///
@@ -118,7 +119,7 @@ class RecognizedTodoAdapter {
       final sourceDate =
           start ?? due ?? (shouldPromoteSpecial ? effectiveNow : null);
       if (sourceDate != null) {
-        final day = DateTime(sourceDate.year, sourceDate.month, sourceDate.day);
+        final day = CalendarDateMath.dateOnly(sourceDate);
         result['startTime'] = day.toIso8601String();
         result['endTime'] = DateTime(
           sourceDate.year,

@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'utils/analysis_image_cleanup.dart';
 import 'utils/json_value_parser.dart';
 import 'utils/time_utils.dart';
+import 'utils/calendar_date_math.dart';
 
 // ==========================================
 // 0. 时间轴相关 (Timeline)
@@ -417,7 +418,7 @@ class TodoItem {
       final source = selectedDate ?? dueDate;
       if (source == null) return (start: null, due: null);
       return (
-        start: DateTime(source.year, source.month, source.day),
+        start: CalendarDateMath.dateOnly(source),
         due: DateTime(source.year, source.month, source.day, 23, 59),
       );
     }

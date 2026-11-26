@@ -1,5 +1,6 @@
 import '../models.dart';
 import '../utils/time_utils.dart';
+import '../utils/calendar_date_math.dart';
 
 // 新增：文本切片类型，方便 UI 高亮显示
 enum SegmentType { text, time, location, recurrence, duration }
@@ -416,7 +417,7 @@ class TodoParserService {
     }
 
     // ================= 组合与计算结果 =================
-    DateTime baseDate = parsedDate ?? DateTime(now.year, now.month, now.day);
+    DateTime baseDate = parsedDate ?? CalendarDateMath.dateOnly(now);
 
     if (hasTimeInfo) {
       if (timeRangeMatch != null) {
@@ -448,7 +449,7 @@ class TodoParserService {
         int sM = int.tryParse(singleTimeMatch.namedGroup('sm') ?? '') ?? 0;
         sH = _adjustHour(p1, sH);
         endTime = DateTime(baseDate.year, baseDate.month, baseDate.day, sH, sM);
-        startTime = DateTime(baseDate.year, baseDate.month, baseDate.day);
+        startTime = CalendarDateMath.dateOnly(baseDate);
       }
     } else if (parsedDate != null) {
       isAllDay = true;

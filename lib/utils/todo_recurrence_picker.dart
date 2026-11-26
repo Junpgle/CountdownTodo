@@ -1,5 +1,6 @@
 import '../models.dart';
 import 'time_utils.dart';
+import 'calendar_date_math.dart';
 
 /// 将任务选择器中的同系列循环实例折叠为一个真实实例。
 ///
@@ -19,7 +20,7 @@ List<TodoItem> collapseRecurrenceSeriesForTodoPicker(
   }
 
   final todaySource = (now ?? DateTime.now()).toLocal();
-  final today = DateTime(todaySource.year, todaySource.month, todaySource.day);
+  final today = CalendarDateMath.dateOnly(todaySource);
   final representativeIds = <String, String>{};
   for (final entry in occurrencesBySeries.entries) {
     final preferred = entry.value.cast<TodoItem?>().firstWhere(
@@ -135,5 +136,5 @@ int _todoStartMs(TodoItem todo) => todo.createdDate ?? todo.createdAt;
 
 DateTime _startDay(TodoItem todo) {
   final start = AppTimeFormats.localFromServerTimestamp(_todoStartMs(todo));
-  return DateTime(start.year, start.month, start.day);
+  return CalendarDateMath.dateOnly(start);
 }

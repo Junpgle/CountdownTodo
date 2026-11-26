@@ -10,6 +10,7 @@ import '../utils/digest_utils.dart';
 import 'conflict_visibility_service.dart';
 import 'database_helper.dart';
 import 'plan_todo_guard.dart';
+import '../utils/calendar_date_math.dart';
 
 class PlanBacklogRow {
   factory PlanBacklogRow(Map<String, Object?> row, bool paused) {
@@ -116,7 +117,7 @@ class PlanBacklogRepository {
         databaseOverride ??
         await DatabaseHelper.instance.databaseForUser(username);
     final instant = now;
-    final day = DateTime(target.year, target.month, target.day);
+    final day = CalendarDateMath.dateOnly(target);
     final tomorrow = DateTime(day.year, day.month, day.day + 1);
     final midnight = DateTime(instant.year, instant.month, instant.day + 1);
     final ms = instant.millisecondsSinceEpoch;
@@ -249,11 +250,7 @@ class PlanBacklogRepository {
                 boundariesRow.single['boundary'],
                 count.single['legacy_boundary'],
                 run?.toJson(),
-                DateTime(
-                  instant.year,
-                  instant.month,
-                  instant.day,
-                ).millisecondsSinceEpoch,
+                CalendarDateMath.dateOnly(instant).millisecondsSinceEpoch,
               ]),
             ),
           )

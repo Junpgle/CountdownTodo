@@ -174,20 +174,20 @@ mixin _StorageTodoQueries on _StorageServiceBase {
 
     if (todo.dueDate != null) {
       final due = todo.dueDate!;
-      final dueDay = DateTime(due.year, due.month, due.day);
+      final dueDay = CalendarDateMath.dateOnly(due);
       return dueDay.isBefore(today);
     }
 
     final created = AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
     );
-    final createdDay = DateTime(created.year, created.month, created.day);
+    final createdDay = CalendarDateMath.dateOnly(created);
     return createdDay.isBefore(today);
   }
 
   Future<int> clearHistoricalTodos(String username) async {
     final todayNow = DateTime.now();
-    final today = DateTime(todayNow.year, todayNow.month, todayNow.day);
+    final today = CalendarDateMath.dateOnly(todayNow);
     final allTodos = await getTodos(username, includeDeleted: true);
     final historicalIds = allTodos
         .where((todo) => _isHistoricalTodo(todo, today))

@@ -18,6 +18,7 @@ import 'minor_mode_service.dart';
 import 'pomodoro_service.dart';
 import 'storage/storage_key_scope.dart';
 import '../utils/text_utils.dart';
+import '../utils/calendar_date_math.dart';
 
 enum DailyAiSuggestionPriority { high, medium, low }
 
@@ -449,7 +450,7 @@ class DailyAiSuggestionService {
         .toList();
     if (activeGoals.isEmpty) return '';
     final rules = await HabitRepository.getRules();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     final lines = <String>[];
     for (final goal in activeGoals) {
       final goalRules = rules.where((r) => r.habitUuid == goal.uuid).toList();
@@ -828,7 +829,7 @@ class DailyAiSuggestionService {
     DailyAiSuggestionContextConfig contextConfig =
         const DailyAiSuggestionContextConfig(),
   }) {
-    final todayStart = DateTime(now.year, now.month, now.day);
+    final todayStart = CalendarDateMath.dateOnly(now);
     final yesterdayStart = todayStart.subtract(const Duration(days: 1));
     final tomorrowStart = todayStart.add(const Duration(days: 1));
     final yesterdayStartMs = yesterdayStart.millisecondsSinceEpoch;
@@ -899,11 +900,7 @@ class DailyAiSuggestionService {
 
     final upcomingCountdowns = countdowns.where((c) {
       if (c.isDeleted) return false;
-      final target = DateTime(
-        c.targetDate.year,
-        c.targetDate.month,
-        c.targetDate.day,
-      );
+      final target = CalendarDateMath.dateOnly(c.targetDate);
       final diffDays = target.difference(todayStart).inDays;
       return diffDays >= 0 && diffDays <= 14;
     }).toList()..sort((a, b) => a.targetDate.compareTo(b.targetDate));
@@ -1115,11 +1112,7 @@ class DailyAiSuggestionService {
     if (upcomingCountdowns.isNotEmpty) {
       buffer.writeln('【近期重要倒数日（14天内）】');
       for (final item in upcomingCountdowns.take(5)) {
-        final target = DateTime(
-          item.targetDate.year,
-          item.targetDate.month,
-          item.targetDate.day,
-        );
+        final target = CalendarDateMath.dateOnly(item.targetDate);
         final daysLeft = target.difference(todayStart).inDays;
         buffer.writeln(
           '- ${item.title}（${daysLeft == 0 ? '就是今天' : '还有$daysLeft天'}）',

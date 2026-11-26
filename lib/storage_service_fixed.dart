@@ -594,8 +594,8 @@ mixin _StorageFixed on _StorageServiceBase {
   }) async {
     final localFrom = from.toLocal();
     final localTo = to.toLocal();
-    final startDate = DateTime(localFrom.year, localFrom.month, localFrom.day);
-    final endDate = DateTime(localTo.year, localTo.month, localTo.day);
+    final startDate = CalendarDateMath.dateOnly(localFrom);
+    final endDate = CalendarDateMath.dateOnly(localTo);
     if (!endDate.isAfter(startDate)) return const [];
 
     final dateFormat = time_utils.AppTimeFormats.dateFormatter('yyyy-MM-dd');
@@ -1139,11 +1139,7 @@ mixin _StorageFixed on _StorageServiceBase {
     String username,
     DateTime day,
   ) async {
-    final startOfDay = DateTime(
-      day.year,
-      day.month,
-      day.day,
-    ).millisecondsSinceEpoch;
+    final startOfDay = CalendarDateMath.dateOnly(day).millisecondsSinceEpoch;
     final endOfDay = DateTime(
       day.year,
       day.month,

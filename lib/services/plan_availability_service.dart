@@ -1,6 +1,7 @@
 import '../models.dart';
 import '../models/plan_availability.dart';
 import '../models/plan_weekly_availability.dart';
+import '../utils/calendar_date_math.dart';
 
 /// Pure interval calculation. Neither recommendations nor adoption write data.
 abstract final class PlanAvailabilityService {
@@ -92,7 +93,7 @@ abstract final class PlanAvailabilityService {
         return error.message;
       }
     }
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     if (query.dayStart.isBefore(today)) return '所选日期已过去，请选择今天或之后的日期';
     return null;
   }

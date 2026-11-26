@@ -16,6 +16,7 @@ import 'chat_storage_service.dart';
 import 'database_helper.dart';
 import '../utils/time_utils.dart';
 import '../utils/text_utils.dart';
+import '../utils/calendar_date_math.dart';
 
 final RegExp _searchMessagePreviewWhitespacePattern = RegExp(r'\s+');
 
@@ -235,7 +236,7 @@ abstract final class GlobalSearchExtraService {
     try {
       final transactionFrom = date == null
           ? null
-          : DateTime(date.year, date.month, date.day);
+          : CalendarDateMath.dateOnly(date);
       final transactionTo = transactionFrom == null
           ? null
           : DateTime(

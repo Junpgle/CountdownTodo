@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../utils/json_value_parser.dart';
+import '../utils/calendar_date_math.dart';
 
 enum MinorModeSource {
   androidSystem,
@@ -66,12 +67,8 @@ extension MinorAgeBandSystemMapping on MinorAgeBand {
 
   static MinorAgeBand fromBirthDate(DateTime birthDate, {DateTime? today}) {
     final currentDate = today ?? DateTime.now();
-    final current = DateTime(
-      currentDate.year,
-      currentDate.month,
-      currentDate.day,
-    );
-    final date = DateTime(birthDate.year, birthDate.month, birthDate.day);
+    final current = CalendarDateMath.dateOnly(currentDate);
+    final date = CalendarDateMath.dateOnly(birthDate);
     if (date.isAfter(current)) return MinorAgeBand.unknown;
 
     var age = current.year - date.year;

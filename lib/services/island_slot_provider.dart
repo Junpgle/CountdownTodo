@@ -132,7 +132,7 @@ class IslandSlotProvider {
     final username = await StorageService.getLoginSession() ?? 'default';
     final todos = await StorageService.getTodos(username);
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
 
     TodoItem? selectedTodo;
     DateTime? selectedDueDay;
@@ -143,7 +143,7 @@ class IslandSlotProvider {
       final dueDate = todo.dueDate;
       final dueDay = dueDate == null
           ? null
-          : DateTime(dueDate.year, dueDate.month, dueDate.day);
+          : CalendarDateMath.dateOnly(dueDate);
       final urgency = dueDay == null
           ? 3
           : dueDay.isBefore(today)
@@ -289,12 +289,12 @@ class IslandSlotProvider {
       }
     }
 
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     if (courseDate == null) {
       return fallbackTomorrow ? '明天' : '今天';
     }
 
-    final day = DateTime(courseDate.year, courseDate.month, courseDate.day);
+    final day = CalendarDateMath.dateOnly(courseDate);
     final diff = CalendarDateMath.daysBetween(today, day);
     if (diff <= 0) return '今天';
     if (diff == 1) return '明天';

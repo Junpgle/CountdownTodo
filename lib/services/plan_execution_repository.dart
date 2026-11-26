@@ -7,6 +7,7 @@ import '../models.dart';
 import '../storage_service.dart';
 import 'database_helper.dart';
 import 'pomodoro_service.dart';
+import '../utils/calendar_date_math.dart';
 
 class PlanExecutionData {
   const PlanExecutionData({required this.records, required this.logs});
@@ -53,11 +54,7 @@ class PlanExecutionRepository {
     final db =
         databaseOverride ??
         await DatabaseHelper.instance.databaseForUser(username);
-    final start = DateTime(
-      date.year,
-      date.month,
-      date.day,
-    ).millisecondsSinceEpoch;
+    final start = CalendarDateMath.dateOnly(date).millisecondsSinceEpoch;
     final end = DateTime(
       date.year,
       date.month,

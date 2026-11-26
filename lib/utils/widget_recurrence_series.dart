@@ -2,6 +2,7 @@ import '../models.dart';
 import '../models/widget_snapshot.dart';
 import '../services/todo_recurrence_date_service.dart';
 import 'time_utils.dart';
+import 'calendar_date_math.dart';
 
 const int _pastOccurrenceLimit = 8;
 const int _futureOccurrenceLimit = 40;
@@ -90,7 +91,7 @@ _WidgetRecurrenceSeriesAnalysis _analyzeSeriesOccurrences(
   List<TodoItem> occurrences,
   DateTime now,
 ) {
-  final today = DateTime(now.year, now.month, now.day);
+  final today = CalendarDateMath.dateOnly(now);
   TodoItem? firstToday;
   TodoItem? firstUndoneToday;
   TodoItem? firstRule;

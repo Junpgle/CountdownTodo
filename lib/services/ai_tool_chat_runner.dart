@@ -14,6 +14,7 @@ import 'ai_settings_navigation_service.dart';
 import 'ai_todo_context_builder.dart';
 import 'ai_tool_chat/ai_cdt_action_labels.dart';
 import '../utils/json_value_parser.dart';
+import '../utils/calendar_date_math.dart';
 
 part 'ai_tool_chat/ai_tool_chat_runner_loop.dart';
 part 'ai_tool_chat/ai_tool_chat_runner_legacy.dart';

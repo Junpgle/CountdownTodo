@@ -12,6 +12,7 @@ import 'plan_availability_preferences.dart';
 import 'plan_availability_repository.dart';
 import 'plan_availability_service.dart';
 import 'pomodoro_service.dart';
+import '../utils/calendar_date_math.dart';
 
 class PlanConflictOverlap {
   const PlanConflictOverlap(this.source, this.start, this.end);
@@ -112,7 +113,7 @@ class PlanConflictReviewService {
     required DateTime now,
     bool appOnly = false,
   }) {
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     final todos = {for (final todo in data.todos) todo.id: todo};
     final byId = {for (final block in data.blocks) block.id: block};
     final entries = <PlanConflictEntry>[];

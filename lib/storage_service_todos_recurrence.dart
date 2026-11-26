@@ -89,12 +89,8 @@ mixin _StorageTodoRecurrence on _StorageServiceBase {
         if (!processedSeriesIds.add(seriesId)) continue;
 
         final DateTime baseLocal = _getRecurrenceBaseDate(todo);
-        final DateTime baseDay = DateTime(
-          baseLocal.year,
-          baseLocal.month,
-          baseLocal.day,
-        );
-        final DateTime todayDay = DateTime(today.year, today.month, today.day);
+        final DateTime baseDay = CalendarDateMath.dateOnly(baseLocal);
+        final DateTime todayDay = CalendarDateMath.dateOnly(today);
         final rollOffsets = _recurrenceRollOffsets(todo, baseDay, todayDay);
         final recurrence = todo.recurrence;
         final recurrenceEndDay = todo.recurrenceEndDate == null
@@ -271,7 +267,7 @@ mixin _StorageTodoRecurrence on _StorageServiceBase {
     var targetDay = todayDay;
     if (todo.recurrenceEndDate != null) {
       final end = todo.recurrenceEndDate!;
-      final endDay = DateTime(end.year, end.month, end.day);
+      final endDay = CalendarDateMath.dateOnly(end);
       if (endDay.isBefore(targetDay)) targetDay = endDay;
     }
     if (!targetDay.isAfter(baseDay)) return const [];
@@ -547,14 +543,10 @@ mixin _StorageTodoRecurrence on _StorageServiceBase {
   }
 
   List<int> _futureRecurrenceRollOffsets(TodoItem todo, DateTime baseLocal) {
-    final baseDay = DateTime(baseLocal.year, baseLocal.month, baseLocal.day);
+    final baseDay = CalendarDateMath.dateOnly(baseLocal);
     final recurrenceEnd = todo.recurrenceEndDate;
     if (recurrenceEnd != null) {
-      final endDay = DateTime(
-        recurrenceEnd.year,
-        recurrenceEnd.month,
-        recurrenceEnd.day,
-      );
+      final endDay = CalendarDateMath.dateOnly(recurrenceEnd);
       return _recurrenceRollOffsets(todo, baseDay, endDay);
     }
 
@@ -680,7 +672,7 @@ mixin _StorageTodoRecurrence on _StorageServiceBase {
       final startMs = occurrence.createdDate ?? occurrence.createdAt;
       if (startMs > throughStartMs) continue;
       final start = AppTimeFormats.localFromServerTimestamp(startMs);
-      final day = DateTime(start.year, start.month, start.day);
+      final day = CalendarDateMath.dateOnly(start);
       knownByDay['${day.year}-${day.month}-${day.day}'] = day;
     }
 
@@ -688,7 +680,7 @@ mixin _StorageTodoRecurrence on _StorageServiceBase {
     if (knownDays.length < 2) return const [];
 
     final copyBase = _getRecurrenceBaseDate(copySource);
-    final copyBaseDay = DateTime(copyBase.year, copyBase.month, copyBase.day);
+    final copyBaseDay = CalendarDateMath.dateOnly(copyBase);
     final repaired = <TodoItem>[];
     for (var index = 0; index < knownDays.length - 1; index++) {
       final previousDay = knownDays[index];
@@ -820,11 +812,7 @@ mixin _StorageTodoRecurrence on _StorageServiceBase {
     required DateTime recurrenceEndDate,
     Set<String>? changedIds,
   }) {
-    final endDay = DateTime(
-      recurrenceEndDate.year,
-      recurrenceEndDate.month,
-      recurrenceEndDate.day,
-    );
+    final endDay = CalendarDateMath.dateOnly(recurrenceEndDate);
     var changed = false;
     for (final occurrence in todos) {
       if (occurrence.isDeleted || occurrence.recurrenceSeriesId != seriesId) {
@@ -832,7 +820,7 @@ mixin _StorageTodoRecurrence on _StorageServiceBase {
       }
       final startMs = occurrence.createdDate ?? occurrence.createdAt;
       final start = AppTimeFormats.localFromServerTimestamp(startMs);
-      final startDay = DateTime(start.year, start.month, start.day);
+      final startDay = CalendarDateMath.dateOnly(start);
       if (!startDay.isAfter(endDay)) continue;
 
       occurrence.isDeleted = true;
@@ -879,7 +867,7 @@ mixin _StorageTodoRecurrence on _StorageServiceBase {
     final rulesBySeries = _recurrenceBoundaryRulesBySeries(todos);
     final changedIds = <String>{};
     final now = DateTime.now();
-    final todayDay = DateTime(now.year, now.month, now.day);
+    final todayDay = CalendarDateMath.dateOnly(now);
     final rulesToPrune = rulesBySeries.entries
         .where((entry) => entry.value.recurrenceEndDate != null)
         .toList(growable: false);
@@ -898,11 +886,7 @@ mixin _StorageTodoRecurrence on _StorageServiceBase {
       final rule = entry.value;
       final recurrenceEndDate = rule.recurrenceEndDate;
       if (recurrenceEndDate == null) continue;
-      final endDay = DateTime(
-        recurrenceEndDate.year,
-        recurrenceEndDate.month,
-        recurrenceEndDate.day,
-      );
+      final endDay = CalendarDateMath.dateOnly(recurrenceEndDate);
 
       if (todayDay.isAfter(endDay) && rule.recurrence != RecurrenceType.none) {
         rule.recurrence = RecurrenceType.none;

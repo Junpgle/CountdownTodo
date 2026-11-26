@@ -276,8 +276,8 @@ class WidgetService {
   static String _getDueDateLabel(DateTime? dueDate, {DateTime? now}) {
     if (dueDate == null) return '';
     final instant = now ?? DateTime.now();
-    final today = DateTime(instant.year, instant.month, instant.day);
-    final dueDay = DateTime(dueDate.year, dueDate.month, dueDate.day);
+    final today = CalendarDateMath.dateOnly(instant);
+    final dueDay = CalendarDateMath.dateOnly(dueDate);
     final diffDays = CalendarDateMath.daysBetween(today, dueDay);
     if (diffDays < 0) {
       return '已逾期';
@@ -297,7 +297,7 @@ class WidgetService {
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isMacOS) return;
     if (_widgetUpdateDisabled) return;
     DateTime now = DateTime.now();
-    DateTime today = DateTime(now.year, now.month, now.day);
+    DateTime today = CalendarDateMath.dateOnly(now);
     final tomorrow = DateTime(today.year, today.month, today.day + 1);
     final courseRangeEnd = DateTime(today.year, today.month, today.day + 15);
     final courseDateFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd');
@@ -388,7 +388,7 @@ class WidgetService {
           if (item.title.trim().isEmpty) return false;
           final date = DateTime.tryParse(item.date)?.toLocal();
           if (date == null) return false;
-          final day = DateTime(date.year, date.month, date.day);
+          final day = CalendarDateMath.dateOnly(date);
           if (day.isBefore(today) || !day.isBefore(scheduleLimit)) {
             return false;
           }
@@ -1019,7 +1019,7 @@ class WidgetService {
     Map<String, dynamic> input,
   ) {
     final now = DateTime.fromMillisecondsSinceEpoch(input['now'] as int);
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     final List<Map<String, dynamic>> allTodos = (input['todos'] as List)
         .cast<Map<String, dynamic>>();
     final List<Map<String, dynamic>> allCourses = (input['courses'] as List)
@@ -1074,7 +1074,7 @@ class WidgetService {
       final dueDateMs = t['dueDate'] as int?;
       if (dueDateMs != null) {
         final d = DateTime.fromMillisecondsSinceEpoch(dueDateMs);
-        final dDay = DateTime(d.year, d.month, d.day);
+        final dDay = CalendarDateMath.dateOnly(d);
         if (dDay.isBefore(today)) {
           keepMostUrgent(pastTodos, t);
         } else if (dDay.isAfter(today)) {
@@ -1108,8 +1108,7 @@ class WidgetService {
         dueDate = DateTime.fromMillisecondsSinceEpoch(dueDateMs);
       }
       final isDueToday =
-          dueDate == null ||
-          !DateTime(dueDate.year, dueDate.month, dueDate.day).isAfter(today);
+          dueDate == null || !CalendarDateMath.dateOnly(dueDate).isAfter(today);
       if (isDueToday) title = '<b>$title</b>';
       resultData['todo_${i + 1}'] = title;
       resultData['todo_${i + 1}_done'] = todo['isDone'] as bool? ?? false;

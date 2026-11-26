@@ -1,5 +1,6 @@
 import '../models.dart';
 import 'plan_weekly_availability.dart';
+import '../utils/calendar_date_math.dart';
 
 enum PlanBusySource {
   course,
@@ -124,7 +125,7 @@ class PlanAvailabilityQuery {
     busy.start.subtract(Duration(minutes: bufferAfter)),
     busy.end.add(Duration(minutes: bufferBefore)),
   );
-  DateTime get dayStart => DateTime(date.year, date.month, date.day);
+  DateTime get dayStart => CalendarDateMath.dateOnly(date);
   DateTime get dayEnd => DateTime(date.year, date.month, date.day + 1);
 }
 

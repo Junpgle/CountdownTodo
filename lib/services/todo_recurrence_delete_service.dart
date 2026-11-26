@@ -230,8 +230,7 @@ abstract final class TodoRecurrenceDeleteService {
     if (next == null) return false;
     final end = rule.recurrenceEndDate;
     if (end == null) return true;
-    return !_dateOnlyEpoch(end)
-        .isBefore(DateTime(next.year, next.month, next.day));
+    return !_dateOnlyEpoch(end).isBefore(CalendarDateMath.dateOnly(next));
   }
 
   static int _compareOccurrences(TodoItem left, TodoItem right) {

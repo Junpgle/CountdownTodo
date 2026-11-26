@@ -4,6 +4,7 @@ import 'course_service.dart';
 import 'device_calendar_read_service.dart';
 import 'plan_review_repository.dart';
 import 'plan_todo_guard.dart';
+import '../utils/calendar_date_math.dart';
 
 enum HomeAgendaSource { plans, courses, fixed, calendar }
 
@@ -106,7 +107,7 @@ class HomeAgendaSnapshot {
         final due = todo.dueDate!.toLocal();
         final allDay = todo.isAllDayTask;
         final start = allDay
-            ? DateTime(due.year, due.month, due.day)
+            ? CalendarDateMath.dateOnly(due)
             : DateTime.fromMillisecondsSinceEpoch(
                 todo.createdDate ?? todo.createdAt,
               );
@@ -374,7 +375,7 @@ class HomeAgendaRepository {
     String? planningError,
   }) async {
     final identity = await PlanTodoIdentity.capture(username);
-    final day = DateTime(now.year, now.month, now.day);
+    final day = CalendarDateMath.dateOnly(now);
     final end = DateTime(day.year, day.month, day.day + 1);
     final canReuse =
         previous?.day == day &&
@@ -445,12 +446,11 @@ class HomeAgendaRepository {
                   ),
                   allDay: f.startTime == null,
                   completed: f.status == FixedScheduleStatus.finished,
-                  detail: [
-                    f.location?.trim(),
-                    f.remark?.trim(),
-                  ].whereType<String>().where((s) => s.isNotEmpty).toSet().join(
-                    ' · ',
-                  ),
+                  detail: [f.location?.trim(), f.remark?.trim()]
+                      .whereType<String>()
+                      .where((s) => s.isNotEmpty)
+                      .toSet()
+                      .join(' · '),
                   fixed: f,
                 ),
               )

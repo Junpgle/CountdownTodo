@@ -1,5 +1,6 @@
 import '../models.dart';
 import '../utils/time_utils.dart';
+import '../utils/calendar_date_math.dart';
 
 /// Shared membership and date helpers for recurring todo edits.
 class TodoRecurrenceSeriesEditService {
@@ -42,7 +43,7 @@ class TodoRecurrenceSeriesEditService {
     required DateTime now,
   }) {
     final members = activeMembers(todos, seriesId);
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     var historical = 0;
     var current = 0;
     var future = 0;
@@ -52,7 +53,7 @@ class TodoRecurrenceSeriesEditService {
       final start = AppTimeFormats.localFromServerTimestamp(
         member.createdDate ?? member.createdAt,
       );
-      final startDay = DateTime(start.year, start.month, start.day);
+      final startDay = CalendarDateMath.dateOnly(start);
       if (startDay.isBefore(today)) {
         historical++;
       } else if (startDay.isAfter(today)) {
