@@ -482,9 +482,7 @@ Stream<AiChatStreamChunk> _runAiToolChat({
       }
     }
     if (calls.isEmpty && hasPlanningTool && !proposalsProduced) {
-      final claimsDraft = RegExp(
-        r'草案.{0,12}已生成|已(?:生成|创建|新建|保存)|我已为|回复.{0,12}确认.{0,20}保存',
-      ).hasMatch(content);
+      final claimsDraft = _rxCached24_1.hasMatch(content);
       if (_isLikelyClarification(content) && !unsupportedLegacyToolMarkup) {
         if (content.isNotEmpty) yield AiChatStreamChunk(content: content);
         return;
@@ -934,3 +932,8 @@ List<Map<String, dynamic>> _decodeCdtProposalActions(
   }
   return actions;
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached24_1 = RegExp(
+  r'草案.{0,12}已生成|已(?:生成|创建|新建|保存)|我已为|回复.{0,12}确认.{0,20}保存',
+);

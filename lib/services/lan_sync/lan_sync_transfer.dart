@@ -497,8 +497,8 @@ mixin _LanSyncTransferMixin on _LanSyncServiceBase {
       final rawName = req.uri.queryParameters['name'] ?? 'unknown_file';
       var fileName = p
           .basename(rawName)
-          .replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1F]'), '_')
-          .replaceFirst(RegExp(r'^\.+'), '');
+          .replaceAll(_rxCached32_1, '_')
+          .replaceFirst(_rxCached32_2, '');
       if (fileName.isEmpty || fileName == '.' || fileName == '..') {
         fileName = 'received_file';
       }
@@ -700,3 +700,7 @@ mixin _LanSyncTransferMixin on _LanSyncServiceBase {
     }
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached32_1 = RegExp(r'[\\/:*?"<>|\x00-\x1F]');
+final RegExp _rxCached32_2 = RegExp(r'^\.+');

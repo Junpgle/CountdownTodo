@@ -313,16 +313,9 @@ abstract final class FinanceTextParser {
       r'(\d+(?:[,.]\d+)*)(?=\s*(?:元|块钱?|人民币|CNY|RMB|[,，。；;]|$))',
       caseSensitive: false,
     ),
-    RegExp(r'(?:¥|￥)\s*(\d+(?:[,.]\d+)*)', caseSensitive: false),
-    RegExp(
-      r'(\d+(?:[,.]\d+)*)\s*(?:元|块钱?|人民币|CNY|RMB)(?![A-Za-z])',
-      caseSensitive: false,
-    ),
-    RegExp(
-      r'(?:金额|花(?:了|费)?|支出|收入|收到|退款|消费|支付|付款|付了|共|合计|实付)'
-      r'\s*[:=]?\s*(?:¥|￥)?\s*(\d+(?:[,.]\d+)*)',
-      caseSensitive: false,
-    ),
+    _rxCached6_1,
+    _rxCached6_2,
+    _rxCached6_3,
   ];
   static final RegExp _sentenceFallbackAmountPattern = RegExp(
     r'(?<![\d.])((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(?![\d.])',
@@ -1514,3 +1507,18 @@ abstract final class FinanceTextParser {
     return const [];
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached6_1 = RegExp(
+  r'(?:¥|￥)\s*(\d+(?:[,.]\d+)*)',
+  caseSensitive: false,
+);
+final RegExp _rxCached6_2 = RegExp(
+  r'(\d+(?:[,.]\d+)*)\s*(?:元|块钱?|人民币|CNY|RMB)(?![A-Za-z])',
+  caseSensitive: false,
+);
+final RegExp _rxCached6_3 = RegExp(
+  r'(?:金额|花(?:了|费)?|支出|收入|收到|退款|消费|支付|付款|付了|共|合计|实付)'
+  r'\s*[:=]?\s*(?:¥|￥)?\s*(\d+(?:[,.]\d+)*)',
+  caseSensitive: false,
+);

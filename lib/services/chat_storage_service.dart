@@ -105,14 +105,7 @@ class ChatStorageService {
   /// Removes the appended text protocol when a provider uses native tools.
   /// Older user prompts may still contain the v2 section after migration.
   static String removeCurrentTextProtocol(String prompt) {
-    return prompt
-        .replaceFirst(
-          RegExp(
-            r'(?:^|\n)【CDT 当前聊天协议 v\d+ \| CDT_CHAT_PROTOCOL_V\d+】[\s\S]*$',
-          ),
-          '',
-        )
-        .trim();
+    return prompt.replaceFirst(_rxCached26_1, '').trim();
   }
 
   static String ensureCurrentPromptProtocol(String prompt) {
@@ -677,3 +670,8 @@ class ChatStorageService {
 
   static Future<void> resetToolBudget() => setToolBudget(AiToolBudget.standard);
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached26_1 = RegExp(
+  r'(?:^|\n)【CDT 当前聊天协议 v\d+ \| CDT_CHAT_PROTOCOL_V\d+】[\s\S]*$',
+);

@@ -43,17 +43,17 @@ class ClipboardSharePayload {
       return ClipboardSharePayload.challenge(challenge);
     }
 
-    final inviteMatch = RegExp(r'邀请码\s*[:：]\s*\[([a-zA-Z0-9]+)\]')
-        .firstMatch(text);
+    final inviteMatch = _rxCached15_1.firstMatch(text);
     if (inviteMatch == null) return null;
 
-    final teamName = RegExp(r'邀请您加入「([^」]+)」团队')
-        .firstMatch(text)
-        ?.group(1)
-        ?.trim();
+    final teamName = _rxCached15_2.firstMatch(text)?.group(1)?.trim();
     return ClipboardSharePayload.teamInvite(
       inviteCode: inviteMatch.group(1)!,
       teamName: teamName == null || teamName.isEmpty ? null : teamName,
     );
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached15_1 = RegExp(r'邀请码\s*[:：]\s*\[([a-zA-Z0-9]+)\]');
+final RegExp _rxCached15_2 = RegExp(r'邀请您加入「([^」]+)」团队');

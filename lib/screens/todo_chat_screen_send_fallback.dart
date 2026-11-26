@@ -365,8 +365,7 @@ mixin _TodoChatSendFallback on _TodoChatScreenStateBase {
 
   String _appendFallbackBlocks(String fullContent, String blocks) {
     if (blocks.trim().isEmpty) return fullContent;
-    final suggestionMatch = RegExp(r'\[SUGGEST_START\][\s\S]*?\[SUGGEST_END\]')
-        .firstMatch(fullContent);
+    final suggestionMatch = _rxCached20_1.firstMatch(fullContent);
     if (suggestionMatch == null) {
       return '${fullContent.trimRight()}\n\n$blocks';
     }
@@ -984,3 +983,8 @@ mixin _TodoChatSendFallback on _TodoChatScreenStateBase {
     }
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached20_1 = RegExp(
+  r'\[SUGGEST_START\][\s\S]*?\[SUGGEST_END\]',
+);

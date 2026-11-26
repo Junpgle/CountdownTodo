@@ -920,7 +920,7 @@ class ExternalShareHandler {
       return true;
     }
 
-    final fileName = file.path.split(RegExp(r'[\\/]')).last.toLowerCase();
+    final fileName = file.path.split(_rxCached30_1).last.toLowerCase();
     final dot = fileName.lastIndexOf('.');
     if (dot >= 0 && imageExtensions.contains(fileName.substring(dot + 1))) {
       return true;
@@ -1626,3 +1626,6 @@ class _ImageRecognitionResult {
     this.usageSummary,
   });
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached30_1 = RegExp(r'[\\/]');

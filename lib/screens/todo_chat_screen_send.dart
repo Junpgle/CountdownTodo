@@ -706,7 +706,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           nativeToolMode && needsKnownHabitReferences
           ? (await HabitRepository.getGoals()).map((goal) => goal.uuid).toSet()
           : null;
-      final financeTransactionIds = RegExp(r'\[transactionId:\s*([^\]\s]+)\]')
+      final financeTransactionIds = _rxCached19_1
           .allMatches(financeContext)
           .map((match) => match.group(1)!)
           .toSet();
@@ -1024,3 +1024,6 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     }
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached19_1 = RegExp(r'\[transactionId:\s*([^\]\s]+)\]');

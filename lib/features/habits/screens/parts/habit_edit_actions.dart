@@ -256,7 +256,7 @@ extension _HabitEditActions on _HabitEditScreenState {
   HabitGoalRuleRevision _buildRule() {
     final unit = _unitController.text.trim();
     final quickValues = _quickValuesText
-        .split(RegExp(r'[,，\s]+'))
+        .split(_rxCached7_1)
         .map((e) => int.tryParse(e))
         .whereType<int>()
         .where((e) => e > 0)
@@ -446,3 +446,6 @@ extension _HabitEditActions on _HabitEditScreenState {
     }
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached7_1 = RegExp(r'[,，\s]+');

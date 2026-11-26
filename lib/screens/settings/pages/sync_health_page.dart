@@ -607,18 +607,16 @@ class _SyncHealthPageState extends State<SyncHealthPage> {
 
   String _safeErrorSummary(String input) {
     var safe = input.trim();
-    safe = safe.replaceAll(
-      RegExp(r'Bearer\s+[^\s,;]+', caseSensitive: false),
-      'Bearer [已隐藏]',
-    );
-    safe = safe.replaceAll(
-      RegExp(
-        r'(token|authorization|password|secret|api[_-]?key)\s*[:=]\s*[^\s,;]+',
-        caseSensitive: false,
-      ),
-      '[敏感信息已隐藏]',
-    );
+    safe = safe.replaceAll(_rxCached18_1, 'Bearer [已隐藏]');
+    safe = safe.replaceAll(_rxCached18_2, '[敏感信息已隐藏]');
     safe = AppTextUtils.truncate(safe, 180);
     return safe.isEmpty ? '原因未知' : safe;
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached18_1 = RegExp(r'Bearer\s+[^\s,;]+', caseSensitive: false);
+final RegExp _rxCached18_2 = RegExp(
+  r'(token|authorization|password|secret|api[_-]?key)\s*[:=]\s*[^\s,;]+',
+  caseSensitive: false,
+);

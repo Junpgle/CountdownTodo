@@ -526,7 +526,7 @@ DateTime? _todoDue(Map<String, dynamic> todo) => _parseExistingDate(
 
 bool _mapBool(Map<String, dynamic> map, String key) {
   final snakeKey = key.replaceAllMapped(
-    RegExp(r'[A-Z]'),
+    _rxCached22_1,
     (match) => '_${match.group(0)!.toLowerCase()}',
   );
   final aliases = switch (key) {
@@ -556,3 +556,6 @@ DateTime? _parseExistingDate(dynamic value) {
   if (value is num) return DateTime.fromMillisecondsSinceEpoch(value.toInt());
   return DateTime.tryParse(value.toString());
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached22_1 = RegExp(r'[A-Z]');

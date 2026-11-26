@@ -173,7 +173,10 @@ class AutoBackupPolicy {
   static String sanitizeUsernameForPath(String username) {
     final trimmed = username.trim();
     if (trimmed.isEmpty) return 'default';
-    final sanitized = trimmed.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    final sanitized = trimmed.replaceAll(_rxCached16_1, '_');
     return sanitized.isEmpty ? 'default' : sanitized;
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached16_1 = RegExp(r'[^a-zA-Z0-9._-]');

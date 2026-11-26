@@ -339,13 +339,11 @@ class _CloudChallengePickerScreenState
   }
 
   String? _periodLabelFromTag(String value) {
-    return _periodLabelFromMatch(
-      RegExp(r'^\s*(\d+)\s*(天|次)').firstMatch(value),
-    );
+    return _periodLabelFromMatch(_rxCached12_1.firstMatch(value));
   }
 
   String? _periodLabelFromText(String value) {
-    return _periodLabelFromMatch(RegExp(r'(\d+)\s*(天|次)').firstMatch(value));
+    return _periodLabelFromMatch(_rxCached12_2.firstMatch(value));
   }
 
   String? _periodLabelFromMatch(RegExpMatch? match) {
@@ -355,7 +353,7 @@ class _CloudChallengePickerScreenState
   }
 
   int _periodValue(String label) {
-    return int.tryParse(RegExp(r'\d+').firstMatch(label)?.group(0) ?? '') ?? 0;
+    return int.tryParse(_rxCached12_3.firstMatch(label)?.group(0) ?? '') ?? 0;
   }
 
   String _periodFilterKey(String label) => 'period:$label';
@@ -1005,3 +1003,8 @@ class _CloudChallengePickerScreenState
     );
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached12_1 = RegExp(r'^\s*(\d+)\s*(天|次)');
+final RegExp _rxCached12_2 = RegExp(r'(\d+)\s*(天|次)');
+final RegExp _rxCached12_3 = RegExp(r'\d+');

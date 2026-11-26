@@ -1763,7 +1763,7 @@ class _FinanceOpeningBalanceDialogState
                 decimal: true,
               ),
               inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                FilteringTextInputFormatter.allow(_rxCached3_1),
               ],
               decoration: InputDecoration(
                 labelText: '期初结余',
@@ -1816,3 +1816,6 @@ class _FinanceOpeningBalanceDialogState
     );
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached3_1 = RegExp(r'[0-9.,]');

@@ -59,7 +59,7 @@ class EnvironmentService {
     if (_isTest) return '${ApiService.aliyunTestUrl}/turnstile';
     // 生产环境跟随当前线路。选择直连时，原生平台允许访问阿里云 HTTP
     // 地址；选择中转时使用 HTTPS，避免在不可信网络中明文传输验证页面。
-    final base = ApiService.effectiveBaseUrl.replaceFirst(RegExp(r'/$'), '');
+    final base = ApiService.effectiveBaseUrl.replaceFirst(_rxCached29_1, '');
     return '$base/turnstile';
   }
 
@@ -96,3 +96,6 @@ class EnvironmentService {
   /// 环境标签名
   static String get envLabel => _isTest ? "测试版" : "正式版";
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached29_1 = RegExp(r'/$');

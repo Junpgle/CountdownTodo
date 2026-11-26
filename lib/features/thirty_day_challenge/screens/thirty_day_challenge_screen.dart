@@ -36,14 +36,14 @@ const double _welcomeTopBarFadeTail = 20.0;
 
 String _safeFileName(String value) {
   final sanitized = value
-      .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
-      .replaceAll(RegExp(r'\s+'), '_')
+      .replaceAll(_rxCached13_1, '_')
+      .replaceAll(_rxCached13_2, '_')
       .trim();
   return sanitized.isEmpty ? '我的挑战' : sanitized;
 }
 
 String _safeHashTag(String value) {
-  final sanitized = value.replaceAll(RegExp(r'\s+'), '');
+  final sanitized = value.replaceAll(_rxCached13_2, '');
   return sanitized.isEmpty ? '我的挑战' : sanitized;
 }
 
@@ -198,3 +198,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     );
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached13_1 = RegExp(r'[\\/:*?"<>|]');
+final RegExp _rxCached13_2 = RegExp(r'\s+');

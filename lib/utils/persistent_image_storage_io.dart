@@ -34,9 +34,7 @@ Future<String?> persistImageBytes(
     await imageDir.create(recursive: true);
   }
 
-  final safeName = p
-      .basename(fileName)
-      .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+  final safeName = p.basename(fileName).replaceAll(_rxCached33_1, '_');
   final uniqueName = '${DateTime.now().microsecondsSinceEpoch}_$safeName';
   final file = File(p.join(imageDir.path, uniqueName));
   await file.writeAsBytes(bytes, flush: true);
@@ -50,3 +48,6 @@ Future<void> deletePersistedImagePath(String? path) async {
     await file.delete();
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached33_1 = RegExp(r'[^A-Za-z0-9._-]');

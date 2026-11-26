@@ -34,10 +34,7 @@ mixin _DatabaseHelperInitMixin on _DatabaseHelperBase {
     }
 
     final renamedCreateSql = createSql.replaceFirst(
-      RegExp(
-        r'^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"todos"|`todos`|\[todos\]|todos)(?=\s*\()',
-        caseSensitive: false,
-      ),
+      _rxCached28_1,
       'CREATE TABLE $temporaryTable',
     );
     if (renamedCreateSql == createSql) {
@@ -45,10 +42,7 @@ mixin _DatabaseHelperInitMixin on _DatabaseHelperBase {
     }
 
     final nullableCreateSql = renamedCreateSql.replaceFirstMapped(
-      RegExp(
-        r'(\bcreated_date\b\s+INTEGER)\s+NOT\s+NULL\b',
-        caseSensitive: false,
-      ),
+      _rxCached28_2,
       (match) => match.group(1)!,
     );
     if (nullableCreateSql == renamedCreateSql) {
@@ -1175,3 +1169,13 @@ mixin _DatabaseHelperInitMixin on _DatabaseHelperBase {
     await _ensureMissingIndexes(db);
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached28_1 = RegExp(
+  r'^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"todos"|`todos`|\[todos\]|todos)(?=\s*\()',
+  caseSensitive: false,
+);
+final RegExp _rxCached28_2 = RegExp(
+  r'(\bcreated_date\b\s+INTEGER)\s+NOT\s+NULL\b',
+  caseSensitive: false,
+);

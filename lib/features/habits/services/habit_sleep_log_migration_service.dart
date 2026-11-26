@@ -815,7 +815,7 @@ abstract final class HabitSleepLogMigrationService {
       AppTimeFormats.minuteOfDay(_normalizeMinute(minute));
 
   static String _normalize(String value) =>
-      value.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+      value.toLowerCase().replaceAll(_rxCached8_1, '');
 
   static String _dateKey(DateTime date) => AppTimeFormats.date(date);
 
@@ -865,3 +865,6 @@ class _SleepSample {
     required this.gridOnly,
   });
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached8_1 = RegExp(r'\s+');

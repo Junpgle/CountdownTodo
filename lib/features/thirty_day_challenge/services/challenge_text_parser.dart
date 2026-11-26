@@ -15,11 +15,12 @@ abstract final class ChallengeTextParser {
 
   static String _normalizeLine(String line) {
     var normalized = line.replaceFirst('\uFEFF', '').trim();
-    normalized = normalized.replaceFirst(
-      RegExp(r'^(?:[-*+•·]|\d+[.)、])\s+'),
-      '',
-    );
-    normalized = normalized.replaceFirst(RegExp(r'^\[[ xX]\]\s+'), '');
+    normalized = normalized.replaceFirst(_rxCached14_1, '');
+    normalized = normalized.replaceFirst(_rxCached14_2, '');
     return normalized.trim();
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached14_1 = RegExp(r'^(?:[-*+•·]|\d+[.)、])\s+');
+final RegExp _rxCached14_2 = RegExp(r'^\[[ xX]\]\s+');

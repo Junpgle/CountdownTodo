@@ -62,7 +62,7 @@ class _DataImportPageState extends State<DataImportPage> {
     try {
       final jsonString = await readTextFile(filePath);
       if (!mounted) return;
-      final fallbackName = filePath.split(RegExp(r'[/\\]')).last;
+      final fallbackName = filePath.split(_rxCached17_1).last;
       await _loadJsonString(
         filePath: filePath,
         fileName: widget.initialFileName ?? fallbackName,
@@ -607,3 +607,6 @@ class _DataImportPageState extends State<DataImportPage> {
     );
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached17_1 = RegExp(r'[/\\]');

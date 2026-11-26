@@ -501,12 +501,9 @@ mixin _TodoChatSendManual on _TodoChatScreenStateBase {
         timeout: const Duration(seconds: 15),
       );
       title = title
-          .replaceAll(
-            RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false),
-            '',
-          )
-          .replaceAll(RegExp(r'<think>[\s\S]*$', caseSensitive: false), '')
-          .replaceAll(RegExp(r'[\r\n]+'), ' ')
+          .replaceAll(_rxCached21_1, '')
+          .replaceAll(_rxCached21_2, '')
+          .replaceAll(_rxCached21_3, ' ')
           .trim()
           .replaceAll('"', '')
           .replaceAll("'", '');
@@ -576,3 +573,11 @@ mixin _TodoChatSendManual on _TodoChatScreenStateBase {
     await Future.wait([_loadPromptSettings(), _loadDeepThinking()]);
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached21_1 = RegExp(
+  r'<think>[\s\S]*?</think>',
+  caseSensitive: false,
+);
+final RegExp _rxCached21_2 = RegExp(r'<think>[\s\S]*$', caseSensitive: false);
+final RegExp _rxCached21_3 = RegExp(r'[\r\n]+');

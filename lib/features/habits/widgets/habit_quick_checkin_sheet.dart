@@ -350,9 +350,7 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
         TextField(
           controller: _controller,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
-          ],
+          inputFormatters: [FilteringTextInputFormatter.allow(_rxCached10_1)],
           decoration: InputDecoration(
             labelText: unit.isNotEmpty ? '数量（$unit）' : '数量',
             suffixText: unit,
@@ -707,3 +705,6 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
     }
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached10_1 = RegExp(r'[\d.]');

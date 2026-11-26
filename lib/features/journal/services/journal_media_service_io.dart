@@ -296,7 +296,7 @@ class JournalMediaService {
   }
 
   _DraftFileName? _parseDraftFileName(String name) {
-    final match = RegExp(r'^([0-9a-fA-F-]{36})_(\d+)\.').firstMatch(name);
+    final match = _rxCached11_1.firstMatch(name);
     if (match == null) return null;
     return _DraftFileName(
       id: match.group(1)!,
@@ -335,3 +335,6 @@ class _DraftFileName {
 
   const _DraftFileName({required this.id, required this.sortOrder});
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached11_1 = RegExp(r'^([0-9a-fA-F-]{36})_(\d+)\.');

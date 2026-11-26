@@ -610,7 +610,7 @@ class DataExportService {
           continue;
         }
         // 跳过其他用户的数据
-        if (RegExp(r'_\w+$').hasMatch(key) && !key.endsWith(userSuffix)) {
+        if (_rxCached27_1.hasMatch(key) && !key.endsWith(userSuffix)) {
           continue;
         }
       }
@@ -625,3 +625,6 @@ class DataExportService {
     return settings;
   }
 }
+
+// Cached RegExp patterns
+final RegExp _rxCached27_1 = RegExp(r'_\w+$');
