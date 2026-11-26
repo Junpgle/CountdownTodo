@@ -47,16 +47,53 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pump(const Duration(milliseconds: 100));
 
-    final gridViews = tester.widgetList<GridView>(find.byType(GridView));
-    expect(gridViews, isNotEmpty);
-    for (final grid in gridViews) {
-      expect(grid.padding, equals(EdgeInsets.zero));
-    }
+    expect(find.byType(CustomScrollView), findsOneWidget);
+    expect(find.byType(GridView, skipOffstage: false), findsNothing);
+    expect(find.byType(SliverGrid, skipOffstage: false), findsNWidgets(2));
 
     final listViews = tester.widgetList<ListView>(find.byType(ListView));
     expect(listViews, isNotEmpty);
     for (final list in listViews) {
       expect(list.padding, equals(EdgeInsets.zero));
     }
+  });
+
+  testWidgets('屏幕时间详情在应用较多时通过 SliverList 懒加载其余应用明细', (tester) async {
+    final manyStats = List.generate(
+      8,
+      (index) => {
+        'app_name': 'App ${index + 1}',
+        'device_name': 'Mac',
+        'duration': (8 - index) * 300,
+        'category': '学习办公',
+      },
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: ScreenTimeDetailScreen(todayStats: manyStats)),
+    );
+
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is SliverList &&
+            widget.delegate is SliverChildBuilderDelegate,
+        skipOffstage: false,
+      ),
+      findsOneWidget,
+    );
+    await tester.scrollUntilVisible(
+      find.text('App 8'),
+      200,
+      scrollable: find.byWidgetPredicate(
+        (widget) =>
+            widget is Scrollable && widget.axisDirection == AxisDirection.down,
+      ),
+    );
+    expect(find.text('App 8'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

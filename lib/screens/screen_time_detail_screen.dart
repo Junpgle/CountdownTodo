@@ -569,46 +569,51 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
                   const SizedBox(width: 24),
                   Expanded(
                     flex: 5,
-                    child: SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (finalCategories.isNotEmpty) ...[
-                            _buildSectionHeader(
+                    child: CustomScrollView(
+                      slivers: [
+                        if (finalCategories.isNotEmpty) ...[
+                          SliverToBoxAdapter(
+                            child: _buildSectionHeader(
                               "$datePrefix类别分布",
                               Icons.category_rounded,
                             ),
-                            _buildCategoryGrid(
-                              finalCategories,
-                              crossAxisCount: 3,
-                              childAspectRatio: 1.1,
-                            ),
-                            const SizedBox(height: 24),
-                          ],
-                          if (topApps.isNotEmpty) ...[
-                            _buildSectionHeader(
+                          ),
+                          _buildCategorySliverGrid(
+                            finalCategories,
+                            crossAxisCount: 3,
+                            childAspectRatio: 1.1,
+                          ),
+                          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                        ],
+                        if (topApps.isNotEmpty) ...[
+                          SliverToBoxAdapter(
+                            child: _buildSectionHeader(
                               "$datePrefix最常使用",
                               Icons.dashboard_rounded,
                             ),
-                            _buildTopAppsGrid(
-                              topApps,
-                              totalDur: selectedTotal,
-                              crossAxisCount: 3,
-                              childAspectRatio: 1.1,
-                              maxItems: 6,
-                            ),
-                            const SizedBox(height: 24),
-                          ],
-                          if (topApps.length > 6) ...[
-                            _buildSectionHeader(
+                          ),
+                          _buildTopAppsSliverGrid(
+                            topApps,
+                            totalDur: selectedTotal,
+                            crossAxisCount: 3,
+                            childAspectRatio: 1.1,
+                            maxItems: 6,
+                          ),
+                          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                        ],
+                        if (topApps.length > 6) ...[
+                          SliverToBoxAdapter(
+                            child: _buildSectionHeader(
                               "其余应用明细",
                               Icons.format_list_bulleted_rounded,
                             ),
-                            _buildRestList(topApps, skipCount: 6),
-                          ],
-                          SizedBox(height: bottomContentPadding),
+                          ),
+                          _buildRestSliverList(topApps, skipCount: 6),
                         ],
-                      ),
+                        SliverToBoxAdapter(
+                          child: SizedBox(height: bottomContentPadding),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -621,23 +626,23 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
         int topCount = isTablet ? 4 : 2;
         int maxTop = 4;
 
-        return SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildFilters(
+        return CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: _buildFilters(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
                   vertical: 4,
                 ),
                 includeRange: false,
               ),
-              _buildHeroCard(selectedTotal, diff, datePrefix),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 4,
-                ),
+            ),
+            SliverToBoxAdapter(
+              child: _buildHeroCard(selectedTotal, diff, datePrefix),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+              sliver: SliverToBoxAdapter(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -647,45 +652,71 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
                     ),
                     _buildChartCard(height: 200),
                     const SizedBox(height: 20),
-                    if (finalCategories.isNotEmpty) ...[
-                      _buildSectionHeader(
-                        "$datePrefix类别分布",
-                        Icons.category_rounded,
-                      ),
-                      _buildCategoryGrid(
-                        finalCategories,
-                        crossAxisCount: catCount,
-                        childAspectRatio: isTablet ? 0.9 : 1.0,
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-                    if (topApps.isNotEmpty) ...[
-                      _buildSectionHeader(
-                        "$datePrefix最常使用",
-                        Icons.dashboard_rounded,
-                      ),
-                      _buildTopAppsGrid(
-                        topApps,
-                        totalDur: selectedTotal,
-                        crossAxisCount: topCount,
-                        childAspectRatio: isTablet ? 1.0 : 1.15,
-                        maxItems: maxTop,
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-                    if (topApps.length > maxTop) ...[
-                      _buildSectionHeader(
-                        "其余应用明细",
-                        Icons.format_list_bulleted_rounded,
-                      ),
-                      _buildRestList(topApps, skipCount: maxTop),
-                    ],
-                    SizedBox(height: bottomContentPadding),
                   ],
                 ),
               ),
+            ),
+            if (finalCategories.isNotEmpty) ...[
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                sliver: SliverToBoxAdapter(
+                  child: _buildSectionHeader(
+                    "$datePrefix类别分布",
+                    Icons.category_rounded,
+                  ),
+                ),
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                sliver: _buildCategorySliverGrid(
+                  finalCategories,
+                  crossAxisCount: catCount,
+                  childAspectRatio: isTablet ? 0.9 : 1.0,
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 20)),
             ],
-          ),
+            if (topApps.isNotEmpty) ...[
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                sliver: SliverToBoxAdapter(
+                  child: _buildSectionHeader(
+                    "$datePrefix最常使用",
+                    Icons.dashboard_rounded,
+                  ),
+                ),
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                sliver: _buildTopAppsSliverGrid(
+                  topApps,
+                  totalDur: selectedTotal,
+                  crossAxisCount: topCount,
+                  childAspectRatio: isTablet ? 1.0 : 1.15,
+                  maxItems: maxTop,
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 20)),
+            ],
+            if (topApps.length > maxTop) ...[
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                sliver: SliverToBoxAdapter(
+                  child: _buildSectionHeader(
+                    "其余应用明细",
+                    Icons.format_list_bulleted_rounded,
+                  ),
+                ),
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                sliver: _buildRestSliverList(topApps, skipCount: maxTop),
+              ),
+            ],
+            SliverToBoxAdapter(
+              child: SizedBox(height: bottomContentPadding + 4),
+            ),
+          ],
         );
       },
     );

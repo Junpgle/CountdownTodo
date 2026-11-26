@@ -389,12 +389,6 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
   }
 }
 
-typedef _TimelineDisplayItem = ({
-  String? month,
-  JournalEntry? entry,
-  List<JournalEntry>? gridEntries,
-});
-
 class _Timeline extends StatelessWidget {
   final double topPadding;
   final List<JournalEntry> entries;
@@ -422,98 +416,100 @@ class _Timeline extends StatelessWidget {
       final key = monthFormat.format(entry.occurredAt);
       grouped.putIfAbsent(key, () => []).add(entry);
     }
-    final displayItems = <_TimelineDisplayItem>[];
-    for (final group in grouped.entries) {
-      displayItems.add((month: group.key, entry: null, gridEntries: null));
-      if (isWide) {
-        displayItems.add((month: null, entry: null, gridEntries: group.value));
-      } else {
-        for (final entry in group.value) {
-          displayItems.add((month: null, entry: entry, gridEntries: null));
-          displayItems.add((month: null, entry: null, gridEntries: null));
-        }
-      }
-    }
 
-    return ListView.builder(
+    final double horizontalPadding = isWide ? 40 : 20;
+    final horizontalEdgeInsets = EdgeInsets.symmetric(
+      horizontal: horizontalPadding,
+    );
+
+    return CustomScrollView(
       controller: controller,
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(
-        isWide ? 40 : 20,
-        topPadding + 12,
-        isWide ? 40 : 20,
-        120,
-      ),
-      itemCount: displayItems.length + (isLoadingMore ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (index == displayItems.length) {
-          return const Padding(
-            padding: EdgeInsets.all(20),
-            child: Center(child: CircularProgressIndicator()),
-          );
-        }
-
-        final item = displayItems[index];
-        if (item.month != null) {
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(4, 18, 4, 12),
-            child: Row(
-              children: [
-                Text(
-                  item.month!,
-                  style: Theme.of(context).textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w800),
+      slivers: [
+        SliverToBoxAdapter(child: SizedBox(height: topPadding + 12)),
+        for (final group in grouped.entries) ...[
+          SliverPadding(
+            padding: horizontalEdgeInsets,
+            sliver: SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(4, 18, 4, 12),
+                child: Row(
+                  children: [
+                    Text(
+                      group.key,
+                      style: Theme.of(context).textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Divider(
+                        color: Theme.of(context).colorScheme.outlineVariant,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Divider(
-                    color: Theme.of(context).colorScheme.outlineVariant,
-                  ),
+              ),
+            ),
+          ),
+          if (isWide)
+            SliverPadding(
+              padding: horizontalEdgeInsets,
+              sliver: SliverGrid.builder(
+                findChildIndexCallback: (Key key) {
+                  if (key is ValueKey<String>) {
+                    final id = key.value;
+                    final idx = group.value.indexWhere((e) => e.id == id);
+                    return idx != -1 ? idx : null;
+                  }
+                  return null;
+                },
+                itemCount: group.value.length,
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 560,
+                  mainAxisExtent: 220,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
                 ),
-              ],
+                itemBuilder: (_, gridIndex) {
+                  final entry = group.value[gridIndex];
+                  return _JournalCard(
+                    key: ValueKey<String>(entry.id),
+                    entry: entry,
+                    accountId: accountId,
+                    onTap: () => onTap(entry),
+                  );
+                },
+              ),
+            )
+          else ...[
+            SliverPadding(
+              padding: horizontalEdgeInsets,
+              sliver: SliverList.separated(
+                itemCount: group.value.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 14),
+                itemBuilder: (_, idx) {
+                  final entry = group.value[idx];
+                  return _JournalCard(
+                    key: ValueKey<String>(entry.id),
+                    entry: entry,
+                    accountId: accountId,
+                    onTap: () => onTap(entry),
+                  );
+                },
+              ),
             ),
-          );
-        }
-
-        final gridEntries = item.gridEntries;
-        if (gridEntries != null) {
-          return GridView.builder(
-            padding: EdgeInsets.zero,
-            primary: false,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            findChildIndexCallback: (Key key) {
-              if (key is ValueKey<String>) {
-                final id = key.value;
-                final index = gridEntries.indexWhere((e) => e.id == id);
-                return index != -1 ? index : null;
-              }
-              return null;
-            },
-            itemCount: gridEntries.length,
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 560,
-              mainAxisExtent: 220,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
+            const SliverToBoxAdapter(child: SizedBox(height: 14)),
+          ],
+        ],
+        if (isLoadingMore)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Center(child: CircularProgressIndicator()),
             ),
-            itemBuilder: (_, gridIndex) => _JournalCard(
-              key: ValueKey<String>(gridEntries[gridIndex].id),
-              entry: gridEntries[gridIndex],
-              accountId: accountId,
-              onTap: () => onTap(gridEntries[gridIndex]),
-            ),
-          );
-        }
-
-        final entry = item.entry;
-        if (entry == null) return const SizedBox(height: 14);
-        return _JournalCard(
-          entry: entry,
-          accountId: accountId,
-          onTap: () => onTap(entry),
-        );
-      },
+          ),
+        const SliverToBoxAdapter(child: SizedBox(height: 120)),
+      ],
     );
   }
 }
