@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../../utils/app_dialogs.dart';
 import '../../../utils/text_file_reader.dart';
 import '../../../utils/time_utils.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_bill_import_parser.dart';
@@ -450,7 +451,12 @@ class _FinanceBillImportScreenState extends State<FinanceBillImportScreen> {
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: _isParsing
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: topBarHeight + 8,
+                showHeroCard: true,
+                itemCount: 5,
+                itemHeight: 74,
+              )
             : result == null
             ? _buildEmptyState(context, topBarHeight)
             : _buildPreviewBody(context, topBarHeight, result),

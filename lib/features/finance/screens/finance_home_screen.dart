@@ -10,6 +10,7 @@ import '../models/finance_models.dart';
 import '../services/finance_automation_service.dart';
 import '../services/finance_repository.dart';
 import '../services/ai_usage_cost_service.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/home_bottom_navigation_content.dart';
@@ -479,9 +480,18 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen>
     final effectiveMonth = targetMonth ?? _month;
     final from = DateTime(effectiveMonth.year, effectiveMonth.month);
     final to = DateTime(effectiveMonth.year, effectiveMonth.month + 1);
-    // 周视图需要覆盖月初前和月末后的完整自然周，避免边界日期被截断。
-    final overviewFrom = financeCalendarDayOffset(from, -7);
-    final overviewTo = financeCalendarDayOffset(to, 7);
+    // 周视图需要覆盖月初前和月末后的完整自然周，避免边界日期被截断；
+    // 年视图需要整个自然年的账单，因此概览窗口取两者并集。
+    final yearStart = DateTime(effectiveMonth.year);
+    final nextYearStart = DateTime(effectiveMonth.year + 1);
+    final weekWindowFrom = financeCalendarDayOffset(from, -7);
+    final weekWindowTo = financeCalendarDayOffset(to, 7);
+    final overviewFrom = weekWindowFrom.isBefore(yearStart)
+        ? weekWindowFrom
+        : yearStart;
+    final overviewTo = weekWindowTo.isAfter(nextYearStart)
+        ? weekWindowTo
+        : nextYearStart;
     final now = widget.clock();
     final balanceEventsThroughAt = overviewTo.isAfter(now)
         ? overviewTo.millisecondsSinceEpoch - 1
@@ -1387,7 +1397,14 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen>
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: !_hasInitialized && _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonDashboardPage(
+                topPadding: topBarHeight + 8,
+                maxWidth: 1040,
+                showPeriodHeader: true,
+                showMetricGrid: true,
+                showChart: true,
+                listCount: 4,
+              )
             : !_hasInitialized && _loadError != null
             ? _buildError(colorScheme)
             : Align(

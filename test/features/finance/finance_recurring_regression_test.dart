@@ -12,6 +12,7 @@ import 'package:countdown_todo/services/database_helper.dart';
 import 'package:countdown_todo/services/focus_do_not_disturb_service.dart';
 import 'package:countdown_todo/services/storage/app_settings_storage.dart';
 import 'package:countdown_todo/storage_service.dart';
+import 'package:countdown_todo/widgets/app_skeleton.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -41,7 +42,9 @@ Future<void> waitFor(WidgetTester tester, bool Function() ready) async {
       () => Future<void>.delayed(const Duration(milliseconds: 20)),
     );
     await tester.pump(const Duration(milliseconds: 20));
-    if (ready() && find.byType(CircularProgressIndicator).evaluate().isEmpty) {
+    if (ready() &&
+        find.byType(CircularProgressIndicator).evaluate().isEmpty &&
+        find.byType(AppSkeletonScope).evaluate().isEmpty) {
       await tester.pumpAndSettle();
       return;
     }

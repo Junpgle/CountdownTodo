@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../services/home_dashboard_section_data_cache.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
@@ -285,12 +286,56 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection>
                 ],
               ),
               child: (_isLoading && !_hasLoaded)
-                  ? SizedBox(
-                      height: 78,
-                      child: Center(
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          color: isDark ? Colors.white : colorScheme.tertiary,
+                  ? AppSkeletonScope(
+                      isLightSurface: widget.isLight && isDark,
+                      child: SizedBox(
+                        height: 78,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                for (var i = 0; i < 3; i++) ...[
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        const AppSkeletonLine(
+                                          width: 40,
+                                          height: 10,
+                                        ),
+                                        const SizedBox(height: 8),
+                                        AppSkeletonLine(
+                                          width: i == 0 ? 64 : 54,
+                                          height: 16,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (i < 2)
+                                    Container(
+                                      width: 1,
+                                      height: 28,
+                                      margin: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                      ),
+                                      color: isDark
+                                          ? Colors.white.withValues(alpha: 0.16)
+                                          : colorScheme.outlineVariant
+                                                .withValues(alpha: 0.35),
+                                    ),
+                                ],
+                              ],
+                            ),
+                            const Align(
+                              alignment: Alignment.centerLeft,
+                              child: FractionallySizedBox(
+                                widthFactor: 0.62,
+                                child: AppSkeletonLine(height: 11),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     )

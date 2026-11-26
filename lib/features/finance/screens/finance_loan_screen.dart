@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
@@ -327,7 +328,14 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen>
   }
 
   Widget _buildBody(ColorScheme colorScheme, double topPadding) {
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (_isLoading) {
+      return AppSkeletonListPage(
+        topPadding: topPadding,
+        showHeroCard: true,
+        itemCount: 4,
+        itemHeight: 88,
+      );
+    }
     if (_loadError != null) {
       return FinancePageList(
         topPadding: topPadding,
@@ -867,7 +875,14 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen>
   }
 
   Widget _buildBody(ColorScheme colorScheme, double topPadding) {
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (_isLoading) {
+      return AppSkeletonListPage(
+        topPadding: topPadding,
+        showHeroCard: true,
+        itemCount: 4,
+        itemHeight: 88,
+      );
+    }
     if (_loadError != null) {
       return FinancePageList(
         topPadding: topPadding,

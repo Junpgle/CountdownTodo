@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 
 import 'package:flutter/material.dart';
@@ -317,7 +318,11 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen>
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: topBarHeight + 8,
+                itemCount: 5,
+                itemHeight: 76,
+              )
             : _loadError != null
             ? FinancePageList(
                 topPadding: topBarHeight,

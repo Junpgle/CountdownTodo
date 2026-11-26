@@ -8,6 +8,7 @@ import '../services/finance_repository.dart';
 import '../services/finance_sync_service.dart';
 import '../widgets/finance_management_widgets.dart';
 import '../widgets/finance_revision_refresh_mixin.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import 'finance_budget_entry_screen.dart';
 import '../../../utils/app_dialogs.dart';
@@ -599,7 +600,14 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen>
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonDashboardPage(
+                topPadding: topBarHeight + 8,
+                maxWidth: 1040,
+                showPeriodHeader: true,
+                showMetricGrid: true,
+                showChart: false,
+                listCount: 4,
+              )
             : _loadError != null
             ? _buildError(colorScheme)
             : RefreshIndicator(

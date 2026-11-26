@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../utils/time_utils.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/ai_usage_cost_service.dart';
@@ -465,7 +466,13 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonDashboardPage(
+                topPadding: topBarHeight + 8,
+                showPeriodHeader: true,
+                showMetricGrid: true,
+                showChart: true,
+                listCount: 4,
+              )
             : RefreshIndicator(
                 onRefresh: _load,
                 child: ListView(

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 
 import 'package:flutter/material.dart';
@@ -426,7 +427,7 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen>
         body: FloatingGlassTopBarContentFade(
           topBarHeight: topBarHeight,
           child: _isLoading
-              ? const Center(child: CircularProgressIndicator())
+              ? AppSkeletonFormPage(topPadding: topBarHeight + 8, fieldCount: 4)
               : _loadError != null
               ? FinancePageList(
                   topPadding: topBarHeight,

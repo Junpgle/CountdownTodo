@@ -7,6 +7,7 @@ import 'package:countdown_todo/features/finance/services/finance_storage.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_calendar_panel.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_widgets.dart';
 import 'package:countdown_todo/services/database_helper.dart';
+import 'package:countdown_todo/widgets/app_skeleton.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -83,7 +84,9 @@ Future<void> _pump(WidgetTester tester, Widget screen) async {
   );
   await _waitFor(
     tester,
-    () => find.byType(CircularProgressIndicator).evaluate().isEmpty,
+    () =>
+        find.byType(CircularProgressIndicator).evaluate().isEmpty &&
+        find.byType(AppSkeletonScope).evaluate().isEmpty,
   );
 }
 
@@ -118,26 +121,31 @@ void main() {
       FinanceHomeScreen(username: 'default', clock: () => clockNow),
     );
 
-    // 初始加载完成后，整个页面保持挂载，不应出现全屏加载圈
+    // 初始加载完成后，整个页面保持挂载，不应出现全屏加载圈或骨架屏
     expect(find.byType(FinanceOverviewPanel), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byType(AppSkeletonScope), findsNothing);
 
     // 1. 切换月份（前一月）
     await _tap(tester, _key('finance-overview-period-previous'));
-    // 切换瞬间和其后：无白屏加载圈，页面依然完整挂载
+    // 切换瞬间和其后：无白屏加载圈或骨架屏，页面依然完整挂载
     expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byType(AppSkeletonScope), findsNothing);
     expect(find.byType(FinanceOverviewPanel), findsOneWidget);
     await _waitFor(tester, () => find.text('2026年9月').evaluate().isNotEmpty);
     expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byType(AppSkeletonScope), findsNothing);
 
     // 2. 切换到周视图
     await _tap(tester, _key('finance-overview-view-selector-week'));
     expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byType(AppSkeletonScope), findsNothing);
     expect(find.byType(FinanceOverviewPanel), findsOneWidget);
 
     // 3. 切换周周期（前一周，跨入8月）
     await _tap(tester, _key('finance-overview-period-previous'));
     expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byType(AppSkeletonScope), findsNothing);
     expect(find.byType(FinanceOverviewPanel), findsOneWidget);
     await _waitFor(
       tester,
@@ -147,6 +155,7 @@ void main() {
     // 4. 切换到日视图
     await _tap(tester, _key('finance-overview-view-selector-day'));
     expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byType(AppSkeletonScope), findsNothing);
     expect(find.byType(FinanceOverviewPanel), findsOneWidget);
     await _waitFor(
       tester,
@@ -156,6 +165,7 @@ void main() {
     // 5. 切换日周期（前一天至8月24日）
     await _tap(tester, _key('finance-overview-period-previous'));
     expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byType(AppSkeletonScope), findsNothing);
     expect(find.byType(FinanceOverviewPanel), findsOneWidget);
     await _waitFor(
       tester,
@@ -163,6 +173,47 @@ void main() {
     );
 
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('记账年视图汇总整年账单且切换时不出现整页加载白屏', (tester) async {
+    final db = await _seed(tester);
+    final clockNow = DateTime(2026, 10, 23, 12);
+    await tester.runAsync(() async {
+      final januaryAt = DateTime(2026, 1, 20, 12);
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'test-expense-january',
+          amountMinor: 6500,
+          categoryUuid: 'test-food',
+          transactionDate: dateKey(januaryAt),
+          occurredAt: januaryAt.millisecondsSinceEpoch,
+          createdAt: januaryAt.millisecondsSinceEpoch,
+          merchant: '年货',
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceHomeScreen(username: 'default', clock: () => clockNow),
+    );
+
+    // 月视图只统计 10 月：¥35.00
+    expect(find.text('¥35.00'), findsWidgets);
+
+    await _tap(tester, _key('finance-overview-view-selector-year'));
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byType(AppSkeletonScope), findsNothing);
+    expect(find.byType(FinanceOverviewPanel), findsOneWidget);
+    await _waitFor(tester, () => find.text('2026年').evaluate().isNotEmpty);
+
+    // 年视图统计整年：1 月 ¥65.00 + 10 月 ¥35.00 = ¥100.00
+    expect(find.text('¥100.00'), findsWidgets);
+    expect(find.text('¥35.00'), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byType(AppSkeletonScope), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -186,7 +237,9 @@ void main() {
     );
     await _waitFor(
       tester,
-      () => find.byType(CircularProgressIndicator).evaluate().isEmpty,
+      () =>
+          find.byType(CircularProgressIndicator).evaluate().isEmpty &&
+          find.byType(AppSkeletonScope).evaluate().isEmpty,
     );
 
     // 1. 验证宽屏下主内容区域被限制在最大 1040 宽度以内并居中

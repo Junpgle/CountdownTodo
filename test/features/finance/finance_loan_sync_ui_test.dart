@@ -6,6 +6,7 @@ import 'package:countdown_todo/features/finance/screens/finance_loan_screen.dart
 import 'package:countdown_todo/features/finance/services/finance_storage.dart';
 import 'package:countdown_todo/services/database_helper.dart';
 import 'package:countdown_todo/services/storage/app_settings_storage.dart';
+import 'package:countdown_todo/widgets/app_skeleton.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,7 +18,9 @@ Future<void> waitFor(WidgetTester tester, bool Function() ready) async {
       () => Future<void>.delayed(const Duration(milliseconds: 20)),
     );
     await tester.pump(const Duration(milliseconds: 20));
-    if (ready() && find.byType(CircularProgressIndicator).evaluate().isEmpty) {
+    if (ready() &&
+        find.byType(CircularProgressIndicator).evaluate().isEmpty &&
+        find.byType(AppSkeletonScope).evaluate().isEmpty) {
       await tester.pumpAndSettle();
       return;
     }

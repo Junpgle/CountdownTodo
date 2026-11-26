@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../../services/storage/app_settings_storage.dart';
 import '../../../storage_service.dart';
 import '../../../services/reminder_schedule_service.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_automation_service.dart';
@@ -315,7 +316,11 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen>
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonSettingsPage(
+                topPadding: topBarHeight + 8,
+                sectionCount: 3,
+                rowsPerSection: 3,
+              )
             : _loadError != null
             ? Center(
                 child: Column(

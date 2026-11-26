@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import '../../../utils/app_platform.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../utils/page_transitions.dart';
 import '../models/finance_models.dart';
@@ -33,7 +34,7 @@ double financeBottomContentPaddingFor(BuildContext context) {
   return floatingBottomNavigationContentPaddingFor(context);
 }
 
-enum _FinanceOverviewView { month, week, day }
+enum _FinanceOverviewView { year, month, week, day }
 
 enum _FinanceOverviewMode { report, calendar }
 

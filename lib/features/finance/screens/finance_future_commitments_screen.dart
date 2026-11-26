@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_future_commitments_service.dart';
@@ -203,7 +204,12 @@ class _FinanceFutureCommitmentsScreenState
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppSkeletonListPage(
+              topPadding: 12,
+              showHeroCard: true,
+              itemCount: 4,
+              itemHeight: 84,
+            )
           : _loadError != null
           ? FinancePageList(
               children: [

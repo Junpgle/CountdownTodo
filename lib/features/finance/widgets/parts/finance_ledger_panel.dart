@@ -839,7 +839,11 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
               child: widget.queryError != null
                   ? _buildQueryError(context, widget.queryError!)
                   : widget.isLoading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const AppSkeletonListPage(
+                      topPadding: 12,
+                      itemCount: 6,
+                      itemHeight: 68,
+                    )
                   : filtered.isEmpty
                   ? _buildEmptyState(context)
                   : ListView.builder(
