@@ -311,7 +311,7 @@ class _PreblurredRepaintNotifier extends ChangeNotifier {
 class _PreblurredWallpaperFillState extends State<PreblurredWallpaperFill> {
   final _PreblurredRepaintNotifier _repaintTrigger =
       _PreblurredRepaintNotifier();
-  ScrollPosition? _scrollPosition;
+  final Set<ScrollPosition> _scrollPositions = <ScrollPosition>{};
 
   @override
   void initState() {
@@ -322,11 +322,36 @@ class _PreblurredWallpaperFillState extends State<PreblurredWallpaperFill> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final nextPosition = Scrollable.maybeOf(context)?.position;
-    if (identical(_scrollPosition, nextPosition)) return;
-    _scrollPosition?.removeListener(_notifyRepaint);
-    _scrollPosition = nextPosition;
-    _scrollPosition?.addListener(_notifyRepaint);
+    _syncScrollPositions();
+  }
+
+  void _syncScrollPositions() {
+    // Register with the nearest ScrollableScope and walk all ancestors so cards
+    // inside nested scrollables (e.g. Countdown horizontal list, Todo
+    // ReorderableListView) also repaint when the outer dashboard scrolls.
+    Scrollable.maybeOf(context);
+    final nextPositions = <ScrollPosition>{};
+    context.visitAncestorElements((element) {
+      if (element is StatefulElement) {
+        final state = element.state;
+        if (state is ScrollableState && state.mounted) {
+          nextPositions.add(state.position);
+        }
+      }
+      return true;
+    });
+
+    for (final existing in _scrollPositions.toList(growable: false)) {
+      if (!nextPositions.contains(existing)) {
+        existing.removeListener(_notifyRepaint);
+        _scrollPositions.remove(existing);
+      }
+    }
+    for (final next in nextPositions) {
+      if (_scrollPositions.add(next)) {
+        next.addListener(_notifyRepaint);
+      }
+    }
   }
 
   @override
@@ -345,7 +370,10 @@ class _PreblurredWallpaperFillState extends State<PreblurredWallpaperFill> {
 
   @override
   void dispose() {
-    _scrollPosition?.removeListener(_notifyRepaint);
+    for (final position in _scrollPositions) {
+      position.removeListener(_notifyRepaint);
+    }
+    _scrollPositions.clear();
     widget.snapshotListenable.removeListener(_notifyRepaint);
     _repaintTrigger.dispose();
     super.dispose();
@@ -440,6 +468,8 @@ class _RenderPreblurredWallpaperFill extends RenderBox {
   @override
   Size computeDryLayout(BoxConstraints constraints) => constraints.biggest;
 
+  Rect? _lastPaintedDstRect;
+
   @override
   void paint(PaintingContext context, Offset offset) {
     final snapshot = _snapshotListenable.value;
@@ -467,6 +497,13 @@ class _RenderPreblurredWallpaperFill extends RenderBox {
       viewportSize.width,
       viewportSize.height,
     );
+    _lastPaintedDstRect = dstRect;
     context.canvas.drawImageRect(snapshot.image, srcRect, dstRect, _imagePaint);
   }
 }
+
+@visibleForTesting
+Rect? debugPreblurredWallpaperLastDstRect(RenderObject renderObject) =>
+    renderObject is _RenderPreblurredWallpaperFill
+    ? renderObject._lastPaintedDstRect
+    : null;

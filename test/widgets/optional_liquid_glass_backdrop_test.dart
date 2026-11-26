@@ -164,4 +164,130 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets(
+    'PreblurredWallpaperFill repaints on outer vertical scroll even inside nested Scrollables',
+    (tester) async {
+      final image = await tester.runAsync(_createTestWallpaperImage);
+      addTearDown(image!.dispose);
+      final notifier = ValueNotifier<PreblurredWallpaperSnapshot?>(
+        PreblurredWallpaperSnapshot(
+          image: image,
+          viewportSize: const Size(800, 600),
+          blurSigma: 3.0,
+        ),
+      );
+      addTearDown(notifier.dispose);
+      final viewportKey = GlobalKey();
+      final outerController = ScrollController();
+      final horizontalController = ScrollController();
+      addTearDown(outerController.dispose);
+      addTearDown(horizontalController.dispose);
+
+      const countdownCardKey = ValueKey<String>('nested-countdown-card');
+      const todoCardKey = ValueKey<String>('nested-todo-card');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Stack(
+              key: viewportKey,
+              fit: StackFit.expand,
+              children: [
+                OptionalLiquidGlassBackdropScope(
+                  isSolidBackground: false,
+                  blurredWallpaperListenable: notifier,
+                  viewportKey: viewportKey,
+                  child: ListView(
+                    controller: outerController,
+                    children: [
+                      SizedBox(
+                        height: 120,
+                        child: ListView.builder(
+                          controller: horizontalController,
+                          scrollDirection: Axis.horizontal,
+                          itemCount: 4,
+                          itemBuilder: (context, index) => SizedBox(
+                            width: 240,
+                            child: OptionalLiquidGlassCard(
+                              key: index == 0 ? countdownCardKey : null,
+                              fallbackDecoration: const BoxDecoration(),
+                              child: Text('Countdown $index'),
+                            ),
+                          ),
+                        ),
+                      ),
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: 2,
+                        itemBuilder: (context, index) =>
+                            OptionalLiquidGlassCard(
+                              key: index == 0 ? todoCardKey : null,
+                              fallbackDecoration: const BoxDecoration(),
+                              child: SizedBox(
+                                height: 80,
+                                child: Text('Todo $index'),
+                              ),
+                            ),
+                      ),
+                      const SizedBox(height: 1200),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final countdownFillFinder = find.descendant(
+        of: find.byKey(countdownCardKey),
+        matching: find.byType(PreblurredWallpaperFill),
+      );
+      final todoFillFinder = find.descendant(
+        of: find.byKey(todoCardKey),
+        matching: find.byType(PreblurredWallpaperFill),
+      );
+
+      final initialCountdownRect = debugPreblurredWallpaperLastDstRect(
+        tester.renderObject(countdownFillFinder),
+      )!;
+      final initialTodoRect = debugPreblurredWallpaperLastDstRect(
+        tester.renderObject(todoFillFinder),
+      )!;
+
+      // Scroll outer vertical list: BOTH nested cards must shift vertically.
+      outerController.jumpTo(50);
+      await tester.pump();
+
+      final scrolledCountdownRect = debugPreblurredWallpaperLastDstRect(
+        tester.renderObject(countdownFillFinder),
+      )!;
+      final scrolledTodoRect = debugPreblurredWallpaperLastDstRect(
+        tester.renderObject(todoFillFinder),
+      )!;
+      expect(
+        scrolledCountdownRect.top - initialCountdownRect.top,
+        moreOrLessEquals(50, epsilon: 0.1),
+      );
+      expect(
+        scrolledTodoRect.top - initialTodoRect.top,
+        moreOrLessEquals(50, epsilon: 0.1),
+      );
+
+      // Scroll inner horizontal countdown list: horizontal offset must shift too.
+      horizontalController.jumpTo(80);
+      await tester.pump();
+
+      final horizontallyScrolledRect = debugPreblurredWallpaperLastDstRect(
+        tester.renderObject(countdownFillFinder),
+      )!;
+      expect(
+        horizontallyScrolledRect.left - scrolledCountdownRect.left,
+        moreOrLessEquals(80, epsilon: 0.1),
+      );
+    },
+  );
 }
