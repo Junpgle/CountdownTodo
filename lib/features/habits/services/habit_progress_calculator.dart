@@ -185,8 +185,8 @@ abstract final class HabitProgressCalculator {
     String? lastPeriodId;
     for (int i = 0; i <= dayCount; i++) {
       final date = HabitRuleResolver.addCalendarDays(fromDay, i);
+      final rule = HabitRuleResolver.effectiveRule(rules, date);
       if (periodLevel) {
-        final rule = HabitRuleResolver.effectiveRule(rules, date);
         if (rule != null &&
             (rule.periodType == HabitPeriodType.weekly ||
                 rule.periodType == HabitPeriodType.monthly)) {
@@ -203,7 +203,7 @@ abstract final class HabitProgressCalculator {
       }
       final progress = _computeDay(
         habit: habit,
-        rules: rules,
+        rule: rule,
         logicalDate: date,
         now: nowValue,
         todos: todosValue,
@@ -283,7 +283,7 @@ abstract final class HabitProgressCalculator {
 
   static HabitProgress _computeDay({
     required HabitGoal habit,
-    required List<HabitGoalRuleRevision> rules,
+    required HabitGoalRuleRevision? rule,
     required DateTime logicalDate,
     required DateTime now,
     required List<TodoItem> todos,
@@ -294,7 +294,6 @@ abstract final class HabitProgressCalculator {
     required _HabitCheckInIndex? checkInIndex,
     Map<String, HabitProgress>? periodCache,
   }) {
-    final rule = HabitRuleResolver.effectiveRule(rules, logicalDate);
     if (rule == null) {
       return HabitProgress(
         period: logicalDate,

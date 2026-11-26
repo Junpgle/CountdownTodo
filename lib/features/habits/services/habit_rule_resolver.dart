@@ -33,10 +33,8 @@ abstract final class HabitRuleResolver {
   }
 
   /// 逻辑日期键（'yyyy-MM-dd'），用于数据库存储与比较。
-  static String dayKey(DateTime logicalDate) {
-    final d = CalendarDateMath.dateOnly(logicalDate);
-    return AppTimeFormats.date(d);
-  }
+  static String dayKey(DateTime logicalDate) =>
+      AppTimeFormats.date(logicalDate);
 
   /// 解析 'yyyy-MM-dd' 为本地日期。
   static DateTime? parseDayKey(String key) {

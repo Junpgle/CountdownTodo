@@ -112,12 +112,57 @@ class AppTimeFormats {
     return _dateFormatters[key] = DateFormat(pattern, locale);
   }
 
+  static String _twoDigits(int value) {
+    if (value >= 0 && value < 10) return '0$value';
+    if (value >= 10) return '$value';
+    return value.toString().padLeft(2, '0');
+  }
+
+  static String _fourDigits(int value) {
+    if (value >= 1000) return '$value';
+    if (value >= 100) return '0$value';
+    if (value >= 10) return '00$value';
+    if (value >= 0) return '000$value';
+    return value.toString().padLeft(4, '0');
+  }
+
+  static bool _usesAsciiDigitsLocale(String? locale) {
+    return locale == null ||
+        locale.isEmpty ||
+        locale.startsWith('zh') ||
+        locale.startsWith('en');
+  }
+
   /// Returns a cached formatter for callers that format many dates at once.
   static DateFormat dateFormatter(String pattern, {String? locale}) {
     return _dateFormatter(pattern, locale);
   }
 
   static String format(DateTime time, String pattern, {String? locale}) {
+    if (time.year >= 0 &&
+        locale == null &&
+        _usesAsciiDigitsLocale(Intl.defaultLocale)) {
+      switch (pattern) {
+        case 'yyyyMMdd':
+          return dayKey(time);
+        case 'yyyy-MM-dd':
+          return date(time);
+        case 'yyyy年MM月dd日':
+          return dateCn(time);
+        case 'MM月dd日':
+          return monthDayCn(time);
+        case 'MM/dd':
+          return monthDaySlash(time);
+        case 'MM-dd HH:mm':
+          return compactDateTime(time);
+        case 'yyyy-MM-dd HH:mm':
+          return fullDateTime(time);
+        case 'HH:mm':
+          return clock(time);
+        case 'yyyyMMdd_HHmmss':
+          return fileTimestamp(time);
+      }
+    }
     return _dateFormatter(pattern, locale).format(time);
   }
 
@@ -135,11 +180,20 @@ class AppTimeFormats {
   }
 
   static DateTime dayStart(DateTime time) {
+    if (!time.isUtc &&
+        time.hour == 0 &&
+        time.minute == 0 &&
+        time.second == 0 &&
+        time.millisecond == 0 &&
+        time.microsecond == 0) {
+      return time;
+    }
     return DateTime(time.year, time.month, time.day);
   }
 
   /// Returns a local midnight offset by calendar days, including DST changes.
   static DateTime localDayStartOffset(DateTime time, int days) {
+    if (days == 0) return dayStart(time);
     return DateTime(time.year, time.month, time.day + days);
   }
 
@@ -149,21 +203,29 @@ class AppTimeFormats {
         left.day == right.day;
   }
 
-  static String dayKey(DateTime time) => format(time, 'yyyyMMdd');
+  static String dayKey(DateTime time) =>
+      '${_fourDigits(time.year)}${_twoDigits(time.month)}${_twoDigits(time.day)}';
 
-  static String date(DateTime time) => format(time, 'yyyy-MM-dd');
+  static String date(DateTime time) =>
+      '${_fourDigits(time.year)}-${_twoDigits(time.month)}-${_twoDigits(time.day)}';
 
-  static String dateCn(DateTime time) => format(time, 'yyyy年MM月dd日');
+  static String dateCn(DateTime time) =>
+      '${_fourDigits(time.year)}年${_twoDigits(time.month)}月${_twoDigits(time.day)}日';
 
-  static String monthDayCn(DateTime time) => format(time, 'MM月dd日');
+  static String monthDayCn(DateTime time) =>
+      '${_twoDigits(time.month)}月${_twoDigits(time.day)}日';
 
-  static String monthDaySlash(DateTime time) => format(time, 'MM/dd');
+  static String monthDaySlash(DateTime time) =>
+      '${_twoDigits(time.month)}/${_twoDigits(time.day)}';
 
-  static String compactDateTime(DateTime time) => format(time, 'MM-dd HH:mm');
+  static String compactDateTime(DateTime time) =>
+      '${_twoDigits(time.month)}-${_twoDigits(time.day)} ${_twoDigits(time.hour)}:${_twoDigits(time.minute)}';
 
-  static String fullDateTime(DateTime time) => format(time, 'yyyy-MM-dd HH:mm');
+  static String fullDateTime(DateTime time) =>
+      '${_fourDigits(time.year)}-${_twoDigits(time.month)}-${_twoDigits(time.day)} ${_twoDigits(time.hour)}:${_twoDigits(time.minute)}';
 
-  static String clock(DateTime time) => format(time, 'HH:mm');
+  static String clock(DateTime time) =>
+      '${_twoDigits(time.hour)}:${_twoDigits(time.minute)}';
 
   static String weekdayShortZh(int weekday) =>
       weekdayShortLabelsZh[(weekday - 1).clamp(0, 6)];
@@ -173,10 +235,11 @@ class AppTimeFormats {
 
   static String weekdayLabel(DateTime time) => weekdayZh(time.weekday);
 
-  static String fileTimestamp(DateTime time) => format(time, 'yyyyMMdd_HHmmss');
+  static String fileTimestamp(DateTime time) =>
+      '${_fourDigits(time.year)}${_twoDigits(time.month)}${_twoDigits(time.day)}_${_twoDigits(time.hour)}${_twoDigits(time.minute)}${_twoDigits(time.second)}';
 
   static String hourMinute(int hour, int minute) =>
-      '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+      '${_twoDigits(hour)}:${_twoDigits(minute)}';
 
   static String minuteOfDay(int minute) =>
       hourMinute(minute ~/ 60, minute % 60);

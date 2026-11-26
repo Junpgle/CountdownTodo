@@ -1,8 +1,17 @@
 /// Calendar arithmetic for local dates. A day here means the next calendar
 /// date, not a fixed 24-hour duration across daylight-saving transitions.
 abstract final class CalendarDateMath {
-  static DateTime dateOnly(DateTime value) =>
-      DateTime(value.year, value.month, value.day);
+  static DateTime dateOnly(DateTime value) {
+    if (!value.isUtc &&
+        value.hour == 0 &&
+        value.minute == 0 &&
+        value.second == 0 &&
+        value.millisecond == 0 &&
+        value.microsecond == 0) {
+      return value;
+    }
+    return DateTime(value.year, value.month, value.day);
+  }
 
   /// Converts an exclusive local date boundary to its inclusive final date.
   static DateTime inclusiveEndDate(DateTime endExclusive) =>
@@ -38,16 +47,19 @@ abstract final class CalendarDateMath {
     }
   }
 
-  static DateTime addDays(DateTime value, int days) => DateTime(
-    value.year,
-    value.month,
-    value.day + days,
-    value.hour,
-    value.minute,
-    value.second,
-    value.millisecond,
-    value.microsecond,
-  );
+  static DateTime addDays(DateTime value, int days) {
+    if (days == 0 && !value.isUtc) return value;
+    return DateTime(
+      value.year,
+      value.month,
+      value.day + days,
+      value.hour,
+      value.minute,
+      value.second,
+      value.millisecond,
+      value.microsecond,
+    );
+  }
 
   static int daysBetween(DateTime start, DateTime end) => DateTime.utc(
     end.year,

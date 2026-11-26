@@ -132,4 +132,63 @@ void main() {
       );
     },
   );
+
+  test('fast-path fixed patterns and dayStart match intl output and preserve local midnight', () {
+    final originalLocale = Intl.defaultLocale;
+    addTearDown(() => Intl.defaultLocale = originalLocale);
+    Intl.defaultLocale = 'zh_CN';
+
+    final singleDigit = DateTime(2026, 3, 5, 7, 4, 2);
+    expect(AppTimeFormats.dayKey(singleDigit), '20260305');
+    expect(AppTimeFormats.date(singleDigit), '2026-03-05');
+    expect(AppTimeFormats.dateCn(singleDigit), '2026年03月05日');
+    expect(AppTimeFormats.monthDayCn(singleDigit), '03月05日');
+    expect(AppTimeFormats.monthDaySlash(singleDigit), '03/05');
+    expect(AppTimeFormats.compactDateTime(singleDigit), '03-05 07:04');
+    expect(AppTimeFormats.fullDateTime(singleDigit), '2026-03-05 07:04');
+    expect(AppTimeFormats.clock(singleDigit), '07:04');
+    expect(AppTimeFormats.fileTimestamp(singleDigit), '20260305_070402');
+
+    final doubleDigit = DateTime(2026, 11, 26, 19, 48, 25);
+    for (final pattern in const [
+      'yyyyMMdd',
+      'yyyy-MM-dd',
+      'yyyy年MM月dd日',
+      'MM月dd日',
+      'MM/dd',
+      'MM-dd HH:mm',
+      'yyyy-MM-dd HH:mm',
+      'HH:mm',
+      'yyyyMMdd_HHmmss',
+    ]) {
+      expect(
+        AppTimeFormats.format(singleDigit, pattern),
+        DateFormat(pattern, 'zh_CN').format(singleDigit),
+      );
+      expect(
+        AppTimeFormats.format(doubleDigit, pattern),
+        DateFormat(pattern, 'zh_CN').format(doubleDigit),
+      );
+    }
+
+    final localMidnight = DateTime(2026, 11, 26);
+    expect(
+      identical(AppTimeFormats.dayStart(localMidnight), localMidnight),
+      isTrue,
+    );
+    expect(
+      identical(
+        AppTimeFormats.localDayStartOffset(localMidnight, 0),
+        localMidnight,
+      ),
+      isTrue,
+    );
+    expect(AppTimeFormats.dayStart(doubleDigit), DateTime(2026, 11, 26));
+    final utcMidnight = DateTime.utc(2026, 11, 26);
+    expect(
+      identical(AppTimeFormats.dayStart(utcMidnight), utcMidnight),
+      isFalse,
+    );
+    expect(AppTimeFormats.dayStart(utcMidnight), DateTime(2026, 11, 26));
+  });
 }
