@@ -2,6 +2,7 @@ import '../models.dart';
 import 'todo_recurrence_date_service.dart';
 import 'todo_recurrence_series_edit_service.dart';
 import '../utils/calendar_date_math.dart';
+import '../utils/time_utils.dart';
 
 enum TodoRecurrenceDeleteScope { occurrence, future, series }
 
@@ -222,10 +223,9 @@ abstract final class TodoRecurrenceDeleteService {
   }
 
   static bool _hasNextOccurrence(TodoItem rule) {
-    final start = DateTime.fromMillisecondsSinceEpoch(
+    final start = AppTimeFormats.localFromServerTimestamp(
       rule.createdDate ?? rule.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
     final next = TodoRecurrenceDateService.nextDate(start, rule);
     if (next == null) return false;
     final end = rule.recurrenceEndDate;
@@ -241,10 +241,9 @@ abstract final class TodoRecurrenceDeleteService {
   }
 
   static DateTime _dateOnly(TodoItem todo) {
-    final local = DateTime.fromMillisecondsSinceEpoch(
+    final local = AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
     return CalendarDateMath.dateOnly(local);
   }
 

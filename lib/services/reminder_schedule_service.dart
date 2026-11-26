@@ -148,10 +148,7 @@ class ReminderScheduleService {
         dateOnlyDayStart = DateTime(date.year, date.month, date.day);
         refTime = DateTime(date.year, date.month, date.day, 23, 59);
       } else if (t.createdDate != null && t.createdDate! > 0) {
-        refTime = DateTime.fromMillisecondsSinceEpoch(
-          t.createdDate!,
-          isUtc: true,
-        ).toLocal();
+        refTime = AppTimeFormats.localFromServerTimestamp(t.createdDate!);
       } else if (t.dueDate != null) {
         refTime = t.dueDate!.toLocal();
       }

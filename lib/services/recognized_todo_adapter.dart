@@ -1,6 +1,7 @@
 import '../models.dart';
 import 'item_semantics_service.dart';
 import '../utils/text_utils.dart';
+import '../utils/time_utils.dart';
 
 /// Normalizes recognition results before they enter the current TodoItem protocol.
 ///
@@ -214,10 +215,7 @@ class RecognizedTodoAdapter {
 
   static DateTime _fromEpoch(int value) {
     final milliseconds = value.abs() < 100000000000 ? value * 1000 : value;
-    return DateTime.fromMillisecondsSinceEpoch(
-      milliseconds,
-      isUtc: true,
-    ).toLocal();
+    return AppTimeFormats.localFromServerTimestamp(milliseconds);
   }
 
   static bool _isSpecialTodo(String title, String? remark) {

@@ -178,10 +178,9 @@ mixin _StorageTodoQueries on _StorageServiceBase {
       return dueDay.isBefore(today);
     }
 
-    final created = DateTime.fromMillisecondsSinceEpoch(
+    final created = AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
     final createdDay = DateTime(created.year, created.month, created.day);
     return createdDay.isBefore(today);
   }

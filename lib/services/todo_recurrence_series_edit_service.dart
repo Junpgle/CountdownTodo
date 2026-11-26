@@ -1,4 +1,5 @@
 import '../models.dart';
+import '../utils/time_utils.dart';
 
 /// Shared membership and date helpers for recurring todo edits.
 class TodoRecurrenceSeriesEditService {
@@ -48,10 +49,9 @@ class TodoRecurrenceSeriesEditService {
     var completed = 0;
     var skipped = 0;
     for (final member in members) {
-      final start = DateTime.fromMillisecondsSinceEpoch(
+      final start = AppTimeFormats.localFromServerTimestamp(
         member.createdDate ?? member.createdAt,
-        isUtc: true,
-      ).toLocal();
+      );
       final startDay = DateTime(start.year, start.month, start.day);
       if (startDay.isBefore(today)) {
         historical++;

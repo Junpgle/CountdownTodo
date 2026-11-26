@@ -1,4 +1,5 @@
 import '../models.dart';
+import 'time_utils.dart';
 
 /// 将任务选择器中的同系列循环实例折叠为一个真实实例。
 ///
@@ -133,9 +134,6 @@ TodoItem _preferIncompleteWithSameStart(List<TodoItem> occurrences) {
 int _todoStartMs(TodoItem todo) => todo.createdDate ?? todo.createdAt;
 
 DateTime _startDay(TodoItem todo) {
-  final start = DateTime.fromMillisecondsSinceEpoch(
-    _todoStartMs(todo),
-    isUtc: true,
-  ).toLocal();
+  final start = AppTimeFormats.localFromServerTimestamp(_todoStartMs(todo));
   return DateTime(start.year, start.month, start.day);
 }

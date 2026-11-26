@@ -1,4 +1,5 @@
 import '../models.dart';
+import '../utils/time_utils.dart';
 
 enum TodoTrashPurgeScope { item, series, recycleBin }
 
@@ -162,10 +163,7 @@ class TodoTrashPurgeService {
     final dates = <DateTime>[];
     for (final item in items) {
       final timestamp = item.createdDate ?? item.createdAt;
-      final local = DateTime.fromMillisecondsSinceEpoch(
-        timestamp,
-        isUtc: true,
-      ).toLocal();
+      final local = AppTimeFormats.localFromServerTimestamp(timestamp);
       final day = DateTime(local.year, local.month, local.day);
       final key = '${day.year}-${day.month}-${day.day}';
       byDay.putIfAbsent(key, () => []).add(item);

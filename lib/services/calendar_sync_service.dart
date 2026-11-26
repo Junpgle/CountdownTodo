@@ -6,6 +6,7 @@ import '../storage_service.dart';
 import '../utils/app_platform.dart';
 import '../utils/calendar_date_math.dart';
 import 'course_service.dart';
+import '../utils/time_utils.dart';
 
 enum CalendarSyncEntryType { todo, fixedSchedule, course, countdown, planBlock }
 
@@ -270,10 +271,9 @@ class CalendarSyncService {
   static CalendarSyncEntry? _todoToEntry(TodoItem todo) {
     if (todo.timeMode == TodoTimeMode.unscheduled) return null;
 
-    final start = DateTime.fromMillisecondsSinceEpoch(
+    final start = AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
     final due = todo.dueDate!.toLocal();
 
     final details = <String>[

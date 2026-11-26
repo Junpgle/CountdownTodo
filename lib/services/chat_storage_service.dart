@@ -13,6 +13,7 @@ import 'storage/user_session_storage.dart';
 import 'storage/storage_key_scope.dart';
 import 'secure_storage_service.dart';
 import '../utils/text_utils.dart';
+import '../utils/time_utils.dart';
 
 class ChatSession {
   final String id;
@@ -40,14 +41,12 @@ class ChatSession {
     return ChatSession(
       id: json['id'] as String,
       title: json['title'] as String,
-      createdAt: DateTime.fromMillisecondsSinceEpoch(
+      createdAt: AppTimeFormats.localFromServerTimestamp(
         json['createdAt'] as int,
-        isUtc: true,
-      ).toLocal(),
-      updatedAt: DateTime.fromMillisecondsSinceEpoch(
+      ),
+      updatedAt: AppTimeFormats.localFromServerTimestamp(
         json['updatedAt'] as int,
-        isUtc: true,
-      ).toLocal(),
+      ),
     );
   }
 }

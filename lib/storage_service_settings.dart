@@ -370,10 +370,7 @@ mixin _StorageSettings on _StorageServiceBase {
     final prefs = await StorageService.prefs;
     int? timestamp = prefs.getInt("${keyLastAutoSync}_$username");
     if (timestamp != null) {
-      return DateTime.fromMillisecondsSinceEpoch(
-        timestamp,
-        isUtc: true,
-      ).toLocal();
+      return AppTimeFormats.localFromServerTimestamp(timestamp);
     }
     return null;
   }

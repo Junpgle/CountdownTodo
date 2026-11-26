@@ -182,7 +182,7 @@ int _updManifestParseAnnouncementSortKey(String id) {
     final ms = int.tryParse(unixMs);
     if (ms != null) {
       return _updManifestDateTimeToSortKey(
-        DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toLocal(),
+        AppTimeFormats.localFromServerTimestamp(ms),
       );
     }
   }
@@ -194,7 +194,7 @@ int _updManifestParseAnnouncementSortKey(String id) {
     final sec = int.tryParse(unixSec);
     if (sec != null) {
       return _updManifestDateTimeToSortKey(
-        DateTime.fromMillisecondsSinceEpoch(sec * 1000, isUtc: true).toLocal(),
+        AppTimeFormats.localFromServerTimestamp(sec * 1000),
       );
     }
   }

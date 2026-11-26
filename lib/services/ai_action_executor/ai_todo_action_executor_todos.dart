@@ -64,10 +64,7 @@ List<TodoItem> _buildUpdatedTodos(
   final targetStart = _todoStart(target);
   final updatedStart = targetUpdate.createdDate == null
       ? null
-      : DateTime.fromMillisecondsSinceEpoch(
-          targetUpdate.createdDate!,
-          isUtc: true,
-        ).toLocal();
+      : AppTimeFormats.localFromServerTimestamp(targetUpdate.createdDate!);
   final shift = targetStart == null || updatedStart == null
       ? Duration.zero
       : updatedStart.difference(targetStart);

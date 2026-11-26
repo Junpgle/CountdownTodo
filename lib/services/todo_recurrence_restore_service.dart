@@ -1,5 +1,6 @@
 import '../models.dart';
 import 'todo_recurrence_series_edit_service.dart';
+import '../utils/time_utils.dart';
 
 class TodoRecurrenceRestorePreview {
   const TodoRecurrenceRestorePreview({
@@ -111,10 +112,9 @@ abstract final class TodoRecurrenceRestoreService {
   }
 
   static DateTime _localDate(TodoItem todo) {
-    final local = DateTime.fromMillisecondsSinceEpoch(
+    final local = AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
     return DateTime(local.year, local.month, local.day);
   }
 

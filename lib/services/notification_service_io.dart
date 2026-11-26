@@ -427,10 +427,9 @@ class NotificationService {
       if (!AppTimeFormats.isSameDay(localDueDate, now)) continue;
       final todoType = ItemSemanticsService.specialTodoTypeForTitle(todo.title);
       if (todoType != 'default') continue;
-      final startDate = DateTime.fromMillisecondsSinceEpoch(
+      final startDate = AppTimeFormats.localFromServerTimestamp(
         todo.createdDate ?? todo.createdAt,
-        isUtc: true,
-      ).toLocal();
+      );
       if (startDate.hour != 0 ||
           startDate.minute != 0 ||
           localDueDate.hour != 23 ||

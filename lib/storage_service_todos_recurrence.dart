@@ -257,16 +257,10 @@ mixin _StorageTodoRecurrence on _StorageServiceBase {
 
   DateTime _getRecurrenceBaseDate(TodoItem todo) {
     if (todo.createdDate != null) {
-      return DateTime.fromMillisecondsSinceEpoch(
-        todo.createdDate!,
-        isUtc: true,
-      ).toLocal();
+      return AppTimeFormats.localFromServerTimestamp(todo.createdDate!);
     }
     return todo.dueDate ??
-        DateTime.fromMillisecondsSinceEpoch(
-          todo.createdAt,
-          isUtc: true,
-        ).toLocal();
+        AppTimeFormats.localFromServerTimestamp(todo.createdAt);
   }
 
   List<int> _recurrenceRollOffsets(
@@ -653,10 +647,7 @@ mixin _StorageTodoRecurrence on _StorageServiceBase {
   }
 
   String _recurrenceLocalDayKey(int startMs) {
-    final start = DateTime.fromMillisecondsSinceEpoch(
-      startMs,
-      isUtc: true,
-    ).toLocal();
+    final start = AppTimeFormats.localFromServerTimestamp(startMs);
     return AppTimeFormats.date(start);
   }
 
@@ -688,10 +679,7 @@ mixin _StorageTodoRecurrence on _StorageServiceBase {
       }
       final startMs = occurrence.createdDate ?? occurrence.createdAt;
       if (startMs > throughStartMs) continue;
-      final start = DateTime.fromMillisecondsSinceEpoch(
-        startMs,
-        isUtc: true,
-      ).toLocal();
+      final start = AppTimeFormats.localFromServerTimestamp(startMs);
       final day = DateTime(start.year, start.month, start.day);
       knownByDay['${day.year}-${day.month}-${day.day}'] = day;
     }
@@ -843,10 +831,7 @@ mixin _StorageTodoRecurrence on _StorageServiceBase {
         continue;
       }
       final startMs = occurrence.createdDate ?? occurrence.createdAt;
-      final start = DateTime.fromMillisecondsSinceEpoch(
-        startMs,
-        isUtc: true,
-      ).toLocal();
+      final start = AppTimeFormats.localFromServerTimestamp(startMs);
       final startDay = DateTime(start.year, start.month, start.day);
       if (!startDay.isAfter(endDay)) continue;
 
@@ -1148,10 +1133,9 @@ mixin _StorageTodoRecurrence on _StorageServiceBase {
       );
     }
     if (todo.createdDate != null) {
-      final originalCreatedDate = DateTime.fromMillisecondsSinceEpoch(
+      final originalCreatedDate = AppTimeFormats.localFromServerTimestamp(
         todo.createdDate!,
-        isUtc: true,
-      ).toLocal();
+      );
       todo.createdDate = DateTime(
         originalCreatedDate.year,
         originalCreatedDate.month,

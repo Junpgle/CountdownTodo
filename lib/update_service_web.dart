@@ -227,9 +227,7 @@ class UpdateService {
     if (unixMs != null) {
       final ms = int.tryParse(unixMs);
       if (ms != null) {
-        return _dateTimeToSortKey(
-          DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toLocal(),
-        );
+        return _dateTimeToSortKey(AppTimeFormats.localFromServerTimestamp(ms));
       }
     }
 
@@ -238,10 +236,7 @@ class UpdateService {
       final sec = int.tryParse(unixSec);
       if (sec != null) {
         return _dateTimeToSortKey(
-          DateTime.fromMillisecondsSinceEpoch(
-            sec * 1000,
-            isUtc: true,
-          ).toLocal(),
+          AppTimeFormats.localFromServerTimestamp(sec * 1000),
         );
       }
     }

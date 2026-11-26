@@ -442,10 +442,7 @@ mixin _StorageScreenTime on _StorageServiceBase {
       timestamp = prefs.getInt(keyLastScreenTimeSync);
     }
     if (timestamp != null) {
-      return DateTime.fromMillisecondsSinceEpoch(
-        timestamp,
-        isUtc: true,
-      ).toLocal();
+      return AppTimeFormats.localFromServerTimestamp(timestamp);
     }
     return null;
   }
@@ -456,10 +453,7 @@ mixin _StorageScreenTime on _StorageServiceBase {
     DateTime now = DateTime.now();
     if (lastSync != null) {
       try {
-        final lastDate = DateTime.fromMillisecondsSinceEpoch(
-          lastSync,
-          isUtc: true,
-        ).toLocal();
+        final lastDate = AppTimeFormats.localFromServerTimestamp(lastSync);
         final elapsed = now.difference(lastDate);
         if (!elapsed.isNegative && elapsed < const Duration(days: 7)) return;
       } on RangeError {

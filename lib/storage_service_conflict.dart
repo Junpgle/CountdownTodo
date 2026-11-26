@@ -685,10 +685,7 @@ mixin _StorageConflict on _StorageServiceBase {
   String? _remoteRecurrencePlanSignature(TodoItem todo) {
     final startMs = todo.createdDate;
     if (startMs == null || startMs <= 0) return null;
-    final start = DateTime.fromMillisecondsSinceEpoch(
-      startMs,
-      isUtc: true,
-    ).toLocal();
+    final start = AppTimeFormats.localFromServerTimestamp(startMs);
     final dueMs = todo.dueDate?.millisecondsSinceEpoch;
     final durationMs = dueMs == null ? null : dueMs - startMs;
     if (durationMs != null && durationMs < 0) return null;
@@ -723,14 +720,10 @@ mixin _StorageConflict on _StorageServiceBase {
     final candidateStartMs = candidate.createdDate;
     if (ruleStartMs == null || candidateStartMs == null) return false;
 
-    final ruleStart = DateTime.fromMillisecondsSinceEpoch(
-      ruleStartMs,
-      isUtc: true,
-    ).toLocal();
-    final candidateStart = DateTime.fromMillisecondsSinceEpoch(
+    final ruleStart = AppTimeFormats.localFromServerTimestamp(ruleStartMs);
+    final candidateStart = AppTimeFormats.localFromServerTimestamp(
       candidateStartMs,
-      isUtc: true,
-    ).toLocal();
+    );
     final ruleDay = DateTime(ruleStart.year, ruleStart.month, ruleStart.day);
     final candidateDay = DateTime(
       candidateStart.year,

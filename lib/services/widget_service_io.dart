@@ -440,10 +440,7 @@ class WidgetService {
     final List<Map<String, dynamic>> slimTimeLogs = tlogsRaw
         .where((l) {
           if (l.isDeleted) return false;
-          final d = DateTime.fromMillisecondsSinceEpoch(
-            l.startTime,
-            isUtc: true,
-          ).toLocal();
+          final d = AppTimeFormats.localFromServerTimestamp(l.startTime);
           return AppTimeFormats.isSameDay(d, today);
         })
         .map(
@@ -460,10 +457,7 @@ class WidgetService {
     final List<Map<String, dynamic>> slimPoms = pomsRaw
         .where((p) {
           if (p.isDeleted) return false;
-          final d = DateTime.fromMillisecondsSinceEpoch(
-            p.startTime,
-            isUtc: true,
-          ).toLocal();
+          final d = AppTimeFormats.localFromServerTimestamp(p.startTime);
           return AppTimeFormats.isSameDay(d, today);
         })
         .map(
