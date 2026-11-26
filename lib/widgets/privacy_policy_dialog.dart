@@ -65,32 +65,19 @@ class _PrivacyPolicyDialogState extends State<PrivacyPolicyDialog> {
   }
 
   Future<void> _handleDisagree(BuildContext context) async {
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('确认不同意'),
-        content: const Text(
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '确认不同意',
+      message:
           '不同意隐私政策将导致以下后果：\n\n'
           '• 退出当前账号\n'
           '• 清除本地所有数据（包括待办、倒计时、番茄钟记录等）\n'
           '• 无法使用数据同步等云端功能\n\n'
           '已收集的个人信息将在合理期限内删除或匿名化处理。\n\n'
           '是否确认？',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
-            child: const Text('确认'),
-          ),
-        ],
-      ),
+      destructive: true,
     );
-    if (confirmed == true && context.mounted) {
+    if (confirmed && context.mounted) {
       await widget.onDisagree();
     }
   }

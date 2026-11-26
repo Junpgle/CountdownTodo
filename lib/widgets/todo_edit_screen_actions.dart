@@ -538,28 +538,16 @@ extension _TodoEditScreenActions on TodoEditScreenState {
       return;
     }
 
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('转为独立习惯追踪'),
-        content: Text(
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '转为独立习惯追踪',
+      message:
           '确定将循环待办「${_editingTodo.title}」转为习惯吗？\n\n'
           '• 将导入其周期规则和历史完成记录为习惯打卡；\n'
           '• 原循环待办系列将移入回收站，今后打卡独立在习惯模块中进行，漏打卡不会在待办中显示逾期。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('转为习惯'),
-          ),
-        ],
-      ),
+      confirmLabel: '转为习惯',
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     final goal = await HabitRepository.createGoalFromSeries(
       todo: _editingTodo,
@@ -720,24 +708,14 @@ extension _TodoEditScreenActions on TodoEditScreenState {
   );
 
   Future<void> _deleteCurrentTodo() async {
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('删除待办'),
-        content: const Text('确定要删除这条待办吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('删除', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '删除待办',
+      message: '确定要删除这条待办吗？',
+      confirmLabel: '删除',
+      destructive: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     final stagedTodos = _editorTodos.map(_copyTodo).toList();
     final index = stagedTodos.indexWhere((todo) => todo.id == _editingTodo.id);

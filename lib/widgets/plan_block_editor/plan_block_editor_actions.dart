@@ -125,24 +125,13 @@ extension _PlanBlockEditorActions on _PlanBlockEditorSheetState {
         return candidate;
       } on PlanAvailabilityException catch (error) {
         if (!error.canUseAppOnly || appOnly || !mounted) rethrow;
-        final fallback = await showAppDialog<bool>(
-          context: context,
-          builder: (c) => AlertDialog(
-            title: const Text('手机日历读取失败'),
-            content: Text(error.message),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(c, false),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(c, true),
-                child: const Text('仅检查应用内日程'),
-              ),
-            ],
-          ),
+        final fallback = await AppDialogs.confirm(
+          context,
+          title: '手机日历读取失败',
+          message: error.message,
+          confirmLabel: '仅检查应用内日程',
         );
-        if (fallback != true) rethrow;
+        if (!fallback) rethrow;
         appOnly = true;
       }
     }
@@ -211,24 +200,13 @@ extension _PlanBlockEditorActions on _PlanBlockEditorSheetState {
   Future<void> _returnSingle() async {
     if (_busy || _splitPersisted) return;
     if (_splitAdjusted) {
-      final yes = await showAppDialog<bool>(
-        context: context,
-        builder: (c) => AlertDialog(
-          title: const Text('放弃已调整的分段？'),
-          content: const Text('备注、提醒和番茄设置会保留。'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(c, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(c, true),
-              child: const Text('返回单段'),
-            ),
-          ],
-        ),
+      final yes = await AppDialogs.confirm(
+        context,
+        title: '放弃已调整的分段？',
+        message: '备注、提醒和番茄设置会保留。',
+        confirmLabel: '返回单段',
       );
-      if (yes != true || !mounted) return;
+      if (!yes || !mounted) return;
     }
     _mutateState(() {
       _touch();

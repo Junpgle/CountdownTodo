@@ -6,25 +6,13 @@ import '../services/plan_weekly_availability_preferences.dart';
 import '../services/plan_todo_guard.dart';
 import '../utils/app_dialogs.dart';
 
-Future<bool> _discardWeeklyChanges(BuildContext context) async =>
-    await showAppDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('放弃未保存的修改？'),
-        content: const Text('每周规则尚未保存。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c, false),
-            child: const Text('继续编辑'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(c, true),
-            child: const Text('放弃修改'),
-          ),
-        ],
-      ),
-    ) ??
-    false;
+Future<bool> _discardWeeklyChanges(BuildContext context) => AppDialogs.confirm(
+  context,
+  title: '放弃未保存的修改？',
+  message: '每周规则尚未保存。',
+  cancelLabel: '继续编辑',
+  confirmLabel: '放弃修改',
+);
 
 class PlanWeeklyAvailabilityScreen extends StatefulWidget {
   const PlanWeeklyAvailabilityScreen({super.key, required this.username});

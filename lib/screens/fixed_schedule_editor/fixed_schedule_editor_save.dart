@@ -643,28 +643,15 @@ extension _FixedScheduleEditorSave on _FixedScheduleEditorScreenState {
     _unfocusActiveInput();
     final item = _selectedOccurrence;
     if (item == null) return;
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('删除固定日程'),
-        content: Text(
-          _seriesItems.where((entry) => !entry.isDeleted).length > 1
-              ? '将删除整个重复日程系列，历史数据仍可用于后续同步恢复。'
-              : '该操作会进行逻辑删除，历史数据仍可用于后续同步恢复。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '删除固定日程',
+      message: _seriesItems.where((entry) => !entry.isDeleted).length > 1
+          ? '将删除整个重复日程系列，历史数据仍可用于后续同步恢复。'
+          : '该操作会进行逻辑删除，历史数据仍可用于后续同步恢复。',
+      confirmLabel: '删除',
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     final activeSeries = _seriesItems
         .where((entry) => !entry.isDeleted)
         .toList();

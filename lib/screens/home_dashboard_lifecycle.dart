@@ -610,30 +610,19 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
   }
 
   Future<void> _showClipboardChallengeDialog(ChallengeDraft draft) async {
-    final shouldImport = await showAppDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        final scheme = Theme.of(dialogContext).colorScheme;
-        return AlertDialog(
-          icon: Icon(Icons.auto_awesome_rounded, color: scheme.primary),
-          title: const Text('发现挑战分享'),
-          content: Text(
-            '检测到挑战「${draft.title}」的分享内容，共 ${draft.taskTitles.length} 项任务。是否导入并查看？',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('暂不导入'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('导入挑战'),
-            ),
-          ],
-        );
-      },
+    final shouldImport = await AppDialogs.confirm(
+      context,
+      icon: Icon(
+        Icons.auto_awesome_rounded,
+        color: Theme.of(context).colorScheme.primary,
+      ),
+      title: '发现挑战分享',
+      message:
+          '检测到挑战「${draft.title}」的分享内容，共 ${draft.taskTitles.length} 项任务。是否导入并查看？',
+      cancelLabel: '暂不导入',
+      confirmLabel: '导入挑战',
     );
-    if (shouldImport != true || !mounted) return;
+    if (!shouldImport || !mounted) return;
 
     final editedDraft = await Navigator.of(context).push<ChallengeDraft>(
       MaterialPageRoute(
@@ -647,24 +636,14 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
 
   Future<void> _startImportedChallenge(ChallengeDraft draft) async {
     if (_isThirtyDayChallengeActive && mounted) {
-      final shouldReplace = await showAppDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('开启导入的挑战？'),
-          content: Text('当前正在进行「$_thirtyDayChallengeTitle」。开始新挑战后，当前挑战会被替换。'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('继续当前挑战'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('开启新挑战'),
-            ),
-          ],
-        ),
+      final shouldReplace = await AppDialogs.confirm(
+        context,
+        title: '开启导入的挑战？',
+        message: '当前正在进行「$_thirtyDayChallengeTitle」。开始新挑战后，当前挑战会被替换。',
+        cancelLabel: '继续当前挑战',
+        confirmLabel: '开启新挑战',
       );
-      if (shouldReplace != true || !mounted) return;
+      if (!shouldReplace || !mounted) return;
     }
 
     try {
@@ -691,29 +670,17 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     String inviteCode, {
     String? teamName,
   }) async {
-    final shouldJoin = await showAppDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        icon: const Icon(Icons.groups_rounded),
-        title: const Text('发现团队邀请'),
-        content: Text(
-          teamName == null
-              ? '检测到一个团队邀请码，是否申请加入？'
-              : '检测到来自「$teamName」的团队邀请，是否申请加入？',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('暂不加入'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('加入团队'),
-          ),
-        ],
-      ),
+    final shouldJoin = await AppDialogs.confirm(
+      context,
+      icon: const Icon(Icons.groups_rounded),
+      title: '发现团队邀请',
+      message: teamName == null
+          ? '检测到一个团队邀请码，是否申请加入？'
+          : '检测到来自「$teamName」的团队邀请，是否申请加入？',
+      cancelLabel: '暂不加入',
+      confirmLabel: '加入团队',
     );
-    if (shouldJoin != true || !mounted) return;
+    if (!shouldJoin || !mounted) return;
 
     final result = await ApiService.requestJoinTeam(inviteCode);
     if (!mounted) return;

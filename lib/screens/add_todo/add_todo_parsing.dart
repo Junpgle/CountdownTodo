@@ -328,24 +328,13 @@ extension _AddTodoParsingExt on _AddTodoScreenState {
     final config = await LLMService.getConfig();
     if (config == null || !config.isConfigured) {
       if (!mounted) return;
-      final goToSettings = await showAppDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text("未配置大模型"),
-          content: const Text("使用大模型识别需要先配置API地址和密钥，是否前往设置？"),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text("取消"),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text("去配置"),
-            ),
-          ],
-        ),
+      final goToSettings = await AppDialogs.confirm(
+        context,
+        title: '未配置大模型',
+        message: '使用大模型识别需要先配置API地址和密钥，是否前往设置？',
+        confirmLabel: '去配置',
       );
-      if (goToSettings == true && mounted) {
+      if (goToSettings && mounted) {
         Navigator.of(context)
             .push(PageTransitions.slideHorizontal(const SettingsPage()));
       }

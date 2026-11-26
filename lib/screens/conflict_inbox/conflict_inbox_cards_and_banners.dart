@@ -466,25 +466,14 @@ extension _ConflictInboxCardsExt on _ConflictInboxScreenState {
 
   Future<void> _batchResolveGhostConflicts(List<dynamic> items) async {
     final messenger = ScaffoldMessenger.of(context);
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("一键修复"),
-        content: Text("将保留这 ${items.length} 项任务，只清除本地损坏的冲突标记。确认继续？"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text("取消"),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text("确认修复"),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '一键修复',
+      message: '将保留这 ${items.length} 项任务，只清除本地损坏的冲突标记。确认继续？',
+      confirmLabel: '确认修复',
     );
 
-    if (confirmed != true) return;
+    if (!confirmed) return;
     _mutateState(() => _isLoading = true);
 
     try {

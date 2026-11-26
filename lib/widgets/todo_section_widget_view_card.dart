@@ -136,25 +136,12 @@ mixin _TodoSectionViewCardMixin on _TodoSectionStateBase {
             await _deleteRecurringTodoWithScope(todo);
             return false;
           }
-          return await showAppDialog<bool>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text('确认删除'),
-              content: Text('确定要删除「${todo.title}」吗？'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('取消'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.redAccent,
-                  ),
-                  child: const Text('删除'),
-                ),
-              ],
-            ),
+          return AppDialogs.confirm(
+            context,
+            title: '确认删除',
+            message: '确定要删除「${todo.title}」吗？',
+            confirmLabel: '删除',
+            destructive: true,
           );
         },
         onDismissed: (_) async {

@@ -561,26 +561,14 @@ mixin _TodoChatActionExecution on _TodoChatScreenStateBase {
         '“${entry.value.title}”：${counts.total} 期（历史 ${counts.historical}、今天 ${counts.current}、未来 ${counts.future}）；已完成 ${counts.completed}、已跳过 ${counts.skipped}。',
       );
     }
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('确认修改整个待办系列'),
-        content: Text(
+    return AppDialogs.confirm(
+      context,
+      title: '确认修改整个待办系列',
+      message:
           '${summaries.join('\n\n')}\n\n只修改待办内容与时间；每期完成和跳过状态会保留。重复规则不变，已有规划块、时间日志和专注记录保留原时间。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('返回检查'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('确认修改'),
-          ),
-        ],
-      ),
+      cancelLabel: '返回检查',
+      confirmLabel: '确认修改',
     );
-    return confirmed == true;
   }
 
   Future<void> _validateTodoSkipActions(Iterable<AiTodoAction> actions) async {

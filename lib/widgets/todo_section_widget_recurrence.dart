@@ -986,32 +986,18 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
                     title: const Text('在本期结束重复'),
                     subtitle: const Text('停止后续生成；本期之后已生成的关联期次移入回收站'),
                     onTap: () async {
-                      final accepted = await showAppDialog<bool>(
-                        context: context,
-                        builder: (dialogContext) => AlertDialog(
-                          icon: Icon(
-                            Icons.stop_circle_outlined,
-                            color: Theme.of(dialogContext).colorScheme.error,
-                          ),
-                          title: const Text('在本期结束重复？'),
-                          content: const Text(
-                            '当前期和此前期次会保留，停止后续生成，并将本期之后已生成的期次移入回收站。',
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () =>
-                                  Navigator.pop(dialogContext, false),
-                              child: const Text('返回'),
-                            ),
-                            FilledButton(
-                              onPressed: () =>
-                                  Navigator.pop(dialogContext, true),
-                              child: const Text('结束重复'),
-                            ),
-                          ],
+                      final accepted = await AppDialogs.confirm(
+                        context,
+                        icon: Icon(
+                          Icons.stop_circle_outlined,
+                          color: Theme.of(context).colorScheme.error,
                         ),
+                        title: '在本期结束重复？',
+                        message: '当前期和此前期次会保留，停止后续生成，并将本期之后已生成的期次移入回收站。',
+                        cancelLabel: '返回',
+                        confirmLabel: '结束重复',
                       );
-                      if (accepted != true || !sheetContext.mounted) return;
+                      if (!accepted || !sheetContext.mounted) return;
                       Navigator.pop(sheetContext);
                       final start = DateTime.fromMillisecondsSinceEpoch(
                         todo.createdDate ?? todo.createdAt,

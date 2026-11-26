@@ -436,24 +436,13 @@ extension _PlanBlockEditorDrafts on _PlanBlockEditorSheetState {
         return;
       } on PlanAvailabilityException catch (error) {
         if (!error.canUseAppOnly || appOnly || !mounted) rethrow;
-        final fallback = await showAppDialog<bool>(
-          context: context,
-          builder: (c) => AlertDialog(
-            title: const Text('手机日历读取失败'),
-            content: Text(error.message),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(c, false),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(c, true),
-                child: const Text('仅检查应用内日程'),
-              ),
-            ],
-          ),
+        final fallback = await AppDialogs.confirm(
+          context,
+          title: '手机日历读取失败',
+          message: error.message,
+          confirmLabel: '仅检查应用内日程',
         );
-        if (fallback != true) rethrow;
+        if (!fallback) rethrow;
         appOnly = true;
       }
     }

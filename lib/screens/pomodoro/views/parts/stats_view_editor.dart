@@ -598,26 +598,14 @@ extension _PomodoroStatsEditor on PomodoroStatsState {
   }
 
   Future<void> _deleteSession(PomodoroSession session) async {
-    final confirm = await showAppDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除记录'),
-        content: const Text('确定要删除这条专注记录吗？'),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+    final confirm = await AppDialogs.confirm(
+      context,
+      title: '删除记录',
+      message: '确定要删除这条专注记录吗？',
+      confirmLabel: '删除',
+      destructive: true,
     );
-    if (confirm == true) {
+    if (confirm) {
       await PomodoroService.deleteSession(session.uuid);
       _loadLocal();
     }

@@ -539,25 +539,14 @@ mixin _TodoChatSendManual on _TodoChatScreenStateBase {
   }
 
   Future<void> _clearHistory() async {
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('清空聊天记录'),
-        content: const Text('确定要清空所有聊天记录吗？此操作不可恢复。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('清空'),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '清空聊天记录',
+      message: '确定要清空所有聊天记录吗？此操作不可恢复。',
+      confirmLabel: '清空',
     );
 
-    if (confirmed == true) {
+    if (confirmed) {
       await ChatStorageService.clearHistory();
       if (mounted) {
         setState(() {

@@ -1226,30 +1226,14 @@ extension _PomodoroWorkbenchSessionExt on PomodoroWorkbenchState {
       _pauseTicker?.cancel();
       bool confirm = skipDialog;
       if (!skipDialog) {
-        final res = await showAppDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('放弃本次专注？'),
-            content: const Text('本次专注会记录为放弃，用于统计中断率。'),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('继续专注'),
-              ),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: Colors.red.shade400,
-                ),
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('放弃'),
-              ),
-            ],
-          ),
+        confirm = await AppDialogs.confirm(
+          context,
+          title: '放弃本次专注？',
+          message: '本次专注会记录为放弃，用于统计中断率。',
+          cancelLabel: '继续专注',
+          confirmLabel: '放弃',
+          destructive: true,
         );
-        confirm = res == true;
       }
       if (confirm) {
         await _stopStrictSensorMonitoring();

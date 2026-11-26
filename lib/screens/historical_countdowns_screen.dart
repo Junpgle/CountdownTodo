@@ -94,30 +94,15 @@ class _HistoricalCountdownsScreenState
   Future<void> _confirmDelete(CountdownItem item) async {
     if (_deletingId != null) return;
     final scheme = Theme.of(context).colorScheme;
-    final confirm = await showAppDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        scrollable: true,
-        icon: Icon(Icons.delete_forever_outlined, color: scheme.error),
-        title: const Text('彻底删除这段记录？'),
-        content: Text('“${item.title}”将被永久删除，删除后无法恢复。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: scheme.error,
-              foregroundColor: scheme.onError,
-            ),
-            child: const Text('确认删除'),
-          ),
-        ],
-      ),
+    final confirm = await AppDialogs.confirm(
+      context,
+      icon: Icon(Icons.delete_forever_outlined, color: scheme.error),
+      title: '彻底删除这段记录？',
+      message: '“${item.title}”将被永久删除，删除后无法恢复。',
+      confirmLabel: '确认删除',
+      destructive: true,
     );
-    if (confirm != true || !mounted || _deletingId != null) return;
+    if (!confirm || !mounted || _deletingId != null) return;
     setState(() => _deletingId = item.id);
     try {
       if (widget.deleteCountdown != null) {
