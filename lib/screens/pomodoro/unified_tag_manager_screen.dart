@@ -224,76 +224,171 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
         .toList();
     final topBarHeight = floatingGlassTopBarHeight(context);
     final canReorder = !_showArchived && _searchController.text.trim().isEmpty;
-    final list = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    final listControls = <Widget>[
+      ManagementSearchField(
+        controller: _searchController,
+        hintText: '搜索标签名称',
+        onChanged: (_) => setState(() {}),
+      ),
+      const SizedBox(height: 14),
+      ManagementFilterBar<bool>(
+        value: _showArchived,
+        onChanged: (value) => setState(() => _showArchived = value),
+        options: [
+          ManagementFilterOption(value: false, label: '使用中 ${_tags.length}'),
+          if (widget.showArchive)
+            ManagementFilterOption(
+              value: true,
+              label: '已归档 ${_archivedTags.length}',
+            ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      Text(
+        _showArchived
+            ? '归档标签仍保留在历史记录中，可随时恢复。'
+            : canReorder
+            ? '拖动右侧手柄排序，点击标签编辑。'
+            : '搜索时暂停排序，清空搜索后可拖动调整。',
+        style: Theme.of(context).textTheme.bodySmall
+            ?.copyWith(color: scheme.onSurfaceVariant),
+      ),
+      const SizedBox(height: 16),
+      if (visible.isEmpty)
+        ManagementEmptyState(
+          icon: _showArchived
+              ? Icons.inventory_2_outlined
+              : Icons.label_outline,
+          title: _searchController.text.trim().isNotEmpty
+              ? '没有找到匹配的标签'
+              : _showArchived
+              ? '暂无归档标签'
+              : '还没有标签',
+          description: _searchController.text.trim().isNotEmpty
+              ? '试试其他关键词，或清空搜索。'
+              : _showArchived
+              ? '不常用的标签可以归档，不会删除历史记录。'
+              : '点击“添加标签”，为专注和时间日志分类。',
+        ),
+    ];
+
+    int? findTagIndex(Key key) {
+      if (key is ValueKey<String>) {
+        final uuid = key.value;
+        final idx = visible.indexWhere((t) => t.uuid == uuid);
+        return idx != -1 ? idx : null;
+      }
+      return null;
+    }
+
+    void handleReorder(int oldIndex, int newIndex) {
+      setState(() {
+        final tag = _tags.removeAt(oldIndex);
+        _tags.insert(newIndex, tag);
+      });
+      _notifyChanges();
+    }
+
+    final intro = const ManagementIntro(
+      icon: Icons.label_outline_rounded,
+      title: '让专注更有条理',
+      description: '整理专注与时间日志的标签，保留每一次投入的线索。',
+    );
+    final actionWrap = Wrap(
+      spacing: 8,
+      runSpacing: 8,
       children: [
-        ManagementSearchField(
-          controller: _searchController,
-          hintText: '搜索标签名称',
-          onChanged: (_) => setState(() {}),
+        FilledButton.icon(
+          onPressed: () => _addTag(isWide),
+          icon: const Icon(Icons.add_rounded),
+          label: const Text('添加标签'),
         ),
-        const SizedBox(height: 14),
-        ManagementFilterBar<bool>(
-          value: _showArchived,
-          onChanged: (value) => setState(() => _showArchived = value),
-          options: [
-            ManagementFilterOption(value: false, label: '使用中 ${_tags.length}'),
-            if (widget.showArchive)
-              ManagementFilterOption(
-                value: true,
-                label: '已归档 ${_archivedTags.length}',
-              ),
-          ],
+        TextButton.icon(
+          onPressed: () => _openTagTool(true),
+          icon: const Icon(Icons.playlist_add_rounded),
+          label: const Text('批量添加标签'),
         ),
-        const SizedBox(height: 12),
-        Text(
-          _showArchived
-              ? '归档标签仍保留在历史记录中，可随时恢复。'
-              : canReorder
-              ? '拖动右侧手柄排序，点击标签编辑。'
-              : '搜索时暂停排序，清空搜索后可拖动调整。',
-          style: Theme.of(context).textTheme.bodySmall
-              ?.copyWith(color: scheme.onSurfaceVariant),
+        TextButton.icon(
+          onPressed: () => _openTagTool(false),
+          icon: const Icon(Icons.link_rounded),
+          label: const Text('重新绑定标签'),
         ),
-        const SizedBox(height: 16),
-        if (visible.isEmpty)
-          ManagementEmptyState(
-            icon: _showArchived
-                ? Icons.inventory_2_outlined
-                : Icons.label_outline,
-            title: _searchController.text.trim().isNotEmpty
-                ? '没有找到匹配的标签'
-                : _showArchived
-                ? '暂无归档标签'
-                : '还没有标签',
-            description: _searchController.text.trim().isNotEmpty
-                ? '试试其他关键词，或清空搜索。'
-                : _showArchived
-                ? '不常用的标签可以归档，不会删除历史记录。'
-                : '点击“添加标签”，为专注和时间日志分类。',
-          )
-        else if (canReorder)
-          ReorderableListView.builder(
-            padding: EdgeInsets.zero,
-            primary: false,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            buildDefaultDragHandles: false,
-            itemCount: visible.length,
-            onReorderItem: (oldIndex, newIndex) {
-              setState(() {
-                final tag = _tags.removeAt(oldIndex);
-                _tags.insert(newIndex, tag);
-              });
-              _notifyChanges();
-            },
-            itemBuilder: (_, index) =>
-                _buildTagCard(visible[index], isWide, index),
-          )
-        else
-          ...visible.map((tag) => _buildTagCard(tag, isWide, null)),
       ],
     );
+
+    final Widget body = isWide
+        ? ManagementPage(
+            topPadding: topBarHeight,
+            maxWidth: 1160,
+            children: [
+              intro,
+              actionWrap,
+              const SizedBox(height: 24),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        ...listControls,
+                        if (visible.isNotEmpty && canReorder)
+                          ReorderableListView.builder(
+                            padding: EdgeInsets.zero,
+                            primary: false,
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            buildDefaultDragHandles: false,
+                            itemCount: visible.length,
+                            onReorderItem: handleReorder,
+                            itemBuilder: (_, index) =>
+                                _buildTagCard(visible[index], true, index),
+                          )
+                        else if (visible.isNotEmpty)
+                          ...visible.map(
+                            (tag) => _buildTagCard(tag, true, null),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 24),
+                  Expanded(child: _buildRightPanel(scheme)),
+                ],
+              ),
+            ],
+          )
+        : ManagementPage.slivers(
+            topPadding: topBarHeight,
+            maxWidth: 1160,
+            slivers: [
+              SliverToBoxAdapter(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    intro,
+                    actionWrap,
+                    const SizedBox(height: 24),
+                    ...listControls,
+                  ],
+                ),
+              ),
+              if (visible.isNotEmpty && canReorder)
+                SliverReorderableList(
+                  itemCount: visible.length,
+                  findChildIndexCallback: findTagIndex,
+                  onReorderItem: handleReorder,
+                  itemBuilder: (_, index) =>
+                      _buildTagCard(visible[index], false, index),
+                )
+              else if (visible.isNotEmpty)
+                SliverList.builder(
+                  itemCount: visible.length,
+                  findChildIndexCallback: findTagIndex,
+                  itemBuilder: (_, index) =>
+                      _buildTagCard(visible[index], false, null),
+                ),
+            ],
+          );
 
     return Scaffold(
       backgroundColor: scheme.surface,
@@ -304,50 +399,7 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
       ),
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
-        child: ManagementPage(
-          topPadding: topBarHeight,
-          maxWidth: 1160,
-          children: [
-            const ManagementIntro(
-              icon: Icons.label_outline_rounded,
-              title: '让专注更有条理',
-              description: '整理专注与时间日志的标签，保留每一次投入的线索。',
-            ),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                FilledButton.icon(
-                  onPressed: () => _addTag(isWide),
-                  icon: const Icon(Icons.add_rounded),
-                  label: const Text('添加标签'),
-                ),
-                TextButton.icon(
-                  onPressed: () => _openTagTool(true),
-                  icon: const Icon(Icons.playlist_add_rounded),
-                  label: const Text('批量添加标签'),
-                ),
-                TextButton.icon(
-                  onPressed: () => _openTagTool(false),
-                  icon: const Icon(Icons.link_rounded),
-                  label: const Text('重新绑定标签'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            if (isWide)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: list),
-                  const SizedBox(width: 24),
-                  Expanded(child: _buildRightPanel(scheme)),
-                ],
-              )
-            else
-              list,
-          ],
-        ),
+        child: body,
       ),
     );
   }

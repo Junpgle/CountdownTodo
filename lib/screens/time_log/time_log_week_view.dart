@@ -782,6 +782,39 @@ class _WeekViewState extends State<_WeekView>
           ),
           Expanded(
             child: ListView.builder(
+              prototypeItem: Container(
+                margin: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  border: Border.all(),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '标签',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      '0.0h',
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               findChildIndexCallback: (Key key) {
                 if (key is ValueKey<String>) {
                   final uuid = key.value;
@@ -827,6 +860,7 @@ class _WeekViewState extends State<_WeekView>
                               children: [
                                 Text(
                                   t.name,
+                                  maxLines: 1,
                                   style: TextStyle(
                                     fontSize: 11,
                                     color: c,
@@ -836,6 +870,7 @@ class _WeekViewState extends State<_WeekView>
                                 ),
                                 Text(
                                   '${(tw / 60).toStringAsFixed(1)}h',
+                                  maxLines: 1,
                                   style: TextStyle(
                                     fontSize: 13,
                                     color: _TC.text(ctx),

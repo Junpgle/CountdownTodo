@@ -151,7 +151,9 @@ void main() {
     expect(find.text('归档'), findsNothing);
     expect(find.text('已归档 1'), findsNothing);
     tester
-        .widget<ReorderableListView>(find.byType(ReorderableListView))
+        .widget<SliverReorderableList>(
+          find.byType(SliverReorderableList, skipOffstage: false),
+        )
         .onReorderItem!(0, 1);
     await tester.pumpAndSettle();
     expect(saved.take(2).map((t) => t.uuid), ['work', 'read']);

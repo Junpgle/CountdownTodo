@@ -12,6 +12,11 @@ import '../utils/app_platform.dart';
 /// The caller still supplies the same child, so bypassing blur only removes the
 /// expensive compositing step while preserving the supplied clipping.
 class PlatformBackdropFilter extends StatelessWidget {
+  static final Listenable _modeListenable = Listenable.merge(<Listenable>[
+    LiquidGlassEffectService.configurationListenable,
+    PowerSaveModeService.enabledListenable,
+  ]);
+
   final ImageFilter filter;
   final Widget child;
   final bool bypassWhenLiquidGlassEnabled;
@@ -52,22 +57,21 @@ class PlatformBackdropFilter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge(<Listenable>[
-        LiquidGlassEffectService.configurationListenable,
-        PowerSaveModeService.enabledListenable,
-      ]),
-      builder: (context, _) {
+      listenable: _modeListenable,
+      child: child,
+      builder: (context, cachedChild) {
+        final content = cachedChild!;
         if (PowerSaveModeService.isEnabled ||
             Theme.of(context).brightness == Brightness.dark ||
             bypassWhenLiquidGlassEnabled) {
-          return _clipIfNeeded(child);
+          return _clipIfNeeded(content);
         }
         final configuration = LiquidGlassEffectService.configuration;
         if (AppPlatform.isWindows && !configuration.enabled) {
-          return _clipIfNeeded(child);
+          return _clipIfNeeded(content);
         }
         return _clipIfNeeded(
-          BackdropFilter.grouped(filter: filter, child: child),
+          BackdropFilter.grouped(filter: filter, child: content),
           forceClipRect: true,
         );
       },
