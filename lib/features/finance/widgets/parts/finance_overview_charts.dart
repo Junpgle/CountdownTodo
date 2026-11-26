@@ -796,6 +796,30 @@ extension _FinanceOverviewChartsExt on _FinanceOverviewPanelState {
       );
     }
 
+    if (_view == _FinanceOverviewView.year) {
+      final values = List<int>.filled(12, 0);
+      for (final entry in period.summary.expenseByDate.entries) {
+        final date = dateFromKey(entry.key);
+        if (date.year != month.year) continue;
+        values[date.month - 1] += entry.value;
+      }
+      return _buildBarChart(
+        context,
+        colorScheme,
+        values: values,
+        labels: [
+          for (var index = 0; index < values.length; index++) '${index + 1}',
+        ],
+        tooltips: [
+          for (var index = 0; index < values.length; index++)
+            '${month.year}年${index + 1}月 · '
+                '$spendingLabel ${formatFinanceAmount(values[index])}',
+        ],
+        emptyMessage: emptyMessage,
+        barWidth: 26,
+      );
+    }
+
     final count = _view == _FinanceOverviewView.month
         ? DateTime(month.year, month.month + 1, 0).day
         : 7;

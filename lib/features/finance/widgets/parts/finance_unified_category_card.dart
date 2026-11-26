@@ -128,6 +128,7 @@ class _FinanceUnifiedCategoryCardState
 
     final isTest = AppPlatform.isFlutterTest;
     final donutSize = switch (widget.view) {
+      _FinanceOverviewView.year => isTest ? 100.0 : 190.0,
       _FinanceOverviewView.month => isTest ? 100.0 : 190.0,
       _FinanceOverviewView.week => isTest ? 90.0 : 166.0,
       _FinanceOverviewView.day => isTest ? 80.0 : 142.0,

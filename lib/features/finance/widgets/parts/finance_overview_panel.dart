@@ -448,6 +448,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     final includesNow = !now.isBefore(range.from) && now.isBefore(range.to);
     final selectedMonthIsCurrent =
         now.year == month.year && now.month == month.month;
+    final selectedYearIsCurrent = now.year == month.year;
     final selectedMonthIsFuture =
         month.year > now.year ||
         (month.year == now.year && month.month > now.month);
@@ -479,6 +480,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
         ? summary
         : FinanceRepository.summarizeTransactions(periodTransactions);
     final title = switch (_view) {
+      _FinanceOverviewView.year => '${month.year} 年',
       _FinanceOverviewView.month => '${month.year} 年 ${month.month} 月',
       _FinanceOverviewView.week => _formatFinanceDateRange(
         range.from,
@@ -487,6 +489,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       _FinanceOverviewView.day => _formatFinanceDayLabel(dateKey(_focusedDate)),
     };
     final shortTitle = switch (_view) {
+      _FinanceOverviewView.year =>
+        selectedYearIsCurrent ? '本年' : '${month.year}年',
       _FinanceOverviewView.month =>
         selectedMonthIsCurrent ? '本月' : '${month.year}年${month.month}月',
       _FinanceOverviewView.week =>
@@ -512,6 +516,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   String _spendingChartTitle(_FinanceOverviewPeriod period) {
     if (period.isPlanned) {
       return switch (_view) {
+        _FinanceOverviewView.year => '计划每月净支出',
         _FinanceOverviewView.month => '计划每日净支出',
         _FinanceOverviewView.week =>
           '计划${_formatFinanceDateRange(period.from, period.to)}每日净支出',
@@ -521,6 +526,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     }
     final now = clock();
     return switch (_view) {
+      _FinanceOverviewView.year =>
+        now.year == month.year ? '本年每月净支出' : '${month.year}年每月净支出',
       _FinanceOverviewView.month => '每日净支出',
       _FinanceOverviewView.week =>
         !now.isBefore(_periodRange.from) && now.isBefore(_periodRange.to)
@@ -535,6 +542,11 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
 
   _FinanceDateRange get _periodRange {
     switch (_view) {
+      case _FinanceOverviewView.year:
+        return _FinanceDateRange(
+          DateTime(month.year),
+          DateTime(month.year + 1),
+        );
       case _FinanceOverviewView.month:
         return _FinanceDateRange(
           DateTime(month.year, month.month),
@@ -590,6 +602,11 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
           height: 42,
           segments: const [
             FinanceGlassSegment(
+              id: 'year',
+              label: '年视图',
+              value: _FinanceOverviewView.year,
+            ),
+            FinanceGlassSegment(
               id: 'month',
               label: '月视图',
               value: _FinanceOverviewView.month,
@@ -618,26 +635,26 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   Widget _buildPeriodNavigator(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final period = _periodRange;
-    final isMonthView = _view == _FinanceOverviewView.month;
     final canShiftPrevious = _canShiftFocusedPeriod(-1);
     final canShiftNext = _canShiftFocusedPeriod(1);
-    final VoidCallback? previousAction;
-    if (isMonthView) {
-      previousAction = canShiftPrevious ? () => _shiftMonth(-1) : null;
-    } else if (canShiftPrevious) {
-      previousAction = () => _shiftFocusedPeriod(-1);
-    } else {
-      previousAction = null;
-    }
-    final VoidCallback? nextAction;
-    if (isMonthView) {
-      nextAction = canShiftNext ? () => _shiftMonth(1) : null;
-    } else if (canShiftNext) {
-      nextAction = () => _shiftFocusedPeriod(1);
-    } else {
-      nextAction = null;
-    }
+    final VoidCallback? previousAction = canShiftPrevious
+        ? switch (_view) {
+            _FinanceOverviewView.year => () => _shiftYear(-1),
+            _FinanceOverviewView.month => () => _shiftMonth(-1),
+            _FinanceOverviewView.week ||
+            _FinanceOverviewView.day => () => _shiftFocusedPeriod(-1),
+          }
+        : null;
+    final VoidCallback? nextAction = canShiftNext
+        ? switch (_view) {
+            _FinanceOverviewView.year => () => _shiftYear(1),
+            _FinanceOverviewView.month => () => _shiftMonth(1),
+            _FinanceOverviewView.week ||
+            _FinanceOverviewView.day => () => _shiftFocusedPeriod(1),
+          }
+        : null;
     final title = switch (_view) {
+      _FinanceOverviewView.year => '${month.year}年',
       _FinanceOverviewView.month => '${month.year}年${month.month}月',
       _FinanceOverviewView.week => _formatFinanceDateRange(
         period.from,
@@ -646,6 +663,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       _FinanceOverviewView.day => _formatFinanceDayLabel(dateKey(_focusedDate)),
     };
     final subtitle = switch (_view) {
+      _FinanceOverviewView.year => '按自然年',
       _FinanceOverviewView.month => '选择月份',
       _FinanceOverviewView.week => '周一至周日',
       _FinanceOverviewView.day => '选择具体日期',
@@ -665,11 +683,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
         children: [
           IconButton(
             key: const ValueKey('finance-overview-period-previous'),
-            tooltip: isMonthView
-                ? '上个月'
-                : _view == _FinanceOverviewView.week
-                ? '上一周'
-                : '前一天',
+            tooltip: _previousPeriodTooltip,
             style: IconButton.styleFrom(
               backgroundColor: colorScheme.surfaceContainerHighest.withValues(
                 alpha: 0.5,
@@ -683,7 +697,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
             child: InkWell(
               key: const ValueKey('finance-overview-period-picker'),
               borderRadius: BorderRadius.circular(12),
-              onTap: isMonthView ? _pickMonth : _pickFocusedDate,
+              onTap: _pickPeriod,
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
                 child: Row(
@@ -735,11 +749,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
           ),
           IconButton(
             key: const ValueKey('finance-overview-period-next'),
-            tooltip: isMonthView
-                ? '下个月'
-                : _view == _FinanceOverviewView.week
-                ? '下一周'
-                : '后一天',
+            tooltip: _nextPeriodTooltip,
             style: IconButton.styleFrom(
               backgroundColor: colorScheme.surfaceContainerHighest.withValues(
                 alpha: 0.5,
@@ -754,9 +764,59 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     );
   }
 
+  String get _previousPeriodTooltip => switch (_view) {
+    _FinanceOverviewView.year => '上一年',
+    _FinanceOverviewView.month => '上个月',
+    _FinanceOverviewView.week => '上一周',
+    _FinanceOverviewView.day => '前一天',
+  };
+
+  String get _nextPeriodTooltip => switch (_view) {
+    _FinanceOverviewView.year => '下一年',
+    _FinanceOverviewView.month => '下个月',
+    _FinanceOverviewView.week => '下一周',
+    _FinanceOverviewView.day => '后一天',
+  };
+
+  void _shiftYear(int delta) {
+    if (!_canShiftFocusedPeriod(delta)) return;
+    onMonthChanged?.call(DateTime(month.year + delta, month.month));
+  }
+
   void _shiftMonth(int delta) {
     if (!_canShiftFocusedPeriod(delta)) return;
     onMonthChanged?.call(DateTime(month.year, month.month + delta));
+  }
+
+  Future<void> _pickPeriod() {
+    return switch (_view) {
+      _FinanceOverviewView.year => _pickYear(),
+      _FinanceOverviewView.month => _pickMonth(),
+      _FinanceOverviewView.week ||
+      _FinanceOverviewView.day => _pickFocusedDate(),
+    };
+  }
+
+  Future<void> _pickYear() async {
+    final picked = await showAppDialog<int>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('选择年份'),
+        content: SizedBox(
+          width: 300,
+          height: 320,
+          child: YearPicker(
+            firstDate: DateTime(2000),
+            lastDate: clock().add(const Duration(days: 3650)),
+            selectedDate: DateTime(month.year),
+            onChanged: (value) => Navigator.pop(dialogContext, value.year),
+          ),
+        ),
+      ),
+    );
+    if (picked != null && mounted) {
+      onMonthChanged?.call(DateTime(picked, month.month));
+    }
   }
 
   Future<void> _pickMonth() async {
@@ -805,6 +865,11 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   bool _canShiftFocusedPeriod(int delta) {
     final firstAllowedDate = DateTime(2000);
     final lastAllowedDate = clock().add(const Duration(days: 3650));
+    if (_view == _FinanceOverviewView.year) {
+      final nextYear = month.year + delta;
+      return nextYear >= firstAllowedDate.year &&
+          nextYear <= lastAllowedDate.year;
+    }
     if (_view == _FinanceOverviewView.month) {
       final nextMonth = DateTime(month.year, month.month + delta);
       final lastAllowedMonth = DateTime(

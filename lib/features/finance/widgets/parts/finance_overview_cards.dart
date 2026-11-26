@@ -143,14 +143,29 @@ extension _FinanceOverviewCardsExt on _FinanceOverviewPanelState {
     ColorScheme colorScheme,
     _FinanceOverviewPeriod period,
   ) {
+    final isYearView = _view == _FinanceOverviewView.year;
+    final isMonthView = _view == _FinanceOverviewView.month;
     final monthKey =
         '${month.year.toString().padLeft(4, '0')}-${month.month.toString().padLeft(2, '0')}';
-    final overallBudget = budgets.cast<FinanceBudget?>().firstWhere(
-      (b) => b != null && !b.isDeleted && b.isOverall && b.monthKey == monthKey,
-      orElse: () => null,
+    final List<FinanceBudget> yearBudgetMonths = isYearView
+        ? _yearOverallBudgetMonths()
+        : const [];
+    final overallBudget = isYearView
+        ? null
+        : budgets.cast<FinanceBudget?>().firstWhere(
+            (b) =>
+                b != null &&
+                !b.isDeleted &&
+                b.isOverall &&
+                b.monthKey == monthKey,
+            orElse: () => null,
+          );
+    final yearBudgetMinor = yearBudgetMonths.fold<int>(
+      0,
+      (sum, budget) => sum + budget.amountMinor,
     );
 
-    if (overallBudget == null) {
+    if (isYearView ? yearBudgetMonths.isEmpty : overallBudget == null) {
       if (widget.onOpenBudgets == null) return const SizedBox.shrink();
       return Card(
         shape: RoundedRectangleBorder(
@@ -189,7 +204,9 @@ extension _FinanceOverviewCardsExt on _FinanceOverviewPanelState {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${month.month}月未设定总预算',
+                        isYearView
+                            ? '${month.year}年未设定预算'
+                            : '${month.month}月未设定总预算',
                         style: const TextStyle(
                           fontSize: 13.5,
                           fontWeight: FontWeight.w600,
@@ -197,7 +214,9 @@ extension _FinanceOverviewCardsExt on _FinanceOverviewPanelState {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '设定月度预算以实时掌握支出进度与日均额度',
+                        isYearView
+                            ? '预算按月设定，为本年各月设定总预算后即汇总为年度预算'
+                            : '设定月度预算以实时掌握支出进度与日均额度',
                         style: TextStyle(
                           fontSize: 11.5,
                           color: colorScheme.onSurfaceVariant,
@@ -226,46 +245,29 @@ extension _FinanceOverviewCardsExt on _FinanceOverviewPanelState {
       );
     }
 
-    final budgetMinor = overallBudget.amountMinor;
-    final monthNetExpenseMinor = _view == _FinanceOverviewView.month
+    final budgetMinor = isYearView
+        ? yearBudgetMinor
+        : overallBudget!.amountMinor;
+    final spentMinor = isMonthView || isYearView
         ? period.summary.netExpenseMinor
-        : () {
-            var exp = 0;
-            final prefix = monthKey;
-            for (final tx in transactions) {
-              if (tx.transactionDate.startsWith(prefix)) {
-                if (tx.type == FinanceTransactionType.expense) {
-                  exp += tx.amountMinor;
-                } else if (tx.type == FinanceTransactionType.refund) {
-                  exp -= tx.amountMinor;
-                }
-              }
-            }
-            return exp;
-          }();
+        : _monthNetExpenseMinor(monthKey);
 
-    final remainingMinor = budgetMinor - monthNetExpenseMinor;
+    final remainingMinor = budgetMinor - spentMinor;
     final progress = budgetMinor > 0
-        ? (monthNetExpenseMinor / budgetMinor).clamp(0.0, 1.0)
+        ? (spentMinor / budgetMinor).clamp(0.0, 1.0)
         : 0.0;
     final percentNumber = budgetMinor > 0
-        ? ((monthNetExpenseMinor / budgetMinor) * 100).toStringAsFixed(1)
+        ? ((spentMinor / budgetMinor) * 100).toStringAsFixed(1)
         : '0.0';
     final isOverspent = remainingMinor < 0;
 
-    final now = clock();
-    final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
-    int daysRemaining;
-    if (now.year == month.year && now.month == month.month) {
-      daysRemaining = math.max(1, daysInMonth - now.day + 1);
-    } else if (DateTime(
-      month.year,
-      month.month,
-    ).isBefore(DateTime(now.year, now.month))) {
-      daysRemaining = 0;
-    } else {
-      daysRemaining = daysInMonth;
-    }
+    final scopeStart = isYearView
+        ? DateTime(month.year)
+        : DateTime(month.year, month.month);
+    final scopeEnd = isYearView
+        ? DateTime(month.year + 1)
+        : DateTime(month.year, month.month + 1);
+    final daysRemaining = _budgetDaysRemaining(scopeStart, scopeEnd);
 
     final dailyAllowanceMinor = (!isOverspent && daysRemaining > 0)
         ? remainingMinor ~/ daysRemaining
@@ -276,6 +278,12 @@ extension _FinanceOverviewCardsExt on _FinanceOverviewPanelState {
         : progress > 0.85
         ? Colors.orange
         : colorScheme.primary;
+    final partialYearNote = isYearView && yearBudgetMonths.length < 12
+        ? '已设 ${yearBudgetMonths.length} 个月度预算，'
+        : '';
+    final scopeName = isYearView
+        ? (clock().year == month.year ? '本年' : '${month.year}年')
+        : '本月';
 
     return Card(
       shape: RoundedRectangleBorder(
@@ -311,7 +319,7 @@ extension _FinanceOverviewCardsExt on _FinanceOverviewPanelState {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    '${month.month}月总预算',
+                    isYearView ? '${month.year}年总预算' : '${month.month}月总预算',
                     style: const TextStyle(
                       fontSize: 13.5,
                       fontWeight: FontWeight.w700,
@@ -393,10 +401,10 @@ extension _FinanceOverviewCardsExt on _FinanceOverviewPanelState {
                   Expanded(
                     child: Text(
                       isOverspent
-                          ? '超出预算 ${formatFinanceAmount(remainingMinor.abs())}，建议合理规划后续开支'
+                          ? '$partialYearNote超出预算 ${formatFinanceAmount(remainingMinor.abs())}，建议合理规划后续开支'
                           : daysRemaining > 0
-                          ? '剩余 $daysRemaining 天，建议日均支出额度 ${formatFinanceAmount(dailyAllowanceMinor)}'
-                          : '本月已结束，最终节余 ${formatFinanceAmount(remainingMinor)}',
+                          ? '$partialYearNote剩余 $daysRemaining 天，建议日均支出额度 ${formatFinanceAmount(dailyAllowanceMinor)}'
+                          : '$partialYearNote$scopeName已结束，最终节余 ${formatFinanceAmount(remainingMinor)}',
                       style: TextStyle(
                         fontSize: 11.5,
                         color: isOverspent
@@ -412,6 +420,41 @@ extension _FinanceOverviewCardsExt on _FinanceOverviewPanelState {
         ),
       ),
     );
+  }
+
+  /// 年度预算由该年各月的月度总预算汇总而来，未设定的月份不计入。
+  List<FinanceBudget> _yearOverallBudgetMonths() {
+    final prefix = '${month.year}-';
+    final result = budgets
+        .where(
+          (b) => !b.isDeleted && b.isOverall && b.monthKey.startsWith(prefix),
+        )
+        .toList();
+    result.sort((a, b) => a.monthKey.compareTo(b.monthKey));
+    return result;
+  }
+
+  int _monthNetExpenseMinor(String monthKey) {
+    var expenseMinor = 0;
+    for (final transaction in transactions) {
+      if (!transaction.transactionDate.startsWith(monthKey)) continue;
+      if (transaction.type == FinanceTransactionType.expense) {
+        expenseMinor += transaction.amountMinor;
+      } else if (transaction.type == FinanceTransactionType.refund) {
+        expenseMinor -= transaction.amountMinor;
+      }
+    }
+    return expenseMinor;
+  }
+
+  int _budgetDaysRemaining(DateTime scopeStart, DateTime scopeEnd) {
+    final now = clock();
+    if (!now.isBefore(scopeEnd)) return 0;
+    final today = CalendarDateMath.dateOnly(now);
+    if (today.isBefore(scopeStart)) {
+      return scopeEnd.difference(scopeStart).inDays;
+    }
+    return scopeEnd.difference(today).inDays;
   }
 
   Widget _buildEnhancedInsightCard(
@@ -435,6 +478,11 @@ extension _FinanceOverviewCardsExt on _FinanceOverviewPanelState {
     final momPercent = (momDifference != null && prevPeriodExpense! > 0)
         ? ((momDifference.abs() / prevPeriodExpense) * 100).toStringAsFixed(1)
         : null;
+
+    final isYearView = _view == _FinanceOverviewView.year;
+    final elapsedMonths = isYearView
+        ? (clock().year == month.year ? clock().month : 12)
+        : 0;
 
     return Padding(
       padding: const EdgeInsets.only(top: 8),
@@ -510,6 +558,18 @@ extension _FinanceOverviewCardsExt on _FinanceOverviewPanelState {
                               (desc.isNotEmpty ? ' · $desc' : ''),
                         );
                       }(),
+                    if (isYearView)
+                      _buildInsightMetricTile(
+                        context,
+                        colorScheme,
+                        label: '月均净支出',
+                        value: formatFinanceAmount(
+                          elapsedMonths <= 0
+                              ? 0
+                              : period.summary.netExpenseMinor ~/ elapsedMonths,
+                        ),
+                        hint: '按 $elapsedMonths 个月均摊',
+                      ),
                     if (momDifference != null && momPercent != null)
                       _buildInsightMetricTile(
                         context,
