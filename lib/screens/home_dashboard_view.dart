@@ -1055,39 +1055,6 @@ mixin _HomeDashboardViewMixin
                                       );
                                     }
 
-                                    List<Widget> buildColumnWidgets(
-                                      List<String> keys,
-                                    ) {
-                                      return keys
-                                          .where(
-                                            (key) =>
-                                                (_sectionVisibility[key] ??
-                                                    true) &&
-                                                sectionBuilders.containsKey(
-                                                  key,
-                                                ),
-                                          )
-                                          .map((key) {
-                                            final section =
-                                                sectionBuilders[key]!();
-                                            final columnSection =
-                                                AppSystemUiRegion(
-                                                  backgroundBrightness:
-                                                      cardBackgroundBrightness,
-                                                  child: Padding(
-                                                    padding: EdgeInsets.only(
-                                                      bottom: key == 'banners'
-                                                          ? 0.0
-                                                          : 24.0,
-                                                    ),
-                                                    child: section,
-                                                  ),
-                                                );
-                                            return columnSection;
-                                          })
-                                          .toList();
-                                    }
-
                                     final visibleLeftKeys = currentLeft
                                         .where(
                                           (key) =>
@@ -1096,119 +1063,238 @@ mixin _HomeDashboardViewMixin
                                               sectionBuilders.containsKey(key),
                                         )
                                         .toList();
-                                    List<Widget> leftWidgets =
-                                        buildColumnWidgets(visibleLeftKeys);
                                     final tabletBannersIdx = visibleLeftKeys
                                         .indexOf('banners');
-                                    leftWidgets.insert(
+                                    visibleLeftKeys.insert(
                                       tabletBannersIdx >= 0
                                           ? tabletBannersIdx + 1
                                           : 0,
-                                      AppSystemUiRegion(
-                                        backgroundBrightness:
-                                            cardBackgroundBrightness,
-                                        child: wrapSectionBoundary(
-                                          _buildDailyAiSuggestionSection(
-                                            isLight,
+                                      'daily_ai_suggestion',
+                                    );
+                                    final visibleRightKeys = currentRight
+                                        .where(
+                                          (key) =>
+                                              (_sectionVisibility[key] ??
+                                                  true) &&
+                                              sectionBuilders.containsKey(key),
+                                        )
+                                        .toList(growable: false);
+
+                                    Widget buildWideSection(String key) {
+                                      if (key == 'daily_ai_suggestion') {
+                                        return HomeDashboardScrollSection(
+                                          key: const ValueKey<String>(
+                                            'daily_ai_suggestion',
+                                          ),
+                                          keepAlive: true,
+                                          child: AppSystemUiRegion(
+                                            backgroundBrightness:
+                                                cardBackgroundBrightness,
+                                            child: wrapSectionBoundary(
+                                              _buildDailyAiSuggestionSection(
+                                                isLight,
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                      return HomeDashboardScrollSection(
+                                        key: ValueKey<String>(key),
+                                        keepAlive: true,
+                                        child: AppSystemUiRegion(
+                                          backgroundBrightness:
+                                              cardBackgroundBrightness,
+                                          child: Padding(
+                                            padding: EdgeInsets.only(
+                                              bottom: key == 'banners'
+                                                  ? 0.0
+                                                  : 24.0,
+                                            ),
+                                            child: sectionBuilders[key]!(),
                                           ),
                                         ),
-                                      ),
-                                    );
-                                    List<Widget> rightWidgets =
-                                        buildColumnWidgets(currentRight);
+                                      );
+                                    }
+
+                                    int? findKeyIndex(
+                                      List<String> keys,
+                                      Key key,
+                                    ) {
+                                      if (key is! ValueKey<String>) return null;
+                                      final index = keys.indexOf(key.value);
+                                      return index < 0 ? null : index;
+                                    }
+
+                                    final hasCopyright =
+                                        _wallpaperCopyright?.isNotEmpty ??
+                                        false;
+                                    final bottomPadding =
+                                        16.0 +
+                                        bottomSystemInset +
+                                        (isTablet ? 100.0 : 0.0);
 
                                     return OptionalLiquidGlassScrollOptimizer(
-                                      child: SingleChildScrollView(
-                                        physics: const AppFluidScrollPhysics(
-                                          parent:
-                                              AlwaysScrollableScrollPhysics(),
-                                        ),
-                                        padding: EdgeInsets.fromLTRB(
-                                          isTablet ? 32 : 16,
-                                          headerExtent + 6,
-                                          isTablet ? 32 : 16,
-                                          16 +
-                                              bottomSystemInset +
-                                              (isTablet ? 100.0 : 0.0),
-                                        ),
-                                        child: Align(
-                                          alignment: Alignment.topCenter,
-                                          child: ConstrainedBox(
-                                            constraints: const BoxConstraints(
-                                              maxWidth: 1400,
-                                            ),
-                                            child: Column(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                isTablet
-                                                    ? Row(
-                                                        crossAxisAlignment:
-                                                            CrossAxisAlignment
-                                                                .start,
-                                                        children: [
-                                                          Expanded(
-                                                            flex: 10,
-                                                            child: Column(
-                                                              crossAxisAlignment:
-                                                                  CrossAxisAlignment
-                                                                      .start,
-                                                              children:
-                                                                  leftWidgets,
+                                      child: LayoutBuilder(
+                                        builder: (context, constraints) {
+                                          final availableWidth =
+                                              constraints.maxWidth.isFinite
+                                              ? constraints.maxWidth
+                                              : screenWidth;
+                                          final baseHorizontalPadding = isTablet
+                                              ? 32.0
+                                              : 16.0;
+                                          final horizontalPadding = max(
+                                            baseHorizontalPadding,
+                                            (availableWidth - 1400.0) / 2.0,
+                                          );
+                                          final columnsSliver = isTablet
+                                              ? SliverCrossAxisGroup(
+                                                  slivers: [
+                                                    SliverCrossAxisExpanded(
+                                                      flex: 10,
+                                                      sliver: SliverList.builder(
+                                                        addRepaintBoundaries:
+                                                            addListRepaintBoundaries,
+                                                        itemCount:
+                                                            visibleLeftKeys
+                                                                .length,
+                                                        findChildIndexCallback:
+                                                            (
+                                                              key,
+                                                            ) => findKeyIndex(
+                                                              visibleLeftKeys,
+                                                              key,
                                                             ),
-                                                          ),
-                                                          if (rightWidgets
-                                                              .isNotEmpty)
-                                                            const SizedBox(
-                                                              width: 40,
+                                                        itemBuilder:
+                                                            (
+                                                              context,
+                                                              index,
+                                                            ) => buildWideSection(
+                                                              visibleLeftKeys[index],
                                                             ),
-                                                          if (rightWidgets
-                                                              .isNotEmpty)
-                                                            Expanded(
-                                                              flex: 11,
-                                                              child: Column(
-                                                                crossAxisAlignment:
-                                                                    CrossAxisAlignment
-                                                                        .start,
-                                                                children:
-                                                                    rightWidgets,
-                                                              ),
-                                                            ),
-                                                        ],
-                                                      )
-                                                    : Column(
-                                                        crossAxisAlignment:
-                                                            CrossAxisAlignment
-                                                                .start,
-                                                        children: [
-                                                          ...leftWidgets,
-                                                          ...rightWidgets,
-                                                        ],
                                                       ),
-                                                AppSystemUiRegion(
-                                                  backgroundBrightness:
-                                                      cardBackgroundBrightness,
-                                                  child: wrapSectionBoundary(
-                                                    AnimatedBuilder(
-                                                      animation:
-                                                          _bannerSectionListenable,
-                                                      builder: (_, _) =>
-                                                          _buildOnboardingChecklistSection(
-                                                            isLight,
-                                                          ),
+                                                    ),
+                                                    if (visibleRightKeys
+                                                        .isNotEmpty) ...[
+                                                      const SliverConstrainedCrossAxis(
+                                                        maxExtent: 40,
+                                                        sliver: SliverToBoxAdapter(
+                                                          child:
+                                                              SizedBox.shrink(),
+                                                        ),
+                                                      ),
+                                                      SliverCrossAxisExpanded(
+                                                        flex: 11,
+                                                        sliver: SliverList.builder(
+                                                          addRepaintBoundaries:
+                                                              addListRepaintBoundaries,
+                                                          itemCount:
+                                                              visibleRightKeys
+                                                                  .length,
+                                                          findChildIndexCallback:
+                                                              (
+                                                                key,
+                                                              ) => findKeyIndex(
+                                                                visibleRightKeys,
+                                                                key,
+                                                              ),
+                                                          itemBuilder:
+                                                              (
+                                                                context,
+                                                                index,
+                                                              ) => buildWideSection(
+                                                                visibleRightKeys[index],
+                                                              ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ],
+                                                )
+                                              : SliverList.builder(
+                                                  addRepaintBoundaries:
+                                                      addListRepaintBoundaries,
+                                                  itemCount:
+                                                      visibleLeftKeys.length +
+                                                      visibleRightKeys.length,
+                                                  itemBuilder: (context, index) {
+                                                    final key =
+                                                        index <
+                                                            visibleLeftKeys
+                                                                .length
+                                                        ? visibleLeftKeys[index]
+                                                        : visibleRightKeys[index -
+                                                              visibleLeftKeys
+                                                                  .length];
+                                                    return buildWideSection(
+                                                      key,
+                                                    );
+                                                  },
+                                                );
+
+                                          return CustomScrollView(
+                                            key: const PageStorageKey<String>(
+                                              'home-wide-dashboard-scroll',
+                                            ),
+                                            physics: const AppFluidScrollPhysics(
+                                              parent:
+                                                  AlwaysScrollableScrollPhysics(),
+                                            ),
+                                            scrollCacheExtent:
+                                                ScrollCacheExtent.pixels(400),
+                                            slivers: [
+                                              SliverPadding(
+                                                padding: EdgeInsets.fromLTRB(
+                                                  horizontalPadding,
+                                                  headerExtent + 6,
+                                                  horizontalPadding,
+                                                  0,
+                                                ),
+                                                sliver: columnsSliver,
+                                              ),
+                                              SliverPadding(
+                                                padding: EdgeInsets.fromLTRB(
+                                                  horizontalPadding,
+                                                  0,
+                                                  horizontalPadding,
+                                                  hasCopyright
+                                                      ? 0.0
+                                                      : bottomPadding,
+                                                ),
+                                                sliver: SliverToBoxAdapter(
+                                                  child: AppSystemUiRegion(
+                                                    backgroundBrightness:
+                                                        cardBackgroundBrightness,
+                                                    child: wrapSectionBoundary(
+                                                      AnimatedBuilder(
+                                                        animation:
+                                                            _bannerSectionListenable,
+                                                        builder: (_, _) =>
+                                                            _buildOnboardingChecklistSection(
+                                                              isLight,
+                                                            ),
+                                                      ),
                                                     ),
                                                   ),
                                                 ),
-                                                if (_wallpaperCopyright !=
-                                                        null &&
-                                                    _wallpaperCopyright!
-                                                        .isNotEmpty)
-                                                  _buildWallpaperCopyright(
-                                                    isLight,
+                                              ),
+                                              if (hasCopyright)
+                                                SliverPadding(
+                                                  padding: EdgeInsets.fromLTRB(
+                                                    horizontalPadding,
+                                                    0,
+                                                    horizontalPadding,
+                                                    bottomPadding,
                                                   ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
+                                                  sliver: SliverToBoxAdapter(
+                                                    child:
+                                                        _buildWallpaperCopyright(
+                                                          isLight,
+                                                        ),
+                                                  ),
+                                                ),
+                                            ],
+                                          );
+                                        },
                                       ),
                                     );
                                   },
