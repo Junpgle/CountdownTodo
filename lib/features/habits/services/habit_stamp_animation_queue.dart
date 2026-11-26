@@ -32,6 +32,7 @@ abstract final class HabitStampAnimationQueue {
     required String habitUuid,
     required DateTime logicalDate,
   }) {
+    if (_requests.isEmpty) return false;
     _prune();
     return _requests[_key(habitUuid, logicalDate)]?.state ==
         _StampRequestState.pending;
@@ -41,6 +42,7 @@ abstract final class HabitStampAnimationQueue {
     required String habitUuid,
     required DateTime logicalDate,
   }) {
+    if (_requests.isEmpty) return null;
     _prune();
     final request = _requests[_key(habitUuid, logicalDate)];
     if (request == null || request.state != _StampRequestState.pending) {
@@ -57,6 +59,7 @@ abstract final class HabitStampAnimationQueue {
     required DateTime logicalDate,
     required int token,
   }) {
+    if (_requests.isEmpty) return false;
     _prune();
     final request = _requests[_key(habitUuid, logicalDate)];
     if (request == null ||
@@ -75,6 +78,7 @@ abstract final class HabitStampAnimationQueue {
     required DateTime logicalDate,
     required int token,
   }) {
+    if (_requests.isEmpty) return;
     _prune();
     final request = _requests[_key(habitUuid, logicalDate)];
     if (request == null ||
@@ -91,6 +95,7 @@ abstract final class HabitStampAnimationQueue {
     required String habitUuid,
     required DateTime logicalDate,
   }) {
+    if (_requests.isEmpty) return;
     _requests.remove(_key(habitUuid, logicalDate));
   }
 
@@ -102,6 +107,7 @@ abstract final class HabitStampAnimationQueue {
       '$habitUuid|${AppTimeFormats.date(logicalDate)}';
 
   static void _prune() {
+    if (_requests.isEmpty) return;
     final cutoff = DateTime.now().subtract(_retention);
     _requests.removeWhere((_, request) => request.updatedAt.isBefore(cutoff));
   }

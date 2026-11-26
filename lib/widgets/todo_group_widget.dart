@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:visibility_detector/visibility_detector.dart';
 
 import '../models.dart';
 import '../services/conflict_visibility_service.dart';
@@ -72,7 +71,6 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     with TickerProviderStateMixin {
   late AnimationController _progressController;
   final Map<String, GlobalKey> _todoCardKeys = <String, GlobalKey>{};
-  bool _hasAnimated = false;
   bool _suppressTodoItemTap = false;
   bool _showAllTodos = false;
   List<TodoItem>? _sortedTodosInput;
@@ -94,7 +92,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     _progressController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1000),
-    );
+    )..forward(from: 0.0);
   }
 
   @override
@@ -281,45 +279,51 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
       builder: (context, candidateData, rejectedData) {
         final isHovering = candidateData.isNotEmpty;
 
-        return VisibilityDetector(
-          key: Key('group_visibility_${group.id}'),
-          onVisibilityChanged: (info) {
-            if (info.visibleFraction > 0.2 && !_hasAnimated) {
-              _hasAnimated = true;
-              _progressController.forward(from: 0.0);
-            }
-          },
-          child: AnimatedSize(
-            duration: const Duration(milliseconds: 400),
-            curve: Curves.fastOutSlowIn,
-            alignment: Alignment.topCenter,
-            child: Column(
-              children: [
-                // Collapsed stacked-papers effect stays outside the glass
-                // shell — the visible layers distinguish two todos from
-                // larger folders.
-                if (totalCount > 1 && !isExpanded)
-                  Column(
-                    children: totalCount == 2
-                        ? [
-                            _buildStackLayerInline(context, 0.97, 0.6),
-                            const SizedBox(height: 2),
-                          ]
-                        : [
-                            _buildStackLayerInline(context, 0.94, 0.3),
-                            const SizedBox(height: 2),
-                            _buildStackLayerInline(context, 0.97, 0.6),
-                            const SizedBox(height: 2),
-                          ],
-                  ),
-                // One continuous glass surface for the whole folder: the
-                // header and the expanded todo list share the same treatment,
-                // so expanding never swaps into an opaque panel. High-contrast
-                // keeps the dense text legible while staying glassy.
-                OptionalLiquidGlassCard(
-                  clipBehavior: Clip.antiAlias,
-                  highContrast: true,
-                  borderRadiusGeometry: isExpanded
+        return AnimatedSize(
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.fastOutSlowIn,
+          alignment: Alignment.topCenter,
+          child: Column(
+            children: [
+              // Collapsed stacked-papers effect stays outside the glass
+              // shell — the visible layers distinguish two todos from
+              // larger folders.
+              if (totalCount > 1 && !isExpanded)
+                Column(
+                  children: totalCount == 2
+                      ? [
+                          _buildStackLayerInline(context, 0.97, 0.6),
+                          const SizedBox(height: 2),
+                        ]
+                      : [
+                          _buildStackLayerInline(context, 0.94, 0.3),
+                          const SizedBox(height: 2),
+                          _buildStackLayerInline(context, 0.97, 0.6),
+                          const SizedBox(height: 2),
+                        ],
+                ),
+              // One continuous glass surface for the whole folder: the
+              // header and the expanded todo list share the same treatment,
+              // so expanding never swaps into an opaque panel. High-contrast
+              // keeps the dense text legible while staying glassy.
+              OptionalLiquidGlassCard(
+                clipBehavior: Clip.antiAlias,
+                highContrast: true,
+                borderRadiusGeometry: isExpanded
+                    ? const BorderRadius.only(
+                        topLeft: Radius.circular(20),
+                        topRight: Radius.circular(20),
+                        bottomLeft: Radius.circular(24),
+                        bottomRight: Radius.circular(24),
+                      )
+                    : BorderRadius.circular(20),
+                tint: statusColor.withValues(alpha: 0.16),
+                isDark: isDark,
+                fallbackDecoration: BoxDecoration(
+                  color: isHovering
+                      ? statusColor.withValues(alpha: 0.08)
+                      : (isDark ? Colors.grey[900] : Colors.white),
+                  borderRadius: isExpanded
                       ? const BorderRadius.only(
                           topLeft: Radius.circular(20),
                           topRight: Radius.circular(20),
@@ -327,81 +331,61 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                           bottomRight: Radius.circular(24),
                         )
                       : BorderRadius.circular(20),
-                  tint: statusColor.withValues(alpha: 0.16),
-                  isDark: isDark,
-                  fallbackDecoration: BoxDecoration(
-                    color: isHovering
-                        ? statusColor.withValues(alpha: 0.08)
-                        : (isDark ? Colors.grey[900] : Colors.white),
-                    borderRadius: isExpanded
-                        ? const BorderRadius.only(
-                            topLeft: Radius.circular(20),
-                            topRight: Radius.circular(20),
-                            bottomLeft: Radius.circular(24),
-                            bottomRight: Radius.circular(24),
-                          )
-                        : BorderRadius.circular(20),
-                    border: Border.all(
-                      color: allDone
-                          ? Colors.green.withValues(alpha: isDark ? 0.25 : 0.15)
-                          : isHovering
-                          ? statusColor
-                          : (isDark
-                                ? Colors.white.withValues(alpha: 0.06)
-                                : Colors.grey.withValues(alpha: 0.12)),
-                      width: allDone || isHovering ? 1.2 : 1,
+                  border: Border.all(
+                    color: allDone
+                        ? Colors.green.withValues(alpha: isDark ? 0.25 : 0.15)
+                        : isHovering
+                        ? statusColor
+                        : (isDark
+                              ? Colors.white.withValues(alpha: 0.06)
+                              : Colors.grey.withValues(alpha: 0.12)),
+                    width: allDone || isHovering ? 1.2 : 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.03),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      _buildGroupHeader(
-                        context,
-                        progress,
-                        doneCount,
-                        totalCount,
-                        nearestDeadline,
-                        today,
-                        allDone,
-                        isHovering,
-                        urgencyColor,
-                        groupFillProgress,
-                        isExpanded,
-                      ),
-                      if (isExpanded)
-                        Padding(
-                          padding: const EdgeInsets.only(
-                            left: 12,
-                            right: 12,
-                            bottom: 20,
-                            top: 8,
-                          ),
-                          child: Column(
-                            children: [
-                              ...visibleTodos.map(
-                                (todo) =>
-                                    _buildTodoItem(context, todo, now: now),
-                              ),
-                              if (widget.onlyShowMostUrgentTodo &&
-                                  totalCount > 1)
-                                _buildFoldedTodosToggle(
-                                  context,
-                                  foldedTodoCount,
-                                ),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
+                  ],
                 ),
-              ],
-            ),
+                child: Column(
+                  children: [
+                    _buildGroupHeader(
+                      context,
+                      progress,
+                      doneCount,
+                      totalCount,
+                      nearestDeadline,
+                      today,
+                      allDone,
+                      isHovering,
+                      urgencyColor,
+                      groupFillProgress,
+                      isExpanded,
+                    ),
+                    if (isExpanded)
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          left: 12,
+                          right: 12,
+                          bottom: 20,
+                          top: 8,
+                        ),
+                        child: Column(
+                          children: [
+                            ...visibleTodos.map(
+                              (todo) => _buildTodoItem(context, todo, now: now),
+                            ),
+                            if (widget.onlyShowMostUrgentTodo && totalCount > 1)
+                              _buildFoldedTodosToggle(context, foldedTodoCount),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
           ),
         );
       },
@@ -861,9 +845,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                       curve: Curves.easeOutQuart,
                       tween: Tween<double>(
                         begin: 0.0,
-                        end: _hasAnimated
-                            ? (progress < 0.08 ? 0.08 : progress)
-                            : 0.0,
+                        end: progress < 0.08 ? 0.08 : progress,
                       ),
                       builder: (context, value, child) {
                         return FractionallySizedBox(
