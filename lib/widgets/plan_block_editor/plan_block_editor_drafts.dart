@@ -245,7 +245,7 @@ extension _PlanBlockEditorDrafts on _PlanBlockEditorSheetState {
     final date = await showAppDatePicker(
       context: context,
       initialDate: _start.isBefore(now) ? now : _start,
-      firstDate: DateTime(now.year, now.month, now.day),
+      firstDate: CalendarDateMath.dateOnly(now),
       lastDate: DateTime(now.year + 10),
     );
     if (date == null || !mounted) return;

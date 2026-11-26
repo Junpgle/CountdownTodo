@@ -34,6 +34,7 @@ import '../features/finance/services/finance_repository.dart';
 import '../features/finance/services/finance_storage.dart';
 import '../features/habits/repositories/habit_repository.dart';
 import 'medal_wall_page.dart';
+import '../utils/calendar_date_math.dart';
 
 part 'personal_timeline/personal_timeline_data.dart';
 part 'personal_timeline/personal_timeline_poster.dart';

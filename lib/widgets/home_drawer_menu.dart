@@ -73,12 +73,8 @@ Future<int?> _loadCompanionDays() async {
 
 @visibleForTesting
 int homeDrawerCompanionDaysForTesting(DateTime registeredAt, DateTime now) {
-  final registeredDay = DateTime(
-    registeredAt.year,
-    registeredAt.month,
-    registeredAt.day,
-  );
-  final todayDay = DateTime(now.year, now.month, now.day);
+  final registeredDay = CalendarDateMath.dateOnly(registeredAt);
+  final todayDay = CalendarDateMath.dateOnly(now);
   final days = CalendarDateMath.daysBetween(registeredDay, todayDay) + 1;
   return days > 0 ? days : 1;
 }

@@ -436,12 +436,8 @@ extension _PersonalTimelineChromeOverviewExt on _PersonalTimelineScreenState {
     DateTime start;
     DateTime end;
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final day = DateTime(
-      _selectedDate.year,
-      _selectedDate.month,
-      _selectedDate.day,
-    );
+    final today = CalendarDateMath.dateOnly(now);
+    final day = CalendarDateMath.dateOnly(_selectedDate);
 
     switch (_dimension) {
       case TimelineDimension.daily:
@@ -913,11 +909,7 @@ extension _PersonalTimelineChromeOverviewExt on _PersonalTimelineScreenState {
   DateTime _medalRangeStart() {
     switch (_dimension) {
       case TimelineDimension.daily:
-        return DateTime(
-          _selectedDate.year,
-          _selectedDate.month,
-          _selectedDate.day,
-        );
+        return CalendarDateMath.dateOnly(_selectedDate);
       case TimelineDimension.weekly:
         return AppTimeFormats.localDayStartOffset(
           AppTimeFormats.dayStart(_selectedDate),

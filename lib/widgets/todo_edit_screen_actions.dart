@@ -208,11 +208,7 @@ extension _TodoEditScreenActions on TodoEditScreenState {
                 _recurrenceEndDate!.month,
                 _recurrenceEndDate!.day,
               );
-        final shiftedDay = DateTime(
-          shiftedStart.year,
-          shiftedStart.month,
-          shiftedStart.day,
-        );
+        final shiftedDay = CalendarDateMath.dateOnly(shiftedStart);
         // 循环结束日期是系列规则的一部分，即使用户选择“只修改本期”，
         // 结束日期之后的已物化实例也必须删除；否则存储层下次滚动时仍
         // 会把它们视为系列成员。其它字段仍遵循“修改后续周期”开关。

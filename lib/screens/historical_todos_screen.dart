@@ -14,6 +14,7 @@ import '../services/todo_trash_purge_service.dart';
 import '../widgets/management_page.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/time_utils.dart';
+import '../utils/calendar_date_math.dart';
 
 class _HistoricalTodoDateHeader {
   const _HistoricalTodoDateHeader(this.date, this.count);
@@ -270,7 +271,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
           .map((g) => g.id)
           .toSet();
       final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
+      final today = CalendarDateMath.dateOnly(now);
       final historyTodos = <TodoItem>[];
       final skippedTodos = <TodoItem>[];
       final deletedTodos = <TodoItem>[];
@@ -516,7 +517,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     final local = AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
     );
-    return DateTime(local.year, local.month, local.day);
+    return CalendarDateMath.dateOnly(local);
   }
 
   String _todoDayKey(DateTime date) => '${date.year}-${date.month}-${date.day}';

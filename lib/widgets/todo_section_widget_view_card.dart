@@ -80,7 +80,7 @@ mixin _TodoSectionViewCardMixin on _TodoSectionStateBase {
         todo.dueDate!.month,
         todo.dueDate!.day,
       );
-      final DateTime today = DateTime(now.year, now.month, now.day);
+      final DateTime today = CalendarDateMath.dateOnly(now);
       if (isPast) {
         badge = "已逾期";
         badgeColor = Colors.redAccent.shade200;

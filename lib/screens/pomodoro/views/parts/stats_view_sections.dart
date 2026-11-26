@@ -295,11 +295,7 @@ extension _PomodoroStatsSections on PomodoroStatsState {
           previousDay.month != localStart.month ||
           previousDay.day != localStart.day;
       if (isNewDay) {
-        final dayDate = DateTime(
-          localStart.year,
-          localStart.month,
-          localStart.day,
-        );
+        final dayDate = CalendarDateMath.dateOnly(localStart);
         widgets.add(
           Padding(
             padding: const EdgeInsets.only(top: 16, bottom: 8),

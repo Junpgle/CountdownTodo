@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'dart:math';
 
 import '../models.dart';
+import '../utils/calendar_date_math.dart';
 
 const _teamHeatmapColorLevels = <Color>[
   Color(0xFFBBDEFB),
@@ -53,7 +54,7 @@ class _TeamHeatmapWidgetState extends State<TeamHeatmapWidget> {
     final density = _densityFor(widget.todos);
     final viewDays = widget.viewDays;
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     final weeks = (viewDays / 7).ceil();
 
     return Column(

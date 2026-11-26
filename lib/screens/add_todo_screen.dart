@@ -41,6 +41,7 @@ import 'dart:async';
 import '../utils/app_dialogs.dart';
 import '../utils/semester_week_context.dart';
 import '../utils/text_utils.dart';
+import '../utils/calendar_date_math.dart';
 
 part 'add_todo/add_todo_parsing.dart';
 part 'add_todo/add_todo_saving_and_suggestions.dart';
@@ -284,7 +285,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           .where((id) => id.isNotEmpty),
     };
     final now = DateTime.now();
-    _scheduleDate = DateTime(now.year, now.month, now.day);
+    _scheduleDate = CalendarDateMath.dateOnly(now);
     _scheduleStartTime = const TimeOfDay(hour: 9, minute: 0);
     _scheduleEndTime = const TimeOfDay(hour: 10, minute: 0);
     _localTodoGroups = List.from(widget.todoGroups);

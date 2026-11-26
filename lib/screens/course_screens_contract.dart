@@ -202,7 +202,7 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   DateTime? _fixedScheduleDate(FixedScheduleItem item) {
     final parsed = DateTime.tryParse(item.date);
     if (parsed == null) return null;
-    return DateTime(parsed.year, parsed.month, parsed.day);
+    return CalendarDateMath.dateOnly(parsed);
   }
 
   String _fixedScheduleTimeLabel(FixedScheduleItem item) {

@@ -178,10 +178,8 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
     for (final record in _allRecs) {
       final date = DateTime.fromMillisecondsSinceEpoch(record.startTime);
       final key = switch (_scale) {
-        _ChartScale.day => DateTime(
-          date.year,
-          date.month,
-          date.day,
+        _ChartScale.day => CalendarDateMath.dateOnly(
+          date,
         ).millisecondsSinceEpoch,
         _ChartScale.week => DateTime(
           date.year,

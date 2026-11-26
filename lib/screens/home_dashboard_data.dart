@@ -938,7 +938,7 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
 
   void _syncTodoNotification() {
     DateTime now = DateTime.now();
-    DateTime today = DateTime(now.year, now.month, now.day);
+    DateTime today = CalendarDateMath.dateOnly(now);
 
     List<TodoItem> activeTodos = _todos.where((t) {
       if (t.dueDate == null) return true;

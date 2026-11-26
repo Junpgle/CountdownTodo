@@ -42,6 +42,7 @@ import '../features/habits/services/habit_focus_launcher.dart';
 import '../features/habits/services/habit_rule_resolver.dart';
 import '../features/thirty_day_challenge/repositories/thirty_day_challenge_repository.dart';
 import '../features/thirty_day_challenge/screens/thirty_day_challenge_screen.dart';
+import '../utils/calendar_date_math.dart';
 
 part 'todo_plan/todo_plan_grid_view.dart';
 part 'todo_plan/todo_plan_grid_blocks.dart';
@@ -112,7 +113,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     WidgetsBinding.instance.addObserver(this);
     final now = DateTime.now();
     final initial = widget.initialDate ?? now;
-    _focusedDate = DateTime(initial.year, initial.month, initial.day);
+    _focusedDate = CalendarDateMath.dateOnly(initial);
     StorageService.scopedDataRefreshNotifier.addListener(_onScopedDataRefresh);
     ThirtyDayChallengeRepository.activityRevision.addListener(
       _onChallengeActivityChanged,
@@ -201,7 +202,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
       _clearDragHistory();
       _dragService = widget.dragService ?? PlanDragService();
       final date = widget.initialDate ?? _dragService.now;
-      _focusedDate = DateTime(date.year, date.month, date.day);
+      _focusedDate = CalendarDateMath.dateOnly(date);
       _loadedDate = null;
       unawaited(_loadData());
     }

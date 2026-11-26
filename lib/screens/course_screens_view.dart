@@ -33,7 +33,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
               return false;
             }
 
-            DateTime todayStart = DateTime(now.year, now.month, now.day);
+            DateTime todayStart = CalendarDateMath.dateOnly(now);
             DateTime todayEndExclusive = CalendarDateMath.addDays(
               todayStart,
               1,

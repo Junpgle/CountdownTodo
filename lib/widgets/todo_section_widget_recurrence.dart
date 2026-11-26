@@ -74,7 +74,7 @@ class _TodoRecurrenceDateStructure {
     final recurrenceEnd = todo.recurrenceEndDate;
     final recurrenceEndDay = recurrenceEnd == null
         ? null
-        : DateTime(recurrenceEnd.year, recurrenceEnd.month, recurrenceEnd.day);
+        : CalendarDateMath.dateOnly(recurrenceEnd);
 
     return _TodoRecurrenceDateStructure._(
       seriesId: seriesId,
@@ -129,11 +129,7 @@ class _TodoRecurrenceDateStructure {
       }
       _projectedStart = nextStart;
       final recurrenceEnd = recurrenceEndDayEpoch;
-      final projectedDay = DateTime(
-        nextStart.year,
-        nextStart.month,
-        nextStart.day,
-      );
+      final projectedDay = CalendarDateMath.dateOnly(nextStart);
       if (recurrenceEnd != null &&
           projectedDay.millisecondsSinceEpoch > recurrenceEnd) {
         _projectionExhausted = true;
@@ -154,11 +150,7 @@ class _TodoRecurrenceDateStructure {
   static int? _recurrenceEndDayEpoch(TodoItem todo) {
     final recurrenceEnd = todo.recurrenceEndDate;
     if (recurrenceEnd == null) return null;
-    return DateTime(
-      recurrenceEnd.year,
-      recurrenceEnd.month,
-      recurrenceEnd.day,
-    ).millisecondsSinceEpoch;
+    return CalendarDateMath.dateOnly(recurrenceEnd).millisecondsSinceEpoch;
   }
 }
 
@@ -1019,10 +1011,8 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
                           }
                         }
                         todo.recurrence = RecurrenceType.none;
-                        todo.recurrenceEndDate = DateTime(
-                          start.year,
-                          start.month,
-                          start.day,
+                        todo.recurrenceEndDate = CalendarDateMath.dateOnly(
+                          start,
                         );
                         todo.markAsChanged();
                       });

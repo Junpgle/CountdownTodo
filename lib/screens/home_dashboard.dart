@@ -147,6 +147,7 @@ import '../widgets/onboarding_checklist_card.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 import '../utils/app_dialogs.dart';
 import 'help/feature_explorer_screen.dart';
+import '../utils/calendar_date_math.dart';
 
 part 'home_dashboard_ai.dart';
 part 'home_dashboard_contract.dart';

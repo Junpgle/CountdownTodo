@@ -173,7 +173,7 @@ class TodayHourlyTimeline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final todayStart = DateTime(now.year, now.month, now.day);
+    final todayStart = CalendarDateMath.dateOnly(now);
 
     final coursesByHour = List<List<CourseItem>?>.filled(24, null);
     for (final course in courses) {

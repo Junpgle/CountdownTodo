@@ -398,7 +398,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
       confirmText: '确定',
     );
     if (!mounted || picked == null) return;
-    final pickedDate = DateTime(picked.year, picked.month, picked.day);
+    final pickedDate = CalendarDateMath.dateOnly(picked);
     if (AppTimeFormats.isSameDay(pickedDate, _selected)) {
       return;
     }
@@ -418,7 +418,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
       confirmText: '确定',
     );
     if (!mounted || picked == null) return;
-    final pickedDate = DateTime(picked.year, picked.month, picked.day);
+    final pickedDate = CalendarDateMath.dateOnly(picked);
     final currentWeekRange = _getRange();
     if (pickedDate.isAfter(
           currentWeekRange.start.subtract(const Duration(seconds: 1)),
@@ -493,7 +493,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
   void _openDay(DateTime day) {
     setState(() {
       _dimension = 0;
-      _selected = DateTime(day.year, day.month, day.day);
+      _selected = CalendarDateMath.dateOnly(day);
     });
     _loadLocal();
   }

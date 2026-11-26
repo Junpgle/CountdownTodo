@@ -128,45 +128,55 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     final loadCourses = widget.loadCourses;
     if (loadCourses != null) {
       futures.add(
-        loadCourses().then((value) {
-          if (mounted) _courses = value;
-        }).catchError((_) {}),
+        loadCourses()
+            .then((value) {
+              if (mounted) _courses = value;
+            })
+            .catchError((_) {}),
       );
     }
 
     final loadTimeLogs = widget.loadTimeLogs;
     if (loadTimeLogs != null) {
       futures.add(
-        loadTimeLogs().then((value) {
-          if (mounted) _timeLogs = value;
-        }).catchError((_) {}),
+        loadTimeLogs()
+            .then((value) {
+              if (mounted) _timeLogs = value;
+            })
+            .catchError((_) {}),
       );
     }
 
     final loadPomodoroRecords = widget.loadPomodoroRecords;
     if (loadPomodoroRecords != null) {
       futures.add(
-        loadPomodoroRecords().then((value) {
-          if (mounted) _pomodoroRecords = value;
-        }).catchError((_) {}),
+        loadPomodoroRecords()
+            .then((value) {
+              if (mounted) _pomodoroRecords = value;
+            })
+            .catchError((_) {}),
       );
     }
 
     final loadTeams = widget.loadTeams;
     if (loadTeams != null) {
       futures.add(
-        loadTeams().then((value) {
-          if (mounted) _teams = value;
-        }).catchError((_) {}),
+        loadTeams()
+            .then((value) {
+              if (mounted) _teams = value;
+            })
+            .catchError((_) {}),
       );
     }
 
     final loadFixedSchedules = widget.loadFixedSchedules;
     if (loadFixedSchedules != null) {
       futures.add(
-        loadFixedSchedules().then((value) {
-          if (mounted) _fixedSchedules = value;
-        }).catchError((_) {}),
+        loadFixedSchedules()
+            .then((value) {
+              if (mounted) _fixedSchedules = value;
+            })
+            .catchError((_) {}),
       );
     }
 
@@ -458,8 +468,8 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     if (end == null || !mounted) return;
     setState(() {
       _useCustomInjectRange = true;
-      _customInjectStart = DateTime(start.year, start.month, start.day);
-      _customInjectEnd = DateTime(end.year, end.month, end.day);
+      _customInjectStart = CalendarDateMath.dateOnly(start);
+      _customInjectEnd = CalendarDateMath.dateOnly(end);
       _liveSmartContextPreview = _buildSmartContextPreview(
         _inputCtrl.text.trim(),
       );

@@ -12,6 +12,7 @@ import '../services/plan_todo_guard.dart';
 import '../services/plan_weekly_availability_preferences.dart';
 import '../storage_service.dart';
 import '../utils/time_utils.dart';
+import '../utils/calendar_date_math.dart';
 
 enum PlanExplanationAction { modify, split }
 
@@ -292,7 +293,7 @@ class _PlanAvailabilityExplanationScreenState
   _PlanExplanationDerivedData _derivedDataFor(DateTime now) {
     final query = _query;
     final snapshot = _snapshot;
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     final currentMinute = PlanAvailabilityService.minuteCeiling(now);
     final cachedData = _cachedDerivedData;
     if (cachedData != null &&

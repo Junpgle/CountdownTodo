@@ -17,6 +17,7 @@ import '../widgets/plan_block_editor_sheet.dart';
 import '../widgets/time_estimation_hint.dart';
 import '../utils/app_dialogs.dart';
 import 'todo_plan_screen.dart';
+import '../utils/calendar_date_math.dart';
 
 typedef PlanPreparationScheduleLoader = Future<FixedScheduleItem?> Function(
   String username,
@@ -98,7 +99,7 @@ class _PlanPreparationScreenState extends State<PlanPreparationScreen> {
   DateTime get _now => widget.clock?.call() ?? DateTime.now();
   DateTime get _pageStart {
     final now = _now;
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     return today.add(Duration(days: _pageOffset));
   }
 
@@ -346,13 +347,8 @@ class _PlanPreparationScreenState extends State<PlanPreparationScreen> {
     final result = _result;
     if (result == null || !result.end.isAfter(_pageStart)) return false;
     return result.end.isBefore(_preparationEnd) ||
-        DateTime(result.end.year, result.end.month, result.end.day).isBefore(
-          DateTime(
-            _preparationEnd.year,
-            _preparationEnd.month,
-            _preparationEnd.day,
-          ),
-        );
+        CalendarDateMath.dateOnly(result.end)
+            .isBefore(CalendarDateMath.dateOnly(_preparationEnd));
   }
 
   String _dateLabel(DateTime date) => AppTimeFormats.format(date, 'yyyy年M月d日');

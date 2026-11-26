@@ -16,6 +16,7 @@ import '../utils/page_transitions.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/missed_plan_recovery_flow.dart';
 import 'course_screens.dart';
+import '../utils/calendar_date_math.dart';
 
 String reviewDuration(int seconds) {
   if (seconds == 0) return '0分钟';
@@ -183,7 +184,7 @@ class _PlanBlockStatsScreenState
         _current.day - _current.weekday + 1,
       ),
       2 => DateTime(_current.year, _current.month, 1),
-      _ => DateTime(_current.year, _current.month, _current.day),
+      _ => CalendarDateMath.dateOnly(_current),
     };
     return DateTimeRange(
       start: start,

@@ -550,7 +550,7 @@ class _TimeLogEntrySheetState extends State<TimeLogEntrySheet> {
   Future<void> _pickDate(bool isStart) async {
     final now = DateTime.now();
     final firstDate = DateTime(2020);
-    final lastDate = DateTime(now.year, now.month, now.day);
+    final lastDate = CalendarDateMath.dateOnly(now);
     final selectedDate = isStart ? _start : _end;
     final initialDate = selectedDate.isBefore(firstDate)
         ? firstDate

@@ -317,7 +317,7 @@ extension _PersonalTimelinePosterExt on _PersonalTimelineScreenState {
   }
 
   String _formatTimelinePeriod(TimelineDimension dimension, DateTime date) {
-    final day = DateTime(date.year, date.month, date.day);
+    final day = CalendarDateMath.dateOnly(date);
     switch (dimension) {
       case TimelineDimension.daily:
         return AppTimeFormats.dateFormatter('yyyy年MM月dd日').format(day);

@@ -5,7 +5,7 @@ part of 'todo_section_widget.dart';
 mixin _TodoSectionViewMixin on _TodoSectionStateBase {
   Widget _buildTodoList() {
     final DateTime now = widget.clock();
-    final DateTime today = DateTime(now.year, now.month, now.day);
+    final DateTime today = CalendarDateMath.dateOnly(now);
     if (_cachedVmSignatureDate != today ||
         (_cachedVm != null && _cachedVm!.today != today)) {
       _invalidateTodoViewModel();

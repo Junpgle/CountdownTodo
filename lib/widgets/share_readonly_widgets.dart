@@ -56,7 +56,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
     final colorScheme = Theme.of(context).colorScheme;
 
     final DateTime now = widget.clock?.call() ?? DateTime.now();
-    final DateTime today = DateTime(now.year, now.month, now.day);
+    final DateTime today = CalendarDateMath.dateOnly(now);
 
     final displayProjection = _isWholeListExpanded
         ? _buildSortedDisplayItems(now, today)
@@ -721,12 +721,12 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
 
   bool _isBeforeDay(DateTime? date, DateTime today) {
     if (date == null) return false;
-    return DateTime(date.year, date.month, date.day).isBefore(today);
+    return CalendarDateMath.dateOnly(date).isBefore(today);
   }
 
   bool _isAfterDay(DateTime? date, DateTime today) {
     if (date == null) return false;
-    return DateTime(date.year, date.month, date.day).isAfter(today);
+    return CalendarDateMath.dateOnly(date).isAfter(today);
   }
 
   Widget _buildDisplayItem(
@@ -884,7 +884,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final now = widget.clock?.call() ?? DateTime.now();
-    final DateTime today = DateTime(now.year, now.month, now.day);
+    final DateTime today = CalendarDateMath.dateOnly(now);
 
     // 进度
     final cDate = AppTimeFormats.localFromServerTimestamp(
@@ -922,7 +922,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
         todo.dueDate!.month,
         todo.dueDate!.day,
       );
-      final todayDate = DateTime(now.year, now.month, now.day);
+      final todayDate = CalendarDateMath.dateOnly(now);
       if (isOverdue) {
         badge = "已逾期";
         badgeColor = Colors.redAccent.shade200;
@@ -1458,7 +1458,7 @@ class ShareCountdownSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     final bool isDarkTheme = Theme.of(context).brightness == Brightness.dark;
     final bool useDarkUI = isDarkTheme;
 

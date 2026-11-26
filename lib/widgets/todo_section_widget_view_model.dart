@@ -10,7 +10,7 @@ mixin _TodoSectionViewModelMixin on _TodoSectionStateBase {
         _folderDisplayMode == _TodoFolderDisplayMode.separate;
 
     final DateTime now = widget.clock();
-    final DateTime today = DateTime(now.year, now.month, now.day);
+    final DateTime today = CalendarDateMath.dateOnly(now);
 
     final seriesOccurrences = <String, List<TodoItem>>{};
     for (final todo in widget.todos) {

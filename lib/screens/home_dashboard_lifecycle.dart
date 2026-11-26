@@ -318,7 +318,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
 
   void _refreshSemesterWeekIfDateChanged() {
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     if (_semesterWeekLoadedDate == today || _semesterWeekRefreshPending) return;
 
     _semesterWeekRefreshPending = true;
@@ -714,7 +714,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
         _semesterEnd = end;
         _currentSemesterWeek = currentSemesterWeek;
       });
-      _semesterWeekLoadedDate = DateTime(now.year, now.month, now.day);
+      _semesterWeekLoadedDate = CalendarDateMath.dateOnly(now);
     }
   }
 
@@ -990,7 +990,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
 
     try {
       DateTime now = DateTime.now();
-      DateTime today = DateTime(now.year, now.month, now.day);
+      DateTime today = CalendarDateMath.dateOnly(now);
 
       List<TodoItem> activeTodos = _todos.where((t) {
         if (t.dueDate == null) return true;

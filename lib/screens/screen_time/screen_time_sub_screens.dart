@@ -323,7 +323,7 @@ class AppDetailScreen extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     List<String> labels = [];
     DateTime now = DateTime.now();
-    DateTime today = DateTime(now.year, now.month, now.day);
+    DateTime today = CalendarDateMath.dateOnly(now);
     final currentPeriodStart = _periodStart(anchorDate, range);
     final slotCount = range == ScreenTimeRange.month ? 6 : 7;
     int totalAcrossSlots = 0;

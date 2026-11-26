@@ -241,8 +241,8 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     final weekMonday = _getMondayOfCurrentWeek();
     final weekStart = weekMonday == null
         ? null
-        : DateTime(weekMonday.year, weekMonday.month, weekMonday.day);
-    final normalizedDay = DateTime(day.year, day.month, day.day);
+        : CalendarDateMath.dateOnly(weekMonday);
+    final normalizedDay = CalendarDateMath.dateOnly(day);
     final useWeekData =
         _viewMode == 0 &&
         weekStart != null &&
@@ -287,8 +287,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
           items.addAll(
             _allFixedSchedules.where(
               (item) =>
-                  _fixedScheduleDate(item) ==
-                  DateTime(day.year, day.month, day.day),
+                  _fixedScheduleDate(item) == CalendarDateMath.dateOnly(day),
             ),
           );
         }
@@ -1333,11 +1332,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     void updateBoundsFromEpochRange(int startMs, int endMs) {
       if (weekMonday == null || endMs <= startMs) return;
 
-      final weekStart = DateTime(
-        weekMonday.year,
-        weekMonday.month,
-        weekMonday.day,
-      );
+      final weekStart = CalendarDateMath.dateOnly(weekMonday);
       final weekEnd = CalendarDateMath.addDays(weekStart, 7);
       DateTime start = AppTimeFormats.localFromServerTimestamp(startMs);
       DateTime end = AppTimeFormats.localFromServerTimestamp(endMs);
@@ -1346,7 +1341,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       if (start.isBefore(weekStart)) start = weekStart;
       if (end.isAfter(weekEnd)) end = weekEnd;
 
-      DateTime dayStart = DateTime(start.year, start.month, start.day);
+      DateTime dayStart = CalendarDateMath.dateOnly(start);
       while (dayStart.isBefore(end)) {
         final dayEnd = CalendarDateMath.addDays(dayStart, 1);
         final sliceStart = start.isAfter(dayStart) ? start : dayStart;

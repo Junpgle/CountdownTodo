@@ -182,7 +182,7 @@ class _TodoOverdueTriageSheetState extends State<TodoOverdueTriageSheet> {
   }
 
   String _formatOverdueTime(DateTime due, DateTime today) {
-    final dueDate = DateTime(due.year, due.month, due.day);
+    final dueDate = CalendarDateMath.dateOnly(due);
     final daysDiff = CalendarDateMath.daysBetween(dueDate, today);
 
     final timeStr = AppTimeFormats.clock(due);
@@ -203,7 +203,7 @@ class _TodoOverdueTriageSheetState extends State<TodoOverdueTriageSheet> {
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
     final now = widget.service.clock();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
 
     final isAllSelected =
         _selectedIds.length == _overdueTodos.length && _overdueTodos.isNotEmpty;

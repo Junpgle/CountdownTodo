@@ -21,6 +21,7 @@ import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/settings_focus_page.dart';
 import '../../../utils/app_dialogs.dart';
 import '../../../utils/time_utils.dart';
+import '../../../utils/calendar_date_math.dart';
 
 part 'course_settings/course_settings_cloud.dart';
 part 'course_settings/course_settings_semesters.dart';

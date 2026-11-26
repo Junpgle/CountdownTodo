@@ -593,10 +593,8 @@ extension _TodoEditScreenSections on TodoEditScreenState {
                                 PageTransitions.material(
                                   builder: (_) => TodoPlanScreen(
                                     username: widget.username,
-                                    initialDate: DateTime(
-                                      start.year,
-                                      start.month,
-                                      start.day,
+                                    initialDate: CalendarDateMath.dateOnly(
+                                      start,
                                     ),
                                     initialTodoId: widget.todo.id,
                                   ),

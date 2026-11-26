@@ -255,7 +255,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
 
     final now = DateTime.now();
     final nowMicros = now.microsecondsSinceEpoch;
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     final metrics = _metricsFor(groupTodos, today);
     final doneCount = metrics.doneCount;
     final hasOverdue = metrics.hasOverdue;
@@ -662,7 +662,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     DateTime deadline,
     DateTime today,
   ) {
-    final target = DateTime(deadline.year, deadline.month, deadline.day);
+    final target = CalendarDateMath.dateOnly(deadline);
     final diff = CalendarDateMath.daysBetween(today, target);
 
     String label;
@@ -714,10 +714,10 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     final dueDate = todo.dueDate;
     final normalizedDueDate = dueDate == null
         ? null
-        : DateTime(dueDate.year, dueDate.month, dueDate.day);
+        : CalendarDateMath.dateOnly(dueDate);
     final normalizedToday = normalizedDueDate == null
         ? null
-        : DateTime(now.year, now.month, now.day);
+        : CalendarDateMath.dateOnly(now);
 
     // Build time string: "MM/dd HH:mm → MM/dd HH:mm" or "MM/dd → MM/dd" for all-day
     String timeStr = "";

@@ -176,7 +176,7 @@ class _GanttChartState extends State<GanttChart> {
       if (!_scrollController.position.hasContentDimensions) return;
 
       final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
+      final today = CalendarDateMath.dateOnly(now);
       final todayOffset = CalendarDateMath.dayOffset(minDate, today) * dayWidth;
       final viewportWidth = _scrollController.position.viewportDimension;
       final targetOffset = todayOffset - (viewportWidth / 2) + (dayWidth / 2);

@@ -78,6 +78,7 @@ import '../features/habits/repositories/habit_repository.dart';
 import '../features/habits/services/habit_ai_context_service.dart';
 import '../features/habits/services/habit_progress_calculator.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/calendar_date_math.dart';
 
 part 'todo_chat_screen_contract.dart';
 part 'todo_chat_screen_lifecycle.dart';

@@ -305,13 +305,9 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
   SemesterInfo? _semesterForDate(DateTime date) {
     if (_semesters.isEmpty) return null;
 
-    final normalizedDate = DateTime(date.year, date.month, date.day);
+    final normalizedDate = CalendarDateMath.dateOnly(date);
     for (final semester in _semesters) {
-      final start = DateTime(
-        semester.startDate.year,
-        semester.startDate.month,
-        semester.startDate.day,
-      );
+      final start = CalendarDateMath.dateOnly(semester.startDate);
       final end = semester.endDate == null
           ? CalendarDateMath.addDays(start, 120)
           : DateTime(
@@ -329,22 +325,14 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     // 使用首个学期。这样不会因为“找不到精确范围”而跳回最早学期。
     for (var index = _semesters.length - 1; index >= 0; index--) {
       final semester = _semesters[index];
-      final start = DateTime(
-        semester.startDate.year,
-        semester.startDate.month,
-        semester.startDate.day,
-      );
+      final start = CalendarDateMath.dateOnly(semester.startDate);
       if (!normalizedDate.isBefore(start)) return semester;
     }
     return _semesters.first;
   }
 
   int _relativeWeekForDate(DateTime date, SemesterInfo semester) {
-    final start = DateTime(
-      semester.startDate.year,
-      semester.startDate.month,
-      semester.startDate.day,
-    );
+    final start = CalendarDateMath.dateOnly(semester.startDate);
     final week = CourseScheduleSemantics.weekIndexForDate(start, date);
     return week < 1 ? 1 : week;
   }
@@ -405,12 +393,12 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     if (monday == null) {
       final today = DateTime.now();
       return (
-        start: DateTime(today.year, today.month, today.day),
+        start: CalendarDateMath.dateOnly(today),
         end: DateTime(today.year, today.month, today.day + 14),
       );
     }
 
-    final weekStart = DateTime(monday.year, monday.month, monday.day);
+    final weekStart = CalendarDateMath.dateOnly(monday);
     if (_viewMode == 1) {
       return (start: weekStart, end: CalendarDateMath.addDays(weekStart, 14));
     }
@@ -481,12 +469,8 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     final df = AppTimeFormats.dateFormatter('yyyy-MM-dd');
 
     for (final event in _deviceCalendarEvents) {
-      final firstDay = DateTime(
-        event.start.year,
-        event.start.month,
-        event.start.day,
-      );
-      final lastDay = DateTime(event.end.year, event.end.month, event.end.day);
+      final firstDay = CalendarDateMath.dateOnly(event.start);
+      final lastDay = CalendarDateMath.dateOnly(event.end);
       final spanDays = CalendarDateMath.daysBetween(firstDay, lastDay);
       if (spanDays < 0 || spanDays > _maxExpandedSpanDays) continue;
 
@@ -707,8 +691,8 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     required String debugLabel,
     required void Function(DateTime day) onDay,
   }) {
-    final dayStart = DateTime(start.year, start.month, start.day);
-    final endDay = DateTime(end.year, end.month, end.day);
+    final dayStart = CalendarDateMath.dateOnly(start);
+    final endDay = CalendarDateMath.dateOnly(end);
     // These records use half-open [start, end) intervals. An end exactly at
     // midnight belongs to the previous day; keep zero-length point records on
     // their start day for date-only todo compatibility.
@@ -788,11 +772,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     // daily/customDays recurrence, which would shift the anchor.
     final int startMs = todo.createdDate ?? todo.createdAt;
     final DateTime startDate = AppTimeFormats.localFromServerTimestamp(startMs);
-    final DateTime anchorDay = DateTime(
-      startDate.year,
-      startDate.month,
-      startDate.day,
-    );
+    final DateTime anchorDay = CalendarDateMath.dateOnly(startDate);
 
     // End boundary: for daily/customDays recurrence, _handleRecurrenceLogic
     // rolls dueDate forward to today, so dueDate cannot serve as end boundary.
@@ -882,10 +862,8 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
       _semesterMonday!,
       (_currentWeek - 1) * 7,
     );
-    DateTime currentWeekMondayStart = DateTime(
-      currentWeekMonday.year,
-      currentWeekMonday.month,
-      currentWeekMonday.day,
+    DateTime currentWeekMondayStart = CalendarDateMath.dateOnly(
+      currentWeekMonday,
     );
     final recurrenceIndex = TodoRecurrenceCalendarIndex(_allTodos);
 
@@ -975,7 +953,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     final dayEndEpochs = List<int>.filled(7, 0);
     for (var index = 0; index < 7; index++) {
       final day = CalendarDateMath.addDays(currentWeekMonday, index);
-      final dayStart = DateTime(day.year, day.month, day.day);
+      final dayStart = CalendarDateMath.dateOnly(day);
       dayStartEpochs[index] = dayStart.millisecondsSinceEpoch;
       dayEndEpochs[index] = CalendarDateMath.addDays(
         dayStart,

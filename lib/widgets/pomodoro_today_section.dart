@@ -12,6 +12,7 @@ import '../utils/page_transitions.dart';
 import '../utils/theme_color_tokens.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'platform_backdrop_filter.dart';
+import '../utils/calendar_date_math.dart';
 
 // ============================================================
 // 首页「最近专注」一体化液态毛玻璃卡片
@@ -156,11 +157,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
         final firstLocal = AppTimeFormats.localFromServerTimestamp(
           records.first.startTime,
         );
-        targetDate = DateTime(
-          firstLocal.year,
-          firstLocal.month,
-          firstLocal.day,
-        );
+        targetDate = CalendarDateMath.dateOnly(firstLocal);
       } else {
         targetDate = DateTime.now();
       }
@@ -231,11 +228,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
     final duration = record.effectiveDuration;
     if (duration <= 0) return;
 
-    final dayStart = DateTime(
-      targetDate.year,
-      targetDate.month,
-      targetDate.day,
-    );
+    final dayStart = CalendarDateMath.dateOnly(targetDate);
     final dayEnd = dayStart.add(const Duration(days: 1));
     final dayStartMs = dayStart.millisecondsSinceEpoch;
     final dayEndMs = dayEnd.millisecondsSinceEpoch;

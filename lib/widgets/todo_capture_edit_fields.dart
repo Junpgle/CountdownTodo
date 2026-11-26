@@ -5,6 +5,7 @@ import '../utils/app_dialogs.dart';
 import '../utils/semester_week_context.dart';
 import '../utils/time_utils.dart';
 import 'floating_glass_control.dart';
+import '../utils/calendar_date_math.dart';
 
 /// 待办全天/截止时间编辑区块（`某天内完成`开关 + 日期/截止时间选择器）。
 class TodoAllDayScheduleFields extends StatelessWidget {
@@ -61,11 +62,7 @@ class TodoAllDayScheduleFields extends StatelessWidget {
                 dueDate != null &&
                 TodoItem.looksLikeLegacyDateOnlyRange(createdAt, dueDate!);
             if (val) {
-              final nextCreatedAt = DateTime(
-                createdAt.year,
-                createdAt.month,
-                createdAt.day,
-              );
+              final nextCreatedAt = CalendarDateMath.dateOnly(createdAt);
               final nextDueDate = DateTime(
                 dueDate?.year ?? nextCreatedAt.year,
                 dueDate?.month ?? nextCreatedAt.month,
@@ -111,7 +108,7 @@ class TodoAllDayScheduleFields extends StatelessWidget {
               if (pickedDate != null) {
                 onChanged(
                   true,
-                  DateTime(pickedDate.year, pickedDate.month, pickedDate.day),
+                  CalendarDateMath.dateOnly(pickedDate),
                   DateTime(
                     pickedDate.year,
                     pickedDate.month,

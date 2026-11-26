@@ -8,6 +8,7 @@ import '../services/pomodoro_service.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/page_transitions.dart';
 import 'optional_liquid_glass_surface.dart';
+import '../utils/calendar_date_math.dart';
 
 /// Presentation only: actual records keep their identity and never become
 /// draggable plans or change the plan's linked focus duration.
@@ -111,7 +112,7 @@ class PlanExecutionEntry {
     List<PomodoroRecord> records,
     List<TimeLogItem> logs,
   ) {
-    final start = DateTime(day.year, day.month, day.day).millisecondsSinceEpoch;
+    final start = CalendarDateMath.dateOnly(day).millisecondsSinceEpoch;
     final end = DateTime(
       day.year,
       day.month,
@@ -377,11 +378,7 @@ class _PlanExecutionTimelineLayerState
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
-      final day = DateTime(
-        widget.date.year,
-        widget.date.month,
-        widget.date.day,
-      );
+      final day = CalendarDateMath.dateOnly(widget.date);
       final nextDay = DateTime(
         widget.date.year,
         widget.date.month,

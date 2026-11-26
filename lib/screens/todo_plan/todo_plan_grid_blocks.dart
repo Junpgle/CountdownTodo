@@ -10,11 +10,7 @@ extension _PlanGridBlocks on _PlanGridViewState {
   }) {
     final start = DateTime.fromMillisecondsSinceEpoch(block.startTime);
     final end = DateTime.fromMillisecondsSinceEpoch(block.endTime);
-    final dayStart = DateTime(
-      widget.date.year,
-      widget.date.month,
-      widget.date.day,
-    );
+    final dayStart = CalendarDateMath.dateOnly(widget.date);
     final dayEnd = DateTime(dayStart.year, dayStart.month, dayStart.day + 1);
     if (!end.isAfter(dayStart) || !start.isBefore(dayEnd)) return const [];
 

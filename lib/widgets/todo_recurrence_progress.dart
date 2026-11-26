@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../utils/time_utils.dart';
+import '../utils/calendar_date_math.dart';
 
 enum TodoRecurrenceNodeState {
   completed,
@@ -156,7 +157,7 @@ class _TodoRecurrenceProgressState extends State<TodoRecurrenceProgress> {
 
   Widget _buildTimeline(ColorScheme colorScheme) {
     late final DateTime now = widget.clock();
-    late final DateTime today = DateTime(now.year, now.month, now.day);
+    late final DateTime today = CalendarDateMath.dateOnly(now);
     if (widget.nodes.length <= 7) {
       return Row(
         children: [
@@ -253,7 +254,7 @@ class _TodoRecurrenceProgressState extends State<TodoRecurrenceProgress> {
         true,
       ),
     };
-    final nodeDay = DateTime(node.date.year, node.date.month, node.date.day);
+    final nodeDay = CalendarDateMath.dateOnly(node.date);
     final label =
         node.label ??
         (nodeDay == today ? '今天' : AppTimeFormats.format(node.date, 'M/d'));

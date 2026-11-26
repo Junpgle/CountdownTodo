@@ -667,10 +667,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                                   }
                                   if (_isAllDay) {
                                     setState(() {
-                                      _createdDate = DateTime(
-                                        pickedDate.year,
-                                        pickedDate.month,
-                                        pickedDate.day,
+                                      _createdDate = CalendarDateMath.dateOnly(
+                                        pickedDate,
                                       );
                                       _dueDate = DateTime(
                                         pickedDate.year,

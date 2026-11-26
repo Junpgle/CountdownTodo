@@ -199,7 +199,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   void initState() {
     super.initState();
     DateTime now = DateTime.now();
-    _todayNormalized = DateTime(now.year, now.month, now.day);
+    _todayNormalized = CalendarDateMath.dateOnly(now);
     _selectedDate = _todayNormalized;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _historyLoadTimer = Timer(const Duration(milliseconds: 300), () {

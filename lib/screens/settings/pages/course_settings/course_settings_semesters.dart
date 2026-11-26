@@ -102,10 +102,8 @@ extension _CourseSettingsSemesters on _CourseSettingsPageState {
                   Builder(
                     builder: (context) {
                       final now = DateTime.now();
-                      final start = DateTime(
-                        semester.startDate.year,
-                        semester.startDate.month,
-                        semester.startDate.day,
+                      final start = CalendarDateMath.dateOnly(
+                        semester.startDate,
                       );
                       final end = DateTime(
                         semester.endDate!.year,
