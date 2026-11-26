@@ -5,6 +5,7 @@ import '../models/habit_progress.dart';
 import '../repositories/habit_repository.dart';
 import 'habit_progress_calculator.dart';
 import 'habit_rule_resolver.dart';
+import '../../../utils/calendar_date_math.dart';
 
 /// Builds a request-scoped, read-only snapshot of the user's habit goals.
 abstract final class HabitAiContextService {
@@ -917,8 +918,7 @@ abstract final class HabitAiContextService {
 
   static String _dateKey(DateTime date) => AppTimeFormats.date(date);
 
-  static DateTime _day(DateTime date) =>
-      DateTime(date.year, date.month, date.day);
+  static DateTime _day(DateTime date) => CalendarDateMath.dateOnly(date);
 
   static bool _containsAny(String text, List<String> words) =>
       words.any(text.contains);

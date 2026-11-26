@@ -233,7 +233,7 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
   static String _formatChartDuration(int value) => '${value}m';
 
   static String _formatChartClockTime(int value) =>
-      AppTimeFormats.hourMinute(value ~/ 60, value % 60);
+      AppTimeFormats.minuteOfDay(value);
 
   Widget _buildChartTab(String title, int index, Color color) {
     final isSel = _chartType == index;

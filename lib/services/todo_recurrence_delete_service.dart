@@ -1,6 +1,7 @@
 import '../models.dart';
 import 'todo_recurrence_date_service.dart';
 import 'todo_recurrence_series_edit_service.dart';
+import '../utils/calendar_date_math.dart';
 
 enum TodoRecurrenceDeleteScope { occurrence, future, series }
 
@@ -244,12 +245,11 @@ abstract final class TodoRecurrenceDeleteService {
       todo.createdDate ?? todo.createdAt,
       isUtc: true,
     ).toLocal();
-    return DateTime(local.year, local.month, local.day);
+    return CalendarDateMath.dateOnly(local);
   }
 
   static DateTime _dateOnlyEpoch(DateTime value) {
-    final local = value.toLocal();
-    return DateTime(local.year, local.month, local.day);
+    return CalendarDateMath.dateOnly(value.toLocal());
   }
 
   static String _dayKey(TodoItem todo) {

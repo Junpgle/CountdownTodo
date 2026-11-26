@@ -10,6 +10,7 @@ import 'todo_recurrence_series_edit_service.dart';
 import 'fixed_schedule_recurrence_service.dart';
 import 'pomodoro_service.dart';
 import '../utils/json_value_parser.dart';
+import '../utils/calendar_date_math.dart';
 
 part 'ai_action_executor/ai_todo_action_executor_main.dart';
 part 'ai_action_executor/ai_todo_action_executor_habits.dart';

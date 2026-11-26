@@ -25,7 +25,7 @@ typedef PlanConflictReviewLoader = Future<PlanConflictReviewResult> Function(
 });
 
 String _time(DateTime value) => AppTimeFormats.compactDateTime(value);
-DateTime _day(DateTime value) => DateTime(value.year, value.month, value.day);
+DateTime _day(DateTime value) => CalendarDateMath.dateOnly(value);
 String _sourceName(PlanBusySource source) => switch (source) {
   PlanBusySource.course => '课程',
   PlanBusySource.fixedSchedule => '固定日程',

@@ -20,6 +20,7 @@ import '../services/plan_availability_service.dart';
 import '../storage_service.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/time_utils.dart';
+import '../utils/calendar_date_math.dart';
 
 class _PlanSplitRequest {
   const _PlanSplitRequest(this.query);
@@ -276,7 +277,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     });
   }
 
-  DateTime _day(DateTime value) => DateTime(value.year, value.month, value.day);
+  DateTime _day(DateTime value) => CalendarDateMath.dateOnly(value);
 
   String _preferenceKey(
     List<PlanDailyTimeWindow> options,

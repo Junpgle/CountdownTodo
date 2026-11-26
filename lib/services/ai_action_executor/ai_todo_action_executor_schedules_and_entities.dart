@@ -319,7 +319,7 @@ DateTime? _parseScheduleDate(String? value) {
   return parsed == null ? null : _day(parsed);
 }
 
-DateTime _day(DateTime value) => DateTime(value.year, value.month, value.day);
+DateTime _day(DateTime value) => CalendarDateMath.dateOnly(value);
 
 String _dateKey(DateTime value) => AppTimeFormats.date(value);
 

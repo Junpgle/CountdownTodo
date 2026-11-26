@@ -411,8 +411,7 @@ class CalendarSyncService {
     );
   }
 
-  static DateTime _dateOnly(DateTime date) =>
-      DateTime(date.year, date.month, date.day);
+  static DateTime _dateOnly(DateTime date) => CalendarDateMath.dateOnly(date);
 
   static DateTime _exclusiveAllDayEnd(DateTime start, DateTime end) {
     final endDate = _dateOnly(end);

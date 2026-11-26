@@ -1,5 +1,6 @@
 import '../models/finance_models.dart';
 import 'finance_repository.dart';
+import '../../../utils/calendar_date_math.dart';
 
 /// The date window used when the assistant asks the finance repository for
 /// data.  `to` is exclusive, matching the storage query contract.
@@ -1924,8 +1925,7 @@ abstract final class FinanceAiContextService {
     return count * multiplier;
   }
 
-  static DateTime _day(DateTime value) =>
-      DateTime(value.year, value.month, value.day);
+  static DateTime _day(DateTime value) => CalendarDateMath.dateOnly(value);
 
   static DateTime _mondayOf(DateTime value) {
     final day = _day(value);

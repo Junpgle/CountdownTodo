@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../models/finance_ai_action.dart';
 import '../models/finance_models.dart';
 import 'finance_repository.dart';
+import '../../../utils/calendar_date_math.dart';
 
 /// Recognizes the small, deliberately explicit text format used by the
 /// finance import entry point and by the AI assistant.
@@ -1476,8 +1477,7 @@ abstract final class FinanceTextParser {
     return _day(parsed);
   }
 
-  static DateTime _day(DateTime value) =>
-      DateTime(value.year, value.month, value.day);
+  static DateTime _day(DateTime value) => CalendarDateMath.dateOnly(value);
 
   static List<Map<String, dynamic>> _decodeMaps(String raw) {
     var text = raw.trim();

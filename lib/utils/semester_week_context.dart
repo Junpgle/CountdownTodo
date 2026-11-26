@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../course_import/course_schedule_semantics.dart';
 import '../models.dart';
 import '../storage_service.dart';
+import 'calendar_date_math.dart';
 
 /// Week numbering for dates inside the user's active semester.
 ///
@@ -78,8 +79,7 @@ class SemesterWeekContext {
     return normalized.isEmpty ? 'default' : normalized;
   }
 
-  static DateTime _dateOnly(DateTime date) =>
-      DateTime(date.year, date.month, date.day);
+  static DateTime _dateOnly(DateTime date) => CalendarDateMath.dateOnly(date);
 }
 
 /// Adds the selected date's semester week to the Material date picker header.
