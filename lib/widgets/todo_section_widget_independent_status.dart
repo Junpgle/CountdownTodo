@@ -50,7 +50,7 @@ class _IndependentStatusDialogState extends State<_IndependentStatusDialog> {
         width: double.maxFinite,
         height: 350,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? const AppSkeletonSheetList(itemCount: 4, itemHeight: 56)
             : (_error != null
                   ? Center(child: Text("加载失败: $_error"))
                   : (_statusList.isEmpty

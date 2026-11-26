@@ -277,15 +277,11 @@ extension _TodoEditScreenSections on TodoEditScreenState {
     final colorScheme = theme.colorScheme;
 
     if (_isLoadingRecords) {
-      return const Padding(
+      return const AppSkeletonSheetList(
+        itemCount: 2,
+        itemHeight: 42,
+        shrinkWrap: true,
         padding: EdgeInsets.symmetric(vertical: 8),
-        child: Center(
-          child: SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-        ),
       );
     }
 
@@ -529,9 +525,11 @@ extension _TodoEditScreenSections on TodoEditScreenState {
             border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
           ),
           child: _isLoadingPlans
-              ? const Padding(
-                  padding: EdgeInsets.all(20.0),
-                  child: Center(child: CircularProgressIndicator()),
+              ? const AppSkeletonSheetList(
+                  itemCount: 2,
+                  itemHeight: 42,
+                  shrinkWrap: true,
+                  padding: EdgeInsets.all(12),
                 )
               : _relatedPlanBlocks.isEmpty
               ? Padding(

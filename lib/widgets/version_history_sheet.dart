@@ -6,6 +6,7 @@ import '../utils/app_dialogs.dart';
 import '../utils/time_utils.dart';
 import '../utils/theme_color_tokens.dart';
 import 'app_sheet_widgets.dart';
+import 'app_skeleton.dart';
 import 'app_state_views.dart';
 
 class VersionHistorySheet extends StatefulWidget {
@@ -278,7 +279,7 @@ class _VersionHistorySheetState extends State<VersionHistorySheet>
             const Divider(height: 1),
             Expanded(
               child: _isLoading
-                  ? const AppLoadingView()
+                  ? const AppSkeletonSheetList(itemCount: 4, itemHeight: 72)
                   : TabBarView(
                       controller: _tabController,
                       children: [

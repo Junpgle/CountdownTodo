@@ -8,6 +8,7 @@ import '../utils/app_image_filters.dart';
 import '../utils/page_transitions.dart';
 import '../utils/theme_color_tokens.dart';
 import '../utils/time_utils.dart';
+import 'app_skeleton.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'platform_backdrop_filter.dart';
 
@@ -422,11 +423,52 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
       padding: const EdgeInsets.all(18),
       width: double.infinity,
       child: (_isLoading && !_hasLoaded)
-          ? const SizedBox(
-              width: double.infinity,
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(child: CircularProgressIndicator(strokeWidth: 3)),
+          ? AppSkeletonScope(
+              isLightSurface: widget.isLight && isDark,
+              child: const Padding(
+                padding: EdgeInsets.symmetric(vertical: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        AppSkeletonCircle(size: 16),
+                        SizedBox(width: 8),
+                        AppSkeletonLine(width: 86, height: 12),
+                        SizedBox(width: 10),
+                        Expanded(child: AppSkeletonLine(height: 11)),
+                      ],
+                    ),
+                    SizedBox(height: 14),
+                    Row(
+                      children: [
+                        AppSkeletonCircle(size: 10),
+                        SizedBox(width: 10),
+                        AppSkeletonBox(width: 44, height: 18, borderRadius: 9),
+                        SizedBox(width: 10),
+                        Expanded(child: AppSkeletonLine(height: 13)),
+                      ],
+                    ),
+                    SizedBox(height: 10),
+                    Row(
+                      children: [
+                        AppSkeletonCircle(size: 10),
+                        SizedBox(width: 10),
+                        AppSkeletonBox(width: 44, height: 18, borderRadius: 9),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: FractionallySizedBox(
+                              widthFactor: 0.72,
+                              child: AppSkeletonLine(height: 13),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             )
           : _events.isEmpty

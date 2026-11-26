@@ -10,6 +10,7 @@ import '../services/pomodoro_service.dart';
 import '../utils/app_image_filters.dart';
 import '../utils/page_transitions.dart';
 import '../utils/theme_color_tokens.dart';
+import 'app_skeleton.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'platform_backdrop_filter.dart';
 import '../utils/calendar_date_math.dart';
@@ -512,11 +513,50 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
       padding: const EdgeInsets.all(18),
       width: double.infinity,
       child: (_loading && !_hasLoaded)
-          ? const SizedBox(
-              width: double.infinity,
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 36),
-                child: Center(child: CircularProgressIndicator(strokeWidth: 3)),
+          ? AppSkeletonScope(
+              isLightSurface: widget.isLight && isDark,
+              child: const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    AppSkeletonCircle(size: 56),
+                    SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              AppSkeletonLine(width: 96, height: 22),
+                              Spacer(),
+                              AppSkeletonBox(
+                                width: 58,
+                                height: 20,
+                                borderRadius: 10,
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: 10),
+                          Row(
+                            children: [
+                              AppSkeletonBox(
+                                width: 72,
+                                height: 20,
+                                borderRadius: 10,
+                              ),
+                              SizedBox(width: 8),
+                              AppSkeletonBox(
+                                width: 64,
+                                height: 20,
+                                borderRadius: 10,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             )
           : _records.isEmpty

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:countdown_todo/features/finance/services/finance_storage.dart';
 import 'package:countdown_todo/services/database_helper.dart';
+import 'package:countdown_todo/widgets/app_skeleton.dart';
 import 'package:countdown_todo/widgets/optional_liquid_glass_surface.dart';
 import 'package:countdown_todo/widgets/personal_timeline_section.dart';
 import 'package:flutter/material.dart';
@@ -49,7 +50,8 @@ void main() {
         () => Future<void>.delayed(const Duration(milliseconds: 50)),
       );
       await tester.pump(const Duration(milliseconds: 100));
-      if (find.byType(CircularProgressIndicator).evaluate().isEmpty) {
+      if (find.byType(CircularProgressIndicator).evaluate().isEmpty &&
+          find.byType(AppSkeletonScope).evaluate().isEmpty) {
         break;
       }
     }
@@ -74,7 +76,6 @@ void main() {
     expect(find.text('今日暂无时光轨迹'), findsOneWidget);
     expect(find.textContaining('完成待办、习惯打卡或记录账单后'), findsOneWidget);
   });
-
 
   testWidgets(
     'PersonalTimelineSection renders opaque fallback decoration when isLight is true',
@@ -119,6 +120,7 @@ void main() {
       await settle(tester);
       expect(find.text('今日暂无时光轨迹'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.byType(AppSkeletonScope), findsNothing);
 
       // Trigger background reload
       await tester.pumpWidget(
@@ -134,13 +136,15 @@ void main() {
         ),
       );
 
-      // Next frame should NOT switch to CircularProgressIndicator
+      // Next frame should NOT switch to CircularProgressIndicator or AppSkeletonScope
       await tester.pump();
       expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.byType(AppSkeletonScope), findsNothing);
       expect(find.text('今日暂无时光轨迹'), findsOneWidget);
 
       await settle(tester);
       expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.byType(AppSkeletonScope), findsNothing);
       expect(find.text('今日暂无时光轨迹'), findsOneWidget);
     },
   );

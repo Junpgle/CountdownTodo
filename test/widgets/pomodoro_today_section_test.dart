@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:countdown_todo/services/database_helper.dart';
 import 'package:countdown_todo/services/home_dashboard_section_data_cache.dart';
 import 'package:countdown_todo/services/pomodoro_service.dart';
+import 'package:countdown_todo/widgets/app_skeleton.dart';
 import 'package:countdown_todo/widgets/optional_liquid_glass_surface.dart';
 import 'package:countdown_todo/widgets/pomodoro_today_section.dart';
 import 'package:flutter/material.dart';
@@ -317,6 +318,7 @@ void main() {
       await settle(tester);
       expect(find.text('暂无专注记录'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.byType(AppSkeletonScope), findsNothing);
 
       // Trigger background reload
       await tester.pumpWidget(
@@ -332,13 +334,15 @@ void main() {
         ),
       );
 
-      // Next frame should NOT switch to CircularProgressIndicator
+      // Next frame should NOT switch to CircularProgressIndicator or AppSkeletonScope
       await tester.pump();
       expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.byType(AppSkeletonScope), findsNothing);
       expect(find.text('暂无专注记录'), findsOneWidget);
 
       await settle(tester);
       expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.byType(AppSkeletonScope), findsNothing);
       expect(find.text('暂无专注记录'), findsOneWidget);
     },
   );

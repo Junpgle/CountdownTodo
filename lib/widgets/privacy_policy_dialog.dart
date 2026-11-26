@@ -5,6 +5,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../services/github_resource_service.dart';
 import '../utils/app_dialogs.dart';
+import 'app_skeleton.dart';
 
 typedef PrivacyPolicyAction = FutureOr<void> Function();
 
@@ -121,7 +122,7 @@ class _PrivacyPolicyDialogState extends State<PrivacyPolicyDialog> {
             ],
             Expanded(
               child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const AppSkeletonDocument(paragraphs: 4)
                   : _content == null
                   ? const Center(child: Text('加载失败，请检查网络连接'))
                   : Markdown(
