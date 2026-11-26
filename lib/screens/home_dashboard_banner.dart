@@ -245,7 +245,7 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
     List<CourseItem> courses,
     DateTime now,
   ) {
-    final nextDay = DateTime(now.year, now.month, now.day + 1);
+    final nextDay = AppTimeFormats.localDayStartOffset(now, 1);
     if (title != '今日课程') return nextDay;
 
     DateTime? lastCourseEnd;

@@ -268,7 +268,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
       }
       _undoExpiry?.cancel();
       final now = _dragService.now;
-      final midnight = DateTime(now.year, now.month, now.day + 1);
+      final midnight = AppTimeFormats.localDayStartOffset(now, 1);
       final ends = [
         midnight.millisecondsSinceEpoch,
         change.before.block.endTime,
@@ -611,11 +611,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   void _prevDay() {
     setState(() {
       _clearDragHistory();
-      _focusedDate = DateTime(
-        _focusedDate.year,
-        _focusedDate.month,
-        _focusedDate.day - 1,
-      );
+      _focusedDate = AppTimeFormats.localDayStartOffset(_focusedDate, -1);
     });
     unawaited(_loadData());
   }
@@ -623,11 +619,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   void _nextDay() {
     setState(() {
       _clearDragHistory();
-      _focusedDate = DateTime(
-        _focusedDate.year,
-        _focusedDate.month,
-        _focusedDate.day + 1,
-      );
+      _focusedDate = AppTimeFormats.localDayStartOffset(_focusedDate, 1);
     });
     unawaited(_loadData());
   }

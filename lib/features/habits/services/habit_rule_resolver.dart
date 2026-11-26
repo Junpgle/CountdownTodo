@@ -12,7 +12,7 @@ abstract final class HabitRuleResolver {
 
   /// 将日期沿本地日历移动指定天数，不受夏令时日长变化影响。
   static DateTime addCalendarDays(DateTime date, int days) =>
-      DateTime(date.year, date.month, date.day + days);
+      AppTimeFormats.localDayStartOffset(date, days);
 
   /// 计算两个日期之间的日历日差（[date] - [other]）。
   static int calendarDayDifference(DateTime date, DateTime other) {

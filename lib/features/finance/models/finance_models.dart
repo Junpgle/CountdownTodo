@@ -75,7 +75,7 @@ DateTime financeCalendarDayOffset(DateTime value, int days) {
   if (value.isUtc) {
     return DateTime.utc(value.year, value.month, value.day + days);
   }
-  return DateTime(value.year, value.month, value.day + days);
+  return AppTimeFormats.localDayStartOffset(value, days);
 }
 
 String financeMonthKey(DateTime date) => AppTimeFormats.format(date, 'yyyy-MM');

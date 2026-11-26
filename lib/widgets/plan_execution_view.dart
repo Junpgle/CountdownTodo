@@ -113,10 +113,9 @@ class PlanExecutionEntry {
     List<TimeLogItem> logs,
   ) {
     final start = CalendarDateMath.dateOnly(day).millisecondsSinceEpoch;
-    final end = DateTime(
-      day.year,
-      day.month,
-      day.day + 1,
+    final end = AppTimeFormats.localDayStartOffset(
+      day,
+      1,
     ).millisecondsSinceEpoch;
     return [
         ...records.where((r) => !r.isDeleted).map(PlanExecutionEntry.focus),
@@ -379,11 +378,7 @@ class _PlanExecutionTimelineLayerState
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       final day = CalendarDateMath.dateOnly(widget.date);
-      final nextDay = DateTime(
-        widget.date.year,
-        widget.date.month,
-        widget.date.day + 1,
-      );
+      final nextDay = AppTimeFormats.localDayStartOffset(widget.date, 1);
       final hourlyLaneCounts = PlanExecutionEntry.hourlyTimelineLaneCounts(
         day,
         widget.entries,

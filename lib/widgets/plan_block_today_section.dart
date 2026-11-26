@@ -720,7 +720,7 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
         final page = TodoPlanScreen(
           username: widget.username,
           initialDate: tomorrow
-              ? DateTime(day.year, day.month, day.day + 1)
+              ? AppTimeFormats.localDayStartOffset(day, 1)
               : day,
         );
         if (sourceKey != null) {

@@ -29,6 +29,7 @@ import 'finance_trash_screen.dart';
 import 'finance_transaction_detail_screen.dart';
 import '../../../utils/app_dialogs.dart';
 import '../../../utils/calendar_date_math.dart';
+import '../../../utils/time_utils.dart';
 
 typedef _FinanceHomeData = ({
   List<FinanceTransaction> transactions,
@@ -546,10 +547,9 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen>
         ? monthStart.millisecondsSinceEpoch
         : DateTime(_month.year, _month.month + 1).millisecondsSinceEpoch;
     if (_month.year == currentDate.year && _month.month == currentDate.month) {
-      final nextDayStartAt = DateTime(
-        currentDate.year,
-        currentDate.month,
-        currentDate.day + 1,
+      final nextDayStartAt = AppTimeFormats.localDayStartOffset(
+        currentDate,
+        1,
       ).millisecondsSinceEpoch;
       if (nextDayStartAt < nextEventAt) nextEventAt = nextDayStartAt;
     }

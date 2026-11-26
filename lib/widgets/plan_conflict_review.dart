@@ -156,7 +156,7 @@ class _PlanConflictIndicatorState extends State<PlanConflictIndicator>
         _reading = false;
       });
       final now = widget.service.now;
-      var next = DateTime(now.year, now.month, now.day + 1);
+      var next = AppTimeFormats.localDayStartOffset(now, 1);
       for (final entry in result.entries) {
         final end = DateTime.fromMillisecondsSinceEpoch(entry.block.endTime);
         if (end.isAfter(now) && end.isBefore(next)) next = end;
@@ -191,7 +191,7 @@ class _PlanConflictIndicatorState extends State<PlanConflictIndicator>
           if (mounted &&
               result.username == widget.username &&
               result.start == _date &&
-              result.end == DateTime(_date.year, _date.month, _date.day + 1)) {
+              result.end == AppTimeFormats.localDayStartOffset(_date, 1)) {
             setState(() {
               _result = result;
               _error = null;
@@ -436,7 +436,7 @@ class _PlanConflictReviewSheetState extends State<PlanConflictReviewSheet>
         setState(() => _result = result);
         widget.onResult?.call(result);
         final now = widget.service.now;
-        var next = DateTime(now.year, now.month, now.day + 1);
+        var next = AppTimeFormats.localDayStartOffset(now, 1);
         for (final entry in result.entries) {
           final end = DateTime.fromMillisecondsSinceEpoch(entry.block.endTime);
           if (end.isAfter(now) && end.isBefore(next)) next = end;

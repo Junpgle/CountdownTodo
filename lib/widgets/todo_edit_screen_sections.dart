@@ -191,7 +191,7 @@ extension _TodoEditScreenSections on TodoEditScreenState {
     if (start.isAfter(_now)) return '未开始';
     final due =
         occurrence.dueDate?.toLocal() ??
-        DateTime(start.year, start.month, start.day + 1);
+        AppTimeFormats.localDayStartOffset(start, 1);
     return due.isBefore(_now) ? '已逾期' : '待完成';
   }
 

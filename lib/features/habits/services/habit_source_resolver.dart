@@ -82,10 +82,9 @@ abstract final class HabitSourceResolver {
     if (seriesIds.isEmpty) return null;
     final day = CalendarDateMath.dateOnly(localDate);
     final startMs = day.millisecondsSinceEpoch;
-    final endMs = DateTime(
-      day.year,
-      day.month,
-      day.day + 1,
+    final endMs = AppTimeFormats.localDayStartOffset(
+      day,
+      1,
     ).millisecondsSinceEpoch;
     try {
       final maps = await DatabaseHelper.instance.getTodoMaps(
@@ -153,7 +152,7 @@ abstract final class HabitSourceResolver {
       final tagIds = tagUuids.toSet();
       final records = await PomodoroService.getRecordsInRange(
         CalendarDateMath.dateOnly(from),
-        DateTime(to.year, to.month, to.day + 1),
+        AppTimeFormats.localDayStartOffset(to, 1),
       );
       return records.where((r) {
         if (r.isDeleted || !r.isCompleted || r.hasConflict) return false;
@@ -368,7 +367,7 @@ class HabitTodoIndex {
     var count = 0;
     while (day.isBefore(end)) {
       count += _completedCountByDay[day] ?? 0;
-      day = DateTime(day.year, day.month, day.day + 1);
+      day = AppTimeFormats.localDayStartOffset(day, 1);
     }
     return count;
   }

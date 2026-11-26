@@ -394,7 +394,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
       final today = DateTime.now();
       return (
         start: CalendarDateMath.dateOnly(today),
-        end: DateTime(today.year, today.month, today.day + 14),
+        end: AppTimeFormats.localDayStartOffset(today, 14),
       );
     }
 

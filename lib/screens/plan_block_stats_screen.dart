@@ -203,7 +203,7 @@ class _PlanBlockStatsScreenState
       : _dimension == 0
       ? AppTimeFormats.format(_current, 'yyyy年M月d日')
       : '${AppTimeFormats.format(_range.start, 'M/d')} — '
-            '${AppTimeFormats.format(DateTime(_range.end.year, _range.end.month, _range.end.day - 1), 'M/d')}';
+            '${AppTimeFormats.format(AppTimeFormats.localDayStartOffset(_range.end, -1), 'M/d')}';
   @override
   void initState() {
     _current = widget.initialDate ?? _now;
@@ -738,7 +738,7 @@ class _PlanBlockStatsScreenState
                   onTap: () => _open(
                     PlanReviewFilter.focus,
                     start: date,
-                    end: DateTime(date.year, date.month, date.day + 1),
+                    end: AppTimeFormats.localDayStartOffset(date, 1),
                     title: '${point.dateLabel}专注明细',
                   ),
                   child: Column(
@@ -1114,7 +1114,7 @@ class _PlanReviewDetailScreenState
                         widget.cumulative
                             ? '累计有效记录 · 按唯一规划关联'
                             : '${AppTimeFormats.format(widget.start, 'yyyy/M/d')} — '
-                                  '${AppTimeFormats.format(DateTime(widget.end.year, widget.end.month, widget.end.day - 1), 'yyyy/M/d')}',
+                                  '${AppTimeFormats.format(AppTimeFormats.localDayStartOffset(widget.end, -1), 'yyyy/M/d')}',
                       ),
                       if (focusFilters.contains(widget.filter))
                         Padding(

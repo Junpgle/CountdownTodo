@@ -1,6 +1,7 @@
 import '../models/finance_models.dart';
 import 'finance_repository.dart';
 import '../../../utils/calendar_date_math.dart';
+import '../../../utils/time_utils.dart';
 
 /// The date window used when the assistant asks the finance repository for
 /// data.  `to` is exclusive, matching the storage query contract.
@@ -847,11 +848,7 @@ abstract final class FinanceAiContextService {
       asOfAt,
       isUtc: true,
     ).add(const Duration(hours: 14));
-    return DateTime(
-      latestPossibleDate.year,
-      latestPossibleDate.month,
-      latestPossibleDate.day + 1,
-    );
+    return AppTimeFormats.localDayStartOffset(latestPossibleDate, 1);
   }
 
   static FinanceDateRange? _resolveSamePeriodYearRange({

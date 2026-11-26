@@ -90,7 +90,7 @@ class TodoRecurrenceCompletionOverview extends StatelessWidget {
       elapsedCount++;
       final effectiveEnd =
           occurrence.dueDate?.toLocal() ??
-          DateTime(start.year, start.month, start.day + 1);
+          AppTimeFormats.localDayStartOffset(start, 1);
       if (effectiveEnd.isBefore(now)) {
         overdueCount++;
       } else {

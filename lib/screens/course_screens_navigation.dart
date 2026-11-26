@@ -1313,7 +1313,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
           final end = schedule.endTime == null
               ? start.add(const Duration(hours: 1))
               : DateTime.fromMillisecondsSinceEpoch(schedule.endTime!);
-          final dayEnd = DateTime(start.year, start.month, start.day + 1);
+          final dayEnd = AppTimeFormats.localDayStartOffset(start, 1);
           final visibleEnd = end.isAfter(dayEnd) ? dayEnd : end;
           if (visibleEnd.isAfter(start)) {
             updateBounds(

@@ -38,10 +38,9 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
 
     final now = DateTime.now();
     final nowMs = now.millisecondsSinceEpoch;
-    final tomorrowEndMs = DateTime(
-      now.year,
-      now.month,
-      now.day + 2,
+    final tomorrowEndMs = AppTimeFormats.localDayStartOffset(
+      now,
+      2,
     ).millisecondsSinceEpoch;
     final hasActivePlans = planBlocks.any(
       (block) =>

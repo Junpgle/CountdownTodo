@@ -135,7 +135,7 @@ abstract final class FinanceRepository {
   getCumulativeBalanceEvents({required int throughAt}) async {
     final date = DateTime.fromMillisecondsSinceEpoch(throughAt);
     final transactions = await getTransactions(
-      to: DateTime(date.year, date.month, date.day + 2),
+      to: AppTimeFormats.localDayStartOffset(date, 2),
     );
     final events =
         transactions

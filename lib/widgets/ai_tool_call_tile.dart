@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../models/chat_message.dart';
+import '../utils/time_utils.dart';
 
 /// Shows the exact function, submitted arguments, and actual app response.
 class AiToolCallTile extends StatefulWidget {
@@ -189,7 +190,7 @@ class _AiToolCallTileState extends State<AiToolCallTile> {
     if (from == null || exclusive == null || !exclusive.isAfter(from)) {
       return '';
     }
-    final last = DateTime(exclusive.year, exclusive.month, exclusive.day - 1);
+    final last = AppTimeFormats.localDayStartOffset(exclusive, -1);
     final includeYear =
         from.year != last.year || from.year != DateTime.now().year;
     String label(DateTime date) =>

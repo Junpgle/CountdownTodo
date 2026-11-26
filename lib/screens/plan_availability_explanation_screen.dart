@@ -332,11 +332,7 @@ class _PlanAvailabilityExplanationScreenState
     final derivedData = _derivedDataFor(_now);
     final diagnostic = derivedData.diagnostic;
     final due = PlanAvailabilityService.deadline(_snapshot.todo);
-    final next = DateTime(
-      _query.date.year,
-      _query.date.month,
-      _query.date.day + 1,
-    );
+    final next = AppTimeFormats.localDayStartOffset(_query.date, 1);
     final canFollow = diagnostic.valid && (due == null || due.isAfter(next));
     final fragments = derivedData.fragments;
     final colors = Theme.of(context).colorScheme;
@@ -626,7 +622,7 @@ class _PlanAvailabilityExplanationScreenState
                   const SizedBox(height: 24),
                   Text(
                     range.end.isAfter(range.start)
-                        ? '后续日期 · ${_date(range.start)}—${_date(DateTime(range.end.year, range.end.month, range.end.day - 1))}'
+                        ? '后续日期 · ${_date(range.start)}—${_date(AppTimeFormats.localDayStartOffset(range.end, -1))}'
                         : '截止前已无后续日期',
                     key: _rangeKey,
                     style: theme.textTheme.titleMedium?.copyWith(

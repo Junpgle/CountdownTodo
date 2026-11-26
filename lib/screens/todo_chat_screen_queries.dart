@@ -238,7 +238,7 @@ mixin _TodoChatQueries on _TodoChatScreenStateBase {
         habit: goal,
         rules: goalRules,
         from: from,
-        to: DateTime(toExclusive.year, toExclusive.month, toExclusive.day - 1),
+        to: AppTimeFormats.localDayStartOffset(toExclusive, -1),
         periodLevel: true,
       );
       final planned = progress

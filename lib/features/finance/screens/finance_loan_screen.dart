@@ -22,7 +22,7 @@ DateTime? _nextOverdueBoundary(
   for (final installment in installments) {
     if (installment.isPaid) continue;
     final dueDate = dateFromKey(installment.dueDate);
-    final boundary = DateTime(dueDate.year, dueDate.month, dueDate.day + 1);
+    final boundary = AppTimeFormats.localDayStartOffset(dueDate, 1);
     if (boundary.isAfter(now) &&
         (nextBoundary == null || boundary.isBefore(nextBoundary))) {
       nextBoundary = boundary;

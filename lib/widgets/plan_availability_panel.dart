@@ -1505,10 +1505,9 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
                             key: ValueKey('plan-date-shortcut-$offset'),
                             onPressed: () {
                               final today = _day(_now);
-                              _date = DateTime(
-                                today.year,
-                                today.month,
-                                today.day + offset,
+                              _date = AppTimeFormats.localDayStartOffset(
+                                today,
+                                offset,
                               );
                               _invalidate();
                               widget.onDateChanged?.call(_date);
