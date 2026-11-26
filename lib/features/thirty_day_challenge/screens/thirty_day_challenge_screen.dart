@@ -17,6 +17,7 @@ import '../../../utils/app_platform.dart';
 import '../../../utils/base64_image_provider.dart';
 import '../../../utils/app_image_filters.dart';
 import '../../../../widgets/optional_liquid_glass_surface.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../habits/services/habit_focus_launcher.dart';
 import '../models/thirty_day_challenge.dart';
@@ -168,7 +169,12 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
               ],
             ),
       body: state == null
-          ? const Center(child: CircularProgressIndicator())
+          ? AppSkeletonCalendarPage(
+              topPadding: floatingGlassTopBarHeight(context) + 12,
+              maxWidth: 920,
+              gridColumns: 6,
+              gridRows: 5,
+            )
           : AnimatedBuilder(
               animation: _entranceController,
               child: _showWelcome

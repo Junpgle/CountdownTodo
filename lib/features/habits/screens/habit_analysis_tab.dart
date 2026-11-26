@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../models.dart';
 import '../../../services/pomodoro_service.dart';
 import '../../../utils/page_transitions.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
@@ -418,7 +419,13 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
   @override
   Widget build(BuildContext context) {
     if (_loading && _goals.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
+      return AppSkeletonDashboardPage(
+        topPadding: widget.topPadding + 8,
+        maxWidth: 840,
+        showMetricGrid: true,
+        showChart: true,
+        listCount: 3,
+      );
     }
     if (_goals.isEmpty) {
       return Center(

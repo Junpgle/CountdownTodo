@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../utils/app_dialogs.dart';
 import '../../../utils/page_transitions.dart';
 import '../../../utils/time_utils.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
@@ -667,7 +668,10 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
   @override
   Widget build(BuildContext context) {
     if (_loading && _goals.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
+      return AppSkeletonCalendarPage(
+        topPadding: widget.topPadding + 8,
+        maxWidth: 840,
+      );
     }
 
     return LayoutBuilder(

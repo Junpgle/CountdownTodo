@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../../utils/app_dialogs.dart';
 import '../../../utils/time_utils.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../repositories/habit_repository.dart';
@@ -358,9 +359,11 @@ class _HabitDrinkPickerSheetState extends State<HabitDrinkPickerSheet> {
             ),
             const SizedBox(height: 12),
             if (_loading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 28),
-                child: Center(child: CircularProgressIndicator()),
+              const AppSkeletonSheetList(
+                itemCount: 4,
+                itemHeight: 54,
+                shrinkWrap: true,
+                padding: EdgeInsets.symmetric(vertical: 8),
               )
             else ...[
               if (!_manageMode) ...[

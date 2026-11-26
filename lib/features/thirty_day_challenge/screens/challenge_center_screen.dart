@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../utils/page_transitions.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/cloud_challenge.dart';
 import '../models/thirty_day_challenge.dart';
@@ -259,7 +260,13 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? AppSkeletonDashboardPage(
+              topPadding: floatingGlassTopBarHeight(context) + 16,
+              maxWidth: 1080,
+              showMetricGrid: true,
+              showChart: false,
+              listCount: 3,
+            )
           : FloatingGlassTopBarContentFade(
               topBarHeight: kToolbarHeight,
               child: Stack(

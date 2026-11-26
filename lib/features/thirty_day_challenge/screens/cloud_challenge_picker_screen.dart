@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/cloud_challenge.dart';
 import '../services/cloud_challenge_service.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../widgets/floating_glass_control.dart';
 
@@ -416,7 +417,12 @@ class _CloudChallengePickerScreenState
       body: FloatingGlassTopBarContentFade(
         topBarHeight: kToolbarHeight,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: floatingGlassTopBarHeight(context) + 12,
+                showFilterChips: true,
+                itemCount: 5,
+                itemHeight: 108,
+              )
             : _error != null
             ? _buildErrorState(scheme)
             : catalog == null

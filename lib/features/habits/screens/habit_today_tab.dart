@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../utils/page_transitions.dart';
 import '../../../utils/app_image_filters.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../widgets/platform_backdrop_filter.dart';
 import '../models/habit_goal.dart';
@@ -159,7 +160,14 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
   Widget build(BuildContext context) {
     final Widget content;
     if (_loading && _snapshot == null) {
-      content = const Center(child: CircularProgressIndicator());
+      content = AppSkeletonListPage(
+        topPadding: widget.topPadding + 8,
+        maxWidth: 840,
+        showHeroCard: true,
+        useTwoColumnsOnWide: true,
+        itemCount: 6,
+        itemHeight: 92,
+      );
     } else {
       final snapshot = _snapshot;
       if (snapshot == null) {

@@ -1,3 +1,4 @@
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 
 import 'package:flutter/material.dart';
@@ -329,7 +330,13 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: topBarHeight + 8,
+                maxWidth: 840,
+                showFilterChips: true,
+                itemCount: 6,
+                itemHeight: 78,
+              )
             : Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 840),

@@ -5,6 +5,7 @@ import '../services/journal_media_service.dart';
 import '../services/journal_picker.dart';
 import '../services/journal_storage.dart';
 import '../../../utils/time_utils.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import 'journal_detail_screen.dart';
 import 'journal_editor_screen.dart';
@@ -243,7 +244,12 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: topBarHeight + 8,
+                useTwoColumnsOnWide: _isPhotoWall || isWide,
+                itemCount: 5,
+                itemHeight: 112,
+              )
             : entries.isEmpty
             ? _JournalEmptyState(
                 hasSearch: _query.isNotEmpty,

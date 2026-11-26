@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../utils/app_dialogs.dart';
 import '../../../utils/time_utils.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/journal_entry.dart';
 import '../services/journal_media_service.dart';
@@ -293,7 +294,12 @@ class _JournalTrashScreenState extends State<JournalTrashScreen> {
             constraints: const BoxConstraints(maxWidth: 960),
             child: SizedBox.expand(
               child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? AppSkeletonListPage(
+                      topPadding: topBarHeight + 8,
+                      maxWidth: 960,
+                      itemCount: 4,
+                      itemHeight: 96,
+                    )
                   : _loadError != null
                   ? Center(
                       child: Column(

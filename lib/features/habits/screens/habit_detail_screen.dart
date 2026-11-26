@@ -1,3 +1,4 @@
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 
 import 'package:flutter/material.dart';
@@ -271,7 +272,13 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
 
   Widget _buildBody(ColorScheme colorScheme, double topPadding) {
     if (_loading && _todayProgress == null) {
-      return const Center(child: CircularProgressIndicator());
+      return AppSkeletonDashboardPage(
+        topPadding: topPadding + 8,
+        maxWidth: 840,
+        showMetricGrid: true,
+        showChart: true,
+        listCount: 3,
+      );
     }
 
     return LayoutBuilder(
