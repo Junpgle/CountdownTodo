@@ -1,7 +1,7 @@
 name: countdown_todo
 description: A new Flutter project.
 publish_to: 'none'
-version: 7.25.8
+version: 7.25.10
 environment:
   sdk: '>=3.13.0 <4.0.0'
   flutter: '>=3.47.0'
@@ -75,7 +75,7 @@ dependencies:
   image_cropper: ^13.0.0
   flutter_colorpicker: ^1.1.0
   flutter_zoom_drawer: ^3.2.0
-  liquid_glass_widgets: 1.13.0
+  liquid_glass_widgets: 1.21.0
   palette_generator_plus: ^1.0.0
   archive: ^4.7.1
   xml: ^7.1.0
