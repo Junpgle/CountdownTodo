@@ -19,6 +19,7 @@ class AiUsageCostScreen extends StatefulWidget {
 enum _AiUsageGroupBy { model, category, date }
 
 class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
+  static final NumberFormat _decimalFormat = NumberFormat.decimalPattern();
   bool _loading = true;
   bool _autoLedger = true;
   AiUsageSummary _summary = const AiUsageSummary();
@@ -514,14 +515,11 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _overviewMetric(
-                  '调用次数',
-                  NumberFormat.decimalPattern().format(_summary.calls),
-                ),
+                _overviewMetric('调用次数', _decimalFormat.format(_summary.calls)),
                 const SizedBox(width: 12),
                 _overviewMetric(
                   'Token',
-                  NumberFormat.decimalPattern().format(_summary.totalTokens),
+                  _decimalFormat.format(_summary.totalTokens),
                 ),
                 const SizedBox(width: 12),
                 _overviewMetric('平均单次', _averageCost),
@@ -733,7 +731,7 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
         primaryUsage ??
         (item.totalTokens == 0 && item.audioSeconds > 0
             ? '音频 ${item.audioSeconds}s'
-            : '${NumberFormat.decimalPattern().format(item.totalTokens)} Token'
+            : '${_decimalFormat.format(item.totalTokens)} Token'
                   '${item.audioSeconds == 0 ? '' : ' · 音频 ${item.audioSeconds}s'}');
     return '${item.calls} 次 · $usage'
         '${item.cachedPromptTokens == 0 ? '' : ' · 缓存 ${item.cachedPromptTokens}'}'
@@ -766,7 +764,7 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
         model == 'mimo-v2.5-asr') {
       return audioSeconds > 0 ? '录音 $audioSeconds 秒' : '录音时长未返回';
     }
-    return '${NumberFormat.decimalPattern().format(totalTokens)} Token'
+    return '${_decimalFormat.format(totalTokens)} Token'
         '${audioSeconds == 0 ? '' : ' · 音频 ${audioSeconds}s'}';
   }
 

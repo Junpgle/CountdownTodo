@@ -496,7 +496,6 @@ Future<T?> showAppModalBottomSheet<T>({
       quality: GlassQuality.standard,
       settings: _glassAnimatedOverlaySettings(context, glassConfiguration),
       builder: (sheetContext) {
-        final media = MediaQuery.of(sheetContext);
         final sheetBrightness =
             navigationBarBackgroundBrightness ??
             (backgroundColor != null && backgroundColor.a > 0
@@ -505,9 +504,12 @@ Future<T?> showAppModalBottomSheet<T>({
         // Callers that contain text fields already add viewInsets.bottom to
         // their content. Match showModalBottomSheet's full-height constraint
         // so opening the keyboard does not count that inset twice.
-        final availableHeight = media.size.height;
+        final availableHeight = MediaQuery.sizeOf(sheetContext).height;
         final maxHeight = isScrollControlled
-            ? (availableHeight - (useSafeArea ? media.padding.top : 0))
+            ? (availableHeight -
+                      (useSafeArea
+                          ? MediaQuery.paddingOf(sheetContext).top
+                          : 0))
                   .clamp(0.0, availableHeight)
                   .toDouble()
             : availableHeight * scrollControlDisabledMaxHeightRatio;

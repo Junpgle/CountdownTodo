@@ -1052,7 +1052,6 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
       context: context,
       builder: (dialogContext) {
         dialogRoute = ModalRoute.of(dialogContext);
-        final media = MediaQuery.of(dialogContext);
         return Dialog(
           key: const ValueKey('plan-custom-search-dialog'),
           insetPadding: const EdgeInsets.symmetric(
@@ -1063,9 +1062,9 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
             constraints: BoxConstraints(
               maxWidth: 620,
               maxHeight:
-                  (media.size.height -
-                          media.viewInsets.bottom -
-                          media.padding.vertical -
+                  (MediaQuery.sizeOf(dialogContext).height -
+                          MediaQuery.viewInsetsOf(dialogContext).bottom -
+                          MediaQuery.paddingOf(dialogContext).vertical -
                           48)
                       .clamp(0.0, double.infinity),
             ),

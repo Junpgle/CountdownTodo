@@ -901,7 +901,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
       backgroundColor: Colors.transparent,
       useGlassSheet: false,
       builder: (sheetContext) => Container(
-        height: MediaQuery.of(sheetContext).size.height * 0.75,
+        height: MediaQuery.sizeOf(sheetContext).height * 0.75,
         decoration: BoxDecoration(
           color: Theme.of(sheetContext).cardColor,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),

@@ -119,7 +119,7 @@ extension _PomodoroStatsEditor on PomodoroStatsState {
         builder: (ctx, sd) {
           return Padding(
             padding: EdgeInsets.only(
-              bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              bottom: MediaQuery.viewInsetsOf(ctx).bottom,
               left: 20,
               right: 20,
               top: 20,

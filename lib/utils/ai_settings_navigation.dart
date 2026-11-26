@@ -59,15 +59,12 @@ abstract final class AiSettingsNavigation {
         openInitialTargetAsRoot: true,
       ),
       SettingsPageId.accountDevices => const AccountDevicesPage(),
-      SettingsPageId.server => Builder(
-        builder: (context) => FutureBuilder<String>(
-          future: StorageService.getServerChoice(),
-          builder: (context, snapshot) => snapshot.hasData
-              ? ServerChoicePage(initialServerChoice: snapshot.data!)
-              : const Scaffold(
-                  body: Center(child: CircularProgressIndicator()),
-                ),
-        ),
+      SettingsPageId.server => _CachedFutureBuilder<String>(
+        key: const ValueKey('settings-server-choice'),
+        createFuture: StorageService.getServerChoice,
+        builder: (context, snapshot) => snapshot.hasData
+            ? ServerChoicePage(initialServerChoice: snapshot.data!)
+            : const Scaffold(body: Center(child: CircularProgressIndicator())),
       ),
       SettingsPageId.preference => const PreferenceSettingsPage(),
       SettingsPageId.animation => AnimationSettingsPage(
@@ -120,19 +117,18 @@ abstract final class AiSettingsNavigation {
       ),
       SettingsPageId.batchTag => BatchTagPage(username: username),
       SettingsPageId.rebindTag => RebindTagPage(username: username),
-      SettingsPageId.tags => Builder(
-        builder: (context) => FutureBuilder<List<PomodoroTag>>(
-          future: PomodoroService.getTags(),
-          builder: (context, snapshot) => snapshot.hasData
-              ? UnifiedTagManagerScreen(allTags: snapshot.data!)
-              : Scaffold(
-                  body: Center(
-                    child: snapshot.hasError
-                        ? const Text('标签加载失败，请返回后重试')
-                        : const CircularProgressIndicator(),
-                  ),
+      SettingsPageId.tags => _CachedFutureBuilder<List<PomodoroTag>>(
+        key: const ValueKey('settings-pomodoro-tags'),
+        createFuture: PomodoroService.getTags,
+        builder: (context, snapshot) => snapshot.hasData
+            ? UnifiedTagManagerScreen(allTags: snapshot.data!)
+            : Scaffold(
+                body: Center(
+                  child: snapshot.hasError
+                      ? const Text('标签加载失败，请返回后重试')
+                      : const CircularProgressIndicator(),
                 ),
-        ),
+              ),
       ),
       SettingsPageId.recurrenceMerge => RecurrenceSeriesMergePage(
         username: username,
@@ -234,5 +230,29 @@ abstract final class AiSettingsNavigation {
       settings: RouteSettings(name: destination.path),
       placeholderIcon: Icons.settings_rounded,
     );
+  }
+}
+
+class _CachedFutureBuilder<T> extends StatefulWidget {
+  final Future<T> Function() createFuture;
+  final AsyncWidgetBuilder<T> builder;
+
+  const _CachedFutureBuilder({
+    super.key,
+    required this.createFuture,
+    required this.builder,
+  });
+
+  @override
+  State<_CachedFutureBuilder<T>> createState() =>
+      _CachedFutureBuilderState<T>();
+}
+
+class _CachedFutureBuilderState<T> extends State<_CachedFutureBuilder<T>> {
+  late final Future<T> _future = widget.createFuture();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<T>(future: _future, builder: widget.builder);
   }
 }

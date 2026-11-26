@@ -318,12 +318,12 @@ class _DayViewState extends State<_DayView> {
                 ..sort((a, b) => b.startTime.compareTo(a.startTime));
           return ConstrainedBox(
             constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(ctx).size.height * 0.75,
+              maxHeight: MediaQuery.sizeOf(ctx).height * 0.75,
             ),
             child: OptionalLiquidGlassSheet(
               topRadius: 20,
               padding: EdgeInsets.only(
-                bottom: MediaQuery.of(ctx).padding.bottom + 16,
+                bottom: MediaQuery.paddingOf(ctx).bottom + 16,
                 left: 20,
                 right: 20,
                 top: 20,

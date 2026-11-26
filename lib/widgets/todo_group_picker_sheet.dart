@@ -133,20 +133,20 @@ class _TodoGroupPickerSheetState extends State<TodoGroupPickerSheet> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final media = MediaQuery.of(context);
+    final viewInsetsBottom = MediaQuery.viewInsetsOf(context).bottom;
     final activeCount = widget.groups.where((g) => !g.isDeleted).length;
     final showSearch = activeCount >= 5;
     final entries = _buildEntries();
 
     final availableHeight =
-        media.size.height - media.viewInsets.bottom - media.padding.top;
+        MediaQuery.sizeOf(context).height -
+        viewInsetsBottom -
+        MediaQuery.paddingOf(context).top;
     final maxContainerHeight =
         (availableHeight * (widget.isDialog ? 0.78 : 0.72)).clamp(260.0, 580.0);
 
     return Padding(
-      padding: EdgeInsets.only(
-        bottom: widget.isDialog ? 0 : media.viewInsets.bottom,
-      ),
+      padding: EdgeInsets.only(bottom: widget.isDialog ? 0 : viewInsetsBottom),
       child: ConstrainedBox(
         constraints: BoxConstraints(
           maxWidth: 640,

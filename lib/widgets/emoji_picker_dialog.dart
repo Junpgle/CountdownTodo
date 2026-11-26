@@ -625,10 +625,10 @@ class _AppEmojiPickerDialogState extends State<AppEmojiPickerDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final media = MediaQuery.of(context);
-    final dialogWidth = math.min(media.size.width - 64, 420.0);
-    final gridHeight = (media.size.height - media.viewInsets.bottom - 380)
-        .clamp(140.0, 230.0);
+    final size = MediaQuery.sizeOf(context);
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final dialogWidth = math.min(size.width - 64, 420.0);
+    final gridHeight = (size.height - bottomInset - 380).clamp(140.0, 230.0);
     final emojis = _displayedEmojis;
     final canConfirm = _customError == null && _selectedIcon.trim().isNotEmpty;
 

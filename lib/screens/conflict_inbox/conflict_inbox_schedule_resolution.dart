@@ -61,7 +61,7 @@ extension _ConflictInboxScheduleExt on _ConflictInboxScreenState {
           };
           return Container(
             constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(sheetContext).size.height * 0.88,
+              maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.88,
             ),
             child: OptionalLiquidGlassSheet(
               topRadius: 20,
