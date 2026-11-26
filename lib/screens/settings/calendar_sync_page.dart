@@ -312,24 +312,13 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
   }
 
   Future<void> _clearAll() async {
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('清除已写入日历'),
-        content: const Text('将删除本软件此前写入系统日历的内容，不会删除其他日历事件。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('清除'),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '清除已写入日历',
+      message: '将删除本软件此前写入系统日历的内容，不会删除其他日历事件。',
+      confirmLabel: '清除',
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
 
     setState(() => _working = true);
     try {

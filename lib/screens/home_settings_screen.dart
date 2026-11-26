@@ -871,26 +871,13 @@ class _SettingsPageState extends State<SettingsPage>
       return;
     }
 
-    final confirm = await showAppDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('强制全量同步'),
-        content: const Text(
-          '这将重置本地同步记录，从云端拉取所有最新数据。\n\n本地未同步的数据会先上传，再合并云端数据。\n\n是否继续？',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('确认'),
-          ),
-        ],
-      ),
+    final confirm = await AppDialogs.confirm(
+      context,
+      title: '强制全量同步',
+      message: '这将重置本地同步记录，从云端拉取所有最新数据。\n\n本地未同步的数据会先上传，再合并云端数据。\n\n是否继续？',
+      confirmLabel: '确认',
     );
-    if (confirm != true) return;
+    if (!confirm) return;
 
     if (!mounted) return;
     AppSnackBars.showSnackBar(
@@ -935,28 +922,13 @@ class _SettingsPageState extends State<SettingsPage>
   Future<void> _handleLogout({bool force = false}) async {
     bool confirm = force;
     if (!force) {
-      confirm =
-          await showAppDialog<bool>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text("退出账号"),
-              content: const Text("确定要退出当前账号吗？"),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text("取消"),
-                ),
-                FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.redAccent,
-                  ),
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text("退出"),
-                ),
-              ],
-            ),
-          ) ??
-          false;
+      confirm = await AppDialogs.confirm(
+        context,
+        title: '退出账号',
+        message: '确定要退出当前账号吗？',
+        confirmLabel: '退出',
+        destructive: true,
+      );
     }
 
     if (confirm) {

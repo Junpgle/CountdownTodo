@@ -10,25 +10,12 @@ extension _CourseSettingsCloud on _CourseSettingsPageState {
       return;
     }
 
-    bool confirm =
-        await showAppDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text("上传课表到云端"),
-            content: const Text("这将覆盖你云端的所有课表数据。\n\n用于与电脑或其他设备同步。\n\n是否继续？"),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text("取消"),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text("上传"),
-              ),
-            ],
-          ),
-        ) ??
-        false;
+    final confirm = await AppDialogs.confirm(
+      context,
+      title: '上传课表到云端',
+      message: '这将覆盖你云端的所有课表数据。\n\n用于与电脑或其他设备同步。\n\n是否继续？',
+      confirmLabel: '上传',
+    );
 
     if (!confirm || !mounted) return;
 

@@ -136,29 +136,17 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
       return;
     }
     final target = _series.where((summary) => summary.id == targetId).first;
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('合并重复待办'),
-        content: Text(
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '合并重复待办',
+      message:
           '将 ${_selectedSeriesIds.length} 个系列合并为一个，并保留“${target.title}”所在系列为主系列。\n\n'
           '每期待办的独立 ID、完成状态、规划、专注记录和时间日志都会保留。同一天的重复实例会自动去重。\n\n'
           '主系列现有的重复规则优先保留。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('取消'),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            icon: const Icon(Icons.merge_type_rounded),
-            label: const Text('确认合并'),
-          ),
-        ],
-      ),
+      confirmLabel: '确认合并',
+      confirmIcon: const Icon(Icons.merge_type_rounded),
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     setState(() => _isMerging = true);
     try {

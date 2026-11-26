@@ -238,27 +238,14 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                   : [
                       IconButton(
                         onPressed: () async {
-                          final confirmed = await showAppDialog<bool>(
-                            context: context,
-                            builder: (ctx) => AlertDialog(
-                              title: const Text('清除配置'),
-                              content: const Text('确定要清除所有大模型配置吗？'),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(ctx, false),
-                                  child: const Text('取消'),
-                                ),
-                                FilledButton(
-                                  onPressed: () => Navigator.pop(ctx, true),
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: Colors.red,
-                                  ),
-                                  child: const Text('清除'),
-                                ),
-                              ],
-                            ),
+                          final confirmed = await AppDialogs.confirm(
+                            context,
+                            title: '清除配置',
+                            message: '确定要清除所有大模型配置吗？',
+                            confirmLabel: '清除',
+                            destructive: true,
                           );
-                          if (confirmed == true) {
+                          if (confirmed) {
                             if (!await _ensureLlmConfigurationAllowed()) {
                               return;
                             }

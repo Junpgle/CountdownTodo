@@ -112,26 +112,15 @@ extension _LLMConfigDialogs on _LLMConfigPageState {
 
   Future<void> _deleteCustomTextModel(CustomTextModel model) async {
     if (!await _ensureLlmConfigurationAllowed() || !mounted) return;
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除确认'),
-        content: Text('确定要删除自定义文本模型 "${model.name}" 吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '删除确认',
+      message: '确定要删除自定义文本模型 "${model.name}" 吗？',
+      confirmLabel: '删除',
+      destructive: true,
     );
 
-    if (confirmed == true) {
+    if (confirmed) {
       await LLMService.deleteCustomTextModel(model.id);
       _mutateState(() {
         _customTextModels.removeWhere((m) => m.id == model.id);
@@ -298,26 +287,15 @@ extension _LLMConfigDialogs on _LLMConfigPageState {
 
   Future<void> _deleteCustomVisionModel(CustomVisionModel model) async {
     if (!await _ensureLlmConfigurationAllowed() || !mounted) return;
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除确认'),
-        content: Text('确定要删除自定义多模态模型 "${model.name}" 吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '删除确认',
+      message: '确定要删除自定义多模态模型 "${model.name}" 吗？',
+      confirmLabel: '删除',
+      destructive: true,
     );
 
-    if (confirmed == true) {
+    if (confirmed) {
       await LLMService.deleteCustomVisionModel(model.id);
       _mutateState(() {
         _customVisionModels.removeWhere((m) => m.id == model.id);

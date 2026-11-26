@@ -165,28 +165,14 @@ class _AutoBackupPageState extends State<AutoBackupPage> {
   }
 
   Future<void> _deleteEntry(AutoBackupEntry entry) async {
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        final colorScheme = Theme.of(dialogContext).colorScheme;
-        return AlertDialog(
-          title: const Text('删除备份快照'),
-          content: Text('确定删除 ${entry.fileName} 吗？删除后无法恢复该本地快照。'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              style: TextButton.styleFrom(foregroundColor: colorScheme.error),
-              child: const Text('删除'),
-            ),
-          ],
-        );
-      },
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '删除备份快照',
+      message: '确定删除 ${entry.fileName} 吗？删除后无法恢复该本地快照。',
+      confirmLabel: '删除',
+      destructive: true,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
 
     final ok = await AutoBackupService.deleteBackup(entry.filePath);
     if (!mounted) return;

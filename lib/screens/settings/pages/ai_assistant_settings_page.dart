@@ -416,24 +416,13 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage>
   }
 
   Future<void> _confirmClearMemories() async {
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('清空 AI 记忆'),
-        content: const Text('确定清空已保存的所有个人偏好记忆吗？清空后无法恢复。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('清空'),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '清空 AI 记忆',
+      message: '确定清空已保存的所有个人偏好记忆吗？清空后无法恢复。',
+      confirmLabel: '清空',
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     await AiMemoryService.clearMemories(_currentUsername);
     await _reloadMemories();
     if (mounted) _showSnackBar('已清空 AI 记忆');

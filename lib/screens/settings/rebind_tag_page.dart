@@ -155,25 +155,13 @@ class _RebindTagPageState extends State<RebindTagPage>
     }
 
     // 确认对话框
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('确认重新绑定'),
-        content: Text('将为 $pomodoroCount 条番茄钟记录和 $timeLogCount 条时间日志重新绑定标签'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('确定'),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '确认重新绑定',
+      message: '将为 $pomodoroCount 条番茄钟记录和 $timeLogCount 条时间日志重新绑定标签',
     );
 
-    if (confirmed != true) return;
+    if (!confirmed) return;
 
     setState(() => _isLoading = true);
 

@@ -612,25 +612,14 @@ class _HelpCenterScreenState extends State<HelpCenterScreen>
   }
 
   Future<void> _resetTips(BuildContext context) async {
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('重置功能提示'),
-        content: const Text('所有功能提示将重新出现，确定要重置吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('重置'),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '重置功能提示',
+      message: '所有功能提示将重新出现，确定要重置吗？',
+      confirmLabel: '重置',
     );
 
-    if (confirmed == true) {
+    if (confirmed) {
       await FeatureTipService.resetAllTips();
       await OnboardingChecklistService.resetAll();
       if (context.mounted) {

@@ -404,27 +404,15 @@ extension _CourseSettingsSemesters on _CourseSettingsPageState {
   }
 
   Future<void> _deleteSemester(SemesterInfo semester) async {
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('删除学期'),
-        content: Text('确定要删除 "${semester.name}" 吗？\n\n该学期下的课程数据不会被删除。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '删除学期',
+      message: '确定要删除 "${semester.name}" 吗？\n\n该学期下的课程数据不会被删除。',
+      confirmLabel: '删除',
+      destructive: true,
     );
 
-    if (confirmed == true) {
+    if (confirmed) {
       final updatedSemesters = _semesters
           .where((s) => s.id != semester.id)
           .toList();
@@ -738,27 +726,15 @@ extension _CourseSettingsSemesters on _CourseSettingsPageState {
     if (selectedSemester == null || !mounted) return;
 
     // 确认删除
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('确认清除'),
-        content: Text('确定要清除 "${selectedSemester.name}" 的所有课程数据吗？\n\n此操作不可撤销。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('清除'),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '确认清除',
+      message: '确定要清除 "${selectedSemester.name}" 的所有课程数据吗？\n\n此操作不可撤销。',
+      confirmLabel: '清除',
+      destructive: true,
     );
 
-    if (confirmed != true) return;
+    if (!confirmed) return;
 
     // 执行清除
     try {

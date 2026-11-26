@@ -71,27 +71,14 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage>
   }
 
   void _revokeAllPermissions() async {
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('撤回所有授权记录'),
-        content: const Text(
-          '这将会清除应用内所有弹窗授权记录。\n\n如果某些权限已在系统设置中开启，功能可能仍可正常使用。但下次再触发对应功能时，应用会再次向您展示授权说明弹窗。\n\n确定要继续吗？',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('确认撤回'),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '撤回所有授权记录',
+      message: '这将会清除应用内所有弹窗授权记录。\n\n如果某些权限已在系统设置中开启，功能可能仍可正常使用。但下次再触发对应功能时，应用会再次向您展示授权说明弹窗。\n\n确定要继续吗？',
+      confirmLabel: '确认撤回',
     );
 
-    if (confirmed == true) {
+    if (confirmed) {
       final authorized = await MinorModeService.instance.authorizeAction(
         MinorModeAction.sensitive,
       );

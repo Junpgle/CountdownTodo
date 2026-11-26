@@ -349,28 +349,15 @@ class _AboutScreenState extends State<AboutScreen>
   }
 
   Future<void> _showWithdrawConfirmation() async {
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('撤回隐私同意'),
-        content: const Text(
-          '撤回同意后，将退出当前账号并清除本地所有数据。\n\n已收集的个人信息将在合理期限内删除或匿名化处理。\n\n是否确认撤回？',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
-            child: const Text('确认撤回'),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '撤回隐私同意',
+      message: '撤回同意后，将退出当前账号并清除本地所有数据。\n\n已收集的个人信息将在合理期限内删除或匿名化处理。\n\n是否确认撤回？',
+      confirmLabel: '确认撤回',
+      destructive: true,
     );
 
-    if (confirmed == true) {
+    if (confirmed) {
       await _withdrawAndLogout();
     }
   }
@@ -389,27 +376,15 @@ class _AboutScreenState extends State<AboutScreen>
   }
 
   Future<void> _runDeduplication() async {
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('课程去重'),
-        content: const Text(
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '课程去重',
+      message:
           '系统将扫描数据库中重复的课程记录（名称、时间、周次、地点均相同），并自动清理多余项。此操作将保留最新的一份，并将清理记录同步到云端。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('开始清理'),
-          ),
-        ],
-      ),
+      confirmLabel: '开始清理',
     );
 
-    if (confirmed == true) {
+    if (confirmed) {
       if (!mounted) return;
       AppSnackBars.showSnackBar(
         context,

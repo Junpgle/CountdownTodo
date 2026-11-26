@@ -342,27 +342,15 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
   Future<void> _forceDownloadLatest() async {
     if (_isForceDownloading) return;
 
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('强制下载最新版完整包'),
-        content: const Text(
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '强制下载最新版完整包',
+      message:
           '强制下载会忽略当前版本检查，直接获取清单中的最新版完整安装包。\n\n'
           '该版本可能尚未正式发布，存在不稳定或兼容性问题，请确认后继续。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('确认下载'),
-          ),
-        ],
-      ),
+      confirmLabel: '确认下载',
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     setState(() {
       _isForceDownloading = true;
@@ -442,24 +430,13 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
     final path = _downloadedPackagePath;
     if (path == null || _isDownloading || _isForceDownloading) return;
 
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('清除已下载的安装包'),
-        content: const Text('清除后可以重新下载最新版完整安装包。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('清除安装包'),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '清除已下载的安装包',
+      message: '清除后可以重新下载最新版完整安装包。',
+      confirmLabel: '清除安装包',
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     try {
       await UpdateService.clearDownloadedPackage(path);
@@ -491,26 +468,14 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
       return;
     }
 
-    final shouldInstall = await showAppDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('下载完成'),
-        content: Text(
-          AppPlatform.isMacOS ? '更新包已下载完成，是否打开下载目录？' : '更新包已下载完成，是否立即安装？',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('稍后'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(AppPlatform.isMacOS ? '打开目录' : '立即安装'),
-          ),
-        ],
-      ),
+    final shouldInstall = await AppDialogs.confirm(
+      context,
+      title: '下载完成',
+      message: AppPlatform.isMacOS ? '更新包已下载完成，是否打开下载目录？' : '更新包已下载完成，是否立即安装？',
+      cancelLabel: '稍后',
+      confirmLabel: AppPlatform.isMacOS ? '打开目录' : '立即安装',
     );
-    if (shouldInstall == true) await UpdateService.installPackage(path);
+    if (shouldInstall) await UpdateService.installPackage(path);
   }
 
   Future<void> _openBetaReleases() async {

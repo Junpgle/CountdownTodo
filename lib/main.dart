@@ -561,30 +561,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     try {
       // debugPrint('[Main] Attempting to show Flutter dialog...');
       final result =
-          await showAppDialog<bool>(
-            context: context,
+          await AppDialogs.confirm(
+            context,
+            title: '关闭确认',
+            message: '选择操作：',
+            cancelLabel: '最小化到托盘',
+            confirmLabel: '退出程序',
+            destructive: true,
             barrierDismissible: false,
-            builder: (dialogContext) => AlertDialog(
-              title: const Text('关闭确认'),
-              content: const Text('选择操作：'),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    // debugPrint('[Main] User chose: minimize');
-                    Navigator.of(dialogContext).pop(false);
-                  },
-                  child: const Text('最小化到托盘'),
-                ),
-                TextButton(
-                  onPressed: () {
-                    // debugPrint('[Main] User chose: exit');
-                    Navigator.of(dialogContext).pop(true);
-                  },
-                  style: TextButton.styleFrom(foregroundColor: Colors.red),
-                  child: const Text('退出程序'),
-                ),
-              ],
-            ),
           ).timeout(
             const Duration(seconds: 3),
             onTimeout: () {
@@ -593,7 +577,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             },
           );
       // debugPrint('[Main] Dialog result: $result');
-      return result ?? false;
+      return result;
     } catch (e) {
       // debugPrint('[Main] Dialog error (will use native fallback): $e');
       rethrow; // 抛出异常让 WindowService 使用原生对话框

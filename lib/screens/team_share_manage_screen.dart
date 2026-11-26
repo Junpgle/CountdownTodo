@@ -61,26 +61,15 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
   }
 
   Future<void> _deleteShare(TeamShare share) async {
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('删除分享'),
-        content: Text('确定删除分享链接「${share.title ?? share.shareCode}」？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '删除分享',
+      message: '确定删除分享链接「${share.title ?? share.shareCode}」？',
+      confirmLabel: '删除',
+      destructive: true,
     );
 
-    if (confirmed == true) {
+    if (confirmed) {
       final result = await ApiService.deleteTeamShare(share.shareCode);
       if (result['success'] == true) {
         _loadShares();

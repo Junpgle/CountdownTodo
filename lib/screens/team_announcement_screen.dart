@@ -52,25 +52,15 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
   }
 
   Future<void> _deleteAnnouncement(String uuid) async {
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('确认撤回'),
-        content: const Text('确定要撤回这条公告吗？撤回后所有成员将无法查看。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('确定撤回', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '确认撤回',
+      message: '确定要撤回这条公告吗？撤回后所有成员将无法查看。',
+      confirmLabel: '确定撤回',
+      destructive: true,
     );
 
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     final res = await ApiService.deleteTeamAnnouncement(uuid);
     if (!mounted) return;
     if (res['success'] == true) {
