@@ -894,161 +894,119 @@ mixin _StorageTodoQueries on _StorageServiceBase {
     final db = await DatabaseHelper.instance.database;
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    // 1. 软删除 (标记 isDeleted，通过同步传播到服务器)
-    await db.rawUpdate(
-      "UPDATE todos SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
-      [now, teamUuid],
-    );
-    await db.rawUpdate(
-      "UPDATE todo_groups SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
-      [now, teamUuid],
-    );
-    await db.rawUpdate(
-      "UPDATE countdowns SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
-      [now, teamUuid],
-    );
-    await db.rawUpdate(
-      "UPDATE time_logs SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
-      [now, teamUuid],
-    );
-    await db.rawUpdate(
-      "UPDATE courses SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
-      [now, teamUuid],
-    );
-    await db.rawUpdate(
-      "UPDATE fixed_schedules SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
-      [now, teamUuid],
-    );
-    // 规划块本身不保存 team_uuid，需通过关联待办级联清理；否则退出团队后
-    // 仍会在首页计划区看到已经失去权限的团队安排。
-    await db.rawUpdate(
-      '''UPDATE todo_plan_blocks
-           SET is_deleted = 1, version = version + 1, updated_at = ?
-           WHERE todo_uuid IN (
-             SELECT uuid FROM todos WHERE team_uuid = ?
-           ) AND is_deleted = 0''',
-      [now, teamUuid],
-    );
+    await db.transaction((txn) async {
+      // 1. 软删除 (标记 isDeleted，通过同步传播到服务器)
+      await txn.rawUpdate(
+        "UPDATE todos SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
+        [now, teamUuid],
+      );
+      await txn.rawUpdate(
+        "UPDATE todo_groups SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
+        [now, teamUuid],
+      );
+      await txn.rawUpdate(
+        "UPDATE countdowns SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
+        [now, teamUuid],
+      );
+      await txn.rawUpdate(
+        "UPDATE time_logs SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
+        [now, teamUuid],
+      );
+      await txn.rawUpdate(
+        "UPDATE courses SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
+        [now, teamUuid],
+      );
+      await txn.rawUpdate(
+        "UPDATE fixed_schedules SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
+        [now, teamUuid],
+      );
+      // 规划块本身不保存 team_uuid，需通过关联待办级联清理；否则退出团队后
+      // 仍会在首页计划区看到已经失去权限的团队安排。
+      await txn.rawUpdate(
+        '''UPDATE todo_plan_blocks
+             SET is_deleted = 1, version = version + 1, updated_at = ?
+             WHERE todo_uuid IN (
+               SELECT uuid FROM todos WHERE team_uuid = ?
+             ) AND is_deleted = 0''',
+        [now, teamUuid],
+      );
 
-    await db.delete(
-      'todo_completions',
-      where: 'todo_uuid IN (SELECT uuid FROM todos WHERE team_uuid = ?)',
-      whereArgs: [teamUuid],
-    );
+      await txn.delete(
+        'todo_completions',
+        where: 'todo_uuid IN (SELECT uuid FROM todos WHERE team_uuid = ?)',
+        whereArgs: [teamUuid],
+      );
 
-    // 🚀 关键：为软删除的项创建 op_log，使同步引擎能将删除传播到服务端
-    final deletedTodos = await db.query(
-      'todos',
-      columns: ['uuid', 'version', 'updated_at'],
-      where: 'team_uuid = ? AND is_deleted = 1 AND updated_at = ?',
-      whereArgs: [teamUuid, now],
-    );
-    for (var row in deletedTodos) {
-      await db.insert('op_logs', {
-        'op_type': 'UPSERT',
-        'target_table': 'todos',
-        'target_uuid': row['uuid'],
-        'data_json': jsonEncode({
-          'uuid': row['uuid'],
-          'is_deleted': true,
-          'version': row['version'],
-          'updated_at': row['updated_at'],
-        }),
-        'timestamp': now,
-        'is_synced': 0,
-        'sync_error': '',
-      });
-    }
-    final deletedGroups = await db.query(
-      'todo_groups',
-      columns: ['uuid', 'version', 'updated_at'],
-      where: 'team_uuid = ? AND is_deleted = 1 AND updated_at = ?',
-      whereArgs: [teamUuid, now],
-    );
-    for (var row in deletedGroups) {
-      await db.insert('op_logs', {
-        'op_type': 'UPSERT',
-        'target_table': 'todo_groups',
-        'target_uuid': row['uuid'],
-        'data_json': jsonEncode({
-          'uuid': row['uuid'],
-          'is_deleted': true,
-          'version': row['version'],
-          'updated_at': row['updated_at'],
-        }),
-        'timestamp': now,
-        'is_synced': 0,
-        'sync_error': '',
-      });
-    }
-    final deletedCountdowns = await db.query(
-      'countdowns',
-      columns: ['uuid', 'version', 'updated_at'],
-      where: 'team_uuid = ? AND is_deleted = 1 AND updated_at = ?',
-      whereArgs: [teamUuid, now],
-    );
-    for (var row in deletedCountdowns) {
-      await db.insert('op_logs', {
-        'op_type': 'UPSERT',
-        'target_table': 'countdowns',
-        'target_uuid': row['uuid'],
-        'data_json': jsonEncode({
-          'uuid': row['uuid'],
-          'is_deleted': true,
-          'version': row['version'],
-          'updated_at': row['updated_at'],
-        }),
-        'timestamp': now,
-        'is_synced': 0,
-        'sync_error': '',
-      });
-    }
-    final deletedTimeLogs = await db.query(
-      'time_logs',
-      columns: ['uuid', 'version', 'updated_at'],
-      where: 'team_uuid = ? AND is_deleted = 1 AND updated_at = ?',
-      whereArgs: [teamUuid, now],
-    );
-    for (var row in deletedTimeLogs) {
-      await db.insert('op_logs', {
-        'op_type': 'UPSERT',
-        'target_table': 'time_logs',
-        'target_uuid': row['uuid'],
-        'data_json': jsonEncode({
-          'uuid': row['uuid'],
-          'is_deleted': true,
-          'version': row['version'],
-          'updated_at': row['updated_at'],
-        }),
-        'timestamp': now,
-        'is_synced': 0,
-        'sync_error': '',
-      });
-    }
-    final deletedPlanBlocks = await db.query(
-      'todo_plan_blocks',
-      columns: ['uuid', 'version', 'updated_at'],
-      where: '''todo_uuid IN (
-                   SELECT uuid FROM todos WHERE team_uuid = ?
-                 ) AND is_deleted = 1 AND updated_at = ?''',
-      whereArgs: [teamUuid, now],
-    );
-    for (var row in deletedPlanBlocks) {
-      await db.insert('op_logs', {
-        'op_type': 'UPSERT',
-        'target_table': 'todo_plan_blocks',
-        'target_uuid': row['uuid'],
-        'data_json': jsonEncode({
-          'uuid': row['uuid'],
-          'is_deleted': true,
-          'version': row['version'],
-          'updated_at': row['updated_at'],
-        }),
-        'timestamp': now,
-        'is_synced': 0,
-        'sync_error': '',
-      });
-    }
+      // 🚀 关键：为软删除的项创建 op_log，使同步引擎能将删除传播到服务端
+      final batch = txn.batch();
+      void queueOpLogs(String table, List<Map<String, Object?>> rows) {
+        for (final row in rows) {
+          batch.insert('op_logs', {
+            'op_type': 'UPSERT',
+            'target_table': table,
+            'target_uuid': row['uuid'],
+            'data_json': jsonEncode({
+              'uuid': row['uuid'],
+              'is_deleted': true,
+              'version': row['version'],
+              'updated_at': row['updated_at'],
+            }),
+            'timestamp': now,
+            'is_synced': 0,
+            'sync_error': '',
+          });
+        }
+      }
+
+      queueOpLogs(
+        'todos',
+        await txn.query(
+          'todos',
+          columns: ['uuid', 'version', 'updated_at'],
+          where: 'team_uuid = ? AND is_deleted = 1 AND updated_at = ?',
+          whereArgs: [teamUuid, now],
+        ),
+      );
+      queueOpLogs(
+        'todo_groups',
+        await txn.query(
+          'todo_groups',
+          columns: ['uuid', 'version', 'updated_at'],
+          where: 'team_uuid = ? AND is_deleted = 1 AND updated_at = ?',
+          whereArgs: [teamUuid, now],
+        ),
+      );
+      queueOpLogs(
+        'countdowns',
+        await txn.query(
+          'countdowns',
+          columns: ['uuid', 'version', 'updated_at'],
+          where: 'team_uuid = ? AND is_deleted = 1 AND updated_at = ?',
+          whereArgs: [teamUuid, now],
+        ),
+      );
+      queueOpLogs(
+        'time_logs',
+        await txn.query(
+          'time_logs',
+          columns: ['uuid', 'version', 'updated_at'],
+          where: 'team_uuid = ? AND is_deleted = 1 AND updated_at = ?',
+          whereArgs: [teamUuid, now],
+        ),
+      );
+      queueOpLogs(
+        'todo_plan_blocks',
+        await txn.query(
+          'todo_plan_blocks',
+          columns: ['uuid', 'version', 'updated_at'],
+          where: '''todo_uuid IN (
+                     SELECT uuid FROM todos WHERE team_uuid = ?
+                   ) AND is_deleted = 1 AND updated_at = ?''',
+          whereArgs: [teamUuid, now],
+        ),
+      );
+      await batch.commit(noResult: true);
+    });
 
     // 2. 🚀 关键：同步清理 SharedPreferences 缓存，防止主页残余
     final prefs = await SharedPreferences.getInstance();
