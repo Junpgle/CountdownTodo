@@ -75,6 +75,7 @@ import 'settings/pages/ai_assistant_settings_page.dart';
 import '../services/ai_recognition_chat_bridge.dart';
 import '../services/chat_storage_service.dart';
 import '../services/daily_ai_suggestion_service.dart';
+import '../services/liquid_glass_effect_service.dart';
 import '../widgets/daily_ai_suggestion_card.dart';
 import '../services/recognized_todo_adapter.dart';
 import '../utils/app_platform.dart';
@@ -280,6 +281,14 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   final GlobalKey _todoHistoryKey = GlobalKey();
   final GlobalKey _countdownHistoryKey = GlobalKey();
   final GlobalKey _todayPlanChartKey = GlobalKey();
+  final GlobalKey _dashboardBackdropViewportKey = GlobalKey();
+  final PreblurredWallpaperController _preblurredWallpaperController =
+      PreblurredWallpaperController();
+  ImageProvider<Object>? _lastPreblurredProvider;
+  String? _lastPreblurredUrl;
+  Size _lastPreblurredViewportSize = Size.zero;
+  bool _lastPreblurredShowWallpaper = false;
+  bool _preblurredSyncScheduled = false;
   // 独立刷新信号，避免单一计数器同时触发多个重型模块
   final ValueNotifier<int> _scheduleRevision = ValueNotifier<int>(0);
   final ValueNotifier<int> _timelineRevision = ValueNotifier<int>(0);

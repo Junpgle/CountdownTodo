@@ -24,6 +24,32 @@ Shader _resolveWallpaperTopFadeShader(Rect bounds) {
 
 mixin _HomeDashboardViewActionsMixin
     on _HomeDashboardStateBase, _HomeDashboardWallpaperMixin {
+  void _schedulePreblurredWallpaperSync({
+    required ImageProvider<Object>? provider,
+    required String? url,
+    required Size viewportSize,
+    required bool showWallpaper,
+  }) {
+    _lastPreblurredProvider = provider;
+    _lastPreblurredUrl = url;
+    _lastPreblurredViewportSize = viewportSize;
+    _lastPreblurredShowWallpaper = showWallpaper;
+    if (_preblurredSyncScheduled) return;
+    _preblurredSyncScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _preblurredSyncScheduled = false;
+      if (!mounted) return;
+      final config = LiquidGlassEffectService.configuration;
+      _preblurredWallpaperController.update(
+        provider: _lastPreblurredProvider,
+        sourceKey: _lastPreblurredUrl,
+        viewportSize: _lastPreblurredViewportSize,
+        blurSigma: config.blurSigma,
+        active: _lastPreblurredShowWallpaper && config.enabled,
+      );
+    });
+  }
+
   Widget _buildWallpaperDisplay(ImageProvider<Object> provider) {
     Widget display(ImageProvider<Object> imageProvider) => Image(
       image: imageProvider,
@@ -79,6 +105,12 @@ mixin _HomeDashboardViewActionsMixin
                 final provider = AssetImage(wallpaperUrl);
                 if (extractColor) {
                   _scheduleWallpaperColorExtraction(provider, wallpaperUrl);
+                  _schedulePreblurredWallpaperSync(
+                    provider: provider,
+                    url: wallpaperUrl,
+                    viewportSize: MediaQuery.sizeOf(context),
+                    showWallpaper: true,
+                  );
                 }
                 return _buildWallpaperDisplay(provider);
               },
@@ -89,22 +121,39 @@ mixin _HomeDashboardViewActionsMixin
                 final provider = localWallpaperProvider;
                 if (extractColor) {
                   _scheduleWallpaperColorExtraction(provider, wallpaperUrl);
+                  _schedulePreblurredWallpaperSync(
+                    provider: provider,
+                    url: wallpaperUrl,
+                    viewportSize: MediaQuery.sizeOf(context),
+                    showWallpaper: true,
+                  );
                 }
                 return _buildWallpaperDisplay(provider);
               },
             )
-          : _WallpaperNetworkImage(
-              url: _wallpaperUrl!,
-              onImageProvider: extractColor
-                  ? (provider) {
-                      _extractColorFromProvider(provider, _wallpaperUrl!);
-                    }
-                  : null,
-              onSuccess: () {
-                _wallpaperRetryCount = 0;
-              },
-              onError: () {
-                _handleWallpaperError();
+          : Builder(
+              builder: (context) {
+                final viewportSize = MediaQuery.sizeOf(context);
+                return _WallpaperNetworkImage(
+                  url: _wallpaperUrl!,
+                  onImageProvider: extractColor
+                      ? (provider) {
+                          _extractColorFromProvider(provider, _wallpaperUrl!);
+                          _schedulePreblurredWallpaperSync(
+                            provider: provider,
+                            url: _wallpaperUrl,
+                            viewportSize: viewportSize,
+                            showWallpaper: true,
+                          );
+                        }
+                      : null,
+                  onSuccess: () {
+                    _wallpaperRetryCount = 0;
+                  },
+                  onError: () {
+                    _handleWallpaperError();
+                  },
+                );
               },
             ),
     );

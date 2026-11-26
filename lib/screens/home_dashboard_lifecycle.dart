@@ -88,6 +88,9 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     StorageService.wallpaperRefreshNotifier.addListener(_onWallpaperRefresh);
     ScreenTimeService.dataRefreshNotifier.addListener(_onScreenTimeDataRefresh);
     AiRecognitionChatBridge.changes.addListener(_onAiRecognitionChatChanged);
+    LiquidGlassEffectService.configurationListenable.addListener(
+      _onLiquidGlassConfigurationChanged,
+    );
     _lanSyncCompletedSub = LanSyncService.instance.onSyncCompleted.listen((
       result,
     ) {
@@ -363,6 +366,10 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
       _onScreenTimeDataRefresh,
     );
     AiRecognitionChatBridge.changes.removeListener(_onAiRecognitionChatChanged);
+    LiquidGlassEffectService.configurationListenable.removeListener(
+      _onLiquidGlassConfigurationChanged,
+    );
+    _preblurredWallpaperController.dispose();
     DailyAiSuggestionService.revision.removeListener(
       _onDailyAiSuggestionRevisionChanged,
     );
@@ -980,6 +987,15 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
         _handleManualSync(silent: true);
       }
     }
+  }
+
+  void _onLiquidGlassConfigurationChanged() {
+    if (!mounted) return;
+    final config = LiquidGlassEffectService.configuration;
+    _preblurredWallpaperController.updateBlurSigma(
+      config.blurSigma,
+      active: _lastPreblurredShowWallpaper && config.enabled,
+    );
   }
 
   Future<void> _markCurrentTodoDone({int? notifId}) async {

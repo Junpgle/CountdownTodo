@@ -1,8 +1,13 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../services/liquid_glass_effect_service.dart';
 import '../utils/app_platform.dart';
+import 'optional_liquid_glass_backdrop.dart';
+
+export 'optional_liquid_glass_backdrop.dart';
 
 @visibleForTesting
 GlassQuality liquidGlassPanelQualityFor(LiquidGlassEffectMode mode) {
@@ -141,6 +146,44 @@ class OptionalLiquidGlassOverlayScope extends InheritedWidget {
       hasOuterSurface != oldWidget.hasOuterSurface;
 }
 
+Widget _buildGlassBackdropChild({
+  required OptionalLiquidGlassBackdropScope? backdropScope,
+  required ui.ImageFilter blurFilter,
+  required Widget child,
+}) {
+  if (backdropScope != null && backdropScope.isSolidBackground) {
+    return child;
+  }
+  final blurredListenable = backdropScope?.blurredWallpaperListenable;
+  if (blurredListenable != null) {
+    return ValueListenableBuilder<PreblurredWallpaperSnapshot?>(
+      valueListenable: blurredListenable,
+      child: child,
+      builder: (context, snapshot, cachedChild) {
+        final content = cachedChild!;
+        if (snapshot == null) {
+          return BackdropFilter.grouped(filter: blurFilter, child: content);
+        }
+        return Stack(
+          fit: StackFit.passthrough,
+          children: <Widget>[
+            Positioned.fill(
+              child: RepaintBoundary(
+                child: PreblurredWallpaperFill(
+                  snapshotListenable: blurredListenable,
+                  viewportKey: backdropScope!.viewportKey,
+                ),
+              ),
+            ),
+            content,
+          ],
+        );
+      },
+    );
+  }
+  return BackdropFilter.grouped(filter: blurFilter, child: child);
+}
+
 /// A content-sized glass panel for shared cards, drawers, and compact controls.
 ///
 /// Single prominent panels use the package's shader-free frosted tier. Repeated
@@ -226,6 +269,9 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
           neutralBase,
         ).withValues(alpha: dark ? 0.24 : 0.3);
 
+        final backdropScope = OptionalLiquidGlassBackdropScope.maybeOf(context);
+        final isSolidScopedBackdrop =
+            backdropScope != null && backdropScope.isSolidBackground;
         final useStaticMaterial =
             mode == OptionalLiquidGlassPanelMode.staticMaterial ||
             useStaticOverlayMaterial ||
@@ -242,9 +288,12 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
               mode == OptionalLiquidGlassPanelMode.adaptiveRepeated;
           // The Windows default keeps the static fallback while Liquid Glass
           // is off. Turning the setting on restores the standard glass path;
-          // repeated standard cards still use their shared blur treatment.
+          // repeated standard cards still use their shared blur treatment
+          // unless an ancestor backdrop scope guarantees a solid background.
           final shouldBlur =
-              !useStaticOverlayMaterial && !useStaticWindowsMaterial;
+              !useStaticOverlayMaterial &&
+              !useStaticWindowsMaterial &&
+              !isSolidScopedBackdrop;
           final blurFilter = configuration.blurFilter;
           final originalOpacity =
               staticMaterialOpacity ??
@@ -313,8 +362,9 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
             );
           }
 
-          final filtered = BackdropFilter.grouped(
-            filter: blurFilter,
+          final filtered = _buildGlassBackdropChild(
+            backdropScope: backdropScope,
+            blurFilter: blurFilter,
             child: Container(
               key: const ValueKey<String>('optional-liquid-glass-static-panel'),
               width: width,
@@ -399,8 +449,9 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
               ),
             ],
           );
-          final filtered = BackdropFilter.grouped(
-            filter: configuration.blurFilter,
+          final filtered = _buildGlassBackdropChild(
+            backdropScope: backdropScope,
+            blurFilter: configuration.blurFilter,
             child: Container(
               key: const ValueKey<String>(
                 'optional-liquid-glass-grouped-panel',
@@ -740,7 +791,7 @@ class _TopBarLiquidGlassSurface extends StatelessWidget {
     final backerColor = pageTint.withValues(alpha: effectiveBackerOpacity);
     final glassShell = GlassContainer(
       height: height,
-      shape: LiquidOval(),
+      shape: LiquidRoundedSuperellipse(borderRadius: borderRadius),
       settings: LiquidGlassSettings(
         bodyMode: GlassBodyMode.clear,
         glassColor: glassColor,

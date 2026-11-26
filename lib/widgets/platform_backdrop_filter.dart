@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../services/liquid_glass_effect_service.dart';
 import '../services/power_save_mode_service.dart';
 import '../utils/app_platform.dart';
+import 'optional_liquid_glass_backdrop.dart';
 
 /// Avoids creating an offscreen blurred texture by default on Windows.
 /// Windows can opt into the standard blur through the Liquid Glass setting.
@@ -69,6 +70,43 @@ class PlatformBackdropFilter extends StatelessWidget {
         final configuration = LiquidGlassEffectService.configuration;
         if (AppPlatform.isWindows && !configuration.enabled) {
           return _clipIfNeeded(content);
+        }
+        final backdropScope = OptionalLiquidGlassBackdropScope.maybeOf(context);
+        if (backdropScope != null && backdropScope.isSolidBackground) {
+          return _clipIfNeeded(content);
+        }
+        final blurredListenable = backdropScope?.blurredWallpaperListenable;
+        if (blurredListenable != null) {
+          return ValueListenableBuilder<PreblurredWallpaperSnapshot?>(
+            valueListenable: blurredListenable,
+            child: content,
+            builder: (context, snapshot, cachedInner) {
+              final inner = cachedInner!;
+              if (snapshot == null) {
+                return _clipIfNeeded(
+                  BackdropFilter.grouped(filter: filter, child: inner),
+                  forceClipRect: true,
+                );
+              }
+              return _clipIfNeeded(
+                Stack(
+                  fit: StackFit.passthrough,
+                  children: <Widget>[
+                    Positioned.fill(
+                      child: RepaintBoundary(
+                        child: PreblurredWallpaperFill(
+                          snapshotListenable: blurredListenable,
+                          viewportKey: backdropScope!.viewportKey,
+                        ),
+                      ),
+                    ),
+                    inner,
+                  ],
+                ),
+                forceClipRect: true,
+              );
+            },
+          );
         }
         return _clipIfNeeded(
           BackdropFilter.grouped(filter: filter, child: content),
