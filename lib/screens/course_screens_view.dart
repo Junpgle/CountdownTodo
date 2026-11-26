@@ -12,10 +12,9 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
     List<TodoItem> todayAllDay = !_activeDataViews.contains('todos')
         ? []
         : _allTodos.where((todo) {
-            DateTime start = DateTime.fromMillisecondsSinceEpoch(
+            DateTime start = AppTimeFormats.localFromServerTimestamp(
               todo.createdDate ?? todo.createdAt,
-              isUtc: true,
-            ).toLocal();
+            );
             DateTime end = todo.dueDate ?? start.add(const Duration(hours: 1));
 
             bool isAllDayFlag =

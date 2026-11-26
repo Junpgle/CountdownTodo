@@ -313,10 +313,8 @@ class TodoItem {
     version++;
   }
 
-  DateTime get effectiveStartTime => DateTime.fromMillisecondsSinceEpoch(
-    createdDate ?? createdAt,
-    isUtc: true,
-  ).toLocal();
+  DateTime get effectiveStartTime =>
+      AppTimeFormats.localFromServerTimestamp(createdDate ?? createdAt);
 
   TodoTimeMode get timeMode {
     final end = dueDate?.toLocal();

@@ -210,10 +210,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     _titleCtrl = TextEditingController(text: t.title);
     _remarkCtrl = TextEditingController(text: t.remark ?? '');
     _isDone = t.isDone;
-    _createdDate = DateTime.fromMillisecondsSinceEpoch(
+    _createdDate = AppTimeFormats.localFromServerTimestamp(
       t.createdDate ?? t.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
     _originalCreatedDate = _createdDate;
     _dueDate = t.dueDate;
     _recurrence = t.recurrence;

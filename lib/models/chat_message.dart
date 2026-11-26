@@ -8,6 +8,7 @@ import '../features/finance/models/finance_ai_action.dart';
 import '../features/finance/models/finance_models.dart';
 import '../services/ai_tool_result_context.dart';
 import '../services/ai_settings_navigation_service.dart';
+import '../utils/time_utils.dart';
 
 enum ChatRole { user, assistant }
 
@@ -404,10 +405,9 @@ class ChatMessage {
               Map<String, dynamic>.from(json['usageSummary'] as Map),
             )
           : null,
-      timestamp: DateTime.fromMillisecondsSinceEpoch(
+      timestamp: AppTimeFormats.localFromServerTimestamp(
         json['timestamp'] as int? ?? DateTime.now().millisecondsSinceEpoch,
-        isUtc: true,
-      ).toLocal(),
+      ),
       todoActions: (json['todoActions'] as List?)
           ?.whereType<Map>()
           .map((e) => AiTodoAction.fromJson(Map<String, dynamic>.from(e)))
@@ -575,7 +575,7 @@ DateTime? _readDateTime(Object? value) {
   final millis = _readNullableInt(value);
   return millis == null
       ? null
-      : DateTime.fromMillisecondsSinceEpoch(millis, isUtc: true).toLocal();
+      : AppTimeFormats.localFromServerTimestamp(millis);
 }
 
 ChatAttachmentKind _attachmentKindFromMimeType(String mimeType) {

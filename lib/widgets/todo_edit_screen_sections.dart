@@ -139,10 +139,9 @@ extension _TodoEditScreenSections on TodoEditScreenState {
     TodoItem occurrence,
     ColorScheme colorScheme,
   ) {
-    final start = DateTime.fromMillisecondsSinceEpoch(
+    final start = AppTimeFormats.localFromServerTimestamp(
       occurrence.createdDate ?? occurrence.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
     final isCurrent = occurrence.id == _editingTodo.id;
     final status = _seriesOccurrenceStatus(occurrence, start);
     return Padding(
@@ -356,10 +355,9 @@ extension _TodoEditScreenSections on TodoEditScreenState {
           ),
         ),
         ..._focusRecords.take(20).map((r) {
-          final startLocal = DateTime.fromMillisecondsSinceEpoch(
+          final startLocal = AppTimeFormats.localFromServerTimestamp(
             r.startTime,
-            isUtc: true,
-          ).toLocal();
+          );
           final durationMin = r.effectiveDuration ~/ 60;
           final statusIcon = r.isCompleted
               ? Icons.check_circle_rounded

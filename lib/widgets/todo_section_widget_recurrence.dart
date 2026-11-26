@@ -49,10 +49,7 @@ class _TodoRecurrenceDateStructure {
       final item = occurrences[index];
       final startEpoch = item.createdDate ?? item.createdAt;
       occurrenceStartEpochs.add(startEpoch);
-      final start = DateTime.fromMillisecondsSinceEpoch(
-        startEpoch,
-        isUtc: true,
-      ).toLocal();
+      final start = AppTimeFormats.localFromServerTimestamp(startEpoch);
 
       if (previousStart != null && todo.recurrence != RecurrenceType.none) {
         var missingStart = TodoRecurrenceDateService.nextDate(
@@ -150,10 +147,9 @@ class _TodoRecurrenceDateStructure {
   }
 
   static DateTime _startFor(TodoItem todo) =>
-      DateTime.fromMillisecondsSinceEpoch(
+      AppTimeFormats.localFromServerTimestamp(
         todo.createdDate ?? todo.createdAt,
-        isUtc: true,
-      ).toLocal();
+      );
 
   static int? _recurrenceEndDayEpoch(TodoItem todo) {
     final recurrenceEnd = todo.recurrenceEndDate;
@@ -396,10 +392,9 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
     var completedCount = 0;
     var overdueCount = 0;
     var skippedCount = 0;
-    final currentStart = DateTime.fromMillisecondsSinceEpoch(
+    final currentStart = AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
     final occurrenceDuration =
         todo.dueDate?.difference(currentStart) ?? const Duration(hours: 24);
     for (var index = 0; index < dateStructure.slots.length; index++) {
@@ -999,10 +994,9 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
                       );
                       if (!accepted || !sheetContext.mounted) return;
                       Navigator.pop(sheetContext);
-                      final start = DateTime.fromMillisecondsSinceEpoch(
+                      final start = AppTimeFormats.localFromServerTimestamp(
                         todo.createdDate ?? todo.createdAt,
-                        isUtc: true,
-                      ).toLocal();
+                      );
                       _invalidateTodoViewModel();
                       setState(() {
                         final currentStart = todo.createdDate ?? todo.createdAt;

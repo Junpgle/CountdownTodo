@@ -202,10 +202,9 @@ class PomodoroStatsState extends State<PomodoroStats> {
       final detailEndMs = detailRange.end.millisecondsSinceEpoch;
 
       for (final summary in summaries) {
-        final localStart = DateTime.fromMillisecondsSinceEpoch(
+        final localStart = AppTimeFormats.localFromServerTimestamp(
           summary.startTime,
-          isUtc: true,
-        ).toLocal();
+        );
         yearlyFocusSeconds.update(
           localStart.year,
           (seconds) => seconds + summary.effectiveDuration,

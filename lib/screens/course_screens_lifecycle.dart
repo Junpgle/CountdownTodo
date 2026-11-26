@@ -736,10 +736,9 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
   }
 
   TodoItem _createRecurringOccurrence(TodoItem todo, DateTime targetDay) {
-    DateTime origStart = DateTime.fromMillisecondsSinceEpoch(
+    DateTime origStart = AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
     DateTime origEnd = todo.dueDate ?? origStart.add(const Duration(hours: 1));
 
     DateTime newStart = DateTime(
@@ -788,10 +787,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     // because _handleRecurrenceLogic rolls dueDate forward daily for
     // daily/customDays recurrence, which would shift the anchor.
     final int startMs = todo.createdDate ?? todo.createdAt;
-    final DateTime startDate = DateTime.fromMillisecondsSinceEpoch(
-      startMs,
-      isUtc: true,
-    ).toLocal();
+    final DateTime startDate = AppTimeFormats.localFromServerTimestamp(startMs);
     final DateTime anchorDay = DateTime(
       startDate.year,
       startDate.month,
@@ -901,10 +897,9 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
       if (isRecurring) {
         todosToPlace = _expandRecurringTodo(todo, currentWeekMondayStart).where(
           (occurrence) {
-            final start = DateTime.fromMillisecondsSinceEpoch(
+            final start = AppTimeFormats.localFromServerTimestamp(
               occurrence.createdDate ?? occurrence.createdAt,
-              isUtc: true,
-            ).toLocal();
+            );
             return recurrenceIndex.shouldProjectVirtual(todo, start);
           },
         ).toList();
@@ -913,10 +908,9 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
       }
 
       for (var effectiveTodo in todosToPlace) {
-        DateTime start = DateTime.fromMillisecondsSinceEpoch(
+        DateTime start = AppTimeFormats.localFromServerTimestamp(
           effectiveTodo.createdDate ?? effectiveTodo.createdAt,
-          isUtc: true,
-        ).toLocal();
+        );
         DateTime end =
             effectiveTodo.dueDate ?? start.add(const Duration(hours: 1));
 

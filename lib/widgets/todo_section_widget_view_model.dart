@@ -137,10 +137,9 @@ mixin _TodoSectionViewModelMixin on _TodoSectionStateBase {
         final end = t.effectiveDueAt;
         if (t.isDone || end == null) continue;
 
-        final cDate = DateTime.fromMillisecondsSinceEpoch(
+        final cDate = AppTimeFormats.localFromServerTimestamp(
           t.createdDate ?? t.createdAt,
-          isUtc: true,
-        ).toLocal();
+        );
         final totalMin = end.difference(cDate).inMinutes;
         if (totalMin > 0 && now.isAfter(cDate)) {
           final progress = (now.difference(cDate).inMinutes / totalMin).clamp(
@@ -181,10 +180,9 @@ mixin _TodoSectionViewModelMixin on _TodoSectionStateBase {
     for (final t in orphanedTodos) {
       double todoProgress = 0.0;
       if (t.dueDate != null) {
-        final cDate = DateTime.fromMillisecondsSinceEpoch(
+        final cDate = AppTimeFormats.localFromServerTimestamp(
           t.createdDate ?? t.createdAt,
-          isUtc: true,
-        ).toLocal();
+        );
         final end = t.effectiveDueAt!;
         final totalMin = end.difference(cDate).inMinutes;
         if (totalMin > 0 && now.isAfter(cDate)) {

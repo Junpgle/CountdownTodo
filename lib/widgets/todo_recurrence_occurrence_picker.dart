@@ -130,10 +130,9 @@ class _TodoRecurrenceOccurrencePickerState
     ColorScheme colorScheme,
   ) {
     final isCurrent = occurrence.id == widget.currentTodoId;
-    final start = DateTime.fromMillisecondsSinceEpoch(
+    final start = AppTimeFormats.localFromServerTimestamp(
       occurrence.createdDate ?? occurrence.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
     final dateLabel = AppTimeFormats.dateFormatter('M月d日').format(start);
 
     return Semantics(

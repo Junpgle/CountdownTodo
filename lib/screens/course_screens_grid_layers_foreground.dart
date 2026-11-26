@@ -17,10 +17,9 @@ mixin _WeeklyCourseGridForegroundLayers on _WeeklyCourseScreenStateBase {
     for (int weekday = 1; weekday <= 7; weekday++) {
       final dayTodos = _intraDayTodosPerDay[weekday] ?? [];
       for (var todo in dayTodos) {
-        DateTime start = DateTime.fromMillisecondsSinceEpoch(
+        DateTime start = AppTimeFormats.localFromServerTimestamp(
           todo.createdDate ?? todo.createdAt,
-          isUtc: true,
-        ).toLocal();
+        );
         DateTime end = todo.dueDate ?? start.add(const Duration(hours: 1));
 
         double top = _timeToY(start.hour, start.minute, minuteHeight);
@@ -251,14 +250,8 @@ mixin _WeeklyCourseGridForegroundLayers on _WeeklyCourseScreenStateBase {
     );
     for (int weekday = 1; weekday <= 7; weekday++) {
       for (var log in _timeLogsPerDay[weekday]!) {
-        DateTime start = DateTime.fromMillisecondsSinceEpoch(
-          log.startTime,
-          isUtc: true,
-        ).toLocal();
-        DateTime end = DateTime.fromMillisecondsSinceEpoch(
-          log.endTime,
-          isUtc: true,
-        ).toLocal();
+        DateTime start = AppTimeFormats.localFromServerTimestamp(log.startTime);
+        DateTime end = AppTimeFormats.localFromServerTimestamp(log.endTime);
 
         double top = _timeToY(start.hour, start.minute, minuteHeight);
         double bottom = _timeToY(end.hour, end.minute, minuteHeight);
@@ -463,17 +456,13 @@ mixin _WeeklyCourseGridForegroundLayers on _WeeklyCourseScreenStateBase {
           ? null
           : _PomodoroPlanDayAssociationIndex(dayPlans);
       for (var record in dayRecords) {
-        DateTime pomStart = DateTime.fromMillisecondsSinceEpoch(
+        DateTime pomStart = AppTimeFormats.localFromServerTimestamp(
           record.startTime,
-          isUtc: true,
-        ).toLocal();
+        );
         int endMs =
             record.endTime ??
             (record.startTime + record.effectiveDuration * 1000);
-        DateTime pomEnd = DateTime.fromMillisecondsSinceEpoch(
-          endMs,
-          isUtc: true,
-        ).toLocal();
+        DateTime pomEnd = AppTimeFormats.localFromServerTimestamp(endMs);
 
         final associatedPlans =
             planAssociationIndex?.matchingPlans(record, endMs) ??
@@ -486,14 +475,12 @@ mixin _WeeklyCourseGridForegroundLayers on _WeeklyCourseScreenStateBase {
         ];
 
         for (var plan in associatedPlans) {
-          DateTime planStart = DateTime.fromMillisecondsSinceEpoch(
+          DateTime planStart = AppTimeFormats.localFromServerTimestamp(
             plan.startTime,
-            isUtc: true,
-          ).toLocal();
-          DateTime planEnd = DateTime.fromMillisecondsSinceEpoch(
+          );
+          DateTime planEnd = AppTimeFormats.localFromServerTimestamp(
             plan.endTime,
-            isUtc: true,
-          ).toLocal();
+          );
 
           List<Map<String, DateTime>> newSegments = [];
           for (var seg in segments) {

@@ -163,10 +163,9 @@ extension _PomodoroStatsEditor on PomodoroStatsState {
                   const SizedBox(height: 4),
                   Text(
                     AppTimeFormats.dateFormatter('yyyy-MM-dd HH:mm:ss').format(
-                      DateTime.fromMillisecondsSinceEpoch(
+                      AppTimeFormats.localFromServerTimestamp(
                         editSession.startTime,
-                        isUtc: true,
-                      ).toLocal(),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -178,10 +177,10 @@ extension _PomodoroStatsEditor on PomodoroStatsState {
                   InkWell(
                     borderRadius: BorderRadius.circular(12),
                     onTap: () async {
-                      final currentEnd = DateTime.fromMillisecondsSinceEpoch(
-                        editSession.endTime ?? editSession.startTime,
-                        isUtc: true,
-                      ).toLocal();
+                      final currentEnd =
+                          AppTimeFormats.localFromServerTimestamp(
+                            editSession.endTime ?? editSession.startTime,
+                          );
                       final pickedTime = await showAppTimePicker(
                         context: ctx,
                         initialTime: TimeOfDay.fromDateTime(currentEnd),
@@ -233,10 +232,9 @@ extension _PomodoroStatsEditor on PomodoroStatsState {
                           const SizedBox(width: 8),
                           Text(
                             AppTimeFormats.dateFormatter('HH:mm').format(
-                              DateTime.fromMillisecondsSinceEpoch(
+                              AppTimeFormats.localFromServerTimestamp(
                                 editSession.endTime ?? editSession.startTime,
-                                isUtc: true,
-                              ).toLocal(),
+                              ),
                             ),
                           ),
                           const Spacer(),
@@ -549,20 +547,12 @@ extension _PomodoroStatsEditor on PomodoroStatsState {
     int index,
     PauseInterval interval,
   ) {
-    final startStr = AppTimeFormats.dateFormatter('HH:mm:ss').format(
-      DateTime.fromMillisecondsSinceEpoch(
-        interval.startMs,
-        isUtc: true,
-      ).toLocal(),
-    );
+    final startStr = AppTimeFormats.dateFormatter('HH:mm:ss')
+        .format(AppTimeFormats.localFromServerTimestamp(interval.startMs));
     final endStr = interval.isOngoing
         ? '进行中'
-        : AppTimeFormats.dateFormatter('HH:mm:ss').format(
-            DateTime.fromMillisecondsSinceEpoch(
-              interval.endMs!,
-              isUtc: true,
-            ).toLocal(),
-          );
+        : AppTimeFormats.dateFormatter('HH:mm:ss')
+              .format(AppTimeFormats.localFromServerTimestamp(interval.endMs!));
     final durationStr = interval.isOngoing
         ? ''
         : formatDurationChinese(interval.durationSeconds);

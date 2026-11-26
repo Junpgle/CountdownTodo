@@ -654,10 +654,9 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
 
   DateTime _fallbackDateForTodo(TodoItem todo) {
     if (todo.dueDate != null) return todo.dueDate!;
-    return DateTime.fromMillisecondsSinceEpoch(
+    return AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
   }
 
   DateTime? _latestFallbackGroupDate(List<TodoItem> groupTodos) {
@@ -701,10 +700,9 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
   double _todoProgress(TodoItem todo, DateTime now) {
     final end = todo.effectiveDueAt;
     if (end == null) return 0;
-    final createdAt = DateTime.fromMillisecondsSinceEpoch(
+    final createdAt = AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
     final totalMinutes = end.difference(createdAt).inMinutes;
     if (totalMinutes <= 0 || !now.isAfter(createdAt)) return 0;
     return (now.difference(createdAt).inMinutes / totalMinutes)
@@ -715,10 +713,9 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
   bool _isHistoricalTodo(TodoItem todo, DateTime today) {
     if (!todo.isDone) return false;
     if (todo.dueDate != null) return _isBeforeDay(todo.dueDate, today);
-    final createdAt = DateTime.fromMillisecondsSinceEpoch(
+    final createdAt = AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
     return _isBeforeDay(createdAt, today);
   }
 
@@ -890,10 +887,9 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
     final DateTime today = DateTime(now.year, now.month, now.day);
 
     // 进度
-    final cDate = DateTime.fromMillisecondsSinceEpoch(
+    final cDate = AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
     final progress = _todoProgress(todo, now);
 
     // 颜色
@@ -1400,16 +1396,10 @@ class ShareScheduleSection extends StatelessWidget {
   String _formatScheduleTime(FixedScheduleItem item) {
     final start = item.startTime == null
         ? null
-        : DateTime.fromMillisecondsSinceEpoch(
-            item.startTime!,
-            isUtc: true,
-          ).toLocal();
+        : AppTimeFormats.localFromServerTimestamp(item.startTime!);
     final end = item.endTime == null
         ? null
-        : DateTime.fromMillisecondsSinceEpoch(
-            item.endTime!,
-            isUtc: true,
-          ).toLocal();
+        : AppTimeFormats.localFromServerTimestamp(item.endTime!);
     final date = DateTime.tryParse(item.date)?.toLocal();
 
     if (start == null && end == null) {

@@ -6,6 +6,7 @@ import '../../../storage_service.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../utils/app_dialogs.dart';
 import '../../../utils/text_utils.dart';
+import '../../../utils/time_utils.dart';
 
 class RecurrenceSeriesMergePage extends StatefulWidget {
   final String username;
@@ -445,14 +446,8 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
   }
 
   static String _formatRange(_RecurrenceSeriesSummary summary) {
-    final first = DateTime.fromMillisecondsSinceEpoch(
-      summary.firstStart,
-      isUtc: true,
-    ).toLocal();
-    final last = DateTime.fromMillisecondsSinceEpoch(
-      summary.lastStart,
-      isUtc: true,
-    ).toLocal();
+    final first = AppTimeFormats.localFromServerTimestamp(summary.firstStart);
+    final last = AppTimeFormats.localFromServerTimestamp(summary.lastStart);
     final firstText = '${first.month}/${first.day}';
     final lastText = '${last.month}/${last.day}';
     return firstText == lastText ? firstText : '$firstText–$lastText';

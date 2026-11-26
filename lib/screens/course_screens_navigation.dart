@@ -329,10 +329,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         return item.dueDate!.hour * 100 + item.dueDate!.minute;
       }
       if (item is TimeLogItem) {
-        final dt = DateTime.fromMillisecondsSinceEpoch(
-          item.startTime,
-          isUtc: true,
-        ).toLocal();
+        final dt = AppTimeFormats.localFromServerTimestamp(item.startTime);
         return dt.hour * 100 + dt.minute;
       }
       if (item is TodoPlanBlock) {
@@ -341,10 +338,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         return dt.hour * 100 + dt.minute;
       }
       if (item is PomodoroRecord) {
-        final dt = DateTime.fromMillisecondsSinceEpoch(
-          item.startTime,
-          isUtc: true,
-        ).toLocal();
+        final dt = AppTimeFormats.localFromServerTimestamp(item.startTime);
         return dt.hour * 100 + dt.minute;
       }
       if (item is DeviceCalendarEvent) {
@@ -384,10 +378,9 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
   }
 
   bool _isCrossDayTodo(TodoItem todo) {
-    final start = DateTime.fromMillisecondsSinceEpoch(
+    final start = AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
     final end = todo.dueDate ?? start.add(const Duration(hours: 1));
     return start.year != end.year ||
         start.month != end.month ||
@@ -631,7 +624,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       );
       final remarkStr = item.remark?.trim();
       final timeRange =
-          '${AppTimeFormats.dateFormatter('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.startTime, isUtc: true).toLocal())} - ${AppTimeFormats.dateFormatter('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.endTime, isUtc: true).toLocal())}';
+          '${AppTimeFormats.dateFormatter('HH:mm').format(AppTimeFormats.localFromServerTimestamp(item.startTime))} - ${AppTimeFormats.dateFormatter('HH:mm').format(AppTimeFormats.localFromServerTimestamp(item.endTime))}';
       final subtitleParts = [
         timeRange,
         '时长: $durationStr',
@@ -1346,14 +1339,8 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         weekMonday.day,
       );
       final weekEnd = CalendarDateMath.addDays(weekStart, 7);
-      DateTime start = DateTime.fromMillisecondsSinceEpoch(
-        startMs,
-        isUtc: true,
-      ).toLocal();
-      DateTime end = DateTime.fromMillisecondsSinceEpoch(
-        endMs,
-        isUtc: true,
-      ).toLocal();
+      DateTime start = AppTimeFormats.localFromServerTimestamp(startMs);
+      DateTime end = AppTimeFormats.localFromServerTimestamp(endMs);
 
       if (!end.isAfter(weekStart) || !start.isBefore(weekEnd)) return;
       if (start.isBefore(weekStart)) start = weekStart;

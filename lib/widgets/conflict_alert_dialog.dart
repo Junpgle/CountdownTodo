@@ -110,14 +110,8 @@ class ConflictAlertDialog extends StatelessWidget {
         ? int.tryParse(end) ?? 0
         : (end is int ? end : 0);
     if (startMs > 0 && endMs > 0) {
-      final startTime = DateTime.fromMillisecondsSinceEpoch(
-        startMs,
-        isUtc: true,
-      ).toLocal();
-      final endTime = DateTime.fromMillisecondsSinceEpoch(
-        endMs,
-        isUtc: true,
-      ).toLocal();
+      final startTime = AppTimeFormats.localFromServerTimestamp(startMs);
+      final endTime = AppTimeFormats.localFromServerTimestamp(endMs);
 
       if (startTime.year == 1970 && startMs < 2400) {
         final startHH = startMs ~/ 100;
@@ -131,16 +125,10 @@ class ConflictAlertDialog extends StatelessWidget {
             '${AppTimeFormats.format(startTime, 'MM-dd HH:mm')} ~ ${AppTimeFormats.clock(endTime)}';
       }
     } else if (startMs > 0) {
-      final startTime = DateTime.fromMillisecondsSinceEpoch(
-        startMs,
-        isUtc: true,
-      ).toLocal();
+      final startTime = AppTimeFormats.localFromServerTimestamp(startMs);
       timeStr = AppTimeFormats.format(startTime, 'MM-dd HH:mm');
     } else if (endMs > 0) {
-      final endTime = DateTime.fromMillisecondsSinceEpoch(
-        endMs,
-        isUtc: true,
-      ).toLocal();
+      final endTime = AppTimeFormats.localFromServerTimestamp(endMs);
       timeStr = AppTimeFormats.format(endTime, 'MM-dd HH:mm');
     }
 

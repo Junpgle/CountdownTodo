@@ -99,7 +99,7 @@ mixin _WeeklyCourseGridHeader on _WeeklyCourseScreenStateBase {
                                 ),
                               ),
                             Text(
-                              "开始: ${AppTimeFormats.dateFormatter('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt, isUtc: true).toLocal())}\n截止: ${todo.dueDate != null ? AppTimeFormats.dateFormatter('MM-dd HH:mm').format(todo.dueDate!) : '无'}",
+                              "开始: ${AppTimeFormats.dateFormatter('MM-dd HH:mm').format(AppTimeFormats.localFromServerTimestamp(todo.createdDate ?? todo.createdAt))}\n截止: ${todo.dueDate != null ? AppTimeFormats.dateFormatter('MM-dd HH:mm').format(todo.dueDate!) : '无'}",
                             ),
                           ],
                         ),

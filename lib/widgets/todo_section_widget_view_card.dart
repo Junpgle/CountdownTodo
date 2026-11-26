@@ -37,10 +37,9 @@ mixin _TodoSectionViewCardMixin on _TodoSectionStateBase {
     );
 
     // ── 进度计算 ──
-    DateTime cDate = DateTime.fromMillisecondsSinceEpoch(
+    DateTime cDate = AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
     double progress = 0.0;
     if (todo.dueDate != null) {
       final startMicros = cDate.microsecondsSinceEpoch;

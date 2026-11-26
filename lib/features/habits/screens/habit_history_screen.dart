@@ -398,10 +398,9 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
   }
 
   static DateTime _todoDate(TodoItem todo) {
-    return DateTime.fromMillisecondsSinceEpoch(
+    return AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
   }
 
   static String _todoDateKey(TodoItem todo) =>

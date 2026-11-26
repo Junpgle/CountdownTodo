@@ -9,6 +9,7 @@ import '../utils/calendar_date_math.dart';
 import '../utils/app_image_filters.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'platform_backdrop_filter.dart';
+import '../utils/time_utils.dart';
 
 const double _homeWideDrawerMaxWidth = 360.0;
 
@@ -40,10 +41,7 @@ DateTime? _parseRegistrationDate(dynamic raw) {
   if (raw is num) {
     final value = raw.toInt();
     final milliseconds = value.abs() < 100000000000 ? value * 1000 : value;
-    return DateTime.fromMillisecondsSinceEpoch(
-      milliseconds,
-      isUtc: true,
-    ).toLocal();
+    return AppTimeFormats.localFromServerTimestamp(milliseconds);
   }
   if (raw is! String || raw.trim().isEmpty) return null;
 

@@ -153,10 +153,9 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
 
       final DateTime targetDate;
       if (records.isNotEmpty) {
-        final firstLocal = DateTime.fromMillisecondsSinceEpoch(
+        final firstLocal = AppTimeFormats.localFromServerTimestamp(
           records.first.startTime,
-          isUtc: true,
-        ).toLocal();
+        );
         targetDate = DateTime(
           firstLocal.year,
           firstLocal.month,
@@ -1325,10 +1324,9 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
     ColorScheme colorScheme,
     bool isDark,
   ) {
-    final startLocal = DateTime.fromMillisecondsSinceEpoch(
+    final startLocal = AppTimeFormats.localFromServerTimestamp(
       record.startTime,
-      isUtc: true,
-    ).toLocal();
+    );
     final durationMin = record.effectiveDuration ~/ 60;
     final isCompleted = record.isCompleted;
     final statusColor = isCompleted

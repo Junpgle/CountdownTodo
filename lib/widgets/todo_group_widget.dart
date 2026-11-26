@@ -705,10 +705,9 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     required DateTime now,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final start = DateTime.fromMillisecondsSinceEpoch(
+    final start = AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
     final timeMode = todo.timeModeForStartTime(start);
     final isDateOnly = timeMode == TodoTimeMode.dateOnly;
     final end = todo.effectiveDueAtForTimeMode(timeMode);

@@ -41,6 +41,7 @@ import 'settings/pages/ai_assistant_settings_page.dart';
 import 'settings/pages/account_devices_page.dart';
 import 'settings/llm_config_page.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/time_utils.dart';
 
 class SettingsPage extends StatefulWidget {
   final String? initialTarget;
@@ -592,10 +593,9 @@ class _SettingsPageState extends State<SettingsPage>
 
     bool useCache = false;
     if (cachedDataStr != null && lastSyncTime != null) {
-      final DateTime lastSync = DateTime.fromMillisecondsSinceEpoch(
+      final DateTime lastSync = AppTimeFormats.localFromServerTimestamp(
         lastSyncTime,
-        isUtc: true,
-      ).toLocal();
+      );
       if (DateTime.now().difference(lastSync).inMinutes < 5) {
         useCache = true;
         try {

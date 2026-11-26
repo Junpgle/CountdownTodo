@@ -513,10 +513,9 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
       );
 
   DateTime _todoLocalDate(TodoItem todo) {
-    final local = DateTime.fromMillisecondsSinceEpoch(
+    final local = AppTimeFormats.localFromServerTimestamp(
       todo.createdDate ?? todo.createdAt,
-      isUtc: true,
-    ).toLocal();
+    );
     return DateTime(local.year, local.month, local.day);
   }
 

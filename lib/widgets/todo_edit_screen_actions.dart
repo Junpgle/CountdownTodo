@@ -91,10 +91,7 @@ bool _recordStartsInsideOccurrence(PomodoroRecord record, TodoItem occurrence) {
 }
 
 String _localDayKey(int millisecondsSinceEpoch) {
-  final local = DateTime.fromMillisecondsSinceEpoch(
-    millisecondsSinceEpoch,
-    isUtc: true,
-  ).toLocal();
+  final local = AppTimeFormats.localFromServerTimestamp(millisecondsSinceEpoch);
   return '${local.year}-${local.month}-${local.day}';
 }
 
@@ -200,10 +197,9 @@ extension _TodoEditScreenActions on TodoEditScreenState {
           continue;
         }
 
-        final occurrenceStart = DateTime.fromMillisecondsSinceEpoch(
+        final occurrenceStart = AppTimeFormats.localFromServerTimestamp(
           occurrence.createdDate ?? occurrence.createdAt,
-          isUtc: true,
-        ).toLocal();
+        );
         final shiftedStart = occurrenceStart.add(startShift);
         final recurrenceEndDay = _recurrenceEndDate == null
             ? null
@@ -602,10 +598,9 @@ extension _TodoEditScreenActions on TodoEditScreenState {
         : normalizedDue.difference(normalizedStart);
     final datePattern = _isAllDay ? 'M月d日' : 'M月d日 HH:mm';
     String previewRange(TodoItem occurrence) {
-      final start = DateTime.fromMillisecondsSinceEpoch(
+      final start = AppTimeFormats.localFromServerTimestamp(
         occurrence.createdDate ?? occurrence.createdAt,
-        isUtc: true,
-      ).toLocal();
+      );
       final newStart = start.add(startShift);
       final oldEnd = occurrence.dueDate?.toLocal();
       final newEnd = editedDuration == null
@@ -870,10 +865,9 @@ extension _TodoEditScreenActions on TodoEditScreenState {
       _titleCtrl.text = todo.title;
       _remarkCtrl.text = todo.remark ?? '';
       _isDone = todo.isDone;
-      _createdDate = DateTime.fromMillisecondsSinceEpoch(
+      _createdDate = AppTimeFormats.localFromServerTimestamp(
         todo.createdDate ?? todo.createdAt,
-        isUtc: true,
-      ).toLocal();
+      );
       _originalCreatedDate = _createdDate;
       _dueDate = todo.dueDate;
       _recurrence = todo.recurrence;

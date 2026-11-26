@@ -269,10 +269,9 @@ extension _PomodoroStatsSections on PomodoroStatsState {
 
     if (_dimension == 0) {
       return _sessions.map((session) {
-        final localStart = DateTime.fromMillisecondsSinceEpoch(
+        final localStart = AppTimeFormats.localFromServerTimestamp(
           session.startTime,
-          isUtc: true,
-        ).toLocal();
+        );
         return _buildSessionCard(
           session,
           startLocal: localStart,
@@ -287,10 +286,9 @@ extension _PomodoroStatsSections on PomodoroStatsState {
     final widgets = <Widget>[];
     DateTime? previousDay;
     for (final session in _sessions) {
-      final localStart = DateTime.fromMillisecondsSinceEpoch(
+      final localStart = AppTimeFormats.localFromServerTimestamp(
         session.startTime,
-        isUtc: true,
-      ).toLocal();
+      );
       final isNewDay =
           previousDay == null ||
           previousDay.year != localStart.year ||
