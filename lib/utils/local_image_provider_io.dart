@@ -4,9 +4,37 @@ import 'package:flutter/widgets.dart';
 
 import 'app_platform.dart';
 
+const int _maxExistenceCacheEntries = 256;
+const Duration _existsTrueTtl = Duration(seconds: 30);
+const Duration _existsFalseTtl = Duration(seconds: 5);
+final Map<String, ({bool exists, DateTime expiresAt})> _existenceCache =
+    <String, ({bool exists, DateTime expiresAt})>{};
+
+void invalidateLocalImageExistenceCache([String? path]) {
+  if (path == null) {
+    _existenceCache.clear();
+  } else {
+    _existenceCache.remove(path);
+  }
+}
+
 bool localImageExists(String? path) {
   if (path == null || path.isEmpty) return false;
-  return File(path).existsSync();
+  final now = DateTime.now();
+  final cached = _existenceCache.remove(path);
+  if (cached != null && now.isBefore(cached.expiresAt)) {
+    _existenceCache[path] = cached;
+    return cached.exists;
+  }
+  final exists = File(path).existsSync();
+  if (_existenceCache.length >= _maxExistenceCacheEntries) {
+    _existenceCache.remove(_existenceCache.keys.first);
+  }
+  _existenceCache[path] = (
+    exists: exists,
+    expiresAt: now.add(exists ? _existsTrueTtl : _existsFalseTtl),
+  );
+  return exists;
 }
 
 ImageProvider<Object>? localImageProvider(String? path) {

@@ -12,6 +12,8 @@ bool _isBrowserImagePath(String? path) {
           uri.scheme == 'data');
 }
 
+void invalidateLocalImageExistenceCache([String? path]) {}
+
 bool localImageExists(String? path) => _isBrowserImagePath(path);
 
 ImageProvider<Object>? localImageProvider(String? path) {
