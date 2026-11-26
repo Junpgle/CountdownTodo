@@ -182,8 +182,8 @@ class ReminderScheduleService {
           final label = _getSpecialTodoLabel(todoType);
 
           reminders.add({
-            'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
-            'startAtMs': refTime.toUtc().millisecondsSinceEpoch,
+            'triggerAtMs': AppTimeFormats.toServerTimestamp(triggerAt),
+            'startAtMs': AppTimeFormats.toServerTimestamp(refTime),
             'title': '$label ${t.title}',
             'text': t.remark?.isNotEmpty == true
                 ? '${t.remark!} · $timeText'
@@ -201,8 +201,8 @@ class ReminderScheduleService {
           final description = t.remark?.isNotEmpty == true ? t.remark! : '即将开始';
 
           reminders.add({
-            'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
-            'startAtMs': refTime.toUtc().millisecondsSinceEpoch,
+            'triggerAtMs': AppTimeFormats.toServerTimestamp(triggerAt),
+            'startAtMs': AppTimeFormats.toServerTimestamp(refTime),
             'title': '⏰ ${t.title}',
             'text': '$description · $timeText',
             'notifId': _todoBaseId + i,
@@ -248,12 +248,12 @@ class ReminderScheduleService {
             c.endTime ~/ 100,
             c.endTime % 100,
           );
-          final courseStartMs = courseStart.toUtc().millisecondsSinceEpoch;
-          final courseEndMs = courseEnd.toUtc().millisecondsSinceEpoch;
+          final courseStartMs = AppTimeFormats.toServerTimestamp(courseStart);
+          final courseEndMs = AppTimeFormats.toServerTimestamp(courseEnd);
           final courseStartText = _hm(courseStart);
           final courseTimeRange = '$courseStartText - ${_hm(courseEnd)}';
           reminders.add({
-            'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
+            'triggerAtMs': AppTimeFormats.toServerTimestamp(triggerAt),
             'startAtMs': courseStartMs,
             'courseStartMs': courseStartMs,
             'courseEndMs': courseEndMs,
@@ -323,8 +323,8 @@ class ReminderScheduleService {
         final endTime = DateTime.fromMillisecondsSinceEpoch(pb.endTime);
         final timeRange = '${_hm(startTime)} - ${_hm(endTime)}';
         reminders.add({
-          'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
-          'startAtMs': startTime.toUtc().millisecondsSinceEpoch,
+          'triggerAtMs': AppTimeFormats.toServerTimestamp(triggerAt),
+          'startAtMs': AppTimeFormats.toServerTimestamp(startTime),
           'title': '📅 计划: ${pb.titleSnapshot ?? "未命名任务"}',
           'text': '$timeRange${pb.remark != null ? " · ${pb.remark}" : ""}',
           'notifId': _planBlockBaseId + i,
@@ -426,8 +426,8 @@ class ReminderScheduleService {
       final dateStr = AppTimeFormats.date(targetLocal);
 
       reminders.add({
-        'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
-        'startAtMs': endOfDay.toUtc().millisecondsSinceEpoch,
+        'triggerAtMs': AppTimeFormats.toServerTimestamp(triggerAt),
+        'startAtMs': AppTimeFormats.toServerTimestamp(endOfDay),
         'title': '$emoji ${countdown.title}',
         'text': '$label就在今天 · $dateStr',
         'notifId': _countdownBaseId + i,
@@ -521,8 +521,8 @@ class ReminderScheduleService {
           continue;
         }
         reminders.add({
-          'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
-          'startAtMs': start.toUtc().millisecondsSinceEpoch,
+          'triggerAtMs': AppTimeFormats.toServerTimestamp(triggerAt),
+          'startAtMs': AppTimeFormats.toServerTimestamp(start),
           'title': reminderTitle,
           'text': reminderText,
           'notifId':

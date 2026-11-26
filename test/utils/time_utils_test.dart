@@ -120,6 +120,16 @@ void main() {
       expect(AppTimeFormats.minuteOfDay(0), '00:00');
       expect(AppTimeFormats.minuteOfDay(485), '08:05');
       expect(AppTimeFormats.minuteOfDay(1440), '24:00');
+      final utcInstant = DateTime.utc(2026, 11, 25, 8, 5, 9);
+      expect(
+        AppTimeFormats.toServerTimestamp(utcInstant.toLocal()),
+        utcInstant.millisecondsSinceEpoch,
+      );
+      expect(AppTimeFormats.toNullableServerTimestamp(null), isNull);
+      expect(
+        AppTimeFormats.toNullableServerTimestamp(utcInstant.toLocal()),
+        utcInstant.millisecondsSinceEpoch,
+      );
     },
   );
 }

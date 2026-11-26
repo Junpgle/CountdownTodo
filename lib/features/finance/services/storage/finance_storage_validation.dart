@@ -423,7 +423,7 @@ int? _rawFinanceTimestampMillis(dynamic value, {bool allowDateString = false}) {
   if (allowDateString && value is String) {
     final parsed = DateTime.tryParse(value.trim());
     if (parsed != null) {
-      final millis = parsed.toUtc().millisecondsSinceEpoch;
+      final millis = AppTimeFormats.toServerTimestamp(parsed);
       if (millis >= -_maxDateTimeMillis && millis <= _maxDateTimeMillis) {
         return millis;
       }

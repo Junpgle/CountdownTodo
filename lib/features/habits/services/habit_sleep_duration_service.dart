@@ -166,7 +166,7 @@ abstract final class HabitSleepDurationService {
           HabitCheckIn(
             habitUuid: goal.uuid,
             ruleRevisionUuid: rule.uuid,
-            occurredAt: localBedtime.toUtc().millisecondsSinceEpoch,
+            occurredAt: AppTimeFormats.toServerTimestamp(localBedtime),
             logicalDate: logicalDate,
             timezoneOffsetMinutes: localBedtime.timeZoneOffset.inMinutes,
             value: seconds,
@@ -180,7 +180,7 @@ abstract final class HabitSleepDurationService {
         continue;
       }
 
-      final occurredAt = localBedtime.toUtc().millisecondsSinceEpoch;
+      final occurredAt = AppTimeFormats.toServerTimestamp(localBedtime);
       final timezoneOffsetMinutes = localBedtime.timeZoneOffset.inMinutes;
       // syncAll() runs whenever the today-habits card is refreshed.  Avoid
       // rewriting an identical generated record: updateCheckIn() increments

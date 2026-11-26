@@ -336,7 +336,7 @@ TodoItem? _buildUpdatedTodo(
     createdAt: _parseNullableInt(existing['createdAt']),
     remark: action.hasRemark ? action.remark : existing['remark']?.toString(),
     dueDate: normalizedTime.due,
-    createdDate: normalizedTime.start?.toUtc().millisecondsSinceEpoch,
+    createdDate: AppTimeFormats.toNullableServerTimestamp(normalizedTime.start),
     recurrence: nextRecurrence,
     recurrenceSeriesId: recurrenceSeriesId,
     customIntervalDays: nextRecurrence == RecurrenceType.customDays
@@ -408,7 +408,7 @@ TodoItem? _buildNewTodo(
     title: title,
     remark: _buildRemark(action),
     dueDate: normalizedTime.due,
-    createdDate: normalizedTime.start?.toUtc().millisecondsSinceEpoch,
+    createdDate: AppTimeFormats.toNullableServerTimestamp(normalizedTime.start),
     createdAt: now.millisecondsSinceEpoch,
     recurrence: recurrence,
     customIntervalDays: recurrence == RecurrenceType.customDays

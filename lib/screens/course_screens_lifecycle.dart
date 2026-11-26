@@ -759,7 +759,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
       isDeleted: todo.isDeleted,
       version: todo.version,
       createdAt: todo.createdAt,
-      createdDate: newStart.toUtc().millisecondsSinceEpoch,
+      createdDate: AppTimeFormats.toServerTimestamp(newStart),
       recurrence: todo.recurrence,
       recurrenceSeriesId: todo.recurrenceSeriesId,
       customIntervalDays: todo.customIntervalDays,

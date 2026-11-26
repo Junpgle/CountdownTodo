@@ -58,7 +58,7 @@ class CalendarSyncEntry {
   };
 
   int _platformMillis(DateTime value) {
-    if (!allDay) return value.toUtc().millisecondsSinceEpoch;
+    if (!allDay) return AppTimeFormats.toServerTimestamp(value);
     return DateTime.utc(
       value.year,
       value.month,

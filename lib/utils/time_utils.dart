@@ -205,6 +205,9 @@ class AppTimeFormats {
     return local.toUtc().millisecondsSinceEpoch;
   }
 
+  static int? toNullableServerTimestamp(DateTime? local) =>
+      local == null ? null : toServerTimestamp(local);
+
   static String formatServerTimestamp(
     int? timestamp, {
     String pattern = 'MM-dd HH:mm',

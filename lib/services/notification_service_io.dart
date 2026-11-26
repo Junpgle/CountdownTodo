@@ -664,7 +664,7 @@ class NotificationService {
         await MacPomodoroStatusBarService.showIslandReminder({
           'notifId': notifId,
           'triggerAtMs': now.millisecondsSinceEpoch,
-          'startAtMs': endOfDay.toUtc().millisecondsSinceEpoch,
+          'startAtMs': AppTimeFormats.toServerTimestamp(endOfDay),
           'title': '$emoji ${countdown.title}',
           'text': '$label就在今天 · $dateStr',
           'type': 'countdown',

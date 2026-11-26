@@ -363,7 +363,7 @@ abstract final class HabitRepository {
           HabitCheckIn(
             habitUuid: goal.uuid,
             ruleRevisionUuid: rule.uuid,
-            occurredAt: localOccurred.toUtc().millisecondsSinceEpoch,
+            occurredAt: AppTimeFormats.toServerTimestamp(localOccurred),
             logicalDate: dayKey,
             timezoneOffsetMinutes: localOccurred.timeZoneOffset.inMinutes,
             value: 1,
@@ -385,7 +385,7 @@ abstract final class HabitRepository {
           HabitCheckIn(
             habitUuid: goal.uuid,
             ruleRevisionUuid: rule.uuid,
-            occurredAt: localOccurred.toUtc().millisecondsSinceEpoch,
+            occurredAt: AppTimeFormats.toServerTimestamp(localOccurred),
             logicalDate: dayKey,
             timezoneOffsetMinutes: localOccurred.timeZoneOffset.inMinutes,
             value: 0,
@@ -706,7 +706,7 @@ abstract final class HabitRepository {
     final checkIn = HabitCheckIn(
       habitUuid: goal.uuid,
       ruleRevisionUuid: rule.uuid,
-      occurredAt: localOccurredAt.toUtc().millisecondsSinceEpoch,
+      occurredAt: AppTimeFormats.toServerTimestamp(localOccurredAt),
       logicalDate: HabitRuleResolver.dayKey(
         HabitRuleResolver.logicalDateFor(
           localOccurredAt,

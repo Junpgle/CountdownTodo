@@ -469,8 +469,12 @@ class TodoItem {
     'customIntervalDays': customIntervalDays,
     'custom_interval_days': customIntervalDays,
     // 循环结束日：同时输出两种键名
-    'recurrenceEndDate': recurrenceEndDate?.toUtc().millisecondsSinceEpoch,
-    'recurrence_end_date': recurrenceEndDate?.toUtc().millisecondsSinceEpoch,
+    'recurrenceEndDate': AppTimeFormats.toNullableServerTimestamp(
+      recurrenceEndDate,
+    ),
+    'recurrence_end_date': AppTimeFormats.toNullableServerTimestamp(
+      recurrenceEndDate,
+    ),
     'remark': remark, // 📝 备注（可为 null）
     'image_path': imagePath, // 📸 图片路径
     'original_text': originalText, // 📄 原始分析文本
@@ -852,7 +856,7 @@ int? _parseNullableTimestamp(dynamic val) {
   if (parsed != null) return parsed;
   if (val is String) {
     final date = DateTime.tryParse(val.trim());
-    if (date != null) return date.toUtc().millisecondsSinceEpoch;
+    if (date != null) return AppTimeFormats.toServerTimestamp(date);
   }
   return null;
 }
@@ -867,7 +871,7 @@ DateTime? _parseDateField(dynamic val) {
 
 DateTime? _localDateCopy(DateTime? value) {
   if (value == null) return null;
-  return _parseDateField(value.toUtc().millisecondsSinceEpoch);
+  return _parseDateField(AppTimeFormats.toServerTimestamp(value));
 }
 
 String? _emptyStringToNull(String? value) {
