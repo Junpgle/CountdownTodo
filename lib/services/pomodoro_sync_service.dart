@@ -141,11 +141,8 @@ class CrossDevicePomodoroState {
   static bool? _parseBool(dynamic value) =>
       JsonValueParser.toNullableBool(value);
 
-  static List<String> _parseStringList(dynamic v) {
-    if (v == null) return const [];
-    if (v is List) return v.map((e) => e.toString()).toList();
-    return const [];
-  }
+  static List<String> _parseStringList(dynamic v) =>
+      JsonValueParser.toStringList(v);
 
   Map<String, dynamic> toJson() => {
     'action': action,

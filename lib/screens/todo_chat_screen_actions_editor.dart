@@ -461,10 +461,7 @@ mixin _TodoChatActionEditor on _TodoChatScreenStateBase {
     );
   }
 
-  String? _nullIfBlank(String value) {
-    final trimmed = value.trim();
-    return trimmed.isEmpty ? null : trimmed;
-  }
+  String? _nullIfBlank(String value) => AppTextUtils.trimToNull(value);
 
   String _countdownTeamLabel(AiTodoAction action) {
     final team = AiTeamBindingResolver.resolveReference(

@@ -737,11 +737,8 @@ class AiTodoAction {
     return keys.any(json.containsKey);
   }
 
-  static List<String> _parseStringList(dynamic value) {
-    if (value == null) return const [];
-    if (value is List) return value.map((e) => e.toString()).toList();
-    return [value.toString()];
-  }
+  static List<String> _parseStringList(dynamic value) =>
+      JsonValueParser.toStringList(value, wrapScalar: true);
 
   static List<int> _parseIntList(dynamic value) {
     if (value is List) {

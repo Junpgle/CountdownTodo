@@ -54,4 +54,21 @@ void main() {
     expect(JsonValueParser.toBool(null, fallback: true), isTrue);
     expect(JsonValueParser.toBool('invalid'), isFalse);
   });
+
+  test('parses string lists with optional empty filtering and scalar wrap', () {
+    expect(JsonValueParser.toStringList(null), isEmpty);
+    expect(JsonValueParser.toStringList(['a', '', 12]), ['a', '', '12']);
+    expect(
+      JsonValueParser.toStringList(['a', '', null, 'b'], skipEmpty: true),
+      ['a', 'b'],
+    );
+    expect(JsonValueParser.toStringList('single'), isEmpty);
+    expect(JsonValueParser.toStringList('single', wrapScalar: true), [
+      'single',
+    ]);
+    expect(
+      JsonValueParser.toStringList('', skipEmpty: true, wrapScalar: true),
+      isEmpty,
+    );
+  });
 }

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../models.dart';
+import '../utils/text_utils.dart';
 
 class TodoDeadlineFixedScheduleReviewEntry {
   const TodoDeadlineFixedScheduleReviewEntry({
@@ -193,8 +194,6 @@ class TodoDeadlineFixedScheduleReviewService {
     return due.isAfter(start);
   }
 
-  static String? _normalizeTeamUuid(String? value) {
-    final normalized = value?.trim();
-    return normalized == null || normalized.isEmpty ? null : normalized;
-  }
+  static String? _normalizeTeamUuid(String? value) =>
+      AppTextUtils.trimToNull(value);
 }

@@ -1,3 +1,5 @@
+import '../utils/text_utils.dart';
+
 /// Builds and parses public team-share links for the Flutter Web client.
 ///
 /// The API host is not a web page host. Share links must open the Flutter Web
@@ -71,8 +73,9 @@ class TeamShareLink {
     );
     if (shareIndex == -1 || shareIndex + 1 >= segments.length) return null;
 
-    final code = Uri.decodeComponent(segments[shareIndex + 1]).trim();
-    return code.isEmpty ? null : code;
+    return AppTextUtils.trimToNull(
+      Uri.decodeComponent(segments[shareIndex + 1]),
+    );
   }
 
   static Uri? _parseRoute(String value) {

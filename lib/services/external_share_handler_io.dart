@@ -29,6 +29,7 @@ import '../course_import/widgets/course_time_repair_dialog.dart';
 import '../course_import/widgets/zf_time_config_dialog.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/json_value_parser.dart';
+import '../utils/text_utils.dart';
 
 class _ExternalShareRequest {
   const _ExternalShareRequest({
@@ -791,10 +792,8 @@ class ExternalShareHandler {
   }
 
   static String? _sharedTextPayload(SharedMediaFile media) {
-    final message = media.message?.trim();
-    if (message != null && message.isNotEmpty) return message;
-    final path = media.path.trim();
-    return path.isEmpty ? null : path;
+    return AppTextUtils.trimToNull(media.message) ??
+        AppTextUtils.trimToNull(media.path);
   }
 
   /// 同一张图片走两条互不排斥的识别通道：待办通道负责取餐/取件码，

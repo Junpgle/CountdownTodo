@@ -16,6 +16,7 @@ import '../utils/page_transitions.dart';
 import '../utils/time_utils.dart';
 import '../utils/todo_recurrence_picker.dart';
 import 'widget_service_io.dart';
+import '../utils/text_utils.dart';
 
 class AppDeepLinkService {
   static const String scheme = 'countdowntodo';
@@ -227,8 +228,7 @@ class AppDeepLinkService {
         uri.pathSegments.isNotEmpty &&
         uri.pathSegments.first == 'recurrence';
     if (!isRecurrenceTodo) return null;
-    final seriesId = uri.queryParameters['seriesId']?.trim();
-    return seriesId == null || seriesId.isEmpty ? null : seriesId;
+    return AppTextUtils.trimToNull(uri.queryParameters['seriesId']);
   }
 
   static Future<void> _registerWindowsProtocol() async {

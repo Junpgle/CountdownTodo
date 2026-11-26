@@ -48,8 +48,7 @@ Future<String?> _updManifestReadDownloadedPackageVersion(
     final version = await const MethodChannel(
       UpdateService._updateMethodChannelName,
     ).invokeMethod<String>('getApkVersionName', {'path': filePath});
-    final normalized = version?.trim();
-    return normalized == null || normalized.isEmpty ? null : normalized;
+    return AppTextUtils.trimToNull(version);
   } catch (error) {
     debugPrint('[UpdateService] 读取 APK 内部版本失败: $error');
     return null;

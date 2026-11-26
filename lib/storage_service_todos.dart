@@ -204,10 +204,7 @@ mixin _StorageTodos on _StorageServiceBase {
           candidates.single.recurrence != RecurrenceType.none) {
         throw ArgumentError('关联固定日程只支持保存一个单次未完成待办');
       }
-      String? normalizeTeam(String? value) {
-        final normalized = value?.trim();
-        return normalized == null || normalized.isEmpty ? null : normalized;
-      }
+      String? normalizeTeam(String? value) => AppTextUtils.trimToNull(value);
 
       final todo = candidates.single;
       final relatedId = todo.id.trim();

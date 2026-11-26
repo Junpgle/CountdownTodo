@@ -137,13 +137,8 @@ class IslandPayload {
 
   static String _toStr(dynamic v) => v?.toString() ?? '';
 
-  static List<String> _toStrList(dynamic v) {
-    if (v is! List) return const <String>[];
-    return v
-        .map((e) => e?.toString() ?? '')
-        .where((s) => s.isNotEmpty)
-        .toList();
-  }
+  static List<String> _toStrList(dynamic v) =>
+      JsonValueParser.toStringList(v, skipEmpty: true);
 
   static List<Map<String, String>> _toReminderList(dynamic v) {
     if (v is! List) return const <Map<String, String>>[];

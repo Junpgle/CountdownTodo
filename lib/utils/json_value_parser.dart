@@ -46,6 +46,24 @@ abstract final class JsonValueParser {
     return toNullableBool(value) ?? fallback;
   }
 
+  static List<String> toStringList(
+    dynamic value, {
+    bool skipEmpty = false,
+    bool wrapScalar = false,
+  }) {
+    if (value == null) return const <String>[];
+    if (value is List) {
+      final mapped = value.map((e) => e?.toString() ?? '');
+      return (skipEmpty ? mapped.where((s) => s.isNotEmpty) : mapped).toList();
+    }
+    if (wrapScalar) {
+      final text = value.toString();
+      if (skipEmpty && text.isEmpty) return const <String>[];
+      return <String>[text];
+    }
+    return const <String>[];
+  }
+
   /// Reads an enum's persisted index without letting unknown values abort a
   /// whole row or collection parse.
   static T enumByIndex<T extends Enum>(

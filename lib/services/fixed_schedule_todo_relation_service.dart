@@ -1,4 +1,5 @@
 import '../models.dart';
+import '../utils/text_utils.dart';
 
 /// A display group for fixed schedules related to a todo.
 ///
@@ -73,10 +74,8 @@ class FixedScheduleTodoRelationService {
     return List.unmodifiable(result);
   }
 
-  static String? _normalizeTeamId(String? value) {
-    final normalized = value?.trim();
-    return normalized == null || normalized.isEmpty ? null : normalized;
-  }
+  static String? _normalizeTeamId(String? value) =>
+      AppTextUtils.trimToNull(value);
 
   static int _compareOccurrences(
     FixedScheduleItem a,

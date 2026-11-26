@@ -42,6 +42,7 @@ import 'features/habits/models/habit_drink_option.dart';
 import 'features/habits/models/habit_sleep_coaching_plan.dart';
 import 'features/habits/services/habit_sync_conflict_service.dart';
 import 'features/finance/services/finance_sync_service.dart';
+import 'utils/text_utils.dart';
 
 part 'storage_service_fixed.dart';
 part 'storage_service_core.dart';
@@ -658,10 +659,7 @@ class StorageService {
     FixedScheduleItem baseline, {
     bool sync = true,
   }) async {
-    String? normalizeTeam(String? value) {
-      final normalized = value?.trim();
-      return normalized == null || normalized.isEmpty ? null : normalized;
-    }
+    String? normalizeTeam(String? value) => AppTextUtils.trimToNull(value);
 
     if (todo.id.trim().isEmpty ||
         todo.isDone ||

@@ -554,10 +554,8 @@ bool _mapBool(Map<String, dynamic> map, String key) {
   return value == true || value == 1 || value?.toString() == '1';
 }
 
-String? _nullableString(dynamic value) {
-  final text = value?.toString().trim();
-  return text == null || text.isEmpty ? null : text;
-}
+String? _nullableString(dynamic value) =>
+    AppTextUtils.trimToNull(value?.toString());
 
 int? _parseNullableInt(dynamic value) {
   return JsonValueParser.toNullableInt(value);

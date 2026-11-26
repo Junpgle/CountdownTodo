@@ -4,6 +4,7 @@ import 'package:sqflite/sqflite.dart';
 import 'database_helper.dart';
 import 'plan_todo_guard.dart';
 import 'scheduled_reminder_registry.dart';
+import '../utils/text_utils.dart';
 
 /// A scheduler may hold a stale plan snapshot. Check the latest stored status
 /// when queued reminders are applied; only pending plan states can be alerted.
@@ -16,10 +17,8 @@ class PlanReminderGuard {
         r['type'] == 'plan_block' &&
         ScheduledReminderRegistry.sourceOf(r) ==
             ScheduledReminderSources.reminderSchedule;
-    String? planId(Map<String, dynamic> reminder) {
-      final id = reminder['planBlockId']?.toString().trim();
-      return id == null || id.isEmpty ? null : id;
-    }
+    String? planId(Map<String, dynamic> reminder) =>
+        AppTextUtils.trimToNull(reminder['planBlockId']?.toString());
 
     final ids = reminders
         .where(isPlan)

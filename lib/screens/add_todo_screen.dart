@@ -40,6 +40,7 @@ import 'dart:async';
 
 import '../utils/app_dialogs.dart';
 import '../utils/semester_week_context.dart';
+import '../utils/text_utils.dart';
 
 part 'add_todo/add_todo_parsing.dart';
 part 'add_todo/add_todo_saving_and_suggestions.dart';
@@ -260,10 +261,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   _ManualCaptureKind? _lastObservedCaptureKind;
   bool? _lastCanPop;
 
-  String? get _relatedScheduleTeamUuid {
-    final value = widget.relatedFixedScheduleContext?.teamUuid?.trim();
-    return value == null || value.isEmpty ? null : value;
-  }
+  String? get _relatedScheduleTeamUuid =>
+      AppTextUtils.trimToNull(widget.relatedFixedScheduleContext?.teamUuid);
 
   @override
   void initState() {

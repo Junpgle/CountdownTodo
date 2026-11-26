@@ -654,10 +654,7 @@ extension _AddTodoParsingExt on _AddTodoScreenState {
     return null;
   }
 
-  String? _normalizeTeamUuid(String? value) {
-    final normalized = value?.trim();
-    return normalized == null || normalized.isEmpty ? null : normalized;
-  }
+  String? _normalizeTeamUuid(String? value) => AppTextUtils.trimToNull(value);
 
   String get _currentTeamScopeLabel {
     if (_selectedTeamUuid == null) return '个人私有';

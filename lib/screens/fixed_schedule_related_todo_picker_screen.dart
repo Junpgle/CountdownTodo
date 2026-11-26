@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../utils/time_utils.dart';
+import '../utils/text_utils.dart';
 
 typedef FixedScheduleRelatedTodoPageLoader =
     Future<({List<TodoItem> todos, bool hasMore})> Function(
@@ -64,10 +65,7 @@ class _FixedScheduleRelatedTodoPickerScreenState
   bool _completedExpanded = true;
   bool _unavailableExpanded = true;
 
-  String? get _normalizedTeamUuid {
-    final value = widget.teamUuid?.trim();
-    return value == null || value.isEmpty ? null : value;
-  }
+  String? get _normalizedTeamUuid => AppTextUtils.trimToNull(widget.teamUuid);
 
   @override
   void initState() {

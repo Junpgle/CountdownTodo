@@ -19,6 +19,7 @@ import 'services/github_resource_service.dart';
 import 'update_service_models.dart';
 import './utils/app_dialogs.dart';
 import './utils/time_utils.dart';
+import './utils/text_utils.dart';
 
 export 'update_service_models.dart';
 

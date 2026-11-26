@@ -1,5 +1,6 @@
 import '../models.dart';
 import 'item_semantics_service.dart';
+import '../utils/text_utils.dart';
 
 /// Normalizes recognition results before they enter the current TodoItem protocol.
 ///
@@ -250,8 +251,6 @@ class RecognizedTodoAdapter {
     }
   }
 
-  static String? _stringValue(dynamic raw) {
-    final value = raw?.toString().trim();
-    return value == null || value.isEmpty ? null : value;
-  }
+  static String? _stringValue(dynamic raw) =>
+      AppTextUtils.trimToNull(raw?.toString());
 }

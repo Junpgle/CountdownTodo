@@ -21,6 +21,7 @@ import '../utils/time_utils.dart';
 import '../widgets/fixed_schedule_reschedule_impact_dialog.dart';
 import 'fixed_schedule_related_todo_picker_screen.dart';
 import 'course_screens.dart';
+import '../utils/text_utils.dart';
 
 part 'fixed_schedule_editor/fixed_schedule_editor_save.dart';
 part 'fixed_schedule_editor/fixed_schedule_editor_view.dart';
@@ -136,10 +137,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
       _relatedTodoIds.length != _baselineRelatedTodoIds.length ||
       !_relatedTodoIds.containsAll(_baselineRelatedTodoIds);
 
-  String? _normalizeTeamUuid(String? value) {
-    final normalized = value?.trim();
-    return normalized == null || normalized.isEmpty ? null : normalized;
-  }
+  String? _normalizeTeamUuid(String? value) => AppTextUtils.trimToNull(value);
 
   String _scopeLabel(FixedScheduleEditScope scope) => switch (scope) {
     FixedScheduleEditScope.occurrence => '仅本次',

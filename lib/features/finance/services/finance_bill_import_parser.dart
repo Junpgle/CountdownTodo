@@ -8,6 +8,7 @@ import 'package:xml/xml.dart';
 
 import '../models/finance_models.dart';
 import 'finance_repository.dart';
+import '../../../utils/text_utils.dart';
 
 /// 支持导入的第三方账单平台。
 enum FinanceBillPlatform {
@@ -113,7 +114,7 @@ class FinanceBillImportItem {
       transactionDate: transactionDate,
       occurredAt: occurredAt,
       timezoneOffsetMinutes: timezoneOffsetMinutes,
-      merchant: merchant.trim().isEmpty ? null : merchant.trim(),
+      merchant: AppTextUtils.trimToNull(merchant),
       note: buildCombinedNote(),
       source: FinanceEntrySource.import,
     );

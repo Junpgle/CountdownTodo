@@ -125,10 +125,8 @@ Future<Set<String>> _invalidCategoryHierarchyUuids(
   return rejected;
 }
 
-String? _normalizeCategoryParentUuid(String? value) {
-  final normalized = value?.trim();
-  return normalized == null || normalized.isEmpty ? null : normalized;
-}
+String? _normalizeCategoryParentUuid(String? value) =>
+    AppTextUtils.trimToNull(value);
 
 Future<int> _mergeCategories(
   DatabaseExecutor db,
