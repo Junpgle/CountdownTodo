@@ -7,6 +7,7 @@ import 'plan_todo_guard.dart';
 import 'conflict_visibility_service.dart';
 import 'plan_settings_compatibility.dart';
 import '../utils/calendar_date_math.dart';
+import '../utils/time_utils.dart';
 
 /// Settings only: never carries the source plan's mutable execution metadata.
 class PlanReuseSettings {
@@ -146,7 +147,7 @@ class PlanReuseRepository {
       final minutes = milliseconds ~/ 60000;
       if (tentative
           .add(Duration(minutes: minutes))
-          .isAfter(DateTime(day.year, day.month, day.day + 1))) {
+          .isAfter(AppTimeFormats.localDayStartOffset(day, 1))) {
         tentative = day;
       }
       return PlanReuseSeed(

@@ -544,8 +544,8 @@ class PlanAvailabilityRepository {
     final todo = await PlanTodoGuard.read(db, identity, base.todoId);
     final invalid = PlanAvailabilityService.invalidReason(base, todo, now);
     if (invalid != null) throw PlanAvailabilityException(invalid);
-    final start = DateTime(base.date.year, base.date.month, base.date.day + 1);
-    var end = DateTime(start.year, start.month, start.day + 7);
+    final start = AppTimeFormats.localDayStartOffset(base.date, 1);
+    var end = AppTimeFormats.localDayStartOffset(start, 7);
     final due = PlanAvailabilityService.deadline(todo);
     if (due != null && !due.isAfter(start)) {
       await PlanAvailabilityPreferences.validateQueryDefaults(base);
@@ -567,13 +567,13 @@ class PlanAvailabilityRepository {
       final midnight = CalendarDateMath.dateOnly(due);
       end = due == midnight
           ? midnight
-          : DateTime(due.year, due.month, due.day + 1);
+          : AppTimeFormats.localDayStartOffset(due, 1);
     }
     final queries = <PlanAvailabilityQuery>[];
     for (
       var day = start;
       day.isBefore(end);
-      day = DateTime(day.year, day.month, day.day + 1)
+      day = AppTimeFormats.localDayStartOffset(day, 1)
     ) {
       queries.add(base.onDate(day, limit: 5));
     }
@@ -678,7 +678,7 @@ class PlanAvailabilityRepository {
     for (
       var day = start;
       day.isBefore(rangeEnd);
-      day = DateTime(day.year, day.month, day.day + 1)
+      day = AppTimeFormats.localDayStartOffset(day, 1)
     ) {
       queries.add(base.onDate(day, limit: 5));
     }
@@ -873,7 +873,7 @@ class PlanAvailabilityRepository {
       throw const PlanAvailabilityException('检查范围须为1至7天');
     }
     final start = CalendarDateMath.dateOnly(date);
-    final end = DateTime(start.year, start.month, start.day + days);
+    final end = AppTimeFormats.localDayStartOffset(start, days);
     final sources = await _readSources(
       username,
       start,
@@ -895,7 +895,7 @@ class PlanAvailabilityRepository {
             PlanAvailabilityQuery(
               username: username,
               todoId: '',
-              date: DateTime(start.year, start.month, start.day + i),
+              date: AppTimeFormats.localDayStartOffset(start, i),
               minutes: 1,
             ),
             sources.local,

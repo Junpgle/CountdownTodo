@@ -351,7 +351,7 @@ class TodoItem {
     final due = dueDate;
     if (due == null || timeMode != TodoTimeMode.dateOnly) return due;
     final localDue = due.toLocal();
-    final nextDay = DateTime(localDue.year, localDue.month, localDue.day + 1);
+    final nextDay = AppTimeFormats.localDayStartOffset(localDue, 1);
     return nextDay.subtract(const Duration(milliseconds: 1));
   }
 
@@ -1154,7 +1154,7 @@ class FixedScheduleItem {
     final parsedDate = DateTime.tryParse(date)?.toLocal();
     final start = DateTime.fromMillisecondsSinceEpoch(startTime!).toLocal();
     final day = parsedDate ?? start;
-    return DateTime(day.year, day.month, day.day + 1).millisecondsSinceEpoch;
+    return AppTimeFormats.localDayStartOffset(day, 1).millisecondsSinceEpoch;
   }
 
   FixedScheduleItem({

@@ -298,8 +298,8 @@ class WidgetService {
     if (_widgetUpdateDisabled) return;
     DateTime now = DateTime.now();
     DateTime today = CalendarDateMath.dateOnly(now);
-    final tomorrow = DateTime(today.year, today.month, today.day + 1);
-    final courseRangeEnd = DateTime(today.year, today.month, today.day + 15);
+    final tomorrow = AppTimeFormats.localDayStartOffset(today, 1);
+    final courseRangeEnd = AppTimeFormats.localDayStartOffset(today, 15);
     final courseDateFormat = AppTimeFormats.dateFormatter('yyyy-MM-dd');
 
     final results = await Future.wait([

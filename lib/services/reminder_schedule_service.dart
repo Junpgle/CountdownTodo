@@ -103,10 +103,9 @@ class ReminderScheduleService {
       final lastRelevantCourseStart = limit.add(
         Duration(minutes: loadedCourseReminderMinutes),
       );
-      final courseDateEndExclusive = DateTime(
-        lastRelevantCourseStart.year,
-        lastRelevantCourseStart.month,
-        lastRelevantCourseStart.day + 1,
+      final courseDateEndExclusive = AppTimeFormats.localDayStartOffset(
+        lastRelevantCourseStart,
+        1,
       );
       scheduledCourses = await loadCourses(now, courseDateEndExclusive);
     }

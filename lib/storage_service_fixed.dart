@@ -1140,10 +1140,9 @@ mixin _StorageFixed on _StorageServiceBase {
     DateTime day,
   ) async {
     final startOfDay = CalendarDateMath.dateOnly(day).millisecondsSinceEpoch;
-    final endOfDay = DateTime(
-      day.year,
-      day.month,
-      day.day + 1,
+    final endOfDay = AppTimeFormats.localDayStartOffset(
+      day,
+      1,
     ).millisecondsSinceEpoch;
 
     try {

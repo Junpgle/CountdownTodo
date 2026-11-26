@@ -48,7 +48,7 @@ class AiQueryToolService {
     AiFinanceBalanceTransactionLoader? loadBalanceTransactions,
     AiFinanceLoanRepaymentLoader? loadPaidLoanInstallments,
     Future<Map<String, dynamic>> Function({required bool includeLocation})?
-        loadDeviceContext,
+    loadDeviceContext,
     DateTime Function()? now,
   }) : loadFinanceData =
            loadFinanceData ??
@@ -73,10 +73,11 @@ class AiQueryToolService {
        now = now ?? DateTime.now {
     this.loadDeviceContext =
         loadDeviceContext ??
-        ({required includeLocation}) => AiDeviceContextService.readDeviceContext(
-          includeLocation: includeLocation,
-          nowOverride: this.now(),
-        );
+        ({required includeLocation}) =>
+            AiDeviceContextService.readDeviceContext(
+              includeLocation: includeLocation,
+              nowOverride: this.now(),
+            );
   }
 
   final AiAppDataLoader loadAppData;
@@ -92,7 +93,8 @@ class AiQueryToolService {
   final Future<List<FinanceBudget>> Function() loadBudgets;
   late final Future<Map<String, dynamic>> Function({
     required bool includeLocation,
-  }) loadDeviceContext;
+  })
+  loadDeviceContext;
 
   static const toolNames = {
     'query_finance',
@@ -321,7 +323,9 @@ query_*自动执行只读查询；propose_*只生成待确认操作草案，不�
         throw const FormatException('未开放的查询工具');
       }
       final rawArgs = call.arguments.trim();
-      final decoded = rawArgs.isEmpty ? const <String, dynamic>{} : jsonDecode(rawArgs);
+      final decoded = rawArgs.isEmpty
+          ? const <String, dynamic>{}
+          : jsonDecode(rawArgs);
       if (decoded is! Map) throw const FormatException('参数必须是JSON对象');
       final args = Map<String, dynamic>.from(decoded);
       final schema = buildDefinitions().firstWhere(
@@ -488,7 +492,7 @@ query_*自动执行只读查询；propose_*只生成待确认操作草案，不�
             !budget.isPaymentMethod &&
             budget.monthKey.compareTo(financeMonthKey(from)) >= 0 &&
             budget.monthKey.compareTo(
-                  financeMonthKey(DateTime(to.year, to.month, to.day - 1)),
+                  financeMonthKey(AppTimeFormats.localDayStartOffset(to, -1)),
                 ) <=
                 0 &&
             (args['category_id'] == null ||

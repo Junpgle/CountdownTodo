@@ -303,10 +303,9 @@ mixin _StorageTodoRecurrence on _StorageServiceBase {
         // earliest offset in that window, avoiding work for older dates that
         // would be discarded by the backfill cap below.
         final firstDay = diffDays > 126 ? diffDays - 125 : 1;
-        var weekday = DateTime(
-          baseDay.year,
-          baseDay.month,
-          baseDay.day + firstDay,
+        var weekday = AppTimeFormats.localDayStartOffset(
+          baseDay,
+          firstDay,
         ).weekday;
         for (var day = firstDay; day <= diffDays; day++) {
           if (weekday != DateTime.saturday && weekday != DateTime.sunday) {
@@ -691,10 +690,9 @@ mixin _StorageTodoRecurrence on _StorageServiceBase {
         nextKnownDay,
       );
       for (final candidateOffset in candidateOffsets) {
-        final candidateDay = DateTime(
-          previousDay.year,
-          previousDay.month,
-          previousDay.day + candidateOffset,
+        final candidateDay = AppTimeFormats.localDayStartOffset(
+          previousDay,
+          candidateOffset,
         );
         if (!candidateDay.isBefore(nextKnownDay)) continue;
 

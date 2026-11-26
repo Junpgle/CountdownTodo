@@ -5,6 +5,7 @@ import 'device_calendar_read_service.dart';
 import 'plan_review_repository.dart';
 import 'plan_todo_guard.dart';
 import '../utils/calendar_date_math.dart';
+import '../utils/time_utils.dart';
 
 enum HomeAgendaSource { plans, courses, fixed, calendar }
 
@@ -97,7 +98,7 @@ class HomeAgendaSnapshot {
       }
     }
     if (includeSchedules) {
-      final endOfDay = DateTime(day.year, day.month, day.day + 1);
+      final endOfDay = AppTimeFormats.localDayStartOffset(day, 1);
       for (final todo in todos) {
         if (todo.isDeleted ||
             todo.dueDate == null ||
@@ -111,9 +112,7 @@ class HomeAgendaSnapshot {
             : DateTime.fromMillisecondsSinceEpoch(
                 todo.createdDate ?? todo.createdAt,
               );
-        final end = allDay
-            ? DateTime(start.year, start.month, start.day + 1)
-            : due;
+        final end = allDay ? AppTimeFormats.localDayStartOffset(start, 1) : due;
         if (!end.isAfter(start) ||
             !start.isBefore(endOfDay) ||
             !end.isAfter(day)) {
@@ -151,7 +150,7 @@ class HomeAgendaSnapshot {
     var currentNonPlanCount = 0;
     var upcomingNonPlanCount = 0;
     var endedNonPlanCount = 0;
-    var nextBoundary = DateTime(day.year, day.month, day.day + 1);
+    var nextBoundary = AppTimeFormats.localDayStartOffset(day, 1);
     final planBoundary = plans?.card.nextBoundary;
     if (planBoundary != null &&
         planBoundary.isAfter(instant) &&
@@ -316,7 +315,7 @@ class HomeAgendaRepository {
         : await rangeLoader(
             username,
             from: day,
-            to: DateTime(day.year, day.month, day.day + 1),
+            to: AppTimeFormats.localDayStartOffset(day, 1),
           );
     for (final course in courses) {
       if (course.isDeleted) continue;
@@ -376,7 +375,7 @@ class HomeAgendaRepository {
   }) async {
     final identity = await PlanTodoIdentity.capture(username);
     final day = CalendarDateMath.dateOnly(now);
-    final end = DateTime(day.year, day.month, day.day + 1);
+    final end = AppTimeFormats.localDayStartOffset(day, 1);
     final canReuse =
         previous?.day == day &&
         previous?.identity.username == username &&

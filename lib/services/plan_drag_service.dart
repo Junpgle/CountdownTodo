@@ -40,7 +40,7 @@ class PlanDragGeometry {
     required PlanDragKind kind,
   }) {
     final first = CalendarDateMath.dateOnly(date);
-    final last = DateTime(date.year, date.month, date.day + 1);
+    final last = AppTimeFormats.localDayStartOffset(date, 1);
     if (step <= 0 ||
         !deltaMinutes.isFinite ||
         !original.end.isAfter(original.start) ||
@@ -145,7 +145,7 @@ class PlanDragService {
 
   void _times(PlanDragSnapshot expected, PlanDragTimes target) {
     final first = expected.date;
-    final last = DateTime(first.year, first.month, first.day + 1);
+    final last = AppTimeFormats.localDayStartOffset(first, 1);
     if (target.start.isBefore(first) ||
         target.end.isAfter(last) ||
         !target.end.isAfter(target.start) ||

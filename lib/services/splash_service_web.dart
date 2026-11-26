@@ -1,6 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'splash_service_shared.dart';
+import '../utils/time_utils.dart';
 
 class SplashService {
   static const String splashConfigUrl = SplashServiceShared.splashConfigUrl;
@@ -8,7 +9,7 @@ class SplashService {
   static Future<void> prefetchTomorrowContent() async {
     try {
       final today = DateTime.now();
-      final tomorrow = DateTime(today.year, today.month, today.day + 1);
+      final tomorrow = AppTimeFormats.localDayStartOffset(today, 1);
       await _fetchAndStore(
         date: tomorrow,
         dateKey: SplashServiceShared.prefetchedContentDateKey,

@@ -73,18 +73,14 @@ AiContextDateRange? _resolveCustomInjectionDateRange({
 }) {
   if (customStart == null || customEnd == null) return null;
   final selectedStart = CalendarDateMath.dateOnly(customStart);
-  final selectedEndExclusive = DateTime(
-    customEnd.year,
-    customEnd.month,
-    customEnd.day + 1,
-  );
+  final selectedEndExclusive = AppTimeFormats.localDayStartOffset(customEnd, 1);
   if (!injectMoreContext) {
     return AiContextDateRange(selectedStart, selectedEndExclusive);
   }
 
   final current = now ?? DateTime.now();
   final today = CalendarDateMath.dateOnly(current);
-  final futureEndExclusive = DateTime(today.year, today.month, today.day + 30);
+  final futureEndExclusive = AppTimeFormats.localDayStartOffset(today, 30);
   return AiContextDateRange(
     selectedStart.isBefore(today) ? selectedStart : today,
     selectedEndExclusive.isAfter(futureEndExclusive)

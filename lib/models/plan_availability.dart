@@ -1,6 +1,7 @@
 import '../models.dart';
 import 'plan_weekly_availability.dart';
 import '../utils/calendar_date_math.dart';
+import '../utils/time_utils.dart';
 
 enum PlanBusySource {
   course,
@@ -126,7 +127,7 @@ class PlanAvailabilityQuery {
     busy.end.add(Duration(minutes: bufferBefore)),
   );
   DateTime get dayStart => CalendarDateMath.dateOnly(date);
-  DateTime get dayEnd => DateTime(date.year, date.month, date.day + 1);
+  DateTime get dayEnd => AppTimeFormats.localDayStartOffset(date, 1);
 }
 
 /// The fixed-schedule occurrence that bounds a preparation plan. The start

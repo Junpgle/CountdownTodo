@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'github_resource_service.dart';
 import 'splash_service_shared.dart';
+import '../utils/time_utils.dart';
 
 class SplashService {
   static final GitHubResourceService _resourceService = GitHubResourceService();
@@ -13,7 +14,7 @@ class SplashService {
   static Future<void> prefetchTomorrowContent() async {
     try {
       final today = DateTime.now();
-      final tomorrow = DateTime(today.year, today.month, today.day + 1);
+      final tomorrow = AppTimeFormats.localDayStartOffset(today, 1);
       final tomorrowStr = SplashServiceShared.formatDate(tomorrow);
 
       final prefs = await SharedPreferences.getInstance();

@@ -164,11 +164,7 @@ class OngoingActivityService {
           });
     if (todayTodos.isNotEmpty) {
       boundaries.add(
-        DateTime(
-          localNow.year,
-          localNow.month,
-          localNow.day + 1,
-        ).millisecondsSinceEpoch,
+        AppTimeFormats.localDayStartOffset(localNow, 1).millisecondsSinceEpoch,
       );
     }
 

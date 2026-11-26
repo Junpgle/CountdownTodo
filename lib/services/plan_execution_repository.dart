@@ -55,10 +55,9 @@ class PlanExecutionRepository {
         databaseOverride ??
         await DatabaseHelper.instance.databaseForUser(username);
     final start = CalendarDateMath.dateOnly(date).millisecondsSinceEpoch;
-    final end = DateTime(
-      date.year,
-      date.month,
-      date.day + 1,
+    final end = AppTimeFormats.localDayStartOffset(
+      date,
+      1,
     ).millisecondsSinceEpoch;
     // Preserve PomodoroService's one-time Prefs migration when the SQL table
     // is empty; ordinary day reads do not load the entire record history.

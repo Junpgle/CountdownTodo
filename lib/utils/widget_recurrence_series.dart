@@ -121,8 +121,7 @@ _WidgetRecurrenceSeriesAnalysis _analyzeSeriesOccurrences(
     if (start.isAfter(now)) continue;
     elapsedCount++;
     final effectiveEnd =
-        todo.dueDate?.toLocal() ??
-        DateTime(start.year, start.month, start.day + 1);
+        todo.dueDate?.toLocal() ?? AppTimeFormats.localDayStartOffset(start, 1);
     if (effectiveEnd.isBefore(now)) overdueCount++;
   }
 

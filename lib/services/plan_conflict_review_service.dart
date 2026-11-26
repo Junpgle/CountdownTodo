@@ -129,11 +129,7 @@ class PlanConflictReviewService {
       final seen = <String>{};
       for (final day in data.days) {
         if (day.date.isBefore(today)) continue;
-        final dayEnd = DateTime(
-          day.date.year,
-          day.date.month,
-          day.date.day + 1,
-        );
+        final dayEnd = AppTimeFormats.localDayStartOffset(day.date, 1);
         for (final source in day.busy) {
           if (source.source == PlanBusySource.planBlock &&
               source.id == block.id) {
@@ -240,7 +236,7 @@ class PlanConflictReviewService {
     final deadline = due == null
         ? null
         : todo.isDateOnly
-        ? DateTime(due.year, due.month, due.day + 1)
+        ? AppTimeFormats.localDayStartOffset(due, 1)
         : due;
     if (!allowFocusStatus && deadline != null && !deadline.isAfter(now)) {
       throw const PlanAvailabilityException('待办截止已过，请先调整截止再改期');

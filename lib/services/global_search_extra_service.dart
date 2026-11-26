@@ -239,11 +239,7 @@ abstract final class GlobalSearchExtraService {
           : CalendarDateMath.dateOnly(date);
       final transactionTo = transactionFrom == null
           ? null
-          : DateTime(
-              transactionFrom.year,
-              transactionFrom.month,
-              transactionFrom.day + 1,
-            );
+          : AppTimeFormats.localDayStartOffset(transactionFrom, 1);
       final budgetMonth = date == null
           ? null
           : AppTimeFormats.dateFormatter('yyyy-MM').format(date);

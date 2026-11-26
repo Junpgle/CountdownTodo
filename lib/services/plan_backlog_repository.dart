@@ -11,6 +11,7 @@ import 'conflict_visibility_service.dart';
 import 'database_helper.dart';
 import 'plan_todo_guard.dart';
 import '../utils/calendar_date_math.dart';
+import '../utils/time_utils.dart';
 
 class PlanBacklogRow {
   factory PlanBacklogRow(Map<String, Object?> row, bool paused) {
@@ -118,8 +119,8 @@ class PlanBacklogRepository {
         await DatabaseHelper.instance.databaseForUser(username);
     final instant = now;
     final day = CalendarDateMath.dateOnly(target);
-    final tomorrow = DateTime(day.year, day.month, day.day + 1);
-    final midnight = DateTime(instant.year, instant.month, instant.day + 1);
+    final tomorrow = AppTimeFormats.localDayStartOffset(day, 1);
+    final midnight = AppTimeFormats.localDayStartOffset(instant, 1);
     final ms = instant.millisecondsSinceEpoch;
     final escaped = search
         .trim()
