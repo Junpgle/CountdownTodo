@@ -1,5 +1,100 @@
 part of '../lan_sync_service_io.dart';
 
+List<String> _buildSubnetHosts(String localIp) {
+  final parts = localIp.split('.');
+  if (parts.length != 4) return const <String>[];
+  final subnet = '${parts[0]}.${parts[1]}.${parts[2]}';
+  final hosts = <String>[];
+  for (int host = 1; host < 255; host++) {
+    final ip = '$subnet.$host';
+    if (ip == localIp) continue;
+    hosts.add(ip);
+  }
+  return hosts;
+}
+
+Future<List<Map<String, Object?>>> _probeLanSubnetHosts({
+  required List<String> targetIps,
+  required String localIp,
+  required int port,
+  required String? currentDeviceId,
+  required int batchSize,
+  required int connectionTimeoutMs,
+  required int responseTimeoutMs,
+}) async {
+  final client = HttpClient();
+  client.connectionTimeout = Duration(milliseconds: connectionTimeoutMs);
+  final connectionTimeout = Duration(milliseconds: connectionTimeoutMs);
+  final responseTimeout = Duration(milliseconds: responseTimeoutMs);
+  final discovered = <Map<String, Object?>>[];
+  try {
+    final step = batchSize > 0 ? batchSize : 24;
+    for (int i = 0; i < targetIps.length; i += step) {
+      final end = (i + step).clamp(0, targetIps.length);
+      final futures = <Future<void>>[];
+      for (int idx = i; idx < end; idx++) {
+        final ip = targetIps[idx];
+        if (ip == localIp) continue;
+        futures.add(() async {
+          try {
+            final request = await client
+                .getUrl(Uri.parse('http://$ip:$port/discover'))
+                .timeout(connectionTimeout);
+            final response = await request.close().timeout(responseTimeout);
+            final body = await response.transform(utf8.decoder).join();
+            final data = jsonDecode(body) as Map<String, dynamic>;
+            final remoteDeviceId = data['deviceId']?.toString();
+            if (remoteDeviceId != null && remoteDeviceId != currentDeviceId) {
+              discovered.add(<String, Object?>{
+                'ip': ip,
+                'port': (data['port'] as num?)?.toInt() ?? port,
+                'deviceId': remoteDeviceId,
+                'userId': data['userId']?.toString(),
+                'deviceName': data['deviceName']?.toString() ?? '未知设备',
+              });
+            }
+          } catch (_) {}
+        }());
+      }
+      await Future.wait(futures);
+    }
+  } finally {
+    client.close(force: true);
+  }
+  return discovered;
+}
+
+/// Probes hosts in [localIp]'s `/24` subnet inside a background [Isolate]
+/// so socket connect attempts do not contend with main-isolate UI frames.
+@visibleForTesting
+Future<List<Map<String, Object?>>> scanLanSubnetInIsolate({
+  required String localIp,
+  required int port,
+  String? currentDeviceId,
+  int batchSize = 24,
+  Duration connectionTimeout = const Duration(milliseconds: 500),
+  Duration responseTimeout = const Duration(milliseconds: 700),
+  List<String>? targetIpsOverride,
+}) {
+  final ips = targetIpsOverride ?? _buildSubnetHosts(localIp);
+  if (ips.isEmpty) {
+    return Future<List<Map<String, Object?>>>.value(
+      const <Map<String, Object?>>[],
+    );
+  }
+  return Isolate.run(
+    () => _probeLanSubnetHosts(
+      targetIps: ips,
+      localIp: localIp,
+      port: port,
+      currentDeviceId: currentDeviceId,
+      batchSize: batchSize,
+      connectionTimeoutMs: connectionTimeout.inMilliseconds,
+      responseTimeoutMs: responseTimeout.inMilliseconds,
+    ),
+  );
+}
+
 mixin _LanSyncDiscoveryMixin on _LanSyncServiceBase {
   @override
   void triggerDiscovery() {
@@ -126,8 +221,6 @@ mixin _LanSyncDiscoveryMixin on _LanSyncServiceBase {
     String localIp, {
     bool ignoreRunningState = false,
   }) async {
-    final client = HttpClient();
-    client.connectionTimeout = const Duration(milliseconds: 500);
     try {
       final parts = localIp.split('.');
       if (parts.length != 4) return;
@@ -136,68 +229,44 @@ mixin _LanSyncDiscoveryMixin on _LanSyncServiceBase {
       debugPrint(
         '[LanSync] Scanning HTTP subnet $subnet.1-254 (localIp=$localIp, user=$_currentUserId)',
       );
-      const batchSize = 64;
-      for (int firstHost = 1; firstHost < 255; firstHost += batchSize) {
-        if (!ignoreRunningState && !_isRunning) break;
-        final lastHost = (firstHost + batchSize).clamp(1, 255);
-        final futures = <Future<void>>[];
-        for (int host = firstHost; host < lastHost; host++) {
-          final ip = '$subnet.$host';
-          if (ip == localIp) continue;
-          futures.add(
-            _tryConnect(client, ip, ignoreRunningState: ignoreRunningState),
+      final discovered = await scanLanSubnetInIsolate(
+        localIp: localIp,
+        port: _defaultHttpPort,
+        currentDeviceId: _currentDeviceId,
+      );
+      if (!ignoreRunningState && !_isRunning) return;
+
+      for (final peer in discovered) {
+        final remoteDeviceId = peer['deviceId']?.toString();
+        final remoteUserId = peer['userId']?.toString();
+        final ip = peer['ip']?.toString() ?? '';
+        if (remoteDeviceId == null || remoteDeviceId == _currentDeviceId) {
+          continue;
+        }
+        if (_discoverAllDevices || _isSameUser(remoteUserId, _currentUserId)) {
+          final device = LanDevice(
+            deviceId: remoteDeviceId,
+            userId: remoteUserId ?? '',
+            deviceName: peer['deviceName']?.toString() ?? '未知设备',
+            ip: ip,
+            port: (peer['port'] as num?)?.toInt() ?? _defaultHttpPort,
+            lastSeen: DateTime.now().millisecondsSinceEpoch,
+          );
+          _devices[device.deviceId] = device;
+          debugPrint(
+            '[LanSync] HTTP discovered peer ${device.deviceName} ($ip:${device.port}, user=${device.userId})',
+          );
+        } else {
+          debugPrint(
+            '[LanSync] HTTP peer $ip ignored due to userId mismatch: remote=$remoteUserId, local=$_currentUserId',
           );
         }
-        await Future.wait(futures);
       }
 
       _emitDevices();
     } catch (e) {
       debugPrint('[LanSync] _scanSubnet error: $e');
-    } finally {
-      client.close(force: true);
     }
-  }
-
-  Future<void> _tryConnect(
-    HttpClient client,
-    String ip, {
-    bool ignoreRunningState = false,
-  }) async {
-    if (!ignoreRunningState && !_isRunning) return;
-    try {
-      final request = await client
-          .getUrl(Uri.parse('http://$ip:$_defaultHttpPort/discover'))
-          .timeout(const Duration(milliseconds: 500));
-      final response = await request.close().timeout(
-        const Duration(milliseconds: 700),
-      );
-      final body = await response.transform(utf8.decoder).join();
-      final data = jsonDecode(body) as Map<String, dynamic>;
-
-      final remoteDeviceId = data['deviceId']?.toString();
-      final remoteUserId = data['userId']?.toString();
-      if (remoteDeviceId != null &&
-          remoteDeviceId != _currentDeviceId &&
-          (_discoverAllDevices || _isSameUser(remoteUserId, _currentUserId))) {
-        final device = LanDevice(
-          deviceId: remoteDeviceId,
-          userId: remoteUserId ?? '',
-          deviceName: data['deviceName']?.toString() ?? '未知设备',
-          ip: ip,
-          port: (data['port'] as num?)?.toInt() ?? _defaultHttpPort,
-          lastSeen: DateTime.now().millisecondsSinceEpoch,
-        );
-        _devices[device.deviceId] = device;
-        debugPrint(
-          '[LanSync] HTTP discovered peer ${device.deviceName} ($ip:${device.port}, user=${device.userId})',
-        );
-      } else if (remoteDeviceId != null && remoteDeviceId != _currentDeviceId) {
-        debugPrint(
-          '[LanSync] HTTP peer $ip ignored due to userId mismatch: remote=$remoteUserId, local=$_currentUserId',
-        );
-      }
-    } catch (_) {}
   }
 
   @override
