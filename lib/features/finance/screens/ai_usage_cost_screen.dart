@@ -414,28 +414,15 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
   Future<void> _removePricing(AiUsagePricing item) async {
     final isBuiltIn = AiUsageCostService.isBuiltInPricing(item);
     final actionLabel = isBuiltIn ? '恢复' : '删除';
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(isBuiltIn ? '恢复内置单价' : '删除模型单价'),
-        content: Text(
-          isBuiltIn
-              ? '将“${item.provider} · ${item.model}”恢复为应用内置价格。'
-              : '将删除“${item.provider} · ${item.model}”的单价。已计价记录会保留，之后没有可用单价的调用会显示为待定价。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(actionLabel),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: isBuiltIn ? '恢复内置单价' : '删除模型单价',
+      message: isBuiltIn
+          ? '将“${item.provider} · ${item.model}”恢复为应用内置价格。'
+          : '将删除“${item.provider} · ${item.model}”的单价。已计价记录会保留，之后没有可用单价的调用会显示为待定价。',
+      confirmLabel: actionLabel,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     await AiUsageCostService.deletePricing(item.id);
     await _load();
   }

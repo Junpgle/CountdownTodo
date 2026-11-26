@@ -55,24 +55,13 @@ class _JournalDetailScreenState extends State<JournalDetailScreen> {
   }
 
   Future<void> _delete() async {
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('移至回收站？'),
-        content: const Text('日记文字和照片会保留在本机，可随时从回收站恢复。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('移至回收站'),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '移至回收站？',
+      message: '日记文字和照片会保留在本机，可随时从回收站恢复。',
+      confirmLabel: '移至回收站',
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     try {
       final moved = await _storage.moveEntryToTrash(
         _entry.id,

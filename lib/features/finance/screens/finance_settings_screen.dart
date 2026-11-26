@@ -289,23 +289,12 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen>
     required String title,
     required String message,
   }) {
-    return showAppDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        icon: const Icon(Icons.archive_outlined),
-        title: Text(title),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('归档'),
-          ),
-        ],
-      ),
+    return AppDialogs.confirm(
+      context,
+      icon: const Icon(Icons.archive_outlined),
+      title: title,
+      message: message,
+      confirmLabel: '归档',
     );
   }
 

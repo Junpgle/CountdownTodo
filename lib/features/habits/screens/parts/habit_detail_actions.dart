@@ -200,27 +200,14 @@ extension _HabitDetailActions on _HabitDetailScreenState {
   }
 
   Future<void> _deleteHabit() async {
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('删除习惯'),
-        content: Text('确定删除「${_goal.name}」吗？历史记录将保留但不再展示。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '删除习惯',
+      message: '确定删除「${_goal.name}」吗？历史记录将保留但不再展示。',
+      confirmLabel: '删除',
+      destructive: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     await HabitRepository.deleteGoal(_goal);
     if (mounted) Navigator.of(context).pop(true);
   }

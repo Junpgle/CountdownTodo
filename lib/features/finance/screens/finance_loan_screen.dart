@@ -158,27 +158,15 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen>
 
   Future<void> _deleteLoan(FinanceLoan loan) async {
     final displayName = _displayName(loan);
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('删除“$displayName”？'),
-        content: const Text(
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '删除“$displayName”？',
+      message:
           '贷款和还款计划会进入记账回收站，已发生的还款扣款和利息账单会保留。'
           '如需恢复余额，请先撤销对应还款。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+      confirmLabel: '删除',
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     try {
       await FinanceRepository.deleteLoan(loan.uuid);
       if (!mounted) return;

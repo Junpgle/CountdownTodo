@@ -199,27 +199,16 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
 
     if (_hasStarted && _currentChallenge != null) {
       final current = _currentChallenge!;
-      final shouldReplace = await showAppDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          icon: const Icon(Icons.auto_awesome_rounded),
-          title: const Text('开启新的挑战？'),
-          content: Text(
+      final shouldReplace = await AppDialogs.confirm(
+        context,
+        icon: const Icon(Icons.auto_awesome_rounded),
+        title: '开启新的挑战？',
+        message:
             '当前正在进行「${current.challengeTitle}」。开启新挑战后，当前挑战的完成状态、感受和图片将被替换，无法恢复。',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('继续当前挑战'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('开启新挑战'),
-            ),
-          ],
-        ),
+        cancelLabel: '继续当前挑战',
+        confirmLabel: '开启新挑战',
       );
-      if (shouldReplace != true || !mounted) return;
+      if (!shouldReplace || !mounted) return;
     }
 
     setState(() => _isStarting = true);

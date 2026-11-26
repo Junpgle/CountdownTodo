@@ -57,27 +57,16 @@ extension _ThirtyDayChallengeActionsExt on _ThirtyDayChallengeScreenState {
           ? await ThirtyDayChallengeRepository.load()
           : _state;
       if (!mounted) return;
-      final shouldReplace = await showAppDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          icon: const Icon(Icons.auto_awesome_rounded),
-          title: const Text('开启新的挑战？'),
-          content: Text(
+      final shouldReplace = await AppDialogs.confirm(
+        context,
+        icon: const Icon(Icons.auto_awesome_rounded),
+        title: '开启新的挑战？',
+        message:
             '当前正在进行「${currentState?.challengeTitle ?? '当前挑战'}」。开始新挑战后，当前挑战的完成状态、感受和图片将被替换，无法恢复。',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('继续当前挑战'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('开启新挑战'),
-            ),
-          ],
-        ),
+        cancelLabel: '继续当前挑战',
+        confirmLabel: '开启新挑战',
       );
-      if (shouldReplace != true || !mounted) return;
+      if (!shouldReplace || !mounted) return;
     }
 
     try {
@@ -114,30 +103,18 @@ extension _ThirtyDayChallengeActionsExt on _ThirtyDayChallengeScreenState {
   Future<void> _enterChallenge() async {
     final challengeTitle =
         _state?.challengeTitle ?? ThirtyDayChallengeState.defaultTitle;
-    final shouldStart = await showAppDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        final scheme = Theme.of(dialogContext).colorScheme;
-        return AlertDialog(
-          icon: Icon(Icons.cloud_off_rounded, color: scheme.primary),
-          title: const Text('本活动仅保存在当前设备'),
-          content: Text(
-            '“$challengeTitle”目前不支持跨端同步。完成状态、任务调整、感受和图片记录只会保存在当前设备。',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('暂不开始'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('知道了，开始挑战'),
-            ),
-          ],
-        );
-      },
+    final shouldStart = await AppDialogs.confirm(
+      context,
+      icon: Icon(
+        Icons.cloud_off_rounded,
+        color: Theme.of(context).colorScheme.primary,
+      ),
+      title: '本活动仅保存在当前设备',
+      message: '“$challengeTitle”目前不支持跨端同步。完成状态、任务调整、感受和图片记录只会保存在当前设备。',
+      cancelLabel: '暂不开始',
+      confirmLabel: '知道了，开始挑战',
     );
-    if (shouldStart != true || !mounted) return;
+    if (!shouldStart || !mounted) return;
 
     try {
       if (widget.showBuiltInIntroduction) {
@@ -147,27 +124,16 @@ extension _ThirtyDayChallengeActionsExt on _ThirtyDayChallengeScreenState {
         if (hasExistingChallenge) {
           final currentState = await ThirtyDayChallengeRepository.load();
           if (!mounted) return;
-          final shouldReplace = await showAppDialog<bool>(
-            context: context,
-            builder: (dialogContext) => AlertDialog(
-              icon: const Icon(Icons.auto_awesome_rounded),
-              title: const Text('开始经典挑战？'),
-              content: Text(
+          final shouldReplace = await AppDialogs.confirm(
+            context,
+            icon: const Icon(Icons.auto_awesome_rounded),
+            title: '开始经典挑战？',
+            message:
                 '当前正在进行「${currentState.challengeTitle}」。开始经典挑战后，当前挑战的完成状态、感受和图片将被替换，无法恢复。',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(false),
-                  child: const Text('继续当前挑战'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(true),
-                  child: const Text('开始经典挑战'),
-                ),
-              ],
-            ),
+            cancelLabel: '继续当前挑战',
+            confirmLabel: '开始经典挑战',
           );
-          if (shouldReplace != true || !mounted) return;
+          if (!shouldReplace || !mounted) return;
         }
 
         final state =
@@ -245,34 +211,19 @@ extension _ThirtyDayChallengeActionsExt on _ThirtyDayChallengeScreenState {
     final challengeTitle =
         state?.challengeTitle ?? ThirtyDayChallengeState.defaultTitle;
 
-    final shouldAbandon = await showAppDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        final scheme = Theme.of(dialogContext).colorScheme;
-        return AlertDialog(
-          icon: Icon(Icons.delete_sweep_rounded, color: scheme.error),
-          title: Text('放弃「$challengeTitle」？'),
-          content: Text(
-            '放弃后会清空 $taskCount 项任务的完成状态、任务调整、感受和图片记录，之后可以重新开始。此操作无法恢复。',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('继续挑战'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: scheme.error,
-                foregroundColor: scheme.onError,
-              ),
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('放弃并清空'),
-            ),
-          ],
-        );
-      },
+    final shouldAbandon = await AppDialogs.confirm(
+      context,
+      icon: Icon(
+        Icons.delete_sweep_rounded,
+        color: Theme.of(context).colorScheme.error,
+      ),
+      title: '放弃「$challengeTitle」？',
+      message: '放弃后会清空 $taskCount 项任务的完成状态、任务调整、感受和图片记录，之后可以重新开始。此操作无法恢复。',
+      cancelLabel: '继续挑战',
+      confirmLabel: '放弃并清空',
+      destructive: true,
     );
-    if (shouldAbandon != true) return;
+    if (!shouldAbandon) return;
 
     try {
       await ThirtyDayChallengeRepository.abandonChallenge();
@@ -300,27 +251,14 @@ extension _ThirtyDayChallengeActionsExt on _ThirtyDayChallengeScreenState {
     final state = _state;
     if (state == null || _isShuffling) return;
 
-    final shouldReset = await showAppDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        icon: const Icon(Icons.restart_alt_rounded),
-        title: const Text('重置全部打卡状态？'),
-        content: Text(
-          '这会清除 ${state.tasks.length} 项任务的完成标记和完成时间，但会保留你调整过的任务、感受和图片记录。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('重置状态'),
-          ),
-        ],
-      ),
+    final shouldReset = await AppDialogs.confirm(
+      context,
+      icon: const Icon(Icons.restart_alt_rounded),
+      title: '重置全部打卡状态？',
+      message: '这会清除 ${state.tasks.length} 项任务的完成标记和完成时间，但会保留你调整过的任务、感受和图片记录。',
+      confirmLabel: '重置状态',
     );
-    if (shouldReset != true || !mounted) return;
+    if (!shouldReset || !mounted) return;
 
     try {
       await ThirtyDayChallengeRepository.resetProgress(state);

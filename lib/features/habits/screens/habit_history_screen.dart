@@ -272,27 +272,14 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
 
   Future<void> _deleteCheckIn(HabitCheckIn checkIn) async {
     final isFreeze = checkIn.source == HabitCheckInSource.freeze;
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(isFreeze ? '撤销免扣守护' : '删除打卡'),
-        content: Text(isFreeze ? '确定撤销该日的免扣卡守护吗？免扣卡将自动退回背包。' : '确定删除这条打卡记录吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-            child: Text(isFreeze ? '撤销守护' : '删除'),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: isFreeze ? '撤销免扣守护' : '删除打卡',
+      message: isFreeze ? '确定撤销该日的免扣卡守护吗？免扣卡将自动退回背包。' : '确定删除这条打卡记录吗？',
+      confirmLabel: isFreeze ? '撤销守护' : '删除',
+      destructive: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     if (isFreeze) {
       await HabitFreezeService.revokeFreeze(
         goal: widget.goal,

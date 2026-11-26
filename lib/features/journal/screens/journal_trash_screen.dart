@@ -126,27 +126,15 @@ class _JournalTrashScreenState extends State<JournalTrashScreen> {
   }
 
   Future<void> _permanentlyDelete(JournalEntry entry) async {
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('永久删除这篇日记？'),
-        content: Text(
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '永久删除这篇日记？',
+      message:
           '“${entry.title?.trim().isNotEmpty == true ? entry.title : '无题'}”'
           '及其 ${entry.attachments.length} 张照片将从本机删除，无法恢复。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('永久删除'),
-          ),
-        ],
-      ),
+      confirmLabel: '永久删除',
     );
-    if (confirmed != true || !mounted || !_busyEntryIds.add(entry.id)) return;
+    if (!confirmed || !mounted || !_busyEntryIds.add(entry.id)) return;
     setState(() {});
     try {
       final attachments = await _storage.permanentlyDeleteEntryFromTrash(

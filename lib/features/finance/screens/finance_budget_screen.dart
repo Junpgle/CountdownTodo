@@ -460,24 +460,13 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen>
     final warning = budget.isPaymentMethod
         ? '删除这条余额快照后，会按更早的余额快照和账单重新计算；如果没有更早快照，该付款方式将不再显示余额。已有账单不会删除。'
         : '删除预算记录不会影响已有账单。';
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('删除$itemName？'),
-        content: Text(warning),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '删除$itemName？',
+      message: warning,
+      confirmLabel: '删除',
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     try {
       await FinanceRepository.deleteBudget(budget.uuid);
     } catch (error) {

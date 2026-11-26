@@ -310,28 +310,14 @@ extension _FinanceLedgerActionsExt on _FinanceLedgerPanelState {
 
   Future<void> _batchDeleteSelected(List<FinanceTransaction> selected) async {
     if (_isBatchSaving || selected.isEmpty) return;
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('删除所选 ${selected.length} 笔账单？'),
-        content: const Text('删除后将移入回收站，不会计入统计，也可在回收站恢复。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-              foregroundColor: Theme.of(context).colorScheme.onError,
-            ),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '删除所选 ${selected.length} 笔账单？',
+      message: '删除后将移入回收站，不会计入统计，也可在回收站恢复。',
+      confirmLabel: '删除',
+      destructive: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     _mutateState(() => _isBatchSaving = true);
     try {
