@@ -1,3 +1,4 @@
+import '../../../utils/time_utils.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
@@ -911,9 +912,7 @@ abstract final class HabitAiContextService {
 
   static String _formatMinute(int? minute) {
     if (minute == null) return '时间未设定';
-    final hourText = (minute ~/ 60).toString().padLeft(2, '0');
-    final minuteText = (minute % 60).toString().padLeft(2, '0');
-    return '$hourText:$minuteText';
+    return AppTimeFormats.hourMinute(minute ~/ 60, minute % 60);
   }
 
   static String _dateKey(DateTime date) =>

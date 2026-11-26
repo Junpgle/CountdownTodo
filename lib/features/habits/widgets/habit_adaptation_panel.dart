@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/habit_goal_rule.dart';
 import '../services/habit_adaptation_service.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/time_utils.dart';
 import 'habit_guide_faq.dart';
 
 part 'habit_adaptation/habit_activity_guides.dart';

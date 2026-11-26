@@ -907,26 +907,12 @@ extension _ConflictInboxCardsExt on _ConflictInboxScreenState {
     final subtitle = hasAnyConflicts
         ? '可以切换到“全部”或其他分类查看待处理项'
         : '目前没有任何待解决的同步冲突';
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.verified_user_rounded,
-            size: 80,
-            color: Colors.green.withValues(alpha: 0.2),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            title,
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
-          ),
-          Text(
-            subtitle,
-            style: const TextStyle(fontSize: 12, color: Colors.grey),
-          ),
-        ],
-      ),
+    return AppEmptyState(
+      icon: Icons.verified_user_rounded,
+      iconSize: 80,
+      iconColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.25),
+      title: title,
+      message: subtitle,
     );
   }
 }

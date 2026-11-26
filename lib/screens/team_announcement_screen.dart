@@ -5,6 +5,7 @@ import '../models.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/json_value_parser.dart';
 import '../widgets/app_sheet_widgets.dart';
+import '../widgets/app_state_views.dart';
 import '../widgets/floating_glass_control.dart';
 import '../utils/time_utils.dart';
 
@@ -494,19 +495,12 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
   }
 
   Widget _buildEmptyState(bool isDark) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.campaign_outlined,
-            size: 64,
-            color: Colors.grey.withValues(alpha: 0.3),
-          ),
-          const SizedBox(height: 16),
-          Text('暂无团队公告', style: TextStyle(color: Colors.grey.shade500)),
-        ],
-      ),
+    return AppEmptyState(
+      icon: Icons.campaign_outlined,
+      iconSize: 64,
+      iconColor: Theme.of(context).colorScheme.onSurfaceVariant
+          .withValues(alpha: 0.35),
+      title: '暂无团队公告',
     );
   }
 

@@ -16,6 +16,7 @@ import '../widgets/habit_adaptation_panel.dart';
 import '../widgets/habit_emoji_picker_dialog.dart';
 import '../widgets/habit_water_target_picker.dart';
 import '../../../widgets/floating_glass_control.dart';
+import '../../../utils/app_color_utils.dart';
 import '../../../utils/app_dialogs.dart';
 
 part 'parts/habit_edit_actions.dart';

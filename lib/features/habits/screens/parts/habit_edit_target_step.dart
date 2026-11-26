@@ -328,12 +328,7 @@ extension _HabitEditTargetStep on _HabitEditScreenState {
     );
   }
 
-  Color _parseTagColor(String hex) {
-    var value = hex.replaceAll('#', '');
-    if (value.length == 6) value = 'FF$value';
-    final parsed = int.tryParse(value, radix: 16);
-    return parsed == null ? const Color(0xFF607D8B) : Color(parsed);
-  }
+  Color _parseTagColor(String hex) => AppColorUtils.parseHex(hex);
 
   Widget _buildReadingTarget(
     ColorScheme colorScheme,

@@ -83,9 +83,10 @@ abstract final class HabitText {
   /// 目标时间文案（分钟 → HH:mm）。
   static String targetTime(int? minuteOfDay) {
     if (minuteOfDay == null) return '';
-    final h = (minuteOfDay ~/ 60) % 24;
-    final m = minuteOfDay % 60;
-    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+    return AppTimeFormats.hourMinute(
+      (minuteOfDay ~/ 60) % 24,
+      minuteOfDay % 60,
+    );
   }
 
   /// 时间点型习惯的状态说明，如「比目标早 12 分钟」。

@@ -601,13 +601,6 @@ extension _ThirtyDayChallengeActionsExt on _ThirtyDayChallengeScreenState {
     final selectedTagUuids = List<String>.from(state.focusTagUuids);
     var autoCompleteOnFocus = state.autoCompleteOnFocus;
 
-    Color parseTagColor(String hex) {
-      var value = hex.replaceAll('#', '');
-      if (value.length == 6) value = 'FF$value';
-      final parsed = int.tryParse(value, radix: 16);
-      return parsed == null ? const Color(0xFF607D8B) : Color(parsed);
-    }
-
     final saved = await showAppModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -753,7 +746,7 @@ extension _ThirtyDayChallengeActionsExt on _ThirtyDayChallengeScreenState {
                               width: 10,
                               height: 10,
                               decoration: BoxDecoration(
-                                color: parseTagColor(tag.color),
+                                color: AppColorUtils.parseHex(tag.color),
                                 shape: BoxShape.circle,
                               ),
                             ),

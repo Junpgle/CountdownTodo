@@ -24,6 +24,7 @@ import '../repositories/thirty_day_challenge_repository.dart';
 import '../services/challenge_share_codec.dart';
 import '../services/clipboard_share_detector.dart';
 import 'new_challenge_screen.dart';
+import '../../../utils/app_color_utils.dart';
 import '../../../utils/app_dialogs.dart';
 
 part 'parts/thirty_day_challenge_actions.dart';

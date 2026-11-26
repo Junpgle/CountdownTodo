@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import '../widgets/floating_glass_control.dart';
 import '../widgets/ai_water_border.dart';
+import '../widgets/app_state_views.dart';
 import '../widgets/todo_capture_edit_fields.dart';
 
 import 'package:flutter/material.dart';
@@ -1071,20 +1072,14 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.inbox, size: 64, color: Colors.grey),
-          const SizedBox(height: 16),
-          Text('没有可确认事项', style: TextStyle(color: Colors.grey)),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: _isRetrying ? null : _retryRecognition,
-            icon: const Icon(Icons.refresh),
-            label: const Text('重新识别'),
-          ),
-        ],
+    return AppEmptyState(
+      icon: Icons.inbox,
+      iconSize: 64,
+      title: '没有可确认事项',
+      action: OutlinedButton.icon(
+        onPressed: _isRetrying ? null : _retryRecognition,
+        icon: const Icon(Icons.refresh),
+        label: const Text('重新识别'),
       ),
     );
   }

@@ -74,9 +74,7 @@ class HabitSleepTimingGuide extends StatelessWidget {
   String _formatMinute(int minute) {
     final normalized = minute % (24 * 60);
     final safe = normalized < 0 ? normalized + 24 * 60 : normalized;
-    final hour = safe ~/ 60;
-    final min = safe % 60;
-    return '${hour.toString().padLeft(2, '0')}:${min.toString().padLeft(2, '0')}';
+    return AppTimeFormats.hourMinute(safe ~/ 60, safe % 60);
   }
 }
 
@@ -185,9 +183,7 @@ class HabitSleepPairSuggestionCard extends StatelessWidget {
   String _formatMinute(int minute) {
     final normalized = minute % (24 * 60);
     final safe = normalized < 0 ? normalized + 24 * 60 : normalized;
-    final hour = safe ~/ 60;
-    final min = safe % 60;
-    return '${hour.toString().padLeft(2, '0')}:${min.toString().padLeft(2, '0')}';
+    return AppTimeFormats.hourMinute(safe ~/ 60, safe % 60);
   }
 }
 

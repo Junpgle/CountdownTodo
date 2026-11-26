@@ -6,6 +6,7 @@ import 'dart:async';
 import '../models.dart';
 import '../services/api_service.dart';
 import '../services/team_share_link.dart';
+import '../widgets/app_state_views.dart';
 import '../widgets/floating_glass_control.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/time_utils.dart';
@@ -144,24 +145,11 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.link_off, size: 64, color: Colors.grey.shade400),
-          const SizedBox(height: 16),
-          Text(
-            '暂无分享链接',
-            style: TextStyle(fontSize: 18, color: Colors.grey.shade600),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '创建分享链接，让其他人以网页形式查看团队事项',
-            style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
+    return const AppEmptyState(
+      icon: Icons.link_off,
+      iconSize: 64,
+      title: '暂无分享链接',
+      message: '创建分享链接，让其他人以网页形式查看团队事项',
     );
   }
 
