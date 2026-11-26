@@ -798,7 +798,7 @@ extension _FinanceOverviewCardsExt on _FinanceOverviewPanelState {
     if (recurringRules.isEmpty) return const SizedBox.shrink();
 
     final now = clock();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     final sevenDaysLater = today.add(
       const Duration(days: 7, hours: 23, minutes: 59),
     );

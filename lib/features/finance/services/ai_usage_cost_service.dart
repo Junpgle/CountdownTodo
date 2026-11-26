@@ -9,6 +9,7 @@ import '../../../services/database_helper.dart';
 import '../../../services/storage/user_session_storage.dart';
 import '../models/finance_models.dart';
 import 'finance_repository.dart';
+import '../../../utils/calendar_date_math.dart';
 
 int _readNonNegativeInt(Object? value) {
   final parsed = value is num
@@ -1430,11 +1431,7 @@ abstract final class AiUsageCostService {
           .addRecord(record);
 
       final localCreated = record.createdAt.toLocal();
-      final dateKey = DateTime(
-        localCreated.year,
-        localCreated.month,
-        localCreated.day,
-      );
+      final dateKey = CalendarDateMath.dateOnly(localCreated);
       dateBreakdowns
           .putIfAbsent(dateKey, () => AiUsageDateBreakdown(date: dateKey))
           .addRecord(record);

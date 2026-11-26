@@ -14,6 +14,7 @@ import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import 'habit_rule_resolver.dart';
 import 'habit_source_resolver.dart';
+import '../../../utils/calendar_date_math.dart';
 
 /// 习惯与 30 天挑战接入「今日容量与规划块」的统一投影服务。
 ///
@@ -181,7 +182,7 @@ abstract final class HabitChallengePlanningService {
     required HabitChallengePlanningSnapshot snapshot,
     required List<TodoItem> todos,
   }) {
-    final date = DateTime(dayStart.year, dayStart.month, dayStart.day);
+    final date = CalendarDateMath.dateOnly(dayStart);
     final dayKey = HabitRuleResolver.dayKey(date);
     final intervals = <PlanBusyInterval>[];
 
@@ -261,7 +262,7 @@ abstract final class HabitChallengePlanningService {
     required HabitChallengePlanningSnapshot snapshot,
     required List<TodoItem> todos,
   }) {
-    final date = DateTime(dayStart.year, dayStart.month, dayStart.day);
+    final date = CalendarDateMath.dateOnly(dayStart);
     final blocks = <TodoPlanBlock>[];
 
     for (final goal in snapshot.goals) {
@@ -359,11 +360,11 @@ abstract final class HabitChallengePlanningService {
     ThirtyDayChallengeState challenge,
     DateTime date,
   ) {
-    final targetDay = DateTime(date.year, date.month, date.day);
+    final targetDay = CalendarDateMath.dateOnly(date);
     for (final task in challenge.tasks) {
       if (!task.isCompleted || task.completedAt == null) continue;
       final local = task.completedAt!.toLocal();
-      if (DateTime(local.year, local.month, local.day) == targetDay) {
+      if (CalendarDateMath.dateOnly(local) == targetDay) {
         return task;
       }
     }

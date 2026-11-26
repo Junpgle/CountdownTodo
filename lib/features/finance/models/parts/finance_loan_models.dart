@@ -446,8 +446,7 @@ class FinanceLoanInstallment {
 
   bool isOverdueAt(DateTime now) {
     if (isPaid) return false;
-    return dateFromKey(dueDate)
-        .isBefore(DateTime(now.year, now.month, now.day));
+    return dateFromKey(dueDate).isBefore(CalendarDateMath.dateOnly(now));
   }
 
   void markAsChanged() {

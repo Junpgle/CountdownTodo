@@ -163,7 +163,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     final today = clock();
     if (today.year == selectedMonth.year &&
         today.month == selectedMonth.month) {
-      return DateTime(today.year, today.month, today.day);
+      return CalendarDateMath.dateOnly(today);
     }
     return DateTime(selectedMonth.year, selectedMonth.month, 1);
   }
@@ -547,17 +547,13 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
           financeCalendarDayOffset(weekStart, 7),
         );
       case _FinanceOverviewView.day:
-        final day = DateTime(
-          _focusedDate.year,
-          _focusedDate.month,
-          _focusedDate.day,
-        );
+        final day = CalendarDateMath.dateOnly(_focusedDate);
         return _FinanceDateRange(day, financeCalendarDayOffset(day, 1));
     }
   }
 
   DateTime _startOfWeek(DateTime value) {
-    final day = DateTime(value.year, value.month, value.day);
+    final day = CalendarDateMath.dateOnly(value);
     return financeCalendarDayOffset(day, DateTime.monday - day.weekday);
   }
 
@@ -785,7 +781,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       helpText: _view == _FinanceOverviewView.week ? '选择周视图日期' : '选择日视图日期',
     );
     if (picked != null && mounted) {
-      final pickedDate = DateTime(picked.year, picked.month, picked.day);
+      final pickedDate = CalendarDateMath.dateOnly(picked);
       setState(() => _focusedDate = pickedDate);
       if (pickedDate.year != month.year || pickedDate.month != month.month) {
         onMonthChanged?.call(DateTime(pickedDate.year, pickedDate.month));

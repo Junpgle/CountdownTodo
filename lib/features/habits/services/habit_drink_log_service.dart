@@ -11,6 +11,7 @@ import '../models/habit_goal_rule.dart';
 import '../repositories/habit_repository.dart';
 import '../utils/habit_emoji_utils.dart';
 import 'habit_rule_resolver.dart';
+import '../../../utils/calendar_date_math.dart';
 
 export '../models/habit_drink_option.dart';
 
@@ -434,11 +435,7 @@ abstract final class HabitDrinkLogService {
     required bool success,
     String username = '',
   }) async {
-    final normalizedDate = DateTime(
-      logicalDate.year,
-      logicalDate.month,
-      logicalDate.day,
-    );
+    final normalizedDate = CalendarDateMath.dateOnly(logicalDate);
     final dayKey = HabitRuleResolver.dayKey(normalizedDate);
     final existing = await HabitRepository.getCheckIns(
       habitUuid: goal.uuid,
@@ -527,11 +524,7 @@ abstract final class HabitDrinkLogService {
     required DateTime logicalDate,
     required HabitDrinkOption option,
   }) async {
-    final normalizedDate = DateTime(
-      logicalDate.year,
-      logicalDate.month,
-      logicalDate.day,
-    );
+    final normalizedDate = CalendarDateMath.dateOnly(logicalDate);
     final dayKey = HabitRuleResolver.dayKey(normalizedDate);
     final existing = await HabitRepository.getCheckIns(
       habitUuid: goal.uuid,
@@ -603,11 +596,7 @@ abstract final class HabitDrinkLogService {
     required HabitGoal goal,
     required DateTime logicalDate,
   }) async {
-    final normalizedDate = DateTime(
-      logicalDate.year,
-      logicalDate.month,
-      logicalDate.day,
-    );
+    final normalizedDate = CalendarDateMath.dateOnly(logicalDate);
     final dayKey = HabitRuleResolver.dayKey(normalizedDate);
     final existing = await HabitRepository.getCheckIns(
       habitUuid: goal.uuid,
@@ -676,7 +665,7 @@ abstract final class HabitDrinkLogService {
       return const HabitDrinkStats.empty();
     }
     final now = referenceDate ?? DateTime.now();
-    final endDate = DateTime(now.year, now.month, now.day);
+    final endDate = CalendarDateMath.dateOnly(now);
     final startDate = HabitRuleResolver.addCalendarDays(endDate, -6);
 
     var totalDrinks = 0;

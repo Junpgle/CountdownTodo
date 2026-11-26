@@ -23,6 +23,7 @@ import '../widgets/habit_emoji_text.dart';
 import '../widgets/habit_format.dart';
 import 'habit_detail_screen.dart';
 import 'habit_edit_screen.dart';
+import '../../../utils/calendar_date_math.dart';
 
 part 'habit_calendar/habit_calendar_shared.dart';
 part 'habit_calendar/habit_calendar_single_view.dart';
@@ -259,8 +260,8 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
 
   bool _isFutureDate(DateTime date) {
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    return DateTime(date.year, date.month, date.day).isAfter(today);
+    final today = CalendarDateMath.dateOnly(now);
+    return CalendarDateMath.dateOnly(date).isAfter(today);
   }
 
   bool _isHabitLitOnDay(HabitGoal goal, DateTime date) {
@@ -542,7 +543,7 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     DateTime day,
     DateTime now,
   ) {
-    if (day.isAfter(DateTime(now.year, now.month, now.day))) {
+    if (day.isAfter(CalendarDateMath.dateOnly(now))) {
       return (status: _DayAggregate.future, ratio: 0.0);
     }
     final key = HabitRuleResolver.dayKey(day);
@@ -586,7 +587,7 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
   _computeGoalMonthSummary(HabitGoal goal) {
     final daysInMonth = DateTime(_month.year, _month.month + 1, 0).day;
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
 
     int planned = 0;
     int met = 0;

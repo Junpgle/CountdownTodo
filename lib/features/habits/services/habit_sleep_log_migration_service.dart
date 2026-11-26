@@ -10,6 +10,7 @@ import '../services/habit_rule_resolver.dart';
 import 'habit_sleep_duration_service.dart';
 import 'habit_sleep_goal_resolver.dart';
 import '../../../utils/time_utils.dart';
+import '../../../utils/calendar_date_math.dart';
 
 /// 只有时间格占位（例如 15 / 30 分钟）时，早睡节点采用的时间。
 enum HabitSleepLogTimeSelection { startTime, midpoint }
@@ -166,7 +167,7 @@ abstract final class HabitSleepLogMigrationService {
 
     final current = now ?? DateTime.now();
     final cutoff = HabitRuleResolver.addCalendarDays(
-      DateTime(current.year, current.month, current.day),
+      CalendarDateMath.dateOnly(current),
       -lookbackDays,
     );
 

@@ -4,6 +4,7 @@ import '../../../models.dart';
 import '../../../services/database_helper.dart';
 import '../../../services/pomodoro_service.dart';
 import 'habit_rule_resolver.dart';
+import '../../../utils/calendar_date_math.dart';
 
 typedef HabitTagProgressPeriod = ({
   String habitUuid,
@@ -79,7 +80,7 @@ abstract final class HabitSourceResolver {
     DateTime localDate,
   ) async {
     if (seriesIds.isEmpty) return null;
-    final day = DateTime(localDate.year, localDate.month, localDate.day);
+    final day = CalendarDateMath.dateOnly(localDate);
     final startMs = day.millisecondsSinceEpoch;
     final endMs = DateTime(
       day.year,
@@ -110,7 +111,7 @@ abstract final class HabitSourceResolver {
   /// 实例日期取业务开始时间（createdDate ?? createdAt）的本地日历日，
   /// 与循环待办材料的日期口径保持一致。
   static TodoItem? todoForDate(List<TodoItem> todos, DateTime localDate) {
-    final target = DateTime(localDate.year, localDate.month, localDate.day);
+    final target = CalendarDateMath.dateOnly(localDate);
     TodoItem? best;
     for (final todo in todos) {
       final day = _todoLocalDay(todo);
@@ -151,7 +152,7 @@ abstract final class HabitSourceResolver {
     try {
       final tagIds = tagUuids.toSet();
       final records = await PomodoroService.getRecordsInRange(
-        DateTime(from.year, from.month, from.day),
+        CalendarDateMath.dateOnly(from),
         DateTime(to.year, to.month, to.day + 1),
       );
       return records.where((r) {
@@ -171,11 +172,7 @@ abstract final class HabitSourceResolver {
     final byDate = <String, List<HabitTagProgressPeriod>>{};
     for (final period in periods) {
       if (period.tagUuids.isEmpty) continue;
-      final day = DateTime(
-        period.logicalDate.year,
-        period.logicalDate.month,
-        period.logicalDate.day,
-      );
+      final day = CalendarDateMath.dateOnly(period.logicalDate);
       byDate.putIfAbsent(HabitRuleResolver.dayKey(day), () => []).add((
         habitUuid: period.habitUuid,
         tagUuids: period.tagUuids,
@@ -220,7 +217,7 @@ abstract final class HabitSourceResolver {
             record.startTime,
           ).toLocal();
           final recordDayKey = HabitRuleResolver.dayKey(
-            DateTime(localStart.year, localStart.month, localStart.day),
+            CalendarDateMath.dateOnly(localStart),
           );
           for (final groupDate
               in groupDatesByRecordDay[recordDayKey] ?? const <String>{}) {
@@ -285,8 +282,8 @@ abstract final class HabitSourceResolver {
         .expand((source) => source.tagUuids)
         .toSet()
         .toList(growable: false);
-    final fromDay = DateTime(from.year, from.month, from.day);
-    final toDay = DateTime(to.year, to.month, to.day);
+    final fromDay = CalendarDateMath.dateOnly(from);
+    final toDay = CalendarDateMath.dateOnly(to);
     final records = await recordsForTags(
       tagUuids: tagUuids,
       from: HabitRuleResolver.addCalendarDays(fromDay, -1),
@@ -349,7 +346,7 @@ class HabitTodoIndex {
     for (final todo in todos) {
       final day = HabitSourceResolver._todoLocalDay(todo);
       if (day == null) continue;
-      final key = DateTime(day.year, day.month, day.day);
+      final key = CalendarDateMath.dateOnly(day);
       final current = _bestTodoByDay[key];
       if (current == null || (current.isDeleted && !todo.isDeleted)) {
         _bestTodoByDay[key] = todo;
@@ -361,13 +358,13 @@ class HabitTodoIndex {
   }
 
   bool isTodoDoneOn(DateTime localDate) {
-    final day = DateTime(localDate.year, localDate.month, localDate.day);
+    final day = CalendarDateMath.dateOnly(localDate);
     final todo = _bestTodoByDay[day];
     return todo != null && !todo.isDeleted && todo.isDone;
   }
 
   int completedCountInRange(DateTime start, DateTime end) {
-    var day = DateTime(start.year, start.month, start.day);
+    var day = CalendarDateMath.dateOnly(start);
     var count = 0;
     while (day.isBefore(end)) {
       count += _completedCountByDay[day] ?? 0;

@@ -14,6 +14,7 @@ import '../services/habit_adaptation_service.dart';
 import '../services/habit_reminder_service.dart';
 import '../services/habit_rule_resolver.dart';
 import '../services/habit_source_resolver.dart';
+import '../../../utils/calendar_date_math.dart';
 
 /// 习惯业务门面：目标、规则版本与打卡的统一入口。
 ///
@@ -459,7 +460,7 @@ abstract final class HabitRepository {
     final ms = todo.createdDate ?? todo.createdAt;
     if (ms <= 0) return null;
     final local = DateTime.fromMillisecondsSinceEpoch(ms).toLocal();
-    return DateTime(local.year, local.month, local.day);
+    return CalendarDateMath.dateOnly(local);
   }
 
   static Future<String> _resolveUsername([String username = '']) async {

@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../utils/json_value_parser.dart';
 import '../../../utils/time_utils.dart';
+import '../../../utils/calendar_date_math.dart';
 
 part 'parts/finance_loan_models.dart';
 part 'parts/finance_catalog_models.dart';
@@ -92,7 +93,7 @@ String financeTimezoneLabel(int offsetMinutes) =>
 DateTime dateFromKey(String value) {
   final parsed = DateTime.tryParse(value);
   if (parsed == null) return DateTime.now();
-  return DateTime(parsed.year, parsed.month, parsed.day);
+  return CalendarDateMath.dateOnly(parsed);
 }
 
 FinanceTransactionType _transactionType(dynamic raw) {

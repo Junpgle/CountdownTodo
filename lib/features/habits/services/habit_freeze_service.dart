@@ -9,6 +9,7 @@ import '../models/habit_goal_rule.dart';
 import '../repositories/habit_repository.dart';
 import 'habit_progress_calculator.dart';
 import 'habit_rule_resolver.dart';
+import '../../../utils/calendar_date_math.dart';
 
 /// 习惯免扣卡守护服务（Streak Freeze）。
 ///
@@ -161,12 +162,8 @@ abstract final class HabitFreezeService {
     }
 
     final nowVal = now ?? DateTime.now();
-    final today = DateTime(nowVal.year, nowVal.month, nowVal.day);
-    final targetDay = DateTime(
-      logicalDate.year,
-      logicalDate.month,
-      logicalDate.day,
-    );
+    final today = CalendarDateMath.dateOnly(nowVal);
+    final targetDay = CalendarDateMath.dateOnly(logicalDate);
     if (targetDay.isAfter(today)) {
       return (canApply: false, reason: '未来日期不可使用免扣卡');
     }

@@ -77,7 +77,7 @@ class FinanceRecurringRule {
     final lastDay = DateTime(year, month + 1, 0).day;
     final due = DateTime(year, month, dayOfMonth.clamp(1, lastDay), 9);
     final start = dateFromKey(startDate);
-    if (due.isBefore(DateTime(start.year, start.month, start.day))) return null;
+    if (due.isBefore(CalendarDateMath.dateOnly(start))) return null;
     if (endDate != null) {
       final end = dateFromKey(endDate!);
       if (due.isAfter(DateTime(end.year, end.month, end.day, 23, 59, 59))) {

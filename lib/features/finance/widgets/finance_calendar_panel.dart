@@ -6,6 +6,7 @@ import '../../../widgets/floating_bottom_bar.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 import 'finance_glass_segment_selector.dart';
+import '../../../utils/calendar_date_math.dart';
 
 enum _FinanceCalendarMetric { expense, income, cashflow, balance }
 
@@ -84,7 +85,7 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
   DateTime _initialDate(DateTime value) {
     final current = now;
     if (current.year == value.year && current.month == value.month) {
-      return DateTime(current.year, current.month, current.day);
+      return CalendarDateMath.dateOnly(current);
     }
     return DateTime(value.year, value.month, 1);
   }
@@ -713,7 +714,7 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
   }
 
   void _selectDate(DateTime date) {
-    final normalized = DateTime(date.year, date.month, date.day);
+    final normalized = CalendarDateMath.dateOnly(date);
     setState(() => _selectedDate = normalized);
     if (normalized.year != month.year || normalized.month != month.month) {
       widget.onMonthChanged(DateTime(normalized.year, normalized.month));
@@ -727,7 +728,7 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
     final plannedMonth = month.isAfter(DateTime(now.year, now.month));
     final periodBalance = summary.balanceMinor;
     final latestDate = currentMonth
-        ? DateTime(now.year, now.month, now.day)
+        ? CalendarDateMath.dateOnly(now)
         : DateTime(month.year, month.month + 1, 0);
     final balance = _balanceAt(latestDate);
     final firstValue = switch (_metric) {

@@ -82,11 +82,7 @@ extension _FinanceLedgerActionsExt on _FinanceLedgerPanelState {
     FinanceTransaction updated,
     DateTime pickedDate,
   ) {
-    final targetDate = DateTime(
-      pickedDate.year,
-      pickedDate.month,
-      pickedDate.day,
-    );
+    final targetDate = CalendarDateMath.dateOnly(pickedDate);
     updated.transactionDate = dateKey(targetDate);
     final localTime = updated.occurrenceLocalTime;
     final utcMillis = DateTime.utc(

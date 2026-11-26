@@ -387,7 +387,7 @@ extension _HabitCalendarOverview on _HabitCalendarTabState {
     ColorScheme colorScheme,
   ) {
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     if (day.logicalDate.isAfter(today) || !day.progress.isPlanned) {
       return const SizedBox.shrink();
     }
@@ -475,7 +475,7 @@ extension _HabitCalendarOverview on _HabitCalendarTabState {
     String label,
   ) {
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     if (day.logicalDate.isAfter(today) || !day.progress.isPlanned) {
       return const SizedBox.shrink();
     }

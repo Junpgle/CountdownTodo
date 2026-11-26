@@ -9,6 +9,7 @@ import '../repositories/habit_repository.dart';
 import 'habit_adaptation_service.dart';
 import 'habit_rule_resolver.dart';
 import 'habit_sleep_goal_resolver.dart';
+import '../../../utils/calendar_date_math.dart';
 
 /// 早睡 / 早起打卡配对后生成睡眠时长打卡。
 ///
@@ -29,7 +30,7 @@ abstract final class HabitSleepDurationService {
 
   /// 今日视图展示的睡眠日期：睡眠记录属于前一晚，而不是今天。
   static DateTime displayLogicalDateFor(HabitGoal goal, DateTime date) {
-    final day = DateTime(date.year, date.month, date.day);
+    final day = CalendarDateMath.dateOnly(date);
     return isSleepDurationGoal(goal)
         ? HabitRuleResolver.addCalendarDays(day, -1)
         : day;

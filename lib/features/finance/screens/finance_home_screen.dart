@@ -28,6 +28,7 @@ import 'finance_text_recognition_screen.dart';
 import 'finance_trash_screen.dart';
 import 'finance_transaction_detail_screen.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/calendar_date_math.dart';
 
 typedef _FinanceHomeData = ({
   List<FinanceTransaction> transactions,
@@ -1179,7 +1180,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen>
         : requestedMonth;
     final start = DateTime(month.year, month.month);
     final end = month.year == now.year && month.month == now.month
-        ? DateTime(now.year, now.month, now.day)
+        ? CalendarDateMath.dateOnly(now)
         : DateTime(month.year, month.month + 1, 0);
     final colorScheme = Theme.of(context).colorScheme;
     await PageTransitions.pushFromRect<void>(
@@ -1700,7 +1701,7 @@ class _FinanceOpeningBalanceDialogState
 
   Future<void> _pickStartDate() async {
     final now = widget.clock();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     final initialDate = _startDate.isAfter(today) ? today : _startDate;
     final picked = await showAppDatePicker(
       context: context,
@@ -1714,7 +1715,7 @@ class _FinanceOpeningBalanceDialogState
     );
     if (picked == null || !mounted) return;
     setState(() {
-      _startDate = DateTime(picked.year, picked.month, picked.day);
+      _startDate = CalendarDateMath.dateOnly(picked);
       _dateError = null;
     });
   }

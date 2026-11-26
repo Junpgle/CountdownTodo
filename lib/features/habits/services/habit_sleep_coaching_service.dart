@@ -9,6 +9,7 @@ import '../repositories/habit_repository.dart';
 import 'habit_adaptation_service.dart';
 import 'habit_rule_resolver.dart';
 import 'habit_sleep_goal_resolver.dart';
+import '../../../utils/calendar_date_math.dart';
 
 /// 睡眠训练中一个维度的当前值、最终目标和本阶段建议值。
 class HabitSleepCoachingMetric {
@@ -112,11 +113,7 @@ abstract final class HabitSleepCoachingService {
     final nowInPlanTimezone = (now ?? DateTime.now()).toUtc().add(
       Duration(minutes: plan.timezoneOffsetMinutes ?? 0),
     );
-    return DateTime(
-      nowInPlanTimezone.year,
-      nowInPlanTimezone.month,
-      nowInPlanTimezone.day,
-    );
+    return CalendarDateMath.dateOnly(nowInPlanTimezone);
   }
 
   static DateTime _nowInPlanTimezone(
@@ -486,7 +483,7 @@ abstract final class HabitSleepCoachingService {
       plan.pausedLogicalDate ?? '',
     );
     final firstDay = checkpoint == null
-        ? DateTime(start.year, start.month, start.day)
+        ? CalendarDateMath.dateOnly(start)
         : HabitRuleResolver.addCalendarDays(checkpoint, 1);
     if (firstDay.isAfter(today)) {
       return _Progression(
@@ -640,10 +637,8 @@ abstract final class HabitSleepCoachingService {
       ),
       // 起床打卡属于前一晚。只对中午前的起床做回退，避免凌晨起床被
       // 04:00 分界再额外回退一天。
-      HabitAdaptationKind.earlyWake => DateTime(
-        occurredInOriginalTimezone.year,
-        occurredInOriginalTimezone.month,
-        occurredInOriginalTimezone.day,
+      HabitAdaptationKind.earlyWake => CalendarDateMath.dateOnly(
+        occurredInOriginalTimezone,
       ).subtract(Duration(days: occurredInOriginalTimezone.hour < 12 ? 1 : 0)),
       // 自动生成的睡眠时长记录发生时刻沿用入睡时刻，因此与早睡使用
       // 同一夜间日期；手动记录也保持其保存时的本地日期语义。

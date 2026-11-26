@@ -18,6 +18,7 @@ import '../services/habit_streak_service.dart';
 import '../widgets/habit_emoji_text.dart';
 import '../widgets/habit_format.dart';
 import 'habit_detail_screen.dart';
+import '../../../utils/calendar_date_math.dart';
 
 typedef _HabitAnalysisInputs = ({
   Map<String, List<HabitCheckIn>> checkInsByHabit,
@@ -192,7 +193,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
     required _HabitAnalysisInputs inputs,
     required DateTime now,
   }) async {
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     final from = HabitRuleResolver.addCalendarDays(today, -29);
     final trend = List<int>.filled(30, 0);
     final weekPlans =
@@ -374,7 +375,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
     Map<String, List<HabitGoalRuleRevision>> rulesByHabit, {
     required DateTime now,
   }) async {
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     final from = HabitRuleResolver.addCalendarDays(today, -29);
     final calculationGoals = goals
         .where((goal) => rulesByHabit[goal.uuid]?.isNotEmpty == true)
@@ -589,7 +590,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
         ? 0
         : _monthTrend.reduce((a, b) => a > b ? a : b);
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     final first = HabitRuleResolver.addCalendarDays(today, -29);
     final firstWeekday = first.weekday; // 1 = Monday, 7 = Sunday
 

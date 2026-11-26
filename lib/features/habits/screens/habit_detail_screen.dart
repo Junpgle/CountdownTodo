@@ -34,6 +34,7 @@ import '../services/habit_focus_launcher.dart';
 import '../services/habit_sleep_coaching_service.dart';
 import '../services/habit_freeze_service.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/calendar_date_math.dart';
 
 part 'parts/habit_detail_actions.dart';
 part 'parts/habit_detail_insights_and_header.dart';
@@ -130,7 +131,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
         initialResults[0] as HabitSleepCoachingSnapshot?;
     final rules = initialResults[1] as List<HabitGoalRuleRevision>;
     final today = DateTime.now();
-    final todayDate = DateTime(today.year, today.month, today.day);
+    final todayDate = CalendarDateMath.dateOnly(today);
     final displayDate = HabitDayLoader.progressLogicalDateFor(
       goal: _goal,
       rules: rules,

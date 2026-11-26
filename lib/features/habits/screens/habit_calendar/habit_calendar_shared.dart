@@ -89,7 +89,7 @@ extension _HabitCalendarShared on _HabitCalendarTabState {
     }
 
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = CalendarDateMath.dateOnly(now);
     for (int day = 1; day <= daysInMonth; day++) {
       final date = DateTime(_month.year, _month.month, day);
       final isToday = AppTimeFormats.isSameDay(date, today);

@@ -544,11 +544,7 @@ class _FinanceBatchEditDialogState extends State<_FinanceBatchEditDialog> {
   bool _applyPaymentMethod = false;
   String? _paymentMethodUuid;
   bool _applyDate = false;
-  late DateTime _date = DateTime(
-    widget.initialDate.year,
-    widget.initialDate.month,
-    widget.initialDate.day,
-  );
+  late DateTime _date = CalendarDateMath.dateOnly(widget.initialDate);
   bool _applyMerchant = false;
   final TextEditingController _merchantController = TextEditingController();
   bool _applyNote = false;

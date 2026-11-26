@@ -2,6 +2,7 @@ import 'dart:math';
 
 import '../../../utils/json_value_parser.dart';
 import '../../../utils/text_utils.dart';
+import '../../../utils/calendar_date_math.dart';
 
 class ChallengeDraft {
   final String title;
@@ -167,15 +168,11 @@ class ThirtyDayChallengeState {
   }
 
   bool hasCompletedTaskOnDate(DateTime date) {
-    final targetDay = DateTime(date.year, date.month, date.day);
+    final targetDay = CalendarDateMath.dateOnly(date);
     for (final task in tasks) {
       if (!task.isCompleted || task.completedAt == null) continue;
       final completedLocal = task.completedAt!.toLocal();
-      final completedDay = DateTime(
-        completedLocal.year,
-        completedLocal.month,
-        completedLocal.day,
-      );
+      final completedDay = CalendarDateMath.dateOnly(completedLocal);
       if (completedDay == targetDay) return true;
     }
     return false;

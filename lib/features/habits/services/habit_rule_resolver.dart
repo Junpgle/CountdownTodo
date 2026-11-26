@@ -1,5 +1,6 @@
 import '../../../utils/time_utils.dart';
 import '../models/habit_goal_rule.dart';
+import '../../../utils/calendar_date_math.dart';
 
 /// 习惯规则解析：逻辑日期、生效规则、计划日与周期计算。
 ///
@@ -26,14 +27,14 @@ abstract final class HabitRuleResolver {
   /// 7 月 31 日 23:30 → 7 月 31 日；8 月 1 日 00:40 → 7 月 31 日；
   /// 8 月 1 日 04:20 → 8 月 1 日。
   static DateTime logicalDateFor(DateTime localTime, int dayBoundaryMinute) {
-    final date = DateTime(localTime.year, localTime.month, localTime.day);
+    final date = CalendarDateMath.dateOnly(localTime);
     final minuteOfDay = localTime.hour * 60 + localTime.minute;
     return minuteOfDay < dayBoundaryMinute ? addCalendarDays(date, -1) : date;
   }
 
   /// 逻辑日期键（'yyyy-MM-dd'），用于数据库存储与比较。
   static String dayKey(DateTime logicalDate) {
-    final d = DateTime(logicalDate.year, logicalDate.month, logicalDate.day);
+    final d = CalendarDateMath.dateOnly(logicalDate);
     return AppTimeFormats.date(d);
   }
 
@@ -145,7 +146,7 @@ abstract final class HabitRuleResolver {
     HabitGoalRuleRevision rule,
     DateTime logicalDate,
   ) {
-    final day = DateTime(logicalDate.year, logicalDate.month, logicalDate.day);
+    final day = CalendarDateMath.dateOnly(logicalDate);
     switch (rule.periodType) {
       case HabitPeriodType.daily:
       case HabitPeriodType.weekdays:
@@ -183,7 +184,7 @@ abstract final class HabitRuleResolver {
     HabitGoalRuleRevision rule,
     DateTime logicalDate,
   ) {
-    final day = DateTime(logicalDate.year, logicalDate.month, logicalDate.day);
+    final day = CalendarDateMath.dateOnly(logicalDate);
     return addCalendarDays(day, 1) == periodEndExclusive(rule, day);
   }
 

@@ -16,6 +16,7 @@ import 'finance_loan_screen.dart';
 import '../../../utils/app_dialogs.dart';
 import '../../../utils/time_utils.dart';
 import '../../../utils/text_utils.dart';
+import '../../../utils/calendar_date_math.dart';
 
 part 'parts/finance_entry_options.dart';
 part 'parts/finance_entry_actions.dart';

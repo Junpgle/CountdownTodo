@@ -14,6 +14,7 @@ import 'habit_source_resolver.dart';
 import 'habit_sleep_coaching_service.dart';
 import 'habit_sleep_duration_service.dart';
 import 'habit_sleep_goal_resolver.dart';
+import '../../../utils/calendar_date_math.dart';
 
 typedef _HabitDayWork = ({
   HabitGoal goal,
@@ -255,7 +256,7 @@ abstract final class HabitDayLoader {
       return HabitSleepDurationService.displayLogicalDateFor(goal, date);
     }
 
-    final calendarDate = DateTime(date.year, date.month, date.day);
+    final calendarDate = CalendarDateMath.dateOnly(date);
     final rule =
         HabitRuleResolver.effectiveRule(rules, calendarDate) ??
         HabitRuleResolver.effectiveRule(

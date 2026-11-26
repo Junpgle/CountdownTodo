@@ -107,7 +107,7 @@ extension _FinanceEntryActions on _FinanceEntryScreenState {
     );
     _dismissKeyboard();
     if (picked == null || !mounted) return;
-    final pickedDate = DateTime(picked.year, picked.month, picked.day);
+    final pickedDate = CalendarDateMath.dateOnly(picked);
     final now = DateTime.now();
     final shouldClearEstimatedTime =
         !_occurrenceTimeExplicit &&
@@ -172,7 +172,7 @@ extension _FinanceEntryActions on _FinanceEntryScreenState {
   }
 
   DateTime? _defaultOccurrenceTimeFor(DateTime date, DateTime now) {
-    if (date.isBefore(DateTime(now.year, now.month, now.day))) return null;
+    if (date.isBefore(CalendarDateMath.dateOnly(now))) return null;
     return DateTime(date.year, date.month, date.day, now.hour, now.minute);
   }
 

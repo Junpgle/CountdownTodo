@@ -15,6 +15,7 @@ import 'finance_calendar_panel.dart';
 import 'finance_glass_segment_selector.dart';
 
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/calendar_date_math.dart';
 
 part 'parts/finance_overview_panel.dart';
 part 'parts/finance_overview_charts.dart';

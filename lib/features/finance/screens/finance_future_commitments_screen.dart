@@ -11,6 +11,7 @@ import '../widgets/finance_revision_refresh_mixin.dart';
 import 'finance_automation_screen.dart';
 import 'finance_loan_screen.dart';
 import 'finance_transaction_detail_screen.dart';
+import '../../../utils/calendar_date_math.dart';
 
 typedef FinanceFutureCommitmentLoader =
     Future<FinanceFutureCommitmentForecast> Function(DateTime now, int months);
@@ -426,8 +427,8 @@ class _FinanceFutureCommitmentsScreenState
   String _dateHeading(String key, DateTime now) {
     final day = dateFromKey(key);
     final label = '${day.month}月${day.day}日';
-    final today = DateTime(now.year, now.month, now.day);
-    final value = DateTime(day.year, day.month, day.day);
+    final today = CalendarDateMath.dateOnly(now);
+    final value = CalendarDateMath.dateOnly(day);
     return value == today ? '$label · 今天' : label;
   }
 

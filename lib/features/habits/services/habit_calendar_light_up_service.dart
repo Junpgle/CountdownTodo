@@ -6,6 +6,7 @@ import '../models/habit_progress.dart';
 import '../repositories/habit_repository.dart';
 import 'habit_drink_log_service.dart';
 import 'habit_rule_resolver.dart';
+import '../../../utils/calendar_date_math.dart';
 
 /// 日历快捷点亮操作的结果。
 class HabitCalendarToggleResult {
@@ -71,11 +72,7 @@ abstract final class HabitCalendarLightUpService {
       );
     }
 
-    final normalizedDate = DateTime(
-      logicalDate.year,
-      logicalDate.month,
-      logicalDate.day,
-    );
+    final normalizedDate = CalendarDateMath.dateOnly(logicalDate);
 
     if (goal.sourceType == HabitSourceType.recurringTodo) {
       await HabitRepository.setCompletion(

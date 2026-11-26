@@ -9,6 +9,7 @@ import 'habit_adaptation_service.dart';
 import 'habit_drink_log_service.dart';
 import 'habit_rule_resolver.dart';
 import 'habit_source_resolver.dart';
+import '../../../utils/calendar_date_math.dart';
 
 typedef _IndexedHabitCheckIn = ({int sourceIndex, HabitCheckIn checkIn});
 
@@ -41,8 +42,8 @@ class _HabitCheckInIndex {
       _freezeDates.contains(HabitRuleResolver.dayKey(logicalDate));
 
   List<HabitCheckIn> inPeriod(DateTime start, DateTime end) {
-    final endDay = DateTime(end.year, end.month, end.day);
-    var day = DateTime(start.year, start.month, start.day);
+    final endDay = CalendarDateMath.dateOnly(end);
+    var day = CalendarDateMath.dateOnly(start);
     if (!endDay.isAfter(day)) return const <HabitCheckIn>[];
 
     final nextDay = HabitRuleResolver.addCalendarDays(day, 1);
@@ -139,8 +140,8 @@ abstract final class HabitProgressCalculator {
     bool periodLevel = false,
   }) async {
     final nowValue = now ?? DateTime.now();
-    final fromDay = DateTime(from.year, from.month, from.day);
-    final toDay = DateTime(to.year, to.month, to.day);
+    final fromDay = CalendarDateMath.dateOnly(from);
+    final toDay = CalendarDateMath.dateOnly(to);
     final dayCount = HabitRuleResolver.calendarDayDifference(toDay, fromDay);
     // 上限覆盖 60 个月（60*31≈1860 天）的统计回看窗口。
     if (dayCount < 0 || dayCount > 2400) return const [];
@@ -238,7 +239,7 @@ abstract final class HabitProgressCalculator {
     List<HabitCheckIn>? checkIns,
   }) async {
     final nowValue = now ?? DateTime.now();
-    final day = DateTime(logicalDate.year, logicalDate.month, logicalDate.day);
+    final day = CalendarDateMath.dateOnly(logicalDate);
     final results = await computeRange(
       habit: habit,
       rules: rules,
@@ -519,7 +520,7 @@ abstract final class HabitProgressCalculator {
           if (todo.isDeleted || !todo.isDone) continue;
           final day = _todoLocalDay(todo);
           if (day == null) continue;
-          final dayDate = DateTime(day.year, day.month, day.day);
+          final dayDate = CalendarDateMath.dateOnly(day);
           if (!dayDate.isBefore(start) && dayDate.isBefore(end)) {
             completedDays.add(HabitRuleResolver.dayKey(dayDate));
           }
