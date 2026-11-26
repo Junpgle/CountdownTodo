@@ -17,6 +17,7 @@ import 'scheduled_reminder_registry.dart';
 import 'notification_service_shared.dart';
 import 'focus_do_not_disturb_service.dart';
 import '../utils/time_utils.dart';
+import '../utils/json_value_parser.dart';
 
 class NotificationService {
   static const int financeBudgetAlertNotificationBaseId = 61000;
@@ -1070,11 +1071,7 @@ class NotificationService {
     }
   }
 
-  static int? _readInt(dynamic value) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return int.tryParse(value?.toString() ?? '');
-  }
+  static int? _readInt(dynamic value) => JsonValueParser.toNullableInt(value);
 
   static Future<List<Map<String, dynamic>>> getScheduledReminders({
     bool strict = false,

@@ -1,3 +1,5 @@
+import '../utils/json_value_parser.dart';
+
 class IslandPayload {
   final int endMs;
   final String title;
@@ -127,19 +129,11 @@ class IslandPayload {
     };
   }
 
-  static int _toInt(dynamic v, [int fallback = 0]) {
-    if (v is int) return v;
-    if (v is double) return v.toInt();
-    if (v is String) return int.tryParse(v) ?? fallback;
-    return fallback;
-  }
+  static int _toInt(dynamic v, [int fallback = 0]) =>
+      JsonValueParser.toInt(v, fallback: fallback);
 
-  static bool _toBool(dynamic v, [bool fallback = false]) {
-    if (v is bool) return v;
-    if (v is int) return v != 0;
-    if (v is String) return v.toLowerCase() == 'true';
-    return fallback;
-  }
+  static bool _toBool(dynamic v, [bool fallback = false]) =>
+      JsonValueParser.toBool(v, fallback: fallback);
 
   static String _toStr(dynamic v) => v?.toString() ?? '';
 

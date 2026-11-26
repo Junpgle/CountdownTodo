@@ -8,6 +8,7 @@ import '../../../services/database_helper.dart';
 import '../../../services/storage/app_settings_storage.dart';
 import '../../../storage_service.dart';
 import '../models/finance_models.dart';
+import '../../../utils/json_value_parser.dart';
 
 part 'storage/finance_storage_transactions.dart';
 part 'storage/finance_storage_loans.dart';
@@ -500,10 +501,7 @@ final Set<String> _systemCategoryUuids = FinanceDefaults.categories
 
 bool _isSystemCategoryUuid(String uuid) => _systemCategoryUuids.contains(uuid);
 
-int _asInt(dynamic value) {
-  if (value is num) return value.toInt();
-  return int.tryParse(value?.toString() ?? '') ?? 0;
-}
+int _asInt(dynamic value) => JsonValueParser.toInt(value);
 
 Future<Map<String, dynamic>?> _findByUuid(
   DatabaseExecutor db,

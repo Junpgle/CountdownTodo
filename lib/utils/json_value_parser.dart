@@ -13,6 +13,39 @@ abstract final class JsonValueParser {
     return toNullableInt(value) ?? fallback;
   }
 
+  static double? toNullableDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString().trim());
+  }
+
+  static double toDouble(dynamic value, {double fallback = 0}) {
+    return toNullableDouble(value) ?? fallback;
+  }
+
+  static bool? toNullableBool(dynamic value) {
+    if (value == null) return null;
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    if (value is String) {
+      switch (value.trim().toLowerCase()) {
+        case 'true':
+        case '1':
+        case 'yes':
+          return true;
+        case 'false':
+        case '0':
+        case 'no':
+          return false;
+      }
+    }
+    return null;
+  }
+
+  static bool toBool(dynamic value, {bool fallback = false}) {
+    return toNullableBool(value) ?? fallback;
+  }
+
   /// Reads an enum's persisted index without letting unknown values abort a
   /// whole row or collection parse.
   static T enumByIndex<T extends Enum>(

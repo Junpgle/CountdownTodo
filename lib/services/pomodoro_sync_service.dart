@@ -138,23 +138,8 @@ class CrossDevicePomodoroState {
     return JsonValueParser.toNullableInt(v);
   }
 
-  static bool? _parseBool(dynamic value) {
-    if (value is bool) return value;
-    if (value is num) return value != 0;
-    if (value is String) {
-      switch (value.trim().toLowerCase()) {
-        case 'true':
-        case '1':
-        case 'yes':
-          return true;
-        case 'false':
-        case '0':
-        case 'no':
-          return false;
-      }
-    }
-    return null;
-  }
+  static bool? _parseBool(dynamic value) =>
+      JsonValueParser.toNullableBool(value);
 
   static List<String> _parseStringList(dynamic v) {
     if (v == null) return const [];

@@ -6,6 +6,7 @@ import '../widgets/floating_glass_control.dart';
 import '../widgets/management_page.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/time_utils.dart';
+import '../utils/json_value_parser.dart';
 
 class TeamMessageCenterScreen extends StatefulWidget {
   final List<Team> managedTeams;
@@ -417,9 +418,5 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
     return '${msg['type'] ?? ''}:${msg['team_uuid'] ?? ''}:${msg['user_id'] ?? ''}:${_asInt(msg['timestamp'])}:${msg['message'] ?? ''}';
   }
 
-  int _asInt(dynamic value) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return int.tryParse(value?.toString() ?? '') ?? 0;
-  }
+  int _asInt(dynamic value) => JsonValueParser.toInt(value);
 }

@@ -28,4 +28,30 @@ void main() {
     expect(JsonValueParser.toMap('{invalid'), isNull);
     expect(JsonValueParser.toMap(['not', 'a', 'map']), isNull);
   });
+
+  test('parses double values safely with optional fallback', () {
+    expect(JsonValueParser.toNullableDouble(12), 12.0);
+    expect(JsonValueParser.toNullableDouble(3.5), 3.5);
+    expect(JsonValueParser.toNullableDouble(' 4.25 '), 4.25);
+    expect(JsonValueParser.toNullableDouble('bad'), isNull);
+    expect(JsonValueParser.toNullableDouble(null), isNull);
+    expect(JsonValueParser.toDouble('bad', fallback: 1.5), 1.5);
+  });
+
+  test('parses bool values from bool, num, and string forms', () {
+    expect(JsonValueParser.toNullableBool(true), isTrue);
+    expect(JsonValueParser.toNullableBool(false), isFalse);
+    expect(JsonValueParser.toNullableBool(1), isTrue);
+    expect(JsonValueParser.toNullableBool(0), isFalse);
+    expect(JsonValueParser.toNullableBool(' true '), isTrue);
+    expect(JsonValueParser.toNullableBool('1'), isTrue);
+    expect(JsonValueParser.toNullableBool('YES'), isTrue);
+    expect(JsonValueParser.toNullableBool(' false '), isFalse);
+    expect(JsonValueParser.toNullableBool('0'), isFalse);
+    expect(JsonValueParser.toNullableBool('No'), isFalse);
+    expect(JsonValueParser.toNullableBool('invalid'), isNull);
+    expect(JsonValueParser.toNullableBool(null), isNull);
+    expect(JsonValueParser.toBool(null, fallback: true), isTrue);
+    expect(JsonValueParser.toBool('invalid'), isFalse);
+  });
 }

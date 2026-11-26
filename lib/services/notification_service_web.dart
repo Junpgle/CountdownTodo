@@ -11,6 +11,7 @@ import 'item_semantics_service.dart';
 import 'scheduled_reminder_registry.dart';
 import 'notification_service_shared.dart';
 import 'focus_do_not_disturb_service.dart';
+import '../utils/json_value_parser.dart';
 
 class NotificationService {
   static const int financeBudgetAlertNotificationBaseId = 61000;
@@ -470,10 +471,5 @@ class NotificationService {
     Iterable<Map<String, dynamic>> reminders,
   ) => NotificationServiceShared.filterScheduledReminders(reminders);
 
-  static int? _readInt(dynamic value) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    if (value is String) return int.tryParse(value);
-    return null;
-  }
+  static int? _readInt(dynamic value) => JsonValueParser.toNullableInt(value);
 }

@@ -28,6 +28,7 @@ import '../course_import/handlers/course_import_handler.dart';
 import '../course_import/widgets/course_time_repair_dialog.dart';
 import '../course_import/widgets/zf_time_config_dialog.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/json_value_parser.dart';
 
 class _ExternalShareRequest {
   const _ExternalShareRequest({
@@ -338,10 +339,7 @@ class ExternalShareHandler {
       }
       if (!context.mounted) return;
       final singleLine = message.replaceAll('\n', '，');
-      AppSnackBars.showSnackBar(
-        context,
-        SnackBar(content: Text(singleLine)),
-      );
+      AppSnackBars.showSnackBar(context, SnackBar(content: Text(singleLine)));
     }
 
     if (!isImage) {
@@ -1255,10 +1253,7 @@ class ExternalShareHandler {
     return true;
   }
 
-  static int? _readInt(dynamic value) {
-    if (value is num) return value.toInt();
-    return int.tryParse(value?.toString() ?? '');
-  }
+  static int? _readInt(dynamic value) => JsonValueParser.toNullableInt(value);
 
   /// 启动后台重试任务
   /// [filePath] 原始图片路径

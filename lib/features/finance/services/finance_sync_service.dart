@@ -7,6 +7,7 @@ import '../../../services/api_service.dart';
 import '../../../services/sync_capability_service.dart';
 import 'finance_automation_service.dart';
 import 'finance_storage.dart';
+import '../../../utils/json_value_parser.dart';
 
 /// The client-side state captured immediately before a finance sync request.
 ///
@@ -600,17 +601,9 @@ abstract final class FinanceSyncService {
   }
 }
 
-int _asInt(dynamic value) {
-  if (value is num) return value.toInt();
-  return int.tryParse(value?.toString() ?? '') ?? 0;
-}
+int _asInt(dynamic value) => JsonValueParser.toInt(value);
 
-bool _asBool(dynamic value) {
-  if (value is bool) return value;
-  if (value is num) return value != 0;
-  final normalized = value?.toString().toLowerCase();
-  return normalized == 'true' || normalized == '1';
-}
+bool _asBool(dynamic value) => JsonValueParser.toBool(value);
 
 bool _isSystemFinanceUuid(String? uuid) =>
     uuid?.startsWith('finance-system-') == true;

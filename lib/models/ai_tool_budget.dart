@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../utils/json_value_parser.dart';
+
 /// Preset tiers for per-turn AI tool-calling budgets.
 enum AiToolBudgetPreset {
   standard('默认'),
@@ -166,13 +168,8 @@ class AiToolBudget {
     return standard;
   }
 
-  static int? _parseNullableInt(Object? value) {
-    if (value == null) return null;
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    if (value is String) return int.tryParse(value.trim());
-    return null;
-  }
+  static int? _parseNullableInt(Object? value) =>
+      JsonValueParser.toNullableInt(value);
 
   @override
   bool operator ==(Object other) =>

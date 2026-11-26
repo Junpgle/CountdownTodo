@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../utils/json_value_parser.dart';
+
 enum MinorModeSource {
   androidSystem,
   googleAgeSignals,
@@ -248,12 +250,5 @@ class MinorModeState {
     return systemSupported ? nativeSource : MinorModeSource.unsupported;
   }
 
-  static bool _asBool(Object? value) {
-    if (value is bool) return value;
-    if (value is num) return value != 0;
-    if (value is String) {
-      return value == '1' || value.toLowerCase() == 'true';
-    }
-    return false;
-  }
+  static bool _asBool(Object? value) => JsonValueParser.toBool(value);
 }

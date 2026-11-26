@@ -245,11 +245,7 @@ dynamic _decodeLegacyJsonValue(String value) {
   return (valid: false, value: null);
 }
 
-int? _toInt(Object? value) {
-  if (value is int) return value;
-  if (value is num) return value.toInt();
-  return int.tryParse(value?.toString() ?? '');
-}
+int? _toInt(Object? value) => JsonValueParser.toNullableInt(value);
 
 bool _sameStringSet(Set<String> first, Set<String> second) =>
     first.length == second.length && first.containsAll(second);
