@@ -470,7 +470,7 @@ class _KickDeviceVerificationDialogState
     extends State<_KickDeviceVerificationDialog> {
   final TextEditingController _codeController = TextEditingController();
   Timer? _countdownTimer;
-  int _secondsLeft = 0;
+  final ValueNotifier<int> _secondsLeft = ValueNotifier<int>(0);
   bool _sendingCode = false;
   bool _submitting = false;
   String? _errorText;
@@ -479,29 +479,30 @@ class _KickDeviceVerificationDialogState
   @override
   void dispose() {
     _countdownTimer?.cancel();
+    _secondsLeft.dispose();
     _codeController.dispose();
     super.dispose();
   }
 
   void _startCountdown() {
     _countdownTimer?.cancel();
-    setState(() => _secondsLeft = 60);
+    _secondsLeft.value = 60;
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) {
         timer.cancel();
         return;
       }
-      if (_secondsLeft <= 1) {
+      if (_secondsLeft.value <= 1) {
         timer.cancel();
-        setState(() => _secondsLeft = 0);
+        _secondsLeft.value = 0;
       } else {
-        setState(() => _secondsLeft--);
+        _secondsLeft.value--;
       }
     });
   }
 
   Future<void> _sendCode() async {
-    if (_sendingCode || _secondsLeft > 0) return;
+    if (_sendingCode || _secondsLeft.value > 0) return;
     setState(() {
       _sendingCode = true;
       _errorText = null;
@@ -597,17 +598,20 @@ class _KickDeviceVerificationDialogState
                 const SizedBox(width: 8),
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: OutlinedButton(
-                    onPressed: (_sendingCode || _secondsLeft > 0)
-                        ? null
-                        : _sendCode,
-                    child: _sendingCode
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Text(_secondsLeft > 0 ? '${_secondsLeft}s' : '获取验证码'),
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: _secondsLeft,
+                    builder: (context, secondsLeft, _) => OutlinedButton(
+                      onPressed: (_sendingCode || secondsLeft > 0)
+                          ? null
+                          : _sendCode,
+                      child: _sendingCode
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(secondsLeft > 0 ? '${secondsLeft}s' : '获取验证码'),
+                    ),
                   ),
                 ),
               ],
