@@ -108,7 +108,7 @@ mixin _StorageScreenTime on _StorageServiceBase {
       debugPrint("🚀 发现 ScreenTime 历史记录，正在执行 SQL 迁移...");
       dynamic decoded;
       try {
-        decoded = jsonDecode(jsonStr);
+        decoded = await decodeJsonOffload(jsonStr);
       } catch (e) {
         // 损坏的旧 JSON 无法恢复，直接清理并标记已完成，避免每次启动重复解析失败。
         debugPrint("⚠️ ScreenTime 迁移解析失败，已清理损坏的旧缓存: $e");
@@ -288,7 +288,7 @@ mixin _StorageScreenTime on _StorageServiceBase {
     }
     if (jsonStr != null) {
       try {
-        return jsonDecode(jsonStr);
+        return await decodeJsonOffload(jsonStr);
       } catch (_) {
         return [];
       }
@@ -485,7 +485,9 @@ mixin _StorageScreenTime on _StorageServiceBase {
     String? jsonStr = prefs.getString(keyAppMappings);
     if (jsonStr != null) {
       try {
-        return Map<String, String>.from(jsonDecode(jsonStr));
+        return Map<String, String>.from(
+          await decodeJsonOffload(jsonStr) as Map,
+        );
       } catch (_) {}
     }
     return {};

@@ -82,6 +82,29 @@ Future<Map<String, dynamic>> _apiSyncPostDeltaSync({
     }
     body['client_capabilities'] = {'finance_transfers_v1': 1};
 
+    final totalChanges =
+        todosChanges.length +
+        todoGroupsChanges.length +
+        countdownsChanges.length +
+        timeLogsChanges.length +
+        planBlocksChanges.length +
+        fixedSchedulesChanges.length +
+        pomodoroChanges.length +
+        tagChanges.length +
+        habitGoalsChanges.length +
+        habitRuleChanges.length +
+        habitCheckInChanges.length +
+        habitSleepCoachingPlanChanges.length +
+        habitDrinkOptionChanges.length +
+        financeCategoryChanges.length +
+        financePaymentMethodChanges.length +
+        financeTransactionChanges.length +
+        financeLoanChanges.length +
+        financeLoanInstallmentChanges.length +
+        financeBudgetChanges.length +
+        financeRecurringRuleChanges.length +
+        financeTemplateChanges.length;
+
     final syncClient = createApiHttpClient();
     ApiService._deltaSyncClient?.close();
     ApiService._deltaSyncClient = syncClient;
@@ -92,6 +115,7 @@ Future<Map<String, dynamic>> _apiSyncPostDeltaSync({
         '/api/sync',
         body: body,
         client: syncClient,
+        offloadBodyEncode: totalChanges >= kAsyncJsonEncodeOffloadMinItems,
       );
     } finally {
       if (identical(ApiService._deltaSyncClient, syncClient)) {
@@ -102,7 +126,7 @@ Future<Map<String, dynamic>> _apiSyncPostDeltaSync({
 
     dynamic data;
     try {
-      data = jsonDecode(response.body);
+      data = await decodeJsonOffload(response.body);
     } catch (_) {
       return {
         'success': false,
@@ -252,7 +276,9 @@ Future<List<dynamic>> _apiSyncFetchScreenTime(
       'GET',
       '/api/screen_time?user_id=$userId&date=$date',
     );
-    if (response.statusCode == 200) return jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return await decodeJsonOffload(response.body);
+    }
     if (throwOnError) {
       throw StateError('screen_time HTTP ${response.statusCode}');
     }
@@ -283,7 +309,7 @@ Future<List<dynamic>?> _apiSyncFetchAppMappings() async {
       includeAuth: false,
     );
     if (response.statusCode == 200) {
-      final decoded = jsonDecode(response.body);
+      final decoded = await decodeJsonOffload(response.body);
       if (decoded is List) return decoded;
     }
   } catch (e) {
@@ -306,7 +332,7 @@ Future<List<dynamic>> _apiSyncFetchCourses(
         );
     final response = await ApiService._request('GET', uri.toString());
     if (response.statusCode == 200) {
-      final decoded = jsonDecode(response.body);
+      final decoded = await decodeJsonOffload(response.body);
       return decoded is List ? decoded : [];
     }
     return [];
@@ -430,6 +456,7 @@ Future<Map<String, dynamic>> _apiSyncUploadCourses({
         if (atomicAllSemesters) 'atomic_all_semesters': true,
         'courses': courses,
       },
+      offloadBodyEncode: courses.length >= kAsyncJsonEncodeOffloadMinItems,
     );
 
     final data = jsonDecode(response.body);
@@ -512,7 +539,9 @@ Future<List<dynamic>> _apiSyncFetchPomodoroTags([int? userId]) async {
       'GET',
       '/api/pomodoro/tags$urlPostfix',
     );
-    if (response.statusCode == 200) return jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return await decodeJsonOffload(response.body);
+    }
     return [];
   } catch (e) {
     return [];
@@ -525,7 +554,9 @@ Future<List<dynamic>> _apiSyncFetchTodos(int userId) async {
       'GET',
       '/api/todos?user_id=$userId',
     );
-    if (response.statusCode == 200) return jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return await decodeJsonOffload(response.body);
+    }
     return [];
   } catch (e) {
     return [];
@@ -538,7 +569,9 @@ Future<List<dynamic>> _apiSyncFetchCountdowns(int userId) async {
       'GET',
       '/api/countdowns?user_id=$userId',
     );
-    if (response.statusCode == 200) return jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return await decodeJsonOffload(response.body);
+    }
     return [];
   } catch (e) {
     return [];
@@ -551,7 +584,9 @@ Future<List<dynamic>> _apiSyncFetchTimeLogs(int userId) async {
       'GET',
       '/api/time_logs?user_id=$userId',
     );
-    if (response.statusCode == 200) return jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return await decodeJsonOffload(response.body);
+    }
     return [];
   } catch (e) {
     return [];
@@ -624,6 +659,7 @@ Future<bool> _apiSyncUploadPomodoroRecords(
       '/api/pomodoro/records',
       body: {'records': records},
       client: client,
+      offloadBodyEncode: records.length >= kAsyncJsonEncodeOffloadMinItems,
     );
     if (response.statusCode != 200) return false;
     final data = jsonDecode(response.body);
@@ -659,7 +695,9 @@ Future<List<dynamic>> _apiSyncFetchPomodoroRecords([
       uri.toString(),
       client: client,
     );
-    if (response.statusCode == 200) return jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return await decodeJsonOffload(response.body);
+    }
     return [];
   } catch (e) {
     return [];
@@ -760,7 +798,7 @@ Future<Map<String, dynamic>?> _apiSyncFetchPomodoroCommunityStats({
       includeAuth: false,
     );
     if (response.statusCode == 200) {
-      final decoded = jsonDecode(response.body);
+      final decoded = await decodeJsonOffload(response.body);
       if (decoded is Map<String, dynamic> && decoded['success'] == true) {
         final data = decoded['data'];
         if (data is Map<String, dynamic>) {

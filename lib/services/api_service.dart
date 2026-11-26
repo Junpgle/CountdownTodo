@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'database_helper.dart';
 import 'http_client_factory.dart';
 import '../storage_service.dart';
+import '../utils/async_json.dart';
 import '../utils/sync_error_formatter.dart';
 
 import 'package:crypto/crypto.dart';
@@ -162,6 +163,7 @@ class ApiService {
     Duration? timeout,
     bool includeAuth = true,
     http.Client? client,
+    bool offloadBodyEncode = false,
   }) async {
     final normalizedPath = path.startsWith('/') ? path : '/$path';
     final uri = path.startsWith('http://') || path.startsWith('https://')
@@ -172,6 +174,11 @@ class ApiService {
         ? null
         : body is String
         ? body
+        : offloadBodyEncode
+        ? await encodeJsonOffload(
+            body,
+            estimatedItemCount: kAsyncJsonEncodeOffloadMinItems,
+          )
         : jsonEncode(body);
 
     final requestClient = client ?? _client;
