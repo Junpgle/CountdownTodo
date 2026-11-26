@@ -8,6 +8,7 @@ import '../../utils/app_platform.dart';
 import '../../utils/app_dialogs.dart';
 import '../../utils/calendar_date_math.dart';
 import '../../utils/time_utils.dart';
+import '../../widgets/app_skeleton.dart';
 import '../../widgets/floating_bottom_bar.dart';
 
 class CalendarSyncPage extends StatefulWidget {
@@ -435,7 +436,13 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
 
   Widget _buildBody({required bool standalone}) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return AppSkeletonSettingsPage(
+        topPadding: standalone
+            ? floatingGlassSettingsContentTopInset(context)
+            : 16,
+        sectionCount: 2,
+        rowsPerSection: 3,
+      );
     }
     if (_error != null) {
       return Center(

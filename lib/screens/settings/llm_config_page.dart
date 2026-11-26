@@ -7,6 +7,7 @@ import '../../services/llm_service.dart';
 import '../../services/minor_mode_policy.dart';
 import '../../services/minor_mode_service.dart';
 import '../../widgets/advanced_ai_tutorial_card.dart';
+import '../../widgets/app_skeleton.dart';
 import '../../widgets/floating_glass_control.dart';
 import '../../widgets/optional_liquid_glass_surface.dart';
 import '../../utils/app_dialogs.dart';
@@ -116,7 +117,12 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   Widget build(BuildContext context) {
     final standalone = !widget.isEmbedded;
     final content = _isLoading
-        ? const Center(child: CircularProgressIndicator())
+        ? AppSkeletonFormPage(
+            topPadding: standalone
+                ? floatingGlassSettingsContentTopInset(context)
+                : 16,
+            fieldCount: 4,
+          )
         : _accessDenied
         ? _buildAccessDeniedBody(context)
         : LayoutBuilder(

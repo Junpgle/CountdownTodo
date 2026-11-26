@@ -16,6 +16,7 @@ import '../../../widgets/ai_tool_budget_dialog.dart';
 import '../../../services/llm_service.dart';
 import '../../../utils/settings_navigation.dart';
 import '../../../widgets/app_settings_widgets.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../llm_config_page.dart';
 import '../../../utils/app_dialogs.dart';
@@ -878,7 +879,13 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage>
           context,
           standalone: standalone,
           child: _isLoading
-              ? const Center(child: CircularProgressIndicator())
+              ? AppSkeletonSettingsPage(
+                  topPadding: standalone
+                      ? floatingGlassSettingsContentTopInset(context)
+                      : 16,
+                  sectionCount: 3,
+                  rowsPerSection: 3,
+                )
               : _buildContent(context),
         ),
       ),

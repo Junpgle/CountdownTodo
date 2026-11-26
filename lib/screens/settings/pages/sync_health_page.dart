@@ -4,6 +4,7 @@ import '../../../services/sync_health_service.dart';
 import '../../../utils/app_dialogs.dart';
 import '../../../utils/settings_navigation.dart';
 import '../../../utils/time_utils.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../conflict_inbox_screen.dart';
 import 'course_settings_page.dart';
@@ -144,9 +145,11 @@ class _SyncHealthPageState extends State<SyncHealthPage> {
   Widget _buildBody(BuildContext context) {
     final topInset = floatingGlassSettingsContentTopInset(context);
     if (_isLoading && _snapshot == null) {
-      return Padding(
-        padding: EdgeInsets.only(top: topInset),
-        child: const Center(child: CircularProgressIndicator()),
+      return AppSkeletonDashboardPage(
+        topPadding: topInset,
+        showMetricGrid: true,
+        showChart: false,
+        listCount: 3,
       );
     }
     if (_loadError != null && _snapshot == null) {

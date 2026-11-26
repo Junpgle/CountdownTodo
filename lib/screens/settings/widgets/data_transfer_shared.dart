@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../services/minor_mode_policy.dart';
 import '../../../services/minor_mode_service.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 
 /// 校验未成年人模式下的导入/导出操作权限，被拒绝时弹出统一提示。
@@ -64,7 +65,14 @@ class DataTransferScaffold extends StatelessWidget {
         context,
         standalone: standalone,
         child: isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonSettingsPage(
+                topPadding: standalone
+                    ? floatingGlassSettingsContentTopInset(context)
+                    : 16,
+                sectionCount: 2,
+                rowsPerSection: 3,
+                twoColumnOnWide: useWideLayout,
+              )
             : useWideLayout
             ? Row(
                 crossAxisAlignment: CrossAxisAlignment.start,

@@ -8,7 +8,7 @@ import '../../../storage_service.dart';
 import '../../../utils/app_platform.dart';
 import '../../../utils/settings_navigation.dart';
 import '../../../widgets/app_settings_widgets.dart';
-import '../../../widgets/app_state_views.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/settings_toggle_card.dart';
 import '../server_choice_page.dart';
 import '../../../utils/app_dialogs.dart';
@@ -184,7 +184,10 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection>
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     if (_isLoading) {
-      return const AppLoadingView();
+      return const Padding(
+        padding: EdgeInsets.only(top: 16),
+        child: AppSkeletonSettingsSection(rows: 3),
+      );
     }
 
     return AppSettingsSection(

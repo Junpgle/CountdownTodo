@@ -11,6 +11,7 @@ import '../../../services/minor_mode_service.dart';
 import '../../../update_service.dart';
 import '../../../utils/app_platform.dart';
 import '../../../widgets/app_settings_widgets.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/app_state_views.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
@@ -1303,7 +1304,12 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const AppLoadingView();
+    if (_isLoading) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 12),
+        child: AppSkeletonSettingsSection(rows: 2),
+      );
+    }
 
     final colorScheme = Theme.of(context).colorScheme;
     return AppSettingsSection(

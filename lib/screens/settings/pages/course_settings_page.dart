@@ -17,6 +17,7 @@ import '../../course_calendar_adjustment_screen.dart';
 import '../../../models.dart';
 import '../../../utils/app_platform.dart';
 import '../../../utils/settings_navigation.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/settings_focus_page.dart';
 import '../../../utils/app_dialogs.dart';
@@ -221,7 +222,26 @@ class _CourseSettingsPageState extends State<CourseSettingsPage>
   Widget build(BuildContext context) {
     final isWeb = AppPlatform.isWeb;
     if (_isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        extendBodyBehindAppBar: !widget.isEmbedded,
+        appBar: widget.isEmbedded
+            ? null
+            : FloatingGlassAppBar(
+                flexibleSpace: const FloatingGlassTopBarBackground(),
+                title: const Text('课表与学期'),
+              ),
+        body: floatingGlassSettingsBody(
+          context,
+          standalone: !widget.isEmbedded,
+          child: AppSkeletonSettingsPage(
+            topPadding: widget.isEmbedded
+                ? 16
+                : floatingGlassSettingsContentTopInset(context),
+            sectionCount: 2,
+            rowsPerSection: 3,
+          ),
+        ),
+      );
     }
     return Scaffold(
       extendBodyBehindAppBar: !widget.isEmbedded,

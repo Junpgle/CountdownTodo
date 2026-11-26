@@ -20,7 +20,7 @@ import '../handlers/storage_management_handler.dart';
 import '../dialogs/migration_dialog.dart';
 import '../../../utils/theme_color_tokens.dart';
 import '../../../widgets/app_settings_widgets.dart';
-import '../../../widgets/app_state_views.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
 
@@ -243,7 +243,24 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage>
     final colorScheme = Theme.of(context).colorScheme;
     final isWeb = AppPlatform.isWeb;
     if (_isLoading) {
-      return const Scaffold(body: AppLoadingView());
+      return Scaffold(
+        extendBodyBehindAppBar: !widget.isEmbedded,
+        appBar: widget.isEmbedded
+            ? null
+            : FloatingGlassAppBar(
+                flexibleSpace: const FloatingGlassTopBarBackground(),
+                title: const Text('系统与外观'),
+              ),
+        body: floatingGlassSettingsBody(
+          context,
+          standalone: !widget.isEmbedded,
+          child: AppSkeletonSettingsPage(
+            topPadding: widget.isEmbedded
+                ? 16
+                : floatingGlassSettingsContentTopInset(context),
+          ),
+        ),
+      );
     }
     return Scaffold(
       extendBodyBehindAppBar: !widget.isEmbedded,

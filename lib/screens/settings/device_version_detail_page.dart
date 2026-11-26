@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/api_service.dart';
+import '../../widgets/app_skeleton.dart';
 import '../../widgets/floating_glass_control.dart';
 import '../../widgets/optional_liquid_glass_surface.dart';
 
@@ -53,7 +54,11 @@ class _DeviceVersionDetailPageState extends State<DeviceVersionDetailPage> {
   @override
   Widget build(BuildContext context) {
     final body = _loading
-        ? const Center(child: CircularProgressIndicator())
+        ? AppSkeletonSettingsPage(
+            topPadding: floatingGlassSettingsContentTopInset(context),
+            sectionCount: 2,
+            rowsPerSection: 3,
+          )
         : _error != null
         ? Center(
             child: Column(

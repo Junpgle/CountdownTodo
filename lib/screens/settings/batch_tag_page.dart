@@ -4,6 +4,7 @@ import '../../models.dart';
 import '../../services/pomodoro_service.dart';
 import '../../storage_service.dart';
 import '../../utils/app_color_utils.dart';
+import '../../widgets/app_skeleton.dart';
 import '../../widgets/floating_glass_control.dart';
 import '../../utils/app_dialogs.dart';
 import 'widgets/tag_batch_shared.dart';
@@ -258,7 +259,11 @@ class _BatchTagPageState extends State<BatchTagPage>
         standalone: !widget.isEmbedded,
         topBarHeight: topBarHeight,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: widget.isEmbedded ? 12 : topBarHeight + 12,
+                itemCount: 6,
+                itemHeight: 68,
+              )
             : Padding(
                 padding: EdgeInsets.only(
                   top: widget.isEmbedded ? 0 : topBarHeight,

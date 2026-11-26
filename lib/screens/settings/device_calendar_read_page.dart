@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/device_calendar_read_service.dart';
 import '../../utils/app_platform.dart';
+import '../../widgets/app_skeleton.dart';
 import '../../widgets/floating_glass_control.dart';
 import '../../utils/app_dialogs.dart';
 
@@ -227,8 +228,8 @@ class _DeviceCalendarReadPageState extends State<DeviceCalendarReadPage> {
               )
             else if (_loading)
               const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(child: CircularProgressIndicator()),
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: AppSkeletonSettingsSection(rows: 3, showHeader: false),
               )
             else if (_permissionGranted) ...[
               const SizedBox(height: 20),

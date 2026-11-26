@@ -10,6 +10,7 @@ import '../../../services/minor_mode_policy.dart';
 import '../../../storage_service.dart';
 import '../../../utils/text_file_reader.dart';
 import '../../../utils/time_utils.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
 import '../../../utils/app_dialogs.dart';
 import '../widgets/data_transfer_shared.dart';
@@ -296,11 +297,9 @@ class _DataImportPageState extends State<DataImportPage> {
     final colorScheme = Theme.of(context).colorScheme;
     final parsingOrPreview = <Widget>[
       if (_isParsing)
-        const Center(
-          child: Padding(
-            padding: EdgeInsets.all(32),
-            child: CircularProgressIndicator(),
-          ),
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child: AppSkeletonSettingsSection(rows: 3, showHeader: false),
         )
       else if (_preview != null)
         _buildPreviewSection(),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../models.dart';
 import '../../../services/conflict_visibility_service.dart';
 import '../../../storage_service.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../utils/app_dialogs.dart';
 import '../../../utils/text_utils.dart';
@@ -203,7 +204,13 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
         context,
         standalone: !widget.isEmbedded,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: widget.isEmbedded
+                    ? 16
+                    : floatingGlassSettingsContentTopInset(context),
+                itemCount: 4,
+                itemHeight: 96,
+              )
             : Column(
                 children: [
                   Padding(

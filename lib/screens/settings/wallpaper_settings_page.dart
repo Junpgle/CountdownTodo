@@ -1,3 +1,4 @@
+import '../../widgets/app_skeleton.dart';
 import '../../widgets/floating_glass_control.dart';
 
 import 'package:flutter/material.dart';
@@ -126,11 +127,26 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
-        appBar: FloatingGlassAppBar(
-          flexibleSpace: const FloatingGlassTopBarBackground(),
-          title: const Text('壁纸设置'),
+        extendBodyBehindAppBar: !widget.isEmbedded,
+        appBar: widget.isEmbedded
+            ? null
+            : FloatingGlassAppBar(
+                flexibleSpace: const FloatingGlassTopBarBackground(),
+                title: const Text('壁纸设置'),
+              ),
+        body: floatingGlassSettingsBody(
+          context,
+          standalone: !widget.isEmbedded,
+          child: AppSkeletonDashboardPage(
+            topPadding: widget.isEmbedded
+                ? 16
+                : floatingGlassSettingsContentTopInset(context),
+            showMetricGrid: false,
+            showChart: true,
+            chartHeight: 200,
+            listCount: 3,
+          ),
         ),
-        body: const Center(child: CircularProgressIndicator()),
       );
     }
 

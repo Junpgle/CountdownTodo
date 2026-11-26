@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../storage_service.dart';
+import '../../widgets/app_skeleton.dart';
 import '../../widgets/floating_glass_control.dart';
 import '../../widgets/optional_liquid_glass_surface.dart';
 import '../../utils/app_dialogs.dart';
@@ -477,18 +478,30 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return Scaffold(
-        appBar: FloatingGlassAppBar(
-          flexibleSpace: const FloatingGlassTopBarBackground(),
-          title: const Text('首页文字自定义'),
-        ),
-        body: const Center(child: CircularProgressIndicator()),
-      );
-    }
-
     final isWideScreen = MediaQuery.sizeOf(context).width > 768;
     final standalone = !widget.isEmbedded && !isWideScreen;
+
+    if (_isLoading) {
+      return Scaffold(
+        extendBodyBehindAppBar: standalone,
+        appBar: widget.isEmbedded
+            ? null
+            : FloatingGlassAppBar(
+                flexibleSpace: const FloatingGlassTopBarBackground(),
+                title: const Text('首页文字自定义'),
+              ),
+        body: floatingGlassSettingsBody(
+          context,
+          standalone: standalone,
+          child: AppSkeletonFormPage(
+            topPadding: standalone
+                ? floatingGlassSettingsContentTopInset(context)
+                : 16,
+            fieldCount: 4,
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       extendBodyBehindAppBar: standalone,

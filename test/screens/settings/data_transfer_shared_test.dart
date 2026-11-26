@@ -1,4 +1,5 @@
 import 'package:countdown_todo/screens/settings/widgets/data_transfer_shared.dart';
+import 'package:countdown_todo/widgets/app_skeleton.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -76,7 +77,7 @@ void main() {
         ),
       );
 
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byType(AppSkeletonScope), findsOneWidget);
       expect(find.text('PRIMARY'), findsNothing);
       expect(find.text('NARROW_ONLY'), findsNothing);
     });

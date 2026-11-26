@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../services/home_layout_service.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
 
@@ -396,7 +397,13 @@ class _HomeLayoutSettingsPageState extends State<HomeLayoutSettingsPage> {
         context,
         standalone: !widget.isEmbedded,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonListPage(
+                topPadding: widget.isEmbedded
+                    ? 16
+                    : floatingGlassSettingsContentTopInset(context),
+                itemCount: 6,
+                itemHeight: 68,
+              )
             : ListView(
                 padding: EdgeInsets.fromLTRB(
                   16,

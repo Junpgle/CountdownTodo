@@ -9,6 +9,7 @@ import '../../../services/minor_mode_service.dart';
 import '../../../utils/app_dialogs.dart';
 import '../../../utils/page_transitions.dart';
 import '../../../utils/time_utils.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import 'data_import_page.dart';
 
@@ -246,7 +247,13 @@ class _AutoBackupPageState extends State<AutoBackupPage> {
         context,
         standalone: standalone,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? AppSkeletonSettingsPage(
+                topPadding: standalone
+                    ? floatingGlassSettingsContentTopInset(context)
+                    : 16,
+                sectionCount: 2,
+                rowsPerSection: 3,
+              )
             : !AutoBackupService.isSupported
             ? _buildWebUnsupportedView(colorScheme)
             : _buildContent(colorScheme, standalone: standalone),

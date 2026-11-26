@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../services/api_service.dart';
 import '../../../services/storage/user_session_storage.dart';
 import '../../../utils/app_dialogs.dart';
-import '../../../widgets/app_state_views.dart';
+import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
 import '../../../utils/time_utils.dart';
@@ -140,7 +140,12 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final body = _loading
-        ? const Center(child: AppLoadingIndicator())
+        ? AppSkeletonListPage(
+            topPadding: floatingGlassSettingsContentTopInset(context),
+            showHeroCard: true,
+            itemCount: 3,
+            itemHeight: 84,
+          )
         : _error != null
         ? Center(
             child: Padding(

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models.dart';
 import '../../services/pomodoro_service.dart';
 import '../../storage_service.dart';
+import '../../widgets/app_skeleton.dart';
 import '../../widgets/floating_glass_control.dart';
 import '../../utils/app_dialogs.dart';
 import 'widgets/tag_batch_shared.dart';
@@ -273,7 +274,11 @@ class _RebindTagPageState extends State<RebindTagPage>
         standalone: true,
         topBarHeight: kToolbarHeight + kTextTabBarHeight,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? const AppSkeletonListPage(
+                topPadding: kToolbarHeight + kTextTabBarHeight + 12,
+                itemCount: 6,
+                itemHeight: 68,
+              )
             : Padding(
                 padding: EdgeInsets.only(
                   top:
