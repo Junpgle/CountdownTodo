@@ -215,7 +215,8 @@ class FloatingGlassSliverAppBar extends StatelessWidget {
         ?.map(
           (action) =>
               _isFloatingGlassAppBarLayoutOnly(action) ||
-                  action is FloatingGlassAppBarAction
+                  action is FloatingGlassAppBarAction ||
+                  action is FloatingGlassAppBarActionGroup
               ? action
               : FloatingGlassAppBarAction(
                   margin: const EdgeInsets.symmetric(horizontal: 4),

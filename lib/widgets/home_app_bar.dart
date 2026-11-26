@@ -394,6 +394,38 @@ class _HomeAppBarState extends State<HomeAppBar>
       margin: isMobileGrid ? EdgeInsets.zero : null,
     );
 
+    final actionChildren = (isTablet || isLandscape)
+        ? <Widget>[
+            if (widget.showCourseButton)
+              _buildAnimatedAction(
+                0,
+                _buildActionButton(
+                  context,
+                  icon: Icons.calendar_view_week_rounded,
+                  onPressed: () async {
+                    await PageTransitions.pushFromRect(
+                      context: context,
+                      page: WeeklyCourseScreen(
+                        username: widget.username,
+                        onCreateRelatedTodo: widget.onCreateRelatedTodo,
+                      ),
+                      sourceKey: widget.courseKey ?? GlobalKey(),
+                    );
+                  },
+                  buttonKey: widget.courseKey,
+                ),
+              ),
+            _buildAnimatedAction(1, searchBtn),
+            _buildAnimatedAction(2, syncBtn),
+            _buildAnimatedAction(3, teamsBtn),
+            _buildAnimatedAction(4, aiBtn),
+            _buildAnimatedAction(5, settingsBtn),
+          ]
+        : <Widget>[
+            _buildAnimatedAction(0, searchBtn),
+            _buildAnimatedAction(1, syncBtn),
+          ];
+
     return FloatingGlassAppBar(
       backgroundColor: widget.isLight ? Colors.transparent : null,
       floatingControlTint: widget.isLight
@@ -479,35 +511,15 @@ class _HomeAppBarState extends State<HomeAppBar>
         ],
       ),
       actions: [
-        if (isTablet || isLandscape) ...[
-          if (widget.showCourseButton)
-            _buildAnimatedAction(
-              0,
-              _buildActionButton(
-                context,
-                icon: Icons.calendar_view_week_rounded,
-                onPressed: () async {
-                  await PageTransitions.pushFromRect(
-                    context: context,
-                    page: WeeklyCourseScreen(
-                      username: widget.username,
-                      onCreateRelatedTodo: widget.onCreateRelatedTodo,
-                    ),
-                    sourceKey: widget.courseKey ?? GlobalKey(),
-                  );
-                },
-                buttonKey: widget.courseKey,
-              ),
-            ),
-          _buildAnimatedAction(1, searchBtn),
-          _buildAnimatedAction(2, syncBtn),
-          _buildAnimatedAction(3, teamsBtn),
-          _buildAnimatedAction(4, aiBtn),
-          _buildAnimatedAction(5, settingsBtn),
-        ] else ...[
-          _buildAnimatedAction(0, searchBtn),
-          _buildAnimatedAction(1, syncBtn),
-        ],
+        FloatingGlassAppBarActionGroup(
+          tint: widget.isLight
+              ? colorScheme.scrim.withValues(alpha: 0.32)
+              : null,
+          haloColor: colorScheme.primary,
+          isDark: widget.isLight ? true : null,
+          useTopBarGlass: true,
+          children: actionChildren,
+        ),
         const SizedBox(width: 8),
       ],
     );

@@ -81,6 +81,94 @@ class FloatingGlassAppBarAction extends StatelessWidget {
   }
 }
 
+Widget _neutralizeFloatingAppBarButtons(BuildContext context, Widget child) {
+  final colorScheme = Theme.of(context).colorScheme;
+  return Theme(
+    data: Theme.of(context).copyWith(
+      // The app-wide glass button theme applies to ordinary page controls.
+      // Top-bar actions have their own scroll-aware shell, so keep the
+      // resting child visually native and avoid a second glass surface.
+      iconButtonTheme: IconButtonThemeData(
+        style: ButtonStyle(
+          // A non-null identity builder is required here: null would allow
+          // the app-wide glass backgroundBuilder to merge back in and paint
+          // a second circle inside the app-bar shell.
+          backgroundBuilder: (context, states, child) =>
+              child ?? const SizedBox.shrink(),
+          backgroundColor: const WidgetStatePropertyAll(Colors.transparent),
+          foregroundColor: WidgetStatePropertyAll(colorScheme.onSurface),
+          side: const WidgetStatePropertyAll(BorderSide.none),
+          elevation: const WidgetStatePropertyAll(0),
+          shadowColor: const WidgetStatePropertyAll(Colors.transparent),
+          surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+        ),
+      ),
+    ),
+    child: child,
+  );
+}
+
+Widget _buildScrollAnimatedControlProgress({
+  required ValueListenable<double> collapseProgress,
+  required double floatingThreshold,
+  required Widget staticChild,
+  required Widget Function(
+    BuildContext context,
+    double progress,
+    Widget cachedChild,
+  )
+  builder,
+}) {
+  return ValueListenableBuilder<double>(
+    valueListenable: collapseProgress,
+    child: staticChild,
+    builder: (context, value, cachedStaticChild) {
+      final transitionStart = math.max(0.0, floatingThreshold - 0.22);
+      final transitionEnd = math.min(1.0, floatingThreshold + 0.22);
+      final transitionRange = math.max(0.001, transitionEnd - transitionStart);
+      final target = ((value - transitionStart) / transitionRange).clamp(
+        0.0,
+        1.0,
+      );
+
+      // Scroll notifications already provide a frame-by-frame progress
+      // signal. Animating each new target again with a 180 ms tween makes
+      // Android controls trail the scroll and schedules redundant work.
+      if (AppPlatform.isAndroid) {
+        return builder(context, target, cachedStaticChild!);
+      }
+
+      return TweenAnimationBuilder<double>(
+        tween: Tween<double>(end: target),
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        child: cachedStaticChild,
+        builder: (context, progress, innerStaticChild) =>
+            builder(context, progress, innerStaticChild!),
+      );
+    },
+  );
+}
+
+Widget? _wrapAnimatedGlassShell({
+  required double progress,
+  required Widget Function() buildClippedShell,
+}) {
+  if (progress <= 0.001) return null;
+  final clippedControl = buildClippedShell();
+  return IgnorePointer(
+    child: progress >= 0.999
+        ? clippedControl
+        : Opacity(
+            opacity: progress,
+            child: Transform.scale(
+              scale: 0.82 + progress * 0.18,
+              child: RepaintBoundary(child: clippedControl),
+            ),
+          ),
+  );
+}
+
 class _FloatingGlassAppBarActionContent extends StatelessWidget {
   const _FloatingGlassAppBarActionContent({
     required this.child,
@@ -112,63 +200,12 @@ class _FloatingGlassAppBarActionContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final nativeChild = Theme(
-      data: Theme.of(context).copyWith(
-        // The app-wide glass button theme applies to ordinary page controls.
-        // Top-bar actions have their own scroll-aware shell, so keep the
-        // resting child visually native and avoid a second glass surface.
-        iconButtonTheme: IconButtonThemeData(
-          style: ButtonStyle(
-            // A non-null identity builder is required here: null would allow
-            // the app-wide glass backgroundBuilder to merge back in and paint
-            // a second circle inside the app-bar shell.
-            backgroundBuilder: (context, states, child) =>
-                child ?? const SizedBox.shrink(),
-            backgroundColor: const WidgetStatePropertyAll(Colors.transparent),
-            foregroundColor: WidgetStatePropertyAll(colorScheme.onSurface),
-            side: const WidgetStatePropertyAll(BorderSide.none),
-            elevation: const WidgetStatePropertyAll(0),
-            shadowColor: const WidgetStatePropertyAll(Colors.transparent),
-            surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
-          ),
-        ),
-      ),
-      child: child,
-    );
-
-    return ValueListenableBuilder<double>(
-      valueListenable: collapseProgress,
-      child: Center(child: nativeChild),
-      builder: (context, value, centeredNativeChild) {
-        final transitionStart = math.max(0.0, floatingThreshold - 0.22);
-        final transitionEnd = math.min(1.0, floatingThreshold + 0.22);
-        final transitionRange = math.max(
-          0.001,
-          transitionEnd - transitionStart,
-        );
-        final target = ((value - transitionStart) / transitionRange).clamp(
-          0.0,
-          1.0,
-        );
-
-        // Scroll notifications already provide a frame-by-frame progress
-        // signal. Animating each new target again with a 180 ms tween makes
-        // Android controls trail the scroll and schedules redundant work.
-        if (AppPlatform.isAndroid) {
-          return _buildForProgress(context, target, centeredNativeChild!);
-        }
-
-        return TweenAnimationBuilder<double>(
-          tween: Tween<double>(end: target),
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
-          child: centeredNativeChild,
-          builder: (context, progress, staticChild) {
-            return _buildForProgress(context, progress, staticChild!);
-          },
-        );
-      },
+    final nativeChild = _neutralizeFloatingAppBarButtons(context, child);
+    return _buildScrollAnimatedControlProgress(
+      collapseProgress: collapseProgress,
+      floatingThreshold: floatingThreshold,
+      staticChild: Center(child: nativeChild),
+      builder: _buildForProgress,
     );
   }
 
@@ -179,9 +216,9 @@ class _FloatingGlassAppBarActionContent extends StatelessWidget {
   ) {
     final colorScheme = Theme.of(context).colorScheme;
     final resolvedTint = tint ?? _floatingAppBarTint(colorScheme, null);
-    Widget? glassShell;
-    if (progress > 0.001) {
-      final clippedControl = ClipOval(
+    final glassShell = _wrapAnimatedGlassShell(
+      progress: progress,
+      buildClippedShell: () => ClipOval(
         // The glass surface owns an outer halo shadow. Clip
         // it to the circular control so it cannot leave a
         // square/irregular shadow around the action button.
@@ -196,19 +233,8 @@ class _FloatingGlassAppBarActionContent extends StatelessWidget {
           isDark: isDark,
           child: const SizedBox.shrink(),
         ),
-      );
-      glassShell = IgnorePointer(
-        child: progress >= 0.999
-            ? clippedControl
-            : Opacity(
-                opacity: progress,
-                child: Transform.scale(
-                  scale: 0.82 + progress * 0.18,
-                  child: RepaintBoundary(child: clippedControl),
-                ),
-              ),
-      );
-    }
+      ),
+    );
 
     return Padding(
       padding: margin,
@@ -220,6 +246,188 @@ class _FloatingGlassAppBarActionContent extends StatelessWidget {
             alignment: Alignment.center,
             fit: StackFit.expand,
             children: [?glassShell, centeredNativeChild],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Groups adjacent app-bar actions inside a single shared Liquid Glass pill
+/// capsule once scrolled, matching Apple's grouped toolbar chrome while keeping
+/// top-bar glass to one shader/backdrop pass instead of one per button.
+class FloatingGlassAppBarActionGroup extends StatelessWidget {
+  const FloatingGlassAppBarActionGroup({
+    super.key,
+    required this.children,
+    this.height = floatingGlassStandardControlSize,
+    this.borderRadius,
+    this.margin = EdgeInsets.zero,
+    this.padding = const EdgeInsets.symmetric(horizontal: 4),
+    this.spacing = 0,
+    this.tint,
+    this.haloColor,
+    this.haloOpacity = 0.28,
+    this.backerOpacity,
+    this.useTopBarGlass = true,
+    this.isDark,
+    this.collapseProgress,
+    this.floatingThreshold = _floatingGlassAppBarControlThreshold,
+  });
+
+  final List<Widget> children;
+  final double height;
+  final double? borderRadius;
+  final EdgeInsetsGeometry margin;
+  final EdgeInsetsGeometry padding;
+  final double spacing;
+  final Color? tint;
+  final Color? haloColor;
+  final double? haloOpacity;
+  final double? backerOpacity;
+  final bool useTopBarGlass;
+  final bool? isDark;
+  final ValueListenable<double>? collapseProgress;
+  final double floatingThreshold;
+
+  @override
+  Widget build(BuildContext context) {
+    if (children.isEmpty) return const SizedBox.shrink();
+    final progress =
+        collapseProgress ?? _FloatingGlassAppBarScope.maybeOf(context);
+    Widget buildContent(ValueListenable<double> activeProgress) {
+      return _FloatingGlassAppBarActionGroupContent(
+        height: height,
+        borderRadius: borderRadius ?? height / 2,
+        margin: margin,
+        padding: padding,
+        spacing: spacing,
+        tint: tint,
+        haloColor: haloColor,
+        haloOpacity: haloOpacity,
+        backerOpacity: backerOpacity,
+        useTopBarGlass: useTopBarGlass,
+        isDark: isDark,
+        collapseProgress: activeProgress,
+        floatingThreshold: floatingThreshold,
+        children: children,
+      );
+    }
+
+    if (progress == null) {
+      return _FloatingGlassAppBarHost(
+        notificationPredicate: defaultScrollNotificationPredicate,
+        builder: (context, standaloneProgress) => _FloatingGlassAppBarScope(
+          collapseProgress: standaloneProgress,
+          child: buildContent(standaloneProgress),
+        ),
+      );
+    }
+
+    return buildContent(progress);
+  }
+}
+
+class _FloatingGlassAppBarActionGroupContent extends StatelessWidget {
+  const _FloatingGlassAppBarActionGroupContent({
+    required this.children,
+    required this.height,
+    required this.borderRadius,
+    required this.margin,
+    required this.padding,
+    required this.spacing,
+    required this.tint,
+    required this.haloColor,
+    required this.haloOpacity,
+    required this.backerOpacity,
+    required this.useTopBarGlass,
+    required this.isDark,
+    required this.collapseProgress,
+    required this.floatingThreshold,
+  });
+
+  final List<Widget> children;
+  final double height;
+  final double borderRadius;
+  final EdgeInsetsGeometry margin;
+  final EdgeInsetsGeometry padding;
+  final double spacing;
+  final Color? tint;
+  final Color? haloColor;
+  final double? haloOpacity;
+  final double? backerOpacity;
+  final bool useTopBarGlass;
+  final bool? isDark;
+  final ValueListenable<double> collapseProgress;
+  final double floatingThreshold;
+
+  @override
+  Widget build(BuildContext context) {
+    final spacedChildren = spacing <= 0 || children.length <= 1
+        ? children
+        : <Widget>[
+            for (var i = 0; i < children.length; i++) ...[
+              if (i > 0) SizedBox(width: spacing),
+              children[i],
+            ],
+          ];
+    final nativeRow = _neutralizeFloatingAppBarButtons(
+      context,
+      Padding(
+        padding: padding,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: spacedChildren,
+        ),
+      ),
+    );
+
+    return _buildScrollAnimatedControlProgress(
+      collapseProgress: collapseProgress,
+      floatingThreshold: floatingThreshold,
+      staticChild: nativeRow,
+      builder: _buildForProgress,
+    );
+  }
+
+  Widget _buildForProgress(
+    BuildContext context,
+    double progress,
+    Widget cachedRow,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final resolvedTint = tint ?? _floatingAppBarTint(colorScheme, null);
+    final capsuleRadius = BorderRadius.circular(borderRadius);
+    final glassShell = _wrapAnimatedGlassShell(
+      progress: progress,
+      buildClippedShell: () => ClipRSuperellipse(
+        borderRadius: capsuleRadius,
+        child: FloatingGlassControl(
+          height: height,
+          borderRadius: borderRadius,
+          tint: resolvedTint,
+          haloColor: haloColor ?? colorScheme.primary,
+          haloOpacity: haloOpacity,
+          backerOpacity: backerOpacity,
+          useTopBarGlass: useTopBarGlass,
+          isDark: isDark,
+          child: const SizedBox.shrink(),
+        ),
+      ),
+    );
+
+    return Padding(
+      padding: margin,
+      child: Center(
+        child: SizedBox(
+          height: height,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              if (glassShell != null) Positioned.fill(child: glassShell),
+              cachedRow,
+            ],
           ),
         ),
       ),
@@ -368,7 +576,8 @@ class FloatingGlassAppBar extends StatelessWidget
               ?.map(
                 (action) =>
                     _isFloatingGlassAppBarLayoutOnly(action) ||
-                        action is FloatingGlassAppBarAction
+                        action is FloatingGlassAppBarAction ||
+                        action is FloatingGlassAppBarActionGroup
                     ? action
                     : FloatingGlassAppBarAction(
                         margin: const EdgeInsets.symmetric(horizontal: 4),

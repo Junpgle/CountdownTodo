@@ -1088,4 +1088,54 @@ void main() {
     expect(tickerModes, isNotEmpty);
     expect(tickerModes, everyElement(isFalse));
   });
+
+  testWidgets(
+    'FloatingGlassAppBarActionGroup renders one shared glass capsule for multiple actions',
+    (tester) async {
+      await LiquidGlassEffectService.setEnabled(true);
+      await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+      final collapseProgress = ValueNotifier<double>(1);
+      addTearDown(collapseProgress.dispose);
+      var tapped = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            appBar: FloatingGlassAppBar(
+              title: const Text('Grouped toolbar'),
+              actions: [
+                FloatingGlassAppBarActionGroup(
+                  collapseProgress: collapseProgress,
+                  children: [
+                    IconButton(
+                      onPressed: () => tapped++,
+                      icon: const Icon(Icons.search),
+                    ),
+                    IconButton(
+                      onPressed: () => tapped++,
+                      icon: const Icon(Icons.sync),
+                    ),
+                    IconButton(
+                      onPressed: () => tapped++,
+                      icon: const Icon(Icons.settings),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 220));
+
+      expect(find.byType(FloatingGlassAppBarAction), findsNothing);
+      expect(find.byType(FloatingGlassControl), findsOneWidget);
+      expect(find.byType(GlassContainer), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.search));
+      await tester.tap(find.byIcon(Icons.sync));
+      await tester.tap(find.byIcon(Icons.settings));
+      expect(tapped, 3);
+    },
+  );
 }
