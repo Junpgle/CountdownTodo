@@ -67,7 +67,26 @@ class _GuideAppearanceOptionsState extends State<GuideAppearanceOptions> {
   @override
   void initState() {
     super.initState();
+    LiquidGlassEffectService.configurationListenable.addListener(
+      _syncLiquidGlassFromService,
+    );
     _load();
+  }
+
+  @override
+  void dispose() {
+    LiquidGlassEffectService.configurationListenable.removeListener(
+      _syncLiquidGlassFromService,
+    );
+    super.dispose();
+  }
+
+  void _syncLiquidGlassFromService() {
+    if (!mounted) return;
+    final nextEnabled = LiquidGlassEffectService.preferredConfiguration.enabled;
+    if (nextEnabled != _liquidGlassEnabled) {
+      setState(() => _liquidGlassEnabled = nextEnabled);
+    }
   }
 
   Future<void> _load() async {
@@ -143,7 +162,7 @@ class _GuideAppearanceOptionsState extends State<GuideAppearanceOptions> {
               secondary: const Icon(Icons.blur_on_rounded),
               title: const Text('液态玻璃效果', style: TextStyle(fontSize: 14)),
               subtitle: Text(
-                '全局磨砂质感与折射视觉，可在"动效设置"中调整模式',
+                '本版本默认开启标准液态玻璃，可在此切换，也可在"动效设置"中微调',
                 style: TextStyle(
                   fontSize: 12,
                   color: scheme.onSurface.withValues(alpha: 0.65),
@@ -157,6 +176,168 @@ class _GuideAppearanceOptionsState extends State<GuideAppearanceOptions> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// 版本更新日志页内的液态玻璃默认开启说明与快捷切换卡片。
+class GuideLiquidGlassDefaultCard extends StatelessWidget {
+  const GuideLiquidGlassDefaultCard({super.key});
+
+  String _selectionFor(LiquidGlassEffectConfiguration preferred) {
+    if (!preferred.enabled) return 'off';
+    if (!AppPlatform.isWindows &&
+        preferred.mode == LiquidGlassEffectMode.enhanced) {
+      return 'enhanced';
+    }
+    return 'standard';
+  }
+
+  Future<void> _applySelection(String value) async {
+    switch (value) {
+      case 'off':
+        await LiquidGlassEffectService.setEnabled(false);
+        return;
+      case 'enhanced':
+        await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.enhanced);
+        await LiquidGlassEffectService.setEnabled(true);
+        return;
+      case 'standard':
+      default:
+        await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+        await LiquidGlassEffectService.setEnabled(true);
+        return;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ValueListenableBuilder<LiquidGlassEffectConfiguration>(
+      valueListenable: LiquidGlassEffectService.configurationListenable,
+      builder: (context, _, _) {
+        final preferred = LiquidGlassEffectService.preferredConfiguration;
+        final selection = _selectionFor(preferred);
+        final isEnhanced = selection == 'enhanced';
+        final isEnabled = selection != 'off';
+        final title = isEnhanced
+            ? '已保留「增强液态玻璃」'
+            : isEnabled
+            ? '已默认启用「标准液态玻璃」'
+            : '液态玻璃已关闭';
+        final subtitle = isEnhanced
+            ? '本版本流畅度大幅提升，已为你保留原有的增强液态玻璃设置，也可在此直接切换。'
+            : isEnabled
+            ? '本版本流畅度大幅提升，升级后已为你默认开启标准液态玻璃，可直接在下方切换。'
+            : '本版本升级默认启用标准液态玻璃；你已将其关闭，随时可在此重新开启。';
+
+        return OptionalLiquidGlassCard(
+          key: const ValueKey('guide-changelog-liquid-glass-card'),
+          width: double.infinity,
+          margin: EdgeInsets.zero,
+          padding: const EdgeInsets.all(16),
+          borderRadius: 16,
+          highContrast: true,
+          tint: isEnabled ? scheme.primary.withValues(alpha: 0.14) : null,
+          fallbackDecoration: BoxDecoration(
+            color: scheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isEnabled
+                  ? scheme.primary.withValues(alpha: 0.3)
+                  : scheme.outlineVariant,
+            ),
+          ),
+          child: Material(
+            type: MaterialType.transparency,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: isEnabled
+                            ? scheme.primary.withValues(alpha: 0.14)
+                            : scheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        Icons.blur_on_rounded,
+                        size: 20,
+                        color: isEnabled
+                            ? scheme.primary
+                            : scheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.45,
+                    color: scheme.onSurface.withValues(alpha: 0.72),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: SegmentedButton<String>(
+                    key: const ValueKey('guide-changelog-liquid-glass-toggle'),
+                    showSelectedIcon: false,
+                    segments: [
+                      const ButtonSegment<String>(
+                        value: 'off',
+                        label: Text(
+                          '关闭',
+                          key: ValueKey('guide-changelog-liquid-glass-off'),
+                        ),
+                      ),
+                      const ButtonSegment<String>(
+                        value: 'standard',
+                        label: Text(
+                          '标准',
+                          key: ValueKey(
+                            'guide-changelog-liquid-glass-standard',
+                          ),
+                        ),
+                      ),
+                      if (!AppPlatform.isWindows)
+                        const ButtonSegment<String>(
+                          value: 'enhanced',
+                          label: Text(
+                            '增强',
+                            key: ValueKey(
+                              'guide-changelog-liquid-glass-enhanced',
+                            ),
+                          ),
+                        ),
+                    ],
+                    selected: <String>{selection},
+                    onSelectionChanged: (values) {
+                      if (values.isEmpty) return;
+                      unawaited(_applySelection(values.first));
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

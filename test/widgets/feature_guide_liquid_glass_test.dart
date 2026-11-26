@@ -4,6 +4,7 @@ import 'package:countdown_todo/services/device_calendar_read_service.dart';
 import 'package:countdown_todo/widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -12,7 +13,10 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     await LiquidGlassEffectService.setPowerSaveMode(false);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
   });
+
+  tearDown(GlassPerformanceMonitor.stop);
 
   test(
     'system power saver suppresses glass without losing the user choice',
@@ -118,4 +122,165 @@ void main() {
       expect(await DeviceCalendarReadService.isEnabled(), isFalse);
     },
   );
+
+  group('default Standard Liquid Glass upgrade migration', () {
+    test('enables Standard Liquid Glass on fresh install', () async {
+      SharedPreferences.setMockInitialValues({});
+      await LiquidGlassEffectService.reloadForTesting();
+
+      expect(LiquidGlassEffectService.isEnabled, isTrue);
+      expect(LiquidGlassEffectService.mode, LiquidGlassEffectMode.standard);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('enable_liquid_glass'), isTrue);
+      expect(prefs.getString('liquid_glass_effect_mode'), 'standard');
+      expect(
+        prefs.getBool('liquid_glass_default_standard_v725_migrated'),
+        isTrue,
+      );
+    });
+
+    test(
+      'enables Standard Liquid Glass for upgrading users who had it off',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'enable_liquid_glass': false,
+          'liquid_glass_effect_mode': 'enhanced',
+        });
+        await LiquidGlassEffectService.reloadForTesting();
+
+        expect(LiquidGlassEffectService.isEnabled, isTrue);
+        expect(LiquidGlassEffectService.mode, LiquidGlassEffectMode.standard);
+
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getBool('enable_liquid_glass'), isTrue);
+        expect(prefs.getString('liquid_glass_effect_mode'), 'standard');
+      },
+    );
+
+    test(
+      'preserves Enhanced Liquid Glass when user already had it enabled',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'enable_liquid_glass': true,
+          'liquid_glass_effect_mode': 'enhanced',
+        });
+
+        final previousErrorHandler = FlutterError.onError;
+        FlutterError.onError = (details) {};
+        try {
+          await LiquidGlassEffectService.reloadForTesting();
+        } finally {
+          FlutterError.onError = previousErrorHandler;
+        }
+
+        expect(LiquidGlassEffectService.isEnabled, isTrue);
+        expect(LiquidGlassEffectService.mode, LiquidGlassEffectMode.enhanced);
+
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getString('liquid_glass_effect_mode'), 'enhanced');
+
+        await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+      },
+    );
+
+    test(
+      'migration only runs once so subsequent opt-out is respected',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        await LiquidGlassEffectService.reloadForTesting();
+        expect(LiquidGlassEffectService.isEnabled, isTrue);
+
+        await LiquidGlassEffectService.setEnabled(false);
+        await LiquidGlassEffectService.reloadForTesting();
+
+        expect(LiquidGlassEffectService.isEnabled, isFalse);
+      },
+    );
+  });
+
+  group('GuideLiquidGlassDefaultCard', () {
+    testWidgets(
+      'shows default-enabled notice and switches off/standard/enhanced in-page',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        await LiquidGlassEffectService.reloadForTesting();
+
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: Scaffold(body: GuideLiquidGlassDefaultCard()),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('已默认启用「标准液态玻璃」'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('guide-changelog-liquid-glass-toggle')),
+          findsOneWidget,
+        );
+
+        await tester.tap(
+          find.byKey(const ValueKey('guide-changelog-liquid-glass-off')),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+
+        expect(LiquidGlassEffectService.isEnabled, isFalse);
+        expect(find.text('液态玻璃已关闭'), findsOneWidget);
+
+        await tester.tap(
+          find.byKey(const ValueKey('guide-changelog-liquid-glass-standard')),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+
+        expect(LiquidGlassEffectService.isEnabled, isTrue);
+        expect(LiquidGlassEffectService.mode, LiquidGlassEffectMode.standard);
+        expect(find.text('已默认启用「标准液态玻璃」'), findsOneWidget);
+      },
+    );
+
+    testWidgets('shows preserved Enhanced notice when Enhanced is active', (
+      tester,
+    ) async {
+      final previousErrorHandler = FlutterError.onError;
+      FlutterError.onError = (details) {};
+      try {
+        await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.enhanced);
+        await LiquidGlassEffectService.setEnabled(true);
+      } finally {
+        FlutterError.onError = previousErrorHandler;
+      }
+
+      await tester.pumpWidget(
+        const MaterialApp(home: Scaffold(body: GuideLiquidGlassDefaultCard())),
+      );
+      await tester.pump(const Duration(milliseconds: 16));
+
+      expect(find.text('已保留「增强液态玻璃」'), findsOneWidget);
+
+      await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+    });
+
+    testWidgets(
+      'changelog update guide page embeds GuideLiquidGlassDefaultCard',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        await LiquidGlassEffectService.reloadForTesting();
+
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: FeatureGuideScreen(mode: FeatureGuideMode.changelog),
+          ),
+        );
+        await tester.pump();
+
+        expect(find.byType(GuideLiquidGlassDefaultCard), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('guide-changelog-liquid-glass-toggle')),
+          findsOneWidget,
+        );
+      },
+    );
+  });
 }

@@ -424,7 +424,9 @@ extension _FeatureGuideSetupPages on _FeatureGuideScreenState {
             icon: Icons.palette_outlined,
             iconColor: Colors.deepPurple,
             title: '个性化：模块排序与主题',
-            subtitle: isWeb ? '你可以自由决定首页模块顺序，选择跟随系统、浅色或深色主题，还可以开启液态玻璃效果。' : '你可以自由决定首页上哪个模块显示在最上面。进入设置找到 "模块管理" 即可自由拖拽模块进行排序。\n开启深色模式让你在夜晚操作更舒适，也可以打开下方的液态玻璃效果。',
+            subtitle: isWeb
+                ? '你可以自由决定首页模块顺序，选择跟随系统、浅色或深色主题；本版本已默认启用标准液态玻璃，可在下方随时切换。'
+                : '你可以自由决定首页上哪个模块显示在最上面。进入设置找到 "模块管理" 即可自由拖拽模块进行排序。\n开启深色模式让你在夜晚操作更舒适；本版本已默认启用标准液态玻璃，也可在下方随时切换。',
           ),
           const SizedBox(height: 24),
           const GuideAppearanceOptions(),

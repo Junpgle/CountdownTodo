@@ -180,6 +180,8 @@ extension _FeatureGuideChangelogAndPlatformPages on _FeatureGuideScreenState {
               ],
             ),
           ),
+          const SizedBox(height: 16),
+          const GuideLiquidGlassDefaultCard(),
           const SizedBox(height: 24),
           // 🧭 功能探索百宝箱入口
           _buildFeatureExplorerBanner(scheme),

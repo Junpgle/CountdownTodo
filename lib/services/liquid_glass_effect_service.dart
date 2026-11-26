@@ -146,6 +146,14 @@ class LiquidGlassEffectService {
   static const String _keyScrimCoverage = 'liquid_glass_scrim_coverage_percent';
   static const String _keyBlurSigma = 'liquid_glass_blur_sigma';
   static const String _keyGuideOffered = 'liquid_glass_guide_offered';
+  static const String _keyDefaultStandardMigrationV725 =
+      'liquid_glass_default_standard_v725_migrated';
+
+  @visibleForTesting
+  static Future<void> reloadForTesting() {
+    _loadFuture = null;
+    return initialize();
+  }
 
   static final ValueNotifier<LiquidGlassEffectConfiguration>
   _configurationNotifier = ValueNotifier(
@@ -304,11 +312,30 @@ class LiquidGlassEffectService {
 
   static Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
-    final enabled = prefs.getBool(_keyEnabled) ?? false;
-    final storedMode = LiquidGlassEffectMode.values.firstWhere(
-      (candidate) => candidate.name == prefs.getString(_keyMode),
+    final storedEnabled = prefs.getBool(_keyEnabled);
+    final rawStoredMode = prefs.getString(_keyMode);
+    final hasDefaultStandardMigration =
+        prefs.getBool(_keyDefaultStandardMigrationV725) ?? false;
+
+    var enabled = storedEnabled ?? true;
+    var storedMode = LiquidGlassEffectMode.values.firstWhere(
+      (candidate) => candidate.name == rawStoredMode,
       orElse: () => LiquidGlassEffectMode.standard,
     );
+
+    if (!hasDefaultStandardMigration) {
+      if (storedEnabled != true) {
+        // Fresh installs and users who had not enabled Liquid Glass default
+        // to Standard mode after the rendering performance overhaul. Users who
+        // already enabled Enhanced keep their existing configuration intact.
+        enabled = true;
+        storedMode = LiquidGlassEffectMode.standard;
+        await prefs.setBool(_keyEnabled, true);
+        await prefs.setString(_keyMode, LiquidGlassEffectMode.standard.name);
+      }
+      await prefs.setBool(_keyDefaultStandardMigrationV725, true);
+    }
+
     final mode = effectiveLiquidGlassModeForPlatform(storedMode);
     if (mode != storedMode) {
       await prefs.setString(_keyMode, mode.name);
@@ -368,6 +395,7 @@ class LiquidGlassEffectService {
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_keyEnabled, enabled);
+      await prefs.setBool(_keyDefaultStandardMigrationV725, true);
       if (revision != _enabledMutationRevision) return;
       _preferredConfiguration = preferredConfiguration.copyWith(
         enabled: enabled,
