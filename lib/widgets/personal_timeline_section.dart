@@ -482,8 +482,7 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
         firstTime.minute == latestTime.minute) {
       spanLabel = '记录于 ${AppTimeFormats.clock(latestTime)}';
     } else {
-      spanLabel =
-          '活跃时段 ${AppTimeFormats.clock(firstTime)} - ${AppTimeFormats.clock(latestTime)}';
+      spanLabel = '活跃时段 ${AppTimeFormats.range(firstTime, latestTime)}';
     }
 
     return InkWell(

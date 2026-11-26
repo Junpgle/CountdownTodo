@@ -658,7 +658,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
 
     if (_isSameDate(entry.start, entry.end)) {
       return '${AppTimeFormats.date(entry.start)} '
-          '${AppTimeFormats.clock(entry.start)}-${AppTimeFormats.clock(entry.end)}';
+          '${AppTimeFormats.range(entry.start, entry.end, separator: '-')}';
     }
     return '${AppTimeFormats.fullDateTime(entry.start)} 至 '
         '${AppTimeFormats.fullDateTime(entry.end)}';

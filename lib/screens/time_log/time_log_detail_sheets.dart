@@ -370,7 +370,7 @@ extension _TimeLogDetailSheetsExt on _TimeLogScreenState {
                                   Row(
                                     children: [
                                       Text(
-                                        '${AppTimeFormats.clock(s)} - ${AppTimeFormats.clock(e)}',
+                                        AppTimeFormats.range(s, e),
                                         style: TextStyle(
                                           fontSize: 12,
                                           color: _TC.textSub(context),

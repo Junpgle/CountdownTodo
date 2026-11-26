@@ -1180,9 +1180,8 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection>
   String _range(PlanReviewEntry entry) {
     final a = DateTime.fromMillisecondsSinceEpoch(entry.start);
     final b = DateTime.fromMillisecondsSinceEpoch(entry.end);
-    final pattern = DateUtils.isSameDay(a, b) ? 'HH:mm' : 'MM-dd HH:mm';
-    final dateFormat = AppTimeFormats.dateFormatter(pattern);
-    return '${dateFormat.format(a)}–${dateFormat.format(b)}';
+    final pattern = AppTimeFormats.isSameDay(a, b) ? 'HH:mm' : 'MM-dd HH:mm';
+    return AppTimeFormats.range(a, b, pattern: pattern, separator: '–');
   }
 
   Widget _metrics(double width, PlanReviewOverview data) {

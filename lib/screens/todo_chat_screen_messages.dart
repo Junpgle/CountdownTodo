@@ -5,7 +5,7 @@ part of 'todo_chat_screen.dart';
 mixin _TodoChatMessages on _TodoChatScreenStateBase {
   Widget _buildMessageBubble(ChatMessage msg, bool isDark) {
     final isUser = msg.role == ChatRole.user;
-    final timeStr = AppTimeFormats.dateFormatter('HH:mm').format(msg.timestamp);
+    final timeStr = AppTimeFormats.clock(msg.timestamp);
     final colorScheme = Theme.of(context).colorScheme;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final maxBubbleWidth = screenWidth >= 900

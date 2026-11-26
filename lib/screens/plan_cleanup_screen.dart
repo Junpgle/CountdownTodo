@@ -836,7 +836,10 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     final offset = start.timeZoneOffset == end.timeZoneOffset
         ? ''
         : ' · ${start.timeZoneName}→${end.timeZoneName}';
-    return '${AppTimeFormats.dateFormatter('HH:mm').format(start)}–${AppTimeFormats.dateFormatter(DateUtils.isSameDay(start, end) ? 'HH:mm' : 'M/d HH:mm').format(end)}$offset';
+    if (AppTimeFormats.isSameDay(start, end)) {
+      return '${AppTimeFormats.range(start, end, separator: '–')}$offset';
+    }
+    return '${AppTimeFormats.clock(start)}–${AppTimeFormats.format(end, 'M/d HH:mm')}$offset';
   }
 
   String _reminder(PlanCleanupItem item) {

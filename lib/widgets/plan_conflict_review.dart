@@ -24,8 +24,7 @@ typedef PlanConflictReviewLoader = Future<PlanConflictReviewResult> Function(
   bool appOnly,
 });
 
-String _time(DateTime value) =>
-    AppTimeFormats.dateFormatter('MM-dd HH:mm').format(value);
+String _time(DateTime value) => AppTimeFormats.compactDateTime(value);
 DateTime _day(DateTime value) => DateTime(value.year, value.month, value.day);
 String _sourceName(PlanBusySource source) => switch (source) {
   PlanBusySource.course => '课程',

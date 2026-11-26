@@ -165,7 +165,7 @@ class _TodoOverdueTriageSheetState extends State<TodoOverdueTriageSheet> {
         context,
         SnackBar(
           content: Text(
-            '已为 "${todo.title}" 安排规划：${AppTimeFormats.clock(slot.start)}–${AppTimeFormats.clock(slot.end)}',
+            '已为 "${todo.title}" 安排规划：${AppTimeFormats.range(slot.start, slot.end, separator: '–')}',
           ),
           behavior: SnackBarBehavior.floating,
         ),
@@ -544,7 +544,7 @@ class _TodoOverdueTriageSheetState extends State<TodoOverdueTriageSheet> {
                                                   ? '今天'
                                                   : '明天';
                                               final timeStr =
-                                                  '$prefix ${AppTimeFormats.clock(slot.start)}–${AppTimeFormats.clock(slot.end)} (${slot.minutes}分)';
+                                                  '$prefix ${AppTimeFormats.range(slot.start, slot.end, separator: '–')} (${slot.minutes}分)';
                                               return ActionChip(
                                                 avatar: const Icon(
                                                   Icons.add_task_rounded,
