@@ -912,13 +912,10 @@ abstract final class HabitAiContextService {
 
   static String _formatMinute(int? minute) {
     if (minute == null) return '时间未设定';
-    return AppTimeFormats.hourMinute(minute ~/ 60, minute % 60);
+    return AppTimeFormats.minuteOfDay(minute);
   }
 
-  static String _dateKey(DateTime date) =>
-      '${date.year.toString().padLeft(4, '0')}-'
-      '${date.month.toString().padLeft(2, '0')}-'
-      '${date.day.toString().padLeft(2, '0')}';
+  static String _dateKey(DateTime date) => AppTimeFormats.date(date);
 
   static DateTime _day(DateTime date) =>
       DateTime(date.year, date.month, date.day);

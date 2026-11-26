@@ -8,6 +8,7 @@ import '../../../utils/app_dialogs.dart';
 import '../../../widgets/app_state_views.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
+import '../../../utils/time_utils.dart';
 
 class AccountDevicesPage extends StatefulWidget {
   final bool isEmbedded;
@@ -132,11 +133,7 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
     if (diff.inMinutes < 60) return '${diff.inMinutes} 分钟前';
     if (diff.inHours < 24) return '${diff.inHours} 小时前';
     if (diff.inDays < 7) return '${diff.inDays} 天前';
-    final month = dt.month.toString().padLeft(2, '0');
-    final day = dt.day.toString().padLeft(2, '0');
-    final hour = dt.hour.toString().padLeft(2, '0');
-    final minute = dt.minute.toString().padLeft(2, '0');
-    return '${dt.year}-$month-$day $hour:$minute';
+    return AppTimeFormats.fullDateTime(dt);
   }
 
   @override

@@ -117,6 +117,9 @@ void main() {
       expect(AppTimeFormats.fileTimestamp(dt), '20261125_080509');
       expect(AppTimeFormats.hourMinute(8, 5), '08:05');
       expect(AppTimeFormats.hourMinute(19, 42), '19:42');
+      expect(AppTimeFormats.minuteOfDay(0), '00:00');
+      expect(AppTimeFormats.minuteOfDay(485), '08:05');
+      expect(AppTimeFormats.minuteOfDay(1440), '24:00');
     },
   );
 }

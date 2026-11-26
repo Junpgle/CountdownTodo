@@ -143,7 +143,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         final minute = int.tryParse(fields['targetTimeMinute'].toString());
         final time = minute == null
             ? fields['targetTimeMinute'].toString()
-            : '${(minute ~/ 60).toString().padLeft(2, '0')}:${(minute % 60).toString().padLeft(2, '0')}';
+            : AppTimeFormats.minuteOfDay(minute);
         final comparison = fields['timeComparison'] == 'after'
             ? '之后'
             : fields['timeComparison'] == 'before'
@@ -198,7 +198,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                 .map((value) {
                   final minute = int.tryParse(value.toString());
                   if (minute == null) return value.toString();
-                  return '${(minute ~/ 60).toString().padLeft(2, '0')}:${(minute % 60).toString().padLeft(2, '0')}';
+                  return AppTimeFormats.minuteOfDay(minute);
                 })
                 .join('、');
             details.add('时间 ${times.isEmpty ? '清空' : times}');
@@ -277,7 +277,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         final minute = action.targetTimeMinute;
         final time = minute == null
             ? '时间点目标'
-            : '${(minute ~/ 60).toString().padLeft(2, '0')}:${(minute % 60).toString().padLeft(2, '0')}';
+            : AppTimeFormats.minuteOfDay(minute);
         target = action.habitTimeComparison?.toLowerCase() == 'after'
             ? '$time 后'
             : '$time 前';

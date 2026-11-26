@@ -14,6 +14,7 @@ import 'package:web/web.dart' as web;
 import 'services/github_resource_service.dart';
 import 'update_service_models.dart';
 import './utils/app_dialogs.dart';
+import './utils/time_utils.dart';
 
 export 'update_service_models.dart';
 
@@ -214,15 +215,8 @@ class UpdateService {
     return !isRead;
   }
 
-  static int _dateTimeToSortKey(DateTime dt) {
-    final y = dt.year.toString().padLeft(4, '0');
-    final m = dt.month.toString().padLeft(2, '0');
-    final d = dt.day.toString().padLeft(2, '0');
-    final hh = dt.hour.toString().padLeft(2, '0');
-    final mm = dt.minute.toString().padLeft(2, '0');
-    final ss = dt.second.toString().padLeft(2, '0');
-    return int.tryParse('$y$m$d$hh$mm$ss') ?? 0;
-  }
+  static int _dateTimeToSortKey(DateTime dt) =>
+      int.tryParse(AppTimeFormats.format(dt, 'yyyyMMddHHmmss')) ?? 0;
 
   static int parseAnnouncementSortKey(String id) {
     if (id.isEmpty) return 0;
@@ -977,12 +971,8 @@ class UpdateService {
     web.window.location.reload();
   }
 
-  static String _todayKey([DateTime? now]) {
-    final date = now ?? DateTime.now();
-    final month = date.month.toString().padLeft(2, '0');
-    final day = date.day.toString().padLeft(2, '0');
-    return '${date.year}-$month-$day';
-  }
+  static String _todayKey([DateTime? now]) =>
+      AppTimeFormats.date(now ?? DateTime.now());
 
   static String _snoozeValue(String versionName, [DateTime? now]) =>
       '${_todayKey(now)}|$versionName';

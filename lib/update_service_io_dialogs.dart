@@ -631,12 +631,8 @@ Future<void> _updDialogShowUpdateDialog(
   UpdateService._uiErrorCallback = null;
 }
 
-String _updDialogTodayKey([DateTime? now]) {
-  final date = now ?? DateTime.now();
-  final month = date.month.toString().padLeft(2, '0');
-  final day = date.day.toString().padLeft(2, '0');
-  return '${date.year}-$month-$day';
-}
+String _updDialogTodayKey([DateTime? now]) =>
+    AppTimeFormats.date(now ?? DateTime.now());
 
 String _updDialogSnoozeValue(String versionName, [DateTime? now]) =>
     '${_updDialogTodayKey(now)}|$versionName';

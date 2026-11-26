@@ -912,9 +912,10 @@ extension _HabitEditTargetStep on _HabitEditScreenState {
     final pairSuggestion = widget.goal == null
         ? _sleepPairSuggestionFor(adaptation)
         : null;
-    final timeText =
-        '${_targetTime.hour.toString().padLeft(2, '0')}:'
-        '${_targetTime.minute.toString().padLeft(2, '0')}';
+    final timeText = AppTimeFormats.hourMinute(
+      _targetTime.hour,
+      _targetTime.minute,
+    );
     final beforeLabel = isSleepAdaptation ? '不晚于 $timeText' : '早于 $timeText';
 
     return Column(

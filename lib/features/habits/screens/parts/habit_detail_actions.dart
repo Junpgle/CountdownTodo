@@ -335,8 +335,7 @@ extension _HabitDetailActions on _HabitDetailScreenState {
                           ),
                           const SizedBox(width: 7),
                           Text(
-                            '${eventTime.year}-${eventTime.month.toString().padLeft(2, '0')}-'
-                            '${eventTime.day.toString().padLeft(2, '0')}',
+                            AppTimeFormats.date(eventTime),
                             style: const TextStyle(fontSize: 12.5),
                           ),
                           const Spacer(),
@@ -480,10 +479,7 @@ extension _HabitDetailActions on _HabitDetailScreenState {
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.calendar_today_rounded),
-                title: Text(
-                  '${date.year}-${date.month.toString().padLeft(2, '0')}-'
-                  '${date.day.toString().padLeft(2, '0')}',
-                ),
+                title: Text(AppTimeFormats.date(date)),
                 onTap: () async {
                   final picked = await showAppDatePicker(
                     context: context,
@@ -508,8 +504,7 @@ extension _HabitDetailActions on _HabitDetailScreenState {
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.schedule_rounded),
                 title: Text(
-                  '时间：${time.hour.toString().padLeft(2, '0')}:'
-                  '${time.minute.toString().padLeft(2, '0')}',
+                  '时间：${AppTimeFormats.hourMinute(time.hour, time.minute)}',
                 ),
                 onTap: () async {
                   final picked = await showAppTimePicker(

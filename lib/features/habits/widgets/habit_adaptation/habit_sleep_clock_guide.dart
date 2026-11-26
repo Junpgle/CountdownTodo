@@ -388,10 +388,8 @@ class _HabitSleepClockState extends State<HabitSleepClock> {
         : _normalizeMinute(nextCounterpart + 8 * 60);
   }
 
-  String _formatMinute(int minute) {
-    final safe = _normalizeMinute(minute);
-    return '${(safe ~/ 60).toString().padLeft(2, '0')}:${(safe % 60).toString().padLeft(2, '0')}';
-  }
+  String _formatMinute(int minute) =>
+      AppTimeFormats.minuteOfDay(_normalizeMinute(minute));
 
   int _normalizeMinute(int minute) {
     final normalized = minute % (24 * 60);

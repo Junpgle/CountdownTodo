@@ -66,9 +66,7 @@ abstract final class HabitText {
   }
 
   /// 时间点型：实际时间。
-  static String timeOfDay(DateTime time) =>
-      '${time.hour.toString().padLeft(2, '0')}:'
-      '${time.minute.toString().padLeft(2, '0')}';
+  static String timeOfDay(DateTime time) => AppTimeFormats.clock(time);
 
   /// 秒数 → 人类可读时长，如「2 小时 05 分」/「45 分钟」。
   static String formatDuration(int seconds) {

@@ -9,6 +9,7 @@ import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 import '../widgets/finance_widgets.dart';
 import '../widgets/finance_revision_refresh_mixin.dart';
+import '../../../utils/time_utils.dart';
 
 class FinanceCategoryDetailScreen extends StatefulWidget {
   final String periodTitle;
@@ -895,8 +896,7 @@ class _FinanceCategoryDetailScreenState
     final subtitleParts = <String>[
       '${date.month}月${date.day}日',
       if (occurred != null && dateKey(occurred) == transaction.transactionDate)
-        '${occurred.hour.toString().padLeft(2, '0')}:'
-            '${occurred.minute.toString().padLeft(2, '0')}',
+        AppTimeFormats.clock(occurred),
       if (transaction.installmentLabel != null)
         '分期 ${transaction.installmentLabel}',
       if (note?.isNotEmpty == true && note != title) note!,

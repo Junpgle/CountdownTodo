@@ -33,8 +33,7 @@ extension _HabitEditReminderAndPlanning on _HabitEditScreenState {
               for (final time in _fixedTimes)
                 InputChip(
                   label: Text(
-                    '${time.hour.toString().padLeft(2, '0')}:'
-                    '${time.minute.toString().padLeft(2, '0')}',
+                    AppTimeFormats.hourMinute(time.hour, time.minute),
                   ),
                   onDeleted: () => _mutateState(() => _fixedTimes.remove(time)),
                 ),
@@ -164,9 +163,10 @@ extension _HabitEditReminderAndPlanning on _HabitEditScreenState {
   }
 
   Widget _buildPlanningAndFocusSection(ColorScheme colorScheme) {
-    final preferredTimeText =
-        '${_preferredStartTime.hour.toString().padLeft(2, '0')}:'
-        '${_preferredStartTime.minute.toString().padLeft(2, '0')}';
+    final preferredTimeText = AppTimeFormats.hourMinute(
+      _preferredStartTime.hour,
+      _preferredStartTime.minute,
+    );
     final isPomodoroHabit = _sourceType == HabitSourceType.pomodoroTag;
 
     return Container(

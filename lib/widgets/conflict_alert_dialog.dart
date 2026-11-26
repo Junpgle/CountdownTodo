@@ -125,7 +125,7 @@ class ConflictAlertDialog extends StatelessWidget {
         final endHH = endMs ~/ 100;
         final endMM = endMs % 100;
         timeStr =
-            '${startHH.toString().padLeft(2, '0')}:${startMM.toString().padLeft(2, '0')} ~ ${endHH.toString().padLeft(2, '0')}:${endMM.toString().padLeft(2, '0')}';
+            '${AppTimeFormats.hourMinute(startHH, startMM)} ~ ${AppTimeFormats.hourMinute(endHH, endMM)}';
       } else {
         timeStr =
             '${AppTimeFormats.format(startTime, 'MM-dd HH:mm')} ~ ${AppTimeFormats.clock(endTime)}';

@@ -211,10 +211,7 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
     return grouped;
   }
 
-  String _dateKey(DateTime date) =>
-      '${date.year.toString().padLeft(4, '0')}-'
-      '${date.month.toString().padLeft(2, '0')}-'
-      '${date.day.toString().padLeft(2, '0')}';
+  String _dateKey(DateTime date) => AppTimeFormats.date(date);
 
   Widget _buildHistoryRow(Object row, ColorScheme colorScheme) {
     if (row is _HabitHistorySectionHeader) {
@@ -407,12 +404,8 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
     ).toLocal();
   }
 
-  static String _todoDateKey(TodoItem todo) {
-    final local = _todoDate(todo);
-    return '${local.year.toString().padLeft(4, '0')}-'
-        '${local.month.toString().padLeft(2, '0')}-'
-        '${local.day.toString().padLeft(2, '0')}';
-  }
+  static String _todoDateKey(TodoItem todo) =>
+      AppTimeFormats.date(_todoDate(todo));
 
   Widget _focusRecordRow(ColorScheme colorScheme, PomodoroRecord record) {
     final local = DateTime.fromMillisecondsSinceEpoch(record.startTime)

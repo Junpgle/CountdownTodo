@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:uuid/uuid.dart';
 
 import '../../../utils/json_value_parser.dart';
+import '../../../utils/time_utils.dart';
 
 part 'parts/finance_loan_models.dart';
 part 'parts/finance_catalog_models.dart';
@@ -57,10 +58,7 @@ FinanceCategoryType financeCategoryTypeForTransaction(
       : FinanceCategoryType.expense;
 }
 
-String dateKey(DateTime date) =>
-    '${date.year.toString().padLeft(4, '0')}-'
-    '${date.month.toString().padLeft(2, '0')}-'
-    '${date.day.toString().padLeft(2, '0')}';
+String dateKey(DateTime date) => AppTimeFormats.date(date);
 
 int financeDefaultOccurrenceTimezoneOffsetMinutes({
   required DateTime? occurrence,
@@ -79,9 +77,7 @@ DateTime financeCalendarDayOffset(DateTime value, int days) {
   return DateTime(value.year, value.month, value.day + days);
 }
 
-String financeMonthKey(DateTime date) =>
-    '${date.year.toString().padLeft(4, '0')}-'
-    '${date.month.toString().padLeft(2, '0')}';
+String financeMonthKey(DateTime date) => AppTimeFormats.format(date, 'yyyy-MM');
 
 bool isFinanceDateKey(String value) {
   final parsed = DateTime.tryParse(value);

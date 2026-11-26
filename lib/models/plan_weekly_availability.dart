@@ -7,8 +7,7 @@ class PlanWeeklyWindow {
   const PlanWeeklyWindow(this.start, this.end);
   final int start, end;
   String get label => '${time(start)}–${time(end)}';
-  static String time(int minute) =>
-      '${(minute ~/ 60).toString().padLeft(2, '0')}:${(minute % 60).toString().padLeft(2, '0')}';
+  static String time(int minute) => AppTimeFormats.minuteOfDay(minute);
 }
 
 class PlanWeeklyRules {

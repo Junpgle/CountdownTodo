@@ -921,8 +921,7 @@ class _PlanAvailabilityPanelState extends State<PlanAvailabilityPanel>
     _invalidate();
   }
 
-  String _hhmm(int minutes) =>
-      '${(minutes ~/ 60).toString().padLeft(2, '0')}:${(minutes % 60).toString().padLeft(2, '0')}';
+  String _hhmm(int minutes) => AppTimeFormats.minuteOfDay(minutes);
 
   String _sourceLabel(PlanBusySource source) => switch (source) {
     PlanBusySource.course => '课程',

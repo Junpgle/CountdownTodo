@@ -7,6 +7,7 @@ import 'dart:convert';
 
 import 'utils/analysis_image_cleanup.dart';
 import 'utils/json_value_parser.dart';
+import 'utils/time_utils.dart';
 
 // ==========================================
 // 0. 时间轴相关 (Timeline)
@@ -1433,9 +1434,9 @@ class CourseItem {
   }
 
   String get formattedStartTime =>
-      '${(startTime ~/ 100).toString().padLeft(2, '0')}:${(startTime % 100).toString().padLeft(2, '0')}';
+      AppTimeFormats.hourMinute(startTime ~/ 100, startTime % 100);
   String get formattedEndTime =>
-      '${(endTime ~/ 100).toString().padLeft(2, '0')}:${(endTime % 100).toString().padLeft(2, '0')}';
+      AppTimeFormats.hourMinute(endTime ~/ 100, endTime % 100);
 
   Map<String, dynamic> toJson() => {
     'uuid': uuid,

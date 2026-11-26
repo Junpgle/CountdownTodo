@@ -430,7 +430,7 @@ extension _ThirtyDayChallengeBoardExt on _ThirtyDayChallengeScreenState {
                   ),
                   label: Text(
                     state.includeInPlanning
-                        ? '已接入规划 · ${((state.effectivePreferredStartMinute ?? (20 * 60)) ~/ 60).toString().padLeft(2, '0')}:${((state.effectivePreferredStartMinute ?? (20 * 60)) % 60).toString().padLeft(2, '0')}'
+                        ? '已接入规划 · ${AppTimeFormats.minuteOfDay(state.effectivePreferredStartMinute ?? (20 * 60))}'
                         : '容量与专注',
                   ),
                 ),

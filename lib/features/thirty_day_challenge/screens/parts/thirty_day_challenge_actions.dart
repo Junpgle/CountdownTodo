@@ -547,9 +547,7 @@ extension _ThirtyDayChallengeActionsExt on _ThirtyDayChallengeScreenState {
         return StatefulBuilder(
           builder: (context, setModalState) {
             final scheme = Theme.of(context).colorScheme;
-            final timeText =
-                '${(preferredMinute ~/ 60).toString().padLeft(2, '0')}:'
-                '${(preferredMinute % 60).toString().padLeft(2, '0')}';
+            final timeText = AppTimeFormats.minuteOfDay(preferredMinute);
 
             return SafeArea(
               child: SingleChildScrollView(

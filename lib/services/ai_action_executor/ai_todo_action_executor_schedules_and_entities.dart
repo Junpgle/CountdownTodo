@@ -321,10 +321,7 @@ DateTime? _parseScheduleDate(String? value) {
 
 DateTime _day(DateTime value) => DateTime(value.year, value.month, value.day);
 
-String _dateKey(DateTime value) =>
-    '${value.year.toString().padLeft(4, '0')}-'
-    '${value.month.toString().padLeft(2, '0')}-'
-    '${value.day.toString().padLeft(2, '0')}';
+String _dateKey(DateTime value) => AppTimeFormats.date(value);
 
 int _moveEpochToDate(int value, DateTime date) {
   final source = DateTime.fromMillisecondsSinceEpoch(value).toLocal();

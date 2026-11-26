@@ -5,6 +5,7 @@ import '../../../widgets/floating_glass_control.dart';
 import '../models/habit_sleep_coaching_plan.dart';
 import '../services/habit_adaptation_service.dart';
 import '../services/habit_sleep_coaching_service.dart';
+import '../../../utils/time_utils.dart';
 
 /// 早睡、早起、睡眠时长详情页共用的可选训练入口。
 class HabitSleepCoachingCard extends StatelessWidget {
@@ -216,8 +217,7 @@ class HabitSleepCoachingCard extends StatelessWidget {
       final minutes = value % 60;
       return minutes == 0 ? '$hours 小时' : '$hours 小时 $minutes 分';
     }
-    final minute = value % (24 * 60);
-    return '${(minute ~/ 60).toString().padLeft(2, '0')}:${(minute % 60).toString().padLeft(2, '0')}';
+    return AppTimeFormats.minuteOfDay(value % (24 * 60));
   }
 
   Future<void> _showSettings(

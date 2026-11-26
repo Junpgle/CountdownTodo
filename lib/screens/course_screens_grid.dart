@@ -216,12 +216,8 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     return range.contains(m);
   }
 
-  String _formatMinute(double minute) {
-    final int value = minute.round();
-    final int h = value ~/ 60;
-    final int m = value % 60;
-    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
-  }
+  String _formatMinute(double minute) =>
+      AppTimeFormats.minuteOfDay(minute.round());
 
   String _buildLunchCollapseText(
     double rangeStart,

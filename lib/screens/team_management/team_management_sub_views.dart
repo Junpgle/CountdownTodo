@@ -814,14 +814,10 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
     if (diff.inMinutes < 60) return '${diff.inMinutes}分钟前上线';
     if (diff.inHours < 24) return '${diff.inHours}小时前上线';
     if (diff.inDays < 7) return '${diff.inDays}天前上线';
-    final mm = dt.month.toString().padLeft(2, '0');
-    final dd = dt.day.toString().padLeft(2, '0');
-    final hh = dt.hour.toString().padLeft(2, '0');
-    final min = dt.minute.toString().padLeft(2, '0');
     if (dt.year != now.year) {
-      return '${dt.year}-$mm-$dd $hh:$min';
+      return AppTimeFormats.format(dt, 'yyyy-MM-dd HH:mm');
     }
-    return '$mm-$dd $hh:$min';
+    return AppTimeFormats.compactDateTime(dt);
   }
 
   Widget _buildMemberItem(dynamic m) {

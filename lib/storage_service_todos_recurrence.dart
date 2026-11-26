@@ -657,9 +657,7 @@ mixin _StorageTodoRecurrence on _StorageServiceBase {
       startMs,
       isUtc: true,
     ).toLocal();
-    final month = start.month.toString().padLeft(2, '0');
-    final day = start.day.toString().padLeft(2, '0');
-    return '${start.year}-$month-$day';
+    return AppTimeFormats.date(start);
   }
 
   String _recurrenceOccurrenceId(String seriesId, int startMs) {

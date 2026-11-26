@@ -14,6 +14,7 @@ import '../widgets/finance_catalog_editor.dart';
 import '../widgets/finance_revision_refresh_mixin.dart';
 import 'finance_loan_screen.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/time_utils.dart';
 
 part 'parts/finance_entry_options.dart';
 part 'parts/finance_entry_actions.dart';

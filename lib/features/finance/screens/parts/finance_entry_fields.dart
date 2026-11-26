@@ -59,8 +59,7 @@ extension _FinanceEntryFields on _FinanceEntryScreenState {
         : _deviceTimezoneOffsetForOccurrence(occurredAt);
     final timeLabel = occurredAt == null
         ? '补充时间'
-        : '${occurredAt.hour.toString().padLeft(2, '0')}:'
-              '${occurredAt.minute.toString().padLeft(2, '0')}';
+        : AppTimeFormats.clock(occurredAt);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

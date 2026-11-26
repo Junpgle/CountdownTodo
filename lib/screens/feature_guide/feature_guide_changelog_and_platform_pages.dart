@@ -797,9 +797,7 @@ extension _FeatureGuideChangelogAndPlatformPages on _FeatureGuideScreenState {
         : MinorAgeBandSystemMapping.fromBirthDate(_minorBirthDate!);
     final selectedDateLabel = _minorBirthDate == null
         ? '未设置'
-        : '${_minorBirthDate!.year.toString().padLeft(4, '0')}-'
-              '${_minorBirthDate!.month.toString().padLeft(2, '0')}-'
-              '${_minorBirthDate!.day.toString().padLeft(2, '0')}';
+        : AppTimeFormats.date(_minorBirthDate!);
 
     return ValueListenableBuilder<MinorModeState>(
       valueListenable: MinorModeService.instance.stateNotifier,

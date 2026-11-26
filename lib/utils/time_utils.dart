@@ -178,6 +178,9 @@ class AppTimeFormats {
   static String hourMinute(int hour, int minute) =>
       '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
 
+  static String minuteOfDay(int minute) =>
+      hourMinute(minute ~/ 60, minute % 60);
+
   static String range(
     DateTime start,
     DateTime end, {

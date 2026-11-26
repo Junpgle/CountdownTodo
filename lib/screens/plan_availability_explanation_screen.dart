@@ -325,8 +325,7 @@ class _PlanAvailabilityExplanationScreenState
     return derivedData;
   }
 
-  String _minute(int m) =>
-      '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
+  String _minute(int m) => AppTimeFormats.minuteOfDay(m);
   @override
   Widget build(BuildContext context) {
     final derivedData = _derivedDataFor(_now);
