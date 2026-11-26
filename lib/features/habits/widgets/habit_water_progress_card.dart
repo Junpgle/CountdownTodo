@@ -177,6 +177,7 @@ class _AnimatedWaterCup extends StatefulWidget {
 class _AnimatedWaterCupState extends State<_AnimatedWaterCup>
     with SingleTickerProviderStateMixin {
   late final AnimationController _waveController;
+  bool _hasCompletedInitialWave = false;
 
   @override
   void initState() {
@@ -184,17 +185,24 @@ class _AnimatedWaterCupState extends State<_AnimatedWaterCup>
     _waveController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2600),
-    );
+    )..addStatusListener(_handleAnimationStatus);
     PowerSaveModeService.enabledListenable.addListener(_syncAnimation);
     _syncAnimation();
   }
 
+  void _handleAnimationStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed) {
+      _hasCompletedInitialWave = true;
+    }
+  }
+
   void _syncAnimation() {
+    if (_hasCompletedInitialWave) return;
     if (AndroidEnergyPolicy.shouldRunDecorativeMotion) {
       if (!_waveController.isAnimating) {
-        _waveController.repeat(
-          count: AndroidEnergyPolicy.decorativeRepeatCount(androidCount: 3),
-        );
+        final repeatCount =
+            AndroidEnergyPolicy.decorativeRepeatCount(androidCount: 3) ?? 3;
+        _waveController.repeat(count: repeatCount);
       }
     } else {
       _waveController
@@ -205,6 +213,7 @@ class _AnimatedWaterCupState extends State<_AnimatedWaterCup>
 
   @override
   void dispose() {
+    _waveController.removeStatusListener(_handleAnimationStatus);
     PowerSaveModeService.enabledListenable.removeListener(_syncAnimation);
     _waveController.dispose();
     super.dispose();
@@ -244,8 +253,17 @@ class _WaterProgressCupPainter extends CustomPainter {
   final double ratio;
   final Animation<double> animation;
   final ColorScheme colorScheme;
-  static final Paint _shadowPaint = Paint()
-    ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 9);
+  // Stepped low-alpha shadow fills/strokes avoid MaskFilter.blur saveLayer
+  // passes during wave animation frames.
+  static final Paint _shadowOuterPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 12
+    ..strokeJoin = StrokeJoin.round;
+  static final Paint _shadowMidPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 6
+    ..strokeJoin = StrokeJoin.round;
+  static final Paint _shadowInnerPaint = Paint();
   static final Paint _glassPaint = Paint();
   static final Paint _waterPaint = Paint();
   static final Paint _surfacePaint = Paint()
@@ -308,7 +326,9 @@ class _WaterProgressCupPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    _shadowPaint.color = colorScheme.primary.withValues(alpha: 0.12);
+    _shadowOuterPaint.color = colorScheme.primary.withValues(alpha: 0.03);
+    _shadowMidPaint.color = colorScheme.primary.withValues(alpha: 0.05);
+    _shadowInnerPaint.color = colorScheme.primary.withValues(alpha: 0.07);
     _surfacePaint.color = colorScheme.onPrimary.withValues(alpha: 0.52);
     _reflectionPaint.color = colorScheme.onPrimary.withValues(alpha: 0.26);
     _bubblePaint.color = colorScheme.onPrimary.withValues(alpha: 0.3);
@@ -381,7 +401,9 @@ class _WaterProgressCupPainter extends CustomPainter {
   void _drawShadow(Canvas canvas, Path cup) {
     canvas.save();
     canvas.translate(0, 5);
-    canvas.drawPath(cup, _shadowPaint);
+    canvas.drawPath(cup, _shadowOuterPaint);
+    canvas.drawPath(cup, _shadowMidPaint);
+    canvas.drawPath(cup, _shadowInnerPaint);
     canvas.restore();
   }
 

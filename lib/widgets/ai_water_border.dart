@@ -32,7 +32,8 @@ class AiGeneratedTodoWaterBorder extends StatelessWidget {
     return AiWaterRippleBorder(
       enabled: enabled,
       isLight: isLight,
-      visibleOnlyWhenInViewport: true,
+      visibleOnlyWhenInViewport: false,
+      maxRepeats: 1,
       child: child,
     );
   }
@@ -45,6 +46,7 @@ class AiWaterRippleBorder extends StatelessWidget {
     required this.isLight,
     this.enabled = true,
     this.visibleOnlyWhenInViewport = false,
+    this.maxRepeats = 2,
     this.borderRadius = const BorderRadius.all(Radius.circular(16)),
   });
 
@@ -52,6 +54,7 @@ class AiWaterRippleBorder extends StatelessWidget {
   final bool enabled;
   final bool isLight;
   final bool visibleOnlyWhenInViewport;
+  final int maxRepeats;
   final BorderRadius borderRadius;
 
   @override
@@ -61,6 +64,7 @@ class AiWaterRippleBorder extends StatelessWidget {
       isLight: isLight,
       borderRadius: borderRadius,
       visibleOnlyWhenInViewport: visibleOnlyWhenInViewport,
+      maxRepeats: maxRepeats,
       child: child,
     );
   }
@@ -71,6 +75,7 @@ class _AnimatedAiWaterRippleBorder extends StatefulWidget {
     required this.isLight,
     required this.borderRadius,
     required this.visibleOnlyWhenInViewport,
+    required this.maxRepeats,
     required this.child,
   });
 
@@ -78,6 +83,7 @@ class _AnimatedAiWaterRippleBorder extends StatefulWidget {
   final bool isLight;
   final BorderRadius borderRadius;
   final bool visibleOnlyWhenInViewport;
+  final int maxRepeats;
 
   @override
   State<_AnimatedAiWaterRippleBorder> createState() =>
@@ -89,6 +95,7 @@ class _AnimatedAiWaterRippleBorderState
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   bool _isVisible = true;
+  bool _hasCompletedMotion = false;
 
   @override
   void initState() {
@@ -96,15 +103,24 @@ class _AnimatedAiWaterRippleBorderState
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 5400),
-    );
+    )..addStatusListener(_handleAnimationStatus);
     PowerSaveModeService.enabledListenable.addListener(_syncAnimation);
     _syncAnimation();
   }
 
+  void _handleAnimationStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed) {
+      _hasCompletedMotion = true;
+    }
+  }
+
   void _syncAnimation() {
+    if (_hasCompletedMotion) return;
     if ((!widget.visibleOnlyWhenInViewport || _isVisible) &&
         AndroidEnergyPolicy.shouldRunDecorativeMotion) {
-      _startAnimation();
+      if (!_controller.isAnimating) {
+        _startAnimation();
+      }
     } else {
       _controller
         ..stop()
@@ -123,21 +139,26 @@ class _AnimatedAiWaterRippleBorderState
   void didUpdateWidget(covariant _AnimatedAiWaterRippleBorder oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.visibleOnlyWhenInViewport !=
-        widget.visibleOnlyWhenInViewport) {
+            widget.visibleOnlyWhenInViewport ||
+        oldWidget.maxRepeats != widget.maxRepeats) {
       _syncAnimation();
     }
   }
 
   void _startAnimation() {
+    final repeatCount =
+        AndroidEnergyPolicy.decorativeRepeatCount(
+          androidCount: widget.maxRepeats,
+        ) ??
+        widget.maxRepeats;
     _controller
       ..reset()
-      ..repeat(
-        count: AndroidEnergyPolicy.decorativeRepeatCount(androidCount: 2),
-      );
+      ..repeat(count: repeatCount);
   }
 
   @override
   void dispose() {
+    _controller.removeStatusListener(_handleAnimationStatus);
     PowerSaveModeService.enabledListenable.removeListener(_syncAnimation);
     _controller.dispose();
     super.dispose();
@@ -219,11 +240,18 @@ class _AiWaterBorderPainter extends CustomPainter {
     const Color(0xFF77F36D).withValues(alpha: isLight ? 0.66 : 0.80),
     const Color(0xFF36F1CD).withValues(alpha: isLight ? 0.72 : 0.86),
   ];
-  late final Paint _glowPaint = Paint()
+  // Layered concentric soft-alpha strokes avoid per-frame MaskFilter.blur
+  // offscreen saveLayer allocations in Impeller.
+  late final Paint _outerGlowPaint = Paint()
     ..style = PaintingStyle.stroke
-    ..strokeWidth = 4.4
+    ..strokeWidth = 7.2
     ..strokeCap = StrokeCap.round
-    ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+    ..color = Colors.white.withValues(alpha: isLight ? 0.16 : 0.22);
+  late final Paint _innerGlowPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 4.0
+    ..strokeCap = StrokeCap.round
+    ..color = Colors.white.withValues(alpha: isLight ? 0.34 : 0.42);
   late final List<Paint> _wavePaints = List<Paint>.generate(
     3,
     (index) => Paint()
@@ -247,8 +275,10 @@ class _AiWaterBorderPainter extends CustomPainter {
     final borderRect = _cachedBorderRect!;
     final shader = _gradient.createShader(rect);
 
-    _glowPaint.shader = shader;
-    canvas.drawRRect(_cachedBaseRRect!, _glowPaint);
+    _outerGlowPaint.shader = shader;
+    canvas.drawRRect(_cachedBaseRRect!, _outerGlowPaint);
+    _innerGlowPaint.shader = shader;
+    canvas.drawRRect(_cachedBaseRRect!, _innerGlowPaint);
 
     for (var i = 0; i < 3; i++) {
       final phase = progress * math.pi * 2 + i * 1.9;
