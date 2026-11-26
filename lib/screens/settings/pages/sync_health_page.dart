@@ -7,6 +7,7 @@ import '../../../utils/time_utils.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../conflict_inbox_screen.dart';
 import 'course_settings_page.dart';
+import '../../../utils/text_utils.dart';
 
 class SyncHealthPage extends StatefulWidget {
   const SyncHealthPage({
@@ -617,7 +618,7 @@ class _SyncHealthPageState extends State<SyncHealthPage> {
       ),
       '[敏感信息已隐藏]',
     );
-    if (safe.length > 180) safe = '${safe.substring(0, 180)}…';
+    safe = AppTextUtils.truncate(safe, 180);
     return safe.isEmpty ? '原因未知' : safe;
   }
 }

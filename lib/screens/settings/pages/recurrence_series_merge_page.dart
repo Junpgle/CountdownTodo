@@ -5,6 +5,7 @@ import '../../../services/conflict_visibility_service.dart';
 import '../../../storage_service.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/text_utils.dart';
 
 class RecurrenceSeriesMergePage extends StatefulWidget {
   final String username;
@@ -458,7 +459,7 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
   }
 
   static String _shortSeriesId(String seriesId) =>
-      seriesId.length <= 8 ? seriesId : '${seriesId.substring(0, 8)}…';
+      AppTextUtils.truncate(seriesId, 8);
 }
 
 class _RecurrenceSeriesSummary {

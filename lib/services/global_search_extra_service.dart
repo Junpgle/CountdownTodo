@@ -15,6 +15,7 @@ import 'api_service.dart';
 import 'chat_storage_service.dart';
 import 'database_helper.dart';
 import '../utils/time_utils.dart';
+import '../utils/text_utils.dart';
 
 final RegExp _searchMessagePreviewWhitespacePattern = RegExp(r'\s+');
 
@@ -895,9 +896,7 @@ abstract final class GlobalSearchExtraService {
             _result(
               id: 'chat_message_${session.id}_${message.id}',
               title: session.title,
-              subtitle: preview.length > 90
-                  ? '${preview.substring(0, 90)}…'
-                  : preview,
+              subtitle: AppTextUtils.truncate(preview, 90),
               icon: Icons.forum_outlined,
               type: SearchResultType.chat,
               label: 'AI 对话消息',

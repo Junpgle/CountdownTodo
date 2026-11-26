@@ -17,6 +17,7 @@ import 'llm_service.dart';
 import 'minor_mode_service.dart';
 import 'pomodoro_service.dart';
 import 'storage/storage_key_scope.dart';
+import '../utils/text_utils.dart';
 
 enum DailyAiSuggestionPriority { high, medium, low }
 
@@ -805,8 +806,7 @@ class DailyAiSuggestionService {
 
   static String _formatErrorMessage(Object error) {
     final text = SyncErrorFormatter.stripExceptionPrefix(error.toString());
-    if (text.length <= 80) return text;
-    return '${text.substring(0, 80)}...';
+    return AppTextUtils.truncate(text, 80, ellipsis: '...');
   }
 
   @visibleForTesting
@@ -1383,7 +1383,7 @@ class DailyAiSuggestionService {
 
     final fallbackSummary = cleaned.isEmpty
         ? '今天保持专注节奏，优先推进最重要的 1-2 件事。'
-        : (cleaned.length > 140 ? '${cleaned.substring(0, 140)}...' : cleaned);
+        : AppTextUtils.truncate(cleaned, 140, ellipsis: '...');
     return DailyAiSuggestion(
       dateKey: dateKey,
       summary: fallbackSummary,

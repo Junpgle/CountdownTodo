@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import '../../../utils/json_value_parser.dart';
+import '../../../utils/text_utils.dart';
 
 class ChallengeDraft {
   final String title;
@@ -72,10 +73,8 @@ class ThirtyDayChallengeTask {
 
   static int? _parseInt(dynamic value) => JsonValueParser.toNullableInt(value);
 
-  static String? _parseNullableString(dynamic value) {
-    final text = value?.toString().trim();
-    return text == null || text.isEmpty ? null : text;
-  }
+  static String? _parseNullableString(dynamic value) =>
+      AppTextUtils.trimToNull(value?.toString());
 
   static DateTime? _parseDate(dynamic value) {
     final text = value?.toString();

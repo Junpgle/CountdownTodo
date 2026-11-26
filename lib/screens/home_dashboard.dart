@@ -24,6 +24,7 @@ import '../services/search_service.dart';
 import '../utils/page_transitions.dart';
 import '../utils/pomodoro_display_tick_schedule.dart';
 import '../utils/app_scroll_behavior.dart';
+import '../utils/text_utils.dart';
 
 // 引入服务和模型
 import '../models.dart';

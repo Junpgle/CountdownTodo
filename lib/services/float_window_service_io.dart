@@ -20,6 +20,7 @@ import 'clipboard_service.dart';
 import 'snooze_dialog.dart';
 import 'island_data_provider.dart';
 import 'windows_island_build_config.dart';
+import '../utils/text_utils.dart';
 
 /// Configuration constants for FloatWindowService
 class FloatWindowConfig {
@@ -165,16 +166,9 @@ class FloatWindowService {
   static String _truncateUrlForDisplay(String url) {
     try {
       final uri = Uri.parse(url);
-      final host = uri.host;
-      if (host.length > 20) {
-        return '${host.substring(0, 20)}...';
-      }
-      return host;
+      return AppTextUtils.truncate(uri.host, 20, ellipsis: '...');
     } catch (_) {
-      if (url.length > 25) {
-        return '${url.substring(0, 25)}...';
-      }
-      return url;
+      return AppTextUtils.truncate(url, 25, ellipsis: '...');
     }
   }
 

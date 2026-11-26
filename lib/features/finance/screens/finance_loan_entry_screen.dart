@@ -6,6 +6,7 @@ import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 import '../widgets/finance_management_widgets.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/text_utils.dart';
 
 class FinanceLoanEntryScreen extends StatefulWidget {
   final FinanceLoan? loan;
@@ -157,10 +158,7 @@ class _FinanceLoanEntryScreenState extends State<FinanceLoanEntryScreen> {
     }
   }
 
-  String? _emptyToNull(String value) {
-    final trimmed = value.trim();
-    return trimmed.isEmpty ? null : trimmed;
-  }
+  String? _emptyToNull(String value) => AppTextUtils.trimToNull(value);
 
   void _showError(String message) {
     AppSnackBars.showSnackBar(context, SnackBar(content: Text(message)));

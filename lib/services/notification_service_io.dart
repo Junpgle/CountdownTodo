@@ -18,6 +18,7 @@ import 'notification_service_shared.dart';
 import 'focus_do_not_disturb_service.dart';
 import '../utils/time_utils.dart';
 import '../utils/json_value_parser.dart';
+import '../utils/text_utils.dart';
 
 class NotificationService {
   static const int financeBudgetAlertNotificationBaseId = 61000;
@@ -1238,9 +1239,7 @@ class NotificationService {
     await ensureInitialized();
 
     final title = '❌ 图片识别失败';
-    final body = errorMsg.length > 50
-        ? '${errorMsg.substring(0, 50)}...'
-        : errorMsg;
+    final body = AppTextUtils.truncate(errorMsg, 50, ellipsis: '...');
 
     if (_isDesktopSupported) {
       await _plugin.show(

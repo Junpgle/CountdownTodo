@@ -788,9 +788,7 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
             AppDetailWideCard(
               icon: Icons.fingerprint_rounded,
               title: "任务 ID",
-              value: todo.id.length > 8
-                  ? "${todo.id.substring(0, 8)}..."
-                  : todo.id,
+              value: AppTextUtils.truncate(todo.id, 8, ellipsis: '...'),
               onTap: () {
                 Clipboard.setData(ClipboardData(text: todo.id));
                 AppSnackBars.success(context, "ID 已复制到剪贴板");

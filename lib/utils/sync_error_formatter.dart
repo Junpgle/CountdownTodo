@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'text_utils.dart';
+
 /// Formats sync exceptions and server error payloads into specific, user-facing
 /// Chinese error messages instead of a generic catch-all.
 class SyncErrorFormatter {
@@ -130,8 +132,6 @@ class SyncErrorFormatter {
     return stripExceptionPrefix(error.toString());
   }
 
-  static String _truncate(String value, {int maxLength = 80}) {
-    if (value.length <= maxLength) return value;
-    return '${value.substring(0, maxLength)}…';
-  }
+  static String _truncate(String value, {int maxLength = 80}) =>
+      AppTextUtils.truncate(value, maxLength);
 }

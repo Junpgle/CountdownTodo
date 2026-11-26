@@ -510,16 +510,14 @@ mixin _TodoChatSendManual on _TodoChatScreenStateBase {
           .trim()
           .replaceAll('"', '')
           .replaceAll("'", '');
-      if (title.length > 15) title = '${title.substring(0, 15)}...';
+      title = AppTextUtils.truncate(title, 15, ellipsis: '...');
       if (title.isEmpty) {
         final content = firstUserMsg.content.trim();
         if (content.isEmpty) {
           await _syncSessionsFromStorage();
           return;
         }
-        title = content.length > 15
-            ? '${content.substring(0, 15)}...'
-            : content;
+        title = AppTextUtils.truncate(content, 15, ellipsis: '...');
       }
 
       await ChatStorageService.updateSessionTitle(sessionId, title);

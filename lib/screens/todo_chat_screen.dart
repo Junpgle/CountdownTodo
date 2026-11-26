@@ -38,6 +38,7 @@ import '../services/todo_recurrence_series_edit_service.dart';
 import '../services/ai_plan_draft_repository.dart';
 import '../services/llm_service.dart';
 import '../services/minor_mode_policy.dart';
+import '../utils/text_utils.dart';
 import '../services/minor_mode_service.dart';
 import '../services/ai_memory_service.dart';
 import '../services/chat_storage_service.dart';

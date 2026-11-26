@@ -12,6 +12,7 @@ import 'scheduled_reminder_registry.dart';
 import 'notification_service_shared.dart';
 import 'focus_do_not_disturb_service.dart';
 import '../utils/json_value_parser.dart';
+import '../utils/text_utils.dart';
 
 class NotificationService {
   static const int financeBudgetAlertNotificationBaseId = 61000;
@@ -398,9 +399,7 @@ class NotificationService {
   }) async {
     if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) return;
     if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
-    final body = errorMsg.length > 80
-        ? '${errorMsg.substring(0, 80)}...'
-        : errorMsg;
+    final body = AppTextUtils.truncate(errorMsg, 80, ellipsis: '...');
     await _showLiveActivityNotification('图片识别失败', body, tag: 'todo-recognize');
   }
 

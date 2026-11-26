@@ -525,10 +525,7 @@ extension _FinanceEntryActions on _FinanceEntryScreenState {
     }
   }
 
-  String? _emptyToNull(String value) {
-    final trimmed = value.trim();
-    return trimmed.isEmpty ? null : trimmed;
-  }
+  String? _emptyToNull(String value) => AppTextUtils.trimToNull(value);
 
   String? _noteWithCalculation() {
     return _noteWithExpression(

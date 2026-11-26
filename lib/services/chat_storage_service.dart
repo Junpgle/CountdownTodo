@@ -12,6 +12,7 @@ import 'legacy_ai_prompt_sanitizer.dart';
 import 'storage/user_session_storage.dart';
 import 'storage/storage_key_scope.dart';
 import 'secure_storage_service.dart';
+import '../utils/text_utils.dart';
 
 class ChatSession {
   final String id;
@@ -422,9 +423,11 @@ class ChatStorageService {
         );
         final fallbackTitle = firstUserMsg.content.trim();
         if (fallbackTitle.isNotEmpty) {
-          session.title = fallbackTitle.length > 20
-              ? '${fallbackTitle.substring(0, 20)}...'
-              : fallbackTitle;
+          session.title = AppTextUtils.truncate(
+            fallbackTitle,
+            20,
+            ellipsis: '...',
+          );
           session.updatedAt = DateTime.now();
           await saveSessions(sessions);
         }

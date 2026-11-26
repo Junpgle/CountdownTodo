@@ -344,9 +344,9 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
       statusIcon = Icons.error_outline;
       iconColor = Colors.red;
       title = 'AI识别失败';
-      subtitle = errorMsg != null && errorMsg.length > 30
-          ? '${errorMsg.substring(0, 30)}...'
-          : (errorMsg ?? '点击查看 AI 输出，可选择重试');
+      subtitle = errorMsg == null
+          ? '点击查看 AI 输出，可选择重试'
+          : AppTextUtils.truncate(errorMsg, 30, ellipsis: '...');
     } else {
       statusIcon = Icons.check_circle_outline;
       iconColor = Colors.green;

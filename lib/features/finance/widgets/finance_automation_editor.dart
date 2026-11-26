@@ -7,6 +7,7 @@ import '../services/finance_repository.dart';
 import 'finance_management_widgets.dart';
 
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/text_utils.dart';
 
 /// The dialog owns its controllers and keeps the draft open if saving fails.
 class FinanceAutomationEditor extends StatefulWidget {
@@ -582,6 +583,5 @@ class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
     );
   }
 
-  static String? _emptyToNull(String value) =>
-      value.trim().isEmpty ? null : value.trim();
+  static String? _emptyToNull(String value) => AppTextUtils.trimToNull(value);
 }
