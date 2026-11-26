@@ -96,6 +96,12 @@ class _AnimatedAiWaterRippleBorderState
   late final AnimationController _controller;
   bool _isVisible = true;
   bool _hasCompletedMotion = false;
+  bool _wasUsingVisibilityDetector = false;
+
+  bool get _needsVisibilityDetector =>
+      widget.visibleOnlyWhenInViewport &&
+      !_hasCompletedMotion &&
+      AndroidEnergyPolicy.shouldRunDecorativeMotion;
 
   @override
   void initState() {
@@ -104,13 +110,27 @@ class _AnimatedAiWaterRippleBorderState
       vsync: this,
       duration: const Duration(milliseconds: 5400),
     )..addStatusListener(_handleAnimationStatus);
-    PowerSaveModeService.enabledListenable.addListener(_syncAnimation);
+    PowerSaveModeService.enabledListenable.addListener(
+      _handleEnergyPolicyChanged,
+    );
     _syncAnimation();
   }
 
   void _handleAnimationStatus(AnimationStatus status) {
-    if (status == AnimationStatus.completed) {
-      _hasCompletedMotion = true;
+    if (status == AnimationStatus.completed && !_hasCompletedMotion) {
+      if (mounted) {
+        setState(() => _hasCompletedMotion = true);
+      } else {
+        _hasCompletedMotion = true;
+      }
+    }
+  }
+
+  void _handleEnergyPolicyChanged() {
+    final usedVisibilityDetector = _wasUsingVisibilityDetector;
+    _syncAnimation();
+    if (mounted && usedVisibilityDetector != _needsVisibilityDetector) {
+      setState(() {});
     }
   }
 
@@ -159,13 +179,17 @@ class _AnimatedAiWaterRippleBorderState
   @override
   void dispose() {
     _controller.removeStatusListener(_handleAnimationStatus);
-    PowerSaveModeService.enabledListenable.removeListener(_syncAnimation);
+    PowerSaveModeService.enabledListenable.removeListener(
+      _handleEnergyPolicyChanged,
+    );
     _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final needsVisibilityDetector = _needsVisibilityDetector;
+    _wasUsingVisibilityDetector = needsVisibilityDetector;
     final paintedChild = RepaintBoundary(
       child: CustomPaint(
         foregroundPainter: _AiWaterBorderPainter(
@@ -181,7 +205,7 @@ class _AnimatedAiWaterRippleBorderState
         ),
       ),
     );
-    if (!widget.visibleOnlyWhenInViewport) return paintedChild;
+    if (!needsVisibilityDetector) return paintedChild;
     return VisibilityDetector(
       key: ObjectKey(this),
       onVisibilityChanged: _onVisibilityChanged,
