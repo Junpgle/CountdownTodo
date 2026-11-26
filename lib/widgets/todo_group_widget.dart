@@ -482,31 +482,37 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
             Positioned.fill(
               child: AnimatedBuilder(
                 animation: _progressController,
-                builder: (context, child) {
+                builder: (context, _) {
                   final animValue = Curves.easeOutQuart.transform(
                     _progressController.value,
                   );
                   if (animValue <= 0.001) return const SizedBox.shrink();
-                  if (animValue >= 0.999) return child!;
-                  return Opacity(opacity: animValue, child: child);
-                },
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: isDark
-                          ? [
-                              Colors.green.withValues(alpha: 0.12),
-                              Colors.green.withValues(alpha: 0.04),
-                            ]
-                          : [
-                              Colors.green.withValues(alpha: 0.06),
-                              Colors.green.withValues(alpha: 0.01),
-                            ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+                  return DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: isDark
+                            ? [
+                                Colors.green.withValues(
+                                  alpha: 0.12 * animValue,
+                                ),
+                                Colors.green.withValues(
+                                  alpha: 0.04 * animValue,
+                                ),
+                              ]
+                            : [
+                                Colors.green.withValues(
+                                  alpha: 0.06 * animValue,
+                                ),
+                                Colors.green.withValues(
+                                  alpha: 0.01 * animValue,
+                                ),
+                              ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                },
               ),
             ),
           // Actual content

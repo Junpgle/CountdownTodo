@@ -447,25 +447,27 @@ class _GridCanvas extends StatelessWidget {
 
     return Stack(
       children: [
-        CustomPaint(
-          size: Size(rowW, rowH * kTotalRows),
-          painter: _GridBgPainter(
-            colW: colW,
-            rowH: rowH,
-            rowMajorColor: colorScheme.outlineVariant,
-            rowNormalColor: colorScheme.outlineVariant.withValues(
-              alpha: isDark ? 0.38 : 0.58,
-            ),
-            colHourColor: colorScheme.outline,
-            colHalfColor: colorScheme.outlineVariant,
-            colCellColor: colorScheme.outlineVariant.withValues(
-              alpha: isDark ? 0.26 : 0.42,
-            ),
-            labelMajorColor: colorScheme.onSurfaceVariant.withValues(
-              alpha: 0.48,
-            ),
-            labelMinorColor: colorScheme.onSurfaceVariant.withValues(
-              alpha: 0.34,
+        RepaintBoundary(
+          child: CustomPaint(
+            size: Size(rowW, rowH * kTotalRows),
+            painter: _GridBgPainter(
+              colW: colW,
+              rowH: rowH,
+              rowMajorColor: colorScheme.outlineVariant,
+              rowNormalColor: colorScheme.outlineVariant.withValues(
+                alpha: isDark ? 0.38 : 0.58,
+              ),
+              colHourColor: colorScheme.outline,
+              colHalfColor: colorScheme.outlineVariant,
+              colCellColor: colorScheme.outlineVariant.withValues(
+                alpha: isDark ? 0.26 : 0.42,
+              ),
+              labelMajorColor: colorScheme.onSurfaceVariant.withValues(
+                alpha: 0.48,
+              ),
+              labelMinorColor: colorScheme.onSurfaceVariant.withValues(
+                alpha: 0.34,
+              ),
             ),
           ),
         ),

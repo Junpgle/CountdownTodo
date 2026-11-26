@@ -190,14 +190,20 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen>
           ),
         );
         if (value >= 0.999) return child!;
-        return IgnorePointer(
-          ignoring: value == 0,
-          child: Opacity(
-            opacity: value,
-            child: Transform.translate(
-              offset: Offset(0, 40 * (1 - value)),
-              child: child,
-            ),
+        if (value <= 0.001) {
+          return Visibility(
+            visible: false,
+            maintainSize: true,
+            maintainAnimation: true,
+            maintainState: true,
+            child: child!,
+          );
+        }
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 40 * (1 - value)),
+            child: RepaintBoundary(child: child),
           ),
         );
       },

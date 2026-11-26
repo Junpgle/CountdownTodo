@@ -188,7 +188,10 @@ mixin _TodoSectionViewCardMixin on _TodoSectionStateBase {
 
               return Transform.scale(
                 scale: scale,
-                child: Opacity(opacity: opacity, child: child),
+                child: Opacity(
+                  opacity: opacity,
+                  child: RepaintBoundary(child: child),
+                ),
               );
             },
             child: KeyedSubtree(

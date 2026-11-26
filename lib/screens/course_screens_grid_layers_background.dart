@@ -170,62 +170,64 @@ mixin _WeeklyCourseGridBackgroundLayers on _WeeklyCourseScreenStateBase {
                       child: Opacity(opacity: t, child: child),
                     );
                   },
-                  child: GestureDetector(
-                    onTap: () {
-                      PageTransitions.pushFromRect(
-                        context: context,
-                        page: PlanBlockDetailScreen(
-                          block: plan,
-                          username: widget.username,
-                        ),
-                        sourceKey: planCardKey,
-                        sourceColor: _weekLazyLoadPlaceholderColor,
-                        sourceBorderRadius: const BorderRadius.all(
-                          Radius.circular(4),
-                        ),
-                        placeholderIcon: Icons.event_note_rounded,
-                      );
-                    },
-                    child: Container(
-                      key: planCardKey,
-                      alignment: Alignment.topLeft,
-                      clipBehavior: Clip.hardEdge,
-                      decoration: BoxDecoration(
-                        color: planColor,
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(
-                          color: Colors.white.withValues(
-                            alpha: isPlanFinished ? 0.18 : 0.35,
+                  child: RepaintBoundary(
+                    child: GestureDetector(
+                      onTap: () {
+                        PageTransitions.pushFromRect(
+                          context: context,
+                          page: PlanBlockDetailScreen(
+                            block: plan,
+                            username: widget.username,
                           ),
-                          width: 0.5,
+                          sourceKey: planCardKey,
+                          sourceColor: _weekLazyLoadPlaceholderColor,
+                          sourceBorderRadius: const BorderRadius.all(
+                            Radius.circular(4),
+                          ),
+                          placeholderIcon: Icons.event_note_rounded,
+                        );
+                      },
+                      child: Container(
+                        key: planCardKey,
+                        alignment: Alignment.topLeft,
+                        clipBehavior: Clip.hardEdge,
+                        decoration: BoxDecoration(
+                          color: planColor,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: Colors.white.withValues(
+                              alpha: isPlanFinished ? 0.18 : 0.35,
+                            ),
+                            width: 0.5,
+                          ),
                         ),
-                      ),
-                      // 如果有关联的番茄钟，用背景填充表示完成进度
-                      child: hasAssociatedPomodoro
-                          ? Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                Align(
-                                  alignment: Alignment.bottomCenter,
-                                  child: FractionallySizedBox(
-                                    heightFactor: progressRatio,
-                                    widthFactor: 1.0,
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withValues(
-                                          alpha: isPlanFinished ? 0.10 : 0.22,
+                        // 如果有关联的番茄钟，用背景填充表示完成进度
+                        child: hasAssociatedPomodoro
+                            ? Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  Align(
+                                    alignment: Alignment.bottomCenter,
+                                    child: FractionallySizedBox(
+                                      heightFactor: progressRatio,
+                                      widthFactor: 1.0,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withValues(
+                                            alpha: isPlanFinished ? 0.10 : 0.22,
+                                          ),
                                         ),
                                       ),
                                     ),
                                   ),
-                                ),
-                                Align(
-                                  alignment: Alignment.topLeft,
-                                  child: planContent,
-                                ),
-                              ],
-                            )
-                          : planContent,
+                                  Align(
+                                    alignment: Alignment.topLeft,
+                                    child: planContent,
+                                  ),
+                                ],
+                              )
+                            : planContent,
+                      ),
                     ),
                   ),
                 ),
@@ -744,82 +746,84 @@ mixin _WeeklyCourseGridBackgroundLayers on _WeeklyCourseScreenStateBase {
                     child: Opacity(opacity: t, child: child),
                   );
                 },
-                child: GestureDetector(
-                  onTap: () {
-                    PageTransitions.pushFromRect(
-                      context: context,
-                      page: CourseDetailScreen(
-                        course: course,
-                        courseSchedule: _allCourses,
-                      ),
-                      sourceKey: cardKey,
-                      sourceColor: _weekLazyLoadPlaceholderColor,
-                      sourceBorderRadius: const BorderRadius.all(
-                        Radius.circular(4),
-                      ),
-                      placeholderIcon: Icons.calendar_month_rounded,
-                    );
-                  },
-                  child: Container(
-                    key: cardKey,
-                    alignment: Alignment.topLeft,
-                    clipBehavior: Clip.hardEdge,
-                    padding: EdgeInsets.fromLTRB(3, 2 + topOccupied, 3, 2),
-                    decoration: BoxDecoration(
-                      color: bgColor,
-                      borderRadius: BorderRadius.circular(4),
-                      border: isReviewCourse
-                          ? Border.all(
-                              color: colorScheme.outlineVariant.withValues(
-                                alpha: 0.35,
-                              ),
-                              width: 0.5,
-                            )
-                          : null,
-                      boxShadow: isReviewCourse
-                          ? null
-                          : const [
-                              BoxShadow(
-                                color: Colors.black12,
-                                blurRadius: 1,
-                                offset: Offset(0, 1),
-                              ),
-                            ],
-                    ),
-                    child: SingleChildScrollView(
-                      physics: const NeverScrollableScrollPhysics(),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            course.courseName,
-                            style: TextStyle(
-                              color: courseTitleColor,
-                              fontSize: titleFontSize,
-                              fontWeight: FontWeight.bold,
-                              height: 1.1,
-                            ),
-                            maxLines: courseMaxLines,
-                            textAlign: TextAlign.left,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          if (showRoom)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 1.5),
-                              child: Text(
-                                courseSubtitle,
-                                style: TextStyle(
-                                  color: courseSubColor,
-                                  fontSize: subFontSize,
-                                  height: 1.1,
+                child: RepaintBoundary(
+                  child: GestureDetector(
+                    onTap: () {
+                      PageTransitions.pushFromRect(
+                        context: context,
+                        page: CourseDetailScreen(
+                          course: course,
+                          courseSchedule: _allCourses,
+                        ),
+                        sourceKey: cardKey,
+                        sourceColor: _weekLazyLoadPlaceholderColor,
+                        sourceBorderRadius: const BorderRadius.all(
+                          Radius.circular(4),
+                        ),
+                        placeholderIcon: Icons.calendar_month_rounded,
+                      );
+                    },
+                    child: Container(
+                      key: cardKey,
+                      alignment: Alignment.topLeft,
+                      clipBehavior: Clip.hardEdge,
+                      padding: EdgeInsets.fromLTRB(3, 2 + topOccupied, 3, 2),
+                      decoration: BoxDecoration(
+                        color: bgColor,
+                        borderRadius: BorderRadius.circular(4),
+                        border: isReviewCourse
+                            ? Border.all(
+                                color: colorScheme.outlineVariant.withValues(
+                                  alpha: 0.35,
                                 ),
-                                maxLines: textLayout.subMaxLines,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: TextAlign.left,
+                                width: 0.5,
+                              )
+                            : null,
+                        boxShadow: isReviewCourse
+                            ? null
+                            : const [
+                                BoxShadow(
+                                  color: Colors.black12,
+                                  blurRadius: 1,
+                                  offset: Offset(0, 1),
+                                ),
+                              ],
+                      ),
+                      child: SingleChildScrollView(
+                        physics: const NeverScrollableScrollPhysics(),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              course.courseName,
+                              style: TextStyle(
+                                color: courseTitleColor,
+                                fontSize: titleFontSize,
+                                fontWeight: FontWeight.bold,
+                                height: 1.1,
                               ),
+                              maxLines: courseMaxLines,
+                              textAlign: TextAlign.left,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                        ],
+                            if (showRoom)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 1.5),
+                                child: Text(
+                                  courseSubtitle,
+                                  style: TextStyle(
+                                    color: courseSubColor,
+                                    fontSize: subFontSize,
+                                    height: 1.1,
+                                  ),
+                                  maxLines: textLayout.subMaxLines,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.left,
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   ),

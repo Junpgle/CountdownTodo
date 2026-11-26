@@ -87,15 +87,17 @@ class QuickVoiceContainerTransitionState
     final colors = Theme.of(context).colorScheme;
     return AnimatedBuilder(
       animation: _animation,
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: NotificationListener<SizeChangedLayoutNotification>(
-          onNotification: (_) {
-            _measureAfterLayout();
-            return false;
-          },
-          child: SizeChangedLayoutNotifier(
-            child: SizedBox(key: _panelKey, child: widget.child),
+      child: RepaintBoundary(
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: NotificationListener<SizeChangedLayoutNotification>(
+            onNotification: (_) {
+              _measureAfterLayout();
+              return false;
+            },
+            child: SizeChangedLayoutNotifier(
+              child: SizedBox(key: _panelKey, child: widget.child),
+            ),
           ),
         ),
       ),
@@ -134,9 +136,11 @@ class QuickVoiceContainerTransitionState
                   if (contentProgress < 1)
                     Positioned.fromRect(
                       rect: rect,
-                      child: Opacity(
-                        opacity: 1 - contentProgress,
-                        child: Icon(Icons.mic_rounded, color: colors.primary),
+                      child: Icon(
+                        Icons.mic_rounded,
+                        color: colors.primary.withValues(
+                          alpha: (1 - contentProgress).clamp(0.0, 1.0),
+                        ),
                       ),
                     ),
                 ],

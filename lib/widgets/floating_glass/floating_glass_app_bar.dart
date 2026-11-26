@@ -204,7 +204,7 @@ class _FloatingGlassAppBarActionContent extends StatelessWidget {
                 opacity: progress,
                 child: Transform.scale(
                   scale: 0.82 + progress * 0.18,
-                  child: clippedControl,
+                  child: RepaintBoundary(child: clippedControl),
                 ),
               ),
       );

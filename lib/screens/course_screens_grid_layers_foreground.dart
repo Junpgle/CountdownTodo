@@ -103,126 +103,128 @@ mixin _WeeklyCourseGridForegroundLayers on _WeeklyCourseScreenStateBase {
                       child: Opacity(opacity: t, child: child),
                     );
                   },
-                  child: GestureDetector(
-                    onTap: () {
-                      PageTransitions.pushFromRect(
-                        context: context,
-                        page: TodoDetailScreen(
-                          todo: todo,
-                          onCreateRelatedTodo: widget.onCreateRelatedTodo,
+                  child: RepaintBoundary(
+                    child: GestureDetector(
+                      onTap: () {
+                        PageTransitions.pushFromRect(
+                          context: context,
+                          page: TodoDetailScreen(
+                            todo: todo,
+                            onCreateRelatedTodo: widget.onCreateRelatedTodo,
+                          ),
+                          sourceKey: todoCardKey,
+                          sourceColor: _weekLazyLoadPlaceholderColor,
+                          sourceBorderRadius: const BorderRadius.all(
+                            Radius.circular(4),
+                          ),
+                          placeholderIcon: Icons.task_alt_rounded,
+                        );
+                      },
+                      child: Container(
+                        key: todoCardKey,
+                        alignment: Alignment.topLeft,
+                        clipBehavior: Clip.hardEdge,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 3,
+                          vertical: 2,
                         ),
-                        sourceKey: todoCardKey,
-                        sourceColor: _weekLazyLoadPlaceholderColor,
-                        sourceBorderRadius: const BorderRadius.all(
-                          Radius.circular(4),
-                        ),
-                        placeholderIcon: Icons.task_alt_rounded,
-                      );
-                    },
-                    child: Container(
-                      key: todoCardKey,
-                      alignment: Alignment.topLeft,
-                      clipBehavior: Clip.hardEdge,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 3,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: todoColor,
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(
-                          color: colorScheme.surface.withValues(alpha: 0.7),
-                          width: 0.6,
-                        ),
-                        boxShadow: !todo.isDone && stackIndex > 0
-                            ? [
-                                const BoxShadow(
-                                  color: Colors.black12,
-                                  blurRadius: 2,
-                                  offset: Offset(-1, 1),
-                                ),
-                              ]
-                            : null,
-                      ),
-                      child: SingleChildScrollView(
-                        physics: const NeverScrollableScrollPhysics(),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (showTeamBadge)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 2.0),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 2,
-                                    vertical: 0.5,
+                        decoration: BoxDecoration(
+                          color: todoColor,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: colorScheme.surface.withValues(alpha: 0.7),
+                            width: 0.6,
+                          ),
+                          boxShadow: !todo.isDone && stackIndex > 0
+                              ? [
+                                  const BoxShadow(
+                                    color: Colors.black12,
+                                    blurRadius: 2,
+                                    offset: Offset(-1, 1),
                                   ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(
-                                      alpha: todo.isDone ? 0.18 : 0.3,
+                                ]
+                              : null,
+                        ),
+                        child: SingleChildScrollView(
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (showTeamBadge)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 2.0),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 2,
+                                      vertical: 0.5,
                                     ),
-                                    borderRadius: BorderRadius.circular(2),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.group,
-                                        size: 8,
-                                        color: todoTextColor,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(
+                                        alpha: todo.isDone ? 0.18 : 0.3,
                                       ),
-                                      const SizedBox(width: 1),
-                                      Flexible(
-                                        child: Text(
-                                          todo.teamName ?? '团队',
-                                          style: TextStyle(
-                                            color: todoTextColor,
-                                            fontSize: teamFontSize,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                          maxLines: 1,
-                                          textAlign: TextAlign.left,
-                                          overflow: TextOverflow.ellipsis,
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.group,
+                                          size: 8,
+                                          color: todoTextColor,
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            Text(
-                              todo.title,
-                              style: TextStyle(
-                                color: todoTextColor,
-                                fontSize: titleFontSize,
-                                fontWeight: FontWeight.bold,
-                                decoration: todo.isDone
-                                    ? TextDecoration.lineThrough
-                                    : null,
-                                height: 1.1,
-                              ),
-                              maxLines: todoMaxLines,
-                              textAlign: TextAlign.left,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            if (showRemark && todo.remark != null)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 1.5),
-                                child: Text(
-                                  todo.remark!,
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(
-                                      alpha: todo.isDone ? 0.52 : 0.78,
+                                        const SizedBox(width: 1),
+                                        Flexible(
+                                          child: Text(
+                                            todo.teamName ?? '团队',
+                                            style: TextStyle(
+                                              color: todoTextColor,
+                                              fontSize: teamFontSize,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                            maxLines: 1,
+                                            textAlign: TextAlign.left,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    fontSize: 8,
-                                    height: 1.1,
                                   ),
-                                  maxLines: textLayout.subMaxLines,
-                                  textAlign: TextAlign.left,
-                                  overflow: TextOverflow.ellipsis,
                                 ),
+                              Text(
+                                todo.title,
+                                style: TextStyle(
+                                  color: todoTextColor,
+                                  fontSize: titleFontSize,
+                                  fontWeight: FontWeight.bold,
+                                  decoration: todo.isDone
+                                      ? TextDecoration.lineThrough
+                                      : null,
+                                  height: 1.1,
+                                ),
+                                maxLines: todoMaxLines,
+                                textAlign: TextAlign.left,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                          ],
+                              if (showRemark && todo.remark != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 1.5),
+                                  child: Text(
+                                    todo.remark!,
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: todo.isDone ? 0.52 : 0.78,
+                                      ),
+                                      fontSize: 8,
+                                      height: 1.1,
+                                    ),
+                                    maxLines: textLayout.subMaxLines,
+                                    textAlign: TextAlign.left,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -355,72 +357,76 @@ mixin _WeeklyCourseGridForegroundLayers on _WeeklyCourseScreenStateBase {
                       child: Opacity(opacity: t, child: child),
                     );
                   },
-                  child: GestureDetector(
-                    onTap: () {
-                      PageTransitions.pushFromRect(
-                        context: context,
-                        page: TimeLogDetailScreen(
-                          log: log,
-                          tags: _pomodoroTags,
+                  child: RepaintBoundary(
+                    child: GestureDetector(
+                      onTap: () {
+                        PageTransitions.pushFromRect(
+                          context: context,
+                          page: TimeLogDetailScreen(
+                            log: log,
+                            tags: _pomodoroTags,
+                          ),
+                          sourceKey: logCardKey,
+                          sourceColor: _weekLazyLoadPlaceholderColor,
+                          sourceBorderRadius: const BorderRadius.all(
+                            Radius.circular(4),
+                          ),
+                          placeholderIcon: Icons.receipt_long_rounded,
+                        );
+                      },
+                      child: Container(
+                        key: logCardKey,
+                        alignment: Alignment.topLeft,
+                        clipBehavior: Clip.hardEdge,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 3,
+                          vertical: 2,
                         ),
-                        sourceKey: logCardKey,
-                        sourceColor: _weekLazyLoadPlaceholderColor,
-                        sourceBorderRadius: const BorderRadius.all(
-                          Radius.circular(4),
+                        decoration: BoxDecoration(
+                          color: logColor,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: logColor.withValues(alpha: 1.0),
+                            width: 0.5,
+                          ),
                         ),
-                        placeholderIcon: Icons.receipt_long_rounded,
-                      );
-                    },
-                    child: Container(
-                      key: logCardKey,
-                      alignment: Alignment.topLeft,
-                      clipBehavior: Clip.hardEdge,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 3,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: logColor,
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(
-                          color: logColor.withValues(alpha: 1.0),
-                          width: 0.5,
-                        ),
-                      ),
-                      child: SingleChildScrollView(
-                        physics: const NeverScrollableScrollPhysics(),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              displayLogTitle,
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: titleFontSize,
-                                fontWeight: FontWeight.bold,
-                                height: 1.1,
-                              ),
-                              maxLines: logMaxLines,
-                              textAlign: TextAlign.left,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            if (showRemark && displayLogSubtitle != null)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 1.5),
-                                child: Text(
-                                  displayLogSubtitle,
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.82),
-                                    fontSize: subFontSize,
-                                    height: 1.1,
-                                  ),
-                                  maxLines: textLayout.subMaxLines,
-                                  textAlign: TextAlign.left,
-                                  overflow: TextOverflow.ellipsis,
+                        child: SingleChildScrollView(
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                displayLogTitle,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: titleFontSize,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1.1,
                                 ),
+                                maxLines: logMaxLines,
+                                textAlign: TextAlign.left,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                          ],
+                              if (showRemark && displayLogSubtitle != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 1.5),
+                                  child: Text(
+                                    displayLogSubtitle,
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.82,
+                                      ),
+                                      fontSize: subFontSize,
+                                      height: 1.1,
+                                    ),
+                                    maxLines: textLayout.subMaxLines,
+                                    textAlign: TextAlign.left,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -630,75 +636,77 @@ mixin _WeeklyCourseGridForegroundLayers on _WeeklyCourseScreenStateBase {
                         child: Opacity(opacity: t, child: child),
                       );
                     },
-                    child: GestureDetector(
-                      onTap: () {
-                        PageTransitions.pushFromRect(
-                          context: context,
-                          page: PomodoroDetailScreen(
-                            record: record,
-                            tags: _pomodoroTags,
+                    child: RepaintBoundary(
+                      child: GestureDetector(
+                        onTap: () {
+                          PageTransitions.pushFromRect(
+                            context: context,
+                            page: PomodoroDetailScreen(
+                              record: record,
+                              tags: _pomodoroTags,
+                            ),
+                            sourceKey: pomCardKey,
+                            sourceColor: _weekLazyLoadPlaceholderColor,
+                            sourceBorderRadius: const BorderRadius.all(
+                              Radius.circular(4),
+                            ),
+                            placeholderIcon: Icons.timer_outlined,
+                          );
+                        },
+                        child: Container(
+                          key: pomCardKey,
+                          alignment: Alignment.topLeft,
+                          clipBehavior: Clip.hardEdge,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 3,
+                            vertical: 2,
                           ),
-                          sourceKey: pomCardKey,
-                          sourceColor: _weekLazyLoadPlaceholderColor,
-                          sourceBorderRadius: const BorderRadius.all(
-                            Radius.circular(4),
+                          decoration: BoxDecoration(
+                            color: pomColor,
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(
+                              color: pomColor.withValues(alpha: 1.0),
+                              width: 0.5,
+                            ),
                           ),
-                          placeholderIcon: Icons.timer_outlined,
-                        );
-                      },
-                      child: Container(
-                        key: pomCardKey,
-                        alignment: Alignment.topLeft,
-                        clipBehavior: Clip.hardEdge,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 3,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: pomColor,
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(
-                            color: pomColor.withValues(alpha: 1.0),
-                            width: 0.5,
-                          ),
-                        ),
-                        child: SingleChildScrollView(
-                          physics: const NeverScrollableScrollPhysics(),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                displayPomTitle,
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: titleFontSize,
-                                  fontWeight: FontWeight.bold,
-                                  height: 1.1,
-                                ),
-                                maxLines: pomMaxLines,
-                                textAlign: TextAlign.left,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              if (textLayout.showSubtitle &&
-                                  displayPomSubtitle != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 1.5),
-                                  child: Text(
-                                    displayPomSubtitle,
-                                    textAlign: TextAlign.left,
-                                    style: TextStyle(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.85,
-                                      ),
-                                      fontSize: subFontSize,
-                                      height: 1.1,
-                                    ),
-                                    maxLines: textLayout.subMaxLines,
-                                    overflow: TextOverflow.ellipsis,
+                          child: SingleChildScrollView(
+                            physics: const NeverScrollableScrollPhysics(),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  displayPomTitle,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: titleFontSize,
+                                    fontWeight: FontWeight.bold,
+                                    height: 1.1,
                                   ),
+                                  maxLines: pomMaxLines,
+                                  textAlign: TextAlign.left,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                            ],
+                                if (textLayout.showSubtitle &&
+                                    displayPomSubtitle != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 1.5),
+                                    child: Text(
+                                      displayPomSubtitle,
+                                      textAlign: TextAlign.left,
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.85,
+                                        ),
+                                        fontSize: subFontSize,
+                                        height: 1.1,
+                                      ),
+                                      maxLines: textLayout.subMaxLines,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
                       ),

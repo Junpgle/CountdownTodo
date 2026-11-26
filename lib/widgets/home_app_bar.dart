@@ -314,7 +314,10 @@ class _HomeAppBarState extends State<HomeAppBar>
           opacity: clamped,
           child: Transform.translate(
             offset: Offset(0, (1 - clamped) * 8),
-            child: Transform.scale(scale: 0.92 + clamped * 0.08, child: c),
+            child: Transform.scale(
+              scale: 0.92 + clamped * 0.08,
+              child: RepaintBoundary(child: c),
+            ),
           ),
         );
       },

@@ -226,8 +226,10 @@ extension _HabitDetailInsightsAndHeader on _HabitDetailScreenState {
         SizedBox(
           width: 12,
           height: 8,
-          child: CustomPaint(
-            painter: _TrendLegendPainter(color: color, dashed: dashed),
+          child: RepaintBoundary(
+            child: CustomPaint(
+              painter: _TrendLegendPainter(color: color, dashed: dashed),
+            ),
           ),
         ),
         const SizedBox(width: 4),

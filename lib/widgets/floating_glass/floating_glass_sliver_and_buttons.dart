@@ -771,7 +771,10 @@ class FloatingGlassLargeFlexibleSpace extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
               child: extent >= 0.999
                   ? styledTitle
-                  : Opacity(opacity: extent, child: styledTitle),
+                  : Opacity(
+                      opacity: extent,
+                      child: RepaintBoundary(child: styledTitle),
+                    ),
             ),
           ),
       ],
