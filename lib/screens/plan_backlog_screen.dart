@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models.dart';
+import '../models/plan_availability.dart';
 import '../services/database_helper.dart';
 import '../services/plan_backlog_repository.dart';
 import '../services/plan_todo_guard.dart';
@@ -165,9 +166,7 @@ class _PlanBacklogScreenState extends State<PlanBacklogScreen>
     }
   }
 
-  String _message(Object e) => e is StateError
-      ? e.message.toString()
-      : e.toString().replaceFirst('PlanAvailabilityException: ', '');
+  String _message(Object e) => formatPlanErrorMessage(e);
 
   bool _cannotPlanOnTargetDay(TodoItem todo) {
     if (todo.dueDate != null && todo.dueDate!.isBefore(_date)) return true;

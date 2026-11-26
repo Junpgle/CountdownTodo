@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../models/plan_availability.dart';
 import '../services/plan_editor_draft_repository.dart';
 import '../services/plan_todo_guard.dart';
 import '../widgets/plan_block_editor_sheet.dart';
@@ -67,8 +68,7 @@ class _PlanEditorDraftsScreenState extends State<PlanEditorDraftsScreen>
     if (state == AppLifecycleState.resumed && !_opening) unawaited(_load());
   }
 
-  String _message(Object error) =>
-      error is StateError ? error.message.toString() : '$error';
+  String _message(Object error) => formatPlanErrorMessage(error);
   Future<void> _load() async {
     final sequence = ++_sequence;
     setState(() {

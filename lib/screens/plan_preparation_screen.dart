@@ -229,7 +229,7 @@ class _PlanPreparationScreenState extends State<PlanPreparationScreen> {
     } catch (error) {
       if (mounted && generation == _generation) {
         setState(() {
-          _error = error is StateError ? error.message.toString() : '$error';
+          _error = formatPlanErrorMessage(error);
           _loading = false;
         });
       }
@@ -301,7 +301,7 @@ class _PlanPreparationScreenState extends State<PlanPreparationScreen> {
     } catch (error) {
       if (!mounted || generation != _generation) return;
       setState(() {
-        _error = error is StateError ? error.message.toString() : '$error';
+        _error = formatPlanErrorMessage(error);
         _result = null;
         _searching = false;
       });
@@ -416,11 +416,7 @@ class _PlanPreparationScreenState extends State<PlanPreparationScreen> {
       if (mounted) {
         AppSnackBars.showSnackBar(
           context,
-          SnackBar(
-            content: Text(
-              error is StateError ? error.message.toString() : '$error',
-            ),
-          ),
+          SnackBar(content: Text(formatPlanErrorMessage(error))),
         );
         await _load();
       }

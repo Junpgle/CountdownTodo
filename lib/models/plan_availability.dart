@@ -246,6 +246,16 @@ class PlanAvailabilityException implements Exception {
   String toString() => message;
 }
 
+/// Extracts a user-facing message from planning errors.
+///
+/// Prefers [PlanAvailabilityException.message], then [StateError.message],
+/// and falls back to [fallback] or `error.toString()`.
+String formatPlanErrorMessage(Object error, {String? fallback}) {
+  if (error is PlanAvailabilityException) return error.message;
+  if (error is StateError) return error.message.toString();
+  return fallback ?? error.toString();
+}
+
 /// Shared read-only occupancy for a local date, independent of any target todo.
 class PlanAvailabilityDaySources {
   const PlanAvailabilityDaySources({

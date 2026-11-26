@@ -158,9 +158,7 @@ Future<void> showMissedPlanRecovery({
       (dialogContext) => AlertDialog(
         scrollable: true,
         title: const Text('暂时无法重新安排'),
-        content: Text(
-          error is PlanAvailabilityException ? error.message : '读取失败，请重试',
-        ),
+        content: Text(formatPlanErrorMessage(error, fallback: '读取失败，请重试')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),

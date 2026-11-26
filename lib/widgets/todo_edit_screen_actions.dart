@@ -432,7 +432,7 @@ extension _TodoEditScreenActions on TodoEditScreenState {
       return true;
     } catch (error) {
       if (mounted) {
-        final details = error is StateError ? error.message : error;
+        final details = SyncErrorFormatter.extractMessage(error);
         final message = folderSyncCommitted
             ? '文件夹已更新；待办保存失败，修改仍保留：$details'
             : _syncFolderToTeam &&
@@ -746,7 +746,7 @@ extension _TodoEditScreenActions on TodoEditScreenState {
       if (mounted) Navigator.pop(context, true);
     } catch (error) {
       if (mounted) {
-        final details = error is StateError ? error.message : error;
+        final details = SyncErrorFormatter.extractMessage(error);
         AppSnackBars.showSnackBar(
           context,
           SnackBar(content: Text('删除失败，待办仍保留：$details')),

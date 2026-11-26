@@ -9,6 +9,7 @@ import '../features/habits/repositories/habit_repository.dart';
 import '../features/habits/services/habit_progress_calculator.dart';
 import '../features/thirty_day_challenge/repositories/thirty_day_challenge_repository.dart';
 import '../models.dart';
+import '../utils/sync_error_formatter.dart';
 import 'ai_chat_service.dart';
 import 'ai_memory_service.dart';
 import 'chat_storage_service.dart';
@@ -803,7 +804,7 @@ class DailyAiSuggestionService {
   }
 
   static String _formatErrorMessage(Object error) {
-    final text = error.toString().replaceFirst('Exception: ', '').trim();
+    final text = SyncErrorFormatter.stripExceptionPrefix(error.toString());
     if (text.length <= 80) return text;
     return '${text.substring(0, 80)}...';
   }

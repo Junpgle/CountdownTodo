@@ -342,9 +342,7 @@ Future<void> showPlanConflictReview({
       AppSnackBars.showSnackBar(
         context,
         SnackBar(
-          content: Text(
-            error is PlanAvailabilityException ? error.message : '读取安排失败，请重试',
-          ),
+          content: Text(formatPlanErrorMessage(error, fallback: '读取安排失败，请重试')),
         ),
       );
     }

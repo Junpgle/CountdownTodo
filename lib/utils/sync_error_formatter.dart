@@ -6,7 +6,7 @@ class SyncErrorFormatter {
   const SyncErrorFormatter._();
 
   static String formatTransportError(Object error) {
-    final raw = _stripExceptionPrefix(error.toString());
+    final raw = stripExceptionPrefix(error.toString());
     final lower = raw.toLowerCase();
 
     if (error is TimeoutException ||
@@ -44,7 +44,7 @@ class SyncErrorFormatter {
   }
 
   static String formatSyncFailure(Object error) {
-    final raw = _stripExceptionPrefix(error.toString());
+    final raw = stripExceptionPrefix(error.toString());
     if (raw.contains('LIMIT_EXCEEDED:')) {
       final detail = raw.split('LIMIT_EXCEEDED:').last.trim();
       return detail.isEmpty ? '今日同步次数已达上限' : detail;
@@ -107,7 +107,8 @@ class SyncErrorFormatter {
         raw.contains('401');
   }
 
-  static String _stripExceptionPrefix(String raw) {
+  /// Strips common Dart exception prefixes (`Exception: `, `Bad state: `, etc.).
+  static String stripExceptionPrefix(String raw) {
     var result = raw.trim();
     const prefixes = [
       'Exception: ',
@@ -121,6 +122,12 @@ class SyncErrorFormatter {
       }
     }
     return result;
+  }
+
+  /// Extracts a clean user-facing message from [StateError] or generic errors.
+  static String extractMessage(Object error) {
+    if (error is StateError) return error.message.toString();
+    return stripExceptionPrefix(error.toString());
   }
 
   static String _truncate(String value, {int maxLength = 80}) {

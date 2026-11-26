@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models.dart';
+import '../models/plan_availability.dart';
 import '../services/plan_review_repository.dart';
 import '../services/plan_todo_guard.dart';
 import '../services/pomodoro_service.dart';
@@ -36,8 +37,7 @@ String _date(int ms) {
 }
 
 String _period(PlanReviewEntry e) => '${_date(e.start)} — ${_date(e.end)}';
-String _message(Object e) =>
-    e is StateError ? e.message.toString() : e.toString();
+String _message(Object e) => formatPlanErrorMessage(e);
 String _label(PlanReviewFilter f) => switch (f) {
   PlanReviewFilter.plans => '真实规划',
   PlanReviewFilter.ended => '已结束规划',

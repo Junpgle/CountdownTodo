@@ -348,11 +348,8 @@ class _PlanCleanupScreenState extends State<PlanCleanupScreen>
     }
   }
 
-  String _message(Object error) => error is PlanAvailabilityException
-      ? error.message
-      : error is StateError
-      ? error.message.toString()
-      : '处理失败，请重试或重新核对';
+  String _message(Object error) =>
+      formatPlanErrorMessage(error, fallback: '处理失败，请重试或重新核对');
 
   Future<void> _load({
     bool more = false,

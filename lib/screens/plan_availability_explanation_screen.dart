@@ -224,7 +224,7 @@ class _PlanAvailabilityExplanationScreenState
       if (mounted && sequence == _sequence) {
         setState(() {
           _stale = true;
-          _error = e is PlanAvailabilityException ? e.message : '安排读取失败，请重试';
+          _error = formatPlanErrorMessage(e, fallback: '安排读取失败，请重试');
         });
         _reveal(_errorKey, sequence);
       }
@@ -274,7 +274,7 @@ class _PlanAvailabilityExplanationScreenState
         setState(() {
           _stale = true;
           _range = null;
-          _error = e is PlanAvailabilityException ? e.message : '时段复核失败，请重试';
+          _error = formatPlanErrorMessage(e, fallback: '时段复核失败，请重试');
         });
         _reveal(_errorKey, sequence);
       }
