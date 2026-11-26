@@ -429,6 +429,10 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     _pomodoroRevision.dispose();
     _habitsRevision.dispose();
     _isGlobalLoadingNotifier.dispose();
+    _selectedTabIndexNotifier.dispose();
+    _isSyncingNotifier.dispose();
+    _homeHeaderExtentNotifier.dispose();
+    _focusHeaderExtentNotifier.dispose();
     _pomodoroTickNotifier.dispose();
     _pomodoroDisplayTickNotifier.dispose();
     _githubResourceService.dispose();

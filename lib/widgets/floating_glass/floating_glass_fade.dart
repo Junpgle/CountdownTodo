@@ -124,7 +124,7 @@ class FloatingGlassTopBarContentFade extends StatelessWidget {
         if (disableShader) return child!;
 
         return _FloatingGlassTopBarContentFadeBox(
-          fadeHeight: topBarHeight + tailExtent,
+          fadeHeight: topBarHeight <= 0.0 ? 0.0 : topBarHeight + tailExtent,
           child: child,
         );
       },
@@ -175,14 +175,20 @@ class _RenderFloatingGlassTopBarContentFadeBox extends RenderProxyBox {
 
   set fadeHeight(double value) {
     if (_fadeHeight == value) return;
+    final wasZero = _fadeHeight <= 0.0;
+    final isZero = value <= 0.0;
     _fadeHeight = value;
     _cachedShader = null;
+    if (wasZero != isZero) {
+      markNeedsCompositingBitsUpdate();
+    }
     markNeedsPaint();
   }
 
   @override
   bool get alwaysNeedsCompositing =>
       child != null &&
+      _fadeHeight > 0.0 &&
       !AndroidWindowRenderingPolicy.disableShaderContentFade.value;
 
   @override
@@ -227,12 +233,14 @@ class _RenderFloatingGlassTopBarContentFadeBox extends RenderProxyBox {
     if (child == null) return;
 
     if (AndroidWindowRenderingPolicy.disableShaderContentFade.value) {
+      layer = null;
       context.paintChild(child, offset);
       return;
     }
 
     final maskHeight = math.min(size.height, math.max(0.0, _fadeHeight));
     if (size.width <= 0.0 || maskHeight <= 0.0) {
+      layer = null;
       context.paintChild(child, offset);
       return;
     }
@@ -340,14 +348,20 @@ class _RenderFloatingGlassSliverContentFade extends RenderProxySliver {
 
   set fadeHeight(double value) {
     if (_fadeHeight == value) return;
+    final wasZero = _fadeHeight <= 0.0;
+    final isZero = value <= 0.0;
     _fadeHeight = value;
     _cachedShader = null;
+    if (wasZero != isZero) {
+      markNeedsCompositingBitsUpdate();
+    }
     markNeedsPaint();
   }
 
   @override
   bool get alwaysNeedsCompositing =>
       child != null &&
+      _fadeHeight > 0.0 &&
       !AndroidWindowRenderingPolicy.disableShaderContentFade.value;
 
   @override

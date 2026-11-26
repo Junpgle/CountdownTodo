@@ -303,7 +303,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
 
     // 在任何 await 之前取得本地同步锁。待持久化快照可能需要一次 SQLite
     // 写入；若锁在其后才设置，快速连点会并行进入两次同步流程。
-    setState(() => _isSyncing = true);
+    _isSyncingNotifier.value = true;
     final syncAttempt = ++_syncAttemptGeneration;
 
     try {
@@ -485,9 +485,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
         _syncWatchdogTimer?.cancel();
         _syncWatchdogTimer = null;
         if (mounted) {
-          setState(() {
-            _isSyncing = false;
-          });
+          _isSyncingNotifier.value = false;
         }
         // 🚀 同步完成后清除保护，防止后续加载被干扰。旧同步结束时不能
         // 清除下一次同步刚建立的保护状态。
@@ -766,7 +764,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
 
   Future<void> _handleManualLanSync(ManualSyncSelection selection) async {
     if (_isSyncing || !mounted) return;
-    setState(() => _isSyncing = true);
+    _isSyncingNotifier.value = true;
     _suppressNextLanToast = true;
     try {
       final config = LanSyncConfig(
@@ -800,7 +798,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
     } finally {
       _suppressNextLanToast = false;
       if (mounted) {
-        setState(() => _isSyncing = false);
+        _isSyncingNotifier.value = false;
       }
     }
   }

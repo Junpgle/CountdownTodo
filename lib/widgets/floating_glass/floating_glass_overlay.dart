@@ -233,14 +233,25 @@ class FloatingGlassPinnedHeaderLayout extends StatefulWidget {
   const FloatingGlassPinnedHeaderLayout({
     super.key,
     required this.header,
-    required this.bodyBuilder,
+    this.bodyBuilder,
+    this.bodyListenableBuilder,
+    this.onHeaderExtentChanged,
     this.initialHeaderExtent = 0.0,
     this.fadeContent = true,
     this.fadeTailExtent = floatingGlassTopBarDefaultFadeTail,
-  });
+  }) : assert(
+         (bodyBuilder == null) != (bodyListenableBuilder == null),
+         'Provide either bodyBuilder or bodyListenableBuilder.',
+       );
 
   final Widget header;
-  final Widget Function(BuildContext context, double headerExtent) bodyBuilder;
+  final Widget Function(BuildContext context, double headerExtent)? bodyBuilder;
+  final Widget Function(
+    BuildContext context,
+    ValueListenable<double> headerExtentListenable,
+  )?
+  bodyListenableBuilder;
+  final ValueChanged<double>? onHeaderExtentChanged;
   final double initialHeaderExtent;
   final bool fadeContent;
   final double fadeTailExtent;
@@ -252,13 +263,36 @@ class FloatingGlassPinnedHeaderLayout extends StatefulWidget {
 
 class _FloatingGlassPinnedHeaderLayoutState
     extends State<FloatingGlassPinnedHeaderLayout> {
-  double? _measuredHeaderExtent;
+  bool _hasMeasuredExtent = false;
+  late final ValueNotifier<double> _headerExtentNotifier =
+      ValueNotifier<double>(
+        widget.initialHeaderExtent.clamp(0.0, 2000.0).toDouble(),
+      );
   double? _pendingHeaderExtent;
   bool _measureScheduled = false;
 
+  @override
+  void didUpdateWidget(covariant FloatingGlassPinnedHeaderLayout oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_hasMeasuredExtent) {
+      final initialExtent = widget.initialHeaderExtent
+          .clamp(0.0, 2000.0)
+          .toDouble();
+      if (_headerExtentNotifier.value != initialExtent) {
+        _headerExtentNotifier.value = initialExtent;
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _headerExtentNotifier.dispose();
+    super.dispose();
+  }
+
   void _handleHeaderExtentChanged(double nextExtent) {
-    if (_measuredHeaderExtent != null &&
-        (nextExtent - _measuredHeaderExtent!).abs() <= 0.5) {
+    if (_hasMeasuredExtent &&
+        (nextExtent - _headerExtentNotifier.value).abs() <= 0.5) {
       return;
     }
     _pendingHeaderExtent = nextExtent;
@@ -269,26 +303,52 @@ class _FloatingGlassPinnedHeaderLayoutState
       if (!mounted) return;
       final pending = _pendingHeaderExtent;
       if (pending == null) return;
-      if (_measuredHeaderExtent == null ||
-          (pending - _measuredHeaderExtent!).abs() > 0.5) {
-        setState(() => _measuredHeaderExtent = pending);
+      final extentChanged =
+          !_hasMeasuredExtent ||
+          (pending - _headerExtentNotifier.value).abs() > 0.5;
+      _hasMeasuredExtent = true;
+      if (extentChanged) {
+        _headerExtentNotifier.value = pending;
+        widget.onHeaderExtentChanged?.call(pending);
       }
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final headerExtent =
-        _measuredHeaderExtent ??
-        widget.initialHeaderExtent.clamp(0.0, 2000.0).toDouble();
-    final body = widget.bodyBuilder(context, headerExtent);
-    final fadedBody = widget.fadeContent && headerExtent > 0.0
-        ? FloatingGlassTopBarContentFade(
-            topBarHeight: headerExtent,
-            tailExtent: widget.fadeTailExtent,
-            child: body,
-          )
-        : body;
+    final Widget fadedBody;
+    if (widget.bodyListenableBuilder != null) {
+      final body = widget.bodyListenableBuilder!(
+        context,
+        _headerExtentNotifier,
+      );
+      fadedBody = widget.fadeContent
+          ? ValueListenableBuilder<double>(
+              valueListenable: _headerExtentNotifier,
+              child: body,
+              builder: (context, headerExtent, child) =>
+                  FloatingGlassTopBarContentFade(
+                    topBarHeight: headerExtent,
+                    tailExtent: widget.fadeTailExtent,
+                    child: child!,
+                  ),
+            )
+          : body;
+    } else {
+      fadedBody = ValueListenableBuilder<double>(
+        valueListenable: _headerExtentNotifier,
+        builder: (context, headerExtent, _) {
+          final body = widget.bodyBuilder!(context, headerExtent);
+          return widget.fadeContent && headerExtent > 0.0
+              ? FloatingGlassTopBarContentFade(
+                  topBarHeight: headerExtent,
+                  tailExtent: widget.fadeTailExtent,
+                  child: body,
+                )
+              : body;
+        },
+      );
+    }
 
     return Stack(
       clipBehavior: Clip.none,

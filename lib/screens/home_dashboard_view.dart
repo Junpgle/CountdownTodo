@@ -91,102 +91,126 @@ mixin _HomeDashboardViewMixin
                   (_selectedTabIndex != _homeFocusTabIndex || isTablet)
                   ? (78.0 + topSystemInset)
                   : 0.0,
-              header: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildSemesterProgressBar(isLight),
+              onHeaderExtentChanged: (extent) {
+                if (isTablet) return;
+                final target = _selectedTabIndex == _homeFocusTabIndex
+                    ? _focusHeaderExtentNotifier
+                    : _homeHeaderExtentNotifier;
+                if ((extent - target.value).abs() > 0.5) {
+                  target.value = extent;
+                }
+              },
+              header: ValueListenableBuilder<int>(
+                valueListenable: _selectedTabIndexNotifier,
+                builder: (context, selectedTabIndex, _) {
+                  final showTopBar =
+                      selectedTabIndex != _homeFocusTabIndex || isTablet;
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildSemesterProgressBar(isLight),
 
-                  if (_selectedTabIndex != _homeFocusTabIndex || isTablet)
-                    HomeAppBar(
-                      username: widget.username,
-                      onCreateRelatedTodo: _saveTodoLinkedToFixedSchedule,
-                      timeSalutation: _timeSalutation,
-                      currentGreeting: _currentGreeting,
-                      semesterWeek: _currentSemesterWeek,
-                      textConfig: HomeTextConfig(
-                        customTimeSalutation:
-                            _homeTextConfig['customTimeSalutation'] as String?,
-                        dateFormat: _homeTextConfig['dateFormat'] as String?,
-                        usernameFormat:
-                            _homeTextConfig['usernameFormat'] as String?,
-                      ),
-                      isLight: isLight,
-                      isSyncing: _isSyncing,
-                      onSync: _showSyncOptionsDialog,
-                      onSearch: _showGlobalSearch,
-                      onAiAssistant: _openAiAssistantFromAppBar,
-                      searchKey: _searchButtonKey,
-                      syncKey: _syncButtonKey,
-                      teamsKey: _teamsButtonKey,
-                      aiKey: _aiButtonKey,
-                      settingsKey: _settingsButtonKey,
-                      menuKey: _menuKey,
-                      showMenuButton: true,
-                      courseKey: _courseButtonKey,
-                      showCourseButton: isTablet,
-                      teamPendingCount: _teamPendingCount, // 🚀 绑定计数
-                      hasTeamConflictDot: _hasTeamConflictDot,
-                      onTeams: () async {
-                        await PageTransitions.pushFromRect(
-                          context: context,
-                          page: TeamManagementScreen(username: widget.username),
-                          sourceKey: _teamsButtonKey,
-                        );
-                        final unreadBackgroundNotifications =
-                            await BackgroundNotificationService.getUnreadBackgroundNotifications();
-                        final notificationIds = unreadBackgroundNotifications
-                            .map((e) => e['id'])
-                            .whereType<num>()
-                            .map((e) => e.toInt())
-                            .toList();
-                        await ApiService.markNotificationsRead(notificationIds);
-                        await BackgroundNotificationService.clearUnreadBackgroundNotifications();
-                        await _fetchTeamPendingCount();
-                        _loadAllData(deferred: true);
-                      },
-                      onSettings: () async {
-                        await PageTransitions.pushFromRect(
-                          context: context,
-                          page: const SettingsPage(),
-                          sourceKey: _settingsButtonKey,
-                        );
-                        _loadSectionPreferences();
-                        _loadSemesterSettings();
-                        await _loadHomeTextConfig();
-                        _loadAllData(deferred: true);
-                      },
-                    ),
+                      if (showTopBar)
+                        ValueListenableBuilder<bool>(
+                          valueListenable: _isSyncingNotifier,
+                          builder: (context, isSyncing, _) => HomeAppBar(
+                            username: widget.username,
+                            onCreateRelatedTodo: _saveTodoLinkedToFixedSchedule,
+                            timeSalutation: _timeSalutation,
+                            currentGreeting: _currentGreeting,
+                            semesterWeek: _currentSemesterWeek,
+                            textConfig: HomeTextConfig(
+                              customTimeSalutation:
+                                  _homeTextConfig['customTimeSalutation']
+                                      as String?,
+                              dateFormat:
+                                  _homeTextConfig['dateFormat'] as String?,
+                              usernameFormat:
+                                  _homeTextConfig['usernameFormat'] as String?,
+                            ),
+                            isLight: isLight,
+                            isSyncing: isSyncing,
+                            onSync: _showSyncOptionsDialog,
+                            onSearch: _showGlobalSearch,
+                            onAiAssistant: _openAiAssistantFromAppBar,
+                            searchKey: _searchButtonKey,
+                            syncKey: _syncButtonKey,
+                            teamsKey: _teamsButtonKey,
+                            aiKey: _aiButtonKey,
+                            settingsKey: _settingsButtonKey,
+                            menuKey: _menuKey,
+                            showMenuButton: true,
+                            courseKey: _courseButtonKey,
+                            showCourseButton: isTablet,
+                            teamPendingCount: _teamPendingCount, // 🚀 绑定计数
+                            hasTeamConflictDot: _hasTeamConflictDot,
+                            onTeams: () async {
+                              await PageTransitions.pushFromRect(
+                                context: context,
+                                page: TeamManagementScreen(
+                                  username: widget.username,
+                                ),
+                                sourceKey: _teamsButtonKey,
+                              );
+                              final unreadBackgroundNotifications =
+                                  await BackgroundNotificationService.getUnreadBackgroundNotifications();
+                              final notificationIds =
+                                  unreadBackgroundNotifications
+                                      .map((e) => e['id'])
+                                      .whereType<num>()
+                                      .map((e) => e.toInt())
+                                      .toList();
+                              await ApiService.markNotificationsRead(
+                                notificationIds,
+                              );
+                              await BackgroundNotificationService.clearUnreadBackgroundNotifications();
+                              await _fetchTeamPendingCount();
+                              _loadAllData(deferred: true);
+                            },
+                            onSettings: () async {
+                              await PageTransitions.pushFromRect(
+                                context: context,
+                                page: const SettingsPage(),
+                                sourceKey: _settingsButtonKey,
+                              );
+                              _loadSectionPreferences();
+                              _loadSemesterSettings();
+                              await _loadHomeTextConfig();
+                              _loadAllData(deferred: true);
+                            },
+                          ),
+                        ),
 
-                  // 🚀 Uni-Sync 4.0: 全局链路诊断横幅
-                  if (_selectedTabIndex != _homeFocusTabIndex || isTablet)
-                    SyncStatusBanner(
-                      onDiagnosticRequested: _showLinkDiagnostics,
-                    ),
+                      // 🚀 Uni-Sync 4.0: 全局链路诊断横幅
+                      if (showTopBar)
+                        SyncStatusBanner(
+                          onDiagnosticRequested: _showLinkDiagnostics,
+                        ),
 
-                  // DEBUG: 检查状态
-                  // if (_activeAnnouncement != null) Text("DEBUG: Announcement exists: ${_activeAnnouncement!.title}"),
+                      // DEBUG: 检查状态
+                      // if (_activeAnnouncement != null) Text("DEBUG: Announcement exists: ${_activeAnnouncement!.title}"),
 
-                  // 🚀 Uni-Sync 4.0: 团队置顶公告
-                  if (_activeAnnouncement != null &&
-                      (_selectedTabIndex != _homeFocusTabIndex || isTablet))
-                    StickyAnnouncementBanner(
-                      announcement: _activeAnnouncement!,
-                      onAcknowledge: () async {
-                        final uuid = _activeAnnouncement!.uuid;
-                        setState(() => _activeAnnouncement = null);
-                        await ApiService.markAnnouncementAsRead(uuid);
-                      },
-                    ),
+                      // 🚀 Uni-Sync 4.0: 团队置顶公告
+                      if (_activeAnnouncement != null && showTopBar)
+                        StickyAnnouncementBanner(
+                          announcement: _activeAnnouncement!,
+                          onAcknowledge: () async {
+                            final uuid = _activeAnnouncement!.uuid;
+                            setState(() => _activeAnnouncement = null);
+                            await ApiService.markAnnouncementAsRead(uuid);
+                          },
+                        ),
 
-                  if (_isThirtyDayChallengeActive &&
-                      (_selectedTabIndex != _homeFocusTabIndex || isTablet))
-                    _buildChallengeParticipationBanner(isLight),
+                      if (_isThirtyDayChallengeActive && showTopBar)
+                        _buildChallengeParticipationBanner(isLight),
 
-                  // 待确认事项入口卡片（从图片识别来）
-                  _buildPendingTodoConfirmCard(isLight),
-                ],
+                      // 待确认事项入口卡片（从图片识别来）
+                      _buildPendingTodoConfirmCard(isLight),
+                    ],
+                  );
+                },
               ),
-              bodyBuilder: (context, headerExtent) => OptionalLiquidGlassBackdropScope(
+              bodyListenableBuilder: (context, headerExtentListenable) => OptionalLiquidGlassBackdropScope(
                 isSolidBackground: !showWallpaper,
                 blurredWallpaperListenable: showWallpaper
                     ? _preblurredWallpaperController.snapshotListenable
@@ -206,12 +230,16 @@ mixin _HomeDashboardViewMixin
                                     (_dashboardCourseData['courses'] as List? ??
                                             [])
                                         .isEmpty)
-                                ? _buildDashboardSkeleton(
-                                    isLight,
-                                    topPadding:
-                                        homeDashboardPhoneScrollTopPadding(
-                                          headerExtent: headerExtent,
-                                          topInset: topSystemInset,
+                                ? ValueListenableBuilder<double>(
+                                    valueListenable: headerExtentListenable,
+                                    builder: (context, headerExtent, _) =>
+                                        _buildDashboardSkeleton(
+                                          isLight,
+                                          topPadding:
+                                              homeDashboardPhoneScrollTopPadding(
+                                                headerExtent: headerExtent,
+                                                topInset: topSystemInset,
+                                              ),
                                         ),
                                   )
                                 : LayoutBuilder(
@@ -540,14 +568,8 @@ mixin _HomeDashboardViewMixin
                                                       ?.plans
                                                       .clock,
                                               enabled:
-                                                  (_sectionVisibility['agenda'] ??
-                                                      true) &&
-                                                  (isTablet ||
-                                                      (_selectedTabIndex ==
-                                                                  _homeFocusTabIndex
-                                                              ? _mobileFocusSections
-                                                              : _mobileHomeSections)
-                                                          .contains('agenda')),
+                                                  _sectionVisibility['agenda'] ??
+                                                  true,
                                               onTodoAdded: (todo) async {
                                                 await _saveManualTodo(todo);
                                               },
@@ -732,16 +754,14 @@ mixin _HomeDashboardViewMixin
                                                 )
                                                 .toList(growable: false);
 
-                                        final showFocusTab =
-                                            _selectedTabIndex ==
-                                            _homeFocusTabIndex;
                                         final hasCopyright =
                                             _wallpaperCopyright?.isNotEmpty ??
                                             false;
 
                                         Widget buildMobileList(
                                           bool focusPage,
-                                          double listHeaderExtent,
+                                          ValueListenable<double>
+                                          listHeaderExtentListenable,
                                         ) {
                                           final baseSectionKeys = focusPage
                                               ? tab3SectionKeys
@@ -768,104 +788,116 @@ mixin _HomeDashboardViewMixin
                                                     (hasOnboarding ? 1 : 0)
                                               : -1;
                                           final listContent = OptionalLiquidGlassScrollOptimizer(
-                                            child: ListView.builder(
-                                              key: PageStorageKey<String>(
-                                                focusPage
-                                                    ? 'home-focus-sections'
-                                                    : 'home-main-sections',
-                                              ),
-                                              physics: const AppFluidScrollPhysics(
-                                                parent:
-                                                    AlwaysScrollableScrollPhysics(),
-                                              ),
-                                              addRepaintBoundaries:
-                                                  addListRepaintBoundaries,
-                                              scrollCacheExtent:
-                                                  AppPlatform.isWindows
-                                                  ? const ScrollCacheExtent.viewport(
-                                                      0.5,
-                                                    )
-                                                  : ScrollCacheExtent.pixels(
-                                                      600,
-                                                    ),
-                                              padding: EdgeInsets.fromLTRB(
-                                                16,
-                                                homeDashboardPhoneScrollTopPadding(
-                                                  headerExtent:
-                                                      listHeaderExtent,
-                                                  topInset: topSystemInset,
+                                            child: ValueListenableBuilder<double>(
+                                              valueListenable:
+                                                  listHeaderExtentListenable,
+                                              builder: (context, listHeaderExtent, _) => ListView.builder(
+                                                key: PageStorageKey<String>(
+                                                  focusPage
+                                                      ? 'home-focus-sections'
+                                                      : 'home-main-sections',
                                                 ),
-                                                16,
-                                                16,
+                                                physics:
+                                                    const AppFluidScrollPhysics(
+                                                      parent:
+                                                          AlwaysScrollableScrollPhysics(),
+                                                    ),
+                                                addRepaintBoundaries:
+                                                    addListRepaintBoundaries,
+                                                scrollCacheExtent:
+                                                    AppPlatform.isWindows
+                                                    ? const ScrollCacheExtent.viewport(
+                                                        0.5,
+                                                      )
+                                                    : ScrollCacheExtent.pixels(
+                                                        600,
+                                                      ),
+                                                padding: EdgeInsets.fromLTRB(
+                                                  16,
+                                                  homeDashboardPhoneScrollTopPadding(
+                                                    headerExtent:
+                                                        listHeaderExtent,
+                                                    topInset: topSystemInset,
+                                                  ),
+                                                  16,
+                                                  16,
+                                                ),
+                                                itemCount:
+                                                    sectionKeys.length +
+                                                    (hasOnboarding ? 1 : 0) +
+                                                    (hasCopyright ? 1 : 0) +
+                                                    1,
+                                                findChildIndexCallback: (key) {
+                                                  if (key
+                                                      is! ValueKey<String>) {
+                                                    return null;
+                                                  }
+                                                  if (hasOnboarding &&
+                                                      key.value ==
+                                                          'onboarding_checklist') {
+                                                    return onboardingIndex;
+                                                  }
+                                                  final index = sectionKeys
+                                                      .indexOf(key.value);
+                                                  return index < 0
+                                                      ? null
+                                                      : index;
+                                                },
+                                                itemBuilder: (context, index) {
+                                                  if (index <
+                                                      sectionKeys.length) {
+                                                    return buildScrollableSection(
+                                                      sectionKeys[index],
+                                                    );
+                                                  }
+                                                  if (index ==
+                                                      onboardingIndex) {
+                                                    return HomeDashboardScrollSection(
+                                                      key:
+                                                          const ValueKey<
+                                                            String
+                                                          >(
+                                                            'onboarding_checklist',
+                                                          ),
+                                                      keepAlive: !AppPlatform
+                                                          .isWindows,
+                                                      child: AppSystemUiRegion(
+                                                        backgroundBrightness:
+                                                            cardBackgroundBrightness,
+                                                        child: wrapSectionBoundary(
+                                                          AnimatedBuilder(
+                                                            animation:
+                                                                _bannerSectionListenable,
+                                                            builder: (_, _) =>
+                                                                _buildOnboardingChecklistSection(
+                                                                  isLight,
+                                                                ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    );
+                                                  }
+                                                  if (index == copyrightIndex) {
+                                                    return _buildWallpaperCopyright(
+                                                      isLight,
+                                                    );
+                                                  }
+                                                  return SizedBox(
+                                                    // The header overlays the list, so
+                                                    // reserve it at the trailing edge
+                                                    // to keep short pages scrollable.
+                                                    height:
+                                                        homeDashboardPhoneScrollTailExtent(
+                                                          headerExtent: max(
+                                                            listHeaderExtent,
+                                                            topSystemInset,
+                                                          ),
+                                                          bottomInset:
+                                                              bottomSystemInset,
+                                                        ),
+                                                  );
+                                                },
                                               ),
-                                              itemCount:
-                                                  sectionKeys.length +
-                                                  (hasOnboarding ? 1 : 0) +
-                                                  (hasCopyright ? 1 : 0) +
-                                                  1,
-                                              findChildIndexCallback: (key) {
-                                                if (key is! ValueKey<String>) {
-                                                  return null;
-                                                }
-                                                if (hasOnboarding &&
-                                                    key.value ==
-                                                        'onboarding_checklist') {
-                                                  return onboardingIndex;
-                                                }
-                                                final index = sectionKeys
-                                                    .indexOf(key.value);
-                                                return index < 0 ? null : index;
-                                              },
-                                              itemBuilder: (context, index) {
-                                                if (index <
-                                                    sectionKeys.length) {
-                                                  return buildScrollableSection(
-                                                    sectionKeys[index],
-                                                  );
-                                                }
-                                                if (index == onboardingIndex) {
-                                                  return HomeDashboardScrollSection(
-                                                    key: const ValueKey<String>(
-                                                      'onboarding_checklist',
-                                                    ),
-                                                    keepAlive:
-                                                        !AppPlatform.isWindows,
-                                                    child: AppSystemUiRegion(
-                                                      backgroundBrightness:
-                                                          cardBackgroundBrightness,
-                                                      child: wrapSectionBoundary(
-                                                        AnimatedBuilder(
-                                                          animation:
-                                                              _bannerSectionListenable,
-                                                          builder: (_, _) =>
-                                                              _buildOnboardingChecklistSection(
-                                                                isLight,
-                                                              ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  );
-                                                }
-                                                if (index == copyrightIndex) {
-                                                  return _buildWallpaperCopyright(
-                                                    isLight,
-                                                  );
-                                                }
-                                                return SizedBox(
-                                                  // The header overlays the list, so
-                                                  // reserve it at the trailing edge
-                                                  // to keep short pages scrollable.
-                                                  height:
-                                                      homeDashboardPhoneScrollTailExtent(
-                                                        headerExtent: max(
-                                                          listHeaderExtent,
-                                                          topSystemInset,
-                                                        ),
-                                                        bottomInset:
-                                                            bottomSystemInset,
-                                                      ),
-                                                );
-                                              },
                                             ),
                                           );
                                           final tabContentKey =
@@ -881,101 +913,147 @@ mixin _HomeDashboardViewMixin
                                         }
 
                                         if (AppPlatform.isAndroid) {
-                                          if (showFocusTab) {
-                                            _lastFocusHeaderExtent =
-                                                headerExtent;
-                                          } else {
-                                            _lastHomeHeaderExtent =
-                                                headerExtent;
-                                          }
                                           // Keep each visited list mounted so a
                                           // tab switch can reuse its painted card
                                           // layers and scroll position. The hidden
                                           // list neither paints nor runs tickers.
-                                          return Stack(
-                                            fit: StackFit.expand,
-                                            children: [
-                                              Offstage(
-                                                offstage: showFocusTab,
-                                                child: TickerMode(
-                                                  enabled: !showFocusTab,
-                                                  child: buildMobileList(
-                                                    false,
-                                                    _lastHomeHeaderExtent,
-                                                  ),
-                                                ),
-                                              ),
-                                              if (_focusTabVisited)
-                                                Offstage(
-                                                  offstage: !showFocusTab,
-                                                  child: TickerMode(
-                                                    enabled: showFocusTab,
-                                                    child: buildMobileList(
+                                          final homeTabChild = buildMobileList(
+                                            false,
+                                            _homeHeaderExtentNotifier,
+                                          );
+                                          Widget? focusTabChild =
+                                              _focusTabVisited
+                                              ? buildMobileList(
+                                                  true,
+                                                  _focusHeaderExtentNotifier,
+                                                )
+                                              : null;
+                                          return ValueListenableBuilder<int>(
+                                            valueListenable:
+                                                _selectedTabIndexNotifier,
+                                            child: homeTabChild,
+                                            builder:
+                                                (
+                                                  context,
+                                                  selectedTabIndex,
+                                                  cachedHomeTab,
+                                                ) {
+                                                  final showFocusTab =
+                                                      selectedTabIndex ==
+                                                      _homeFocusTabIndex;
+                                                  if (showFocusTab) {
+                                                    _focusTabVisited = true;
+                                                  }
+                                                  if (_focusTabVisited &&
+                                                      focusTabChild == null) {
+                                                    focusTabChild = buildMobileList(
                                                       true,
-                                                      _lastFocusHeaderExtent,
-                                                    ),
-                                                  ),
-                                                ),
-                                            ],
+                                                      _focusHeaderExtentNotifier,
+                                                    );
+                                                  }
+                                                  return Stack(
+                                                    fit: StackFit.expand,
+                                                    children: [
+                                                      Offstage(
+                                                        offstage: showFocusTab,
+                                                        child: TickerMode(
+                                                          enabled:
+                                                              !showFocusTab,
+                                                          child: cachedHomeTab!,
+                                                        ),
+                                                      ),
+                                                      if (focusTabChild != null)
+                                                        Offstage(
+                                                          offstage:
+                                                              !showFocusTab,
+                                                          child: TickerMode(
+                                                            enabled:
+                                                                showFocusTab,
+                                                            child:
+                                                                focusTabChild!,
+                                                          ),
+                                                        ),
+                                                    ],
+                                                  );
+                                                },
                                           );
                                         }
 
-                                        return AnimatedSwitcher(
-                                          duration: const Duration(
-                                            milliseconds: 280,
-                                          ),
-                                          reverseDuration: const Duration(
-                                            milliseconds: 240,
-                                          ),
-                                          switchInCurve: Curves.easeOutCubic,
-                                          switchOutCurve: Curves.easeInCubic,
-                                          layoutBuilder:
-                                              (currentChild, previousChildren) {
-                                                return Stack(
-                                                  fit: StackFit.expand,
-                                                  children: [
-                                                    ...previousChildren,
-                                                    ?currentChild,
-                                                  ],
-                                                );
-                                              },
-                                          transitionBuilder: (child, animation) {
-                                            final focusPage =
-                                                child.key ==
-                                                const ValueKey<String>(
-                                                  'home-focus-tab-content',
-                                                );
-                                            final slidePosition = Tween<Offset>(
-                                              begin: Offset(
-                                                focusPage ? 0.035 : -0.035,
-                                                0,
+                                        return ValueListenableBuilder<int>(
+                                          valueListenable:
+                                              _selectedTabIndexNotifier,
+                                          builder: (context, selectedTabIndex, _) {
+                                            final showFocusTab =
+                                                selectedTabIndex ==
+                                                _homeFocusTabIndex;
+                                            return AnimatedSwitcher(
+                                              duration: const Duration(
+                                                milliseconds: 280,
                                               ),
-                                              end: Offset.zero,
-                                            ).animate(animation);
-                                            return AnimatedBuilder(
-                                              animation: animation,
-                                              child: child,
-                                              builder: (context, child) {
-                                                if (animation.value <= 0.001) {
-                                                  return const SizedBox.shrink();
-                                                }
-                                                if (animation.value >= 0.999) {
-                                                  return child!;
-                                                }
-                                                return FadeTransition(
-                                                  opacity: animation,
-                                                  child: SlideTransition(
-                                                    position: slidePosition,
-                                                    child: child,
-                                                  ),
+                                              reverseDuration: const Duration(
+                                                milliseconds: 240,
+                                              ),
+                                              switchInCurve:
+                                                  Curves.easeOutCubic,
+                                              switchOutCurve:
+                                                  Curves.easeInCubic,
+                                              layoutBuilder:
+                                                  (
+                                                    currentChild,
+                                                    previousChildren,
+                                                  ) {
+                                                    return Stack(
+                                                      fit: StackFit.expand,
+                                                      children: [
+                                                        ...previousChildren,
+                                                        ?currentChild,
+                                                      ],
+                                                    );
+                                                  },
+                                              transitionBuilder: (child, animation) {
+                                                final focusPage =
+                                                    child.key ==
+                                                    const ValueKey<String>(
+                                                      'home-focus-tab-content',
+                                                    );
+                                                final slidePosition =
+                                                    Tween<Offset>(
+                                                      begin: Offset(
+                                                        focusPage
+                                                            ? 0.035
+                                                            : -0.035,
+                                                        0,
+                                                      ),
+                                                      end: Offset.zero,
+                                                    ).animate(animation);
+                                                return AnimatedBuilder(
+                                                  animation: animation,
+                                                  child: child,
+                                                  builder: (context, child) {
+                                                    if (animation.value <=
+                                                        0.001) {
+                                                      return const SizedBox.shrink();
+                                                    }
+                                                    if (animation.value >=
+                                                        0.999) {
+                                                      return child!;
+                                                    }
+                                                    return FadeTransition(
+                                                      opacity: animation,
+                                                      child: SlideTransition(
+                                                        position: slidePosition,
+                                                        child: child,
+                                                      ),
+                                                    );
+                                                  },
                                                 );
                                               },
+                                              child: buildMobileList(
+                                                showFocusTab,
+                                                headerExtentListenable,
+                                              ),
                                             );
                                           },
-                                          child: buildMobileList(
-                                            showFocusTab,
-                                            headerExtent,
-                                          ),
                                         );
                                       }
 
@@ -1080,23 +1158,27 @@ mixin _HomeDashboardViewMixin
                                         );
 
                                         return OptionalLiquidGlassScrollOptimizer(
-                                          child:
-                                              WindowsDashboardScrollCoordinator(
-                                                leftSections: leftSpecs,
-                                                rightSections: buildSpecs(
-                                                  currentRight,
+                                          child: ValueListenableBuilder<double>(
+                                            valueListenable:
+                                                headerExtentListenable,
+                                            builder: (context, headerExtent, _) =>
+                                                WindowsDashboardScrollCoordinator(
+                                                  leftSections: leftSpecs,
+                                                  rightSections: buildSpecs(
+                                                    currentRight,
+                                                  ),
+                                                  footer: footer,
+                                                  padding: EdgeInsets.fromLTRB(
+                                                    32,
+                                                    headerExtent + 16,
+                                                    32,
+                                                    16 +
+                                                        bottomSystemInset +
+                                                        100.0,
+                                                  ),
+                                                  maxWidth: 1400,
                                                 ),
-                                                footer: footer,
-                                                padding: EdgeInsets.fromLTRB(
-                                                  32,
-                                                  headerExtent + 16,
-                                                  32,
-                                                  16 +
-                                                      bottomSystemInset +
-                                                      100.0,
-                                                ),
-                                                maxWidth: 1400,
-                                              ),
+                                          ),
                                         );
                                       }
 
@@ -1292,12 +1374,29 @@ mixin _HomeDashboardViewMixin
                                               scrollCacheExtent:
                                                   ScrollCacheExtent.pixels(400),
                                               slivers: [
+                                                SliverToBoxAdapter(
+                                                  child:
+                                                      ValueListenableBuilder<
+                                                        double
+                                                      >(
+                                                        valueListenable:
+                                                            headerExtentListenable,
+                                                        builder:
+                                                            (
+                                                              _,
+                                                              headerExtent,
+                                                              _,
+                                                            ) => SizedBox(
+                                                              height:
+                                                                  headerExtent +
+                                                                  6,
+                                                            ),
+                                                      ),
+                                                ),
                                                 SliverPadding(
-                                                  padding: EdgeInsets.fromLTRB(
-                                                    horizontalPadding,
-                                                    headerExtent + 6,
-                                                    horizontalPadding,
-                                                    0,
+                                                  padding: EdgeInsets.symmetric(
+                                                    horizontal:
+                                                        horizontalPadding,
                                                   ),
                                                   sliver: columnsSliver,
                                                 ),
@@ -1354,13 +1453,16 @@ mixin _HomeDashboardViewMixin
                         );
                       },
                     ),
-                    if (showWallpaper &&
-                        wallpaperUrl != null &&
-                        headerExtent > 0.0)
-                      _buildWallpaperTopFadeCap(
-                        headerExtent: headerExtent,
-                        wallpaperUrl: wallpaperUrl,
-                        localWallpaperProvider: localWallpaperProvider,
+                    if (showWallpaper && wallpaperUrl != null)
+                      ValueListenableBuilder<double>(
+                        valueListenable: headerExtentListenable,
+                        builder: (_, headerExtent, _) => headerExtent > 0.0
+                            ? _buildWallpaperTopFadeCap(
+                                headerExtent: headerExtent,
+                                wallpaperUrl: wallpaperUrl,
+                                localWallpaperProvider: localWallpaperProvider,
+                              )
+                            : const SizedBox.shrink(),
                       ),
                   ],
                 ),
@@ -1377,137 +1479,7 @@ mixin _HomeDashboardViewMixin
     );
 
     return ZoomDrawer(
-      menuScreen: HomeDrawerMenu(
-        username: widget.username,
-        timeSalutation: _timeSalutation,
-        onSettings: _openSettingsFromDrawer,
-        onOpenUpdateSettings: (sourceKey) => _openSettingsFromDrawer(
-          sourceKey,
-          initialTarget: 'update',
-          sourceBorderRadius: BorderRadius.circular(6),
-          placeholderIcon: Icons.new_releases_outlined,
-        ),
-        onAiAssistant: (sourceKey) =>
-            _openAiAssistantFromAppBar(sourceKey: sourceKey),
-        onTeams: (sourceKey) async {
-          await PageTransitions.pushFromRect(
-            context: context,
-            page: TeamManagementScreen(username: widget.username),
-            sourceKey: sourceKey,
-            placeholderIcon: Icons.people_rounded,
-          );
-          if (!mounted) return;
-          final unreadBackgroundNotifications =
-              await BackgroundNotificationService.getUnreadBackgroundNotifications();
-          final notificationIds = unreadBackgroundNotifications
-              .map((e) => e['id'])
-              .whereType<num>()
-              .map((e) => e.toInt())
-              .toList();
-          await ApiService.markNotificationsRead(notificationIds);
-          await BackgroundNotificationService.clearUnreadBackgroundNotifications();
-          await _fetchTeamPendingCount();
-          _loadAllData(deferred: true);
-        },
-        onFinance: (sourceKey) async {
-          await PageTransitions.pushFromRect(
-            context: context,
-            page: FinanceHomeScreen(username: widget.username),
-            sourceKey: sourceKey,
-            placeholderIcon: Icons.account_balance_wallet_outlined,
-          );
-        },
-        teamPendingCount: _teamPendingCount,
-        hasTeamConflictDot: _hasTeamConflictDot,
-        onTimeline: (sourceKey) async {
-          await PageTransitions.pushFromRect(
-            context: context,
-            page: PersonalTimelineScreen(username: widget.username),
-            sourceKey: sourceKey,
-            placeholderIcon: Icons.timeline_rounded,
-            sourceColor: Theme.of(context).brightness == Brightness.dark
-                ? Colors.black
-                : Colors.white,
-          );
-        },
-        onJournal: (sourceKey) async {
-          await PageTransitions.pushFromRect(
-            context: context,
-            page: JournalHomeScreen(username: widget.username),
-            sourceKey: sourceKey,
-            placeholderIcon: Icons.auto_stories_rounded,
-          );
-        },
-        onScreenTime: (sourceKey) async {
-          await PageTransitions.pushFromRect(
-            context: context,
-            page: TimeLogScreen(username: widget.username),
-            sourceKey: sourceKey,
-            placeholderIcon: Icons.pie_chart_rounded,
-          );
-        },
-        onPlanCenter: (sourceKey) async {
-          await PageTransitions.pushFromRect(
-            context: context,
-            page: TodoPlanScreen(username: widget.username),
-            sourceKey: sourceKey,
-            placeholderIcon: Icons.edit_calendar_rounded,
-          );
-          if (!mounted) return;
-          _loadSemesterSettings();
-          _loadAllData(
-            deferred: true,
-            domains: const {
-              DataRefreshDomain.todos,
-              DataRefreshDomain.planBlocks,
-              DataRefreshDomain.fixedSchedules,
-            },
-          );
-        },
-        onHabits: (sourceKey) async {
-          await PageTransitions.pushFromRect(
-            context: context,
-            page: HabitCenterScreen(username: widget.username),
-            sourceKey: sourceKey,
-            placeholderIcon: Icons.repeat_rounded,
-          );
-          if (mounted) _habitsRevision.value++;
-        },
-        onChangelog: (sourceKey) async {
-          await PageTransitions.pushFromRect(
-            context: Navigator.of(context, rootNavigator: true).context,
-            page: FeatureGuideScreen(
-              mode: FeatureGuideMode.changelog,
-              loggedInUser: widget.username,
-            ),
-            sourceKey: sourceKey,
-            placeholderIcon: Icons.system_update_rounded,
-          );
-        },
-        onChallengeCenter: (sourceKey) async {
-          await PageTransitions.pushFromRect(
-            context: Navigator.of(context, rootNavigator: true).context,
-            page: const ChallengeCenterScreen(),
-            sourceKey: sourceKey,
-            placeholderIcon: Icons.auto_awesome_rounded,
-          );
-          if (mounted) _loadThirtyDayChallengeStatus();
-        },
-        onUpdate: (sourceKey) => _openSettingsFromDrawer(
-          sourceKey,
-          initialTarget: 'update',
-          checkUpdatesOnOpen: true,
-          placeholderIcon: Icons.system_update_rounded,
-        ),
-        onFeatureExplorer: (sourceKey) async {
-          await PageTransitions.pushFromRect(
-            context: Navigator.of(context, rootNavigator: true).context,
-            page: FeatureExplorerScreen(username: widget.username),
-            sourceKey: sourceKey,
-            placeholderIcon: Icons.explore_rounded,
-          );
-        },
-      ),
+      menuScreen: _getOrBuildDrawerMenu(),
       mainScreen: AppSystemUiRegion(
         backgroundBrightness: showWallpaper || isDarkMode
             ? Brightness.dark
@@ -1520,6 +1492,151 @@ mixin _HomeDashboardViewMixin
       drawerShadowsBackgroundColor: Colors.grey.shade300,
       menuScreenWidth: isTablet ? drawerWidth : null,
       slideWidth: drawerWidth,
+    );
+  }
+
+  Widget _getOrBuildDrawerMenu() {
+    if (_cachedDrawerMenu != null &&
+        _cachedDrawerUsername == widget.username &&
+        _cachedDrawerTimeSalutation == _timeSalutation &&
+        _cachedDrawerTeamPendingCount == _teamPendingCount &&
+        _cachedDrawerHasTeamConflictDot == _hasTeamConflictDot) {
+      return _cachedDrawerMenu!;
+    }
+    _cachedDrawerUsername = widget.username;
+    _cachedDrawerTimeSalutation = _timeSalutation;
+    _cachedDrawerTeamPendingCount = _teamPendingCount;
+    _cachedDrawerHasTeamConflictDot = _hasTeamConflictDot;
+    return _cachedDrawerMenu = HomeDrawerMenu(
+      username: widget.username,
+      timeSalutation: _timeSalutation,
+      onSettings: _openSettingsFromDrawer,
+      onOpenUpdateSettings: (sourceKey) => _openSettingsFromDrawer(
+        sourceKey,
+        initialTarget: 'update',
+        sourceBorderRadius: BorderRadius.circular(6),
+        placeholderIcon: Icons.new_releases_outlined,
+      ),
+      onAiAssistant: (sourceKey) =>
+          _openAiAssistantFromAppBar(sourceKey: sourceKey),
+      onTeams: (sourceKey) async {
+        await PageTransitions.pushFromRect(
+          context: context,
+          page: TeamManagementScreen(username: widget.username),
+          sourceKey: sourceKey,
+          placeholderIcon: Icons.people_rounded,
+        );
+        if (!mounted) return;
+        final unreadBackgroundNotifications =
+            await BackgroundNotificationService.getUnreadBackgroundNotifications();
+        final notificationIds = unreadBackgroundNotifications
+            .map((e) => e['id'])
+            .whereType<num>()
+            .map((e) => e.toInt())
+            .toList();
+        await ApiService.markNotificationsRead(notificationIds);
+        await BackgroundNotificationService.clearUnreadBackgroundNotifications();
+        await _fetchTeamPendingCount();
+        _loadAllData(deferred: true);
+      },
+      onFinance: (sourceKey) async {
+        await PageTransitions.pushFromRect(
+          context: context,
+          page: FinanceHomeScreen(username: widget.username),
+          sourceKey: sourceKey,
+          placeholderIcon: Icons.account_balance_wallet_outlined,
+        );
+      },
+      teamPendingCount: _teamPendingCount,
+      hasTeamConflictDot: _hasTeamConflictDot,
+      onTimeline: (sourceKey) async {
+        await PageTransitions.pushFromRect(
+          context: context,
+          page: PersonalTimelineScreen(username: widget.username),
+          sourceKey: sourceKey,
+          placeholderIcon: Icons.timeline_rounded,
+          sourceColor: Theme.of(context).brightness == Brightness.dark
+              ? Colors.black
+              : Colors.white,
+        );
+      },
+      onJournal: (sourceKey) async {
+        await PageTransitions.pushFromRect(
+          context: context,
+          page: JournalHomeScreen(username: widget.username),
+          sourceKey: sourceKey,
+          placeholderIcon: Icons.auto_stories_rounded,
+        );
+      },
+      onScreenTime: (sourceKey) async {
+        await PageTransitions.pushFromRect(
+          context: context,
+          page: TimeLogScreen(username: widget.username),
+          sourceKey: sourceKey,
+          placeholderIcon: Icons.pie_chart_rounded,
+        );
+      },
+      onPlanCenter: (sourceKey) async {
+        await PageTransitions.pushFromRect(
+          context: context,
+          page: TodoPlanScreen(username: widget.username),
+          sourceKey: sourceKey,
+          placeholderIcon: Icons.edit_calendar_rounded,
+        );
+        if (!mounted) return;
+        _loadSemesterSettings();
+        _loadAllData(
+          deferred: true,
+          domains: const {
+            DataRefreshDomain.todos,
+            DataRefreshDomain.planBlocks,
+            DataRefreshDomain.fixedSchedules,
+          },
+        );
+      },
+      onHabits: (sourceKey) async {
+        await PageTransitions.pushFromRect(
+          context: context,
+          page: HabitCenterScreen(username: widget.username),
+          sourceKey: sourceKey,
+          placeholderIcon: Icons.repeat_rounded,
+        );
+        if (mounted) _habitsRevision.value++;
+      },
+      onChangelog: (sourceKey) async {
+        await PageTransitions.pushFromRect(
+          context: Navigator.of(context, rootNavigator: true).context,
+          page: FeatureGuideScreen(
+            mode: FeatureGuideMode.changelog,
+            loggedInUser: widget.username,
+          ),
+          sourceKey: sourceKey,
+          placeholderIcon: Icons.system_update_rounded,
+        );
+      },
+      onChallengeCenter: (sourceKey) async {
+        await PageTransitions.pushFromRect(
+          context: Navigator.of(context, rootNavigator: true).context,
+          page: const ChallengeCenterScreen(),
+          sourceKey: sourceKey,
+          placeholderIcon: Icons.auto_awesome_rounded,
+        );
+        if (mounted) _loadThirtyDayChallengeStatus();
+      },
+      onUpdate: (sourceKey) => _openSettingsFromDrawer(
+        sourceKey,
+        initialTarget: 'update',
+        checkUpdatesOnOpen: true,
+        placeholderIcon: Icons.system_update_rounded,
+      ),
+      onFeatureExplorer: (sourceKey) async {
+        await PageTransitions.pushFromRect(
+          context: Navigator.of(context, rootNavigator: true).context,
+          page: FeatureExplorerScreen(username: widget.username),
+          sourceKey: sourceKey,
+          placeholderIcon: Icons.explore_rounded,
+        );
+      },
     );
   }
 }

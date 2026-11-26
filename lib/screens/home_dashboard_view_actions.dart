@@ -747,53 +747,55 @@ mixin _HomeDashboardViewActionsMixin
       colorScheme.surface,
     ).withValues(alpha: isDarkMode ? 0.24 : 0.32);
 
-    return _HomeDashboardBottomBar(
-      selectedIndex: _selectedTabIndex,
-      primaryColor: primaryColor,
-      inactiveColor: inactiveColor,
-      selectedBackgroundColor: selectedBackgroundColor,
-      weeklyButtonKey: _courseCenterKey,
-      addButtonKey: _homeAddActionKey,
-      pomodoroButtonKey: _homePomodoroActionKey,
-      isWide: isWide,
-      height: height,
-      margin: margin,
-      isDarkMode: isDarkMode,
-      glassTint: glassTint,
-      onTabSelected: (index) {
-        setState(() {
-          _selectedTabIndex = index;
+    return ValueListenableBuilder<int>(
+      valueListenable: _selectedTabIndexNotifier,
+      builder: (context, selectedIndex, _) => _HomeDashboardBottomBar(
+        selectedIndex: selectedIndex,
+        primaryColor: primaryColor,
+        inactiveColor: inactiveColor,
+        selectedBackgroundColor: selectedBackgroundColor,
+        weeklyButtonKey: _courseCenterKey,
+        addButtonKey: _homeAddActionKey,
+        pomodoroButtonKey: _homePomodoroActionKey,
+        isWide: isWide,
+        height: height,
+        margin: margin,
+        isDarkMode: isDarkMode,
+        glassTint: glassTint,
+        onTabSelected: (index) {
+          if (_selectedTabIndexNotifier.value == index) return;
           if (index == _homeFocusTabIndex) {
             _focusTabVisited = true;
           }
-        });
-        if (index == _homeFocusTabIndex) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _checkFocusTabCoachMarks();
-          });
-        }
-      },
-      onWeeklyPressed: () {
-        PageTransitions.pushFromRect(
-          context: context,
-          page: WeeklyCourseScreen(
-            username: widget.username,
-            onCreateRelatedTodo: _saveTodoLinkedToFixedSchedule,
-          ),
-          sourceKey: _courseCenterKey,
-        );
-      },
-      onAddPressed: () {
-        _openHomeAddMenu();
-      },
-      onAddLongPress: _openQuickVoiceChat,
-      onAddLongPressStart: _startQuickVoiceGesture,
-      onAddLongPressMoveUpdate: _moveQuickVoiceGesture,
-      onAddLongPressEnd: _endQuickVoiceGesture,
-      onAddLongPressCancel: _cancelQuickVoiceGesture,
-      onPomodoroPressed: () {
-        _openHomePomodoro(sourceKey: _homePomodoroActionKey);
-      },
+          _selectedTabIndexNotifier.value = index;
+          if (index == _homeFocusTabIndex) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _checkFocusTabCoachMarks();
+            });
+          }
+        },
+        onWeeklyPressed: () {
+          PageTransitions.pushFromRect(
+            context: context,
+            page: WeeklyCourseScreen(
+              username: widget.username,
+              onCreateRelatedTodo: _saveTodoLinkedToFixedSchedule,
+            ),
+            sourceKey: _courseCenterKey,
+          );
+        },
+        onAddPressed: () {
+          _openHomeAddMenu();
+        },
+        onAddLongPress: _openQuickVoiceChat,
+        onAddLongPressStart: _startQuickVoiceGesture,
+        onAddLongPressMoveUpdate: _moveQuickVoiceGesture,
+        onAddLongPressEnd: _endQuickVoiceGesture,
+        onAddLongPressCancel: _cancelQuickVoiceGesture,
+        onPomodoroPressed: () {
+          _openHomePomodoro(sourceKey: _homePomodoroActionKey);
+        },
+      ),
     );
   }
 

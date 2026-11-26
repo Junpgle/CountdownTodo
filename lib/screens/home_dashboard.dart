@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
@@ -200,7 +201,8 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   int _dashboardCourseDataRefreshRevision = 0;
 
   bool _hasUsagePermission = true;
-  bool _isSyncing = false;
+  final ValueNotifier<bool> _isSyncingNotifier = ValueNotifier<bool>(false);
+  bool get _isSyncing => _isSyncingNotifier.value;
   String? _wallpaperUrl = _defaultWallpaperAsset;
   Color? _wallpaperDominantColor;
   String? _extractedWallpaperUrl;
@@ -344,10 +346,19 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
 
   void _scheduleWallpaperColorExtraction(ImageProvider provider, String url);
 
-  int _selectedTabIndex = 0;
+  final ValueNotifier<int> _selectedTabIndexNotifier = ValueNotifier<int>(0);
+  int get _selectedTabIndex => _selectedTabIndexNotifier.value;
   bool _focusTabVisited = false;
-  double _lastHomeHeaderExtent = 122.0;
-  double _lastFocusHeaderExtent = 0.0;
+  final ValueNotifier<double> _homeHeaderExtentNotifier = ValueNotifier<double>(
+    122.0,
+  );
+  final ValueNotifier<double> _focusHeaderExtentNotifier =
+      ValueNotifier<double>(0.0);
+  Widget? _cachedDrawerMenu;
+  String? _cachedDrawerUsername;
+  String? _cachedDrawerTimeSalutation;
+  int? _cachedDrawerTeamPendingCount;
+  bool? _cachedDrawerHasTeamConflictDot;
 
   // 待确认的事项数据（从图片识别来）
   Map<String, dynamic>? _pendingTodoConfirm;
