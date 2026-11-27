@@ -7,12 +7,10 @@ import '../screens/course_screens.dart';
 import '../screens/pomodoro_screen.dart';
 import '../services/home_dashboard_section_data_cache.dart';
 import '../services/pomodoro_service.dart';
-import '../utils/app_image_filters.dart';
 import '../utils/page_transitions.dart';
 import '../utils/theme_color_tokens.dart';
 import 'app_skeleton.dart';
 import 'optional_liquid_glass_surface.dart';
-import 'platform_backdrop_filter.dart';
 import '../utils/calendar_date_math.dart';
 
 // ============================================================
@@ -334,7 +332,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = colorScheme.brightness == Brightness.dark;
-    final card = OptionalLiquidGlassCard(
+    return OptionalLiquidGlassCard(
       width: width,
       borderRadius: borderRadius,
       padding: padding,
@@ -343,12 +341,6 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
       isDark: isDark,
       fallbackDecoration: fallbackDecoration,
       child: child,
-    );
-    return PlatformBackdropFilter(
-      filter: AppImageFilters.blur10,
-      bypassWhenLiquidGlassEnabled: true,
-      clipBorderRadius: BorderRadius.circular(borderRadius),
-      child: card,
     );
   }
 
@@ -377,20 +369,22 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: widget.isLight
-                            ? Colors.white.withValues(alpha: 0.15)
-                            : colorScheme.primary.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(
-                        Icons.donut_large_rounded,
-                        size: 20,
-                        color: widget.isLight
-                            ? Colors.white
-                            : colorScheme.primary,
+                    ExcludeSemantics(
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: widget.isLight
+                              ? Colors.white.withValues(alpha: 0.15)
+                              : colorScheme.primary.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          Icons.donut_large_rounded,
+                          size: 20,
+                          color: widget.isLight
+                              ? Colors.white
+                              : colorScheme.primary,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -1372,8 +1366,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
       key: ValueKey(record.uuid),
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
+        type: MaterialType.transparency,
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: () {
@@ -1398,126 +1391,138 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                     : colorScheme.outlineVariant.withValues(alpha: 0.2),
               ),
             ),
-            child: Row(
-              children: [
-                // 状态圆形徽章
-                Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    isCompleted ? Icons.check_rounded : Icons.timer_off_rounded,
-                    size: 15,
-                    color: statusColor,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                // 记录内容
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            timeFormat.format(startLocal),
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: isDark
-                                  ? Colors.white
-                                  : colorScheme.onSurface,
-                            ),
-                          ),
-                          Text(
-                            ' · $durationMin 分钟',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: colorScheme.primary,
-                            ),
-                          ),
-                          if (!isCompleted)
-                            Padding(
-                              padding: const EdgeInsets.only(left: 6),
-                              child: Text(
-                                '提前结束',
-                                style: TextStyle(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w600,
-                                  color: statusColor,
-                                ),
-                              ),
-                            ),
-                        ],
+            child: MergeSemantics(
+              child: Row(
+                children: [
+                  // 状态圆形徽章
+                  ExcludeSemantics(
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: statusColor.withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
                       ),
-                      if (record.todoTitle != null &&
-                          record.todoTitle!.isNotEmpty) ...[
-                        const SizedBox(height: 2),
+                      child: Icon(
+                        isCompleted
+                            ? Icons.check_rounded
+                            : Icons.timer_off_rounded,
+                        size: 15,
+                        color: statusColor,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  // 记录内容
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Row(
                           children: [
-                            Icon(
-                              Icons.check_box_outlined,
-                              size: 11,
-                              color: isDark
-                                  ? Colors.white54
-                                  : colorScheme.onSurfaceVariant,
+                            Text(
+                              timeFormat.format(startLocal),
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: isDark
+                                    ? Colors.white
+                                    : colorScheme.onSurface,
+                              ),
                             ),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                record.todoTitle!,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 11,
+                            Text(
+                              ' · $durationMin 分钟',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: colorScheme.primary,
+                              ),
+                            ),
+                            if (!isCompleted)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 6),
+                                child: Text(
+                                  '提前结束',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: statusColor,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        if (record.todoTitle != null &&
+                            record.todoTitle!.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              ExcludeSemantics(
+                                child: Icon(
+                                  Icons.check_box_outlined,
+                                  size: 11,
                                   color: isDark
-                                      ? Colors.white70
+                                      ? Colors.white54
                                       : colorScheme.onSurfaceVariant,
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  record.todoTitle!,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: isDark
+                                        ? Colors.white70
+                                        : colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
-                ),
-                // 暂停时长标签
-                if (hasPause) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: (isDark ? Colors.orange : colorScheme.cdtWarning)
-                          .withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      '暂停 ${formatDurationChinese(record.totalPauseSeconds ?? 0)}',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: isDark ? Colors.orange : colorScheme.cdtWarning,
+                  // 暂停时长标签
+                  if (hasPause) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
                       ),
+                      decoration: BoxDecoration(
+                        color: (isDark ? Colors.orange : colorScheme.cdtWarning)
+                            .withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '暂停 ${formatDurationChinese(record.totalPauseSeconds ?? 0)}',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: isDark
+                              ? Colors.orange
+                              : colorScheme.cdtWarning,
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(width: 4),
+                  ExcludeSemantics(
+                    child: Icon(
+                      Icons.chevron_right_rounded,
+                      size: 16,
+                      color: isDark
+                          ? Colors.white38
+                          : colorScheme.onSurface.withValues(alpha: 0.3),
                     ),
                   ),
                 ],
-                const SizedBox(width: 4),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: 16,
-                  color: isDark
-                      ? Colors.white38
-                      : colorScheme.onSurface.withValues(alpha: 0.3),
-                ),
-              ],
+              ),
             ),
           ),
         ),

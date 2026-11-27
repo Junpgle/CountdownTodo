@@ -368,18 +368,20 @@ mixin _TodoSectionViewCardMixin on _TodoSectionStateBase {
                                 crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
                                   if (todo.teamUuid != null)
-                                    Container(
-                                      width: 4,
-                                      height: 36,
-                                      margin: const EdgeInsets.symmetric(
-                                        vertical: 8,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: colorScheme.primary,
-                                        borderRadius:
-                                            const BorderRadius.horizontal(
-                                              right: Radius.circular(3),
-                                            ),
+                                    ExcludeSemantics(
+                                      child: Container(
+                                        width: 4,
+                                        height: 36,
+                                        margin: const EdgeInsets.symmetric(
+                                          vertical: 8,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: colorScheme.primary,
+                                          borderRadius:
+                                              const BorderRadius.horizontal(
+                                                right: Radius.circular(3),
+                                              ),
+                                        ),
                                       ),
                                     ),
                                   Expanded(
@@ -505,97 +507,111 @@ mixin _TodoSectionViewCardMixin on _TodoSectionStateBase {
                                               crossAxisAlignment:
                                                   CrossAxisAlignment.start,
                                               children: [
-                                                Row(
-                                                  children: [
-                                                    Expanded(
-                                                      child: Text(
-                                                        todo.title,
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
-                                                        style: TextStyle(
-                                                          decoration:
-                                                              todo.isDone
-                                                              ? TextDecoration
-                                                                    .lineThrough
-                                                              : null,
-                                                          decorationColor:
-                                                              colorScheme
-                                                                  .onSurface
-                                                                  .withValues(
-                                                                    alpha: 0.3,
-                                                                  ),
-                                                          color: titleColor
-                                                              .withValues(
-                                                                alpha: 0.95,
-                                                              ),
-                                                          fontSize: 14.5,
-                                                          fontWeight:
-                                                              todo.isDone ||
-                                                                  isPast ||
-                                                                  isFuture
-                                                              ? FontWeight.w500
-                                                              : FontWeight.w600,
-                                                          height: 1.2,
+                                                MergeSemantics(
+                                                  child: Row(
+                                                    children: [
+                                                      Expanded(
+                                                        child: Text(
+                                                          todo.title,
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                          style: TextStyle(
+                                                            decoration:
+                                                                todo.isDone
+                                                                ? TextDecoration
+                                                                      .lineThrough
+                                                                : null,
+                                                            decorationColor:
+                                                                colorScheme
+                                                                    .onSurface
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.3,
+                                                                    ),
+                                                            color: titleColor
+                                                                .withValues(
+                                                                  alpha: 0.95,
+                                                                ),
+                                                            fontSize: 14.5,
+                                                            fontWeight:
+                                                                todo.isDone ||
+                                                                    isPast ||
+                                                                    isFuture
+                                                                ? FontWeight
+                                                                      .w500
+                                                                : FontWeight
+                                                                      .w600,
+                                                            height: 1.2,
+                                                          ),
                                                         ),
                                                       ),
-                                                    ),
-                                                    if (recurrenceIcon !=
-                                                        null) ...[
-                                                      const SizedBox(width: 4),
-                                                      recurrenceIcon,
-                                                    ],
-                                                    if (ConflictVisibilityService.isVisibleTodoConflict(
-                                                      todo,
-                                                    )) ...[
-                                                      const SizedBox(width: 4),
-                                                      Icon(
-                                                        Icons
-                                                            .warning_amber_rounded,
-                                                        size: 14,
-                                                        color: Colors
-                                                            .orange
-                                                            .shade400,
-                                                      ),
-                                                    ],
-                                                    const SizedBox(width: 6),
-                                                    Container(
-                                                      padding:
-                                                          const EdgeInsets.symmetric(
-                                                            horizontal: 7,
-                                                            vertical: 2,
+                                                      if (recurrenceIcon !=
+                                                          null) ...[
+                                                        const SizedBox(
+                                                          width: 4,
+                                                        ),
+                                                        ExcludeSemantics(
+                                                          child: recurrenceIcon,
+                                                        ),
+                                                      ],
+                                                      if (ConflictVisibilityService.isVisibleTodoConflict(
+                                                        todo,
+                                                      )) ...[
+                                                        const SizedBox(
+                                                          width: 4,
+                                                        ),
+                                                        ExcludeSemantics(
+                                                          child: Icon(
+                                                            Icons
+                                                                .warning_amber_rounded,
+                                                            size: 14,
+                                                            color: Colors
+                                                                .orange
+                                                                .shade400,
                                                           ),
-                                                      decoration: BoxDecoration(
-                                                        color: todo.isDone
-                                                            ? colorScheme
-                                                                  .onSurface
-                                                                  .withValues(
-                                                                    alpha: 0.06,
-                                                                  )
-                                                            : badgeBg,
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              6,
+                                                        ),
+                                                      ],
+                                                      const SizedBox(width: 6),
+                                                      Container(
+                                                        padding:
+                                                            const EdgeInsets.symmetric(
+                                                              horizontal: 7,
+                                                              vertical: 2,
                                                             ),
-                                                      ),
-                                                      child: Text(
-                                                        badge,
-                                                        style: TextStyle(
-                                                          fontSize: 10.5,
-                                                          fontWeight:
-                                                              FontWeight.w600,
+                                                        decoration: BoxDecoration(
                                                           color: todo.isDone
                                                               ? colorScheme
                                                                     .onSurface
                                                                     .withValues(
                                                                       alpha:
-                                                                          0.3,
+                                                                          0.06,
                                                                     )
-                                                              : badgeColor,
+                                                              : badgeBg,
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                6,
+                                                              ),
+                                                        ),
+                                                        child: Text(
+                                                          badge,
+                                                          style: TextStyle(
+                                                            fontSize: 10.5,
+                                                            fontWeight:
+                                                                FontWeight.w600,
+                                                            color: todo.isDone
+                                                                ? colorScheme
+                                                                      .onSurface
+                                                                      .withValues(
+                                                                        alpha:
+                                                                            0.3,
+                                                                      )
+                                                                : badgeColor,
+                                                          ),
                                                         ),
                                                       ),
-                                                    ),
-                                                  ],
+                                                    ],
+                                                  ),
                                                 ),
                                                 if (todo.teamUuid != null) ...[
                                                   const SizedBox(height: 5),
@@ -734,51 +750,57 @@ mixin _TodoSectionViewCardMixin on _TodoSectionStateBase {
                                                   ),
                                                 ],
                                                 const SizedBox(height: 3),
-                                                Row(
-                                                  children: [
-                                                    Icon(
-                                                      Icons.schedule_rounded,
-                                                      size: 11,
-                                                      color: colorScheme
-                                                          .onSurface
-                                                          .withValues(
-                                                            alpha: todo.isDone
-                                                                ? 0.65
-                                                                : (isPast
-                                                                      ? 0.75
-                                                                      : 0.65),
-                                                          ),
-                                                    ),
-                                                    const SizedBox(width: 3),
-                                                    Expanded(
-                                                      child: Text(
-                                                        _buildTimeLabel(
-                                                          todo,
-                                                          cDate,
-                                                          isPast,
-                                                          isFuture,
-                                                          now,
-                                                        ),
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
-                                                        style: TextStyle(
-                                                          fontSize: 11,
+                                                MergeSemantics(
+                                                  child: Row(
+                                                    children: [
+                                                      ExcludeSemantics(
+                                                        child: Icon(
+                                                          Icons
+                                                              .schedule_rounded,
+                                                          size: 11,
                                                           color: colorScheme
                                                               .onSurface
                                                               .withValues(
                                                                 alpha:
                                                                     todo.isDone
-                                                                    ? 0.4
-                                                                    : isPast
-                                                                    ? 0.75
-                                                                    : 0.65,
+                                                                    ? 0.65
+                                                                    : (isPast
+                                                                          ? 0.75
+                                                                          : 0.65),
                                                               ),
-                                                          height: 1.2,
                                                         ),
                                                       ),
-                                                    ),
-                                                  ],
+                                                      const SizedBox(width: 3),
+                                                      Expanded(
+                                                        child: Text(
+                                                          _buildTimeLabel(
+                                                            todo,
+                                                            cDate,
+                                                            isPast,
+                                                            isFuture,
+                                                            now,
+                                                          ),
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                          style: TextStyle(
+                                                            fontSize: 11,
+                                                            color: colorScheme
+                                                                .onSurface
+                                                                .withValues(
+                                                                  alpha:
+                                                                      todo.isDone
+                                                                      ? 0.4
+                                                                      : isPast
+                                                                      ? 0.75
+                                                                      : 0.65,
+                                                                ),
+                                                            height: 1.2,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
                                                 ),
                                                 if (todo.remark != null &&
                                                     todo

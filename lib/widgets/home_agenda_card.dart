@@ -2,11 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../services/home_agenda_repository.dart';
 import '../services/plan_review_repository.dart';
-import '../utils/app_image_filters.dart';
 import 'floating_glass_control.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'plan_day_overview.dart' show planOverviewDuration;
-import 'platform_backdrop_filter.dart';
 import '../utils/time_utils.dart';
 
 /// The single homepage surface. Source-specific actions live in the host.
@@ -153,8 +151,7 @@ class _HomeAgendaCardState extends State<HomeAgendaCard> {
           ),
         ),
         child: Material(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
+          type: MaterialType.transparency,
           child: InkWell(
             key: plan == null
                 ? ValueKey('agenda-row-${item.id}')
@@ -166,142 +163,146 @@ class _HomeAgendaCardState extends State<HomeAgendaCard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 3.5,
-                        height: 36,
-                        margin: const EdgeInsets.only(right: 10),
-                        decoration: BoxDecoration(
-                          color: accent,
-                          borderRadius: BorderRadius.circular(2),
+                  MergeSemantics(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 3.5,
+                          height: 36,
+                          margin: const EdgeInsets.only(right: 10),
+                          decoration: BoxDecoration(
+                            color: accent,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
                         ),
-                      ),
-                      SizedBox(
-                        width: crossDay ? 56 : 48,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              item.allDay ? '全天' : format.format(item.start),
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: current
-                                    ? colors.primary
-                                    : (quiet
-                                          ? colors.onSurfaceVariant
-                                          : colors.onSurface),
-                                height: 1.2,
+                        SizedBox(
+                          width: crossDay ? 56 : 48,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                item.allDay ? '全天' : format.format(item.start),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: current
+                                      ? colors.primary
+                                      : (quiet
+                                            ? colors.onSurfaceVariant
+                                            : colors.onSurface),
+                                  height: 1.2,
+                                ),
                               ),
-                            ),
-                            if (!item.allDay)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 2),
-                                child: Text(
-                                  endLabel,
+                              if (!item.allDay)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Text(
+                                    endLabel,
+                                    style: TextStyle(
+                                      fontSize: 10.5,
+                                      color: colors.onSurfaceVariant,
+                                      height: 1.1,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      item.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 14.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: quiet
+                                            ? colors.onSurfaceVariant
+                                            : colors.onSurface,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 5,
+                                      vertical: 1.5,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: accent.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      item.sourceLabel,
+                                      style: TextStyle(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: accent,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (item.detail.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  item.detail,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                    fontSize: 10.5,
+                                    fontSize: 11,
                                     color: colors.onSurfaceVariant,
-                                    height: 1.1,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    item.title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 14.5,
-                                      fontWeight: FontWeight.w600,
-                                      color: quiet
-                                          ? colors.onSurfaceVariant
-                                          : colors.onSurface,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 5,
-                                    vertical: 1.5,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: accent.withValues(alpha: 0.12),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    item.sourceLabel,
-                                    style: TextStyle(
-                                      fontSize: 9.5,
-                                      fontWeight: FontWeight.w700,
-                                      color: accent,
-                                    ),
                                   ),
                                 ),
                               ],
-                            ),
-                            if (item.detail.isNotEmpty) ...[
-                              const SizedBox(height: 2),
-                              Text(
-                                item.detail,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: colors.onSurfaceVariant,
+                              if (current || attention || item.completed) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  attention
+                                      ? (plan!.status == 6 ? '漏做' : '已结束待确认')
+                                      : item.completed
+                                      ? '已完成'
+                                      : item.isFocusing
+                                      ? '正在专注'
+                                      : '时段进行中${item.fixed?.isEndTimeTbd == true ? ' · 结束待定' : ''}',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w500,
+                                    color: attention
+                                        ? colors.error
+                                        : current
+                                        ? colors.primary
+                                        : colors.onSurfaceVariant,
+                                  ),
                                 ),
-                              ),
+                              ],
                             ],
-                            if (current || attention || item.completed) ...[
-                              const SizedBox(height: 2),
-                              Text(
-                                attention
-                                    ? (plan!.status == 6 ? '漏做' : '已结束待确认')
-                                    : item.completed
-                                    ? '已完成'
-                                    : item.isFocusing
-                                    ? '正在专注'
-                                    : '时段进行中${item.fixed?.isEndTimeTbd == true ? ' · 结束待定' : ''}',
-                                style: TextStyle(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w500,
-                                  color: attention
-                                      ? colors.error
-                                      : current
-                                      ? colors.primary
-                                      : colors.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 6),
-                      Icon(
-                        plan != null
-                            ? (expanded
-                                  ? Icons.expand_less_rounded
-                                  : Icons.expand_more_rounded)
-                            : Icons.chevron_right_rounded,
-                        size: 18,
-                        color: colors.onSurfaceVariant,
-                      ),
-                    ],
+                        const SizedBox(width: 6),
+                        ExcludeSemantics(
+                          child: Icon(
+                            plan != null
+                                ? (expanded
+                                      ? Icons.expand_less_rounded
+                                      : Icons.expand_more_rounded)
+                                : Icons.chevron_right_rounded,
+                            size: 18,
+                            color: colors.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   if (plan != null)
                     AnimatedSize(
@@ -354,8 +355,7 @@ class _HomeAgendaCardState extends State<HomeAgendaCard> {
       ),
     ),
     child: Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(12),
+      type: MaterialType.transparency,
       child: InkWell(
         key: ValueKey(key),
         onTap: onTap,
@@ -438,19 +438,14 @@ class _HomeAgendaCardState extends State<HomeAgendaCard> {
       );
     }
 
-    return PlatformBackdropFilter(
-      filter: AppImageFilters.blur10,
-      bypassWhenLiquidGlassEnabled: true,
-      clipBorderRadius: BorderRadius.circular(24),
-      child: OptionalLiquidGlassCard(
-        padding: const EdgeInsets.all(12),
-        borderRadius: 24,
-        highContrast: false,
-        tint: colors.primary.withValues(alpha: 0.16),
-        isDark: isDark,
-        fallbackDecoration: fallbackDecoration,
-        child: child,
-      ),
+    return OptionalLiquidGlassCard(
+      padding: const EdgeInsets.all(12),
+      borderRadius: 24,
+      highContrast: false,
+      tint: colors.primary.withValues(alpha: 0.16),
+      isDark: isDark,
+      fallbackDecoration: fallbackDecoration,
+      child: child,
     );
   }
 
@@ -485,16 +480,18 @@ class _HomeAgendaCardState extends State<HomeAgendaCard> {
           padding: const EdgeInsets.symmetric(vertical: 12),
           child: Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: iconColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  Icons.calendar_today_rounded,
-                  size: 20,
-                  color: iconColor,
+              ExcludeSemantics(
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: iconColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.calendar_today_rounded,
+                    size: 20,
+                    color: iconColor,
+                  ),
                 ),
               ),
               const SizedBox(width: 10),
@@ -659,8 +656,7 @@ class _HomeAgendaCardState extends State<HomeAgendaCard> {
                               ),
                             ),
                             child: Material(
-                              color: Colors.transparent,
-                              borderRadius: BorderRadius.circular(12),
+                              type: MaterialType.transparency,
                               child: InkWell(
                                 onTap: widget.enabled
                                     ? () => widget.onStats?.call(_overviewKey)
@@ -678,57 +674,64 @@ class _HomeAgendaCardState extends State<HomeAgendaCard> {
                                           MediaQuery.textScalerOf(context)
                                                   .scale(1) >
                                               1.3;
-                                      return Row(
-                                        children: [
-                                          Icon(
-                                            Icons.timelapse_rounded,
-                                            size: 16,
-                                            color: colors.primary,
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: compact
-                                                ? Text(
-                                                    '规划概览',
-                                                    style: TextStyle(
-                                                      fontSize: 12,
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                      color: colors.primary,
+                                      return MergeSemantics(
+                                        child: Row(
+                                          children: [
+                                            ExcludeSemantics(
+                                              child: Icon(
+                                                Icons.timelapse_rounded,
+                                                size: 16,
+                                                color: colors.primary,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: compact
+                                                  ? Text(
+                                                      '规划概览',
+                                                      style: TextStyle(
+                                                        fontSize: 12,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                        color: colors.primary,
+                                                      ),
+                                                    )
+                                                  : Wrap(
+                                                      spacing: 16,
+                                                      runSpacing: 4,
+                                                      children: [
+                                                        Text(
+                                                          '规划 ${planOverviewDuration(overview.plan('seconds'))}',
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            color: colors
+                                                                .onSurface,
+                                                            fontWeight:
+                                                                FontWeight.w500,
+                                                          ),
+                                                        ),
+                                                        Text(
+                                                          '有效专注 ${planOverviewDuration(overview.actual('seconds'))}',
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            color:
+                                                                colors.primary,
+                                                            fontWeight:
+                                                                FontWeight.w600,
+                                                          ),
+                                                        ),
+                                                      ],
                                                     ),
-                                                  )
-                                                : Wrap(
-                                                    spacing: 16,
-                                                    runSpacing: 4,
-                                                    children: [
-                                                      Text(
-                                                        '规划 ${planOverviewDuration(overview.plan('seconds'))}',
-                                                        style: TextStyle(
-                                                          fontSize: 12,
-                                                          color:
-                                                              colors.onSurface,
-                                                          fontWeight:
-                                                              FontWeight.w500,
-                                                        ),
-                                                      ),
-                                                      Text(
-                                                        '有效专注 ${planOverviewDuration(overview.actual('seconds'))}',
-                                                        style: TextStyle(
-                                                          fontSize: 12,
-                                                          color: colors.primary,
-                                                          fontWeight:
-                                                              FontWeight.w600,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                          ),
-                                          Icon(
-                                            Icons.chevron_right_rounded,
-                                            size: 18,
-                                            color: colors.onSurfaceVariant,
-                                          ),
-                                        ],
+                                            ),
+                                            ExcludeSemantics(
+                                              child: Icon(
+                                                Icons.chevron_right_rounded,
+                                                size: 18,
+                                                color: colors.onSurfaceVariant,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       );
                                     },
                                   ),

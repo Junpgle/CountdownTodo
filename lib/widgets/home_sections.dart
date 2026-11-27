@@ -2,14 +2,12 @@ import 'package:flutter/material.dart';
 
 import 'dart:math' as math;
 
-import '../services/liquid_glass_effect_service.dart';
-import '../services/power_save_mode_service.dart';
 import '../utils/android_energy_policy.dart';
 import '../utils/app_image_filters.dart';
 import '../utils/time_utils.dart';
-import '../utils/app_platform.dart';
 import 'floating_glass_control.dart';
 import 'optional_liquid_glass_surface.dart';
+import 'platform_backdrop_filter.dart';
 
 /// 通用的板块标题
 class SectionHeader extends StatelessWidget {
@@ -49,13 +47,15 @@ class SectionHeader extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(8),
+          ExcludeSemantics(
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, size: 20, color: iconColor),
             ),
-            child: Icon(icon, size: 20, color: iconColor),
           ),
           const SizedBox(width: 10),
           Text(
@@ -885,29 +885,10 @@ class EmptyState extends StatelessWidget {
       ),
     );
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: AppPlatform.isWindows || isDark
-          ? content
-          : ListenableBuilder(
-              listenable: Listenable.merge(<Listenable>[
-                LiquidGlassEffectService.configurationListenable,
-                PowerSaveModeService.enabledListenable,
-              ]),
-              builder: (context, child) {
-                final skipBlur =
-                    PowerSaveModeService.isEnabled ||
-                    !LiquidGlassEffectService.configuration.enabled;
-                return skipBlur
-                    ? child!
-                    : BackdropFilter.grouped(
-                        filter: AppImageFilters.blur10,
-                        child: child,
-                      );
-              },
-              child: content,
-            ),
+    return PlatformBackdropFilter(
+      filter: AppImageFilters.blur10,
+      clipBorderRadius: BorderRadius.circular(20),
+      child: content,
     );
   }
 }
