@@ -18,6 +18,7 @@ class FloatingGlassControl extends StatelessWidget {
     this.haloColor,
     this.haloOpacity,
     this.backerOpacity,
+    this.shellOpacity = 1.0,
     this.useTopBarGlass = false,
     this.useLiquidGlass = true,
     this.isDark,
@@ -37,6 +38,7 @@ class FloatingGlassControl extends StatelessWidget {
   final Color? haloColor;
   final double? haloOpacity;
   final double? backerOpacity;
+  final double shellOpacity;
   final bool useTopBarGlass;
 
   /// Keeps the shared geometry and material fallback while opting out of the
@@ -75,6 +77,7 @@ class FloatingGlassControl extends StatelessWidget {
           margin: margin,
           borderRadius: borderRadius,
           haloColor: resolvedHalo,
+          shellOpacity: shellOpacity,
           isDark: dark,
           allowChildOverflow: allowChildOverflow,
           child: childWithoutNestedGlass,
@@ -101,6 +104,7 @@ class FloatingGlassControl extends StatelessWidget {
       haloColor: resolvedHalo,
       haloOpacity: haloOpacity,
       backerOpacity: backerOpacity,
+      shellOpacity: shellOpacity,
       useTopBarGlass: useTopBarGlass,
       isDark: dark,
       allowChildOverflow: allowChildOverflow,
@@ -362,7 +366,7 @@ class _FloatingGlassPinnedHeaderLayoutState
             child: FloatingGlassScrollAware(
               child: _FloatingGlassHeaderSizeObserver(
                 onExtentChanged: _handleHeaderExtentChanged,
-                child: widget.header,
+                child: BackdropGroup(child: widget.header),
               ),
             ),
           ),

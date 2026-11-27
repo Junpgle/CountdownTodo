@@ -152,19 +152,19 @@ Widget _buildScrollAnimatedControlProgress({
 
 Widget? _wrapAnimatedGlassShell({
   required double progress,
-  required Widget Function() buildClippedShell,
+  required Widget Function(double progress) buildClippedShell,
 }) {
   if (progress <= 0.001) return null;
-  final clippedControl = buildClippedShell();
+  final clamped = progress >= 0.999 ? 1.0 : progress.clamp(0.0, 1.0).toDouble();
+  final clippedControl = buildClippedShell(clamped);
+  // Modulate shell alpha inside the glass/fallback surface instead of wrapping
+  // a BackdropFilterLayer in an ancestor OpacityLayer offscreen saveLayer.
   return IgnorePointer(
-    child: progress >= 0.999
+    child: clamped >= 1.0
         ? clippedControl
-        : Opacity(
-            opacity: progress,
-            child: Transform.scale(
-              scale: 0.82 + progress * 0.18,
-              child: RepaintBoundary(child: clippedControl),
-            ),
+        : Transform.scale(
+            scale: 0.82 + clamped * 0.18,
+            child: RepaintBoundary(child: clippedControl),
           ),
   );
 }
@@ -218,7 +218,7 @@ class _FloatingGlassAppBarActionContent extends StatelessWidget {
     final resolvedTint = tint ?? _floatingAppBarTint(colorScheme, null);
     final glassShell = _wrapAnimatedGlassShell(
       progress: progress,
-      buildClippedShell: () => ClipOval(
+      buildClippedShell: (shellOpacity) => ClipOval(
         // The glass surface owns an outer halo shadow. Clip
         // it to the circular control so it cannot leave a
         // square/irregular shadow around the action button.
@@ -229,6 +229,7 @@ class _FloatingGlassAppBarActionContent extends StatelessWidget {
           haloColor: haloColor ?? colorScheme.primary,
           haloOpacity: haloOpacity,
           backerOpacity: backerOpacity,
+          shellOpacity: shellOpacity,
           useTopBarGlass: useTopBarGlass,
           isDark: isDark,
           child: const SizedBox.shrink(),
@@ -401,7 +402,7 @@ class _FloatingGlassAppBarActionGroupContent extends StatelessWidget {
     final capsuleRadius = BorderRadius.circular(borderRadius);
     final glassShell = _wrapAnimatedGlassShell(
       progress: progress,
-      buildClippedShell: () => ClipRSuperellipse(
+      buildClippedShell: (shellOpacity) => ClipRSuperellipse(
         borderRadius: capsuleRadius,
         child: FloatingGlassControl(
           height: height,
@@ -410,6 +411,7 @@ class _FloatingGlassAppBarActionGroupContent extends StatelessWidget {
           haloColor: haloColor ?? colorScheme.primary,
           haloOpacity: haloOpacity,
           backerOpacity: backerOpacity,
+          shellOpacity: shellOpacity,
           useTopBarGlass: useTopBarGlass,
           isDark: isDark,
           child: const SizedBox.shrink(),
@@ -641,14 +643,19 @@ class FloatingGlassAppBar extends StatelessWidget
         animateColor: animateColor,
       );
 
-      return useFloatingControls
-          ? appBar
-          : Theme(
-              // A continuous top surface owns the visual treatment. Neutralize
-              // the app-wide button glass theme for its plain child controls.
-              data: _floatingGlassChildTheme(context),
-              child: appBar,
-            );
+      if (!useFloatingControls) {
+        return Theme(
+          // A continuous top surface owns the visual treatment. Neutralize
+          // the app-wide button glass theme for its plain child controls.
+          data: _floatingGlassChildTheme(context),
+          child: appBar,
+        );
+      }
+
+      if (decoratedLeading != null || (decoratedActions?.isNotEmpty ?? false)) {
+        return BackdropGroup(child: GlassBackdropGroup(child: appBar));
+      }
+      return appBar;
     }
 
     return _FloatingGlassAppBarHost(

@@ -10,6 +10,7 @@ import '../../../utils/page_transitions.dart';
 import '../../../widgets/coach_mark_overlay.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../widgets/floating_glass_control.dart';
+import '../../../widgets/optional_liquid_glass_backdrop.dart';
 import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../repositories/habit_repository.dart';
@@ -693,33 +694,36 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
           ),
         );
 
-        return Scaffold(
-          extendBody: true,
-          extendBodyBehindAppBar: true,
-          appBar: FloatingGlassAppBar(
-            flexibleSpace: const FloatingGlassTopBarBackground(),
-            title: const Text('习惯中心'),
-            centerTitle: false,
-            actions: actions,
-          ),
-          bottomNavigationBar: floatingNavigation,
-          floatingActionButton: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              FloatingGlassActionButton.extended(
-                key: _createActionKey,
-                onPressed: _openCreateHabit,
-                tooltip: '新建习惯',
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('新建习惯'),
-              ),
-              SizedBox(height: isWide ? 100 : 8),
-            ],
-          ),
-          body: FloatingGlassTopBarContentFade(
-            topBarHeight: topBarHeight,
-            child: TabBarView(controller: _tabController, children: bodyTabs),
+        return OptionalLiquidGlassBackdropScope(
+          isSolidBackground: true,
+          child: Scaffold(
+            extendBody: true,
+            extendBodyBehindAppBar: true,
+            appBar: FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
+              title: const Text('习惯中心'),
+              centerTitle: false,
+              actions: actions,
+            ),
+            bottomNavigationBar: floatingNavigation,
+            floatingActionButton: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                FloatingGlassActionButton.extended(
+                  key: _createActionKey,
+                  onPressed: _openCreateHabit,
+                  tooltip: '新建习惯',
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('新建习惯'),
+                ),
+                SizedBox(height: isWide ? 100 : 8),
+              ],
+            ),
+            body: FloatingGlassTopBarContentFade(
+              topBarHeight: topBarHeight,
+              child: TabBarView(controller: _tabController, children: bodyTabs),
+            ),
           ),
         );
       },

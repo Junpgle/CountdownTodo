@@ -564,7 +564,21 @@ class FloatingGlassActionButton extends StatelessWidget {
             shadowElevation: 0.35,
           ),
           useOwnLayer: true,
-          quality: liquidGlassQualityForMode(configuration.mode),
+          quality:
+              (AppPlatform.isAndroid &&
+                  MediaQuery.sizeOf(context).width >= 768 &&
+                  configuration.mode == LiquidGlassEffectMode.enhanced)
+              ? GlassQuality.standard
+              : (liquidGlassPrefersStaticChromeFor(
+                      isAndroid: AppPlatform.isAndroid,
+                      viewportWidth: MediaQuery.sizeOf(context).width,
+                      mode: configuration.mode,
+                      hasBackdropScope:
+                          OptionalLiquidGlassBackdropScope.maybeOf(context) !=
+                          null,
+                    )
+                    ? GlassQuality.minimal
+                    : liquidGlassQualityForMode(configuration.mode)),
           interactionScale: 1.04,
           stretch: _extended ? 0.28 : 0.4,
           resistance: 0.015,
@@ -673,8 +687,10 @@ class FloatingGlassTopBarBackground extends StatelessWidget {
       builder: (context, configuration, _) {
         if (blur && !configuration.enabled) return content;
 
-        final intensity = (resolvedProgress * fadeExtent.clamp(0.0, 1.0))
-            .clamp(0.0, 1.0);
+        final intensity = (resolvedProgress * fadeExtent.clamp(0.0, 1.0)).clamp(
+          0.0,
+          1.0,
+        );
         if (intensity <= 0.001) return content;
 
         final colorScheme = Theme.of(context).colorScheme;
@@ -754,9 +770,15 @@ class FloatingGlassLargeFlexibleSpace extends StatelessWidget {
     final expandedStyle = Theme.of(context).textTheme.headlineMedium
         ?.copyWith(color: colorScheme.onSurface);
 
-    final styledTitle = expandedStyle == null
-        ? title
-        : DefaultTextStyle(style: expandedStyle, child: title);
+    final baseTitleColor = expandedStyle?.color ?? colorScheme.onSurface;
+    final styledTitle = DefaultTextStyle(
+      style: (expandedStyle ?? const TextStyle()).copyWith(
+        color: extent >= 0.999
+            ? baseTitleColor
+            : baseTitleColor.withValues(alpha: extent),
+      ),
+      child: title,
+    );
 
     return Stack(
       fit: StackFit.expand,
@@ -767,12 +789,7 @@ class FloatingGlassLargeFlexibleSpace extends StatelessWidget {
             alignment: Alignment.bottomLeft,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
-              child: extent >= 0.999
-                  ? styledTitle
-                  : Opacity(
-                      opacity: extent,
-                      child: RepaintBoundary(child: styledTitle),
-                    ),
+              child: styledTitle,
             ),
           ),
       ],
@@ -789,6 +806,7 @@ class _FloatingGlassControlFallback extends StatelessWidget {
     required this.isDark,
     required this.allowChildOverflow,
     required this.child,
+    this.shellOpacity = 1.0,
   });
 
   final double? height;
@@ -798,30 +816,34 @@ class _FloatingGlassControlFallback extends StatelessWidget {
   final bool isDark;
   final bool allowChildOverflow;
   final Widget child;
+  final double shellOpacity;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final opacity = shellOpacity.clamp(0.0, 1.0).toDouble();
     final decoration = BoxDecoration(
-      color: isDark
-          ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.82)
-          : colorScheme.surface.withValues(alpha: 0.9),
+      color:
+          (isDark
+                  ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.82)
+                  : colorScheme.surface.withValues(alpha: 0.9))
+              .withValues(alpha: (isDark ? 0.82 : 0.9) * opacity),
       borderRadius: BorderRadius.circular(borderRadius),
       border: Border.all(
         color: colorScheme.outlineVariant.withValues(
-          alpha: isDark ? 0.42 : 0.54,
+          alpha: (isDark ? 0.42 : 0.54) * opacity,
         ),
         width: 0.8,
       ),
       boxShadow: <BoxShadow>[
         BoxShadow(
-          color: haloColor.withValues(alpha: isDark ? 0.12 : 0.2),
+          color: haloColor.withValues(alpha: (isDark ? 0.12 : 0.2) * opacity),
           blurRadius: 26,
           spreadRadius: 1,
           offset: const Offset(0, 4),
         ),
         BoxShadow(
-          color: colorScheme.shadow.withValues(alpha: 0.12),
+          color: colorScheme.shadow.withValues(alpha: 0.12 * opacity),
           blurRadius: 15,
           offset: const Offset(0, 5),
         ),

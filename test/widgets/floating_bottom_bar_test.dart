@@ -1138,4 +1138,62 @@ void main() {
       expect(tapped, 3);
     },
   );
+
+  testWidgets(
+    'mid-transition AppBar shells modulate shellOpacity without Opacity wrapper',
+    (tester) async {
+      await LiquidGlassEffectService.setEnabled(true);
+      await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+      final collapseProgress = ValueNotifier<double>(0.58);
+      addTearDown(collapseProgress.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            appBar: FloatingGlassAppBar(
+              leading: FloatingGlassAppBarAction(
+                collapseProgress: collapseProgress,
+                child: IconButton(
+                  onPressed: () {},
+                  icon: const Icon(Icons.menu),
+                ),
+              ),
+              title: const Text('Mid transition'),
+              actions: [
+                FloatingGlassAppBarActionGroup(
+                  collapseProgress: collapseProgress,
+                  children: [
+                    IconButton(
+                      onPressed: () {},
+                      icon: const Icon(Icons.search),
+                    ),
+                    IconButton(onPressed: () {}, icon: const Icon(Icons.sync)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 90));
+
+      final controls = tester
+          .widgetList<FloatingGlassControl>(find.byType(FloatingGlassControl))
+          .toList();
+      expect(controls, hasLength(2));
+      for (final control in controls) {
+        expect(control.shellOpacity, greaterThan(0.0));
+        expect(control.shellOpacity, lessThan(1.0));
+        expect(
+          find.ancestor(
+            of: find.byWidget(control),
+            matching: find.byType(Opacity),
+          ),
+          findsNothing,
+        );
+      }
+      expect(find.byType(BackdropGroup), findsOneWidget);
+      expect(find.byType(GlassBackdropGroup), findsOneWidget);
+    },
+  );
 }

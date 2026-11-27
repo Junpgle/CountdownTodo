@@ -3,6 +3,7 @@ import 'package:flutter_zoom_drawer/flutter_zoom_drawer.dart';
 
 import '../screens/course_screens.dart';
 import '../models/todo_create_save_result.dart';
+import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
 import '../utils/time_utils.dart';
 import 'floating_glass_control.dart';
@@ -310,16 +311,15 @@ class _HomeAppBarState extends State<HomeAppBar>
         final clamped = value.clamp(0.0, 1.0);
         if (clamped <= 0.001) return const SizedBox.shrink();
         if (clamped >= 0.999) return c!;
-        return Opacity(
-          opacity: clamped,
-          child: Transform.translate(
-            offset: Offset(0, (1 - clamped) * 8),
-            child: Transform.scale(
-              scale: 0.92 + clamped * 0.08,
-              child: RepaintBoundary(child: c),
-            ),
+        final transformed = Transform.translate(
+          offset: Offset(0, (1 - clamped) * 8),
+          child: Transform.scale(
+            scale: 0.92 + clamped * 0.08,
+            child: RepaintBoundary(child: c),
           ),
         );
+        if (AppPlatform.isAndroid) return transformed;
+        return Opacity(opacity: clamped, child: transformed);
       },
     );
   }

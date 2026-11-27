@@ -1,6 +1,6 @@
 import 'package:countdown_todo/theme/app_liquid_glass_theme.dart';
 import 'package:countdown_todo/services/liquid_glass_effect_service.dart';
-import 'package:countdown_todo/widgets/optional_liquid_glass_backdrop.dart';
+import 'package:countdown_todo/widgets/optional_liquid_glass_surface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
@@ -166,6 +166,111 @@ void main() {
             ?.blur,
         greaterThan(0.0),
       );
+    },
+  );
+
+  test('liquidGlassUsesLightweightButtonSurfaceFor targets overlay and Android scopes', () {
+    expect(
+      liquidGlassUsesLightweightButtonSurfaceFor(
+        inOverlayScope: true,
+        hasBackdropScope: false,
+        isAndroid: false,
+      ),
+      isTrue,
+    );
+    expect(
+      liquidGlassUsesLightweightButtonSurfaceFor(
+        inOverlayScope: true,
+        hasBackdropScope: true,
+        isAndroid: true,
+      ),
+      isTrue,
+    );
+    expect(
+      liquidGlassUsesLightweightButtonSurfaceFor(
+        inOverlayScope: false,
+        hasBackdropScope: true,
+        isAndroid: true,
+      ),
+      isTrue,
+    );
+    expect(
+      liquidGlassUsesLightweightButtonSurfaceFor(
+        inOverlayScope: false,
+        hasBackdropScope: true,
+        isAndroid: false,
+      ),
+      isFalse,
+    );
+    expect(
+      liquidGlassUsesLightweightButtonSurfaceFor(
+        inOverlayScope: false,
+        hasBackdropScope: false,
+        isAndroid: true,
+      ),
+      isFalse,
+    );
+  });
+
+  testWidgets(
+    'buttons inside OptionalLiquidGlassOverlayScope skip GlassContainer even in enhanced mode',
+    (tester) async {
+      await LiquidGlassEffectService.setEnabled(true);
+      final previousErrorHandler = FlutterError.onError;
+      FlutterError.onError = (details) {};
+      try {
+        await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.enhanced);
+      } finally {
+        FlutterError.onError = previousErrorHandler;
+      }
+
+      final theme = applyAppLiquidGlassTheme(
+        ThemeData(
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+          useMaterial3: true,
+        ),
+        enabled: true,
+        mode: LiquidGlassEffectMode.enhanced,
+      );
+
+      var filledTapped = 0;
+      var iconTapped = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: theme,
+          home: Scaffold(
+            body: OptionalLiquidGlassBackdropScope(
+              isSolidBackground: false,
+              child: OptionalLiquidGlassOverlayScope(
+                hasOuterSurface: false,
+                child: Row(
+                  children: [
+                    FilledButton(
+                      onPressed: () => filledTapped++,
+                      child: const Text('Apply'),
+                    ),
+                    IconButton(
+                      onPressed: () => iconTapped++,
+                      icon: const Icon(Icons.check),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(GlassContainer), findsNothing);
+      expect(find.text('Apply'), findsOneWidget);
+      expect(find.byIcon(Icons.check), findsOneWidget);
+
+      await tester.tap(find.text('Apply'));
+      await tester.tap(find.byIcon(Icons.check));
+      expect(filledTapped, 1);
+      expect(iconTapped, 1);
     },
   );
 }
