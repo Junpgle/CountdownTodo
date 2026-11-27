@@ -9,6 +9,7 @@ import '../../../storage_service.dart';
 import '../../../utils/page_transitions.dart';
 import '../../../widgets/coach_mark_overlay.dart';
 import '../../../widgets/floating_bottom_bar.dart';
+import '../../../widgets/floating_glass_control.dart';
 import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../repositories/habit_repository.dart';
@@ -617,23 +618,30 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
         final fabBottomClearance = isWide ? 172.0 : 80.0;
 
         final actions = [
-          IconButton(
-            key: _settingsActionKey,
-            tooltip: '习惯中心设置',
-            onPressed: () => HabitCelebrationSettingsDialog.show(
-              context,
-              sourceKey: _settingsActionKey,
-              onOpenSleepLogMigration: _openSleepLogMigrationEntry,
-            ),
-            icon: const Icon(Icons.settings_outlined),
+          FloatingGlassAppBarActionGroup(
+            useTopBarGlass: true,
+            children: [
+              IconButton(
+                key: _settingsActionKey,
+                style: floatingGlassPlainIconButtonStyle(),
+                tooltip: '习惯中心设置',
+                onPressed: () => HabitCelebrationSettingsDialog.show(
+                  context,
+                  sourceKey: _settingsActionKey,
+                  onOpenSleepLogMigration: _openSleepLogMigrationEntry,
+                ),
+                icon: const Icon(Icons.settings_outlined),
+              ),
+              IconButton(
+                key: _archiveActionKey,
+                style: floatingGlassPlainIconButtonStyle(),
+                tooltip: '已归档习惯',
+                onPressed: _openArchived,
+                icon: const Icon(Icons.inventory_2_outlined),
+              ),
+            ],
           ),
-          IconButton(
-            key: _archiveActionKey,
-            tooltip: '已归档习惯',
-            onPressed: _openArchived,
-            icon: const Icon(Icons.inventory_2_outlined),
-          ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 8),
         ];
 
         final bodyTabs = [

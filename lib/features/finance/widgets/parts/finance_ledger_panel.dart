@@ -846,42 +846,44 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
                     )
                   : filtered.isEmpty
                   ? _buildEmptyState(context)
-                  : ListView.builder(
-                      padding: EdgeInsets.fromLTRB(
-                        16,
-                        4,
-                        16,
-                        listBottomPadding,
-                      ),
-                      itemCount: ledgerRows.length,
-                      findChildIndexCallback: (key) => keyedRowIndices[key],
-                      itemBuilder: (context, index) {
-                        final row = ledgerRows[index];
-                        if (row.isSpacer) return const SizedBox(height: 8);
-                        final group = row.group;
-                        if (group != null) {
-                          return _buildDayHeader(
+                  : OptionalLiquidGlassScrollOptimizer(
+                      child: ListView.builder(
+                        padding: EdgeInsets.fromLTRB(
+                          16,
+                          4,
+                          16,
+                          listBottomPadding,
+                        ),
+                        itemCount: ledgerRows.length,
+                        findChildIndexCallback: (key) => keyedRowIndices[key],
+                        itemBuilder: (context, index) {
+                          final row = ledgerRows[index];
+                          if (row.isSpacer) return const SizedBox(height: 8);
+                          final group = row.group;
+                          if (group != null) {
+                            return _buildDayHeader(
+                              context,
+                              group,
+                              hideAmountsDuplicatedByFooter:
+                                  _summaryExpanded &&
+                                  dayGroups.length == 1 &&
+                                  !_selectionMode &&
+                                  !_hasCommittedSelection,
+                            );
+                          }
+                          return _buildTransactionTile(
                             context,
-                            group,
-                            hideAmountsDuplicatedByFooter:
-                                _summaryExpanded &&
-                                dayGroups.length == 1 &&
-                                !_selectionMode &&
-                                !_hasCommittedSelection,
+                            row.transaction!,
+                            nowAt,
+                            selectionMode: _selectionMode,
+                            selected: _selectedTransactionUuids.contains(
+                              row.transaction!.uuid,
+                            ),
+                            onToggleSelection: () =>
+                                _toggleTransactionSelection(row.transaction!),
                           );
-                        }
-                        return _buildTransactionTile(
-                          context,
-                          row.transaction!,
-                          nowAt,
-                          selectionMode: _selectionMode,
-                          selected: _selectedTransactionUuids.contains(
-                            row.transaction!.uuid,
-                          ),
-                          onToggleSelection: () =>
-                              _toggleTransactionSelection(row.transaction!),
-                        );
-                      },
+                        },
+                      ),
                     ),
             ),
           ],
@@ -910,7 +912,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
                     child: ScaleTransition(
                       scale: animation,
                       alignment: Alignment.bottomRight,
-                      child: child,
+                      child: RepaintBoundary(child: child),
                     ),
                   );
                 },

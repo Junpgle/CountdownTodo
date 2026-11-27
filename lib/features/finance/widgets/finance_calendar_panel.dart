@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../utils/app_dialogs.dart';
 import '../../../utils/time_utils.dart';
 import '../../../widgets/floating_bottom_bar.dart';
+import '../../../widgets/optional_liquid_glass_surface.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 import 'finance_glass_segment_selector.dart';
@@ -95,28 +96,30 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
     final colorScheme = Theme.of(context).colorScheme;
     return RefreshIndicator(
       onRefresh: widget.onRefresh,
-      child: ListView(
-        padding: EdgeInsets.fromLTRB(
-          16,
-          widget.showModeSelector ? widget.topPadding + 12 : 0,
-          16,
-          floatingBottomNavigationContentPaddingFor(context),
-        ),
-        children: [
-          if (widget.showModeSelector) ...[
-            _buildModeSelector(),
+      child: OptionalLiquidGlassScrollOptimizer(
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            widget.showModeSelector ? widget.topPadding + 12 : 0,
+            16,
+            floatingBottomNavigationContentPaddingFor(context),
+          ),
+          children: [
+            if (widget.showModeSelector) ...[
+              _buildModeSelector(),
+              const SizedBox(height: 12),
+            ],
+            _buildFilterAndMetricSelectors(colorScheme),
             const SizedBox(height: 12),
+            _buildCalendarCard(context),
+            const SizedBox(height: 12),
+            _buildMonthlySummary(context),
+            const SizedBox(height: 20),
+            _buildSelectedDayHeader(context),
+            const SizedBox(height: 10),
+            ..._buildSelectedDayTransactions(context),
           ],
-          _buildFilterAndMetricSelectors(colorScheme),
-          const SizedBox(height: 12),
-          _buildCalendarCard(context),
-          const SizedBox(height: 12),
-          _buildMonthlySummary(context),
-          const SizedBox(height: 20),
-          _buildSelectedDayHeader(context),
-          const SizedBox(height: 10),
-          ..._buildSelectedDayTransactions(context),
-        ],
+        ),
       ),
     );
   }
@@ -531,10 +534,25 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
       gridDayCount,
       (index) => financeCalendarDayOffset(gridStart, index),
     );
-    final maxMagnitude = allDates.fold<int>(0, (maximum, date) {
-      final amount = _valueForDate(date)?.abs() ?? 0;
-      return amount > maximum ? amount : maximum;
-    });
+    final transactionsByDay = _metric == _FinanceCalendarMetric.balance
+        ? null
+        : _groupFilteredTransactionsByDay(
+            startKey: dateKey(allDates.first),
+            endKey: dateKey(allDates.last),
+          );
+    final dayValues = <String, int?>{};
+    var maxMagnitude = 0;
+    for (final date in allDates) {
+      final key = dateKey(date);
+      final amount = _metric == _FinanceCalendarMetric.balance
+          ? _balanceAt(date)
+          : _metricValueFromTransactions(transactionsByDay![key]);
+      dayValues[key] = amount;
+      final magnitude = amount?.abs() ?? 0;
+      if (magnitude > maxMagnitude) {
+        maxMagnitude = magnitude;
+      }
+    }
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
@@ -561,6 +579,7 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
                     Expanded(
                       child: _buildDayCell(
                         date,
+                        dayValues[dateKey(date)],
                         maxMagnitude,
                         isCurrentMonth:
                             date.month == month.month &&
@@ -603,13 +622,14 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
 
   Widget _buildDayCell(
     DateTime date,
+    int? amount,
     int maxMagnitude, {
     required bool isCurrentMonth,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isSelected = dateKey(date) == dateKey(_selectedDate);
-    final isToday = dateKey(date) == todayKey;
-    final amount = _valueForDate(date);
+    final key = dateKey(date);
+    final isSelected = key == dateKey(_selectedDate);
+    final isToday = key == todayKey;
     final hasAmount = amount != null && amount != 0;
 
     final baseTint = hasAmount
@@ -647,8 +667,7 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
           key: ValueKey('finance-calendar-day-${dateKey(date)}'),
           borderRadius: BorderRadius.circular(12),
           onTap: () => _selectDate(date),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 140),
+          child: Container(
             height: 60,
             decoration: BoxDecoration(
               color: cellBackground,
@@ -1160,6 +1179,47 @@ class _FinanceCalendarPanelState extends State<FinanceCalendarPanel> {
         ? now.day
         : DateTime(month.year, month.month + 1, 0).day;
     return amountMinor ~/ (days == 0 ? 1 : days);
+  }
+
+  Map<String, List<FinanceTransaction>> _groupFilteredTransactionsByDay({
+    required String startKey,
+    required String endKey,
+  }) {
+    final grouped = <String, List<FinanceTransaction>>{};
+    final nowAt = now.millisecondsSinceEpoch;
+    final currentTodayKey = todayKey;
+    for (final transaction in widget.transactions) {
+      final key = transaction.transactionDate;
+      if (key.compareTo(startKey) < 0 || key.compareTo(endKey) > 0) {
+        continue;
+      }
+      if (!_selectedTypes.contains(transaction.type)) continue;
+      if (_selectedCategoryUuids.isNotEmpty &&
+          !_selectedCategoryUuids.contains(transaction.categoryUuid)) {
+        continue;
+      }
+      final asOfAt = key.compareTo(currentTodayKey) > 0
+          ? financeCalendarDayOffset(
+                  DateTime.parse(key),
+                  1,
+                ).millisecondsSinceEpoch -
+                1
+          : nowAt;
+      if (transaction.balanceEventAt() > asOfAt) continue;
+      grouped.putIfAbsent(key, () => <FinanceTransaction>[]).add(transaction);
+    }
+    return grouped;
+  }
+
+  int? _metricValueFromTransactions(List<FinanceTransaction>? items) {
+    if (items == null || items.isEmpty) return 0;
+    final summary = FinanceSummary.fromTransactions(items);
+    return switch (_metric) {
+      _FinanceCalendarMetric.expense => summary.netExpenseMinor,
+      _FinanceCalendarMetric.income => summary.incomeMinor,
+      _FinanceCalendarMetric.cashflow => summary.balanceMinor,
+      _FinanceCalendarMetric.balance => null,
+    };
   }
 
   int? _valueForDate(DateTime date) {

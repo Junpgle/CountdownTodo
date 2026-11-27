@@ -14,6 +14,7 @@ import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/home_bottom_navigation_content.dart';
+import '../../../widgets/optional_liquid_glass_backdrop.dart';
 import '../../../utils/page_transitions.dart';
 import '../widgets/finance_widgets.dart';
 import '../widgets/finance_intro_guide.dart';
@@ -1286,112 +1287,122 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen>
               )
             : null,
         actions: [
-          IconButton(
-            key: _budgetActionKey,
-            style: floatingGlassPlainIconButtonStyle(),
-            tooltip: '预算',
-            onPressed: _openBudgets,
-            icon: const Icon(Icons.track_changes_outlined),
-          ),
-          PopupMenuButton<String>(
-            key: _moreActionKey,
-            style: floatingGlassPlainIconButtonStyle(),
-            tooltip: '更多操作',
-            onSelected: (value) {
-              if (value == 'guide') _showIntroGuide(force: true);
-              if (value == 'settings') _openSettings();
-              if (value == 'text') _openTextRecognition();
-              if (value == 'automation') _openAutomation();
-              if (value == 'loans') _openLoans();
-              if (value == 'future_commitments') _openFutureCommitments();
-              if (value == 'ai_cost') {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AiUsageCostScreen()),
-                );
-              }
-              if (value == 'export') _exportCsv();
-              if (value == 'trash') {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const FinanceTrashScreen()),
-                );
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'text',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.text_snippet_outlined),
-                  title: Text('文本识别记账'),
-                ),
+          FloatingGlassAppBarActionGroup(
+            useTopBarGlass: true,
+            children: [
+              IconButton(
+                key: _budgetActionKey,
+                style: floatingGlassPlainIconButtonStyle(),
+                tooltip: '预算',
+                onPressed: _openBudgets,
+                icon: const Icon(Icons.track_changes_outlined),
               ),
-              PopupMenuItem(
-                value: 'export',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.file_download_outlined),
-                  title: Text('导出$_selectedMonthLabel账单 CSV'),
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'automation',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.autorenew_outlined),
-                  title: Text('自动化与快捷模板'),
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'loans',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.account_balance_outlined),
-                  title: Text('贷款'),
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'future_commitments',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.event_repeat_outlined),
-                  title: Text('未来收支'),
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'ai_cost',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.auto_awesome_outlined),
-                  title: Text('AI 调用费用'),
-                ),
-              ),
-              PopupMenuItem(
-                value: 'settings',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.settings_outlined),
-                  title: Text('记账设置'),
-                ),
-              ),
-              if (!_isLedgerDrilldownRoute)
-                const PopupMenuItem(
-                  value: 'guide',
-                  child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.help_outline_rounded),
-                    title: Text('记账新手指引'),
+              PopupMenuButton<String>(
+                key: _moreActionKey,
+                style: floatingGlassPlainIconButtonStyle(),
+                tooltip: '更多操作',
+                onSelected: (value) {
+                  if (value == 'guide') _showIntroGuide(force: true);
+                  if (value == 'settings') _openSettings();
+                  if (value == 'text') _openTextRecognition();
+                  if (value == 'automation') _openAutomation();
+                  if (value == 'loans') _openLoans();
+                  if (value == 'future_commitments') _openFutureCommitments();
+                  if (value == 'ai_cost') {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const AiUsageCostScreen(),
+                      ),
+                    );
+                  }
+                  if (value == 'export') _exportCsv();
+                  if (value == 'trash') {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const FinanceTrashScreen(),
+                      ),
+                    );
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'text',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.text_snippet_outlined),
+                      title: Text('文本识别记账'),
+                    ),
                   ),
-                ),
-              const PopupMenuItem(
-                value: 'trash',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.delete_outline),
-                  title: Text('记账回收站'),
-                ),
+                  PopupMenuItem(
+                    value: 'export',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.file_download_outlined),
+                      title: Text('导出$_selectedMonthLabel账单 CSV'),
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'automation',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.autorenew_outlined),
+                      title: Text('自动化与快捷模板'),
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'loans',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.account_balance_outlined),
+                      title: Text('贷款'),
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'future_commitments',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.event_repeat_outlined),
+                      title: Text('未来收支'),
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'ai_cost',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.auto_awesome_outlined),
+                      title: Text('AI 调用费用'),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'settings',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.settings_outlined),
+                      title: Text('记账设置'),
+                    ),
+                  ),
+                  if (!_isLedgerDrilldownRoute)
+                    const PopupMenuItem(
+                      value: 'guide',
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.help_outline_rounded),
+                        title: Text('记账新手指引'),
+                      ),
+                    ),
+                  const PopupMenuItem(
+                    value: 'trash',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.delete_outline),
+                      title: Text('记账回收站'),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: FloatingGlassTopBarContentFade(
@@ -1594,14 +1605,17 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen>
         },
       ),
     );
-    final guardedScaffold = PopScope<Object?>(
-      canPop: !_handleLedgerBack,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && _handleLedgerBack) {
-          _handleBack();
-        }
-      },
-      child: scaffold,
+    final guardedScaffold = OptionalLiquidGlassBackdropScope(
+      isSolidBackground: true,
+      child: PopScope<Object?>(
+        canPop: !_handleLedgerBack,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop && _handleLedgerBack) {
+            _handleBack();
+          }
+        },
+        child: scaffold,
+      ),
     );
 
     final isDesktop =

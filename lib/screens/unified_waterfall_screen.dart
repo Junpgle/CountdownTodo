@@ -309,7 +309,8 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
           ? _buildSkeleton(isDark)
           : GestureDetector(
               onScaleUpdate: _handleScaleUpdate,
-              child: CustomScrollView(
+              child: OptionalLiquidGlassScrollOptimizer(
+                child: CustomScrollView(
                 physics: const BouncingScrollPhysics(
                   parent: AlwaysScrollableScrollPhysics(),
                 ),
@@ -494,6 +495,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                     ],
                   ),
                 ],
+              ),
               ),
             ),
     );

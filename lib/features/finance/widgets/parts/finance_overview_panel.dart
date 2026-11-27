@@ -195,7 +195,10 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
                   if (animation.value >= 0.999) {
                     return child!;
                   }
-                  return FadeTransition(opacity: animation, child: child);
+                  return FadeTransition(
+                    opacity: animation,
+                    child: RepaintBoundary(child: child),
+                  );
                 },
               );
             },
@@ -254,9 +257,12 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
 
     return RefreshIndicator(
       onRefresh: onRefresh,
-      child: ListView(
-        scrollCacheExtent: ScrollCacheExtent.pixels(2500),
-        padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPadding),
+      child: OptionalLiquidGlassScrollOptimizer(
+        child: ListView(
+          scrollCacheExtent: AppPlatform.isWindows
+              ? const ScrollCacheExtent.viewport(0.5)
+              : ScrollCacheExtent.pixels(600),
+          padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPadding),
         children: [
           LayoutBuilder(
             builder: (context, constraints) {
@@ -363,6 +369,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
           const SizedBox(height: 12),
           _buildCumulativeBalanceCard(context, colorScheme),
         ],
+      ),
       ),
     );
   }

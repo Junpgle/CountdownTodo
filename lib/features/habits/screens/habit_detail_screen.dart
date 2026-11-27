@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import '../../../widgets/app_skeleton.dart';
 import '../../../widgets/floating_glass_control.dart';
+import '../../../widgets/optional_liquid_glass_surface.dart';
 
 import 'package:flutter/material.dart';
 
@@ -71,6 +74,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   HabitSleepCoachingSnapshot? _sleepCoachingSnapshot;
   HabitDrinkStats? _drinkStats;
   bool _loading = true;
+  bool _backgroundSyncInFlight = false;
 
   bool get _isSleepDuration =>
       HabitSleepDurationService.isSleepDurationGoal(_goal);
@@ -92,7 +96,10 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     _loadData(showLoadingIndicator: true);
   }
 
-  Future<void> _loadData({bool showLoadingIndicator = false}) async {
+  Future<void> _loadData({
+    bool showLoadingIndicator = false,
+    bool syncSleepInBackground = true,
+  }) async {
     if (!mounted) return;
     if (showLoadingIndicator || _todayProgress == null) {
       setState(() => _loading = true);
@@ -106,22 +113,11 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
         adaptation?.kind == HabitAdaptationKind.earlyWake ||
         adaptation?.kind == HabitAdaptationKind.sleepDuration;
     final username = isSleepGoal ? await _accountUsername() : '';
-    if (isSleepGoal && username.isNotEmpty) {
-      try {
-        await StorageService.syncData(
-          username,
-          syncTodos: false,
-          syncCountdowns: false,
-          syncScreenTime: false,
-          syncTimeLogs: false,
-          syncPomodoro: false,
-          syncPlanBlocks: false,
-          syncFixedSchedules: false,
-          syncHabits: true,
-        );
-      } catch (_) {
-        // 详情页仍可使用本地快照离线展示。
-      }
+    if (syncSleepInBackground &&
+        isSleepGoal &&
+        username.isNotEmpty &&
+        !_backgroundSyncInFlight) {
+      unawaited(_syncSleepHabitsInBackground(username));
     }
     final coachingFuture = isSleepGoal
         ? HabitSleepCoachingService.load(username)
@@ -225,47 +221,77 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     _loadTimeLogImportPreview();
   }
 
+  Future<void> _syncSleepHabitsInBackground(String username) async {
+    _backgroundSyncInFlight = true;
+    try {
+      await StorageService.syncData(
+        username,
+        syncTodos: false,
+        syncCountdowns: false,
+        syncScreenTime: false,
+        syncTimeLogs: false,
+        syncPomodoro: false,
+        syncPlanBlocks: false,
+        syncFixedSchedules: false,
+        syncHabits: true,
+      );
+      if (mounted) {
+        await _loadData(
+          showLoadingIndicator: false,
+          syncSleepInBackground: false,
+        );
+      }
+    } catch (_) {
+      // 详情页仍可使用本地快照离线展示。
+    } finally {
+      _backgroundSyncInFlight = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final topBarHeight = floatingGlassTopBarHeight(context);
 
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: FloatingGlassAppBar(
-        flexibleSpace: const FloatingGlassTopBarBackground(),
-        title: Text(_goal.name),
-        centerTitle: false,
-        actions: [
-          PopupMenuButton<String>(
-            key: _menuActionKey,
-            onSelected: (value) {
-              switch (value) {
-                case 'edit':
-                  _editHabit();
-                case 'history':
-                  _openHistory();
-                case 'archive':
-                  _toggleArchive();
-                case 'delete':
-                  _deleteHabit();
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'edit', child: Text('编辑习惯')),
-              const PopupMenuItem(value: 'history', child: Text('历史记录')),
-              PopupMenuItem(
-                value: 'archive',
-                child: Text(_goal.isArchived ? '取消归档' : '归档习惯'),
-              ),
-              const PopupMenuItem(value: 'delete', child: Text('删除习惯')),
-            ],
-          ),
-        ],
-      ),
-      body: FloatingGlassTopBarContentFade(
-        topBarHeight: topBarHeight,
-        child: _buildBody(colorScheme, topBarHeight),
+    return OptionalLiquidGlassBackdropScope(
+      isSolidBackground: true,
+      child: Scaffold(
+        extendBodyBehindAppBar: true,
+        appBar: FloatingGlassAppBar(
+          flexibleSpace: const FloatingGlassTopBarBackground(),
+          title: Text(_goal.name),
+          centerTitle: false,
+          actions: [
+            PopupMenuButton<String>(
+              key: _menuActionKey,
+              onSelected: (value) {
+                switch (value) {
+                  case 'edit':
+                    _editHabit();
+                  case 'history':
+                    _openHistory();
+                  case 'archive':
+                    _toggleArchive();
+                  case 'delete':
+                    _deleteHabit();
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(value: 'edit', child: Text('编辑习惯')),
+                const PopupMenuItem(value: 'history', child: Text('历史记录')),
+                PopupMenuItem(
+                  value: 'archive',
+                  child: Text(_goal.isArchived ? '取消归档' : '归档习惯'),
+                ),
+                const PopupMenuItem(value: 'delete', child: Text('删除习惯')),
+              ],
+            ),
+          ],
+        ),
+        body: FloatingGlassTopBarContentFade(
+          topBarHeight: topBarHeight,
+          child: _buildBody(colorScheme, topBarHeight),
+        ),
       ),
     );
   }
@@ -281,37 +307,36 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
       );
     }
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isWide = constraints.maxWidth >= 900;
-        final maxWidth = isWide ? 1200.0 : 840.0;
-        final horizontalPadding = isWide ? 28.0 : 16.0;
+    final isWide = MediaQuery.sizeOf(context).width >= 900;
+    final maxWidth = isWide ? 1200.0 : 840.0;
+    final horizontalPadding = isWide ? 28.0 : 16.0;
 
-        return Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: maxWidth),
-            child: ListView(
-              padding: EdgeInsets.fromLTRB(
-                horizontalPadding,
-                topPadding + 16,
-                horizontalPadding,
-                32,
-              ),
-              children: [
-                _buildHeader(colorScheme),
-                const SizedBox(height: 16),
-                isWide
-                    ? _buildWideSections(colorScheme)
-                    : _buildNarrowSections(colorScheme),
-              ],
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        child: OptionalLiquidGlassScrollOptimizer(
+          child: ListView(
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              topPadding + 16,
+              horizontalPadding,
+              32,
             ),
+            children: [
+              _buildHeader(colorScheme),
+              const SizedBox(height: 16),
+              if (isWide)
+                _buildWideSections(colorScheme)
+              else
+                ..._buildNarrowSectionChildren(colorScheme),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
-  Widget _buildNarrowSections(ColorScheme colorScheme) {
+  List<Widget> _buildNarrowSectionChildren(ColorScheme colorScheme) {
     final children = <Widget>[];
 
     void addSection(Widget section, {double gap = 20}) {
@@ -350,10 +375,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: children,
-    );
+    return children;
   }
 
   Widget _buildWideSections(ColorScheme colorScheme) {

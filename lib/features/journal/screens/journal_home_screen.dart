@@ -197,46 +197,54 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
           ],
         ),
         actions: [
-          IconButton(
-            tooltip: '日记回收站',
-            onPressed: _openTrash,
-            icon: Badge(
-              isLabelVisible: _trashCount > 0,
-              label: Text('$_trashCount'),
-              child: const Icon(Icons.delete_outline_rounded),
-            ),
-          ),
-          IconButton(
-            tooltip: '搜索日记',
-            onPressed: () => _showSearch(context),
-            icon: const Icon(Icons.search_rounded),
-          ),
-          MenuAnchor(
-            menuChildren: [
-              _buildViewMenuItem(
-                isPhotoWall: false,
-                icon: Icons.view_agenda_rounded,
-                label: '时间线',
+          FloatingGlassAppBarActionGroup(
+            useTopBarGlass: true,
+            children: [
+              IconButton(
+                style: floatingGlassPlainIconButtonStyle(),
+                tooltip: '日记回收站',
+                onPressed: _openTrash,
+                icon: Badge(
+                  isLabelVisible: _trashCount > 0,
+                  label: Text('$_trashCount'),
+                  child: const Icon(Icons.delete_outline_rounded),
+                ),
               ),
-              _buildViewMenuItem(
-                isPhotoWall: true,
-                icon: Icons.grid_view_rounded,
-                label: '照片墙',
+              IconButton(
+                style: floatingGlassPlainIconButtonStyle(),
+                tooltip: '搜索日记',
+                onPressed: () => _showSearch(context),
+                icon: const Icon(Icons.search_rounded),
+              ),
+              MenuAnchor(
+                menuChildren: [
+                  _buildViewMenuItem(
+                    isPhotoWall: false,
+                    icon: Icons.view_agenda_rounded,
+                    label: '时间线',
+                  ),
+                  _buildViewMenuItem(
+                    isPhotoWall: true,
+                    icon: Icons.grid_view_rounded,
+                    label: '照片墙',
+                  ),
+                ],
+                builder: (context, controller, child) {
+                  return IconButton(
+                    style: floatingGlassPlainIconButtonStyle(),
+                    tooltip: '选择视图',
+                    onPressed: () {
+                      if (controller.isOpen) {
+                        controller.close();
+                      } else {
+                        controller.open();
+                      }
+                    },
+                    icon: const Icon(Icons.filter_list_rounded),
+                  );
+                },
               ),
             ],
-            builder: (context, controller, child) {
-              return IconButton(
-                tooltip: '选择视图',
-                onPressed: () {
-                  if (controller.isOpen) {
-                    controller.close();
-                  } else {
-                    controller.open();
-                  }
-                },
-                icon: const Icon(Icons.filter_list_rounded),
-              );
-            },
           ),
           const SizedBox(width: 8),
         ],

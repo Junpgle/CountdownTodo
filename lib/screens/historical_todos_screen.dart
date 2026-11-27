@@ -1651,23 +1651,32 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('待办深度清理'),
         actions: [
-          if (_tabController.index == 1)
-            IconButton(
-              icon: Icon(
-                _isTrashSelectionMode
-                    ? Icons.close_rounded
-                    : Icons.checklist_rounded,
+          FloatingGlassAppBarActionGroup(
+            useTopBarGlass: true,
+            children: [
+              if (_tabController.index == 1)
+                IconButton(
+                  style: floatingGlassPlainIconButtonStyle(),
+                  icon: Icon(
+                    _isTrashSelectionMode
+                        ? Icons.close_rounded
+                        : Icons.checklist_rounded,
+                  ),
+                  tooltip: _isTrashSelectionMode ? '退出选择' : '选择待办',
+                  onPressed: _busyId != null || _isLoadingSeriesSelection
+                      ? null
+                      : _toggleTrashSelectionMode,
+                ),
+              IconButton(
+                style: floatingGlassPlainIconButtonStyle(),
+                icon: const Icon(Icons.refresh_rounded),
+                tooltip: '重新扫描',
+                onPressed:
+                    _isLoading || _busyId != null ? null : () => _loadData(),
               ),
-              tooltip: _isTrashSelectionMode ? '退出选择' : '选择待办',
-              onPressed: _busyId != null || _isLoadingSeriesSelection
-                  ? null
-                  : _toggleTrashSelectionMode,
-            ),
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '重新扫描',
-            onPressed: _isLoading || _busyId != null ? null : () => _loadData(),
+            ],
           ),
+          const SizedBox(width: 8),
         ],
         bottom: TabBar(
           controller: _tabController,

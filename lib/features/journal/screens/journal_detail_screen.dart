@@ -111,16 +111,24 @@ class _JournalDetailScreenState extends State<JournalDetailScreen> {
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text(AppTimeFormats.format(_entry.occurredAt, 'yyyy年MM月dd日')),
         actions: [
-          IconButton(
-            tooltip: '编辑',
-            onPressed: _edit,
-            icon: const Icon(Icons.edit_rounded),
+          FloatingGlassAppBarActionGroup(
+            useTopBarGlass: true,
+            children: [
+              IconButton(
+                style: floatingGlassPlainIconButtonStyle(),
+                tooltip: '编辑',
+                onPressed: _edit,
+                icon: const Icon(Icons.edit_rounded),
+              ),
+              IconButton(
+                style: floatingGlassPlainIconButtonStyle(),
+                tooltip: '移至回收站',
+                onPressed: _delete,
+                icon: const Icon(Icons.delete_outline_rounded),
+              ),
+            ],
           ),
-          IconButton(
-            tooltip: '移至回收站',
-            onPressed: _delete,
-            icon: const Icon(Icons.delete_outline_rounded),
-          ),
+          const SizedBox(width: 8),
         ],
       ),
       body: FloatingGlassTopBarContentFade(
