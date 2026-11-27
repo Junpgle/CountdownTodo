@@ -607,6 +607,9 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen>
                 showMetricGrid: true,
                 showChart: false,
                 listCount: 4,
+                wideLayout: AppSkeletonDashboardWideLayout.metricsAndGrid,
+                wideBreakpoint: 640,
+                wideListColumns: 2,
               )
             : _loadError != null
             ? _buildError(colorScheme)

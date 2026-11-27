@@ -297,19 +297,25 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   }
 
   Widget _buildBody(ColorScheme colorScheme, double topPadding) {
-    if (_loading && _todayProgress == null) {
-      return AppSkeletonDashboardPage(
-        topPadding: topPadding + 8,
-        maxWidth: 840,
-        showMetricGrid: true,
-        showChart: true,
-        listCount: 3,
-      );
-    }
-
     final isWide = MediaQuery.sizeOf(context).width >= 900;
     final maxWidth = isWide ? 1200.0 : 840.0;
     final horizontalPadding = isWide ? 28.0 : 16.0;
+
+    if (_loading && _todayProgress == null) {
+      return AppSkeletonDashboardPage(
+        topPadding: topPadding + 8,
+        maxWidth: maxWidth,
+        showMetricGrid: true,
+        showChart: true,
+        listCount: 3,
+        wideLayout: AppSkeletonDashboardWideLayout.splitColumns,
+        wideBreakpoint: 900,
+        leftFlex: 3,
+        rightFlex: 2,
+        showTopHeaderSpan: true,
+        wideHorizontalPadding: 28,
+      );
+    }
 
     return Center(
       child: ConstrainedBox(

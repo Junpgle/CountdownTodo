@@ -255,7 +255,15 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
             ),
             // 右侧详情区 (Detail)
             Expanded(
-              child: _selectedTeam == null
+              child: _isLoading && _selectedTeam == null && _teams.isEmpty
+                  ? const AppSkeletonDashboardPage(
+                      topPadding: 24,
+                      maxWidth: 960,
+                      showMetricGrid: true,
+                      showChart: false,
+                      listCount: 4,
+                    )
+                  : _selectedTeam == null
                   ? _buildDetailEmptyState(isDark)
                   : _TeamDetailView(
                       team: _selectedTeam!,

@@ -265,7 +265,11 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
               maxWidth: 1080,
               showMetricGrid: true,
               showChart: false,
-              listCount: 3,
+              listCount: 4,
+              wideLayout: AppSkeletonDashboardWideLayout.metricsAndGrid,
+              wideBreakpoint: 760,
+              wideHorizontalPadding: 28,
+              wideListColumns: 2,
             )
           : FloatingGlassTopBarContentFade(
               topBarHeight: kToolbarHeight,

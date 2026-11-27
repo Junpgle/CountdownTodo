@@ -1151,7 +1151,12 @@ class _SettingsPageState extends State<SettingsPage>
         );
       },
       child: _isInitialLoading
-          ? const AppSkeletonSettingsPage(sectionCount: 3, rowsPerSection: 3)
+          ? const AppSkeletonSettingsPage(
+              sectionCount: 3,
+              rowsPerSection: 3,
+              masterDetailOnWide: true,
+              masterDetailBreakpoint: 800,
+            )
           : LayoutBuilder(
               builder: (context, constraints) {
                 if (constraints.maxWidth < 150) {

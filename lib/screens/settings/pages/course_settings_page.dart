@@ -239,6 +239,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage>
                 : floatingGlassSettingsContentTopInset(context),
             sectionCount: 2,
             rowsPerSection: 3,
+            twoColumnOnWide: true,
+            wideBreakpoint: 600,
           ),
         ),
       );

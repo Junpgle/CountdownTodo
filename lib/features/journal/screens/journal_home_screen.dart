@@ -254,8 +254,12 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
         child: _isLoading
             ? AppSkeletonListPage(
                 topPadding: topBarHeight + 8,
-                useTwoColumnsOnWide: _isPhotoWall || isWide,
-                itemCount: 5,
+                horizontalPadding: isWide ? 40 : 16,
+                useTwoColumnsOnWide: true,
+                wideBreakpoint: 900,
+                narrowColumns: _isPhotoWall ? 2 : 1,
+                wideColumns: _isPhotoWall ? 4 : 2,
+                itemCount: _isPhotoWall ? 8 : 6,
                 itemHeight: 112,
               )
             : entries.isEmpty

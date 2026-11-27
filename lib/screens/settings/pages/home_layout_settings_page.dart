@@ -401,6 +401,9 @@ class _HomeLayoutSettingsPageState extends State<HomeLayoutSettingsPage> {
                 topPadding: widget.isEmbedded
                     ? 16
                     : floatingGlassSettingsContentTopInset(context),
+                showHeroCard: true,
+                useTwoColumnsOnWide: true,
+                wideBreakpoint: 640,
                 itemCount: 6,
                 itemHeight: 68,
               )

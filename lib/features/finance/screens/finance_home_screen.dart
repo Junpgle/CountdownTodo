@@ -1415,6 +1415,9 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen>
                 showMetricGrid: true,
                 showChart: true,
                 listCount: 4,
+                wideLayout: AppSkeletonDashboardWideLayout.metricsAndGrid,
+                wideBreakpoint: 640,
+                wideListColumns: 2,
               )
             : !_hasInitialized && _loadError != null
             ? _buildError(colorScheme)

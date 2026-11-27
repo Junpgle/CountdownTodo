@@ -347,10 +347,16 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
     return const Scaffold(
       body: SafeArea(
         child: AppSkeletonDashboardPage(
-          maxWidth: 960,
+          maxWidth: 1240,
+          showTopHeaderSpan: true,
           showMetricGrid: true,
           showChart: false,
           listCount: 4,
+          wideLayout: AppSkeletonDashboardWideLayout.splitColumns,
+          wideBreakpoint: 900,
+          leftFlex: 5,
+          rightFlex: 5,
+          wideHorizontalPadding: 24,
         ),
       ),
     );

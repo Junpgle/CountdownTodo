@@ -424,7 +424,10 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
         maxWidth: 840,
         showMetricGrid: true,
         showChart: true,
-        listCount: 3,
+        listCount: 4,
+        wideLayout: AppSkeletonDashboardWideLayout.metricsAndGrid,
+        wideBreakpoint: 600,
+        wideListColumns: 2,
       );
     }
     if (_goals.isEmpty) {

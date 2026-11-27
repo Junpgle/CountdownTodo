@@ -670,7 +670,9 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     if (_loading && _goals.isEmpty) {
       return AppSkeletonCalendarPage(
         topPadding: widget.topPadding + 8,
-        maxWidth: 840,
+        maxWidth: 1040,
+        splitOnWide: true,
+        wideBreakpoint: 600,
       );
     }
 

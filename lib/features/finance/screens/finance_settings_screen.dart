@@ -318,6 +318,7 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen>
         child: _isLoading
             ? AppSkeletonSettingsPage(
                 topPadding: topBarHeight + 8,
+                maxWidth: 1000,
                 sectionCount: 3,
                 rowsPerSection: 3,
               )

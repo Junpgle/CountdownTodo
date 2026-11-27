@@ -283,6 +283,11 @@ class _AppBoardScreenState extends State<AppBoardScreen>
                         showMetricGrid: true,
                         showChart: true,
                         listCount: 4,
+                        wideLayout: AppSkeletonDashboardWideLayout.splitColumns,
+                        wideBreakpoint: 1024,
+                        leftFlex: 3,
+                        rightFlex: 6,
+                        wideHorizontalPadding: 24,
                       )
                     : isDesktop
                     ? _buildDesktopLayout()

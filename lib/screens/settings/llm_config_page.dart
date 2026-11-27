@@ -121,7 +121,11 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
             topPadding: standalone
                 ? floatingGlassSettingsContentTopInset(context)
                 : 16,
+            maxWidth: 1180,
             fieldCount: 4,
+            twoColumnOnWide: true,
+            showStepperHeaderOnWide: true,
+            wideBreakpoint: 760,
           )
         : _accessDenied
         ? _buildAccessDeniedBody(context)

@@ -476,11 +476,17 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
           padding: EdgeInsets.only(top: topBarHeight),
           child: _isLoading
               ? const AppSkeletonDashboardPage(
-                  maxWidth: 1080,
+                  maxWidth: 1400,
                   showFilterChips: true,
                   showMetricGrid: true,
                   showChart: true,
-                  listCount: 5,
+                  listCount: 6,
+                  wideLayout: AppSkeletonDashboardWideLayout.splitColumns,
+                  wideBreakpoint: 900,
+                  leftFlex: 4,
+                  rightFlex: 5,
+                  wideListColumns: 3,
+                  wideHorizontalPadding: 20,
                 )
               : Align(
                   alignment: Alignment.topCenter,

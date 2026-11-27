@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../services/animation_config_service.dart';
 import '../services/power_save_mode_service.dart';
 import '../utils/android_energy_policy.dart';
+import 'app_state_views.dart';
 
 class _AppSkeletonScopeData extends InheritedWidget {
   final Animation<double>? animation;
@@ -55,6 +57,7 @@ class _AppSkeletonScopeState extends State<AppSkeletonScope>
   late final Animation<double> _animation;
   bool _isAnimating = false;
   bool _disableAnimations = false;
+  bool _skeletonEnabled = AnimationConfigService.skeletonScreenEnabled;
 
   @override
   void initState() {
@@ -64,6 +67,19 @@ class _AppSkeletonScopeState extends State<AppSkeletonScope>
       CurvedAnimation(parent: _controller, curve: Curves.easeInOutSine),
     );
     PowerSaveModeService.enabledListenable.addListener(_syncMotionState);
+    AnimationConfigService.skeletonScreenEnabledListenable.addListener(
+      _handleSkeletonSettingChanged,
+    );
+  }
+
+  void _handleSkeletonSettingChanged() {
+    final next = AnimationConfigService.skeletonScreenEnabled;
+    if (next == _skeletonEnabled) return;
+    _skeletonEnabled = next;
+    _syncMotionState();
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -87,6 +103,7 @@ class _AppSkeletonScopeState extends State<AppSkeletonScope>
 
   void _syncMotionState() {
     final shouldAnimate =
+        _skeletonEnabled &&
         widget.animate &&
         AndroidEnergyPolicy.shouldRunDecorativeMotion &&
         !_disableAnimations;
@@ -105,6 +122,9 @@ class _AppSkeletonScopeState extends State<AppSkeletonScope>
 
   @override
   void dispose() {
+    AnimationConfigService.skeletonScreenEnabledListenable.removeListener(
+      _handleSkeletonSettingChanged,
+    );
     PowerSaveModeService.enabledListenable.removeListener(_syncMotionState);
     _controller.dispose();
     super.dispose();
@@ -112,6 +132,9 @@ class _AppSkeletonScopeState extends State<AppSkeletonScope>
 
   @override
   Widget build(BuildContext context) {
+    if (!_skeletonEnabled) {
+      return const AppLoadingView();
+    }
     return _AppSkeletonScopeData(
       animation: _isAnimating ? _animation : null,
       isAnimating: _isAnimating,
@@ -385,7 +408,8 @@ class _AppSkeletonViewportShell extends StatelessWidget {
     );
     Widget content = Padding(padding: resolvedPadding, child: child);
     if (maxWidth != null) {
-      content = Center(
+      content = Align(
+        alignment: Alignment.topCenter,
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: maxWidth!),
           child: content,
@@ -402,6 +426,90 @@ class _AppSkeletonViewportShell extends StatelessWidget {
       label: '加载中',
       child: ExcludeSemantics(
         child: AppSkeletonScope(isLightSurface: isLightSurface, child: content),
+      ),
+    );
+  }
+}
+
+class _SkeletonResponsiveGrid extends StatelessWidget {
+  final int columns;
+  final List<Widget> items;
+  final double crossAxisSpacing;
+  final double mainAxisSpacing;
+
+  const _SkeletonResponsiveGrid({
+    super.key,
+    required this.columns,
+    required this.items,
+    this.crossAxisSpacing = 12,
+    this.mainAxisSpacing = 12,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cols = columns.clamp(1, 6);
+    if (cols == 1) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < items.length; i++) ...[
+            items[i],
+            if (i < items.length - 1) SizedBox(height: mainAxisSpacing),
+          ],
+        ],
+      );
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < items.length; i += cols) ...[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var c = 0; c < cols; c++) ...[
+                Expanded(
+                  child: i + c < items.length
+                      ? items[i + c]
+                      : const SizedBox.shrink(),
+                ),
+                if (c < cols - 1) SizedBox(width: crossAxisSpacing),
+              ],
+            ],
+          ),
+          if (i + cols < items.length) SizedBox(height: mainAxisSpacing),
+        ],
+      ],
+    );
+  }
+}
+
+class _SkeletonGridTileCard extends StatelessWidget {
+  final double visualHeight;
+
+  const _SkeletonGridTileCard({this.visualHeight = 68});
+
+  @override
+  Widget build(BuildContext context) {
+    return AppSkeletonCard(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AppSkeletonBox(height: visualHeight, borderRadius: 10),
+          const SizedBox(height: 10),
+          const FractionallySizedBox(
+            widthFactor: 0.72,
+            child: AppSkeletonLine(height: 12),
+          ),
+          const SizedBox(height: 6),
+          const FractionallySizedBox(
+            widthFactor: 0.48,
+            child: AppSkeletonLine(height: 10),
+          ),
+        ],
       ),
     );
   }
@@ -458,11 +566,24 @@ class _SkeletonListItemCard extends StatelessWidget {
   }
 }
 
+/// Responsive wide layout strategies for [AppSkeletonDashboardPage].
+enum AppSkeletonDashboardWideLayout {
+  /// Always stacks metrics, chart, and list vertically.
+  singleColumn,
+
+  /// Two-pane layout: metrics/chart in the left column, cards/list in the right.
+  splitColumns,
+
+  /// Top row places metrics beside the chart, followed by a multi-column grid.
+  metricsAndGrid,
+}
+
 /// Skeleton preset for list-based screens and tabs.
 class AppSkeletonListPage extends StatelessWidget {
   final double topPadding;
   final double bottomPadding;
   final double horizontalPadding;
+  final double? wideHorizontalPadding;
   final double? maxWidth;
   final int itemCount;
   final double itemHeight;
@@ -471,6 +592,9 @@ class AppSkeletonListPage extends StatelessWidget {
   final bool showSearchBar;
   final bool showFilterChips;
   final bool useTwoColumnsOnWide;
+  final double wideBreakpoint;
+  final int narrowColumns;
+  final int? wideColumns;
   final bool shrinkWrap;
   final bool isLightSurface;
 
@@ -479,6 +603,7 @@ class AppSkeletonListPage extends StatelessWidget {
     this.topPadding = 12,
     this.bottomPadding = 24,
     this.horizontalPadding = 16,
+    this.wideHorizontalPadding,
     this.maxWidth,
     this.itemCount = 5,
     this.itemHeight = 84,
@@ -487,93 +612,105 @@ class AppSkeletonListPage extends StatelessWidget {
     this.showSearchBar = false,
     this.showFilterChips = false,
     this.useTwoColumnsOnWide = false,
+    this.wideBreakpoint = 640,
+    this.narrowColumns = 1,
+    this.wideColumns,
     this.shrinkWrap = false,
     this.isLightSurface = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isWide =
-        useTwoColumnsOnWide && MediaQuery.sizeOf(context).width >= 640;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide = constraints.maxWidth >= wideBreakpoint;
+        final resolvedWideColumns =
+            wideColumns ?? (useTwoColumnsOnWide ? 2 : narrowColumns);
+        final columns = (isWide ? resolvedWideColumns : narrowColumns).clamp(
+          1,
+          4,
+        );
+        final resolvedHorizontalPadding = isWide
+            ? (wideHorizontalPadding ?? horizontalPadding)
+            : horizontalPadding;
+        final gridItems = List<Widget>.generate(
+          itemCount,
+          (_) => columns >= 3
+              ? const _SkeletonGridTileCard()
+              : _SkeletonListItemCard(height: itemHeight),
+          growable: false,
+        );
 
-    return _AppSkeletonViewportShell(
-      topPadding: topPadding,
-      bottomPadding: bottomPadding,
-      horizontalPadding: horizontalPadding,
-      maxWidth: maxWidth,
-      shrinkWrap: shrinkWrap,
-      isLightSurface: isLightSurface,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (showSearchBar) ...[
-            const AppSkeletonBox(height: 44, borderRadius: 22),
-            const SizedBox(height: 12),
-          ],
-          if (showFilterChips) ...[
-            const SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              physics: NeverScrollableScrollPhysics(),
-              child: Row(
-                children: [
-                  AppSkeletonBox(width: 68, height: 30, borderRadius: 15),
-                  SizedBox(width: 8),
-                  AppSkeletonBox(width: 82, height: 30, borderRadius: 15),
-                  SizedBox(width: 8),
-                  AppSkeletonBox(width: 74, height: 30, borderRadius: 15),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-          ],
-          if (showHeroCard) ...[
-            AppSkeletonCard(
-              padding: const EdgeInsets.all(16),
-              child: SizedBox(
-                height: (heroHeight - 32).clamp(48.0, 220.0),
-                child: const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
+        return _AppSkeletonViewportShell(
+          topPadding: topPadding,
+          bottomPadding: bottomPadding,
+          horizontalPadding: resolvedHorizontalPadding,
+          maxWidth: maxWidth,
+          shrinkWrap: shrinkWrap,
+          isLightSurface: isLightSurface,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (showSearchBar) ...[
+                const AppSkeletonBox(height: 44, borderRadius: 22),
+                const SizedBox(height: 12),
+              ],
+              if (showFilterChips) ...[
+                const SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  physics: NeverScrollableScrollPhysics(),
+                  child: Row(
+                    children: [
+                      AppSkeletonBox(width: 68, height: 30, borderRadius: 15),
+                      SizedBox(width: 8),
+                      AppSkeletonBox(width: 82, height: 30, borderRadius: 15),
+                      SizedBox(width: 8),
+                      AppSkeletonBox(width: 74, height: 30, borderRadius: 15),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
+              if (showHeroCard) ...[
+                AppSkeletonCard(
+                  padding: const EdgeInsets.all(16),
+                  child: SizedBox(
+                    height: (heroHeight - 32).clamp(48.0, 220.0),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        AppSkeletonLine(width: 110, height: 14),
-                        AppSkeletonBox(width: 64, height: 22, borderRadius: 11),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            AppSkeletonLine(width: 110, height: 14),
+                            AppSkeletonBox(
+                              width: 64,
+                              height: 22,
+                              borderRadius: 11,
+                            ),
+                          ],
+                        ),
+                        AppSkeletonLine(width: 160, height: 22),
+                        AppSkeletonBox(height: 10, borderRadius: 5),
                       ],
                     ),
-                    AppSkeletonLine(width: 160, height: 22),
-                    AppSkeletonBox(height: 10, borderRadius: 5),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-          if (isWide)
-            for (var i = 0; i < itemCount; i += 2) ...[
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: _SkeletonListItemCard(height: itemHeight)),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: i + 1 < itemCount
-                        ? _SkeletonListItemCard(height: itemHeight)
-                        : const SizedBox.shrink(),
                   ),
-                ],
+                ),
+                const SizedBox(height: 16),
+              ],
+              _SkeletonResponsiveGrid(
+                key: columns > 1
+                    ? ValueKey<String>('app-skeleton-list-grid-$columns')
+                    : null,
+                columns: columns,
+                items: gridItems,
               ),
-              if (i + 2 < itemCount) const SizedBox(height: 12),
-            ]
-          else
-            for (var i = 0; i < itemCount; i++) ...[
-              _SkeletonListItemCard(height: itemHeight),
-              if (i < itemCount - 1) const SizedBox(height: 12),
             ],
-        ],
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -582,14 +719,22 @@ class AppSkeletonListPage extends StatelessWidget {
 class AppSkeletonDashboardPage extends StatelessWidget {
   final double topPadding;
   final double bottomPadding;
+  final double horizontalPadding;
+  final double? wideHorizontalPadding;
   final double? maxWidth;
   final bool showPeriodHeader;
   final bool showFilterChips;
+  final bool showTopHeaderSpan;
   final bool showMetricGrid;
   final int metricCount;
   final bool showChart;
   final double chartHeight;
   final int listCount;
+  final AppSkeletonDashboardWideLayout wideLayout;
+  final double wideBreakpoint;
+  final int leftFlex;
+  final int rightFlex;
+  final int wideListColumns;
   final bool shrinkWrap;
   final bool isLightSurface;
 
@@ -597,138 +742,249 @@ class AppSkeletonDashboardPage extends StatelessWidget {
     super.key,
     this.topPadding = 12,
     this.bottomPadding = 24,
+    this.horizontalPadding = 16,
+    this.wideHorizontalPadding,
     this.maxWidth,
     this.showPeriodHeader = false,
     this.showFilterChips = false,
+    this.showTopHeaderSpan = false,
     this.showMetricGrid = true,
     this.metricCount = 3,
     this.showChart = true,
     this.chartHeight = 190,
     this.listCount = 4,
+    this.wideLayout = AppSkeletonDashboardWideLayout.singleColumn,
+    this.wideBreakpoint = 768,
+    this.leftFlex = 4,
+    this.rightFlex = 5,
+    this.wideListColumns = 1,
     this.shrinkWrap = false,
     this.isLightSurface = false,
   });
 
-  @override
-  Widget build(BuildContext context) {
-    final effectiveMetricCount = metricCount.clamp(1, 4);
-    return _AppSkeletonViewportShell(
-      topPadding: topPadding,
-      bottomPadding: bottomPadding,
-      maxWidth: maxWidth,
-      shrinkWrap: shrinkWrap,
-      isLightSurface: isLightSurface,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+  Widget _buildMetricCard(int effectiveMetricCount) {
+    return AppSkeletonCard(
+      padding: const EdgeInsets.all(16),
+      child: Row(
         children: [
-          if (showPeriodHeader) ...[
-            const Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                AppSkeletonBox(width: 140, height: 34, borderRadius: 17),
-                AppSkeletonBox(width: 96, height: 34, borderRadius: 17),
-              ],
-            ),
-            const SizedBox(height: 14),
-          ],
-          if (showFilterChips) ...[
-            const SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              physics: NeverScrollableScrollPhysics(),
-              child: Row(
+          for (var i = 0; i < effectiveMetricCount; i++) ...[
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  AppSkeletonBox(width: 64, height: 30, borderRadius: 15),
-                  SizedBox(width: 8),
-                  AppSkeletonBox(width: 78, height: 30, borderRadius: 15),
-                  SizedBox(width: 8),
-                  AppSkeletonBox(width: 72, height: 30, borderRadius: 15),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-          ],
-          if (showMetricGrid) ...[
-            AppSkeletonCard(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  for (var i = 0; i < effectiveMetricCount; i++) ...[
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const FractionallySizedBox(
-                            widthFactor: 0.65,
-                            child: AppSkeletonLine(height: 11),
-                          ),
-                          const SizedBox(height: 10),
-                          FractionallySizedBox(
-                            widthFactor: i.isEven ? 0.85 : 0.72,
-                            child: const AppSkeletonLine(height: 20),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (i < effectiveMetricCount - 1) const SizedBox(width: 12),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-          ],
-          if (showChart) ...[
-            Builder(
-              builder: (context) {
-                final barAreaHeight = (chartHeight - 70).clamp(72.0, 220.0);
-                const barFactors = [0.52, 0.84, 0.68, 1.0, 0.76, 0.60];
-                return AppSkeletonCard(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          AppSkeletonLine(width: 112, height: 15),
-                          AppSkeletonBox(
-                            width: 60,
-                            height: 22,
-                            borderRadius: 11,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        height: barAreaHeight,
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            for (var i = 0; i < barFactors.length; i++) ...[
-                              Expanded(
-                                child: AppSkeletonBox(
-                                  height: barAreaHeight * barFactors[i],
-                                ),
-                              ),
-                              if (i < barFactors.length - 1)
-                                const SizedBox(width: 10),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
+                  const FractionallySizedBox(
+                    widthFactor: 0.65,
+                    child: AppSkeletonLine(height: 11),
                   ),
-                );
-              },
+                  const SizedBox(height: 10),
+                  FractionallySizedBox(
+                    widthFactor: i.isEven ? 0.85 : 0.72,
+                    child: const AppSkeletonLine(height: 20),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 14),
-          ],
-          for (var i = 0; i < listCount; i++) ...[
-            const _SkeletonListItemCard(height: 74),
-            if (i < listCount - 1) const SizedBox(height: 12),
+            if (i < effectiveMetricCount - 1) const SizedBox(width: 12),
           ],
         ],
       ),
+    );
+  }
+
+  Widget _buildChartCard() {
+    final barAreaHeight = (chartHeight - 70).clamp(72.0, 220.0);
+    const barFactors = [0.52, 0.84, 0.68, 1.0, 0.76, 0.60];
+    return AppSkeletonCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              AppSkeletonLine(width: 112, height: 15),
+              AppSkeletonBox(width: 60, height: 22, borderRadius: 11),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: barAreaHeight,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (var i = 0; i < barFactors.length; i++) ...[
+                  Expanded(
+                    child: AppSkeletonBox(
+                      height: barAreaHeight * barFactors[i],
+                    ),
+                  ),
+                  if (i < barFactors.length - 1) const SizedBox(width: 10),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildListSection(int columns) {
+    final effectiveColumns = columns.clamp(1, 3);
+    final items = List<Widget>.generate(
+      listCount,
+      (_) => effectiveColumns >= 2 && wideListColumns >= 2
+          ? const _SkeletonGridTileCard(visualHeight: 56)
+          : const _SkeletonListItemCard(height: 74),
+      growable: false,
+    );
+    return _SkeletonResponsiveGrid(columns: effectiveColumns, items: items);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveMetricCount = metricCount.clamp(1, 4);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxW = constraints.maxWidth;
+        final isWide =
+            wideLayout != AppSkeletonDashboardWideLayout.singleColumn &&
+            maxW >= wideBreakpoint;
+        final useMediumGrid =
+            !isWide && wideListColumns > 1 && maxW >= 600 && listCount > 1;
+        final resolvedHorizontalPadding = isWide
+            ? (wideHorizontalPadding ?? horizontalPadding)
+            : horizontalPadding;
+
+        Widget body;
+        if (isWide &&
+            wideLayout == AppSkeletonDashboardWideLayout.splitColumns) {
+          body = KeyedSubtree(
+            key: const ValueKey<String>('app-skeleton-dashboard-split'),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  flex: leftFlex,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (showMetricGrid)
+                        _buildMetricCard(effectiveMetricCount),
+                      if (showMetricGrid && showChart)
+                        const SizedBox(height: 14),
+                      if (showChart) _buildChartCard(),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 24),
+                Expanded(
+                  flex: rightFlex,
+                  child: _buildListSection(wideListColumns),
+                ),
+              ],
+            ),
+          );
+        } else if (isWide &&
+            wideLayout == AppSkeletonDashboardWideLayout.metricsAndGrid) {
+          final gridColumns = (wideListColumns > 1 ? wideListColumns : 2).clamp(
+            2,
+            3,
+          );
+          body = KeyedSubtree(
+            key: const ValueKey<String>('app-skeleton-dashboard-grid'),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (showMetricGrid && showChart) ...[
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 1,
+                        child: _buildMetricCard(effectiveMetricCount),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(flex: 2, child: _buildChartCard()),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                ] else ...[
+                  if (showMetricGrid) ...[
+                    _buildMetricCard(effectiveMetricCount),
+                    const SizedBox(height: 14),
+                  ],
+                  if (showChart) ...[
+                    _buildChartCard(),
+                    const SizedBox(height: 14),
+                  ],
+                ],
+                if (listCount > 0) _buildListSection(gridColumns),
+              ],
+            ),
+          );
+        } else {
+          body = Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (showMetricGrid) ...[
+                _buildMetricCard(effectiveMetricCount),
+                const SizedBox(height: 14),
+              ],
+              if (showChart) ...[_buildChartCard(), const SizedBox(height: 14)],
+              if (listCount > 0) _buildListSection(useMediumGrid ? 2 : 1),
+            ],
+          );
+        }
+
+        return _AppSkeletonViewportShell(
+          topPadding: topPadding,
+          bottomPadding: bottomPadding,
+          horizontalPadding: resolvedHorizontalPadding,
+          maxWidth: maxWidth,
+          shrinkWrap: shrinkWrap,
+          isLightSurface: isLightSurface,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (showPeriodHeader) ...[
+                const Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    AppSkeletonBox(width: 140, height: 34, borderRadius: 17),
+                    AppSkeletonBox(width: 96, height: 34, borderRadius: 17),
+                  ],
+                ),
+                const SizedBox(height: 14),
+              ],
+              if (showFilterChips) ...[
+                const SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  physics: NeverScrollableScrollPhysics(),
+                  child: Row(
+                    children: [
+                      AppSkeletonBox(width: 64, height: 30, borderRadius: 15),
+                      SizedBox(width: 8),
+                      AppSkeletonBox(width: 78, height: 30, borderRadius: 15),
+                      SizedBox(width: 8),
+                      AppSkeletonBox(width: 72, height: 30, borderRadius: 15),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
+              if (showTopHeaderSpan) ...[
+                const _SkeletonListItemCard(height: 88),
+                const SizedBox(height: 14),
+              ],
+              body,
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -742,6 +998,8 @@ class AppSkeletonCalendarPage extends StatelessWidget {
   final int gridColumns;
   final int gridRows;
   final bool showDetailCards;
+  final bool splitOnWide;
+  final double wideBreakpoint;
   final bool shrinkWrap;
   final bool isLightSurface;
 
@@ -754,6 +1012,8 @@ class AppSkeletonCalendarPage extends StatelessWidget {
     this.gridColumns = 7,
     this.gridRows = 5,
     this.showDetailCards = true,
+    this.splitOnWide = false,
+    this.wideBreakpoint = 600,
     this.shrinkWrap = false,
     this.isLightSurface = false,
   });
@@ -763,65 +1023,122 @@ class AppSkeletonCalendarPage extends StatelessWidget {
     final cols = gridColumns.clamp(3, 7);
     final rows = gridRows.clamp(3, 6);
 
-    return _AppSkeletonViewportShell(
-      topPadding: topPadding,
-      bottomPadding: bottomPadding,
-      maxWidth: maxWidth,
-      shrinkWrap: shrinkWrap,
-      isLightSurface: isLightSurface,
+    final calendarCard = AppSkeletonCard(
+      padding: const EdgeInsets.all(14),
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (showHeaderStrip) ...[
-            const Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                AppSkeletonCircle(size: 36),
-                AppSkeletonBox(width: 132, height: 26, borderRadius: 13),
-                AppSkeletonCircle(size: 36),
+          Row(
+            children: [
+              for (var c = 0; c < cols; c++) ...[
+                const Expanded(child: AppSkeletonLine(height: 12)),
+                if (c < cols - 1) const SizedBox(width: 8),
               ],
-            ),
-            const SizedBox(height: 14),
-          ],
-          AppSkeletonCard(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+            ],
+          ),
+          const SizedBox(height: 12),
+          for (var r = 0; r < rows; r++) ...[
+            Row(
               children: [
-                Row(
-                  children: [
-                    for (var c = 0; c < cols; c++) ...[
-                      const Expanded(child: AppSkeletonLine(height: 12)),
-                      if (c < cols - 1) const SizedBox(width: 8),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: 12),
-                for (var r = 0; r < rows; r++) ...[
-                  Row(
-                    children: [
-                      for (var c = 0; c < cols; c++) ...[
-                        const Expanded(
-                          child: AppSkeletonBox(height: 36, borderRadius: 10),
-                        ),
-                        if (c < cols - 1) const SizedBox(width: 8),
-                      ],
-                    ],
+                for (var c = 0; c < cols; c++) ...[
+                  const Expanded(
+                    child: AppSkeletonBox(height: 36, borderRadius: 10),
                   ),
-                  if (r < rows - 1) const SizedBox(height: 8),
+                  if (c < cols - 1) const SizedBox(width: 8),
                 ],
               ],
             ),
-          ),
-          if (showDetailCards) ...[
-            const SizedBox(height: 14),
-            const _SkeletonListItemCard(height: 78),
-            const SizedBox(height: 12),
-            const _SkeletonListItemCard(height: 78),
+            if (r < rows - 1) const SizedBox(height: 8),
           ],
         ],
       ),
+    );
+
+    const headerStrip = Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        AppSkeletonCircle(size: 36),
+        AppSkeletonBox(width: 132, height: 26, borderRadius: 13),
+        AppSkeletonCircle(size: 36),
+      ],
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final split =
+            splitOnWide &&
+            showDetailCards &&
+            constraints.maxWidth >= wideBreakpoint;
+
+        return _AppSkeletonViewportShell(
+          topPadding: topPadding,
+          bottomPadding: bottomPadding,
+          maxWidth: maxWidth,
+          shrinkWrap: shrinkWrap,
+          isLightSurface: isLightSurface,
+          child: split
+              ? Row(
+                  key: const ValueKey<String>('app-skeleton-calendar-split'),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 6,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (showHeaderStrip) ...[
+                            headerStrip,
+                            const SizedBox(height: 14),
+                          ],
+                          calendarCard,
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 20),
+                    const Expanded(
+                      flex: 5,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Padding(
+                            padding: EdgeInsets.only(bottom: 12),
+                            child: FractionallySizedBox(
+                              widthFactor: 0.45,
+                              alignment: Alignment.centerLeft,
+                              child: AppSkeletonLine(height: 16),
+                            ),
+                          ),
+                          _SkeletonListItemCard(height: 78),
+                          SizedBox(height: 12),
+                          _SkeletonListItemCard(height: 78),
+                          SizedBox(height: 12),
+                          _SkeletonListItemCard(height: 78),
+                        ],
+                      ),
+                    ),
+                  ],
+                )
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (showHeaderStrip) ...[
+                      headerStrip,
+                      const SizedBox(height: 14),
+                    ],
+                    calendarCard,
+                    if (showDetailCards) ...[
+                      const SizedBox(height: 14),
+                      const _SkeletonListItemCard(height: 78),
+                      const SizedBox(height: 12),
+                      const _SkeletonListItemCard(height: 78),
+                    ],
+                  ],
+                ),
+        );
+      },
     );
   }
 }
@@ -833,6 +1150,10 @@ class AppSkeletonFormPage extends StatelessWidget {
   final double? maxWidth;
   final bool showAmountHeader;
   final int fieldCount;
+  final bool twoColumnOnWide;
+  final double wideBreakpoint;
+  final bool showPreviewHeaderOnWide;
+  final bool showStepperHeaderOnWide;
   final bool shrinkWrap;
   final bool isLightSurface;
 
@@ -843,54 +1164,128 @@ class AppSkeletonFormPage extends StatelessWidget {
     this.maxWidth = 720,
     this.showAmountHeader = false,
     this.fieldCount = 5,
+    this.twoColumnOnWide = false,
+    this.wideBreakpoint = 620,
+    this.showPreviewHeaderOnWide = false,
+    this.showStepperHeaderOnWide = false,
     this.shrinkWrap = false,
     this.isLightSurface = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return _AppSkeletonViewportShell(
-      topPadding: topPadding,
-      bottomPadding: bottomPadding,
-      maxWidth: maxWidth,
-      shrinkWrap: shrinkWrap,
-      isLightSurface: isLightSurface,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (showAmountHeader) ...[
-            const AppSkeletonCard(
-              padding: EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  AppSkeletonLine(width: 88, height: 12),
-                  SizedBox(height: 12),
-                  AppSkeletonLine(width: 180, height: 32, borderRadius: 8),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
+    final fields = List<Widget>.generate(
+      fieldCount,
+      (_) => const AppSkeletonCard(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AppSkeletonLine(width: 82, height: 11),
+            SizedBox(height: 10),
+            AppSkeletonLine(height: 16),
           ],
-          for (var i = 0; i < fieldCount; i++) ...[
-            const AppSkeletonCard(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  AppSkeletonLine(width: 82, height: 11),
-                  SizedBox(height: 10),
-                  AppSkeletonLine(height: 16),
-                ],
-              ),
-            ),
-            if (i < fieldCount - 1) const SizedBox(height: 12),
-          ],
-          const SizedBox(height: 18),
-          const AppSkeletonBox(height: 48, borderRadius: 24),
-        ],
+        ),
       ),
+      growable: false,
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide =
+            (twoColumnOnWide ||
+                showPreviewHeaderOnWide ||
+                showStepperHeaderOnWide) &&
+            constraints.maxWidth >= wideBreakpoint;
+
+        return _AppSkeletonViewportShell(
+          topPadding: topPadding,
+          bottomPadding: bottomPadding,
+          maxWidth: maxWidth,
+          shrinkWrap: shrinkWrap,
+          isLightSurface: isLightSurface,
+          child: Column(
+            key: isWide
+                ? const ValueKey<String>('app-skeleton-form-wide')
+                : null,
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (isWide && showStepperHeaderOnWide) ...[
+                const AppSkeletonCard(
+                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  child: Row(
+                    children: [
+                      AppSkeletonCircle(size: 26),
+                      SizedBox(width: 8),
+                      AppSkeletonLine(width: 64, height: 13),
+                      SizedBox(width: 12),
+                      Expanded(child: Divider()),
+                      SizedBox(width: 12),
+                      AppSkeletonCircle(size: 26),
+                      SizedBox(width: 8),
+                      AppSkeletonLine(width: 64, height: 13),
+                      SizedBox(width: 12),
+                      Expanded(child: Divider()),
+                      SizedBox(width: 12),
+                      AppSkeletonCircle(size: 26),
+                      SizedBox(width: 8),
+                      AppSkeletonLine(width: 64, height: 13),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              if (isWide && showPreviewHeaderOnWide) ...[
+                const AppSkeletonCard(
+                  padding: EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      AppSkeletonLine(width: 140, height: 18),
+                      SizedBox(height: 10),
+                      AppSkeletonLine(width: 240, height: 13),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              if (showAmountHeader) ...[
+                const AppSkeletonCard(
+                  padding: EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      AppSkeletonLine(width: 88, height: 12),
+                      SizedBox(height: 12),
+                      AppSkeletonLine(width: 180, height: 32, borderRadius: 8),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              _SkeletonResponsiveGrid(
+                columns: isWide && twoColumnOnWide ? 2 : 1,
+                crossAxisSpacing: 14,
+                mainAxisSpacing: 12,
+                items: fields,
+              ),
+              const SizedBox(height: 18),
+              if (isWide)
+                const Align(
+                  alignment: Alignment.centerRight,
+                  child: AppSkeletonBox(
+                    width: 180,
+                    height: 48,
+                    borderRadius: 24,
+                  ),
+                )
+              else
+                const AppSkeletonBox(height: 48, borderRadius: 24),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -994,7 +1389,8 @@ class AppSkeletonSettingsSection extends StatelessWidget {
   }
 }
 
-/// Skeleton preset for settings screens (supports responsive two-column layout).
+/// Skeleton preset for settings screens (supports responsive two-column and
+/// master-detail layouts).
 class AppSkeletonSettingsPage extends StatelessWidget {
   final double topPadding;
   final double bottomPadding;
@@ -1002,6 +1398,10 @@ class AppSkeletonSettingsPage extends StatelessWidget {
   final int sectionCount;
   final int rowsPerSection;
   final bool twoColumnOnWide;
+  final double wideBreakpoint;
+  final bool masterDetailOnWide;
+  final double masterDetailBreakpoint;
+  final double sidebarWidth;
   final bool shrinkWrap;
   final bool isLightSurface;
 
@@ -1013,14 +1413,16 @@ class AppSkeletonSettingsPage extends StatelessWidget {
     this.sectionCount = 3,
     this.rowsPerSection = 3,
     this.twoColumnOnWide = false,
+    this.wideBreakpoint = 600,
+    this.masterDetailOnWide = false,
+    this.masterDetailBreakpoint = 800,
+    this.sidebarWidth = 280,
     this.shrinkWrap = false,
     this.isLightSurface = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final useTwoColumns =
-        twoColumnOnWide && MediaQuery.sizeOf(context).width > 600;
     final primaryCount = (sectionCount / 2).ceil().clamp(1, sectionCount);
     final secondaryCount = (sectionCount - primaryCount).clamp(1, sectionCount);
 
@@ -1035,22 +1437,147 @@ class AppSkeletonSettingsPage extends StatelessWidget {
       ],
     );
 
-    return _AppSkeletonViewportShell(
-      topPadding: topPadding,
-      bottomPadding: bottomPadding,
-      maxWidth: maxWidth,
-      shrinkWrap: shrinkWrap,
-      isLightSurface: isLightSurface,
-      child: useTwoColumns
-          ? Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(flex: 3, child: buildColumn(primaryCount)),
-                const SizedBox(width: 16),
-                Expanded(flex: 2, child: buildColumn(secondaryCount)),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (masterDetailOnWide &&
+            constraints.maxWidth >= masterDetailBreakpoint) {
+          final scheme = Theme.of(context).colorScheme;
+          final isDark = scheme.brightness == Brightness.dark;
+          final sidebarContent = Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const AppSkeletonBox(height: 40, borderRadius: 20),
+              const SizedBox(height: 16),
+              const Row(
+                children: [
+                  AppSkeletonCircle(size: 40),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        FractionallySizedBox(
+                          widthFactor: 0.6,
+                          child: AppSkeletonLine(height: 14),
+                        ),
+                        SizedBox(height: 6),
+                        FractionallySizedBox(
+                          widthFactor: 0.42,
+                          child: AppSkeletonLine(height: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              for (var i = 0; i < 6; i++) ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 10,
+                  ),
+                  child: Row(
+                    children: [
+                      const AppSkeletonCircle(size: 24),
+                      const SizedBox(width: 12),
+                      FractionallySizedBox(
+                        widthFactor: null,
+                        child: AppSkeletonLine(
+                          width: i.isEven ? 116 : 96,
+                          height: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
-            )
-          : buildColumn(sectionCount),
+            ],
+          );
+
+          final rightContent = buildColumn(sectionCount);
+          return Semantics(
+            label: '加载中',
+            child: ExcludeSemantics(
+              child: AppSkeletonScope(
+                isLightSurface: isLightSurface,
+                child: Row(
+                  key: const ValueKey<String>(
+                    'app-skeleton-settings-master-detail',
+                  ),
+                  crossAxisAlignment: shrinkWrap
+                      ? CrossAxisAlignment.start
+                      : CrossAxisAlignment.stretch,
+                  children: [
+                    Container(
+                      width: sidebarWidth,
+                      color: scheme.surfaceContainerHighest.withValues(
+                        alpha: isDark ? 0.3 : 0.5,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 20,
+                      ),
+                      child: shrinkWrap
+                          ? sidebarContent
+                          : SingleChildScrollView(
+                              physics: const NeverScrollableScrollPhysics(),
+                              child: sidebarContent,
+                            ),
+                    ),
+                    if (!shrinkWrap)
+                      const VerticalDivider(width: 1, thickness: 1),
+                    Expanded(
+                      child: shrinkWrap
+                          ? Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                24,
+                                20,
+                                24,
+                                32,
+                              ),
+                              child: rightContent,
+                            )
+                          : SingleChildScrollView(
+                              physics: const NeverScrollableScrollPhysics(),
+                              padding: const EdgeInsets.fromLTRB(
+                                24,
+                                20,
+                                24,
+                                32,
+                              ),
+                              child: rightContent,
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        final useTwoColumns =
+            twoColumnOnWide && constraints.maxWidth > wideBreakpoint;
+
+        return _AppSkeletonViewportShell(
+          topPadding: topPadding,
+          bottomPadding: bottomPadding,
+          maxWidth: maxWidth,
+          shrinkWrap: shrinkWrap,
+          isLightSurface: isLightSurface,
+          child: useTwoColumns
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(flex: 3, child: buildColumn(primaryCount)),
+                    const SizedBox(width: 16),
+                    Expanded(flex: 2, child: buildColumn(secondaryCount)),
+                  ],
+                )
+              : buildColumn(sectionCount),
+        );
+      },
     );
   }
 }

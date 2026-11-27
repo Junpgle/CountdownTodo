@@ -238,6 +238,9 @@ class _CourseCalendarAdjustmentScreenState
                 topPadding: widget.isEmbedded
                     ? 16
                     : floatingGlassSettingsContentTopInset(context),
+                maxWidth: 1000,
+                useTwoColumnsOnWide: true,
+                wideBreakpoint: 620,
                 itemCount: 4,
                 itemHeight: 82,
               )

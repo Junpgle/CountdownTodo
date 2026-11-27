@@ -497,7 +497,11 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
             topPadding: standalone
                 ? floatingGlassSettingsContentTopInset(context)
                 : 16,
+            maxWidth: null,
             fieldCount: 4,
+            twoColumnOnWide: true,
+            showPreviewHeaderOnWide: true,
+            wideBreakpoint: 768,
           ),
         ),
       );

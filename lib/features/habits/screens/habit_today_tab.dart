@@ -166,6 +166,7 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
         maxWidth: 840,
         showHeroCard: true,
         useTwoColumnsOnWide: true,
+        wideBreakpoint: 600,
         itemCount: 6,
         itemHeight: 92,
       );

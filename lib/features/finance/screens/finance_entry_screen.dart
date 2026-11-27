@@ -309,8 +309,11 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen>
         child: _isLoading
             ? AppSkeletonFormPage(
                 topPadding: topBarHeight + 8,
+                maxWidth: null,
                 showAmountHeader: true,
                 fieldCount: 5,
+                twoColumnOnWide: true,
+                wideBreakpoint: 620,
               )
             : Form(
                 key: _formKey,

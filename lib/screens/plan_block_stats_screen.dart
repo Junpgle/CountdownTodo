@@ -399,8 +399,13 @@ class _PlanBlockStatsScreenState
                         const AppSkeletonDashboardPage(
                           shrinkWrap: true,
                           showMetricGrid: true,
+                          metricCount: 4,
                           showChart: true,
                           listCount: 3,
+                          wideLayout:
+                              AppSkeletonDashboardWideLayout.metricsAndGrid,
+                          wideBreakpoint: 720,
+                          wideListColumns: 2,
                         )
                       else if (_error != null)
                         _ReviewError(error: _error!, retry: load)

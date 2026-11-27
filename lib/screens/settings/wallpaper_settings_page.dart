@@ -144,7 +144,10 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
             showMetricGrid: false,
             showChart: true,
             chartHeight: 200,
-            listCount: 3,
+            listCount: 6,
+            wideLayout: AppSkeletonDashboardWideLayout.metricsAndGrid,
+            wideBreakpoint: 640,
+            wideListColumns: 3,
           ),
         ),
       );
