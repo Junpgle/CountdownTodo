@@ -95,6 +95,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
   double _liquidGlassBlur = LiquidGlassEffectConfiguration.defaultBlurSigma;
   bool _liquidGlassMutationPending = false;
   bool _lazyLoadEnabled = true;
+  bool _skeletonScreenEnabled = true;
   bool _screenRadiusEnabled = true;
   bool _predictiveBackEnabled = true;
   int _animationDuration = AnimationSpeedPreset.elegant.duration;
@@ -170,6 +171,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
       AnimationConfigService.isMotionBlurEnabled(),
       AnimationConfigService.isLayerBlurEnabled(),
       AnimationConfigService.isLazyLoadEnabled(),
+      AnimationConfigService.isSkeletonScreenEnabled(),
       AnimationConfigService.isScreenRadiusEnabled(),
       AnimationConfigService.isPredictiveBackEnabled(),
       AnimationConfigService.getAnimationDuration(),
@@ -185,14 +187,15 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
       _motionBlurEnabled = results[1] as bool;
       _layerBlurEnabled = results[2] as bool;
       _lazyLoadEnabled = results[3] as bool;
-      _screenRadiusEnabled = results[4] as bool;
-      _predictiveBackEnabled = results[5] as bool;
-      _animationDuration = results[6] as int;
-      _pageLayerDepth = results[7] as int;
-      _containerContentStart = results[8] as int;
-      _preset = results[9] as AnimationPreset?;
-      _speedPreset = results[10] as AnimationSpeedPreset?;
-      final liquidGlass = results[11] as LiquidGlassEffectConfiguration;
+      _skeletonScreenEnabled = results[4] as bool;
+      _screenRadiusEnabled = results[5] as bool;
+      _predictiveBackEnabled = results[6] as bool;
+      _animationDuration = results[7] as int;
+      _pageLayerDepth = results[8] as int;
+      _containerContentStart = results[9] as int;
+      _preset = results[10] as AnimationPreset?;
+      _speedPreset = results[11] as AnimationSpeedPreset?;
+      final liquidGlass = results[12] as LiquidGlassEffectConfiguration;
       _liquidGlassEnabled = liquidGlass.enabled;
       _liquidGlassMode = liquidGlass.mode;
       _liquidGlassTransparency = liquidGlass.transparencyPercent;
@@ -316,6 +319,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
     bool? motionBlur,
     bool? layerBlur,
     bool? lazyLoad,
+    bool? skeletonScreen,
     bool? screenRadius,
     bool? predictiveBack,
     int? duration,
@@ -336,6 +340,9 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
     }
     if (lazyLoad != null) {
       await AnimationConfigService.setLazyLoadEnabled(lazyLoad);
+    }
+    if (skeletonScreen != null) {
+      await AnimationConfigService.setSkeletonScreenEnabled(skeletonScreen);
     }
     if (screenRadius != null) {
       await AnimationConfigService.setScreenRadiusEnabled(screenRadius);

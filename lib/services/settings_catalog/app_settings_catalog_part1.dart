@@ -783,6 +783,15 @@ const List<AiSettingsDestination> _appSettingsDestinationsPart1 = [
     platforms: {},
   ),
   AiSettingsDestination(
+    id: 'animation_skeleton_screen',
+    title: '骨架屏加载',
+    path: '设置 > 动画与特效 > 骨架屏加载',
+    description: '加载占位骨架屏 独立于懒加载',
+    page: SettingsPageId.animation,
+    labels: ['骨架屏加载'],
+    platforms: {},
+  ),
+  AiSettingsDestination(
     id: 'animation_screen_radius',
     title: '屏幕圆角适配',
     path: '设置 > 动画与特效 > 屏幕圆角适配',

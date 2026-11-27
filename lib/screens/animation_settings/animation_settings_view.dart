@@ -168,7 +168,7 @@ extension _AnimationSettingsView on _AnimationSettingsPageState {
                       title: '懒加载优化',
                       subtitle: powerSaveModeEnabled
                           ? '省电模式下继续启用，减少无效渲染'
-                          : '动画进行中再渲染内容',
+                          : '转场动画期间延迟渲染内容',
                       icon: Icons.hourglass_empty,
                       value: _lazyLoadEnabled,
                       switchKey: const ValueKey<String>(
@@ -177,6 +177,22 @@ extension _AnimationSettingsView on _AnimationSettingsPageState {
                       onChanged: (val) {
                         _mutateState(() => _lazyLoadEnabled = val);
                         _update(lazyLoad: val);
+                      },
+                    ),
+                    _buildToggleCard(
+                      isDesktop: isDesktop,
+                      title: '骨架屏加载',
+                      subtitle: powerSaveModeEnabled
+                          ? '省电模式下显示静态骨架占位'
+                          : '数据加载时显示结构占位骨架',
+                      icon: Icons.view_agenda_outlined,
+                      value: _skeletonScreenEnabled,
+                      switchKey: const ValueKey<String>(
+                        'animation-settings-skeleton-screen-switch',
+                      ),
+                      onChanged: (val) {
+                        _mutateState(() => _skeletonScreenEnabled = val);
+                        _update(skeletonScreen: val);
                       },
                     ),
                     _buildToggleCard(

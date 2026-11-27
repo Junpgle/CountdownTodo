@@ -66,6 +66,7 @@ final ValueNotifier<double> _predictiveBackGestureProgress =
     ValueNotifier<double>(0.0);
 
 class _AnimSettings {
+  static final ValueNotifier<int> revision = ValueNotifier<int>(0);
   static bool enabled = true;
   static bool systemPowerSaveMode = false;
   static bool lazyLoad = true;
@@ -87,6 +88,8 @@ class _AnimSettings {
           !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
       enabled = prefs.getBool('enable_animations') ?? true;
       lazyLoad = prefs.getBool('enable_lazy_load') ?? true;
+      PageTransitions.skeletonScreenEnabledNotifier.value =
+          prefs.getBool('enable_skeleton_screen') ?? true;
       screenRadius = prefs.getBool('enable_screen_radius') ?? true;
       layerBlur = prefs.getBool('enable_layer_blur') ?? false;
       motionBlur = prefs.getBool('enable_motion_blur') ?? false;
@@ -100,6 +103,7 @@ class _AnimSettings {
       containerContentStart =
           prefs.getInt('container_content_start') ?? (isAndroid ? 12 : 28);
       _loaded = true;
+      revision.value = revision.value + 1;
     } catch (_) {}
   }
 
@@ -136,6 +140,9 @@ class _AnimSettings {
 }
 
 class PageTransitions {
+  static final ValueNotifier<bool> skeletonScreenEnabledNotifier =
+      ValueNotifier<bool>(true);
+
   /// Overlay transitions share the same motion policy as page transitions.
   static Duration containerDuration({bool reverse = false}) =>
       _AnimSettings.animationsEnabled
@@ -151,8 +158,12 @@ class PageTransitions {
   /// Applies Android's transient system Battery Saver state without changing
   /// the user's persisted animation preferences.
   static void setPowerSaveMode(bool enabled) {
+    final changed = _AnimSettings.systemPowerSaveMode != enabled;
     _AnimSettings.systemPowerSaveMode = enabled;
     if (enabled) _predictiveBackGestureProgress.value = 0.0;
+    if (changed) {
+      _AnimSettings.revision.value = _AnimSettings.revision.value + 1;
+    }
   }
 
   static bool get isPowerSaveMode => _AnimSettings.systemPowerSaveMode;
@@ -756,7 +767,19 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
     super.initState();
     _initAnimations();
     _cacheSettings();
+    _AnimSettings.revision.addListener(_handleSettingsChanged);
     WidgetsBinding.instance.addObserver(this);
+  }
+
+  void _handleSettingsChanged() {
+    _cacheSettings();
+    _lastRoute = -1;
+    _lastBg = -1;
+    _lastGestureProgress = -1;
+    _cachedFrame = null;
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -835,6 +858,7 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
 
   @override
   void dispose() {
+    _AnimSettings.revision.removeListener(_handleSettingsChanged);
     WidgetsBinding.instance.removeObserver(this);
     _disposeAnimations();
     super.dispose();
@@ -1376,6 +1400,28 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
         final effectiveSourceColor = widget.sourceColor.a < 1.0
             ? Color.alphaBlend(widget.sourceColor, surfaceColor)
             : widget.sourceColor;
+        final motionBlurSigma = _AnimSettings.motionBlurFor(t);
+        Widget containerBox = ClipRRect(
+          clipBehavior: Clip.hardEdge,
+          borderRadius: borderRadius,
+          child: ColoredBox(
+            color: effectiveSourceColor,
+            // 懒加载遮罩阶段：中央显示目标页面语义图标。
+            child: !_contentVisible
+                ? Center(child: _buildPlaceholder(context))
+                : IgnorePointer(
+                    // A completed animation can round to 0.9999999999999999.
+                    ignoring: fadeIn < 1.0 - _epsilon,
+                    child: content,
+                  ),
+          ),
+        );
+        if (motionBlurSigma > 0.01) {
+          containerBox = ImageFiltered(
+            imageFilter: AppImageFilters.quantizedBlur(motionBlurSigma),
+            child: containerBox,
+          );
+        }
 
         return Stack(
           fit: StackFit.expand,
@@ -1391,21 +1437,7 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
               top: top,
               width: width,
               height: height,
-              child: ClipRRect(
-                clipBehavior: Clip.hardEdge,
-                borderRadius: borderRadius,
-                child: ColoredBox(
-                  color: effectiveSourceColor,
-                  // 懒加载遮罩阶段：中央显示目标页面语义图标。
-                  child: !_contentVisible
-                      ? Center(child: _buildPlaceholder(context))
-                      : IgnorePointer(
-                          // A completed animation can round to 0.9999999999999999.
-                          ignoring: fadeIn < 1.0 - _epsilon,
-                          child: content,
-                        ),
-                ),
-              ),
+              child: containerBox,
             ),
           ],
         );
