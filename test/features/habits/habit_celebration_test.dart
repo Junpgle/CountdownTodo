@@ -494,6 +494,13 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump(const Duration(milliseconds: 300));
       expect(completed, isTrue);
+      expect(
+        find.descendant(
+          of: find.byType(HabitStampBadge),
+          matching: find.byType(Opacity),
+        ),
+        findsNothing,
+      );
     });
 
     testWidgets(

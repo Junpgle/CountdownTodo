@@ -173,44 +173,54 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
         InkWell(
           onTap: widget.onTap,
           borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: EdgeInsets.symmetric(vertical: widget.compact ? 4 : 8),
-            child: Row(
-              children: [
-                Container(
-                  padding: EdgeInsets.all(widget.compact ? 5 : 6),
-                  decoration: BoxDecoration(
-                    color: widget.isLight
-                        ? Colors.white.withValues(alpha: 0.15)
-                        : colorScheme.tertiary.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
+          child: MergeSemantics(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: widget.compact ? 4 : 8),
+              child: Row(
+                children: [
+                  ExcludeSemantics(
+                    child: Container(
+                      padding: EdgeInsets.all(widget.compact ? 5 : 6),
+                      decoration: BoxDecoration(
+                        color: widget.isLight
+                            ? Colors.white.withValues(alpha: 0.15)
+                            : colorScheme.tertiary.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.repeat_rounded,
+                        size: widget.compact ? 18 : 20,
+                        color: iconColor,
+                      ),
+                    ),
                   ),
-                  child: Icon(
-                    Icons.repeat_rounded,
-                    size: widget.compact ? 18 : 20,
-                    color: iconColor,
+                  SizedBox(width: widget.compact ? 8 : 10),
+                  Text(
+                    '今日习惯',
+                    style: TextStyle(
+                      fontSize: widget.compact ? 16 : 18,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.5,
+                      color: textColor,
+                    ),
                   ),
-                ),
-                SizedBox(width: widget.compact ? 8 : 10),
-                Text(
-                  '今日习惯',
-                  style: TextStyle(
-                    fontSize: widget.compact ? 16 : 18,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.5,
-                    color: textColor,
-                  ),
-                ),
-                if (!_loading &&
-                    _snapshot != null &&
-                    _snapshot!.goals.isNotEmpty) ...[
-                  const SizedBox(width: 8),
-                  _buildSummaryBadge(colorScheme),
+                  if (!_loading &&
+                      _snapshot != null &&
+                      _snapshot!.goals.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    _buildSummaryBadge(colorScheme),
+                  ],
+                  const Spacer(),
+                  if (widget.onTap != null)
+                    ExcludeSemantics(
+                      child: Icon(
+                        Icons.chevron_right,
+                        size: 20,
+                        color: subColor,
+                      ),
+                    ),
                 ],
-                const Spacer(),
-                if (widget.onTap != null)
-                  Icon(Icons.chevron_right, size: 20, color: subColor),
-              ],
+              ),
             ),
           ),
         ),

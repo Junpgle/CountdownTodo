@@ -201,7 +201,7 @@ class _AnimatedWaterCupState extends State<_AnimatedWaterCup>
     if (AndroidEnergyPolicy.shouldRunDecorativeMotion) {
       if (!_waveController.isAnimating) {
         final repeatCount =
-            AndroidEnergyPolicy.decorativeRepeatCount(androidCount: 3) ?? 3;
+            AndroidEnergyPolicy.decorativeRepeatCount(androidCount: 1) ?? 1;
         _waveController.repeat(count: repeatCount);
       }
     } else {

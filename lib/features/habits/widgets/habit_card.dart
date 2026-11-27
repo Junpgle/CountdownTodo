@@ -480,52 +480,56 @@ class _HabitCardState extends State<HabitCard> {
         : _colors.onSurfaceVariant;
     final statusColor = _statusColor(status);
 
-    return Row(
-      children: [
-        Container(
-          width: widget.compact ? 32 : 40,
-          height: widget.compact ? 32 : 40,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: statusColor.withValues(alpha: 0.12),
-            shape: BoxShape.circle,
-          ),
-          child: Text(
-            widget.goal.icon.isNotEmpty ? widget.goal.icon : '🎯',
-            style: TextStyle(fontSize: widget.compact ? 18 : 22),
-          ),
-        ),
-        SizedBox(width: widget.compact ? 8 : 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                widget.goal.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: widget.compact ? 14 : 16,
-                  fontWeight: FontWeight.w700,
-                  color: textColor,
-                ),
+    return MergeSemantics(
+      child: Row(
+        children: [
+          ExcludeSemantics(
+            child: Container(
+              width: widget.compact ? 32 : 40,
+              height: widget.compact ? 32 : 40,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
               ),
-              const SizedBox(height: 1),
-              Text(
-                _subtitle(status, progress),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: widget.compact ? 11 : 12,
-                  color: subColor,
-                ),
+              child: Text(
+                widget.goal.icon.isNotEmpty ? widget.goal.icon : '🎯',
+                style: TextStyle(fontSize: widget.compact ? 18 : 22),
               ),
-            ],
+            ),
           ),
-        ),
-        SizedBox(width: widget.compact ? 6 : 8),
-        _buildStatusBadge(status),
-      ],
+          SizedBox(width: widget.compact ? 8 : 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.goal.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: widget.compact ? 14 : 16,
+                    fontWeight: FontWeight.w700,
+                    color: textColor,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  _subtitle(status, progress),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: widget.compact ? 11 : 12,
+                    color: subColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(width: widget.compact ? 6 : 8),
+          _buildStatusBadge(status),
+        ],
+      ),
     );
   }
 
