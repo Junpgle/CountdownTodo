@@ -622,21 +622,35 @@ class FloatingGlassTopBarBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scopedProgress = _FloatingGlassAppBarScope.maybeOf(context);
-    if (scopedProgress == null) {
-      return _buildBackground(
-        context,
-        progress: 0.0,
-        useFlexibleSpaceSettings: false,
-      );
-    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final content = constraints.hasBoundedHeight
+            ? const SizedBox.expand()
+            : SizedBox(
+                height:
+                    (unboundedHeight ??
+                            kToolbarHeight + MediaQuery.paddingOf(context).top)
+                        .clamp(0.0, 1000.0),
+              );
+        if (scopedProgress == null) {
+          return _buildBackground(
+            context,
+            progress: 0.0,
+            useFlexibleSpaceSettings: false,
+            content: content,
+          );
+        }
 
-    return ValueListenableBuilder<double>(
-      valueListenable: scopedProgress,
-      builder: (context, progress, _) => _buildBackground(
-        context,
-        progress: progress,
-        useFlexibleSpaceSettings: true,
-      ),
+        return ValueListenableBuilder<double>(
+          valueListenable: scopedProgress,
+          builder: (context, progress, _) => _buildBackground(
+            context,
+            progress: progress,
+            useFlexibleSpaceSettings: true,
+            content: content,
+          ),
+        );
+      },
     );
   }
 
@@ -644,6 +658,7 @@ class FloatingGlassTopBarBackground extends StatelessWidget {
     BuildContext context, {
     required double progress,
     required bool useFlexibleSpaceSettings,
+    required Widget content,
   }) {
     final settings = useFlexibleSpaceSettings
         ? context.dependOnInheritedWidgetOfExactType<FlexibleSpaceBarSettings>()
@@ -656,72 +671,54 @@ class FloatingGlassTopBarBackground extends StatelessWidget {
     return ValueListenableBuilder<LiquidGlassEffectConfiguration>(
       valueListenable: LiquidGlassEffectService.configurationListenable,
       builder: (context, configuration, _) {
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final hasBoundedHeight = constraints.hasBoundedHeight;
-            final content = hasBoundedHeight
-                ? const SizedBox.expand()
-                : SizedBox(
-                    height:
-                        (unboundedHeight ??
-                                kToolbarHeight +
-                                    MediaQuery.paddingOf(context).top)
-                            .clamp(0.0, 1000.0),
-                  );
+        if (blur && !configuration.enabled) return content;
 
-            if (blur && !configuration.enabled) return content;
+        final intensity = (resolvedProgress * fadeExtent.clamp(0.0, 1.0))
+            .clamp(0.0, 1.0);
+        if (intensity <= 0.001) return content;
 
-            final intensity = (resolvedProgress * fadeExtent.clamp(0.0, 1.0))
-                .clamp(0.0, 1.0);
-            if (intensity <= 0.001) return content;
-
-            final colorScheme = Theme.of(context).colorScheme;
-            final dark = isDark ?? colorScheme.brightness == Brightness.dark;
-            final base = tint ?? colorScheme.surface;
-            final topColor = Color.alphaBlend(
-              colorScheme.primary.withValues(alpha: dark ? 0.08 : 0.05),
-              base,
-            );
-            final blurSigma = 10.0 + (intensity * 14.0);
-            final topAlpha = blur
-                ? (0.12 + (intensity * 0.74)).clamp(0.0, 1.0)
-                : (0.04 + (intensity * 0.12)).clamp(0.0, 1.0);
-            final middleAlpha = blur
-                ? (0.06 + (intensity * 0.58)).clamp(0.0, 1.0)
-                : (0.015 + (intensity * 0.04)).clamp(0.0, 1.0);
-            final lowerAlpha = blur
-                ? (intensity * 0.22).clamp(0.0, 1.0)
-                : (intensity * 0.02).clamp(0.0, 1.0);
-
-            Widget surface = DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  stops: const [0, 0.38, 0.72, 1],
-                  colors: [
-                    topColor.withValues(alpha: topAlpha * (dark ? 0.94 : 1.0)),
-                    topColor.withValues(
-                      alpha: middleAlpha * (dark ? 0.9 : 1.0),
-                    ),
-                    topColor.withValues(alpha: lowerAlpha * (dark ? 0.9 : 1.0)),
-                    topColor.withValues(alpha: 0),
-                  ],
-                ),
-              ),
-              child: content,
-            );
-
-            if (blur) {
-              surface = BackdropFilter.grouped(
-                filter: AppImageFilters.quantizedClampedBlur(blurSigma),
-                child: surface,
-              );
-            }
-
-            return ClipRect(child: surface);
-          },
+        final colorScheme = Theme.of(context).colorScheme;
+        final dark = isDark ?? colorScheme.brightness == Brightness.dark;
+        final base = tint ?? colorScheme.surface;
+        final topColor = Color.alphaBlend(
+          colorScheme.primary.withValues(alpha: dark ? 0.08 : 0.05),
+          base,
         );
+        final topAlpha = blur
+            ? (0.12 + (intensity * 0.74)).clamp(0.0, 1.0)
+            : (0.04 + (intensity * 0.12)).clamp(0.0, 1.0);
+        final middleAlpha = blur
+            ? (0.06 + (intensity * 0.58)).clamp(0.0, 1.0)
+            : (0.015 + (intensity * 0.04)).clamp(0.0, 1.0);
+        final lowerAlpha = blur
+            ? (intensity * 0.22).clamp(0.0, 1.0)
+            : (intensity * 0.02).clamp(0.0, 1.0);
+
+        Widget surface = DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              stops: const [0, 0.38, 0.72, 1],
+              colors: [
+                topColor.withValues(alpha: topAlpha * (dark ? 0.94 : 1.0)),
+                topColor.withValues(alpha: middleAlpha * (dark ? 0.9 : 1.0)),
+                topColor.withValues(alpha: lowerAlpha * (dark ? 0.9 : 1.0)),
+                topColor.withValues(alpha: 0),
+              ],
+            ),
+          ),
+          child: content,
+        );
+
+        if (blur) {
+          surface = BackdropFilter.grouped(
+            filter: AppImageFilters.quantizedClampedBlur(16.0),
+            child: surface,
+          );
+        }
+
+        return ClipRect(child: surface);
       },
     );
   }

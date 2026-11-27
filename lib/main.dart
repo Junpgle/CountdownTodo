@@ -57,6 +57,7 @@ import 'theme/app_liquid_glass_theme.dart';
 import 'utils/app_image_filters.dart';
 import 'widgets/liquid_glass_live_preview_dock.dart';
 import 'widgets/animation_performance_floating_window.dart';
+import 'widgets/optional_liquid_glass_backdrop.dart';
 import 'theme/dynamic_color_scheme_adapter.dart';
 import 'theme/oled_surface_color_scheme.dart';
 import 'widgets/island_debug_host.dart';
@@ -1347,7 +1348,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                                             .brightness,
                                                     child: Stack(
                                                       children: [
-                                                        adaptedContent,
+                                                        OptionalLiquidGlassBackdropScope(
+                                                          isSolidBackground:
+                                                              true,
+                                                          child: adaptedContent,
+                                                        ),
                                                         const Positioned(
                                                           left: 0,
                                                           right: 0,

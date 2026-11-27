@@ -85,138 +85,140 @@ mixin _HomeDashboardViewMixin
             // 后方，末尾的滚动余量再保证卡片操作不会被底栏遮挡。
             top: false,
             bottom: false,
-            child: FloatingGlassPinnedHeaderLayout(
-              fadeContent: !showWallpaper,
-              initialHeaderExtent:
-                  (_selectedTabIndex != _homeFocusTabIndex || isTablet)
-                  ? (78.0 + topSystemInset)
-                  : 0.0,
-              onHeaderExtentChanged: (extent) {
-                if (isTablet) return;
-                final target = _selectedTabIndex == _homeFocusTabIndex
-                    ? _focusHeaderExtentNotifier
-                    : _homeHeaderExtentNotifier;
-                if ((extent - target.value).abs() > 0.5) {
-                  target.value = extent;
-                }
-              },
-              header: ValueListenableBuilder<int>(
-                valueListenable: _selectedTabIndexNotifier,
-                builder: (context, selectedTabIndex, _) {
-                  final showTopBar =
-                      selectedTabIndex != _homeFocusTabIndex || isTablet;
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildSemesterProgressBar(isLight),
+            child: OptionalLiquidGlassBackdropScope(
+              isSolidBackground: !showWallpaper,
+              blurredWallpaperListenable: showWallpaper
+                  ? _preblurredWallpaperController.snapshotListenable
+                  : null,
+              viewportKey: _dashboardBackdropViewportKey,
+              child: FloatingGlassPinnedHeaderLayout(
+                fadeContent: !showWallpaper,
+                initialHeaderExtent:
+                    (_selectedTabIndex != _homeFocusTabIndex || isTablet)
+                    ? (78.0 + topSystemInset)
+                    : 0.0,
+                onHeaderExtentChanged: (extent) {
+                  if (isTablet) return;
+                  final target = _selectedTabIndex == _homeFocusTabIndex
+                      ? _focusHeaderExtentNotifier
+                      : _homeHeaderExtentNotifier;
+                  if ((extent - target.value).abs() > 0.5) {
+                    target.value = extent;
+                  }
+                },
+                header: ValueListenableBuilder<int>(
+                  valueListenable: _selectedTabIndexNotifier,
+                  builder: (context, selectedTabIndex, _) {
+                    final showTopBar =
+                        selectedTabIndex != _homeFocusTabIndex || isTablet;
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildSemesterProgressBar(isLight),
 
-                      if (showTopBar)
-                        ValueListenableBuilder<bool>(
-                          valueListenable: _isSyncingNotifier,
-                          builder: (context, isSyncing, _) => HomeAppBar(
-                            username: widget.username,
-                            onCreateRelatedTodo: _saveTodoLinkedToFixedSchedule,
-                            timeSalutation: _timeSalutation,
-                            currentGreeting: _currentGreeting,
-                            semesterWeek: _currentSemesterWeek,
-                            textConfig: HomeTextConfig(
-                              customTimeSalutation:
-                                  _homeTextConfig['customTimeSalutation']
-                                      as String?,
-                              dateFormat:
-                                  _homeTextConfig['dateFormat'] as String?,
-                              usernameFormat:
-                                  _homeTextConfig['usernameFormat'] as String?,
+                        if (showTopBar)
+                          ValueListenableBuilder<bool>(
+                            valueListenable: _isSyncingNotifier,
+                            builder: (context, isSyncing, _) => HomeAppBar(
+                              username: widget.username,
+                              onCreateRelatedTodo:
+                                  _saveTodoLinkedToFixedSchedule,
+                              timeSalutation: _timeSalutation,
+                              currentGreeting: _currentGreeting,
+                              semesterWeek: _currentSemesterWeek,
+                              textConfig: HomeTextConfig(
+                                customTimeSalutation:
+                                    _homeTextConfig['customTimeSalutation']
+                                        as String?,
+                                dateFormat:
+                                    _homeTextConfig['dateFormat'] as String?,
+                                usernameFormat:
+                                    _homeTextConfig['usernameFormat']
+                                        as String?,
+                              ),
+                              isLight: isLight,
+                              isSyncing: isSyncing,
+                              onSync: _showSyncOptionsDialog,
+                              onSearch: _showGlobalSearch,
+                              onAiAssistant: _openAiAssistantFromAppBar,
+                              searchKey: _searchButtonKey,
+                              syncKey: _syncButtonKey,
+                              teamsKey: _teamsButtonKey,
+                              aiKey: _aiButtonKey,
+                              settingsKey: _settingsButtonKey,
+                              menuKey: _menuKey,
+                              showMenuButton: true,
+                              courseKey: _courseButtonKey,
+                              showCourseButton: isTablet,
+                              teamPendingCount: _teamPendingCount, // 🚀 绑定计数
+                              hasTeamConflictDot: _hasTeamConflictDot,
+                              onTeams: () async {
+                                await PageTransitions.pushFromRect(
+                                  context: context,
+                                  page: TeamManagementScreen(
+                                    username: widget.username,
+                                  ),
+                                  sourceKey: _teamsButtonKey,
+                                );
+                                final unreadBackgroundNotifications =
+                                    await BackgroundNotificationService.getUnreadBackgroundNotifications();
+                                final notificationIds =
+                                    unreadBackgroundNotifications
+                                        .map((e) => e['id'])
+                                        .whereType<num>()
+                                        .map((e) => e.toInt())
+                                        .toList();
+                                await ApiService.markNotificationsRead(
+                                  notificationIds,
+                                );
+                                await BackgroundNotificationService.clearUnreadBackgroundNotifications();
+                                await _fetchTeamPendingCount();
+                                _loadAllData(deferred: true);
+                              },
+                              onSettings: () async {
+                                await PageTransitions.pushFromRect(
+                                  context: context,
+                                  page: const SettingsPage(),
+                                  sourceKey: _settingsButtonKey,
+                                );
+                                _loadSectionPreferences();
+                                _loadSemesterSettings();
+                                await _loadHomeTextConfig();
+                                _loadAllData(deferred: true);
+                              },
                             ),
-                            isLight: isLight,
-                            isSyncing: isSyncing,
-                            onSync: _showSyncOptionsDialog,
-                            onSearch: _showGlobalSearch,
-                            onAiAssistant: _openAiAssistantFromAppBar,
-                            searchKey: _searchButtonKey,
-                            syncKey: _syncButtonKey,
-                            teamsKey: _teamsButtonKey,
-                            aiKey: _aiButtonKey,
-                            settingsKey: _settingsButtonKey,
-                            menuKey: _menuKey,
-                            showMenuButton: true,
-                            courseKey: _courseButtonKey,
-                            showCourseButton: isTablet,
-                            teamPendingCount: _teamPendingCount, // 🚀 绑定计数
-                            hasTeamConflictDot: _hasTeamConflictDot,
-                            onTeams: () async {
-                              await PageTransitions.pushFromRect(
-                                context: context,
-                                page: TeamManagementScreen(
-                                  username: widget.username,
-                                ),
-                                sourceKey: _teamsButtonKey,
-                              );
-                              final unreadBackgroundNotifications =
-                                  await BackgroundNotificationService.getUnreadBackgroundNotifications();
-                              final notificationIds =
-                                  unreadBackgroundNotifications
-                                      .map((e) => e['id'])
-                                      .whereType<num>()
-                                      .map((e) => e.toInt())
-                                      .toList();
-                              await ApiService.markNotificationsRead(
-                                notificationIds,
-                              );
-                              await BackgroundNotificationService.clearUnreadBackgroundNotifications();
-                              await _fetchTeamPendingCount();
-                              _loadAllData(deferred: true);
-                            },
-                            onSettings: () async {
-                              await PageTransitions.pushFromRect(
-                                context: context,
-                                page: const SettingsPage(),
-                                sourceKey: _settingsButtonKey,
-                              );
-                              _loadSectionPreferences();
-                              _loadSemesterSettings();
-                              await _loadHomeTextConfig();
-                              _loadAllData(deferred: true);
+                          ),
+
+                        // 🚀 Uni-Sync 4.0: 全局链路诊断横幅
+                        if (showTopBar)
+                          SyncStatusBanner(
+                            onDiagnosticRequested: _showLinkDiagnostics,
+                          ),
+
+                        // DEBUG: 检查状态
+                        // if (_activeAnnouncement != null) Text("DEBUG: Announcement exists: ${_activeAnnouncement!.title}"),
+
+                        // 🚀 Uni-Sync 4.0: 团队置顶公告
+                        if (_activeAnnouncement != null && showTopBar)
+                          StickyAnnouncementBanner(
+                            announcement: _activeAnnouncement!,
+                            onAcknowledge: () async {
+                              final uuid = _activeAnnouncement!.uuid;
+                              setState(() => _activeAnnouncement = null);
+                              await ApiService.markAnnouncementAsRead(uuid);
                             },
                           ),
-                        ),
 
-                      // 🚀 Uni-Sync 4.0: 全局链路诊断横幅
-                      if (showTopBar)
-                        SyncStatusBanner(
-                          onDiagnosticRequested: _showLinkDiagnostics,
-                        ),
+                        if (_isThirtyDayChallengeActive && showTopBar)
+                          _buildChallengeParticipationBanner(isLight),
 
-                      // DEBUG: 检查状态
-                      // if (_activeAnnouncement != null) Text("DEBUG: Announcement exists: ${_activeAnnouncement!.title}"),
-
-                      // 🚀 Uni-Sync 4.0: 团队置顶公告
-                      if (_activeAnnouncement != null && showTopBar)
-                        StickyAnnouncementBanner(
-                          announcement: _activeAnnouncement!,
-                          onAcknowledge: () async {
-                            final uuid = _activeAnnouncement!.uuid;
-                            setState(() => _activeAnnouncement = null);
-                            await ApiService.markAnnouncementAsRead(uuid);
-                          },
-                        ),
-
-                      if (_isThirtyDayChallengeActive && showTopBar)
-                        _buildChallengeParticipationBanner(isLight),
-
-                      // 待确认事项入口卡片（从图片识别来）
-                      _buildPendingTodoConfirmCard(isLight),
-                    ],
-                  );
-                },
-              ),
-              bodyListenableBuilder: (context, headerExtentListenable) => OptionalLiquidGlassBackdropScope(
-                isSolidBackground: !showWallpaper,
-                blurredWallpaperListenable: showWallpaper
-                    ? _preblurredWallpaperController.snapshotListenable
-                    : null,
-                viewportKey: _dashboardBackdropViewportKey,
-                child: Stack(
+                        // 待确认事项入口卡片（从图片识别来）
+                        _buildPendingTodoConfirmCard(isLight),
+                      ],
+                    );
+                  },
+                ),
+                bodyListenableBuilder: (context, headerExtentListenable) => Stack(
                   fit: StackFit.expand,
                   children: [
                     ValueListenableBuilder<bool>(

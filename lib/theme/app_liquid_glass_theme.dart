@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../services/liquid_glass_effect_service.dart';
+import '../widgets/optional_liquid_glass_backdrop.dart';
 
 double _clampOpacity(double value) => value.clamp(0.0, 1.0).toDouble();
 
@@ -59,6 +60,14 @@ ButtonLayerBuilder _glassButtonBackgroundBuilder({
                 ? colorScheme.surfaceBright
                 : colorScheme.surfaceContainerHighest)
             .withValues(alpha: isDark ? 0.1 : 0.16);
+    final backdropScope = OptionalLiquidGlassBackdropScope.maybeOf(context);
+    final shouldBlurButton =
+        configuration.mode == LiquidGlassEffectMode.enhanced &&
+        backdropScope != null &&
+        !backdropScope.isSolidBackground;
+    final blur = shouldBlurButton
+        ? (configuration.blurSigma * 0.75).clamp(2.0, 20.0)
+        : 0.0;
 
     return GlassContainer(
       shape: circular
@@ -70,12 +79,7 @@ ButtonLayerBuilder _glassButtonBackgroundBuilder({
         thickness: configuration.mode == LiquidGlassEffectMode.enhanced
             ? 20
             : 16,
-        blur:
-            (configuration.blurSigma *
-                    (configuration.mode == LiquidGlassEffectMode.enhanced
-                        ? 0.75
-                        : 0.6))
-                .clamp(2.0, 20.0),
+        blur: blur,
         chromaticAberration: 0.0015,
         lightIntensity: isDark ? 0.48 : 0.58,
         ambientStrength: isDark ? 0.08 : 0.1,

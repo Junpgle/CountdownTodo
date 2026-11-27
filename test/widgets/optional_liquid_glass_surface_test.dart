@@ -210,6 +210,42 @@ void main() {
     expect(find.text('Shared settings content'), findsOneWidget);
   });
 
+  testWidgets('staticMaterial panel avoids BackdropFilter without any scope', (
+    tester,
+  ) async {
+    await LiquidGlassEffectService.setEnabled(true);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              OptionalLiquidGlassPanel(
+                mode: OptionalLiquidGlassPanelMode.staticMaterial,
+                fallback: SizedBox(),
+                child: Text('Unscoped static panel'),
+              ),
+              OptionalLiquidGlassBackdropScope(
+                isSolidBackground: true,
+                child: AppSettingsCard(child: Text('Solid scoped settings')),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(
+      find.byKey(const ValueKey<String>('optional-liquid-glass-static-panel')),
+      findsNWidgets(2),
+    );
+    expect(find.byType(BackdropFilter), findsNothing);
+    expect(find.text('Unscoped static panel'), findsOneWidget);
+    expect(find.text('Solid scoped settings'), findsOneWidget);
+  });
+
   testWidgets(
     'staticMaterial mode inside overlay avoids redundant BackdropFilter',
     (tester) async {
@@ -1084,42 +1120,44 @@ void main() {
     );
   });
 
-  testWidgets('PlatformBackdropFilter wraps child with BackdropFilter and clips', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: PlatformBackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: const Text('Test Child'),
+  testWidgets(
+    'PlatformBackdropFilter wraps child with BackdropFilter and clips',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PlatformBackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: const Text('Test Child'),
+            ),
           ),
         ),
-      ),
-    );
+      );
 
-    expect(find.text('Test Child'), findsOneWidget);
-    expect(find.byType(BackdropFilter), findsOneWidget);
-    expect(find.byType(ClipRect), findsOneWidget);
-  });
+      expect(find.text('Test Child'), findsOneWidget);
+      expect(find.byType(BackdropFilter), findsOneWidget);
+      expect(find.byType(ClipRect), findsOneWidget);
+    },
+  );
 
-  testWidgets('PlatformBackdropFilter clips with ClipRRect when radius provided', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: PlatformBackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            clipBorderRadius: BorderRadius.circular(16),
-            child: const Text('Test Child Rounded'),
+  testWidgets(
+    'PlatformBackdropFilter clips with ClipRRect when radius provided',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PlatformBackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              clipBorderRadius: BorderRadius.circular(16),
+              child: const Text('Test Child Rounded'),
+            ),
           ),
         ),
-      ),
-    );
+      );
 
-    expect(find.text('Test Child Rounded'), findsOneWidget);
-    expect(find.byType(BackdropFilter), findsOneWidget);
-    expect(find.byType(ClipRRect), findsOneWidget);
-  });
+      expect(find.text('Test Child Rounded'), findsOneWidget);
+      expect(find.byType(BackdropFilter), findsOneWidget);
+      expect(find.byType(ClipRRect), findsOneWidget);
+    },
+  );
 }

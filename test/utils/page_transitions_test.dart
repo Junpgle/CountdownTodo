@@ -114,6 +114,63 @@ void main() {
     );
   });
 
+  group('route transition glyph-atlas stability', () {
+    setUp(() async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'enable_animations': true,
+      });
+      PageTransitions.setPowerSaveMode(false);
+      await PageTransitions.init();
+    });
+
+    testWidgets(
+      'material push and pop avoid per-frame Transform.scale over live pages',
+      (WidgetTester tester) async {
+        final key = GlobalKey<NavigatorState>();
+        await tester.pumpWidget(
+          MaterialApp(
+            navigatorKey: key,
+            theme: ThemeData(pageTransitionsTheme: PageTransitions.theme),
+            home: const Scaffold(body: Center(child: Text('page A'))),
+          ),
+        );
+
+        key.currentState!.push(
+          PageTransitions.material<void>(
+            builder: (_) => const Scaffold(body: Center(child: Text('page B'))),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 80));
+
+        final pushTransforms = tester.widgetList<Transform>(
+          find.byType(Transform),
+        );
+        for (final transform in pushTransforms) {
+          expect(
+            transform.transform.getMaxScaleOnAxis(),
+            moreOrLessEquals(1.0, epsilon: 1e-4),
+          );
+        }
+
+        await tester.pumpAndSettle();
+        key.currentState!.pop();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 80));
+
+        final popTransforms = tester.widgetList<Transform>(
+          find.byType(Transform),
+        );
+        for (final transform in popTransforms) {
+          expect(
+            transform.transform.getMaxScaleOnAxis(),
+            moreOrLessEquals(1.0, epsilon: 1e-4),
+          );
+        }
+      },
+    );
+  });
+
   group('predictive back gesture rounded corners', () {
     setUp(() async {
       SharedPreferences.setMockInitialValues(<String, Object>{});

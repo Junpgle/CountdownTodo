@@ -291,6 +291,7 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
           // repeated standard cards still use their shared blur treatment
           // unless an ancestor backdrop scope guarantees a solid background.
           final shouldBlur =
+              mode != OptionalLiquidGlassPanelMode.staticMaterial &&
               !useStaticOverlayMaterial &&
               !useStaticWindowsMaterial &&
               !isSolidScopedBackdrop;

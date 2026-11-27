@@ -292,13 +292,17 @@ class LiquidGlassSlider extends StatelessWidget {
 
         final isDark = colorScheme.brightness == Brightness.dark;
         final enhanced = configuration.mode == LiquidGlassEffectMode.enhanced;
+        final backdropScope = OptionalLiquidGlassBackdropScope.maybeOf(context);
+        final shouldBlurSlider =
+            enhanced &&
+            (backdropScope == null || !backdropScope.isSolidBackground);
         final settings = LiquidGlassSettings(
           bodyMode: GlassBodyMode.clear,
           glassColor: colorScheme.primary.withValues(
             alpha: isDark ? 0.14 : 0.11,
           ),
           thickness: enhanced ? 22 : 18,
-          blur: enhanced ? 14 : 10,
+          blur: shouldBlurSlider ? 14 : 0,
           chromaticAberration: enhanced ? 0.006 : 0.003,
           lightIntensity: isDark ? 0.56 : 0.62,
           ambientStrength: isDark ? 0.12 : 0.14,

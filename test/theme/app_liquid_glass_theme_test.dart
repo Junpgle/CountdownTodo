@@ -1,5 +1,6 @@
 import 'package:countdown_todo/theme/app_liquid_glass_theme.dart';
 import 'package:countdown_todo/services/liquid_glass_effect_service.dart';
+import 'package:countdown_todo/widgets/optional_liquid_glass_backdrop.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
@@ -82,4 +83,89 @@ void main() {
 
     expect(find.byType(GlassContainer), findsNWidgets(2));
   });
+
+  testWidgets(
+    'skips per-button backdrop blur unless enhanced over non-solid backdrop',
+    (tester) async {
+      await LiquidGlassEffectService.setEnabled(true);
+      await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+
+      Widget buildThemed({
+        required LiquidGlassEffectMode mode,
+        bool? isSolidBackground,
+      }) {
+        final theme = applyAppLiquidGlassTheme(
+          ThemeData(
+            colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+            useMaterial3: true,
+          ),
+          enabled: true,
+          mode: mode,
+        );
+        Widget body = Center(
+          child: FilledButton(onPressed: () {}, child: const Text('Save')),
+        );
+        if (isSolidBackground != null) {
+          body = OptionalLiquidGlassBackdropScope(
+            isSolidBackground: isSolidBackground,
+            child: body,
+          );
+        }
+        return MaterialApp(
+          theme: theme,
+          home: Scaffold(body: body),
+        );
+      }
+
+      await tester.pumpWidget(
+        buildThemed(mode: LiquidGlassEffectMode.standard),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<GlassContainer>(find.byType(GlassContainer))
+            .settings
+            ?.blur,
+        0.0,
+      );
+
+      final previousErrorHandler = FlutterError.onError;
+      FlutterError.onError = (details) {};
+      try {
+        await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.enhanced);
+      } finally {
+        FlutterError.onError = previousErrorHandler;
+      }
+
+      await tester.pumpWidget(
+        buildThemed(
+          mode: LiquidGlassEffectMode.enhanced,
+          isSolidBackground: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<GlassContainer>(find.byType(GlassContainer))
+            .settings
+            ?.blur,
+        0.0,
+      );
+
+      await tester.pumpWidget(
+        buildThemed(
+          mode: LiquidGlassEffectMode.enhanced,
+          isSolidBackground: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<GlassContainer>(find.byType(GlassContainer))
+            .settings
+            ?.blur,
+        greaterThan(0.0),
+      );
+    },
+  );
 }

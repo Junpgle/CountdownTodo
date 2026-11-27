@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' as ui show lerpDouble;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -17,7 +16,6 @@ const _pageLayerCurve = Cubic(0.4, 0.65, 0.25, 1.0);
 // closes. An ease-in curve in route coordinates therefore makes the visible
 // collapse start decisively and settle into the source container.
 const _containerTransformReverseCurve = Cubic(0.5, 0.0, 0.75, 0.0);
-const _defaultPageLayerBackgroundScale = 0.875;
 const _defaultPageLayerBackgroundMask = 0.24;
 const _defaultPageLayerMaxBlur = 12.0;
 const _defaultContainerContentStart = 0.28;
@@ -116,9 +114,6 @@ class _AnimSettings {
       predictiveBack;
 
   static double get depthFactor => (pageLayerDepth / 100).clamp(0.0, 1.0);
-
-  static double get backgroundScale =>
-      ui.lerpDouble(1.0, _defaultPageLayerBackgroundScale, depthFactor)!;
 
   static double get backgroundMask =>
       _defaultPageLayerBackgroundMask * depthFactor;
@@ -745,7 +740,6 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
   BorderRadius _cachedScreenCornerRadii = BorderRadius.circular(12.0);
 
   // Cached _AnimSettings values.
-  late double _bgScale;
   late double _bgBlur;
   late double _bgMask;
   late bool _useScreenRadius;
@@ -776,7 +770,6 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
   }
 
   void _cacheSettings() {
-    _bgScale = _AnimSettings.backgroundScale;
     _bgBlur = _AnimSettings.backgroundBlur;
     _bgMask = _AnimSettings.backgroundMask;
     _useScreenRadius = _AnimSettings.screenRadius;
@@ -913,11 +906,17 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
     required bool isReverse,
   }) {
     // Direct arithmetic with cached settings — avoids per-frame getter calls.
-    final scale = 1.0 + (_bgScale - 1.0) * progress;
     final maskOpacity = _bgMask * progress;
 
-    Widget current = scale < 1.0 - _epsilon
-        ? Transform.scale(scale: scale, child: child)
+    // Avoid per-frame Transform.scale on live background text trees, which
+    // invalidates Impeller's glyph atlas every frame; use translation parallax.
+    Widget current = progress > _epsilon
+        ? FractionalTranslation(
+            translation: widget.mode == _PageLayerRouteMode.slideEnd
+                ? Offset(-0.08 * progress, 0.0)
+                : Offset(0.0, -0.025 * progress),
+            child: child,
+          )
         : child;
 
     // Skip expensive ClipRRect + blur during reverse (pop) animation.
@@ -997,13 +996,13 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
 
     switch (widget.mode) {
       case _PageLayerRouteMode.scale:
-        // Direct arithmetic: scale = 0.92 + 0.08 * eased
-        final scale = 0.92 + 0.08 * eased;
+        // Use translation + fade without per-frame scale on live text so
+        // Impeller keeps its glyph atlas warm across transition frames.
+        final d = (1.0 - eased) * 0.045;
         final opacity = 0.75 + 0.25 * eased;
-        if (scale < 1.0 - _epsilon) {
-          current = Transform.scale(
-            scale: scale,
-            alignment: const Alignment(0, -0.45),
+        if (d > _epsilon) {
+          current = FractionalTranslation(
+            translation: Offset(0.0, d),
             child: current,
           );
         }
@@ -1350,19 +1349,27 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
 
         Widget content = child ?? const SizedBox.shrink();
 
-        // Morph into the button's shape for both opening and closing animations.
-        // We scale the content so its width exactly matches the current box width.
-        final scaleX = width / screenWidth;
-        if ((scaleX - 1.0).abs() > _epsilon) {
-          content = Transform.scale(
-            scale: scaleX,
-            alignment: Alignment.topCenter,
-            child: content,
-          );
+        // Morph into the button's shape when closing (using the rasterized
+        // SnapshotWidget bitmap). Skip scaling live un-snapshotted subtrees on
+        // forward so Impeller does not re-rasterize glyphs every frame.
+        if (_contentSnapshot.allowSnapshotting) {
+          final scaleX = width / screenWidth;
+          if ((scaleX - 1.0).abs() > _epsilon) {
+            content = Transform.scale(
+              scale: scaleX,
+              alignment: Alignment.topCenter,
+              child: content,
+            );
+          }
         }
 
-        if (fadeIn < 1.0 - _epsilon) {
-          content = Opacity(opacity: fadeIn, child: content);
+        if (fadeIn <= _epsilon) {
+          content = const SizedBox.shrink();
+        } else if (fadeIn < 1.0 - _epsilon) {
+          content = FadeTransition(
+            opacity: AlwaysStoppedAnimation(fadeIn),
+            child: content,
+          );
         }
 
         final surfaceColor = Theme.of(context).colorScheme.surface;
