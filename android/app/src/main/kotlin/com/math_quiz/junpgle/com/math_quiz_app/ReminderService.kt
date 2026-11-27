@@ -111,6 +111,8 @@ class ReminderService : Service() {
                 val type = intent.getStringExtra("type")
                 val todoType = intent.getStringExtra("todo_type")
                 val countdownCategory = intent.getStringExtra("countdown_category")
+                val countdownId = intent.getStringExtra("countdown_id")
+                val countdownDateStr = intent.getStringExtra("countdown_date_str")
                 val courseName = intent.getStringExtra("course_name")
                 val room = intent.getStringExtra("room")
                 val timeStr = intent.getStringExtra("time_str")
@@ -129,6 +131,8 @@ class ReminderService : Service() {
                         type = type,
                         todoType = todoType,
                         countdownCategory = countdownCategory,
+                        countdownId = countdownId,
+                        countdownDateStr = countdownDateStr,
                         courseName = courseName,
                         room = room,
                         timeStr = timeStr,
@@ -187,6 +191,8 @@ class ReminderService : Service() {
                 val type        = item.optString("type", "").takeIf { it.isNotBlank() }
                 val todoType    = item.optString("todoType", "").takeIf { it.isNotBlank() }
                 val countdownCategory = item.optString("countdownCategory", "").takeIf { it.isNotBlank() }
+                val countdownId = item.optString("countdownId", "").takeIf { it.isNotBlank() }
+                val countdownDateStr = item.optString("countdownDateStr", "").takeIf { it.isNotBlank() }
                 val courseName  = item.optString("courseName", "").takeIf { it.isNotBlank() }
                 val room        = item.optString("room", "").takeIf { it.isNotBlank() }
                 val timeStr     = item.optString("timeStr", "").takeIf { it.isNotBlank() }
@@ -209,6 +215,8 @@ class ReminderService : Service() {
                     type,
                     todoType,
                     countdownCategory,
+                    countdownId,
+                    countdownDateStr,
                     courseName,
                     room,
                     timeStr,
@@ -234,6 +242,8 @@ class ReminderService : Service() {
         type: String?,
         todoType: String?,
         countdownCategory: String?,
+        countdownId: String?,
+        countdownDateStr: String?,
         courseName: String?,
         room: String?,
         timeStr: String?,
@@ -256,6 +266,8 @@ class ReminderService : Service() {
             if (!type.isNullOrBlank()) putExtra("type", type)
             if (!todoType.isNullOrBlank()) putExtra("todo_type", todoType)
             if (!countdownCategory.isNullOrBlank()) putExtra("countdown_category", countdownCategory)
+            if (!countdownId.isNullOrBlank()) putExtra("countdown_id", countdownId)
+            if (!countdownDateStr.isNullOrBlank()) putExtra("countdown_date_str", countdownDateStr)
             if (!courseName.isNullOrBlank()) putExtra("course_name", courseName)
             if (!room.isNullOrBlank()) putExtra("room", room)
             if (!timeStr.isNullOrBlank()) putExtra("time_str", timeStr)
@@ -299,6 +311,8 @@ class ReminderService : Service() {
         type: String?,
         todoType: String?,
         countdownCategory: String?,
+        countdownId: String?,
+        countdownDateStr: String?,
         courseName: String?,
         room: String?,
         timeStr: String?,
@@ -324,6 +338,22 @@ class ReminderService : Service() {
         }
         if (SystemDoNotDisturbManager.shouldSuppressNotification(this, type, notifId)) {
             Log.d(TAG, "Skip reminder during focus DND notifId=$notifId type=$type")
+            return
+        }
+        val isCountdownReminder = type == "countdown" || notifId in 70001..71999
+        val resolvedCountdownDate = if (isCountdownReminder) {
+            CountdownReminderStore.normalizeDateStr(countdownDateStr, triggerAtMs)
+        } else {
+            ""
+        }
+        if (isCountdownReminder && CountdownReminderStore.shouldSuppressAndReconcile(
+                context = this,
+                countdownId = countdownId,
+                notifId = notifId,
+                dateStr = resolvedCountdownDate
+            )
+        ) {
+            Log.d(TAG, "Skip dismissed/shown countdown reminder notifId=$notifId countdownId=$countdownId")
             return
         }
         val intent = Intent(this, MainActivity::class.java).apply {
@@ -418,6 +448,32 @@ class ReminderService : Service() {
             )
         }
 
+        val countdownCompletePendingIntent = if (isCountdownReminder) {
+            builder.setDeleteIntent(
+                CountdownReminderStore.createDismissPendingIntent(
+                    context = this,
+                    notifId = notifId,
+                    countdownId = countdownId,
+                    dateStr = resolvedCountdownDate
+                )
+            )
+            CountdownReminderStore.createCompletePendingIntent(
+                context = this,
+                notifId = notifId,
+                countdownId = countdownId,
+                dateStr = resolvedCountdownDate
+            )
+        } else {
+            null
+        }
+        if (countdownCompletePendingIntent != null) {
+            builder.addAction(
+                R.drawable.ic_done,
+                "完成",
+                countdownCompletePendingIntent
+            )
+        }
+
         if (Build.VERSION.SDK_INT >= 34 && display.shortText.isNotBlank()) {
             try {
                 builder.setShortCriticalText(display.shortText)
@@ -486,6 +542,16 @@ class ReminderService : Service() {
                         )
                     )
                 }
+                if (countdownCompletePendingIntent != null) {
+                    hyperBuilder.addAction(
+                        HyperAction(
+                            "btn_done",
+                            "完成",
+                            countdownCompletePendingIntent,
+                            1
+                        )
+                    )
+                }
                 extras.putString("miui.focus.param", hyperBuilder.buildJsonParam())
                 extras.putAll(hyperBuilder.buildResourceBundle())
             }
@@ -497,7 +563,17 @@ class ReminderService : Service() {
         val notification = builder.build()
 
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        try { nm.notify(notifId, notification) } catch (e: Exception) {
+        try {
+            nm.notify(notifId, notification)
+            if (isCountdownReminder) {
+                CountdownReminderStore.markShown(
+                    context = this,
+                    countdownId = countdownId,
+                    notifId = notifId,
+                    dateStr = resolvedCountdownDate
+                )
+            }
+        } catch (e: Exception) {
             Log.e(TAG, "postReminderNotification error", e)
         }
     }
@@ -580,22 +656,17 @@ class ReminderService : Service() {
                 islandBizTag = TODO_ISLAND_BIZ_TAG
             )
             "countdown" -> {
-                val (icon, color, label) = when (countdownCategory) {
-                    "birthday" -> Triple(R.drawable.ic_countdown_birthday, 0xFFFF9800.toInt(), "🎂生日")
-                    "anniversary" -> Triple(R.drawable.ic_countdown_anniversary, 0xFFE91E63.toInt(), "💖纪念日")
-                    "exam" -> Triple(R.drawable.ic_countdown_exam, 0xFF3F51B5.toInt(), "📝考试")
-                    "holiday" -> Triple(R.drawable.ic_countdown_holiday, 0xFF00ACC1.toInt(), "🌴假期")
-                    "travel" -> Triple(R.drawable.ic_countdown_travel, 0xFF2196F3.toInt(), "✈️出行")
-                    "deadline" -> Triple(R.drawable.ic_countdown_deadline, 0xFFF44336.toInt(), "🚩重要节点")
-                    else -> Triple(R.drawable.hourglass, 0xFFFF7043.toInt(), "⏳倒数日")
-                }
+                val style = CountdownReminderStore.resolveCategoryStyle(
+                    countdownCategory,
+                    compactLabel = true
+                )
                 ReminderDisplay(
                     title = title,
                     text = text,
-                    subText = "$label · 今天",
+                    subText = "${style.label} · 今天",
                     shortText = "就在今天",
-                    iconResId = icon,
-                    color = color,
+                    iconResId = style.iconResId,
+                    color = style.color,
                     islandBizTag = TODO_ISLAND_BIZ_TAG
                 )
             }

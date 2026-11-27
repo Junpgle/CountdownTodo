@@ -9,6 +9,7 @@ import 'storage/app_settings_storage.dart';
 import '../utils/time_utils.dart';
 import 'item_semantics_service.dart';
 import 'scheduled_reminder_registry.dart';
+import 'countdown_reminder_helper.dart';
 import 'notification_service_shared.dart';
 import 'focus_do_not_disturb_service.dart';
 import '../utils/json_value_parser.dart';
@@ -205,14 +206,22 @@ class NotificationService {
   }
 
   static int countdownLiveNotifId(String countdownId) =>
-      71001 + (countdownId.hashCode.abs() % 999);
+      CountdownReminderHelper.liveNotificationId(countdownId);
 
-  static Future<bool> showCountdownLiveActivity(CountdownItem countdown) async {
+  static Future<bool> showCountdownLiveActivity(
+    CountdownItem countdown, {
+    DateTime? now,
+  }) async {
     if (countdown.isDeleted || countdown.isCompleted) return false;
     if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) {
       return false;
     }
     if (!await AppSettingsStorage.isCountdownNotificationEnabled()) {
+      return false;
+    }
+    final targetLocal = countdown.targetDate.toLocal();
+    final dateStr = AppTimeFormats.date(targetLocal);
+    if (await CountdownReminderPrefs.isDismissed(countdown.id, dateStr)) {
       return false;
     }
     final category = ItemSemanticsService.countdownCategoryForTitle(
@@ -359,6 +368,26 @@ class NotificationService {
   static Future<void> cancelReminder(int notifId) async {
     _reminderTimers.remove(notifId)?.cancel();
     _scheduledReminders.remove(notifId);
+  }
+
+  static Future<List<String>> getPendingCompletedCountdowns() async =>
+      const <String>[];
+
+  static Future<void> acknowledgeCompletedCountdowns(List<String> ids) async {}
+
+  static Future<void> markCountdownDismissed({
+    required String countdownId,
+    required String dateStr,
+    int? notifId,
+  }) async {
+    await CountdownReminderPrefs.markDismissed(countdownId, dateStr);
+  }
+
+  static Future<void> clearCountdownReminderState(
+    String countdownId, {
+    int? notifId,
+  }) async {
+    await CountdownReminderPrefs.clearForCountdown(countdownId);
   }
 
   /// Kept for API parity with native platforms. Browser reminder callbacks

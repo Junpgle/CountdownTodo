@@ -6,6 +6,7 @@ import '../storage_service.dart';
 import '../utils/time_utils.dart';
 import 'course_service.dart';
 import 'item_semantics_service.dart';
+import 'countdown_reminder_helper.dart';
 import 'notification_service.dart';
 import 'scheduled_reminder_registry.dart';
 import 'storage/user_session_storage.dart';
@@ -346,11 +347,14 @@ class ReminderScheduleService {
     // ── 倒计时当天 08:00 提醒 ──────────────────────────────────────────
     final effectiveCountdowns =
         countdowns ?? await StorageService.getCountdowns(effectiveUsername);
+    final dismissedCountdownKeys =
+        await CountdownReminderPrefs.getDismissedKeys();
     reminders.addAll(
       buildCountdownReminders(
         countdowns: effectiveCountdowns,
         now: now,
         limit: limit,
+        dismissedDateKeys: dismissedCountdownKeys,
       ),
     );
 
@@ -395,6 +399,7 @@ class ReminderScheduleService {
     required List<CountdownItem> countdowns,
     required DateTime now,
     required DateTime limit,
+    Set<String> dismissedDateKeys = const <String>{},
   }) {
     final reminders = <Map<String, dynamic>>[];
     for (var i = 0; i < countdowns.length && i < 999; i++) {
@@ -411,6 +416,13 @@ class ReminderScheduleService {
       );
       if (!triggerAt.isAfter(now) || triggerAt.isAfter(limit)) continue;
 
+      final dateStr = AppTimeFormats.date(targetLocal);
+      if (dismissedDateKeys.contains(
+        CountdownReminderHelper.dismissedStorageKey(countdown.id, dateStr),
+      )) {
+        continue;
+      }
+
       final endOfDay = DateTime(
         targetLocal.year,
         targetLocal.month,
@@ -423,7 +435,6 @@ class ReminderScheduleService {
       );
       final emoji = ItemSemanticsService.countdownCategoryEmoji(category);
       final label = ItemSemanticsService.countdownCategoryLabel(category);
-      final dateStr = AppTimeFormats.date(targetLocal);
 
       reminders.add({
         'triggerAtMs': AppTimeFormats.toServerTimestamp(triggerAt),
@@ -435,6 +446,7 @@ class ReminderScheduleService {
         'countdownCategory': category,
         'countdownId': countdown.id,
         'countdownTitle': countdown.title,
+        'countdownDateStr': dateStr,
         'timeStr': '今天 08:00',
       });
     }

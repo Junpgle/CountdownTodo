@@ -9,6 +9,7 @@ import 'package:countdown_todo/services/api_service.dart';
 import 'package:countdown_todo/screens/historical_countdowns_screen.dart';
 import 'package:countdown_todo/screens/app_board_screen.dart';
 
+import '../services/notification_service.dart';
 import '../services/pomodoro_sync_service.dart';
 import '../services/power_save_mode_service.dart';
 import '../utils/app_image_filters.dart';
@@ -236,6 +237,9 @@ Future<void> showCountdownEditorDialog({
                 if (titleCtrl.text.isNotEmpty) {
                   final updatedList = List<CountdownItem>.from(countdowns);
                   if (editingItem != null) {
+                    final dateChanged =
+                        CalendarDateMath.dateOnly(selectedDate) !=
+                        CalendarDateMath.dateOnly(editingItem.targetDate);
                     final idx = updatedList.indexWhere(
                       (countdown) => countdown.id == editingItem.id,
                     );
@@ -245,7 +249,9 @@ Future<void> showCountdownEditorDialog({
                         title: titleCtrl.text,
                         targetDate: selectedDate,
                         isDeleted: editingItem.isDeleted,
-                        isCompleted: editingItem.isCompleted,
+                        isCompleted: dateChanged
+                            ? false
+                            : editingItem.isCompleted,
                         version: editingItem.version,
                         teamUuid: selectedTeamUuid,
                         teamName: selectedTeamName,
@@ -257,6 +263,11 @@ Future<void> showCountdownEditorDialog({
                         conflictData: editingItem.conflictData,
                       );
                       updatedList[idx].markAsChanged();
+                    }
+                    if (dateChanged) {
+                      await NotificationService.clearCountdownReminderState(
+                        editingItem.id,
+                      );
                     }
                   } else {
                     updatedList.add(
@@ -500,6 +511,9 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
               ),
             ),
             onPressed: () async {
+              await NotificationService.clearCountdownReminderState(
+                itemToDelete.id,
+              );
               await StorageService.deleteCountdownGlobally(
                 widget.username,
                 itemToDelete.id,

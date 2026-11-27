@@ -251,6 +251,10 @@
             android:name=".CourseArrivalReceiver"
             android:exported="false" />
 
+        <receiver
+            android:name=".CountdownReminderReceiver"
+            android:exported="false" />
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

@@ -1433,10 +1433,18 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
     // 3.5 倒数日当天 08:00 起实时活动通知
     final countdownTriggerStart = DateTime(now.year, now.month, now.day, 8, 0);
     if (!now.isBefore(countdownTriggerStart)) {
+      final dismissedCountdownKeys =
+          await CountdownReminderPrefs.getDismissedKeys();
       for (final countdown in _countdowns) {
         if (countdown.isDeleted || countdown.isCompleted) continue;
         final targetLocal = countdown.targetDate.toLocal();
         if (!AppTimeFormats.isSameDay(targetLocal, now)) continue;
+        final dateStr = AppTimeFormats.date(targetLocal);
+        if (dismissedCountdownKeys.contains(
+          CountdownReminderHelper.dismissedStorageKey(countdown.id, dateStr),
+        )) {
+          continue;
+        }
         final notifId = NotificationService.countdownLiveNotifId(countdown.id);
         final desktopEventKey =
             'countdown:${countdown.id}:${now.year}-${now.month}-${now.day}';

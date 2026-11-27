@@ -569,6 +569,9 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
           _countdownsDataRevision++;
           _countdownsNotifier.value = allCountdowns;
         }
+        if (loadCountdowns) {
+          unawaited(_reconcilePendingCompletedCountdowns());
+        }
         if (mathChanged) {
           _mathStats = mathStats;
           _mathStatsNotifier.value = mathStats;
@@ -608,7 +611,7 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
           );
         }
 
-        _debouncedSyncTodoNotification(todosChanged);
+        _debouncedSyncTodoNotification(todosChanged || countdownsChanged);
         if (domains == null || domains.contains(DataRefreshDomain.all)) {
           _debouncedFetchTeamPending();
           _debouncedFetchAnnouncements();
@@ -617,6 +620,7 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
         _debouncedUpdateTodoWidget(allTodos, todosChanged);
         _debouncedScheduleAllReminders(
           todosChanged ||
+              countdownsChanged ||
               coursesChanged ||
               plansChanged ||
               fixedSchedulesChanged,
@@ -998,6 +1002,7 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
         ReminderScheduleService.scheduleAll(
           todos: _todos,
           courses: const <CourseItem>[],
+          countdowns: _countdowns,
           loadCourses: (from, to) => CourseService.getCoursesForDateRange(
             widget.username,
             from: from,

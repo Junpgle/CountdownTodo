@@ -14,6 +14,7 @@ import 'macos_pomodoro_status_bar_service.dart';
 import 'todo_notification_policy.dart';
 import 'item_semantics_service.dart';
 import 'scheduled_reminder_registry.dart';
+import 'countdown_reminder_helper.dart';
 import 'notification_service_shared.dart';
 import 'focus_do_not_disturb_service.dart';
 import '../utils/time_utils.dart';
@@ -23,12 +24,13 @@ import '../utils/text_utils.dart';
 class NotificationService {
   static const int financeBudgetAlertNotificationBaseId = 61000;
   static const int financeBudgetAlertNotificationRange = 9000;
-  static const int countdownLiveNotificationBaseId = 71001;
-  static const int countdownLiveNotificationRange = 999;
+  static const int countdownLiveNotificationBaseId =
+      CountdownReminderHelper.liveNotificationBaseId;
+  static const int countdownLiveNotificationRange =
+      CountdownReminderHelper.liveNotificationRange;
 
   static int countdownLiveNotifId(String countdownId) =>
-      countdownLiveNotificationBaseId +
-      (countdownId.hashCode.abs() % countdownLiveNotificationRange);
+      CountdownReminderHelper.liveNotificationId(countdownId);
 
   static const MethodChannel _channel = MethodChannel(
     'com.math_quiz.junpgle.com.math_quiz_app/notifications',
@@ -196,6 +198,18 @@ class NotificationService {
     if (notifId == null) return;
 
     await cancelReminder(notifId);
+    if (event.type == MacIslandReminderActionType.acknowledged &&
+        event.reminder['type'] == 'countdown') {
+      final countdownId = event.reminder['countdownId']?.toString().trim();
+      final dateStr =
+          event.reminder['countdownDateStr']?.toString().trim() ?? '';
+      if (countdownId != null && countdownId.isNotEmpty) {
+        await CountdownReminderPrefs.markDismissed(
+          countdownId,
+          dateStr.isNotEmpty ? dateStr : AppTimeFormats.date(DateTime.now()),
+        );
+      }
+    }
     if (event.type == MacIslandReminderActionType.snoozed) {
       final snoozed = Map<String, dynamic>.from(event.reminder)
         ..['triggerAtMs'] = DateTime.now()
@@ -617,7 +631,10 @@ class NotificationService {
   }
 
   /// 倒数日当天 08:00 起触发实时活动通知（Android 静态图标 / macOS 灵动岛动画图标 / Windows 桌面通知）。
-  static Future<bool> showCountdownLiveActivity(CountdownItem countdown) async {
+  static Future<bool> showCountdownLiveActivity(
+    CountdownItem countdown, {
+    DateTime? now,
+  }) async {
     if (FocusDoNotDisturbService.isActive) return false;
     if (countdown.isDeleted || countdown.isCompleted) return false;
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) {
@@ -630,13 +647,13 @@ class NotificationService {
       return false;
     }
 
-    final now = DateTime.now();
+    final current = now ?? DateTime.now();
     final targetLocal = countdown.targetDate.toLocal();
-    if (!AppTimeFormats.isSameDay(targetLocal, now)) {
+    if (!AppTimeFormats.isSameDay(targetLocal, current)) {
       return false;
     }
-    final eightAm = DateTime(now.year, now.month, now.day, 8, 0);
-    if (now.isBefore(eightAm)) {
+    final eightAm = DateTime(current.year, current.month, current.day, 8, 0);
+    if (current.isBefore(eightAm)) {
       return false;
     }
 
@@ -646,6 +663,9 @@ class NotificationService {
     final emoji = ItemSemanticsService.countdownCategoryEmoji(category);
     final label = ItemSemanticsService.countdownCategoryLabel(category);
     final dateStr = AppTimeFormats.date(targetLocal);
+    if (await CountdownReminderPrefs.isDismissed(countdown.id, dateStr)) {
+      return false;
+    }
     final notifId = countdownLiveNotifId(countdown.id);
 
     if (_isDesktopSupported) {
@@ -660,10 +680,16 @@ class NotificationService {
         );
       }
       if (Platform.isMacOS) {
-        final endOfDay = DateTime(now.year, now.month, now.day, 23, 59);
+        final endOfDay = DateTime(
+          current.year,
+          current.month,
+          current.day,
+          23,
+          59,
+        );
         await MacPomodoroStatusBarService.showIslandReminder({
           'notifId': notifId,
-          'triggerAtMs': now.millisecondsSinceEpoch,
+          'triggerAtMs': current.millisecondsSinceEpoch,
           'startAtMs': AppTimeFormats.toServerTimestamp(endOfDay),
           'title': '$emoji ${countdown.title}',
           'text': '$label就在今天 · $dateStr',
@@ -671,6 +697,7 @@ class NotificationService {
           'countdownCategory': category,
           'countdownId': countdown.id,
           'countdownTitle': countdown.title,
+          'countdownDateStr': dateStr,
           'timeStr': '就在今天',
         });
       }
@@ -678,16 +705,23 @@ class NotificationService {
     }
 
     try {
-      await _channel.invokeMethod('showOngoingNotification', {
-        'type': 'countdown',
-        'countdownTitle': countdown.title,
-        'countdownCategory': category,
-        'countdownDateStr': dateStr,
-        'countdownId': countdown.id,
-        'timeStr': '就在今天',
-        'notificationId': notifId,
-      });
-      return true;
+      final shown = await _channel.invokeMethod<bool>(
+        'showOngoingNotification',
+        {
+          'type': 'countdown',
+          'countdownTitle': countdown.title,
+          'countdownCategory': category,
+          'countdownDateStr': dateStr,
+          'countdownId': countdown.id,
+          'timeStr': '就在今天',
+          'notificationId': notifId,
+        },
+      );
+      if (shown == false) {
+        await CountdownReminderPrefs.markDismissed(countdown.id, dateStr);
+        return false;
+      }
+      return shown == true;
     } catch (_) {
       return false;
     }
@@ -971,6 +1005,8 @@ class NotificationService {
           if (r['countdownId'] != null) 'countdownId': r['countdownId'],
           if (r['countdownTitle'] != null)
             'countdownTitle': r['countdownTitle'],
+          if (r['countdownDateStr'] != null)
+            'countdownDateStr': r['countdownDateStr'],
           if (r['habitGoalId'] != null) 'habitGoalId': r['habitGoalId'],
           if (r['financeRuleUuid'] != null)
             'financeRuleUuid': r['financeRuleUuid'],
@@ -1113,6 +1149,78 @@ class NotificationService {
 
     try {
       await _channel.invokeMethod('cancelReminder', {'notifId': notifId});
+    } catch (_) {
+      // Native notification calls are best-effort.
+    }
+  }
+
+  static Future<List<String>> getPendingCompletedCountdowns() async {
+    if (!Platform.isAndroid && !Platform.isIOS) return const <String>[];
+    try {
+      final raw = await _channel.invokeMethod<List<dynamic>>(
+        'getPendingCompletedCountdowns',
+      );
+      if (raw == null || raw.isEmpty) return const <String>[];
+      return raw
+          .map((e) => e?.toString().trim() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toList(growable: false);
+    } catch (_) {
+      return const <String>[];
+    }
+  }
+
+  static Future<void> acknowledgeCompletedCountdowns(List<String> ids) async {
+    if (ids.isEmpty || (!Platform.isAndroid && !Platform.isIOS)) return;
+    try {
+      await _channel.invokeMethod('acknowledgeCompletedCountdowns', {
+        'ids': ids,
+      });
+    } catch (_) {
+      // Native notification calls are best-effort.
+    }
+  }
+
+  static Future<void> markCountdownDismissed({
+    required String countdownId,
+    required String dateStr,
+    int? notifId,
+  }) async {
+    await CountdownReminderPrefs.markDismissed(countdownId, dateStr);
+    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
+    final resolvedNotifId = notifId ?? countdownLiveNotifId(countdownId);
+    if (_isDesktopSupported) {
+      await ensureInitialized();
+      await _plugin.cancel(id: resolvedNotifId);
+      return;
+    }
+    try {
+      await _channel.invokeMethod('markCountdownDismissed', {
+        'countdownId': countdownId,
+        'dateStr': dateStr,
+        'notificationId': resolvedNotifId,
+      });
+    } catch (_) {
+      // Native notification calls are best-effort.
+    }
+  }
+
+  static Future<void> clearCountdownReminderState(
+    String countdownId, {
+    int? notifId,
+  }) async {
+    await CountdownReminderPrefs.clearForCountdown(countdownId);
+    final prefix = '${countdownId.trim()}@';
+    _windowsCountdownNotificationKeys.removeWhere((k) => k.startsWith(prefix));
+    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
+    final resolvedNotifId = notifId ?? countdownLiveNotifId(countdownId);
+    await cancelSpecialTodoNotification(resolvedNotifId);
+    if (_isDesktopSupported) return;
+    try {
+      await _channel.invokeMethod('clearCountdownReminderState', {
+        'countdownId': countdownId,
+        'notificationId': resolvedNotifId,
+      });
     } catch (_) {
       // Native notification calls are best-effort.
     }

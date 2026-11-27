@@ -63,7 +63,9 @@ mixin _HomeDashboardContract {
 
   Future<void> _checkAutoSync({bool force = false});
 
-  void _markCurrentTodoDone({int? notifId});
+  Future<void> _markCurrentTodoDone({int? notifId, String? countdownId});
+
+  Future<void> _reconcilePendingCompletedCountdowns();
 
   Future<void> _checkExactAlarmPermission();
 
