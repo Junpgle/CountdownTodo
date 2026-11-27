@@ -9,9 +9,11 @@ void main() {
   setUp(() {
     originalBaseUrl = ApiService.baseUrl;
     ApiService.clearBaseUrlOverride();
+    ApiService.resetCloudflareFallbackForTest();
   });
 
   tearDown(() {
+    ApiService.resetCloudflareFallbackForTest();
     ApiService.clearBaseUrlOverride();
     ApiService.baseUrl = originalBaseUrl;
   });
@@ -83,6 +85,80 @@ void main() {
       expect(rejectedResult.teams, isEmpty);
       expect(malformedResult.succeeded, isFalse);
       expect(malformedResult.teams, isEmpty);
+    },
+  );
+
+  test(
+    'does not fall back from Cloudflare to direct before 2027-01-16',
+    () async {
+      ApiService.setServerChoice(ApiService.serverChoiceCloudflare);
+      ApiService.clock = () => DateTime(2027, 1, 15, 23, 59, 59);
+
+      final requestedHosts = <String>[];
+      final result = await ApiService.fetchTeamsWithStatus(
+        client: MockClient((request) async {
+          requestedHosts.add(request.url.host);
+          throw http.ClientException('DNS lookup failed', request.url);
+        }),
+      );
+
+      expect(result.succeeded, isFalse);
+      expect(requestedHosts, ['api-cdt.junpgle.me']);
+      expect(ApiService.isCloudflareFallbackActive, isFalse);
+      expect(ApiService.effectiveBaseUrl, ApiService.aliyunCloudflareUrl);
+    },
+  );
+
+  test(
+    'falls back from Cloudflare to direct Aliyun after 2027-01-15 and sticks for subsequent requests',
+    () async {
+      ApiService.setServerChoice(ApiService.serverChoiceCloudflare);
+      ApiService.clock = () => DateTime(2027, 1, 16, 0, 0, 0);
+
+      final requestedUrls = <String>[];
+      final client = MockClient((request) async {
+        requestedUrls.add(request.url.toString());
+        if (request.url.host == 'api-cdt.junpgle.me') {
+          throw http.ClientException('DNS lookup failed', request.url);
+        }
+        return http.Response('{"teams":[]}', 200);
+      });
+
+      final first = await ApiService.fetchTeamsWithStatus(client: client);
+      expect(first.succeeded, isTrue);
+      expect(ApiService.isCloudflareFallbackActive, isTrue);
+      expect(ApiService.effectiveBaseUrl, ApiService.aliyunProdUrl);
+      expect(ApiService.syncServerKey, 'aliyun');
+      expect(requestedUrls, [
+        'https://api-cdt.junpgle.me/api/teams',
+        'http://101.200.13.100:8082/api/teams',
+      ]);
+
+      requestedUrls.clear();
+      final second = await ApiService.fetchTeamsWithStatus(client: client);
+      expect(second.succeeded, isTrue);
+      expect(requestedUrls, ['http://101.200.13.100:8082/api/teams']);
+    },
+  );
+
+  test(
+    'does not latch Cloudflare fallback when direct endpoint is also offline',
+    () async {
+      ApiService.setServerChoice(ApiService.serverChoiceCloudflare);
+      ApiService.clock = () => DateTime(2027, 2, 1);
+
+      final requestedHosts = <String>[];
+      final result = await ApiService.fetchTeamsWithStatus(
+        client: MockClient((request) async {
+          requestedHosts.add(request.url.host);
+          throw http.ClientException('Device offline', request.url);
+        }),
+      );
+
+      expect(result.succeeded, isFalse);
+      expect(requestedHosts, ['api-cdt.junpgle.me', '101.200.13.100']);
+      expect(ApiService.isCloudflareFallbackActive, isFalse);
+      expect(ApiService.effectiveBaseUrl, ApiService.aliyunCloudflareUrl);
     },
   );
 }

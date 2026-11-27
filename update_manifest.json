@@ -1,10 +1,10 @@
 {
-  "version_code": 702504,
-  "version_name": "7.25.4",
+  "version_code": 702600,
+  "version_name": "7.26.0",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 7.25.4",
-    "description": "【新增】新增账号在线登录设备管理，支持查看全部已登录终端与活跃时间，并通过邮箱验证码远程安全踢出设备。\n【新增】记账批量导入扩展支持银行流水、云闪付、通用 CSV/XLSX 表格及 JSON/OFX/QIF 多平台账单格式。\n【新增】倒数日支持文字语义图标识别、当天 08:00 定时到达提醒与设置开关，适配 Android 静态分类实时活动图标及 macOS 灵动岛动态图标与左文右图展开布局。\n【新增】支持 macOS/Windows 桌面端 Skia 与 Impeller 渲染引擎自由切换（设置页与登录页均可调整），桌面端默认采用 Skia 并为 macOS 显式配置中文字体回退。\n【新增】习惯中心支持常用饮品图标自定义存储与增量云同步，打卡日历新增图标点亮展示并优化宽屏适配；番茄钟新增今日全站人均专注时长展示。\n【优化】更新「功能百宝箱」v7.25 新特性指南与入口映射；细化同步失败提示、补齐设置页容器共享动画并完善 macOS 状态栏专注同步。\n【优化】将局域网同步大载荷加解密与自动备份导出移至后台 Isolate，完成屏幕时间历史 SQLite 单源化，启用 macOS WAL/外键约束并优化退出前待办防抖刷新。\n【优化】更新官网着陆页结构与下载分区交互；优化 Web 离线缓存防毒化、静态资源缓存策略及 Android 多架构自更新识别顺序。\n【修复】全面加固云同步、局域网同步与后端安全：修复局部域同步 oplog 丢失、局域网配对鉴权与删除墓碑不一致、更新包 HTTPS/SHA-256 校验及番茄钟 WebSocket 重连竞态。\n【修复】修复 macOS 习惯模块中文与 Emoji 混排乱码、外观设置页卡片材质异常与窄屏壁纸选项溢出、内嵌设置面板 GlobalKey 冲突、课表解析与超节次时间倒挂，以及多端控制器与监听泄漏问题。",
+    "title": "版本更新 7.26.0",
+    "description": "大幅重构代码，巨幅提升流畅度。推荐所有用户更新！【新增】记账新增「年度总览」视图与年度预算汇总，支持按年窗口加载与月度收支柱状图对比。\n【新增】全应用接入可配置的 AppSkeleton 骨架屏加载占位（支持宽屏双栏/分栏/网格骨架），并在动效设置新增「骨架屏加载」全局开关与容器转场动态模糊。\n【新增】升级后默认启用「标准液态玻璃」模式，并在功能引导页新增液态玻璃体验开关；更新「功能百宝箱」v7.26 新特性入口。\n【优化】大幅提升液态玻璃渲染流畅度：引入壁纸预模糊快照与顶部渐隐、作用域按背景自动分流、AppBar 统一玻璃胶囊、shellOpacity 无离屏合成调制，并移除首页卡片冗余模糊包装。\n【优化】番茄钟全站专注统计升级为近 7 日日均专注时长；优化团队分享独立页并行预取与按需历史加载；打磨习惯卡片、印章徽章与蓄力打卡庆祝反馈。\n【优化】深度优化全端性能：首页宽屏改用懒加载 SliverCrossAxisGroup 与局部刷新隔离，日记/屏幕时间改为 Sliver 列表，局域网扫描与大载荷同步编解码移至后台 Isolate，并统一日期格式化、弹窗与正则缓存。\n【修复】修复倒数日到达提醒关闭状态未持久化及后台完成状态对齐问题，修复多处局部滚动/转场字形图集与状态栏同步异常。",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-release.apk",
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe",
     "mac_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodo-macOS-arm64.zip",
@@ -44,6 +44,20 @@
           "full_apk_size": 59932531,
           "copied_bytes": 25401660,
           "embedded_bytes": 34530871,
+          "algorithm": "apk-zip-local-spans",
+          "recommended": false
+        },
+        {
+          "from_version": "7.25.4",
+          "from_sha256": "5724aecdc65bd217e6cfeafd195b9e97dd96cc8f62aa83c2b06df7bbecf7622e",
+          "to_version": "7.26.0",
+          "to_sha256": "e0d8040b4210e7ad04a3da9f74cf802628e9de68a606ba3bed6e6f024fbbab2f",
+          "patch_size": 34061748,
+          "patch_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-7.25.4_to_7.26.0.patch",
+          "operation_count": 16,
+          "full_apk_size": 60201195,
+          "copied_bytes": 26139691,
+          "embedded_bytes": 34061504,
           "algorithm": "apk-zip-local-spans",
           "recommended": true
         }
@@ -101,6 +115,19 @@
     "image_url": "https://gitee.com/Junpgle/CountdownTodo/raw/master/wallpapergitee/15.jpg"
   },
   "changelog_history": [
+    {
+      "version_name": "7.26.0",
+      "date": "2026-11-27",
+      "items": [
+        "【新增】记账新增「年度总览」视图与年度预算汇总，支持按年窗口加载与月度收支柱状图对比。",
+        "【新增】全应用接入可配置的 AppSkeleton 骨架屏加载占位（支持宽屏双栏/分栏/网格骨架），并在动效设置新增「骨架屏加载」全局开关与容器转场动态模糊。",
+        "【新增】升级后默认启用「标准液态玻璃」模式，并在功能引导页新增液态玻璃体验开关；更新「功能百宝箱」v7.26 新特性入口。",
+        "【优化】大幅提升液态玻璃渲染流畅度：引入壁纸预模糊快照与顶部渐隐、作用域按背景自动分流、AppBar 统一玻璃胶囊、shellOpacity 无离屏合成调制，并移除首页卡片冗余模糊包装。",
+        "【优化】番茄钟全站专注统计升级为近 7 日日均专注时长；优化团队分享独立页并行预取与按需历史加载；打磨习惯卡片、印章徽章与蓄力打卡庆祝反馈。",
+        "【优化】深度优化全端性能：首页宽屏改用懒加载 SliverCrossAxisGroup 与局部刷新隔离，日记/屏幕时间改为 Sliver 列表，局域网扫描与大载荷同步编解码移至后台 Isolate，并统一日期格式化、弹窗与正则缓存。",
+        "【修复】修复倒数日到达提醒关闭状态未持久化及后台完成状态对齐问题，修复多处局部滚动/转场字形图集与状态栏同步异常。"
+      ]
+    },
     {
       "version_name": "7.25.4",
       "date": "2026-11-23",

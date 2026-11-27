@@ -489,42 +489,23 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
     );
   }
 
-  void _deleteCountdown(CountdownItem itemToDelete) {
-    showAppDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("删除倒计时"),
-        content: const Text("确定要删除这条倒计时吗？"),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text("取消"),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.redAccent,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            onPressed: () async {
-              await NotificationService.clearCountdownReminderState(
-                itemToDelete.id,
-              );
-              await StorageService.deleteCountdownGlobally(
-                widget.username,
-                itemToDelete.id,
-              );
-              if (!mounted || !ctx.mounted) return;
-              widget.onDataChanged();
-              Navigator.pop(ctx);
-            },
-            child: const Text("删除"),
-          ),
-        ],
-      ),
+  Future<void> _deleteCountdown(CountdownItem itemToDelete) async {
+    final confirmed = await AppDialogs.confirm(
+      context,
+      title: '删除倒计时',
+      message: '确定要删除这条倒计时吗？',
+      confirmLabel: '删除',
+      destructive: true,
     );
+    if (!confirmed) return;
+
+    await NotificationService.clearCountdownReminderState(itemToDelete.id);
+    await StorageService.deleteCountdownGlobally(
+      widget.username,
+      itemToDelete.id,
+    );
+    if (!mounted) return;
+    widget.onDataChanged();
   }
 
   @override

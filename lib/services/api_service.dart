@@ -40,11 +40,19 @@ class ApiService {
   /// call the HTTP origin from an HTTPS page.
   static const String webAliyunProxyUrl = aliyunCloudflareUrl;
 
+  /// Date after which an unreachable Cloudflare proxy route automatically falls
+  /// back to the direct Aliyun HTTP endpoint on native platforms.
+  static final DateTime cloudflareFallbackStartDate = DateTime(2027, 1, 16);
+
+  @visibleForTesting
+  static DateTime Function() clock = DateTime.now;
+
   // Web must never start against the retired Cloudflare Worker. Share pages
   // intentionally skip the normal app initialization sequence, so the
   // default must already be the current API proxy before the first request.
   static String baseUrl = kIsWeb ? aliyunCloudflareUrl : aliyunProdUrl;
   static String? _baseUrlOverride;
+  static bool _cloudflareFallbackActive = false;
 
   // 复用使用平台默认 TLS 证书校验的 HTTP 客户端。
   static http.Client? _clientInstance;
@@ -84,6 +92,7 @@ class ApiService {
   static void lockBaseUrl(String url) {
     baseUrl = url;
     _isLocked = true;
+    _cloudflareFallbackActive = false;
   }
 
   static String normalizeServerChoice(String? choice) {
@@ -96,6 +105,7 @@ class ApiService {
   static void setServerChoice(String choice) {
     if (_isLocked) return; // 🛡️ 如果环境已锁定（如测试版），禁止通过设置更改地址
 
+    _cloudflareFallbackActive = false;
     if (kIsWeb) {
       baseUrl = aliyunCloudflareUrl;
       return;
@@ -115,10 +125,27 @@ class ApiService {
     _baseUrlOverride = null;
   }
 
+  static bool get isCloudflareFallbackActive => _cloudflareFallbackActive;
+
+  @visibleForTesting
+  static void resetCloudflareFallbackForTest() {
+    _cloudflareFallbackActive = false;
+    clock = DateTime.now;
+  }
+
   // Web 分享页必须始终走当前 Alibaba Zero Trust 代理。环境初始化、旧版
   // 本地设置或迁移工具都不应把浏览器请求重新指向已弃用的 Worker。
-  static String get _effectiveBaseUrl =>
-      kIsWeb ? webAliyunProxyUrl : (_baseUrlOverride ?? baseUrl);
+  static String get _effectiveBaseUrl {
+    if (kIsWeb) return webAliyunProxyUrl;
+    if (_baseUrlOverride != null) return _baseUrlOverride!;
+    if (_cloudflareFallbackActive &&
+        !_isLocked &&
+        baseUrl == aliyunCloudflareUrl) {
+      return aliyunProdUrl;
+    }
+    return baseUrl;
+  }
+
   static String get effectiveBaseUrl => _effectiveBaseUrl;
 
   /// Stable namespace for sync watermarks. The current direct and Cloudflare
@@ -182,35 +209,44 @@ class ApiService {
         : jsonEncode(body);
 
     final requestClient = client ?? _client;
-    late Future<http.Response> responseFuture;
-    switch (method.toUpperCase()) {
-      case 'GET':
-        responseFuture = requestClient.get(uri, headers: requestHeaders);
-      case 'POST':
-        responseFuture = requestClient.post(
-          uri,
-          headers: requestHeaders,
-          body: encodedBody,
-        );
-      case 'PUT':
-        responseFuture = requestClient.put(
-          uri,
-          headers: requestHeaders,
-          body: encodedBody,
-        );
-      case 'DELETE':
-        responseFuture = requestClient.delete(
-          uri,
-          headers: requestHeaders,
-          body: encodedBody,
-        );
-      default:
-        throw ArgumentError.value(method, 'method', 'Unsupported HTTP method');
+    http.Response response;
+    try {
+      response = await _sendHttpRequest(
+        client: requestClient,
+        method: method,
+        uri: uri,
+        headers: requestHeaders,
+        body: encodedBody,
+        timeout: timeout,
+      );
+      if (response.statusCode == 530) {
+        final fallbackUri = _tryBuildCloudflareFallbackUri(uri);
+        if (fallbackUri != null) {
+          response = await _sendHttpRequest(
+            client: requestClient,
+            method: method,
+            uri: fallbackUri,
+            headers: requestHeaders,
+            body: encodedBody,
+            timeout: timeout,
+          );
+          _activateCloudflareFallback();
+        }
+      }
+    } catch (e) {
+      if (e is ArgumentError) rethrow;
+      final fallbackUri = _tryBuildCloudflareFallbackUri(uri);
+      if (fallbackUri == null) rethrow;
+      response = await _sendHttpRequest(
+        client: requestClient,
+        method: method,
+        uri: fallbackUri,
+        headers: requestHeaders,
+        body: encodedBody,
+        timeout: timeout,
+      );
+      _activateCloudflareFallback();
     }
-
-    final response = timeout == null
-        ? await responseFuture
-        : await responseFuture.timeout(timeout);
 
     if (includeAuth &&
         response.statusCode == 401 &&
@@ -227,6 +263,62 @@ class ApiService {
     }
 
     return response;
+  }
+
+  static Future<http.Response> _sendHttpRequest({
+    required http.Client client,
+    required String method,
+    required Uri uri,
+    required Map<String, String> headers,
+    required String? body,
+    required Duration? timeout,
+  }) async {
+    late Future<http.Response> responseFuture;
+    switch (method.toUpperCase()) {
+      case 'GET':
+        responseFuture = client.get(uri, headers: headers);
+      case 'POST':
+        responseFuture = client.post(uri, headers: headers, body: body);
+      case 'PUT':
+        responseFuture = client.put(uri, headers: headers, body: body);
+      case 'DELETE':
+        responseFuture = client.delete(uri, headers: headers, body: body);
+      default:
+        throw ArgumentError.value(method, 'method', 'Unsupported HTTP method');
+    }
+    return timeout == null
+        ? await responseFuture
+        : await responseFuture.timeout(timeout);
+  }
+
+  static Uri? _tryBuildCloudflareFallbackUri(Uri uri) {
+    if (kIsWeb || _isLocked || _baseUrlOverride != null) return null;
+    if (baseUrl != aliyunCloudflareUrl || _cloudflareFallbackActive) {
+      return null;
+    }
+    if (clock().isBefore(cloudflareFallbackStartDate)) return null;
+
+    final cfUri = Uri.parse(aliyunCloudflareUrl);
+    if (uri.scheme != cfUri.scheme ||
+        uri.host != cfUri.host ||
+        uri.port != cfUri.port) {
+      return null;
+    }
+
+    final directUri = Uri.parse(aliyunProdUrl);
+    return uri.replace(
+      scheme: directUri.scheme,
+      host: directUri.host,
+      port: directUri.port,
+    );
+  }
+
+  static void _activateCloudflareFallback() {
+    if (_cloudflareFallbackActive) return;
+    _cloudflareFallbackActive = true;
+    debugPrint(
+      '⚠️ [ApiService] Cloudflare 代理不可达，已自动回退到阿里云直连: $aliyunProdUrl',
+    );
   }
 
   /// Best-effort cancellation for the combined delta-sync request. Closing the
